@@ -121,25 +121,25 @@ function fallbackParticipantIdentity(conversation: Conversation, name: string, k
     return {
       id: localHumanId ? `human:${localHumanId}` : `label:${kind}:${name}`,
       humanId: localHumanId || null,
-      bridgeNodeId: null,
-      bridgeHostId: null,
+      sourceIdentityId: null,
+      sourceHostId: null,
     };
   }
 
   const remoteHumanId = cleanOptionalText(conversation.identity?.remoteHumanId)
-    || (kind === 'human' ? cleanOptionalText(conversation.bridgeTarget?.humanId) : '');
+    || (kind === 'human' ? cleanOptionalText(conversation.collaborationTarget?.humanId) : '');
   const remoteAgentId = cleanOptionalText(conversation.identity?.remoteAgentId)
-    || (kind === 'agent' ? cleanOptionalText(conversation.bridgeTarget?.agentId) : '');
+    || (kind === 'agent' ? cleanOptionalText(conversation.collaborationTarget?.agentId) : '');
   const remoteNodeId = cleanOptionalText(conversation.identity?.remoteHumanNodeId)
     || cleanOptionalText(conversation.identity?.remoteAgentNodeId)
-    || cleanOptionalText(conversation.bridgeTarget?.nodeId);
+    || cleanOptionalText(conversation.collaborationTarget?.nodeId);
   const stableKey = remoteHumanId || remoteAgentId || remoteNodeId;
   return {
     id: stableKey ? `${kind}:${stableKey}` : `label:${kind}:${name}`,
     humanId: remoteHumanId || null,
     agentId: remoteAgentId || null,
-    bridgeNodeId: remoteNodeId || null,
-    bridgeHostId: cleanOptionalText(conversation.bridgeTarget?.hostId) || cleanOptionalText(conversation.identity?.bridgeHostId) || null,
+    sourceIdentityId: remoteNodeId || null,
+    sourceHostId: cleanOptionalText(conversation.collaborationTarget?.hostId) || cleanOptionalText(conversation.identity?.sourceHostId) || null,
   };
 }
 
@@ -161,7 +161,7 @@ function fallbackParticipants(conversation: Conversation): ConversationParticipa
       name,
       kind,
       role: self ? 'self' : kind === 'agent' ? 'delegate' : 'participant',
-      source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : identity.bridgeHostId ? 'bridge' : null,
+      source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : identity.sourceHostId ? 'collaboration' : null,
       avatarKey,
       profileImageUrl,
       presenceStatus,
@@ -277,7 +277,7 @@ function groupHasCustomName(conversation: Conversation) {
   return Boolean(nonGenericGroupTitle(metadataStringValue(metadataRecord(conversation.metadata), 'customName')));
 }
 
-function genericBridgeGroupContinuation(conversation: Conversation) {
+function genericLegacyCollaborationGroupContinuation(conversation: Conversation) {
   const metadata = metadataRecord(conversation.metadata);
   if (metadataStringValue(metadata, 'source') !== 'bridge-session-thread') return false;
   if (groupHasCustomName(conversation)) return false;
@@ -292,11 +292,11 @@ function genericBridgeGroupContinuation(conversation: Conversation) {
 function cloudGroupParticipantKey(conversation: Conversation) {
   const humans = allDisplayParticipants(conversation).filter((participant) => participant.kind === 'human');
   if (humans.length < 2) return '';
-  if (!humans.every((participant) => participant.bridgeHostId === 'cloud' || cleanOptionalText(participant.humanId).startsWith('acct_') || cleanOptionalText(participant.bridgeNodeId).startsWith('acct_'))) {
+  if (!humans.every((participant) => participant.sourceHostId === 'cloud' || cleanOptionalText(participant.humanId).startsWith('acct_') || cleanOptionalText(participant.sourceIdentityId).startsWith('acct_'))) {
     return '';
   }
   return humans
-    .map((participant) => cleanOptionalText(participant.humanId) || cleanOptionalText(participant.bridgeNodeId) || cleanOptionalText(participant.id))
+    .map((participant) => cleanOptionalText(participant.humanId) || cleanOptionalText(participant.sourceIdentityId) || cleanOptionalText(participant.id))
     .filter(Boolean)
     .sort()
     .join('+');
@@ -364,8 +364,8 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
       publicName: existing.publicName || participant.publicName,
       profileImageUrl: existing.profileImageUrl ?? participant.profileImageUrl ?? null,
       humanId: existing.humanId || participant.humanId,
-      bridgeNodeId: existing.bridgeNodeId || participant.bridgeNodeId,
-      bridgeHostId: existing.bridgeHostId || participant.bridgeHostId,
+      sourceIdentityId: existing.sourceIdentityId || participant.sourceIdentityId,
+      sourceHostId: existing.sourceHostId || participant.sourceHostId,
       presenceStatus: existing.presenceStatus || participant.presenceStatus,
     };
   }
@@ -483,7 +483,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     const primary = primaryParticipantForKind(kind, displayParticipants);
     const baseId = spaceIdForConversation(kind, primary, conversation, legacyCloudGroupAliasByExplicitId);
     const participantKey = kind === 'group' ? groupParticipantKey(conversation) : '';
-    const aliasId = kind === 'group' && genericBridgeGroupContinuation(conversation) && participantKey
+    const aliasId = kind === 'group' && genericLegacyCollaborationGroupContinuation(conversation) && participantKey
       ? namedGroupIdByParticipantKey.get(participantKey)
       : null;
     const id = aliasId || baseId;

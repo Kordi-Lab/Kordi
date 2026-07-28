@@ -7,12 +7,12 @@ import {
   buildChatAgentSessionKind,
   cloudAgentContextMessagesFromConversation,
   cloudAgentContextMessagesFromDefinition,
-  buildChatCreateGroupBridgeInviteParticipants,
-  buildChatCreateGroupBridgeInviteTargets,
+  buildChatCreateGroupCollaborationInviteParticipants,
+  buildChatCreateGroupCollaborationInviteTargets,
   buildChatCreateGroupMetadata,
   buildChatCreateGroupPersonOptions,
-  buildChatGroupBridgeUpdateParticipants,
-  buildChatGroupBridgeUpdateTargets,
+  buildChatGroupCollaborationUpdateParticipants,
+  buildChatGroupCollaborationUpdateTargets,
   buildChatCreatePersonOptions,
   buildChatCreatePeopleContactLookup,
   buildParticipantSpaceContinuationMetadata,
@@ -36,7 +36,7 @@ function contact(overrides: Partial<Contact> = {}): Contact {
     classType: 'other-users',
     entityType: 'Person',
     subtitle: 'Human contact',
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     status: 'Online',
     discoverableOn: ['Bridge'],
     detail: 'Works on product',
@@ -54,7 +54,7 @@ function participantSpace(overrides: Partial<ParticipantSpaceViewModel> = {}): P
     title: 'Alice',
     participants: [
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', bridgeNodeId: 'node-alice', avatarKey: 'alice' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', sourceIdentityId: 'node-alice', avatarKey: 'alice' },
     ],
     participantCount: 2,
     sessionCount: 1,
@@ -79,13 +79,13 @@ function participantSpace(overrides: Partial<ParticipantSpaceViewModel> = {}): P
         type: 'person',
         subtitle: 'Hi',
         unread: 0,
-        bridges: ['Bridge'],
+        collaborationSources: ['Bridge'],
         trust: 'Bridge',
         directness: 'Direct chat',
         participants: ['Me', 'Alice'],
         canonicalParticipants: [
           { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-          { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', bridgeNodeId: 'node-alice', avatarKey: 'alice' },
+          { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', sourceIdentityId: 'node-alice', avatarKey: 'alice' },
         ],
         messages: [],
         updatedAtLabel: '10:00',
@@ -103,7 +103,7 @@ function chatConversation(overrides: Partial<Conversation & { _updatedAtMs?: num
     type: 'owned-agent',
     subtitle: 'New session',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct chat',
     participants: ['Me', 'Kordi'],
@@ -129,7 +129,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     tasks: 0,
     defaultProvider: 'openai',
     defaultModel: 'gpt-5.2',
-    bridgesConfig: 'Bridge',
+    collaborationConfig: 'Bridge',
     contactId: 'contact:kordi',
     systemPrompt: '',
     xMd: '',
@@ -157,27 +157,27 @@ test('buildChatCreatePersonOptions excludes agent contacts', () => {
 
 test('cloud contact ids from the create dialog resolve to bridge-shaped contacts for group creation', () => {
   const cloudContact = contact({
-    id: 'bridge-peer-person:acct_peer:acct_peer',
+    id: 'collaboration-peer-person:acct_peer:acct_peer',
     name: 'Cloud Peer',
-    bridgeHostId: 'cloud',
-    bridgePeerNodeId: 'acct_peer',
-    bridgeHumanId: 'acct_peer',
-    bridgeContactStatus: 'accepted',
+    sourceHostId: 'cloud',
+    sourceParticipantId: 'acct_peer',
+    sourceHumanId: 'acct_peer',
+    contactStatus: 'accepted',
   });
 
   const lookup = buildChatCreatePeopleContactLookup([cloudContact]);
 
-  assert.equal(lookup.get('bridge-peer-person:acct_peer:acct_peer'), cloudContact);
+  assert.equal(lookup.get('collaboration-peer-person:acct_peer:acct_peer'), cloudContact);
   assert.equal(lookup.get('cloud:acct_peer'), cloudContact);
 });
 
 test('buildChatCreatePersonOptions includes only approved Bridge contacts', () => {
   const options = buildChatCreatePersonOptions([
-    contact({ id: 'contact:approved', name: 'Approved', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved', bridgeContactStatus: 'contact' }),
-    contact({ id: 'contact:approved-request', name: 'Approved request', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved_request', bridgeContactStatus: 'approved' }),
-    contact({ id: 'contact:cloud-accepted', name: 'Cloud accepted', bridgeHostId: 'cloud', bridgePeerNodeId: 'acct_peer', bridgeContactStatus: 'accepted' }),
-    contact({ id: 'contact:pending', name: 'Pending', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_pending', bridgeContactStatus: 'pending' }),
-    contact({ id: 'contact:visible', name: 'Visible', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_visible', bridgeContactStatus: 'none' }),
+    contact({ id: 'contact:approved', name: 'Approved', sourceHostId: 'host-1', sourceParticipantId: 'kd_approved', contactStatus: 'contact' }),
+    contact({ id: 'contact:approved-request', name: 'Approved request', sourceHostId: 'host-1', sourceParticipantId: 'kd_approved_request', contactStatus: 'approved' }),
+    contact({ id: 'contact:cloud-accepted', name: 'Cloud accepted', sourceHostId: 'cloud', sourceParticipantId: 'acct_peer', contactStatus: 'accepted' }),
+    contact({ id: 'contact:pending', name: 'Pending', sourceHostId: 'host-1', sourceParticipantId: 'kd_pending', contactStatus: 'pending' }),
+    contact({ id: 'contact:visible', name: 'Visible', sourceHostId: 'host-1', sourceParticipantId: 'kd_visible', contactStatus: 'none' }),
     contact({ id: 'contact:local-only', name: 'Local' }),
   ]);
 
@@ -188,8 +188,8 @@ test('participant-space continuations inherit bridge target metadata from the so
   assert.deepEqual(buildParticipantSpaceContinuationMetadata({
     sourceMetadata: {
       source: 'bridge-session-thread',
-      bridgeConversationId: 'bridge:host:node:person',
-      bridgeHostId: 'host-1',
+      sourceConversationId: 'bridge:host:node:person',
+      sourceHostId: 'host-1',
       peerNodeId: 'node-peer',
       peerRuntime: 'person',
       peerDisplayName: 'Peer display',
@@ -202,8 +202,8 @@ test('participant-space continuations inherit bridge target metadata from the so
   }), {
     createdFrom: 'chat-create-flow',
     source: 'bridge-session-thread',
-    bridgeConversationId: 'bridge:host:node:person',
-    bridgeHostId: 'host-1',
+    sourceConversationId: 'bridge:host:node:person',
+    sourceHostId: 'host-1',
     peerNodeId: 'node-peer',
     peerRuntime: 'person',
     peerDisplayName: 'Peer display',
@@ -231,7 +231,7 @@ test('person create flow can still derive a direct-person session id for new loc
 });
 
 test('existingSessionIdForPersonStart reuses the existing human pair session', () => {
-  const alice = contact({ id: 'contact:alice', name: 'Alice', bridgeHumanId: 'human-alice' });
+  const alice = contact({ id: 'contact:alice', name: 'Alice', sourceHumanId: 'human-alice' });
   const conversations = [
     chatConversation({
       id: 'session:direct-person:older',
@@ -334,11 +334,11 @@ test('external bridge agent create flow stores bridge target metadata for My cha
     id: 'agent:bob',
     name: 'Bob agent',
     isOwned: false,
-    bridgeHostId: 'host-1',
-    bridgePeerNodeId: 'node-shared',
-    bridgePeerRuntime: 'kordi-desktop',
-    bridgeAgentId: 'agent-bob',
-    bridgeOwnerName: 'Bob',
+    sourceHostId: 'host-1',
+    sourceParticipantId: 'node-shared',
+    sourceRuntime: 'kordi-desktop',
+    sourceAgentId: 'agent-bob',
+    collaborationOwnerName: 'Bob',
   });
 
   assert.equal(buildChatAgentSessionKind(remoteAgent), 'direct-agent');
@@ -347,7 +347,7 @@ test('external bridge agent create flow stores bridge target metadata for My cha
     createdFrom: 'chat-create-flow',
     agentId: 'agent:bob',
     participantSpaceKind: 'self',
-    bridgeHostId: 'host-1',
+    sourceHostId: 'host-1',
     peerNodeId: 'node-shared',
     peerRuntime: 'kordi-desktop',
     peerDisplayName: 'Bob agent',
@@ -414,9 +414,9 @@ test('groupDefaultName uses people names only and truncates long groups', () => 
 
 test('group create options require approved bridge contacts', () => {
   const options = buildChatCreateGroupPersonOptions([
-    contact({ id: 'contact:approved', name: 'Approved', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved', bridgeContactStatus: 'contact' }),
-    contact({ id: 'contact:pending', name: 'Pending', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_pending', bridgeContactStatus: 'pending' }),
-    contact({ id: 'contact:visible', name: 'Visible', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_visible', bridgeContactStatus: 'none' }),
+    contact({ id: 'contact:approved', name: 'Approved', sourceHostId: 'host-1', sourceParticipantId: 'kd_approved', contactStatus: 'contact' }),
+    contact({ id: 'contact:pending', name: 'Pending', sourceHostId: 'host-1', sourceParticipantId: 'kd_pending', contactStatus: 'pending' }),
+    contact({ id: 'contact:visible', name: 'Visible', sourceHostId: 'host-1', sourceParticipantId: 'kd_visible', contactStatus: 'none' }),
     contact({ id: 'contact:local-only', name: 'Local' }),
   ]);
 
@@ -424,9 +424,9 @@ test('group create options require approved bridge contacts', () => {
 });
 
 test('group create bridge invites target only approved bridge contacts', () => {
-  const targets = buildChatCreateGroupBridgeInviteTargets([
-    contact({ id: 'contact:alice', name: 'Alice', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_alice', bridgeHumanId: 'kh_alice', bridgeContactStatus: 'contact' }),
-    contact({ id: 'contact:bob', name: 'Bob', owner: 'Bobby', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_bob', bridgeHumanId: 'kh_bob', bridgeContactStatus: 'pending' }),
+  const targets = buildChatCreateGroupCollaborationInviteTargets([
+    contact({ id: 'contact:alice', name: 'Alice', sourceHostId: 'host-1', sourceParticipantId: 'kd_alice', sourceHumanId: 'kh_alice', contactStatus: 'contact' }),
+    contact({ id: 'contact:bob', name: 'Bob', owner: 'Bobby', sourceHostId: 'host-1', sourceParticipantId: 'kd_bob', sourceHumanId: 'kh_bob', contactStatus: 'pending' }),
     contact({ id: 'contact:local-only', name: 'Local' }),
   ]);
 
@@ -436,70 +436,70 @@ test('group create bridge invites target only approved bridge contacts', () => {
 });
 
 test('group create bridge invite metadata includes creator and selected people', () => {
-  const participants = buildChatCreateGroupBridgeInviteParticipants({
+  const participants = buildChatCreateGroupCollaborationInviteParticipants({
     creator: {
       id: 'human:kh_me',
       displayName: 'Testuser2',
-      bridgeNodeId: 'kd_me',
+      sourceIdentityId: 'kd_me',
       humanId: 'kh_me',
     },
     contacts: [
-      contact({ id: 'contact:user1', name: 'Testuser1', bridgePeerNodeId: 'kd_user1', bridgeHumanId: 'kh_user1' }),
-      contact({ id: 'contact:user3', name: 'Testuser3', bridgePeerNodeId: 'kd_user3', bridgeHumanId: 'kh_user3' }),
+      contact({ id: 'contact:user1', name: 'Testuser1', sourceParticipantId: 'kd_user1', sourceHumanId: 'kh_user1' }),
+      contact({ id: 'contact:user3', name: 'Testuser3', sourceParticipantId: 'kd_user3', sourceHumanId: 'kh_user3' }),
     ],
   });
 
   assert.deepEqual(participants, [
-    { identityId: 'human:kh_me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
-    { identityId: 'human:kh_user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null },
-    { identityId: 'human:kh_user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null },
+    { identityId: 'human:kh_me', displayName: 'Testuser2', role: 'admin', sourceIdentityId: 'kd_me', humanId: 'kh_me', agentId: null },
+    { identityId: 'human:kh_user1', displayName: 'Testuser1', role: 'person', sourceIdentityId: 'kd_user1', humanId: 'kh_user1', agentId: null },
+    { identityId: 'human:kh_user3', displayName: 'Testuser3', role: 'person', sourceIdentityId: 'kd_user3', humanId: 'kh_user3', agentId: null },
   ]);
 });
 
 test('group update bridge metadata targets every other bridge-backed human and carries admin roles', () => {
   const participants = [
-    { id: 'human:me', name: 'Testuser2', kind: 'human', role: 'self', source: 'bridge', bridgeHostId: 'host-1', bridgeNodeId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
-    { id: 'human:user1', name: 'Testuser1', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'host-1', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', avatarKey: 'user1' },
-    { id: 'human:user3', name: 'Testuser3', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'host-1', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', avatarKey: 'user3' },
+    { id: 'human:me', name: 'Testuser2', kind: 'human', role: 'self', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
+    { id: 'human:user1', name: 'Testuser1', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_user1', humanId: 'kh_user1', avatarKey: 'user1' },
+    { id: 'human:user3', name: 'Testuser3', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_user3', humanId: 'kh_user3', avatarKey: 'user3' },
     { id: 'agent:local', name: 'My Kordi', kind: 'agent', role: 'owned-agent', source: 'local', avatarKey: 'agent' },
   ] satisfies Conversation['canonicalParticipants'];
 
-  assert.deepEqual(buildChatGroupBridgeUpdateTargets({ actorIdentityId: 'human:me', participants }), [
+  assert.deepEqual(buildChatGroupCollaborationUpdateTargets({ actorIdentityId: 'human:me', participants }), [
     { hostId: 'host-1', nodeId: 'kd_user1', displayName: 'Testuser1', ownerName: 'Testuser1', humanId: 'kh_user1' },
     { hostId: 'host-1', nodeId: 'kd_user3', displayName: 'Testuser3', ownerName: 'Testuser3', humanId: 'kh_user3' },
   ]);
-  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
-    { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
-    { identityId: 'human:user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null, avatarKey: 'user1', profileImageUrl: null },
-    { identityId: 'human:user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null, avatarKey: 'user3', profileImageUrl: null },
+  assert.deepEqual(buildChatGroupCollaborationUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
+    { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', sourceIdentityId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
+    { identityId: 'human:user1', displayName: 'Testuser1', role: 'person', sourceIdentityId: 'kd_user1', humanId: 'kh_user1', agentId: null, avatarKey: 'user1', profileImageUrl: null },
+    { identityId: 'human:user3', displayName: 'Testuser3', role: 'person', sourceIdentityId: 'kd_user3', humanId: 'kh_user3', agentId: null, avatarKey: 'user3', profileImageUrl: null },
   ]);
 });
 
 test('group update participant metadata preserves profile avatars', () => {
   const participants = [
-    { id: 'human:acct_a', name: 'Cloud A', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a', profileImageUrl: 'https://example.com/a.png' },
+    { id: 'human:acct_a', name: 'Cloud A', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a', profileImageUrl: 'https://example.com/a.png' },
   ] satisfies Conversation['canonicalParticipants'];
 
-  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: [] }), [
-    { identityId: 'human:acct_a', displayName: 'Cloud A', role: 'person', bridgeNodeId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: 'https://example.com/a.png' },
+  assert.deepEqual(buildChatGroupCollaborationUpdateParticipants({ participants, adminIdentityIds: [] }), [
+    { identityId: 'human:acct_a', displayName: 'Cloud A', role: 'person', sourceIdentityId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: 'https://example.com/a.png' },
   ]);
 });
 
 test('group update targets keep same-name cloud humans separate by account id', () => {
   const participants = [
     { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-    { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a' },
-    { id: 'human:acct_b', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_b', humanId: 'acct_b', avatarKey: 'acct_b' },
+    { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a' },
+    { id: 'human:acct_b', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_b', humanId: 'acct_b', avatarKey: 'acct_b' },
   ] satisfies Conversation['canonicalParticipants'];
 
-  assert.deepEqual(buildChatGroupBridgeUpdateTargets({ actorIdentityId: 'human:me', participants }), [
+  assert.deepEqual(buildChatGroupCollaborationUpdateTargets({ actorIdentityId: 'human:me', participants }), [
     { hostId: 'cloud', nodeId: 'acct_a', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_a' },
     { hostId: 'cloud', nodeId: 'acct_b', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_b' },
   ]);
-  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
-    { identityId: 'human:me', displayName: 'Me', role: 'admin', bridgeNodeId: null, humanId: null, agentId: null, avatarKey: 'me', profileImageUrl: null },
-    { identityId: 'human:acct_a', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: null },
-    { identityId: 'human:acct_b', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_b', humanId: 'acct_b', agentId: null, avatarKey: 'acct_b', profileImageUrl: null },
+  assert.deepEqual(buildChatGroupCollaborationUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
+    { identityId: 'human:me', displayName: 'Me', role: 'admin', sourceIdentityId: null, humanId: null, agentId: null, avatarKey: 'me', profileImageUrl: null },
+    { identityId: 'human:acct_a', displayName: 'Shu Yang', role: 'person', sourceIdentityId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: null },
+    { identityId: 'human:acct_b', displayName: 'Shu Yang', role: 'person', sourceIdentityId: 'acct_b', humanId: 'acct_b', agentId: null, avatarKey: 'acct_b', profileImageUrl: null },
   ]);
 });
 

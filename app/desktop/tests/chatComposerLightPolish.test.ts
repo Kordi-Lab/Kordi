@@ -13,7 +13,7 @@ function cssRule(css: string, selector: string) {
 
 test('light outgoing human bubble is quiet blue-gray with no visible outline', () => {
   const css = readDesktopShellCss();
-  const rule = cssRule(css, '.bridge-app.theme-light .app-chat-bubble-user');
+  const rule = cssRule(css, '.kordi-app.theme-light .app-chat-bubble-user');
 
   assert.match(rule, /--app-message-bubble-fill:\s*rgb\(226 235 245\);/);
   assert.match(rule, /--app-message-bubble-stroke:\s*transparent;/);
@@ -39,10 +39,10 @@ test('compact reply indicator is inline icon plus count so it does not expand me
   const rule = cssRule(css, '.app-message-reply-line');
   const iconRule = cssRule(css, '.app-message-reply-line-icon');
   const countRule = cssRule(css, '.app-message-reply-count');
-  const lightIconRule = cssRule(css, '.bridge-app.theme-light .app-message-reply-line-icon');
-  const darkIconRule = cssRule(css, '.bridge-app.theme-dark .app-message-reply-line-icon');
-  const lightCountRule = cssRule(css, '.bridge-app.theme-light .app-message-reply-count');
-  const darkCountRule = cssRule(css, '.bridge-app.theme-dark .app-message-reply-count');
+  const lightIconRule = cssRule(css, '.kordi-app.theme-light .app-message-reply-line-icon');
+  const darkIconRule = cssRule(css, '.kordi-app.theme-dark .app-message-reply-line-icon');
+  const lightCountRule = cssRule(css, '.kordi-app.theme-light .app-message-reply-count');
+  const darkCountRule = cssRule(css, '.kordi-app.theme-dark .app-message-reply-count');
   assert.match(rule, /gap:\s*3px;/);
   assert.match(rule, /min-height:\s*14px;/);
   assert.match(rule, /line-height:\s*12px;/);
@@ -62,7 +62,7 @@ test('portaled mention menu resolves light theme before first paint', () => {
 
   assert.match(source, /function initialComposerMentionMenuThemeClass/);
   assert.match(block, /useState\(initialComposerMentionMenuThemeClass\)/);
-  assert.match(block, /document\.querySelector\('\.bridge-app\.theme-light'\)/);
+  assert.match(block, /document\.querySelector\('\.kordi-app\.theme-light'\)/);
   assert.doesNotMatch(block, /useState\(''\)/);
 
   const css = readDesktopShellCss();

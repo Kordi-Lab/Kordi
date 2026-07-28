@@ -7,17 +7,17 @@ import { readDesktopShellCss } from './helpers/readDesktopStyles';
 test('dark theme uses a translucent dark-glass palette with one accent selected state', () => {
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-background:\s*rgb\(15 17 21\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-foreground:\s*rgba\(255,\s*255,\s*255,\s*0\.9\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-muted-text:\s*rgba\(255,\s*255,\s*255,\s*0\.6\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-meta-text:\s*rgba\(255,\s*255,\s*255,\s*0\.35\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-card-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-hover:\s*rgba\(255,\s*255,\s*255,\s*0\.06\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-divider:\s*rgba\(255,\s*255,\s*255,\s*0\.08\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent:\s*rgba\(132,\s*122,\s*196,\s*0\.64\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent-ring:\s*rgba\(132,\s*122,\s*196,\s*0\.26\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-active:\s*rgba\(132,\s*122,\s*196,\s*0\.11\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--utility-background:\s*rgb\(15 17 21\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--utility-foreground:\s*rgba\(255,\s*255,\s*255,\s*0\.9\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--utility-muted-text:\s*rgba\(255,\s*255,\s*255,\s*0\.6\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--utility-meta-text:\s*rgba\(255,\s*255,\s*255,\s*0\.35\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-card-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-control-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-control-hover:\s*rgba\(255,\s*255,\s*255,\s*0\.06\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-divider:\s*rgba\(255,\s*255,\s*255,\s*0\.08\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-accent:\s*rgba\(132,\s*122,\s*196,\s*0\.64\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-accent-ring:\s*rgba\(132,\s*122,\s*196,\s*0\.26\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-control-active:\s*rgba\(132,\s*122,\s*196,\s*0\.11\);/);
 });
 
 test('chat sidebar timestamps use the sidebar time text token', () => {
@@ -33,32 +33,32 @@ test('glassmorphism tokens are declared in both themes and frame bgs are translu
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
   // Glass intensity tokens — shared across themes (declared in the base block).
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-frame:\s*12px;/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-float:\s*8px;/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-frame:\s*1\.06;/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-float:\s*1\.04;/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-glass-blur-frame:\s*12px;/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-glass-blur-float:\s*8px;/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-glass-saturate-frame:\s*1\.06;/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-glass-saturate-float:\s*1\.04;/);
 
   // Inner-top highlight and paper-grain tokens — declared in both themes.
   // Light mode is intentionally neutral (transparent grain, white highlight).
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.05\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.55\);/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.05\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.55\);/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
 
   // Dark frame bgs lowered so backdrop-filter reads through.
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-shell-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-side-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.56\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-session-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.52\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-main-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-modal-bg:\s*rgba\(17,\s*19,\s*24,\s*0\.66\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-shell-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-side-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.56\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-session-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.52\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-main-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[\s\S]*--app-modal-bg:\s*rgba\(17,\s*19,\s*24,\s*0\.66\);/);
 
   // Light frame bgs use a high-lightness translucent white family.
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*linear-gradient\(180deg,\s*rgba\(252,\s*252,\s*253,\s*0\.72\)/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*oklch\(99\.2% 0\.001 80 \/ 0\.58\);/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-session-bg:\s*oklch\(99\.4% 0\.001 80 \/ 0\.68\);/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-native-session-fallback:\s*oklch\(98\.6% 0\.002 80\);/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*linear-gradient\(180deg,\s*rgba\(252,\s*252,\s*253,\s*0\.72\)/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*oklch\(99\.2% 0\.001 80 \/ 0\.58\);/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-session-bg:\s*oklch\(99\.4% 0\.001 80 \/ 0\.68\);/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-native-session-fallback:\s*oklch\(98\.6% 0\.002 80\);/);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
 });
 
 test('light workspace pages share one flat near-white surface family in web and native shells', () => {
@@ -68,8 +68,8 @@ test('light workspace pages share one flat near-white surface family in web and 
   const appShellFrame = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
   const rightDetailRail = readFileSync(new URL('../src/pages/RightDetailRail.tsx', import.meta.url), 'utf8');
   const cloudAccountSettings = readFileSync(new URL('../src/pages/CloudAccountSettingsDialog.tsx', import.meta.url), 'utf8');
-  const lightTokenBlock = themeTokensCss.match(/\.bridge-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightPageHeaderBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-page-header \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightTokenBlock = themeTokensCss.match(/\.kordi-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightPageHeaderBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-page-header \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(lightTokenBlock, /--app-main-bg:\s*oklch\(98\.9% 0\.001 80\);/);
   assert.match(lightTokenBlock, /--app-main-raised-bg:\s*oklch\(99\.6% 0\.001 80\);/);
@@ -86,11 +86,11 @@ test('light workspace pages share one flat near-white surface family in web and 
 test('light cloud login and loading gates use the cool main-shell palette', () => {
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
-  const lightTokenBlock = themeTokensCss.match(/\.bridge-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightTokenBlock = themeTokensCss.match(/\.kordi-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
   const lightCloudTokenBlock = lightTokenBlock.slice(lightTokenBlock.indexOf('--app-cloud-login-raised-bg:'));
-  const lightCloudBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-login-page,[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightAccentsBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-login-accents \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightStartingBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-starting-screen \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightCloudBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-cloud-login-page,[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightAccentsBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-cloud-login-accents \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightStartingBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-cloud-starting-screen \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(lightCloudTokenBlock, /--app-cloud-login-raised-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.72\);/);
   assert.match(lightCloudTokenBlock, /--app-cloud-login-sunk-bg:\s*rgba\(226,\s*232,\s*240,\s*0\.52\);/);
@@ -110,8 +110,8 @@ test('agent workspace is a full-bleed continuous surface with structural divider
   const shellPagesCss = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
   const agentsPageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
   const agentSharedSource = readFileSync(new URL('../src/kordi-app/agents/shared.tsx', import.meta.url), 'utf8');
-  const agentBlockStart = themeOverridesCss.indexOf('.bridge-app.theme-light .app-agent-shell');
-  const agentBlockEnd = themeOverridesCss.indexOf('.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section', agentBlockStart);
+  const agentBlockStart = themeOverridesCss.indexOf('.kordi-app.theme-light .app-agent-shell');
+  const agentBlockEnd = themeOverridesCss.indexOf('.kordi-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section', agentBlockStart);
   const agentLightBlock = themeOverridesCss.slice(agentBlockStart, agentBlockEnd);
 
   assert.ok(agentBlockStart >= 0 && agentBlockEnd > agentBlockStart, 'expected to find the light agent theme block');
@@ -148,10 +148,10 @@ test('shell.css applies backdrop-filter and a paper-grain layer on the workspace
 
 test('light theme utility buttons use flat navigation-chip styling instead of raised glass', () => {
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
-  const raisedSurfaceBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-input-shell,[\s\S]*?\.app-surface-muted\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
-  const flatButtonBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-icon-button,[\s\S]*?\.app-control-chip\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
-  const flatButtonHoverBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-icon-button:hover,[\s\S]*?\.app-control-chip:hover\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
-  const activeChipBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-control-chip-active\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const raisedSurfaceBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-input-shell,[\s\S]*?\.app-surface-muted\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const flatButtonBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-icon-button,[\s\S]*?\.app-control-chip\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const flatButtonHoverBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-icon-button:hover,[\s\S]*?\.app-control-chip:hover\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const activeChipBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-control-chip-active\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.doesNotMatch(raisedSurfaceBlock, /\.app-icon-button|\.app-utility-button|\.app-control-chip/);
   assert.match(flatButtonBlock, /background:\s*rgba\(15, 23, 42, 0\.055\);/);
@@ -169,10 +169,10 @@ test('composer send area keeps the outer surface without an inner input pop or d
   const composerInputBlock = shellCss.match(/\.app-composer-input \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerMetaBlock = shellCss.match(/\.app-composer-meta \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerFocusBlock = shellCss.match(/\.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightComposerBlock = Array.from(themeOverridesCss.matchAll(/\.bridge-app\.theme-light \.app-composer-shell \{[\s\S]*?\n\}/g))
+  const lightComposerBlock = Array.from(themeOverridesCss.matchAll(/\.kordi-app\.theme-light \.app-composer-shell \{[\s\S]*?\n\}/g))
     .map((match) => match[0])
     .find((block) => /background:/.test(block)) ?? '';
-  const lightComposerFocusBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightComposerFocusBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(composerShellBlock, /var\(--app-divider\) 86%/);
   assert.match(composerShellBlock, /box-shadow:/);
@@ -182,7 +182,7 @@ test('composer send area keeps the outer surface without an inner input pop or d
   assert.match(composerMetaBlock, /border-top:\s*0/);
   assert.match(composerFocusBlock, /var\(--app-accent-ring\)/);
   assert.doesNotMatch(shellCss, /\.app-composer-shell:focus-within \.app-composer-input/);
-  assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-composer-input \{[^}]*background:/);
+  assert.doesNotMatch(themeOverridesCss, /\.kordi-app\.theme-light \.app-composer-input \{[^}]*background:/);
   assert.match(lightComposerBlock, /background:\s*var\(--app-main-raised-bg\);/);
   assert.match(lightComposerBlock, /border-color:\s*rgba\(37, 99, 235, 0\.12\);/);
   assert.doesNotMatch(lightComposerBlock, /linear-gradient|rgba\(248, 251, 255|rgba\(241, 247, 255/);

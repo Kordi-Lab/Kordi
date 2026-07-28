@@ -30,8 +30,8 @@ test('local cloud self-agent no-provider errors become failed agent replies in c
   const state: CanonicalSessionState = {
     profile: { id: 'profile:me', humanIdentityId: 'human:me' },
     identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:me', kind: 'agent', displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: 'session-cloud-self', kind: 'self-agent', title: 'My agent', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 1 },
@@ -61,7 +61,7 @@ test('local cloud self-agent no-provider errors become failed agent replies in c
 
 test('canonical quoted human messages map source metadata for transcript rendering', () => {
   const identityById = new Map([
-    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
   ]);
   const mapped = mapCanonicalMessage({
     id: 'msg:reply',
@@ -108,9 +108,9 @@ test('canonical quoted human messages map source metadata for transcript renderi
 
 test('hosted cloud agent responses render the selected agent name without owner possessives', () => {
   const identityById = new Map([
-    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
-    ['human:333', { id: 'human:333', kind: 'human' as const, displayName: '333', ownerIdentityId: null, source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_333', humanId: 'acct_333', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
-    ['agent:cloud:333', { id: 'agent:cloud:333', kind: 'agent' as const, displayName: 'Kordi Project Driver', ownerIdentityId: 'human:333', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_333', humanId: null, agentId: 'cloud_agent_project', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['human:333', { id: 'human:333', kind: 'human' as const, displayName: '333', ownerIdentityId: null, source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_333', humanId: 'acct_333', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['agent:cloud:333', { id: 'agent:cloud:333', kind: 'agent' as const, displayName: 'Kordi Project Driver', ownerIdentityId: 'human:333', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_333', humanId: null, agentId: 'cloud_agent_project', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
   ]);
   const mapped = mapCanonicalMessage({
     id: 'msg:cloud-agent-final',
@@ -137,8 +137,8 @@ test('hosted cloud agent responses render the selected agent name without owner 
 
 test('cloud fallback runtime failures render as normal failed agent turns with concise copy', () => {
   const identityById = new Map([
-    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
-    ['agent:me', { id: 'agent:me', kind: 'agent' as const, displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['agent:me', { id: 'agent:me', kind: 'agent' as const, displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
   ]);
   const mapped = mapCanonicalMessage({
     id: 'msg:cloud-fallback-failed',
@@ -166,8 +166,8 @@ test('cloud fallback runtime failures render as normal failed agent turns with c
 
 test('imported desktop no-provider agent messages render as failed red replies', () => {
   const identityById = new Map([
-    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
-    ['agent:me', { id: 'agent:me', kind: 'agent' as const, displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['agent:me', { id: 'agent:me', kind: 'agent' as const, displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
   ]);
   const mapped = mapCanonicalMessage({
     id: 'msg:error',
@@ -215,19 +215,19 @@ test('cloud self-agent sends with no configured auth skip local runtime to avoid
   } as CanonicalSessionState;
 
   assert.equal(shouldUseNoProviderSelfAgentShortcut({
-    activeConversationUsesBridgeRouting: false,
+    activeConversationUsesCollaborationRouting: false,
     activeConvCanonicalSessionId: 'session-cloud-self',
     canonicalSessionState: state,
     hasAnyDesktopAuth: false,
   }), true);
   assert.equal(shouldUseNoProviderSelfAgentShortcut({
-    activeConversationUsesBridgeRouting: false,
+    activeConversationUsesCollaborationRouting: false,
     activeConvCanonicalSessionId: null,
     canonicalSessionState: state,
     hasAnyDesktopAuth: false,
   }), true);
   assert.equal(shouldUseNoProviderSelfAgentShortcut({
-    activeConversationUsesBridgeRouting: false,
+    activeConversationUsesCollaborationRouting: false,
     activeConvCanonicalSessionId: 'session-cloud-self',
     canonicalSessionState: state,
     hasAnyDesktopAuth: true,
@@ -238,8 +238,8 @@ test('synthetic no-provider replies suppress duplicate imported desktop runtime 
   const baseState: CanonicalSessionState = {
     profile: { id: 'profile:me', humanIdentityId: 'human:me' },
     identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:me', kind: 'agent', displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: 'session-cloud-self', kind: 'self-agent', title: 'My agent', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
@@ -266,8 +266,8 @@ test('Cloud self-agent reconciliation hides the local mirror and obsolete no-pro
     storagePath: '/tmp/canonical.sqlite3',
     profile: { id: 'profile:me', humanIdentityId: 'human:me' },
     identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:me', kind: 'agent', displayName: 'My Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'cloud-self:acct_me', avatarKey: null, profileImageUrl: null, metadata: { cloudSelfAgent: true }, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: 'My Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, sourceIdentityId: null, humanId: null, agentId: 'cloud-self:acct_me', avatarKey: null, profileImageUrl: null, metadata: { cloudSelfAgent: true }, createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'self-agent', title: 'My Kordi', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 12 },
@@ -289,12 +289,12 @@ test('Cloud self-agent reconciliation hides the local mirror and obsolete no-pro
 });
 
 test('cloud group read state is driven by cloud metadata, not transient local unread increments', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /incrementLocalSessionUnread\?\.\(envelope\.groupId/);
 });
 
 test('cloud group requesting placeholder times out to unavailable notice instead of misleading auth copy', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   assert.match(source, /CLOUD_GROUP_AGENT_STATUS_RECHECK_MS = 5_000/);
   assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 2 \* 60_000/);
   const timeoutIndex = source.indexOf('const requestDeadlineMs = candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS;');
@@ -312,13 +312,13 @@ test('cloud group requesting placeholder times out to unavailable notice instead
 });
 
 test('fresh group sends claim fallback before waiting for a background Cloud sync', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   const outboxBlockStart = source.indexOf('const sentMessages: CloudMessage[] = [];');
   const outboxBlock = source.slice(outboxBlockStart, outboxBlockStart + 3200);
-  assert.match(outboxBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sentMessages, canonicalMessageId, session\.token\),[\s\S]*syncCloudBridgeDiff/);
+  assert.match(outboxBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sentMessages, canonicalMessageId, session\.token\),[\s\S]*syncCloudCollaborationDiff/);
   const directSendBlockStart = source.indexOf('const sent = fulfilledCloudGroupSends(results);', outboxBlockStart);
   const directSendBlock = source.slice(directSendBlockStart, directSendBlockStart + 900);
-  assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sent, canonicalMessageId, session\.token\),[\s\S]*syncCloudBridgeDiff/);
+  assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sent, canonicalMessageId, session\.token\),[\s\S]*syncCloudCollaborationDiff/);
 });
 
 test('adding existing group members publishes Cloud authorization before the local batch commit', () => {
@@ -337,14 +337,14 @@ test('adding existing group members publishes Cloud authorization before the loc
 });
 
 test('cloud group hosted-agent sends render processing in the final response slot', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   assert.match(source, /msg:cloud-agent-processing:\$\{candidate\.requestMessage\.id\}:\$\{candidate\.targetAccountId\}/);
   assert.match(source, /setCanonicalSessionState\(\(current\) => upsertCanonicalRequestIntoLocalState\(\s*appendCloudGroupRequestingPlaceholder\(current, candidate, noticeId\),\s*requestingNoticeRequest,\s*\)\);/);
   assert.match(source, /void upsertCanonicalMessageFast\(requestingNoticeRequest\)/);
 });
 
 test('cloud group owner processing upserts the shared slot so a local placeholder cannot block broadcast', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   const processingMessageIdIndex = source.indexOf('const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;');
   assert.ok(processingMessageIdIndex >= 0, 'expected owner cloud group processing slot');
   const processingBlock = source.slice(processingMessageIdIndex, processingMessageIdIndex + 3200);
@@ -356,14 +356,14 @@ test('cloud group owner processing upserts the shared slot so a local placeholde
 });
 
 test('cloud group terminal hosted-agent responses reserve the stable slot even when processing is not visible yet', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   assert.match(source, /terminalStableAgentNoticeId/);
   assert.match(source, /replacementAgentSlot\?\.id \?\? terminalStableAgentNoticeId \?\? envelope\.message\.id/);
   assert.match(source, /existingStableRowTerminalLocked[\s\S]*existingStableRowDeliveryState/);
 });
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   assert.match(source, /removeCloudGroupPendingRowsForTerminalResponse/);
   assert.match(source, /cloudGroupPendingAgentRowMatches/);
   assert.match(source, /cloud-group-agent-unavailable-timeout:/);
@@ -372,7 +372,7 @@ test('cloud group terminal hosted-agent responses clear timeout placeholders and
 });
 
 test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   assert.match(source, /export function cloudGroupMessageTargetsLocalAgent/);
   assert.match(source, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
   assert.match(source, /message\.targetCloudAgentOwnerAccountId\) === account\.accountId/);
@@ -383,7 +383,7 @@ test('cloud group hosted-agent metadata targets the owner runtime even when text
 });
 
 test('cloud group no-provider catch broadcasts a failed agent response to requesters', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
   const catchIndex = source.indexOf('if (isCloudAgentNoProviderConfiguredError(error)) {');
   assert.ok(catchIndex >= 0, 'expected group no-provider catch branch');
   const catchBlock = source.slice(catchIndex, source.indexOf('processedCloudAgentMentionIdsRef.current.delete(envelope.message!.id);', catchIndex));

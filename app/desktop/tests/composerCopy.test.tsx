@@ -19,7 +19,7 @@ function conversation(overrides: Partial<Conversation> = {}): Conversation {
     type: 'person',
     subtitle: '',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'Shu'],

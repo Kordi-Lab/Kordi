@@ -26,8 +26,6 @@ pub(crate) struct IdentityContextRole {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct IdentityContextPermissions {
     pub reply_as_identity_id: String,
-    pub allowed_targets: Vec<String>,
-    pub reach_out_allowed: bool,
     pub context_policy: String,
     pub requires_approval: bool,
 }
@@ -53,7 +51,6 @@ pub(crate) fn render_multi_participant_identity_context(input: &IdentityContextR
     out.push_str("- Treat people and their agents as separate speakers.\n");
     out.push_str("- Do not impersonate another person or agent.\n");
     out.push_str("- Do not prefix assistant replies with speaker labels or identity names.\n");
-    out.push_str("- Use reach_out only for explicit non-local @Person/@Agent mentions in the current user message.\n");
     out.push_str("- Use the requester/current message author to interpret I, me, and my.\n");
 
     if input.session_id.as_deref().and_then(clean).is_some()
@@ -140,7 +137,11 @@ fn push_participant(out: &mut String, participant: &IdentityContextParticipant) 
         out.push_str(" | owner: ");
         out.push_str(&owner);
     }
-    push_optional_field(out, "bridgeNodeId", participant.bridge_node_id.as_deref());
+    push_optional_field(
+        out,
+        "sourceIdentityId",
+        participant.bridge_node_id.as_deref(),
+    );
     push_optional_field(out, "humanId", participant.human_id.as_deref());
     push_optional_field(out, "agentId", participant.agent_id.as_deref());
     push_optional_field(out, "runtime", participant.runtime.as_deref());
@@ -152,16 +153,6 @@ fn push_permissions(out: &mut String, permissions: &IdentityContextPermissions) 
     out.push_str("- replyAs: ");
     out.push_str(&clean_required(&permissions.reply_as_identity_id));
     out.push_str(" only\n");
-    if permissions.reach_out_allowed
-        && !clean_allowed_targets(&permissions.allowed_targets).is_empty()
-    {
-        out.push_str("- reachOut: allowed only for explicit non-local @Person/@Agent mentions in the current user message\n");
-    } else {
-        out.push_str("- reachOut: disabled; ask the local user when a non-local target is ambiguous or not permitted\n");
-    }
-    out.push_str("- allowedTargets: ");
-    out.push_str(&format_allowed_targets(&permissions.allowed_targets));
-    out.push('\n');
     out.push_str("- mayImpersonate: none\n");
     push_line(out, "contextPolicy", &permissions.context_policy);
     out.push_str("- requiresApproval: ");
@@ -212,25 +203,6 @@ fn owner_label(
         (None, Some(identity_id)) => Some(identity_id),
         _ => None,
     }
-}
-
-fn format_allowed_targets(targets: &[String]) -> String {
-    let targets = clean_allowed_targets(targets);
-    if targets.is_empty() {
-        "[]".to_string()
-    } else {
-        serde_json::to_string(&targets).expect("serialize allowed targets")
-    }
-}
-
-fn clean_allowed_targets(targets: &[String]) -> Vec<String> {
-    let mut targets = targets
-        .iter()
-        .filter_map(|target| clean(target))
-        .collect::<Vec<_>>();
-    targets.sort();
-    targets.dedup();
-    targets
 }
 
 fn clean(value: &str) -> Option<String> {

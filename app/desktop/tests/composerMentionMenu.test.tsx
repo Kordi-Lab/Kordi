@@ -19,8 +19,8 @@ const options: ComposerMentionOption[] = [
     value: 'ShenzhesKordi',
     label: 'ShenzhesKordi',
     detail: 'Agent owned by Shenzhe',
-    targetKind: 'bridge-agent',
-    bridgeHostId: 'host-1',
+    targetKind: 'agent',
+    sourceHostId: 'host-1',
     nodeId: 'node-agent',
     runtime: 'kordi-desktop',
     agentId: 'agent-1',
@@ -31,8 +31,8 @@ const options: ComposerMentionOption[] = [
     value: 'Alice',
     label: 'Alice',
     detail: 'Person',
-    targetKind: 'bridge-person',
-    bridgeHostId: 'host-1',
+    targetKind: 'person',
+    sourceHostId: 'host-1',
     nodeId: 'node-person',
     runtime: 'person',
     humanId: 'human-1',
@@ -59,7 +59,7 @@ test('mention participant menu uses the shared near-opaque transient surface', (
   assert.doesNotMatch(menuRule, /backdrop-filter/);
 
   const sharedSurfaceContract = readFileSync(new URL('../src/styles/transient-surfaces.css', import.meta.url), 'utf8');
-  const lightRule = cssRule(css, '.bridge-app.theme-light .app-composer-mention-menu');
+  const lightRule = cssRule(css, '.kordi-app.theme-light .app-composer-mention-menu');
   assert.match(sharedSurfaceContract, /\.app-transient-surface,[\s\S]*background:\s*var\(--app-transient-surface-fallback\) !important;/);
   assert.match(sharedSurfaceContract, /\.app-transient-surface,[\s\S]*background:\s*var\(--app-transient-surface-bg\) !important;/);
   assert.match(lightRule, /--app-composer-mention-menu-bg:\s*var\(--app-transient-surface-bg\);/);
@@ -169,7 +169,7 @@ test('mention participant selected row uses a soft hover-like state in both them
   const css = readDesktopShellCss();
   const darkRule = cssRule(css, '.app-composer-mention-menu');
   const lightClassRule = cssRule(css, '.app-composer-mention-menu-light');
-  const lightShellRule = cssRule(css, '.bridge-app.theme-light .app-composer-mention-menu');
+  const lightShellRule = cssRule(css, '.kordi-app.theme-light .app-composer-mention-menu');
   const activeRule = cssRule(css, '.app-composer-mention-menu-item-active');
   const hoverRule = cssRule(css, '.app-composer-mention-menu-item:not(.app-composer-mention-menu-item-active):hover');
 

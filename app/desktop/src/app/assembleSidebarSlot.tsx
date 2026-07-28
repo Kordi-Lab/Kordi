@@ -180,7 +180,6 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         setActiveContactGroup={args.setActiveContactGroup}
         setActiveContactId={args.setActiveContactId}
         displayedAgents={args.displayedAgents}
-        activeBridgeHost={args.activeBridgeHost}
         localProfileAvatarSeed={args.localProfileAvatarSeed}
         cloudAccount={cloudSession.account}
         cloudAccountDialogTab={args.cloudAccountDialogTab}
@@ -206,16 +205,7 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         }}
         onUpdateCloudProfile={async (input) => { await cloudSession.updateProfile(input); }}
         onCloudSignOut={async () => { await cloudSession.signOut(); }}
-        isBridgePolling={args.isBridgePolling}
-        onRefreshBridge={() => {
-          void args.refreshDesktopBridge();
-        }}
-        onCopyBridgeHostUrl={() => {
-          if (args.activeBridgeHost) {
-            void args.handleCopyBridgeText(args.activeBridgeHost.serverUrl, 'Bridge host URL copied');
-          }
-        }}
-        onCreateBridgeDraft={args.handleCreateBridgeDraft}
+        isCollaborationSyncing={args.isCollaborationSyncing}
       />
   );
 }

@@ -33,7 +33,7 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { MarkdownContent } from './markdown';
 import { AttachmentPreview } from './transcriptAttachments';
 import { RequestReplyLine, SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
-import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopBridgeAgentRequestHandler } from './transcriptLiveTurns';
+import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
@@ -284,10 +284,10 @@ type ContactRequestActionState = 'idle' | 'sending' | 'sent' | 'error';
 
 function ContactRequestFailureNotice({
   detail,
-  onRequestBridgeContact,
+  onRequestCollaborationContact,
 }: {
   detail?: string | null;
-  onRequestBridgeContact: () => Promise<void> | void;
+  onRequestCollaborationContact: () => Promise<void> | void;
 }) {
   const [state, setState] = useState<ContactRequestActionState>('idle');
 
@@ -295,7 +295,7 @@ function ContactRequestFailureNotice({
     if (state === 'sending' || state === 'sent') return;
     setState('sending');
     try {
-      await onRequestBridgeContact();
+      await onRequestCollaborationContact();
       setState('sent');
     } catch {
       setState('error');
@@ -762,11 +762,11 @@ export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compa
 function MessageBubbleView({
   msg,
   onOpenSource,
-  onStopBridgeAgentRequest,
+  onStopCollaborationAgentRequest,
   onNavigateToMessage,
   onOpenArtifact,
   onOpenAuthSettings,
-  onRequestBridgeContact,
+  onRequestCollaborationContact,
   onOpenSenderProfile,
   onForkMessage,
   messageForks,
@@ -793,11 +793,11 @@ function MessageBubbleView({
 }: {
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
-  onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
-  onRequestBridgeContact?: () => Promise<void> | void;
+  onRequestCollaborationContact?: () => Promise<void> | void;
   onOpenSenderProfile?: (message: Message, anchorRect: DOMRect) => void;
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
@@ -1188,7 +1188,7 @@ function MessageBubbleView({
           turn={msg.turn}
           historical={msg.turn.completed}
           plainAgentResponse={plainAgentResponse}
-          onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+          onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
           onNavigateToMessage={onNavigateToMessage}
           onOpenArtifact={onOpenArtifact}
           onOpenAuthSettings={onOpenAuthSettings}
@@ -1228,7 +1228,7 @@ function MessageBubbleView({
   const showContactRequestAction = Boolean(
     isOwnHumanMessage
       && deliveryVisual?.tone === 'red'
-      && onRequestBridgeContact
+      && onRequestCollaborationContact
       && contactRequestFailureCanBeRetried(msg.detail),
   );
   const footerDetail = showContactRequestAction ? undefined : msg.detail;
@@ -1449,9 +1449,9 @@ function MessageBubbleView({
         {forkButton}
         {forkChip}
       </div>
-      {showContactRequestAction && onRequestBridgeContact ? (
+      {showContactRequestAction && onRequestCollaborationContact ? (
         <div className="self-center">
-          <ContactRequestFailureNotice detail={msg.detail} onRequestBridgeContact={onRequestBridgeContact} />
+          <ContactRequestFailureNotice detail={msg.detail} onRequestCollaborationContact={onRequestCollaborationContact} />
         </div>
       ) : null}
     </MessageContextMenuHost>
@@ -1488,11 +1488,11 @@ function messageSnapshotKey(msg: Message) {
 
 export const MessageBubble = memo(
   MessageBubbleView,
-  (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+  (previous, next) => previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
     && previous.onOpenAuthSettings === next.onOpenAuthSettings
-    && previous.onRequestBridgeContact === next.onRequestBridgeContact
+    && previous.onRequestCollaborationContact === next.onRequestCollaborationContact
     && previous.onOpenSenderProfile === next.onOpenSenderProfile
     && previous.onForkMessage === next.onForkMessage
     && previous.onOpenForkSession === next.onOpenForkSession
@@ -1520,10 +1520,6 @@ export const MessageBubble = memo(
 );
 
 
-export function BridgeChip({ bridge }: { bridge: string }) {
-  return <Badge variant="outline" className="app-control-chip rounded-full">{bridge}</Badge>;
-}
-
 function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
 }
@@ -1541,7 +1537,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
     >
       <IdentityAvatar
         kind={contactAvatarKind(contact)}
-        seed={contact.avatarSeed ?? contact.bridgePeerNodeId ?? contact.id}
+        seed={contact.avatarSeed ?? contact.sourceParticipantId ?? contact.id}
         name={contact.name}
         imageUrl={contact.profileImageUrl}
         className="h-10 w-10 border border-white/10"

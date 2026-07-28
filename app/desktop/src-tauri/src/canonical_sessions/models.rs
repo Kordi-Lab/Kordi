@@ -118,6 +118,7 @@ pub struct CanonicalIdentity {
     pub owner_identity_id: Option<String>,
     pub source: String,
     pub source_host_id: Option<String>,
+    #[serde(rename = "sourceIdentityId", alias = "bridgeNodeId")]
     pub bridge_node_id: Option<String>,
     pub human_id: Option<String>,
     pub agent_id: Option<String>,
@@ -193,8 +194,11 @@ pub struct CanonicalDelegatedExchange {
     pub request_message_id: Option<String>,
     pub response_message_id: Option<String>,
     pub transport: String,
+    #[serde(rename = "sourceHostId", alias = "bridgeHostId")]
     pub bridge_host_id: Option<String>,
+    #[serde(rename = "sourceConversationId", alias = "bridgeConversationId")]
     pub bridge_conversation_id: Option<String>,
+    #[serde(rename = "sourceRequestId", alias = "bridgeRequestId")]
     pub bridge_request_id: Option<String>,
     pub context_policy: String,
     pub status: String,
@@ -244,6 +248,7 @@ pub struct UpsertCanonicalIdentityRequest {
     pub owner_identity_id: Option<String>,
     pub source: Option<String>,
     pub source_host_id: Option<String>,
+    #[serde(rename = "sourceIdentityId", alias = "bridgeNodeId")]
     pub bridge_node_id: Option<String>,
     pub human_id: Option<String>,
     pub agent_id: Option<String>,
@@ -318,8 +323,11 @@ pub struct CreateCanonicalDelegatedExchangeRequest {
     pub request_message_id: Option<String>,
     pub response_message_id: Option<String>,
     pub transport: Option<String>,
+    #[serde(rename = "sourceHostId", alias = "bridgeHostId")]
     pub bridge_host_id: Option<String>,
+    #[serde(rename = "sourceConversationId", alias = "bridgeConversationId")]
     pub bridge_conversation_id: Option<String>,
+    #[serde(rename = "sourceRequestId", alias = "bridgeRequestId")]
     pub bridge_request_id: Option<String>,
     pub context_policy: Option<String>,
     pub status: Option<String>,

@@ -1,6 +1,6 @@
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
-export type CloudBridgeTargetRef = {
+export type CloudCollaborationTargetRef = {
   hostId?: string | null;
   nodeId?: string | null;
 };
@@ -28,7 +28,7 @@ export function assertCloudAccountId(value: string | null | undefined): string {
   return accountId;
 }
 
-export function rejectNonCloudBridgeTargets(targets: CloudBridgeTargetRef[]): string[] {
+export function rejectNonCloudCollaborationTargets(targets: CloudCollaborationTargetRef[]): string[] {
   const accountIds: string[] = [];
   for (const target of targets) {
     if (!isCloudHostId(target.hostId)) throw new Error('non_cloud_target_in_cloud_edition');

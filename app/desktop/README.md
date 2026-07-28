@@ -90,7 +90,7 @@ Both commands use the product configuration.
 cd /path/to/kordi
 pnpm --dir app/desktop typecheck
 pnpm --dir app/desktop lint
-pnpm --dir app/desktop exec tsx --test tests/cloudEdition.test.tsx tests/cloudSurfaceCleanup.test.ts tests/cloudNoLegacyBridgeTransport.test.ts
+pnpm --dir app/desktop exec tsx --test tests/productShell.test.tsx tests/cloudSurfaceCleanup.test.ts tests/cloudNoLegacyBridgeTransport.test.ts
 ```
 
 ## Related docs
@@ -98,6 +98,6 @@ pnpm --dir app/desktop exec tsx --test tests/cloudEdition.test.tsx tests/cloudSu
 - [../../README.md](../../README.md)
 - [../../docs/development.md](../../docs/development.md)
 - [../../docs/run-cloud-desktop.md](../../docs/run-cloud-desktop.md)
-- [../../docs/cloud-edition.md](../../docs/cloud-edition.md)
+- [../../docs/architecture.md](../../docs/architecture.md)
 - [../../docs/hosted-cloud-developer-guide.md](../../docs/hosted-cloud-developer-guide.md)
 - [../../docs/release.md](../../docs/release.md)

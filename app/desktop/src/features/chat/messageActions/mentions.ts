@@ -1,22 +1,22 @@
-import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type {
   Conversation,
-  ConversationBridgeTarget,
-  DesktopBridgeState,
+  ConversationCollaborationTarget,
+  DesktopCollaborationState,
   DesktopChatState,
   MessageMention,
 } from '@/kordi-app/types';
 
-import type { ResolvedMentionedBridgeTarget } from './types';
+import type { ResolvedMentionedCollaborationTarget } from './types';
 
-export function mentionForBridgeTarget(target: ResolvedMentionedBridgeTarget | null): MessageMention[] {
+export function mentionForCollaborationTarget(target: ResolvedMentionedCollaborationTarget | null): MessageMention[] {
   if (!target) return [];
   return [{
     label: target.label,
     targetKind: target.targetKind,
-    bridgeHostId: target.host.id,
+    sourceHostId: target.host.id,
     nodeId: target.peer.nodeId,
     humanId: target.peer.humanId ?? null,
     agentId: target.peer.agentId ?? null,
@@ -24,7 +24,7 @@ export function mentionForBridgeTarget(target: ResolvedMentionedBridgeTarget | n
   }];
 }
 
-export function outreachIdentityForBridgeTarget(target: ResolvedMentionedBridgeTarget) {
+export function outreachIdentityForCollaborationTarget(target: ResolvedMentionedCollaborationTarget) {
   const targetDisplayName = target.displayLabel;
   const targetOwnerName = target.peer.ownerName ?? null;
   const targetRuntime = target.peer.runtime;
@@ -39,9 +39,9 @@ export function outreachIdentityForBridgeTarget(target: ResolvedMentionedBridgeT
     selfTargetIdentity: {
       identityId: targetAgentId ? `agent:${targetAgentId}` : (targetHumanId ? `human:${targetHumanId}` : null),
       displayName: targetDisplayName,
-      kind: target.targetKind === 'bridge-agent' ? 'agent' : 'human',
+      kind: target.targetKind === 'agent' ? 'agent' : 'human',
       ownerDisplayName: targetOwnerName,
-      bridgeNodeId: target.peer.nodeId,
+      sourceIdentityId: target.peer.nodeId,
       humanId: targetHumanId,
       agentId: targetAgentId,
       runtime: targetRuntime,
@@ -49,23 +49,23 @@ export function outreachIdentityForBridgeTarget(target: ResolvedMentionedBridgeT
   };
 }
 
-export function mentionedPersonIsActiveBridgeTarget(
-  target: ResolvedMentionedBridgeTarget,
-  activeTarget?: ConversationBridgeTarget | null,
+export function mentionedPersonIsActiveCollaborationTarget(
+  target: ResolvedMentionedCollaborationTarget,
+  activeTarget?: ConversationCollaborationTarget | null,
 ) {
-  if (target.targetKind !== 'bridge-person' || !activeTarget) return false;
+  if (target.targetKind !== 'person' || !activeTarget) return false;
   if (target.peer.humanId && activeTarget.humanId && target.peer.humanId === activeTarget.humanId) return true;
   return target.peer.nodeId === activeTarget.nodeId;
 }
 
 
-export type BridgeMentionCandidate = {
-  host: DesktopBridgeState['hosts'][number];
-  peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number];
+export type CollaborationMentionCandidate = {
+  host: DesktopCollaborationState['hosts'][number];
+  peer: DesktopCollaborationState['hosts'][number]['visiblePeers'][number];
   handle: string;
   normalizedHandle: string;
   displayLabel: string;
-  targetKind: 'bridge-person' | 'bridge-agent';
+  targetKind: 'person' | 'agent';
 };
 
 function safeMentionCharacters(value: string) {
@@ -94,7 +94,7 @@ function participantHumanIdentityKeys(participant: NonNullable<Conversation['can
   const participantId = participant.id?.trim() ? participant.id : null;
   return [
     participant.humanId,
-    participant.bridgeNodeId,
+    participant.sourceIdentityId,
     participantId,
     participantId?.startsWith('human:') ? participantId.slice('human:'.length) : null,
   ].map(normalizedOwnerKey).filter(Boolean);
@@ -117,7 +117,7 @@ function conversationParticipantNameKeys(participants: string[] | undefined) {
     .filter((key) => key && !['me', 'you', 'my kordi', 'kordi'].includes(key));
 }
 
-export type MentionScopeConversation = object & Partial<Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness' | 'bridgeTarget'>>;
+export type MentionScopeConversation = object & Partial<Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness' | 'collaborationTarget'>>;
 
 function conversationHumanOwnerKeys(conversation: MentionScopeConversation | null | undefined) {
   const keys = new Set<string>();
@@ -147,16 +147,16 @@ export function conversationHasParticipantMentionScope(conversation: MentionScop
   if (!conversation) return false;
   if (conversationHasGroupMentionScope(conversation)) return true;
   const humanKeys = conversationHumanOwnerKeys(conversation);
-  const bridgeTargetIsPerson = conversation.bridgeTarget?.runtime === 'person' || conversation.bridgeTarget?.agentId === null;
-  if (humanKeys.size === 0 && !bridgeTargetIsPerson) return false;
+  const collaborationTargetIsPerson = conversation.collaborationTarget?.runtime === 'person' || conversation.collaborationTarget?.agentId === null;
+  if (humanKeys.size === 0 && !collaborationTargetIsPerson) return false;
   const nonSelfHumanCount = (conversation.canonicalParticipants ?? []).filter((participant) => (
     participant.kind === 'human' && !isSelfConversationParticipant(participant)
   )).length;
-  return nonSelfHumanCount > 0 || bridgeTargetIsPerson || /\b(?:direct|person|contact)\b/i.test(conversation.directness ?? '');
+  return nonSelfHumanCount > 0 || collaborationTargetIsPerson || /\b(?:direct|person|contact)\b/i.test(conversation.directness ?? '');
 }
 
-export function bridgeMentionOwnerMatchesConversationHumans(
-  owner: Pick<DesktopBridgeState['hosts'][number]['visiblePeers'][number], 'humanId' | 'ownerName'> & { nodeId?: string | null },
+export function collaborationMentionOwnerMatchesConversationHumans(
+  owner: Pick<DesktopCollaborationState['hosts'][number]['visiblePeers'][number], 'humanId' | 'ownerName'> & { nodeId?: string | null },
   conversation: MentionScopeConversation | null | undefined,
 ) {
   const ownerHumanKey = normalizedOwnerKey(owner.humanId);
@@ -173,7 +173,7 @@ export function bridgeMentionOwnerMatchesConversationHumans(
     if (!ownerNameKey || !participantHumanNameKeys(participant).includes(ownerNameKey)) continue;
     sawCanonicalNameMatch = true;
     // A same-name candidate with a different explicit human id is usually a
-    // stale Bridge registration; do not let the display-name fallback target it.
+    // stale legacy registration; do not let the display-name fallback target it.
     if (!ownerHumanKey || identityKeys.length === 0) return true;
   }
 
@@ -181,13 +181,13 @@ export function bridgeMentionOwnerMatchesConversationHumans(
   return Boolean(ownerNameKey && conversationParticipantNameKeys(conversation?.participants).includes(ownerNameKey));
 }
 
-export function filterBridgeMentionCandidatesForConversation(
-  candidates: BridgeMentionCandidate[],
+export function filterCollaborationMentionCandidatesForConversation(
+  candidates: CollaborationMentionCandidate[],
   conversation: MentionScopeConversation | null | undefined,
 ) {
   if (!conversationHasParticipantMentionScope(conversation)) return candidates;
-  return dedupeBridgeMentionCandidateHandles(
-    candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation)),
+  return dedupeCollaborationMentionCandidateHandles(
+    candidates.filter((candidate) => collaborationMentionOwnerMatchesConversationHumans(candidate.peer, conversation)),
   );
 }
 
@@ -198,10 +198,10 @@ function conversationContainsAccountId(conversation: MentionScopeConversation | 
     if (participant.kind !== 'human') continue;
     if (participantHumanIdentityKeys(participant).includes(key)) return true;
   }
-  const bridgeTarget = conversation?.bridgeTarget;
-  if ((bridgeTarget?.runtime === 'person' || bridgeTarget?.agentId === null) && (
-    normalizedOwnerKey(bridgeTarget.humanId) === key
-    || normalizedOwnerKey(bridgeTarget.nodeId) === key
+  const collaborationTarget = conversation?.collaborationTarget;
+  if ((collaborationTarget?.runtime === 'person' || collaborationTarget?.agentId === null) && (
+    normalizedOwnerKey(collaborationTarget.humanId) === key
+    || normalizedOwnerKey(collaborationTarget.nodeId) === key
   )) return true;
   return conversationParticipantNameKeys(conversation?.participants).includes(key);
 }
@@ -265,12 +265,12 @@ function conversationImpliesLocalViewerParticipant(conversation: MentionScopeCon
 
 export function shouldIncludeLocalAgentMentionForConversation(
   conversation: MentionScopeConversation | null | undefined,
-  localOwner: Pick<DesktopBridgeState['hosts'][number], 'humanId' | 'ownerName'>,
+  localOwner: Pick<DesktopCollaborationState['hosts'][number], 'humanId' | 'ownerName'>,
 ) {
   if (!conversationHasParticipantMentionScope(conversation)) return true;
-  if (bridgeMentionOwnerMatchesConversationHumans(localOwner, conversation)) return true;
+  if (collaborationMentionOwnerMatchesConversationHumans(localOwner, conversation)) return true;
 
-  // Bridge-sourced direct/group threads can list only remote people in the
+  // Legacy collaboration direct/group threads can list only remote people in the
   // session metadata. The local viewer is still a participant of the open chat,
   // so My Kordi must remain mentionable even when self metadata is absent.
   return conversationImpliesLocalViewerParticipant(conversation);
@@ -313,9 +313,9 @@ export function mentionScopeConversationForActiveConversation<T extends MentionS
   };
 }
 
-export function filterBridgeMentionCandidatesForHost(
-  candidates: BridgeMentionCandidate[],
-  host: DesktopBridgeState['hosts'][number] | null | undefined,
+export function filterCollaborationMentionCandidatesForHost(
+  candidates: CollaborationMentionCandidate[],
+  host: DesktopCollaborationState['hosts'][number] | null | undefined,
 ) {
   if (!host) return candidates;
   const hostHumanId = normalizedOwnerKey(host.humanId);
@@ -337,7 +337,7 @@ export function filterBridgeMentionCandidatesForHost(
   });
 }
 
-function identitySuffixForCandidate(candidate: Pick<BridgeMentionCandidate, 'peer' | 'handle'>) {
+function identitySuffixForCandidate(candidate: Pick<CollaborationMentionCandidate, 'peer' | 'handle'>) {
   const source = candidate.peer.humanId?.trim()
     || candidate.peer.agentId?.trim()
     || candidate.peer.nodeId?.trim()
@@ -351,12 +351,12 @@ function uniqueHandle(baseHandle: string, suffix: string) {
   return `${baseHandle.slice(0, availableBaseLength)}${cleanSuffix}`;
 }
 
-function candidateWithBaseMentionHandle(candidate: BridgeMentionCandidate) {
+function candidateWithBaseMentionHandle(candidate: CollaborationMentionCandidate) {
   const handle = mentionHandleForLabel(candidate.displayLabel, candidate.peer.nodeId);
   return { ...candidate, handle, normalizedHandle: normalizeMentionLabel(handle) };
 }
 
-function dedupeBridgeMentionCandidateHandles(candidates: BridgeMentionCandidate[]) {
+function dedupeCollaborationMentionCandidateHandles(candidates: CollaborationMentionCandidate[]) {
   const baseCandidates = candidates.map(candidateWithBaseMentionHandle);
   const handleCounts = new Map<string, number>();
   for (const candidate of baseCandidates) {
@@ -381,49 +381,49 @@ function dedupeBridgeMentionCandidateHandles(candidates: BridgeMentionCandidate[
   });
 }
 
-function peerIsApprovedBridgeContact(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
+function peerIsApprovedCollaborationContact(peer: DesktopCollaborationState['hosts'][number]['visiblePeers'][number]) {
   const status = peer.contactRequestStatus?.trim().toLowerCase() ?? '';
   return Boolean(peer.isContact || status === 'contact' || status === 'approved');
 }
 
-function agentCanBeMentionedDirectly(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
-  if (!isBridgeAgentRuntime(peer.runtime)) return true;
+function agentCanBeMentionedDirectly(peer: DesktopCollaborationState['hosts'][number]['visiblePeers'][number]) {
+  if (!isCollaborationAgentRuntime(peer.runtime)) return true;
   const agentReachabilityPolicy = peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts';
   if (agentReachabilityPolicy === 'owner') return false;
   if (agentReachabilityPolicy === 'server') return true;
-  return peerIsApprovedBridgeContact(peer) || (peer.sharedProjects?.length ?? 0) > 0;
+  return peerIsApprovedCollaborationContact(peer) || (peer.sharedProjects?.length ?? 0) > 0;
 }
 
-function peerPersonDedupeKeys(peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number]) {
+function peerPersonDedupeKeys(peer: DesktopCollaborationState['hosts'][number]['visiblePeers'][number]) {
   return [peer.humanId, peer.ownerName, peer.displayName, peer.nodeId]
     .map(normalizedOwnerKey)
     .filter(Boolean);
 }
 
 function hostHasExplicitPersonPeerForAgent(
-  host: DesktopBridgeState['hosts'][number],
-  agentPeer: DesktopBridgeState['hosts'][number]['visiblePeers'][number],
+  host: DesktopCollaborationState['hosts'][number],
+  agentPeer: DesktopCollaborationState['hosts'][number]['visiblePeers'][number],
 ) {
   const agentKeys = new Set(peerPersonDedupeKeys(agentPeer));
   if (agentKeys.size === 0) return false;
   return host.visiblePeers.some((peer) => (
     peer !== agentPeer
-    && !isBridgeAgentRuntime(peer.runtime)
+    && !isCollaborationAgentRuntime(peer.runtime)
     && peerPersonDedupeKeys(peer).some((key) => agentKeys.has(key))
   ));
 }
 
-export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | null) {
-  if (!bridgeState) return [];
+export function buildCollaborationMentionCandidates(collaborationState: DesktopCollaborationState | null) {
+  if (!collaborationState) return [];
 
-  const rawCandidates: BridgeMentionCandidate[] = [];
+  const rawCandidates: CollaborationMentionCandidate[] = [];
 
-  for (const host of bridgeState.hosts) {
+  for (const host of collaborationState.hosts) {
     for (const peer of host.visiblePeers) {
-      const isAgent = isBridgeAgentRuntime(peer.runtime);
+      const isAgent = isCollaborationAgentRuntime(peer.runtime);
       const agentIsReachable = !isAgent || agentCanBeMentionedDirectly(peer);
       const seenForPeer = new Set<string>();
-      const pushLabel = (value: string | null | undefined, targetKind: BridgeMentionCandidate['targetKind']) => {
+      const pushLabel = (value: string | null | undefined, targetKind: CollaborationMentionCandidate['targetKind']) => {
         const displayLabel = value?.trim();
         if (!displayLabel) return;
         const handle = mentionHandleForLabel(displayLabel, peer.nodeId);
@@ -444,27 +444,27 @@ export function buildBridgeMentionCandidates(bridgeState: DesktopBridgeState | n
       const hasPersonLabel = Boolean(peer.ownerName?.trim() || (!isAgent && peer.displayName?.trim()));
 
       if (isAgent && peer.humanId?.trim() && (agentIsReachable || peer.isDefaultAgent) && !hostHasExplicitPersonPeerForAgent(host, peer)) {
-        pushLabel(peer.ownerName, 'bridge-person');
+        pushLabel(peer.ownerName, 'person');
       }
       if (!isAgent || agentIsReachable) {
-        pushLabel(peer.displayName, isAgent ? 'bridge-agent' : 'bridge-person');
+        pushLabel(peer.displayName, isAgent ? 'agent' : 'person');
       }
       if (!isAgent) {
-        pushLabel(peer.ownerName, 'bridge-person');
+        pushLabel(peer.ownerName, 'person');
       }
       if (isAgent ? agentIsReachable && !hasAgentLabel : !hasPersonLabel) {
-        pushLabel(peer.nodeId, isAgent ? 'bridge-agent' : 'bridge-person');
+        pushLabel(peer.nodeId, isAgent ? 'agent' : 'person');
       }
     }
   }
 
-  return dedupeBridgeMentionCandidateHandles(rawCandidates);
+  return dedupeCollaborationMentionCandidateHandles(rawCandidates);
 }
 
-export function bridgeMentionCandidateOptionText(candidate: BridgeMentionCandidate) {
+export function collaborationMentionCandidateOptionText(candidate: CollaborationMentionCandidate) {
   return {
     label: candidate.displayLabel,
-    detail: candidate.targetKind === 'bridge-person' ? 'Person' : 'Agent',
+    detail: candidate.targetKind === 'person' ? 'Person' : 'Agent',
   };
 }
 
@@ -476,9 +476,9 @@ export function scopedAgentLabel(ownerName: string | null | undefined, agentLabe
   return possessiveScopedLabel(owner, label, ownerIsSelf);
 }
 
-export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
-  const activeHost = bridgeState?.hosts.find((host) => host.id === bridgeState.activeHostId)
-    ?? bridgeState?.hosts[0]
+export function localCollaborationAgentLabels(collaborationState: DesktopCollaborationState | null) {
+  const activeHost = collaborationState?.hosts.find((host) => host.id === collaborationState.activeHostId)
+    ?? collaborationState?.hosts[0]
     ?? null;
   const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
     ?? activeHost?.agents.find((agent) => agent.isActive)
@@ -498,9 +498,9 @@ export function localBridgeAgentLabels(bridgeState: DesktopBridgeState | null) {
   ];
 }
 
-function activeBridgeHostAndAgent(bridgeState: DesktopBridgeState | null) {
-  const activeHost = bridgeState?.hosts.find((host) => host.id === bridgeState.activeHostId)
-    ?? bridgeState?.hosts[0]
+function activeCollaborationHostAndAgent(collaborationState: DesktopCollaborationState | null) {
+  const activeHost = collaborationState?.hosts.find((host) => host.id === collaborationState.activeHostId)
+    ?? collaborationState?.hosts[0]
     ?? null;
   const activeAgent = activeHost?.agents.find((agent) => agent.id === activeHost.activeAgentId)
     ?? activeHost?.agents.find((agent) => agent.isActive)
@@ -510,11 +510,11 @@ function activeBridgeHostAndAgent(bridgeState: DesktopBridgeState | null) {
   return { activeHost, activeAgent };
 }
 
-export function localAgentMentionLabels(state: DesktopChatState | null, bridgeState: DesktopBridgeState | null) {
+export function localAgentMentionLabels(state: DesktopChatState | null, collaborationState: DesktopCollaborationState | null) {
   const labels = [
     'Kordi',
     state?.localAgent?.label,
-    ...localBridgeAgentLabels(bridgeState),
+    ...localCollaborationAgentLabels(collaborationState),
     (() => {
       const parts = state?.localAgent?.workspaceRoot?.split(/[\\/]/).filter(Boolean) ?? [];
       return parts[parts.length - 1];
@@ -529,28 +529,28 @@ export function localAgentMentionLabels(state: DesktopChatState | null, bridgeSt
   ));
 }
 
-export function mentionsLocalAgent(text: string, state: DesktopChatState | null, bridgeState: DesktopBridgeState | null) {
+export function mentionsLocalAgent(text: string, state: DesktopChatState | null, collaborationState: DesktopCollaborationState | null) {
   const afterAt = text.replace(/^\s*@/, '');
-  return localAgentMentionLabels(state, bridgeState).some((label) => mentionTextStartsWithLabel(afterAt, label));
+  return localAgentMentionLabels(state, collaborationState).some((label) => mentionTextStartsWithLabel(afterAt, label));
 }
 
-function publicLocalAgentMentionLabel(bridgeState: DesktopBridgeState | null) {
-  const { activeHost, activeAgent } = activeBridgeHostAndAgent(bridgeState);
+function publicLocalAgentMentionLabel(collaborationState: DesktopCollaborationState | null) {
+  const { activeHost, activeAgent } = activeCollaborationHostAndAgent(collaborationState);
   return publicScopedAgentMentionHandle(activeHost?.ownerName, activeAgent?.label || 'Kordi');
 }
 
-export function publicLocalAgentMentionText(text: string, bridgeState: DesktopBridgeState | null) {
+export function publicLocalAgentMentionText(text: string, collaborationState: DesktopCollaborationState | null) {
   const leading = /^\s*/.exec(text)?.[0] ?? '';
   if (!text.slice(leading.length).startsWith('@')) return text;
   const afterAt = text.slice(leading.length + 1);
-  const labels = localAgentMentionLabels(null, bridgeState)
+  const labels = localAgentMentionLabels(null, collaborationState)
     .sort((left, right) => normalizeMentionLabel(right).length - normalizeMentionLabel(left).length);
   for (const label of labels) {
     const rest = leadingAddressRest(afterAt, label);
     if (rest === null) continue;
-    return `${leading}@${publicLocalAgentMentionLabel(bridgeState)}${rest ? ` ${rest}` : ''}`;
+    return `${leading}@${publicLocalAgentMentionLabel(collaborationState)}${rest ? ` ${rest}` : ''}`;
   }
-  return rewriteLeadingFirstPersonAgentMention(text, activeBridgeHostAndAgent(bridgeState).activeHost?.ownerName, 'Kordi');
+  return rewriteLeadingFirstPersonAgentMention(text, activeCollaborationHostAndAgent(collaborationState).activeHost?.ownerName, 'Kordi');
 }
 
 export function leadingAddressRest(textAfterAt: string, label: string) {
@@ -586,18 +586,18 @@ export function stripLeadingAddressMentions(text: string, labels: Array<string |
   return current;
 }
 
-export function localHumanAddressLabels(bridgeState: DesktopBridgeState | null) {
-  const activeHost = bridgeState?.hosts.find((host) => host.id === bridgeState.activeHostId)
-    ?? bridgeState?.hosts[0]
+export function localHumanAddressLabels(collaborationState: DesktopCollaborationState | null) {
+  const activeHost = collaborationState?.hosts.find((host) => host.id === collaborationState.activeHostId)
+    ?? collaborationState?.hosts[0]
     ?? null;
   return [activeHost?.ownerName, activeHost?.displayName];
 }
 
-export function localAgentRuntimeText(text: string, state: DesktopChatState | null, bridgeState: DesktopBridgeState | null) {
+export function localAgentRuntimeText(text: string, state: DesktopChatState | null, collaborationState: DesktopCollaborationState | null) {
   const leading = /^\s*/.exec(text)?.[0] ?? '';
   if (!text.slice(leading.length).startsWith('@')) return text;
   const afterAt = text.slice(leading.length + 1);
-  const labels = localAgentMentionLabels(state, bridgeState)
+  const labels = localAgentMentionLabels(state, collaborationState)
     .filter((label) => normalizeMentionLabel(label) !== normalizeMentionLabel('Kordi'))
     .sort((left, right) => normalizeMentionLabel(right).length - normalizeMentionLabel(left).length);
   for (const label of labels) {
@@ -621,23 +621,23 @@ export function mentionTextStartsWithLabel(text: string, label: string) {
   return !next || /[\s:;,.!?—-]/.test(next);
 }
 
-export type ResolveMentionedBridgeTargetOptions = {
-  targetKind?: BridgeMentionCandidate['targetKind'];
+export type ResolveMentionedCollaborationTargetOptions = {
+  targetKind?: CollaborationMentionCandidate['targetKind'];
   sharedCloudAgents?: SharedCloudAgentSummary[];
   localAccountId?: string | null;
 };
 
-export function resolveMentionedBridgeTarget(
+export function resolveMentionedCollaborationTarget(
   text: string,
-  bridgeState: DesktopBridgeState | null,
+  collaborationState: DesktopCollaborationState | null,
   conversation?: MentionScopeConversation | null,
-  options: ResolveMentionedBridgeTargetOptions = {},
+  options: ResolveMentionedCollaborationTargetOptions = {},
 ) {
-  const scopedCandidates = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), conversation);
+  const scopedCandidates = filterCollaborationMentionCandidatesForConversation(buildCollaborationMentionCandidates(collaborationState), conversation);
   const candidates = options.targetKind
     ? scopedCandidates.filter((candidate) => candidate.targetKind === options.targetKind)
     : scopedCandidates;
-  const sharedCandidates = options.targetKind && options.targetKind !== 'bridge-agent'
+  const sharedCandidates = options.targetKind && options.targetKind !== 'agent'
     ? []
     : sharedCloudAgentMentionCandidatesForConversation(options.sharedCloudAgents ?? [], conversation, options.localAccountId);
   if (candidates.length === 0 && sharedCandidates.length === 0) return null;
@@ -670,7 +670,7 @@ export function resolveMentionedBridgeTarget(
         humanId: sharedMatch.targetOwnerAccountId,
         agents: [],
         visiblePeers: [],
-      } as unknown as DesktopBridgeState['hosts'][number];
+      } as unknown as DesktopCollaborationState['hosts'][number];
       const peer = {
         nodeId: sharedMatch.targetOwnerAccountId,
         displayName: sharedMatch.displayLabel,
@@ -678,13 +678,13 @@ export function resolveMentionedBridgeTarget(
         runtime: 'kordi-cloud-agent',
         humanId: sharedMatch.targetOwnerAccountId,
         agentId: sharedMatch.targetAgentId,
-      } as DesktopBridgeState['hosts'][number]['visiblePeers'][number];
+      } as DesktopCollaborationState['hosts'][number]['visiblePeers'][number];
       return {
         host,
         peer,
         label: sharedMatch.handle,
         displayLabel: sharedMatch.displayLabel,
-        targetKind: 'bridge-agent' as const,
+        targetKind: 'agent' as const,
         requestText,
       };
     }
@@ -722,20 +722,20 @@ export function resolveMentionedBridgeTarget(
   return null;
 }
 
-export async function resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh(
+export async function resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
   text: string,
-  bridgeState: DesktopBridgeState | null,
+  collaborationState: DesktopCollaborationState | null,
   conversation: MentionScopeConversation | null | undefined,
   sharedCloudAgents: SharedCloudAgentSummary[] = [],
   refreshSharedCloudAgents?: () => Promise<SharedCloudAgentSummary[]>,
 ) {
   let mentionableCloudAgentsForSend = sharedCloudAgents;
-  const activeHost = bridgeState?.hosts.find((host) => host.id === bridgeState.activeHostId)
-    ?? bridgeState?.hosts[0]
+  const activeHost = collaborationState?.hosts.find((host) => host.id === collaborationState.activeHostId)
+    ?? collaborationState?.hosts[0]
     ?? null;
   const localAccountId = activeHost?.humanId ?? activeHost?.nodeId ?? null;
-  let mentionedTarget = resolveMentionedBridgeTarget(text, bridgeState, conversation, {
-    targetKind: 'bridge-agent',
+  let mentionedTarget = resolveMentionedCollaborationTarget(text, collaborationState, conversation, {
+    targetKind: 'agent',
     sharedCloudAgents: mentionableCloudAgentsForSend,
     localAccountId,
   });
@@ -745,8 +745,8 @@ export async function resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefre
       const byId = new Map(mentionableCloudAgentsForSend.map((agent) => [agent.agentId, agent]));
       for (const agent of refreshedCloudAgents) byId.set(agent.agentId, agent);
       mentionableCloudAgentsForSend = [...byId.values()];
-      mentionedTarget = resolveMentionedBridgeTarget(text, bridgeState, conversation, {
-        targetKind: 'bridge-agent',
+      mentionedTarget = resolveMentionedCollaborationTarget(text, collaborationState, conversation, {
+        targetKind: 'agent',
         sharedCloudAgents: mentionableCloudAgentsForSend,
         localAccountId,
       });

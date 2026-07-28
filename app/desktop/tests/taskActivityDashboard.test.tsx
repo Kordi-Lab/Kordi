@@ -100,7 +100,7 @@ test('right-panel Cloud task rows show stable task id instead of repeating the t
         participants: [],
         createdAtMs: 1,
         updatedAtMs: 1,
-        bridgeRequestId: 'another_test_task',
+        sourceRequestId: 'another_test_task',
         contextPolicy: 'cloud-session-activity',
         error: null,
       },

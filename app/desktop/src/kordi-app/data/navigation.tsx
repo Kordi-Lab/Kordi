@@ -20,6 +20,5 @@ export const navAccentClasses: Record<NavId, string> = {
   contacts: 'text-emerald-300',
   projects: 'text-cyan-50',
   agents: 'text-violet-50',
-  bridge: 'text-cyan-50',
   settings: 'text-cyan-50',
 };

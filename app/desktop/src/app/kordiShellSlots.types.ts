@@ -2,7 +2,7 @@ import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNo
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
-import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
+import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
 import type { CloudSessionPin } from '@/features/cloud/authClient';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
@@ -11,7 +11,7 @@ import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDial
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type {
   Agent,
-  BridgeAgentRequestControl,
+  CollaborationAgentRequestControl,
   Contact,
   ContactClass,
   ContactRequest,
@@ -19,12 +19,10 @@ import type {
   ComposerQuoteState,
   DesktopAuthProvider,
   DesktopAuthState,
-  DesktopBridgeConversation,
-  DesktopBridgeHost,
-  DesktopBridgeInvite,
-  DesktopBridgePeer,
-  DesktopBridgeProject,
-  DesktopBridgeState,
+  DesktopCollaborationConversation,
+  DesktopCollaborationHost,
+  DesktopCollaborationProject,
+  DesktopCollaborationState,
   DesktopChatProjectInfo,
   DesktopChatSlashCommand,
   DesktopChatState,
@@ -33,6 +31,7 @@ import type {
   QueuedDesktopChatMessage,
   EditFilePreview,
   Message,
+  NavId,
   ParticipantSpaceViewModel,
   Project,
   SessionArtifact,
@@ -42,18 +41,6 @@ import type {
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
 export type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
-export type BridgeSettingsDraft = {
-  hostId?: string | null;
-  serverUrl: string;
-  displayName: string;
-  ownerName: string;
-};
-export type BridgeWizardDraft = {
-  mode: 'have-url' | 'need-host';
-  serverUrl: string;
-  displayName: string;
-  ownerName: string;
-};
 
 export type CreateChatGroupRequest = {
   name?: string | null;
@@ -68,7 +55,7 @@ export type AssembleKordiShellSlotsArgs = {
   cloudSessionPinsById: Record<string, CloudSessionPin>;
   onUpdateCloudSessionPin: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
   windowWidth: number;
-  activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
+  activeNav: NavId;
   cloudSession: UseCloudSessionResult;
   activeConvId: string;
   setActiveConvId: Dispatch<SetStateAction<string>>;
@@ -89,7 +76,7 @@ export type AssembleKordiShellSlotsArgs = {
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: Conversation[];
-  setActiveNav: Dispatch<SetStateAction<'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings'>>;
+  setActiveNav: Dispatch<SetStateAction<NavId>>;
   handleCreateChatSession: () => Promise<void>;
   handleCreateSideAgentSession: () => Promise<string | null>;
   chatSearch: string;
@@ -111,13 +98,10 @@ export type AssembleKordiShellSlotsArgs = {
   handleCreateCloudAgent: (input: CreateCloudAgentInput) => Promise<Agent>;
   handleUpdateCloudAgent: (agent: Agent, input: UpdateCloudAgentInput) => Promise<Agent>;
   handleArchiveCloudAgent: (agent: Agent) => Promise<void>;
-  activeBridgeHost: DesktopBridgeHost | null;
+  activeCollaborationHost: DesktopCollaborationHost | null;
   localProfileAvatarSeed?: string | null;
   localProfileDisplayName?: string | null;
   localProfileImageUrl?: string | null;
-  refreshDesktopBridge: () => Promise<void>;
-  handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
-  handleCreateBridgeDraft: () => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
   handleStartChatWithPerson: (contact: Contact) => Promise<void>;
   handleStartChatWithAgent: (agent: Agent) => Promise<void>;
@@ -152,15 +136,15 @@ export type AssembleKordiShellSlotsArgs = {
   activeContactRequest?: ContactRequest;
   contactOverlayMode: 'contact' | 'request' | null;
   getStatusBadgeClass: (value: string) => string;
-  handleOpenBridgeConversation: (
+  handleOpenCollaborationConversation: (
     hostId: string,
     peerNodeId: string,
     peerDisplayName?: string | null,
     peerOwnerName?: string | null,
     peerRuntime?: string | null,
-    project?: DesktopBridgeProject | null,
+    project?: DesktopCollaborationProject | null,
   ) => Promise<void>;
-  handleStartBridgePersonSession: (target: {
+  handleStartCollaborationPersonSession: (target: {
     hostId: string;
     nodeId: string;
     displayName?: string | null;
@@ -174,39 +158,11 @@ export type AssembleKordiShellSlotsArgs = {
   isAgentOverlayOpen: boolean;
   setIsAgentOverlayOpen: Dispatch<SetStateAction<boolean>>;
 
-  desktopBridgeState: DesktopBridgeState | null;
-  activeBridgePeople: DesktopBridgePeer[];
-  activeBridgeAgents: DesktopBridgePeer[];
-  bridgeSettingsDraft: BridgeSettingsDraft | null;
-  setBridgeSettingsDraft: Dispatch<SetStateAction<BridgeSettingsDraft | null>>;
-  isDesktopBridgeSaving: boolean;
-  desktopBridgeError: string | null;
-  bridgeWizardOpen: boolean;
-  setBridgeWizardOpen: Dispatch<SetStateAction<boolean>>;
-  bridgeWizardStep: 1 | 2 | 3;
-  setBridgeWizardStep: Dispatch<SetStateAction<1 | 2 | 3>>;
-  bridgeWizardDraft: BridgeWizardDraft;
-  setBridgeWizardDraft: Dispatch<SetStateAction<BridgeWizardDraft>>;
-  handleSelectBridgeHost: (hostId: string) => Promise<void>;
-  openBridgeWizard: () => void;
-  handleStartLocalBridgeHost: () => void;
-  handleStopLocalBridgeHost: () => void;
-  handleSaveBridgeSettings: (draftOverride?: BridgeSettingsDraft) => Promise<void>;
-  handleRemoveBridgeHost: (hostId: string) => Promise<void>;
-  handleOpenBridgeConfigFolder: () => Promise<void>;
-  handleRevealBridgeStorageFile: (kind: 'config' | 'conversations' | 'legacy') => Promise<void>;
-  handleExportBridgeHostsConfig: () => Promise<void>;
-  handleImportBridgeHostsConfig: (raw: string) => Promise<void>;
-  handleAddBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
-  handleSetBridgeDiscoveryMode: (hostId: string, discoveryMode: 'off' | 'contacts' | 'open') => Promise<void>;
-  handleSetBridgeHostPrivacyPolicy: (hostId: string, humanVisibilityPolicy: 'server-open' | 'server-approval' | 'private', contactApprovalPolicy: 'auto' | 'approval-required') => Promise<void>;
-  handleSetBridgeAgentReachabilityPolicy: (hostId: string, agentId: string, reachabilityPolicy: 'server' | 'contacts' | 'owner') => Promise<void>;
-  handleApproveBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
-  handleRejectBridgeContactRequest: (hostId: string, requestId: string) => Promise<void>;
-  handleCreateBridgeAgent: (hostId: string, label?: string) => Promise<void>;
-  handleActivateBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
-  handleSetDefaultBridgeAgent: (hostId: string, agentId: string) => Promise<void>;
-  handleUpdateBridgeAgentModelRouting: (
+  desktopCollaborationState: DesktopCollaborationState | null;
+  handleAddCollaborationContact: (hostId: string, peerNodeId: string) => Promise<void>;
+  handleApproveCollaborationContactRequest: (hostId: string, requestId: string) => Promise<void>;
+  handleRejectCollaborationContactRequest: (hostId: string, requestId: string) => Promise<void>;
+  handleUpdateCollaborationAgentModelRouting: (
     hostId: string,
     agentId: string,
     defaultModel?: string | null,
@@ -227,8 +183,7 @@ export type AssembleKordiShellSlotsArgs = {
     fallbackAuthProvider?: string | null,
     fallbackAuthChoice?: string | null,
   ) => Promise<void>;
-  handleRemoveBridgeContact: (hostId: string, peerNodeId: string) => Promise<void>;
-  handleBridgeWizardPrimary: () => Promise<void>;
+  handleRemoveCollaborationContact: (hostId: string, peerNodeId: string) => Promise<void>;
 
   settingsRailWidth: number;
   settingsContentRef: MutableRefObject<HTMLDivElement | null>;
@@ -263,8 +218,6 @@ export type AssembleKordiShellSlotsArgs = {
   isEditingDesktopSessionTitle: boolean;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
   handleRenameDesktopSession: (fallbackName?: string) => Promise<void>;
-  activeProjectBridgeHost: DesktopBridgeHost | null;
-  activeProjectBridgeProject: DesktopBridgeProject | null;
   chatTranscriptScrollRef: MutableRefObject<HTMLDivElement | null>;
   canonicalHasOlderBySessionId: Record<string, boolean>;
   loadOlderCanonicalSessionMessages: (sessionId: string) => Promise<void>;
@@ -334,7 +287,7 @@ export type AssembleKordiShellSlotsArgs = {
   chatModelOptions: ComposerModelOption[] | undefined;
   isDesktopChatSending: boolean;
   handleStopDesktopChatTurn: () => void;
-  handleStopBridgeAgentRequest: (request: BridgeAgentRequestControl) => void | Promise<void>;
+  handleStopCollaborationAgentRequest: (request: CollaborationAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
   handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
   handleRetryChatMessage: (message: Message) => void;
@@ -343,18 +296,15 @@ export type AssembleKordiShellSlotsArgs = {
   activeDetailTab: DetailTab;
   setActiveDetailTab: Dispatch<SetStateAction<DetailTab>>;
   activeProjectLastMessage: Message;
-  isProjectBridgeBusy: boolean;
-  bridgeInvite: DesktopBridgeInvite | null;
-  handleCreateProjectBridgeInvite: () => Promise<void>;
   activeConv: Conversation;
   activeConvHasSubtitle: boolean;
   activeLastMessage: Message;
-  activeConversationIsBridge: boolean;
-  activeBridgeConversationHost: DesktopBridgeHost | null;
-  activeBridgeConversation: DesktopBridgeConversation | null;
-  activeBridgeAwaitingReply: boolean;
-  isBridgePolling: boolean;
-  lastBridgePollAtLabel: string | null;
+  activeConversationUsesCollaboration: boolean;
+  activeCollaborationConversationHost: DesktopCollaborationHost | null;
+  activeCollaborationConversation: DesktopCollaborationConversation | null;
+  activeCollaborationAwaitingReply: boolean;
+  isCollaborationSyncing: boolean;
+  lastCollaborationSyncAtLabel: string | null;
   activeSessionProject: DesktopChatProjectInfo | null;
   activeQueuedDesktopMessages: QueuedDesktopChatMessage[];
   queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
@@ -395,7 +345,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleStartChatWithPerson'
   | 'handleStartChatWithAgent'
   | 'handleCreateChatGroup'
-  | 'handleAddBridgeContact'
+  | 'handleAddCollaborationContact'
   | 'handleCreateChatSessionInParticipantSpace'
   | 'handleRenameChatGroup'
   | 'handleRenameChatSession'
@@ -425,7 +375,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveContactGroup'
   | 'setActiveContactId'
   | 'displayedAgents'
-  | 'activeBridgeHost'
+  | 'activeCollaborationHost'
   | 'localProfileAvatarSeed'
   | 'localProfileDisplayName'
   | 'localProfileImageUrl'
@@ -447,10 +397,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleLogoutProvider'
   | 'themeMode'
   | 'setThemeMode'
-  | 'isBridgePolling'
-  | 'refreshDesktopBridge'
-  | 'handleCopyBridgeText'
-  | 'handleCreateBridgeDraft'
+  | 'isCollaborationSyncing'
 >;
 
 export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
@@ -483,8 +430,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeContact'
   | 'activeContactRequest'
   | 'getStatusBadgeClass'
-  | 'handleOpenBridgeConversation'
-  | 'handleStartBridgePersonSession'
+  | 'handleOpenCollaborationConversation'
+  | 'handleStartCollaborationPersonSession'
   | 'displayedAgents'
   | 'handleCreateCloudAgent'
   | 'handleUpdateCloudAgent'
@@ -494,46 +441,17 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isAgentOverlayOpen'
   | 'setActiveAgentId'
   | 'setIsAgentOverlayOpen'
-  | 'desktopBridgeState'
-  | 'activeBridgeHost'
+  | 'desktopCollaborationState'
+  | 'activeCollaborationHost'
   | 'localProfileAvatarSeed'
   | 'localProfileDisplayName'
   | 'localProfileImageUrl'
-  | 'activeBridgePeople'
-  | 'activeBridgeAgents'
-  | 'bridgeSettingsDraft'
-  | 'setBridgeSettingsDraft'
-  | 'isDesktopBridgeSaving'
-  | 'desktopBridgeError'
-  | 'bridgeWizardOpen'
-  | 'setBridgeWizardOpen'
-  | 'bridgeWizardStep'
-  | 'setBridgeWizardStep'
-  | 'bridgeWizardDraft'
-  | 'setBridgeWizardDraft'
-  | 'handleSelectBridgeHost'
-  | 'handleCreateBridgeDraft'
-  | 'refreshDesktopBridge'
-  | 'handleSaveBridgeSettings'
-  | 'handleRemoveBridgeHost'
-  | 'handleCopyBridgeText'
-  | 'handleOpenBridgeConfigFolder'
-  | 'handleRevealBridgeStorageFile'
-  | 'handleExportBridgeHostsConfig'
-  | 'handleImportBridgeHostsConfig'
-  | 'handleAddBridgeContact'
-  | 'handleSetBridgeDiscoveryMode'
-  | 'handleSetBridgeHostPrivacyPolicy'
-  | 'handleSetBridgeAgentReachabilityPolicy'
-  | 'handleApproveBridgeContactRequest'
-  | 'handleRejectBridgeContactRequest'
-  | 'handleCreateBridgeAgent'
-  | 'handleActivateBridgeAgent'
-  | 'handleSetDefaultBridgeAgent'
-  | 'handleUpdateBridgeAgentModelRouting'
+  | 'handleAddCollaborationContact'
+  | 'handleApproveCollaborationContactRequest'
+  | 'handleRejectCollaborationContactRequest'
+  | 'handleUpdateCollaborationAgentModelRouting'
   | 'handleUpdateLocalAgentModelRouting'
-  | 'handleRemoveBridgeContact'
-  | 'handleBridgeWizardPrimary'
+  | 'handleRemoveCollaborationContact'
   | 'settingsRailWidth'
   | 'settingsContentRef'
   | 'activeSettingsSectionId'
@@ -576,8 +494,6 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isEditingDesktopSessionTitle'
   | 'setIsEditingDesktopSessionTitle'
   | 'handleRenameDesktopSession'
-  | 'activeProjectBridgeHost'
-  | 'activeProjectBridgeProject'
   | 'chatTranscriptScrollRef'
   | 'canonicalHasOlderBySessionId'
   | 'loadOlderCanonicalSessionMessages'
@@ -618,11 +534,11 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatModelOptions'
   | 'isDesktopChatSending'
   | 'handleStopDesktopChatTurn'
-  | 'handleStopBridgeAgentRequest'
+  | 'handleStopCollaborationAgentRequest'
   | 'handleSendProjectMessage'
   | 'showChatDetailRail'
   | 'activeConv'
-  | 'activeConversationIsBridge'
+  | 'activeConversationUsesCollaboration'
   | 'chatTranscriptScrollRef'
   | 'onChatTranscriptScroll'
   | 'filteredChatSlashCommands'
@@ -659,11 +575,11 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'queuedDesktopMessagesBySession'
   | 'handleEditQueuedMessage'
   | 'handleCancelQueuedMessage'
-  | 'activeBridgeConversationHost'
-  | 'activeBridgeConversation'
-  | 'activeBridgeAwaitingReply'
-  | 'lastBridgePollAtLabel'
-  | 'isBridgePolling'
+  | 'activeCollaborationConversationHost'
+  | 'activeCollaborationConversation'
+  | 'activeCollaborationAwaitingReply'
+  | 'lastCollaborationSyncAtLabel'
+  | 'isCollaborationSyncing'
 > & {
   rightDetailRail?: ReactNode;
 };
@@ -683,11 +599,6 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeProject'
   | 'activeProjectSession'
   | 'activeProjectLastMessage'
-  | 'activeProjectBridgeHost'
-  | 'activeProjectBridgeProject'
-  | 'isProjectBridgeBusy'
-  | 'bridgeInvite'
-  | 'handleCreateProjectBridgeInvite'
   | 'setActiveNav'
   | 'setActiveConvId'
   | 'getStatusBadgeClass'
@@ -695,12 +606,12 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeConv'
   | 'activeConvHasSubtitle'
   | 'activeLastMessage'
-  | 'activeConversationIsBridge'
-  | 'activeBridgeConversationHost'
-  | 'activeBridgeConversation'
-  | 'activeBridgeAwaitingReply'
-  | 'isBridgePolling'
-  | 'lastBridgePollAtLabel'
+  | 'activeConversationUsesCollaboration'
+  | 'activeCollaborationConversationHost'
+  | 'activeCollaborationConversation'
+  | 'activeCollaborationAwaitingReply'
+  | 'isCollaborationSyncing'
+  | 'lastCollaborationSyncAtLabel'
   | 'activeSessionProject'
   | 'activeQueuedDesktopMessages'
   | 'chatTranscriptScrollRef'

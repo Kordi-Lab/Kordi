@@ -1,8 +1,5 @@
 {
   "kordiRuntimePath": "../../agent",
   "kordiRuntimeManifestPath": "crates/cli/Cargo.toml",
-  "bridgesPath": "../../bridges",
-  "bridgesManifestPath": "cli/Cargo.toml",
-  "kordiRuntimeBinary": "../target/release/kordi",
-  "bridgesBinary": "target/release/bridges"
+  "kordiRuntimeBinary": "../target/release/kordi"
 }

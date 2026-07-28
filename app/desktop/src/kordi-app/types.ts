@@ -1,4 +1,4 @@
-import type { BridgeMessageDirection } from '@/features/bridge/messages';
+import type { CollaborationMessageDirection } from '@/features/collaboration/messages';
 
 import type {
   ComposerQuoteState,
@@ -16,7 +16,7 @@ import type {
 } from './types/message';
 
 export type {
-  BridgeAgentRequestControl,
+  CollaborationAgentRequestControl,
   ComposerQuoteState,
   DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
@@ -41,7 +41,7 @@ export type {
   SourcePreviewLine,
 } from './types/message';
 
-export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
+export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'settings';
 export type ChatChannel = 'contact' | 'agent';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';
@@ -65,7 +65,7 @@ export type OutreachThreadSummary = {
   id: string;
   title: string;
   subtitle: string;
-  targetKind: 'bridge-agent' | 'bridge-person' | string;
+  targetKind: 'agent' | 'person' | string;
   targetDisplayName: string;
   status: string;
   updatedAtLabel?: string;
@@ -81,8 +81,8 @@ export type ConversationParticipant = {
   source?: string | null;
   ownerIdentityId?: string | null;
   ownerName?: string | null;
-  bridgeHostId?: string | null;
-  bridgeNodeId?: string | null;
+  sourceHostId?: string | null;
+  sourceIdentityId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
   avatarKey?: string | null;
@@ -91,7 +91,7 @@ export type ConversationParticipant = {
   presenceDetail?: string | null;
 };
 
-export type ConversationBridgeTarget = {
+export type ConversationCollaborationTarget = {
   hostId: string;
   nodeId: string;
   displayName?: string | null;
@@ -109,8 +109,8 @@ export type SessionTaskParticipant = Pick<ConversationParticipant,
   | 'source'
   | 'ownerIdentityId'
   | 'ownerName'
-  | 'bridgeHostId'
-  | 'bridgeNodeId'
+  | 'sourceHostId'
+  | 'sourceIdentityId'
   | 'humanId'
   | 'agentId'
   | 'avatarKey'
@@ -126,8 +126,8 @@ export type SessionTaskActivity = {
   participants: SessionTaskParticipant[];
   createdAtMs: number;
   updatedAtMs: number;
-  bridgeConversationId?: string | null;
-  bridgeRequestId?: string | null;
+  sourceConversationId?: string | null;
+  sourceRequestId?: string | null;
   contextPolicy: string;
   error?: string | null;
 };
@@ -158,7 +158,7 @@ export type Conversation = {
   type: ConversationType;
   subtitle: string;
   unread: number;
-  bridges: string[];
+  collaborationSources: string[];
   trust: string;
   directness: string;
   participants: string[];
@@ -178,10 +178,10 @@ export type Conversation = {
   participantPresenceStatuses?: Record<string, string | null>;
   participantSpaceId?: string | null;
   metadata?: unknown;
-  bridgeTarget?: ConversationBridgeTarget | null;
-  bridgeUnreadByParentSessionId?: Record<string, number>;
-  outreach?: DesktopBridgeOutreachMetadata | null;
-  identity?: DesktopBridgeIdentitySnapshot | null;
+  collaborationTarget?: ConversationCollaborationTarget | null;
+  collaborationUnreadByParentSessionId?: Record<string, number>;
+  outreach?: DesktopCollaborationOutreachMetadata | null;
+  identity?: DesktopCollaborationIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
   /** Source session this conversation was forked from, if any. */
   forkedFromSessionId?: string | null;
@@ -245,18 +245,18 @@ export type Contact = {
   classType: ContactClass;
   entityType: string;
   subtitle: string;
-  bridges: string[];
+  collaborationSources: string[];
   status: string;
   discoverableOn: string[];
   detail: string;
   owner: string;
-  bridgeHostId?: string;
-  bridgePeerNodeId?: string;
-  bridgePeerRuntime?: string;
-  bridgeHumanId?: string | null;
-  bridgeAgentId?: string | null;
-  bridgeContactStatus?: string | null;
-  bridgeContactRequestDirection?: string | null;
+  sourceHostId?: string;
+  sourceParticipantId?: string;
+  sourceRuntime?: string;
+  sourceHumanId?: string | null;
+  sourceAgentId?: string | null;
+  contactStatus?: string | null;
+  contactRequestDirection?: string | null;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
   presenceStatus?: 'online' | 'offline' | string | null;
@@ -271,16 +271,16 @@ export type ContactRequest = {
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
   avatarName?: string | null;
-  source?: 'demo' | 'bridge';
-  bridgeHostId?: string | null;
-  bridgeRequestId?: string | null;
+  source?: 'demo' | 'cloud' | 'collaboration' | string;
+  sourceHostId?: string | null;
+  sourceRequestId?: string | null;
   requesterNodeId?: string | null;
   targetNodeId?: string | null;
   status?: string | null;
   direction?: string | null;
 };
 
-export type AgentBridgeReachout = {
+export type AgentCollaborationReachout = {
   sessionId: string;
   title: string;
   preview: string;
@@ -303,7 +303,7 @@ export type Agent = {
   fallbackAuthProvider?: string | null;
   fallbackAuthChoice?: string | null;
   defaultThinking?: string | null;
-  bridgesConfig: string;
+  collaborationConfig: string;
   contactId: string;
   systemPrompt: string;
   xMd: string;
@@ -316,16 +316,16 @@ export type Agent = {
   exposesLoadedSkills?: boolean;
   exposesLoadedTools?: boolean;
   exposesLoadedPlugins?: boolean;
-  bridgeHostId?: string;
-  bridgePeerNodeId?: string;
-  bridgePeerRuntime?: string;
-  bridgeAgentId?: string;
-  bridgeServerUrl?: string;
-  bridgeOwnerName?: string;
+  sourceHostId?: string;
+  sourceParticipantId?: string;
+  sourceRuntime?: string;
+  sourceAgentId?: string;
+  collaborationServerUrl?: string;
+  collaborationOwnerName?: string;
   isOwned?: boolean;
-  isBridgeDefault?: boolean;
-  isBridgeActive?: boolean;
-  isBridgeRegistered?: boolean;
+  isCollaborationDefault?: boolean;
+  isCollaborationActive?: boolean;
+  isCollaborationRegistered?: boolean;
   cloudAgentId?: string;
   cloudAgentAccessScope?: 'private' | 'participant_conversations';
   cloudAgentOwnerAccountId?: string;
@@ -345,7 +345,7 @@ export type Agent = {
   }>;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
-  bridgeReachouts?: AgentBridgeReachout[];
+  collaborationReachouts?: AgentCollaborationReachout[];
 };
 
 export type ProjectSession = {
@@ -375,7 +375,7 @@ export type Project = {
   id: string;
   name: string;
   summary: string;
-  bridge: string;
+  collaboration: string;
   scope: string;
   status: string;
   people: string[];
@@ -435,9 +435,9 @@ export type CanonicalIdentity = {
   kind: 'human' | 'agent' | string;
   displayName: string;
   ownerIdentityId?: string | null;
-  source: 'local' | 'bridge' | 'imported' | string;
+  source: 'local' | 'cloud' | 'collaboration' | 'imported' | string;
   sourceHostId?: string | null;
-  bridgeNodeId?: string | null;
+  sourceIdentityId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
   avatarKey: string;
@@ -503,10 +503,10 @@ export type CanonicalDelegatedExchange = {
   triggerMessageId?: string | null;
   requestMessageId?: string | null;
   responseMessageId?: string | null;
-  transport: 'bridge' | 'local' | 'internal' | string;
-  bridgeHostId?: string | null;
-  bridgeConversationId?: string | null;
-  bridgeRequestId?: string | null;
+  transport: 'cloud' | 'collaboration' | 'local' | 'internal' | string;
+  sourceHostId?: string | null;
+  sourceConversationId?: string | null;
+  sourceRequestId?: string | null;
   contextPolicy: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string;
   status: 'pending' | 'sending' | 'processing' | 'complete' | 'failed' | 'cancelled' | 'timeout' | string;
   error?: string | null;
@@ -618,9 +618,9 @@ export type UpsertCanonicalIdentityRequest = {
   kind: 'human' | 'agent';
   displayName: string;
   ownerIdentityId?: string | null;
-  source?: 'local' | 'bridge' | 'imported' | string | null;
+  source?: 'local' | 'cloud' | 'collaboration' | 'imported' | string | null;
   sourceHostId?: string | null;
-  bridgeNodeId?: string | null;
+  sourceIdentityId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
   avatarKey?: string | null;
@@ -683,10 +683,10 @@ export type CreateCanonicalDelegatedExchangeRequest = {
   triggerMessageId?: string | null;
   requestMessageId?: string | null;
   responseMessageId?: string | null;
-  transport?: 'bridge' | 'local' | 'internal' | string | null;
-  bridgeHostId?: string | null;
-  bridgeConversationId?: string | null;
-  bridgeRequestId?: string | null;
+  transport?: 'cloud' | 'collaboration' | 'local' | 'internal' | string | null;
+  sourceHostId?: string | null;
+  sourceConversationId?: string | null;
+  sourceRequestId?: string | null;
   contextPolicy?: 'last-message' | 'recent-window' | 'summary' | 'full-session' | string | null;
   status?: string | null;
   error?: string | null;
@@ -858,7 +858,7 @@ export type DesktopChatProjectSource = {
   detail?: string | null;
 };
 
-export type DesktopBridgePeer = {
+export type DesktopCollaborationPeer = {
   nodeId: string;
   displayName?: string | null;
   runtime: string;
@@ -880,13 +880,13 @@ export type DesktopBridgePeer = {
   avatarSeed?: string | null;
 };
 
-export type DesktopBridgeProject = {
+export type DesktopCollaborationProject = {
   id: string;
   name: string;
   memberCount: number;
 };
 
-export type DesktopBridgeAgent = {
+export type DesktopCollaborationAgent = {
   id: string;
   label: string;
   nodeId?: string | null;
@@ -905,7 +905,7 @@ export type DesktopBridgeAgent = {
   profileImageUrl?: string | null;
 };
 
-export type DesktopBridgeContactRequest = {
+export type DesktopCollaborationContactRequest = {
   requestId: string;
   requesterNodeId: string;
   targetNodeId: string;
@@ -916,7 +916,7 @@ export type DesktopBridgeContactRequest = {
   direction: string;
 };
 
-export type DesktopBridgeHost = {
+export type DesktopCollaborationHost = {
   id: string;
   registered: boolean;
   connected: boolean;
@@ -932,17 +932,17 @@ export type DesktopBridgeHost = {
   contactApprovalPolicy?: string | null;
   profileImageUrl?: string | null;
   activeAgentId?: string | null;
-  agents: DesktopBridgeAgent[];
-  visiblePeers: DesktopBridgePeer[];
+  agents: DesktopCollaborationAgent[];
+  visiblePeers: DesktopCollaborationPeer[];
   visiblePeerCount: number;
-  projects: DesktopBridgeProject[];
-  contactRequests?: DesktopBridgeContactRequest[];
+  projects: DesktopCollaborationProject[];
+  contactRequests?: DesktopCollaborationContactRequest[];
   lastError?: string | null;
 };
 
-export type DesktopBridgeConversationMessage = {
+export type DesktopCollaborationConversationMessage = {
   id: string;
-  direction: BridgeMessageDirection;
+  direction: CollaborationMessageDirection;
   sender?: string | null;
   text: string;
   timeLabel: string;
@@ -950,13 +950,13 @@ export type DesktopBridgeConversationMessage = {
   requestId?: string | null;
   deliveryState?: string | null;
   detail?: string | null;
-  outreach?: DesktopBridgeOutreachMetadata | null;
+  outreach?: DesktopCollaborationOutreachMetadata | null;
   attachments?: MessageAttachment[];
   messageAction?: MessageActionMetadata | null;
   localTurn?: DesktopChatTurnSnapshot | null;
 };
 
-export type DesktopBridgeSessionThreadMessage = {
+export type DesktopCollaborationSessionThreadMessage = {
   role: Message['role'] | string;
   sender?: string | null;
   text: string;
@@ -965,14 +965,14 @@ export type DesktopBridgeSessionThreadMessage = {
   tools?: DesktopChatToolSnapshot[];
 };
 
-export type DesktopBridgeSessionParticipant = {
+export type DesktopCollaborationSessionParticipant = {
   identityId?: string | null;
   displayName: string;
   kind?: string | null;
   role?: string | null;
   ownerIdentityId?: string | null;
   ownerDisplayName?: string | null;
-  bridgeNodeId?: string | null;
+  sourceIdentityId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
   runtime?: string | null;
@@ -980,33 +980,33 @@ export type DesktopBridgeSessionParticipant = {
   profileImageUrl?: string | null;
 };
 
-export type DesktopBridgePromptIdentity = {
+export type DesktopCollaborationPromptIdentity = {
   identityId?: string | null;
   displayName: string;
   kind: string;
   ownerIdentityId?: string | null;
   ownerDisplayName?: string | null;
-  bridgeNodeId?: string | null;
+  sourceIdentityId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
   runtime?: string | null;
 };
 
-export type DesktopBridgeOutreachMetadata = {
-  targetKind: 'bridge-agent' | 'bridge-person' | string;
+export type DesktopCollaborationOutreachMetadata = {
+  targetKind: 'agent' | 'person' | string;
   parentSessionId?: string | null;
   parentSessionTitle?: string | null;
   parentSessionKind?: string | null;
   parentGroupSpaceId?: string | null;
-  parentSessionParticipants?: DesktopBridgeSessionParticipant[];
-  parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
-  initiatorIdentity?: DesktopBridgePromptIdentity | null;
-  selfTargetIdentity?: DesktopBridgePromptIdentity | null;
+  parentSessionParticipants?: DesktopCollaborationSessionParticipant[];
+  parentSessionMessages?: DesktopCollaborationSessionThreadMessage[];
+  initiatorIdentity?: DesktopCollaborationPromptIdentity | null;
+  selfTargetIdentity?: DesktopCollaborationPromptIdentity | null;
   parentTurnId?: string | null;
   parentMessageId?: string | null;
-  bridgeHostId: string;
-  bridgeConversationId?: string | null;
-  bridgeRequestId?: string | null;
+  sourceHostId: string;
+  sourceConversationId?: string | null;
+  sourceRequestId?: string | null;
   targetNodeId: string;
   targetHumanId?: string | null;
   targetAgentId?: string | null;
@@ -1028,8 +1028,8 @@ export type DesktopBridgeOutreachMetadata = {
   localTurn?: DesktopChatTurnSnapshot | null;
 };
 
-export type DesktopBridgeIdentitySnapshot = {
-  bridgeHostId: string;
+export type DesktopCollaborationIdentitySnapshot = {
+  sourceHostId: string;
   localHumanId: string;
   localHumanName: string;
   localAgentId?: string | null;
@@ -1044,7 +1044,7 @@ export type DesktopBridgeIdentitySnapshot = {
   remoteAgentRuntime?: string | null;
 };
 
-export type DesktopBridgeConversation = {
+export type DesktopCollaborationConversation = {
   id: string;
   canonicalSessionId: string;
   hostId: string;
@@ -1062,15 +1062,15 @@ export type DesktopBridgeConversation = {
   awaitingReply: boolean;
   peerTyping: boolean;
   peerLastHeartbeatLabel?: string | null;
-  outreach?: DesktopBridgeOutreachMetadata | null;
-  identity?: DesktopBridgeIdentitySnapshot | null;
-  messages: DesktopBridgeConversationMessage[];
+  outreach?: DesktopCollaborationOutreachMetadata | null;
+  identity?: DesktopCollaborationIdentitySnapshot | null;
+  messages: DesktopCollaborationConversationMessage[];
 };
 
-export type DesktopBridgeCreateOutreachRequest = {
+export type DesktopCollaborationCreateOutreachRequest = {
   hostId: string;
   targetNodeId: string;
-  targetKind: 'bridge-agent' | 'bridge-person';
+  targetKind: 'agent' | 'person';
   requestText: string;
   targetDisplayName?: string | null;
   targetOwnerName?: string | null;
@@ -1084,13 +1084,13 @@ export type DesktopBridgeCreateOutreachRequest = {
   parentSessionTitle?: string | null;
   parentSessionKind?: string | null;
   parentGroupSpaceId?: string | null;
-  parentSessionParticipants?: DesktopBridgeSessionParticipant[];
-  parentSessionMessages?: DesktopBridgeSessionThreadMessage[];
-  initiatorIdentity?: DesktopBridgePromptIdentity | null;
-  selfTargetIdentity?: DesktopBridgePromptIdentity | null;
+  parentSessionParticipants?: DesktopCollaborationSessionParticipant[];
+  parentSessionMessages?: DesktopCollaborationSessionThreadMessage[];
+  initiatorIdentity?: DesktopCollaborationPromptIdentity | null;
+  selfTargetIdentity?: DesktopCollaborationPromptIdentity | null;
   parentTurnId?: string | null;
   parentMessageId?: string | null;
-  bridgeRequestId?: string | null;
+  sourceRequestId?: string | null;
   deliveryState?: string | null;
   projectId?: string | null;
   projectName?: string | null;
@@ -1098,16 +1098,7 @@ export type DesktopBridgeCreateOutreachRequest = {
   attachmentNames?: string[];
 };
 
-export type DesktopBridgeLocalServerStatus = {
-  running: boolean;
-  serverUrl?: string | null;
-  port?: number | null;
-  dbPath?: string | null;
-  launcher?: string | null;
-  lastError?: string | null;
-};
-
-export type DesktopBridgeInvite = {
+export type DesktopCollaborationInvite = {
   hostId: string;
   projectId: string;
   inviteId: string;
@@ -1115,7 +1106,7 @@ export type DesktopBridgeInvite = {
   shareText: string;
 };
 
-export type DesktopBridgeAgentRouting = {
+export type DesktopCollaborationAgentRouting = {
   defaultModel?: string | null;
   defaultAuthProvider?: string | null;
   defaultAuthChoice?: string | null;
@@ -1125,15 +1116,11 @@ export type DesktopBridgeAgentRouting = {
   thinking?: string | null;
 };
 
-export type DesktopBridgeState = {
-  configPath: string;
-  legacyConfigPath: string;
-  conversationsPath: string;
+export type DesktopCollaborationState = {
   activeHostId?: string | null;
-  hosts: DesktopBridgeHost[];
-  conversations: DesktopBridgeConversation[];
-  localServer: DesktopBridgeLocalServerStatus;
-  localAgentRouting?: DesktopBridgeAgentRouting | null;
+  hosts: DesktopCollaborationHost[];
+  conversations: DesktopCollaborationConversation[];
+  localAgentRouting?: DesktopCollaborationAgentRouting | null;
 };
 
 export type DesktopProjectSettings = {

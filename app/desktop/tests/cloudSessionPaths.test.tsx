@@ -38,9 +38,6 @@ test('completeCloudAuthResult activates account storage before publishing authen
     setAuthenticated: (next) => {
       order.push(`auth:${next.accountId}`);
     },
-    registerDevice: async ({ accountId }) => {
-      order.push(`device:${accountId}`);
-    },
     reloadWindow: () => {
       order.push('reload');
     },
@@ -51,7 +48,6 @@ test('completeCloudAuthResult activates account storage before publishing authen
     'save:acct_alpha',
     'activate:acct_alpha',
     'auth:acct_alpha',
-    'device:acct_alpha',
   ]);
 });
 
@@ -71,9 +67,6 @@ test('completeCloudAuthResult reloads instead of publishing when native account 
     },
     setAuthenticated: (next) => {
       order.push(`auth:${next.accountId}`);
-    },
-    registerDevice: async ({ accountId }) => {
-      order.push(`device:${accountId}`);
     },
     reloadWindow: () => {
       order.push('reload');

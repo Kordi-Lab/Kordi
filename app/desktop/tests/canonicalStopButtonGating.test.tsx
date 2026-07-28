@@ -81,7 +81,7 @@ function processingAgentTurnMessage(senderIdentityId: string, parentMessageId: s
     contentText: 'processing...',
     content: {
       deliveryState: 'processing',
-      bridgeConversationId: 'bridge:conv-1',
+      sourceConversationId: 'bridge:conv-1',
       requestId: 'bridge_req_1',
     },
     parentMessageId,
@@ -118,8 +118,8 @@ test('agent owner viewing their own running turn keeps the stop button', () => {
   // Even though the parent message sender isn't the viewer, the viewer owns the agent locally.
   // Re-map with VIEWER_PROFILE_ID === AGENT_OWNER_ID to assert owner authorization.
   const ownerMapped = mapCanonicalMessage(turn, identitiesById(), AGENT_OWNER_ID, { senderIdentityIdByMessageId });
-  assert.ok(ownerMapped?.turn?.pendingBridgeAgentRequest, 'agent owner should see stop control');
-  assert.equal(mapped?.turn?.pendingBridgeAgentRequest, undefined, 'non-owner non-sender should not see stop control');
+  assert.ok(ownerMapped?.turn?.pendingCollaborationAgentRequest, 'agent owner should see stop control');
+  assert.equal(mapped?.turn?.pendingCollaborationAgentRequest, undefined, 'non-owner non-sender should not see stop control');
 });
 
 test('mention sender viewing the running turn keeps the stop button', () => {
@@ -127,7 +127,7 @@ test('mention sender viewing the running turn keeps the stop button', () => {
   const turn = processingAgentTurnMessage('agent:remote', 'msg:user:1');
   const senderIdentityIdByMessageId = new Map([[userMsg.id, userMsg.senderIdentityId]]);
   const mapped = mapCanonicalMessage(turn, identitiesById(), VIEWER_PROFILE_ID, { senderIdentityIdByMessageId });
-  assert.ok(mapped?.turn?.pendingBridgeAgentRequest, 'mention sender should see stop control');
+  assert.ok(mapped?.turn?.pendingCollaborationAgentRequest, 'mention sender should see stop control');
 });
 
 test('bystander viewing a remote agent running turn does not see the stop button', () => {
@@ -135,11 +135,11 @@ test('bystander viewing a remote agent running turn does not see the stop button
   const turn = processingAgentTurnMessage('agent:remote', 'msg:user:1');
   const senderIdentityIdByMessageId = new Map([[userMsg.id, userMsg.senderIdentityId]]);
   const mapped = mapCanonicalMessage(turn, identitiesById(), VIEWER_PROFILE_ID, { senderIdentityIdByMessageId });
-  assert.equal(mapped?.turn?.pendingBridgeAgentRequest, undefined, 'bystander should not see stop control');
+  assert.equal(mapped?.turn?.pendingCollaborationAgentRequest, undefined, 'bystander should not see stop control');
 });
 
 test('missing sender lookup falls back to hiding the control rather than leaking it', () => {
   const turn = processingAgentTurnMessage('agent:remote', 'msg:user:1');
   const mapped = mapCanonicalMessage(turn, identitiesById(), VIEWER_PROFILE_ID);
-  assert.equal(mapped?.turn?.pendingBridgeAgentRequest, undefined, 'no context should default to hidden');
+  assert.equal(mapped?.turn?.pendingCollaborationAgentRequest, undefined, 'no context should default to hidden');
 });

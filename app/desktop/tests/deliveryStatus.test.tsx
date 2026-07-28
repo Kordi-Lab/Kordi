@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { canonicalUserStatusChip } from '../src/features/canonical/readModel/messageMapping';
 import { messageDeliveryVisual } from '../src/features/chat/deliveryStatus';
-import { shouldShowBridgeSendFailureNotice } from '../src/features/chat/messageActions/chatMessages';
+import { shouldShowCollaborationSendFailureNotice } from '../src/features/chat/messageActions/chatMessages';
 
 test('messageDeliveryVisual maps sent and delivered to a single gray check', () => {
   assert.deepEqual(messageDeliveryVisual('sent'), {
@@ -32,8 +32,8 @@ test('messageDeliveryVisual maps read and responded to quiet double checks', () 
 });
 
 test('inline bridge send failures do not also show a sidebar failure notice', () => {
-  assert.equal(shouldShowBridgeSendFailureNotice(true), false);
-  assert.equal(shouldShowBridgeSendFailureNotice(false), true);
+  assert.equal(shouldShowCollaborationSendFailureNotice(true), false);
+  assert.equal(shouldShowCollaborationSendFailureNotice(false), true);
 });
 
 test('messageDeliveryVisual marks sending clock as animated', () => {

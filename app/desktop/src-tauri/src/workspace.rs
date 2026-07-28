@@ -7,10 +7,8 @@ use std::path::{Path, PathBuf};
 pub struct WorkspaceConfig {
     #[serde(alias = "bbAgentPath")]
     pub kordi_runtime_path: String,
-    pub bridges_path: String,
     #[serde(alias = "bbAgentBinary")]
     pub kordi_runtime_binary: String,
-    pub bridges_binary: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,7 +36,6 @@ pub struct DesktopWorkspaceStatus {
     pub app_root: String,
     pub workspace_file: String,
     pub kordi_runtime: RepoStatus,
-    pub bridges: RepoStatus,
     pub sidecars: Vec<SidecarStatus>,
 }
 
@@ -67,9 +64,7 @@ pub(crate) fn repo_root() -> PathBuf {
 fn default_config() -> WorkspaceConfig {
     WorkspaceConfig {
         kordi_runtime_path: "../../agent".into(),
-        bridges_path: "../../bridges".into(),
         kordi_runtime_binary: "../target/release/kordi".into(),
-        bridges_binary: "target/release/bridges".into(),
     }
 }
 
@@ -179,7 +174,6 @@ pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {
     let (workspace_file, config) = read_workspace_config();
 
     let kordi_runtime_repo = app_root.join(&config.kordi_runtime_path);
-    let bridges_repo = app_root.join(&config.bridges_path);
     let sidecar_dir = app_root.join("src-tauri").join("binaries");
     let target_triple = current_target_triple();
 
@@ -191,28 +185,15 @@ pub fn desktop_workspace_status() -> DesktopWorkspaceStatus {
             &kordi_runtime_repo,
             &config.kordi_runtime_binary,
         ),
-        bridges: build_repo_status("Bridges", &bridges_repo, &config.bridges_binary),
-        sidecars: vec![
-            SidecarStatus {
-                label: "Kordi runtime".into(),
-                bundled_path: sidecar_dir
-                    .join(format!("kordi-{}", target_triple))
-                    .display()
-                    .to_string(),
-                exists: sidecar_dir
-                    .join(format!("kordi-{}", target_triple))
-                    .exists(),
-            },
-            SidecarStatus {
-                label: "Bridges".into(),
-                bundled_path: sidecar_dir
-                    .join(format!("bridges-{}", target_triple))
-                    .display()
-                    .to_string(),
-                exists: sidecar_dir
-                    .join(format!("bridges-{}", target_triple))
-                    .exists(),
-            },
-        ],
+        sidecars: vec![SidecarStatus {
+            label: "Kordi runtime".into(),
+            bundled_path: sidecar_dir
+                .join(format!("kordi-{}", target_triple))
+                .display()
+                .to_string(),
+            exists: sidecar_dir
+                .join(format!("kordi-{}", target_triple))
+                .exists(),
+        }],
     }
 }

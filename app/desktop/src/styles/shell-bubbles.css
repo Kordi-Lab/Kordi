@@ -10,7 +10,7 @@
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-chat-bubble-user {
+.kordi-app.theme-light .app-chat-bubble-user {
   --app-message-bubble-fill: rgb(226 235 245);
   --app-message-bubble-stroke: transparent;
   --app-message-mention: rgb(59 99 148);

@@ -19,8 +19,8 @@ test('canonical read model maps delegated exchanges to task activity with partic
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-alice', humanId: 'human-alice', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:alice', kind: 'agent', displayName: 'Alice Kordi', source: 'bridge', sourceHostId: 'host-1', ownerIdentityId: 'human:alice', bridgeNodeId: 'node-alice', agentId: 'agent-alice', avatarKey: 'agent-alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-alice', humanId: 'human-alice', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:alice', kind: 'agent', displayName: 'Alice Kordi', source: 'bridge', sourceHostId: 'host-1', ownerIdentityId: 'human:alice', sourceIdentityId: 'node-alice', agentId: 'agent-alice', avatarKey: 'agent-alice', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Task group', status: 'active', createdByIdentityId: 'human:me', metadata: { source: 'chat-create-flow' }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
@@ -41,9 +41,9 @@ test('canonical read model maps delegated exchanges to task activity with partic
         requestMessageId: 'msg:parent',
         responseMessageId: null,
         transport: 'bridge',
-        bridgeHostId: 'host-1',
-        bridgeConversationId: 'bridge:host:alice-agent',
-        bridgeRequestId: 'bridge_req_task',
+        sourceHostId: 'host-1',
+        sourceConversationId: 'bridge:host:alice-agent',
+        sourceRequestId: 'bridge_req_task',
         contextPolicy: 'session-message',
         status: 'processing',
         error: null,
@@ -59,9 +59,9 @@ test('canonical read model maps delegated exchanges to task activity with partic
         requestMessageId: 'msg:parent',
         responseMessageId: null,
         transport: 'bridge',
-        bridgeHostId: 'host-1',
-        bridgeConversationId: 'bridge:host:alice-person',
-        bridgeRequestId: 'bridge_req_human_fanout',
+        sourceHostId: 'host-1',
+        sourceConversationId: 'bridge:host:alice-person',
+        sourceRequestId: 'bridge_req_human_fanout',
         contextPolicy: 'session-message',
         status: 'complete',
         error: null,
@@ -81,7 +81,7 @@ test('canonical read model maps delegated exchanges to task activity with partic
   assert.equal(conversation?.taskActivities?.[0]?.target?.name, "Alice's Alice Kordi");
   assert.equal(conversation?.taskActivities?.[0]?.initiator?.name, 'Me');
   assert.deepEqual(conversation?.taskActivities?.[0]?.participants.map((participant) => participant.name), ['Me', 'Alice', "Alice's Alice Kordi"]);
-  assert.equal(conversation?.taskActivities?.[0]?.bridgeRequestId, 'bridge_req_task');
+  assert.equal(conversation?.taskActivities?.[0]?.sourceRequestId, 'bridge_req_task');
 });
 
 test('canonical read model exposes shared model-created task tools from external agent relay messages', () => {
@@ -99,8 +99,8 @@ test('canonical read model exposes shared model-created task tools from external
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-alice', humanId: 'human-alice', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:alice', kind: 'agent', displayName: 'Alice Kordi', source: 'bridge', sourceHostId: 'host-1', ownerIdentityId: 'human:alice', bridgeNodeId: 'node-alice', agentId: 'agent-alice', avatarKey: 'agent-alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-alice', humanId: 'human-alice', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:alice', kind: 'agent', displayName: 'Alice Kordi', source: 'bridge', sourceHostId: 'host-1', ownerIdentityId: 'human:alice', sourceIdentityId: 'node-alice', agentId: 'agent-alice', avatarKey: 'agent-alice', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Task group', status: 'active', createdByIdentityId: 'human:me', metadata: { source: 'chat-create-flow' }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },

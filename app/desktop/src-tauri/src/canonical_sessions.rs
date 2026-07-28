@@ -2,9 +2,6 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-mod bridge_identities;
-mod bridge_routing;
-mod bridge_sync;
 mod canonical_fork;
 mod commands;
 mod core;
@@ -15,7 +12,6 @@ mod identity_helpers;
 mod message_lookup;
 mod message_reconcile;
 mod models;
-mod parent_sessions;
 mod presence;
 mod prompt_context;
 mod sanitization;
@@ -26,24 +22,11 @@ mod tests;
 
 pub use self::models::*;
 pub(crate) use self::prompt_context::{
-    bridge_agent_parent_session_prompt, local_agent_session_prompt_context,
-    local_agent_session_task_records,
+    local_agent_session_prompt_context, local_agent_session_task_records,
 };
-pub(crate) use self::sanitization::sanitize_shared_agent_response_text;
 pub(crate) use commands::{archive_session, delete_session, session_exists};
 
-#[cfg(test)]
-use self::bridge_identities::{
-    bridge_human_display_name, bridge_human_identity_for_node,
-    cleanup_bridge_fallback_identity_for_session, cleanup_unmentioned_agent_participants,
-};
-#[cfg(test)]
-use self::bridge_routing::{
-    bridge_conversation_has_unrouted_direct_messages, message_scoped_outreach_groups,
-};
-pub(crate) use self::bridge_sync::{sync_bridge_state_identities, sync_bridge_state_sessions};
 pub(crate) use self::canonical_fork::fork_canonical_session_into_local_chat;
-pub(crate) use self::core::canonical_bridge_session_id;
 use self::core::{
     canonical_sessions_db_path, canonical_storage_root, hash_hex, now_ms, stable_profile_id,
 };
@@ -65,7 +48,7 @@ pub(crate) use self::group_participants::{
     add_session_participants_in_db, remove_session_participant_in_db,
     rename_any_session_title_in_db, rename_session_in_db_with_actor_account, require_group_admin,
     require_group_creator, require_group_member, require_group_member_removal_permission,
-    session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
+    set_session_metadata_in_db, set_session_participant_role_in_db,
 };
 pub(crate) use self::identity_context::{
     render_multi_participant_identity_context, IdentityContextParticipant,
@@ -76,17 +59,10 @@ use self::identity_helpers::{
     validate_identity_kind, validate_session_kind,
 };
 pub(crate) use self::identity_helpers::{
-    clean_optional, identity_display_name, json_from_db, json_to_db,
-    sanitize_remote_peer_display_name, shared_agent_display_name, validate_status,
+    clean_optional, identity_display_name, json_from_db, json_to_db, validate_status,
 };
 pub(crate) use self::message_lookup::{
-    canonical_message_exists, existing_delegation_join_message_id, session_message_count,
-    similar_agent_message_exists, similar_agent_message_text,
-};
-#[cfg(test)]
-use self::parent_sessions::{
-    store_outreach_context_snapshot, sync_bridge_outreach_into_parent_session,
-    sync_parent_session_snapshot_messages,
+    canonical_message_exists, similar_agent_message_exists, similar_agent_message_text,
 };
 use self::presence::update_presence_in_db;
 use self::schema::{ensure_local_profile, initialize_schema};
@@ -124,7 +100,33 @@ fn upsert_identity_in_db(
     if display_name.is_empty() {
         return Err("Identity display name is required".to_string());
     }
-    let id = canonical_identity_id(&request, &kind);
+    let existing_source_identity_id = if request
+        .id
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        None
+    } else if let Some(source_identity_id) = request
+        .bridge_node_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        conn.query_row(
+            "SELECT id
+             FROM identities
+             WHERE kind = ?1 AND bridge_node_id = ?2
+             ORDER BY updated_at_ms DESC
+             LIMIT 1",
+            params![kind, source_identity_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+    } else {
+        None
+    };
+    let id = existing_source_identity_id.unwrap_or_else(|| canonical_identity_id(&request, &kind));
     let avatar_key = canonical_avatar_key(&request, &kind, &id);
     let source = request
         .source
@@ -1282,13 +1284,6 @@ fn select_delegated_exchange(
     )
     .optional()
     .map_err(|err| err.to_string())
-}
-
-fn runtime_is_agent_like(runtime: &str) -> bool {
-    let normalized = runtime.trim().to_lowercase();
-    ["agent", "claude", "codex", "openclaw", "pi", "bot", "kordi"]
-        .iter()
-        .any(|token| normalized.contains(token))
 }
 
 #[allow(dead_code)]

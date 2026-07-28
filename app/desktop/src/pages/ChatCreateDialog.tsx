@@ -48,7 +48,7 @@ export type ChatCreateDialogProps = {
    * to request before sending. */
   onLookupContact?: (idOrEmail: string) => Promise<AddContactLookupResult | null>;
   /** Override the placeholder shown in the Add-contacts input. Cloud
-   * uses "acct_…" while local bridge uses "kd_…". */
+   * uses "acct_…" while the retired local runtime used "kd_…". */
   addContactPlaceholder?: string;
   initialMode?: CreateMode;
   anchorRect?: ChatCreatePopoverAnchor | null;
@@ -210,7 +210,7 @@ export function ChatCreateDialog({
   const personOptions = useMemo(() => buildChatCreatePersonOptions(contacts), [contacts]);
   const groupPersonOptions = useMemo(() => buildChatCreateGroupPersonOptions(contacts), [contacts]);
   const agentOptions = useMemo(() => buildChatCreateAgentOptions(agents), [agents]);
-  const visibleAddableContacts = useMemo(() => addableContacts.filter((contact) => contact.bridgePeerNodeId?.trim()), [addableContacts]);
+  const visibleAddableContacts = useMemo(() => addableContacts.filter((contact) => contact.sourceParticipantId?.trim()), [addableContacts]);
 
   useEffect(() => {
     if (isOpen) {
@@ -222,9 +222,7 @@ export function ChatCreateDialog({
   const selectedGroupContactIds = selectedPeople.map((option) => option.id);
   const defaultGroupName = groupDefaultName(selectedPeople.map((option) => option.label));
   const canSubmitGroup = canCreateGroup(selectedGroupContactIds);
-  const addContactSubtitle = onLookupContact
-    ? 'Send an approval request by Kordi account ID.'
-    : 'Send an approval request by Bridge node ID.';
+  const addContactSubtitle = 'Send an approval request by Kordi account ID.';
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
 
   if (!isOpen) return null;
@@ -291,9 +289,9 @@ export function ChatCreateDialog({
   };
 
   const addContactButtonLabel = (contact: Contact) => {
-    const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
-    const status = contact.bridgeContactStatus?.trim().toLowerCase() ?? '';
-    const direction = contact.bridgeContactRequestDirection?.trim().toLowerCase() ?? '';
+    const nodeId = contact.sourceParticipantId?.trim() ?? '';
+    const status = contact.contactStatus?.trim().toLowerCase() ?? '';
+    const direction = contact.contactRequestDirection?.trim().toLowerCase() ?? '';
     if (requestingContactNodeId === nodeId) return 'Sending…';
     if (requestedContactNodeIds.includes(nodeId)) return 'Requested';
     if (status === 'pending' && direction === 'outgoing') return 'Pending';
@@ -302,9 +300,9 @@ export function ChatCreateDialog({
   };
 
   const addContactButtonDisabled = (contact: Contact) => {
-    const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
-    const status = contact.bridgeContactStatus?.trim().toLowerCase() ?? '';
-    const direction = contact.bridgeContactRequestDirection?.trim().toLowerCase() ?? '';
+    const nodeId = contact.sourceParticipantId?.trim() ?? '';
+    const status = contact.contactStatus?.trim().toLowerCase() ?? '';
+    const direction = contact.contactRequestDirection?.trim().toLowerCase() ?? '';
     return !onAddContact
       || !nodeId
       || addContactState === 'saving'
@@ -333,7 +331,7 @@ export function ChatCreateDialog({
           <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with contact" detail="Direct contact conversation" onClick={() => setMode('person')} />
           <ChoiceButton icon={<Bot className="h-3.5 w-3.5" />} title="Chat with agent" detail="Start with one Kordi agent" onClick={() => setMode('agent')} />
           <ChoiceButton icon={<Users className="h-3.5 w-3.5" />} title="Start group" detail="Stable group with people only" onClick={() => setMode('group')} />
-          <ChoiceButton icon={<UserPlus className="h-3.5 w-3.5" />} title="Add contacts" detail="Request a private Bridge node" onClick={() => setMode('add-contact')} />
+          <ChoiceButton icon={<UserPlus className="h-3.5 w-3.5" />} title="Add contacts" detail="Request a private Kordi account" onClick={() => setMode('add-contact')} />
         </div>
       ) : null}
 
@@ -499,7 +497,7 @@ export function ChatCreateDialog({
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--utility-muted-text)]">Visible users</div>
             <div className="app-chat-create-option-list max-h-[min(10rem,calc(100vh-12rem))] space-y-1 overflow-auto pr-1">
               {visibleAddableContacts.length > 0 ? visibleAddableContacts.map((contact) => {
-                const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
+                const nodeId = contact.sourceParticipantId?.trim() ?? '';
                 return (
                   <div key={contact.id} className="app-chat-create-list-item flex items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2">
                     <span className="min-w-0">
@@ -530,7 +528,7 @@ export function ChatCreateDialog({
               setContactNodeId(event.target.value);
               if (addContactState !== 'saving') setAddContactState('idle');
             }}
-            placeholder={addContactPlaceholder ?? 'Bridge node ID, e.g. kd_...'}
+            placeholder={addContactPlaceholder ?? 'Kordi account ID'}
             className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
           />
           <div className="min-h-4 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]" aria-live="polite">
@@ -538,7 +536,7 @@ export function ChatCreateDialog({
               ? 'Request sent. They will appear in contacts after approval.'
               : addContactState === 'error'
                 ? addContactError || 'Unable to send contact request.'
-                : 'Paste a private/unlisted user node ID to request approval.'}
+                : 'Paste a Kordi account ID to request approval.'}
           </div>
           <div className="flex gap-1.5">
             <Button type="button" variant="secondary" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>

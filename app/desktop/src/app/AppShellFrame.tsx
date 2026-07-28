@@ -69,7 +69,7 @@ export function AppShellFrame({
   return (
     <div
       className={cn(
-        'bridge-app app-page-bg w-full min-w-0 max-w-full text-[13px] text-foreground',
+        'kordi-app app-page-bg w-full min-w-0 max-w-full text-[13px] text-foreground',
         rootThemeClass,
         isNativeShell ? 'h-[100dvh] overflow-hidden p-0' : 'min-h-screen p-4 md:p-6',
       )}

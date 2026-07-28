@@ -94,7 +94,7 @@ function filterGroupForkSessionsFromSpaces(spaces: ParticipantSpaceItem[]): Part
     .filter((space) => space.sessions.length > 0);
 }
 
-const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+const LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX = 'session:bridge:';
 const LOCAL_RUNTIME_SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function participantSpaceSessionRowTitle(title: string) {
@@ -157,7 +157,7 @@ function canMoveConversationToProject(conversation: ConversationItem, sessionId:
   return conversation.type === 'owned-agent'
     && sessionId === conversation.id.trim()
     && LOCAL_RUNTIME_SESSION_ID_PATTERN.test(sessionId)
-    && !sessionId.startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+    && !sessionId.startsWith(LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX);
 }
 
 export function sessionContextMenuTargetForConversation(
@@ -216,14 +216,6 @@ type ContactGroupItem = {
 type ContactItem = Contact;
 
 type AgentItem = Agent;
-
-type BridgeHostSummary = {
-  serverUrl: string;
-  connected: boolean;
-  nodeId?: string | null;
-  humanId?: string | null;
-  visiblePeerCount: number;
-};
 
 type WorkspaceSidebarProps = {
   isNativeShell: boolean;
@@ -288,7 +280,6 @@ type WorkspaceSidebarProps = {
   setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: AgentItem[];
-  activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
   cloudAccount?: CloudAccount | null;
   cloudAccountDialogTab?: CloudAccountSettingsTabId | null;
@@ -296,10 +287,7 @@ type WorkspaceSidebarProps = {
   cloudSettings?: CloudAccountSettingsConfig;
   onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
-  isBridgePolling: boolean;
-  onRefreshBridge: () => void;
-  onCopyBridgeHostUrl: () => void;
-  onCreateBridgeDraft: () => void;
+  isCollaborationSyncing: boolean;
 };
 
 function formatUpdateBytes(bytes: number) {
@@ -646,7 +634,6 @@ export function WorkspaceSidebar({
   setActiveContactGroup,
   setActiveContactId,
   displayedAgents,
-  activeBridgeHost,
   localProfileAvatarSeed,
   cloudAccount,
   cloudAccountDialogTab: controlledCloudAccountDialogTab,
@@ -654,23 +641,20 @@ export function WorkspaceSidebar({
   cloudSettings,
   onUpdateCloudProfile,
   onCloudSignOut,
-  isBridgePolling,
-  onRefreshBridge,
-  onCopyBridgeHostUrl,
-  onCreateBridgeDraft,
+  isCollaborationSyncing,
 }: WorkspaceSidebarProps) {
   const totalUnread = chatConversations.reduce((sum, conversation) => (
     isGroupForkSession(conversation) ? sum : sum + Math.max(0, conversation.unread ?? 0)
   ), 0);
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
-  const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
-  const chatStatusLabel = isBridgePolling
+  const collaborationSyncStatus = isCollaborationSyncing ? 'syncing' : 'idle';
+  const chatStatusLabel = isCollaborationSyncing
     ? 'syncing…'
     : totalUnread > 0
       ? `${formatUnreadCount(totalUnread)} unread`
       : 'all caught up';
-  const bridgeSyncAriaLabel = isBridgePolling
+  const collaborationSyncAriaLabel = isCollaborationSyncing
     ? 'Messages are syncing'
     : totalUnread > 0
       ? `Messages idle, ${formatUnreadCount(totalUnread)} unread`
@@ -1757,7 +1741,7 @@ export function WorkspaceSidebar({
               </button>
             </div>
           </div>,
-          document.querySelector('.bridge-app') ?? document.body,
+          document.querySelector('.kordi-app') ?? document.body,
         ) : null}
 
         {!cloudSettings && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
@@ -1804,7 +1788,7 @@ export function WorkspaceSidebar({
               )}
             </div>
           </div>,
-          document.querySelector('.bridge-app') ?? document.body,
+          document.querySelector('.kordi-app') ?? document.body,
         ) : null}
 
         {showSessionRail && !collapseChatSessions && (
@@ -1822,14 +1806,14 @@ export function WorkspaceSidebar({
                         <span>{chatConversations.length} total</span>
                         <span aria-hidden="true">•</span>
                         <span
-                          className="app-bridge-sync-status"
-                          data-bridge-sync-status={bridgeSyncStatus}
+                          className="app-collaboration-sync-status"
+                          data-collaboration-sync-status={collaborationSyncStatus}
                           role="status"
                           aria-live="polite"
-                          aria-label={bridgeSyncAriaLabel}
+                          aria-label={collaborationSyncAriaLabel}
                         >
-                          <span className="app-bridge-sync-dot" aria-hidden="true" />
-                          <span className="app-bridge-sync-label">{chatStatusLabel}</span>
+                          <span className="app-collaboration-sync-dot" aria-hidden="true" />
+                          <span className="app-collaboration-sync-label">{chatStatusLabel}</span>
                         </span>
                       </div>
                     </div>
@@ -2325,7 +2309,7 @@ export function WorkspaceSidebar({
             </div>
           ) : null}
         </div>,
-        document.querySelector('.bridge-app') ?? document.body,
+        document.querySelector('.kordi-app') ?? document.body,
       ) : null}
 
       {sessionContextMenu ? (

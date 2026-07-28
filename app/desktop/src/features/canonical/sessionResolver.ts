@@ -4,14 +4,14 @@ import type {
   DesktopChatProjectGroup,
 } from '@/kordi-app/types';
 
-const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+const LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX = 'session:bridge:';
 const CANONICAL_CLOUD_DIRECT_PERSON_SESSION_PREFIX = 'session:direct-person:';
 const CANONICAL_CLOUD_GROUP_SESSION_PREFIX = 'session:group:';
 
 export type CanonicalConversationLookupTarget = {
   humanId?: string | null;
   agentId?: string | null;
-  bridgeNodeId?: string | null;
+  sourceIdentityId?: string | null;
 };
 
 export type ProjectRoutingGroup = {
@@ -58,7 +58,7 @@ export function projectRootFromCanonicalProjectGroupId(projectId?: string | null
     : normalizedProjectRoot(normalizedProjectId);
 }
 
-function isStableHumanBridgeSessionId(value?: string | null) {
+function isLegacyStableHumanCollaborationSessionId(value?: string | null) {
   return (value ?? '').trim().startsWith('session:bridge:humans:');
 }
 
@@ -68,7 +68,7 @@ export function findCanonicalConversationForTarget(
 ): Conversation | null {
   const normalizedHumanId = target.humanId?.trim();
   const normalizedAgentId = target.agentId?.trim();
-  const normalizedBridgeNodeId = target.bridgeNodeId?.trim();
+  const normalizedLegacyNodeId = target.sourceIdentityId?.trim();
 
   let bestMatch: { rank: number; conversation: Conversation } | null = null;
   for (const conversation of conversations) {
@@ -76,10 +76,10 @@ export function findCanonicalConversationForTarget(
     if (participants.length === 0) continue;
 
     const sessionId = conversation.canonicalSessionId ?? conversation.id;
-    const stableHumanDirectSession = isStableHumanBridgeSessionId(sessionId);
+    const stableHumanDirectSession = isLegacyStableHumanCollaborationSessionId(sessionId);
     const humanMatch = Boolean(normalizedHumanId && participants.some((participant) => participant.humanId === normalizedHumanId));
     const agentMatch = Boolean(normalizedAgentId && participants.some((participant) => participant.agentId === normalizedAgentId));
-    const nodeMatch = Boolean(normalizedBridgeNodeId && participants.some((participant) => participant.bridgeNodeId === normalizedBridgeNodeId));
+    const nodeMatch = Boolean(normalizedLegacyNodeId && participants.some((participant) => participant.sourceIdentityId === normalizedLegacyNodeId));
 
     let rank = Number.POSITIVE_INFINITY;
 
@@ -90,7 +90,7 @@ export function findCanonicalConversationForTarget(
       rank = stableHumanDirectSession ? 0 : conversation.type === 'person' ? 2 : 4;
     } else if (normalizedAgentId && agentMatch) {
       rank = !stableHumanDirectSession && conversation.type === 'external-agent' ? 0 : 3;
-    } else if (normalizedBridgeNodeId && nodeMatch) {
+    } else if (normalizedLegacyNodeId && nodeMatch) {
       rank = stableHumanDirectSession ? 1 : conversation.type === 'person' ? 5 : 6;
     }
 
@@ -103,8 +103,8 @@ export function findCanonicalConversationForTarget(
   return bestMatch?.conversation ?? null;
 }
 
-export function isCanonicalBridgeSessionId(value?: string | null) {
-  return (value ?? '').trim().startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+export function isLegacyCanonicalCollaborationSessionId(value?: string | null) {
+  return (value ?? '').trim().startsWith(LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX);
 }
 
 export function isCanonicalCloudSessionId(value?: string | null) {

@@ -32,8 +32,8 @@ const TYPE_DIVIDER = 'text-[10px] font-semibold uppercase tracking-[0.18em]';
 const TYPE_TITLEBAR = 'text-[12px] font-semibold tracking-[0.02em]';
 
 // Color is driven by the shared theme tokens (theme-tokens.css). The page is
-// rendered inside a `.bridge-app` root (CloudGateShell), so
-// `.bridge-app.theme-light` and `.bridge-app.theme-dark` cascades apply
+// rendered inside a `.kordi-app` root (CloudGateShell), so
+// `.kordi-app.theme-light` and `.kordi-app.theme-dark` cascades apply
 // automatically. Decorative layers (page bg gradient, paper grain) are themed
 // via `theme-overrides.css` keyed off the same class names used below.
 const INK = 'text-foreground';

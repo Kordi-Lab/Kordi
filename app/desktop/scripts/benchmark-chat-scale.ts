@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 
-import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
+import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
 import {
   buildCloudMessageIndex,
 } from '../src/features/cloud/cloudMessageIndex';
@@ -9,7 +9,7 @@ import { buildCanonicalIndexes } from '../src/features/canonical/readModel/index
 import {
   CHAT_SCALE,
   SCALE_ACCOUNT_ID,
-  buildScaleBridgeConversation,
+  buildScaleCollaborationConversation,
   buildScaleCanonicalState,
   buildScaleCloudMessagesByPeer,
   scaleMessageId,
@@ -21,7 +21,7 @@ import {
 } from './chat-scale-budget';
 
 type ChatScaleBenchmark = {
-  bridgeMapMs: number;
+  collaborationMapMs: number;
   canonicalIndexMs: number;
   cloudIndexMs: number;
   cloudIndexDeltaMs: number;
@@ -59,23 +59,23 @@ function benchmark(operation: () => void) {
 }
 
 const canonicalState = buildScaleCanonicalState();
-const bridgeConversation = buildScaleBridgeConversation();
+const collaborationConversation = buildScaleCollaborationConversation();
 const messagesByPeer = buildScaleCloudMessagesByPeer();
 const deliveryLookupIds = Array.from(
   { length: 1 },
   (_, index) => scaleMessageId(0, CHAT_SCALE.messagesPerSession + index),
 );
 
-let mappedBridgeMessageCount = 0;
-const bridgeMapMs = benchmark(() => {
-  mappedBridgeMessageCount = mapBridgeConversationToViewModel(
-    bridgeConversation,
+let mappedCollaborationMessageCount = 0;
+const collaborationMapMs = benchmark(() => {
+  mappedCollaborationMessageCount = mapCollaborationConversationToViewModel(
+    collaborationConversation,
     undefined,
     'My Kordi',
   ).messages.length;
 });
-if (mappedBridgeMessageCount !== CHAT_SCALE.selectedSessionMessages - 50) {
-  throw new Error(`Unexpected mapped Bridge message count: ${mappedBridgeMessageCount}`);
+if (mappedCollaborationMessageCount !== CHAT_SCALE.selectedSessionMessages - 50) {
+  throw new Error(`Unexpected mapped collaboration message count: ${mappedCollaborationMessageCount}`);
 }
 
 let indexedCanonicalSessionCount = 0;
@@ -139,7 +139,7 @@ if (resolvedDeliveryCount !== deliveryLookupIds.length) {
 }
 
 const output: ChatScaleBenchmark = {
-  bridgeMapMs,
+  collaborationMapMs,
   canonicalIndexMs,
   cloudIndexMs,
   cloudIndexDeltaMs,

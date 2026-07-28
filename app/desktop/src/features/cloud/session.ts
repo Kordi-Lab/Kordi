@@ -1,4 +1,4 @@
-// Persistent storage for the Cloud Edition session token.
+// Persistent storage for the hosted account session token.
 //
 // Inside Tauri (the production runtime), the session is stored in the OS
 // keychain via the cloud_session_* Tauri commands. Outside Tauri (Vite browser

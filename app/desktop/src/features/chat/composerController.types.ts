@@ -3,9 +3,9 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type {
-  SendCloudBridgeMessageOptions,
+  SendCloudCollaborationMessageOptions,
   SendCloudGroupControlInput,
-} from '@/features/cloud/useCloudBridgeState';
+} from '@/features/cloud/useCloudCollaborationState';
 import type { ComposerDraftState } from './composerDrafts';
 import type {
   CanonicalSessionState,
@@ -13,8 +13,8 @@ import type {
   ComposerScope,
   ComposerSelectorType,
   Conversation,
-  ConversationBridgeTarget,
-  DesktopBridgeState,
+  ConversationCollaborationTarget,
+  DesktopCollaborationState,
   DesktopChatState,
   DesktopChatTurnSnapshot,
   DetailTab,
@@ -48,12 +48,12 @@ export type PendingUserMessage = { text: string; time: string } | null;
 
 export type UseComposerControllerArgs = {
   isNativeShell: boolean;
-  activeConversationIsBridge: boolean;
+  activeConversationUsesCollaboration: boolean;
   chatConversations: Conversation[];
   activeConvId: string;
   activeConvCanonicalSessionId?: string | null;
   activeConvMessages: Message[];
-  activeConvBridgeTarget?: ConversationBridgeTarget | null;
+  activeConvCollaborationTarget?: ConversationCollaborationTarget | null;
   activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>> | null;
   sharedCloudAgents?: SharedCloudAgentSummary[];
   resolveSharedCloudAgentsForMention?: () => Promise<SharedCloudAgentSummary[]>;
@@ -62,7 +62,7 @@ export type UseComposerControllerArgs = {
   activeProjectRoot?: string | null;
   selectProjectSession: (projectId: string, sessionId: string) => void;
   desktopChatState: DesktopChatState | null;
-  desktopBridgeState: DesktopBridgeState | null;
+  desktopCollaborationState: DesktopCollaborationState | null;
   canonicalSessionState: CanonicalSessionState | null;
   hasAnyDesktopAuth: boolean;
   canonicalHumanIdentityId?: string | null;
@@ -99,16 +99,16 @@ export type UseComposerControllerArgs = {
   queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
   setQueuedDesktopMessagesBySession: Dispatch<SetStateAction<Record<string, QueuedDesktopChatMessage[]>>>;
   setDesktopLiveTurnsBySession: Dispatch<SetStateAction<Record<string, DesktopChatTurnSnapshot>>>;
-  setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
-  setCloudBridgeState?: Dispatch<SetStateAction<DesktopBridgeState | null>>;
-  sendCloudBridgeMessage?: (
+  setDesktopCollaborationState: Dispatch<SetStateAction<DesktopCollaborationState | null>>;
+  setCloudCollaborationState?: Dispatch<SetStateAction<DesktopCollaborationState | null>>;
+  sendCloudCollaborationMessage?: (
     conversationId: string,
     text: string,
     attachments?: AttachmentItem[],
-    options?: SendCloudBridgeMessageOptions,
+    options?: SendCloudCollaborationMessageOptions,
   ) => Promise<void>;
   sendCloudGroupControl?: (input: SendCloudGroupControlInput) => Promise<void>;
-  cancelCloudBridgeAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
+  cancelCloudAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
   setActiveConvId: Dispatch<SetStateAction<string>>;

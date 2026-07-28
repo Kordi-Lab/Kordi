@@ -81,20 +81,13 @@ test('cloud chat send errors use user-facing copy', () => {
 
 test('cloud contact and group fallbacks use product-facing names', () => {
   const contactsAdapterSource = readFileSync(new URL('../src/features/cloud/CloudContactsAdapter.tsx', import.meta.url), 'utf8');
-  const bridgeStateSource = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const bridgeStateSource = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 
   assert.doesNotMatch(contactsAdapterSource, /Cloud account IDs/);
   assert.match(contactsAdapterSource, /Account IDs start with/);
   assert.doesNotMatch(bridgeStateSource, /'Cloud group'/);
   assert.doesNotMatch(bridgeStateSource, /Cloud group message failed/);
   assert.doesNotMatch(bridgeStateSource, /cloud agent request/);
-});
-
-test('connection settings card uses user-facing title', () => {
-  const source = readFileSync(new URL('../src/pages/BridgeConfigPage.tsx', import.meta.url), 'utf8');
-
-  assert.doesNotMatch(source, />Bridge<\/CardTitle>/);
-  assert.match(source, />Connections<\/CardTitle>/);
 });
 
 test('detail section headers use sentence-case styling', () => {

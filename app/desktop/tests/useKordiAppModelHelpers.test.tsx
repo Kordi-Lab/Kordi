@@ -9,7 +9,7 @@ import {
   currentMentionQuery,
   filterMentionTargets,
   groupRenameMetadata,
-  mergeCanonicalStatePreservingBridgeUiMessages,
+  mergeCanonicalStatePreservingCollaborationUiMessages,
   removeSessionFromCanonicalState,
   sessionRenameNoticeText,
 } from '../src/app/useKordiAppModelHelpers';
@@ -51,7 +51,7 @@ test('canonical refresh preserves in-flight bridge UI sends until they are persi
     }],
   } as unknown as CanonicalSessionState;
 
-  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+  const next = mergeCanonicalStatePreservingCollaborationUiMessages(fetched, current)!;
 
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:pending']);
 });
@@ -79,7 +79,7 @@ test('canonical refresh preserves optimistic local-agent contact messages until 
     }],
   } as unknown as CanonicalSessionState;
 
-  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+  const next = mergeCanonicalStatePreservingCollaborationUiMessages(fetched, current)!;
 
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:local-agent-contact-send']);
 });
@@ -125,7 +125,7 @@ test('canonical refresh preserves bridge relay messages when a fetched snapshot 
     ],
   } as unknown as CanonicalSessionState;
 
-  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+  const next = mergeCanonicalStatePreservingCollaborationUiMessages(fetched, current)!;
 
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:old', 'msg:relay:new-peer-request']);
 });
@@ -171,7 +171,7 @@ test('canonical refresh does not duplicate preserved bridge messages already fet
     ],
   } as unknown as CanonicalSessionState;
 
-  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+  const next = mergeCanonicalStatePreservingCollaborationUiMessages(fetched, current)!;
 
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:canonical:new-peer-request']);
 });
@@ -199,7 +199,7 @@ test('canonical refresh preserves optimistic sent bridge session messages until 
     }],
   } as unknown as CanonicalSessionState;
 
-  const next = mergeCanonicalStatePreservingBridgeUiMessages(fetched, current)!;
+  const next = mergeCanonicalStatePreservingCollaborationUiMessages(fetched, current)!;
 
   assert.deepEqual(next.messages.map((message) => message.id), ['msg:ui:sent-before-append']);
 });
@@ -295,8 +295,8 @@ test('group session sync context carries the exact child session and group space
   const state = {
     profile: { humanIdentityId: 'human:me' },
     identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
-      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', avatarKey: 'jiaxin' },
+      { id: 'human:me', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
+      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', avatarKey: 'jiaxin' },
     ],
     sessions: [
       {
@@ -334,8 +334,8 @@ test('group session sync context carries the exact child session and group space
     parentSessionTitle: 'New session',
     parentGroupSpaceId: 'session:group:root',
     parentSessionParticipants: [
-      { identityId: 'human:me', displayName: 'Testuser2', role: 'person', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
-      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'admin', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null, avatarKey: 'jiaxin', profileImageUrl: null },
+      { identityId: 'human:me', displayName: 'Testuser2', role: 'person', sourceIdentityId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
+      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'admin', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null, avatarKey: 'jiaxin', profileImageUrl: null },
     ],
     parentSessionMessages: [],
   });
@@ -345,8 +345,8 @@ test('group invite context carries the child session title fallback, participant
   const state = {
     profile: { humanIdentityId: 'human:me' },
     identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
-      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', avatarKey: 'jiaxin' },
+      { id: 'human:me', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
+      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', avatarKey: 'jiaxin' },
     ],
     sessions: [
       {
@@ -383,8 +383,8 @@ test('group invite context carries the child session title fallback, participant
     parentSessionTitle: 'thefirsttestgroup',
     parentGroupSpaceId: 'session:group:root',
     parentSessionParticipants: [
-      { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
-      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'person', bridgeNodeId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null, avatarKey: 'jiaxin', profileImageUrl: null },
+      { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', sourceIdentityId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
+      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'person', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null, avatarKey: 'jiaxin', profileImageUrl: null },
     ],
     parentSessionMessages: [
       { role: 'user', sender: 'Testuser2', text: 'Earlier question', timeLabel: '13:04', index: 0 },

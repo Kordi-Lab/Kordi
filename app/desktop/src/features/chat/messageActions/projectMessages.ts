@@ -6,7 +6,7 @@ import { isProjectDraftSessionId } from '../draftSessions';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
-import { resolveMentionedBridgeTarget } from './mentions';
+import { resolveMentionedCollaborationTarget } from './mentions';
 import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
 type UseProjectMessageActionsArgs = Pick<
@@ -19,7 +19,7 @@ type UseProjectMessageActionsArgs = Pick<
   | 'canonicalHumanIdentityId'
   | 'chatComposerAttachments'
   | 'composerDrafts'
-  | 'desktopBridgeState'
+  | 'desktopCollaborationState'
   | 'desktopChatState'
   | 'desktopLiveTurn'
   | 'isNativeShell'
@@ -47,7 +47,7 @@ export function useProjectMessageActions({
   canonicalHumanIdentityId,
   chatComposerAttachments,
   composerDrafts,
-  desktopBridgeState,
+  desktopCollaborationState,
   desktopChatState,
   desktopLiveTurn,
   isNativeShell,
@@ -123,7 +123,7 @@ export function useProjectMessageActions({
 
     if (desktopLiveTurn && !desktopLiveTurn.completed) return;
 
-    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, null, { targetKind: 'bridge-agent' });
+    const mentionedTarget = resolveMentionedCollaborationTarget(text, desktopCollaborationState, null, { targetKind: 'agent' });
     if (mentionedTarget) {
       setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
@@ -176,7 +176,7 @@ export function useProjectMessageActions({
     attachmentSummaryText,
     chatComposerAttachments,
     composerDrafts.project,
-    desktopBridgeState,
+    desktopCollaborationState,
     desktopChatState,
     desktopLiveTurn,
     isNativeShell,

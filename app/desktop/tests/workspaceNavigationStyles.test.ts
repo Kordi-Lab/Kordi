@@ -20,7 +20,7 @@ test('workspace rail navigation has explicit light and dark theme tokens', () =>
   const tokens = readSource('src/styles/theme-tokens.css');
   const activeBackgrounds = tokens.match(/--app-nav-rail-active-bg:/g) ?? [];
   const activeForegrounds = tokens.match(/--app-nav-rail-active-text:/g) ?? [];
-  const lightTokens = tokens.slice(tokens.indexOf('.bridge-app.theme-light {'));
+  const lightTokens = tokens.slice(tokens.indexOf('.kordi-app.theme-light {'));
 
   assert.equal(activeBackgrounds.length, 2);
   assert.equal(activeForegrounds.length, 2);

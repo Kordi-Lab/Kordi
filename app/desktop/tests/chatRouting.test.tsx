@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { stripDerivedCloudUnreadCounts } from '../src/app/useKordiAppModelHelpers';
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
-import { activeConversationForSelection, applyCanonicalHydrationPlaceholder, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
+import { activeConversationForSelection, applyCanonicalHydrationPlaceholder, collaborationChatConversationIsVisible, pendingCloudCollaborationConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { restoredSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
@@ -52,27 +52,27 @@ test('canonical hydration strips persisted derived cloud unread counts', () => {
 });
 
 test('pending Cloud contact selection keeps active conversation on Cloud instead of falling back to local session', () => {
-  const conversation = pendingCloudBridgeConversationForActiveId('bridge:cloud:acct_peer:person');
+  const conversation = pendingCloudCollaborationConversationForActiveId('bridge:cloud:acct_peer:person');
 
   assert.equal(conversation?.id, 'bridge:cloud:acct_peer:person');
-  assert.equal(conversation?.bridgeTarget?.hostId, 'cloud');
-  assert.equal(conversation?.bridgeTarget?.nodeId, 'acct_peer');
-  assert.equal(conversation?.bridges.includes('Cloud'), true);
+  assert.equal(conversation?.collaborationTarget?.hostId, 'cloud');
+  assert.equal(conversation?.collaborationTarget?.nodeId, 'acct_peer');
+  assert.equal(conversation?.collaborationSources.includes('Cloud'), true);
 });
 
 test('workspace active conversation resolves Cloud self-agent bridge session ids to restored canonical sessions', () => {
   const localConversation = {
     id: '109fcf23-654c-41a7-bd73-8156b0b89703',
     canonicalSessionId: '109fcf23-654c-41a7-bd73-8156b0b89703',
-    name: '今天thuwal天气怎么样',
+    name: 'Thuwal weather today',
     type: 'owned-agent' as const,
     subtitle: 'Local restored self-agent chat',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'My Kordi'],
-    messages: [{ role: 'user' as const, isOwnMessage: true, text: '家人们谁懂啊', time: '11:27' }],
+    messages: [{ role: 'user' as const, isOwnMessage: true, text: 'Can anyone relate?', time: '11:27' }],
   };
   const cloudBridgeSelection = 'bridge:cloud:acct_me:session:109fcf23-654c-41a7-bd73-8156b0b89703';
 
@@ -83,7 +83,7 @@ test('workspace active conversation resolves Cloud self-agent bridge session ids
   );
 
   assert.equal(selected.id, localConversation.id);
-  assert.equal(selected.messages[0]?.text, '家人们谁懂啊');
+  assert.equal(selected.messages[0]?.text, 'Can anyone relate?');
 });
 
 test('workspace active conversation keeps selected canonical Cloud session in loading state while hydration catches up', () => {
@@ -94,7 +94,7 @@ test('workspace active conversation keeps selected canonical Cloud session in lo
     type: 'owned-agent' as const,
     subtitle: 'Local fallback should not win',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'My Kordi'],
@@ -123,7 +123,7 @@ test('workspace active conversation shows loading copy for an empty selected can
     type: 'owned-agent' as const,
     subtitle: '',
     unread: 0,
-    bridges: ['Cloud'],
+    collaborationSources: ['Cloud'],
     trust: 'Bridge',
     directness: 'Group chat',
     participants: ['Me', 'Alice'],
@@ -150,7 +150,7 @@ test('workspace active conversation keeps a catalog-confirmed empty group sessio
     type: 'owned-agent' as const,
     subtitle: 'Local fallback should not win',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'My Kordi'],
@@ -164,7 +164,7 @@ test('workspace active conversation keeps a catalog-confirmed empty group sessio
     type: 'owned-agent' as const,
     subtitle: '',
     unread: 0,
-    bridges: ['Cloud'],
+    collaborationSources: ['Cloud'],
     trust: 'Bridge',
     directness: 'Group chat',
     participants: ['Me', 'Alice', 'Bob'],
@@ -217,7 +217,7 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
         },
         localAgent: { label: 'My Kordi' },
       } as never,
-      desktopBridgeState: null,
+      desktopCollaborationState: null,
       canonicalSessionState: {
         storagePath: '/tmp/canonical.sqlite3',
         profile: {
@@ -593,7 +593,7 @@ test('workspace active conversation resolves canonical Cloud direct session ids 
     type: 'owned-agent' as const,
     subtitle: 'Local fallback should not win',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'My Kordi'],
@@ -606,12 +606,12 @@ test('workspace active conversation resolves canonical Cloud direct session ids 
     type: 'person' as const,
     subtitle: 'Cloud direct chat',
     unread: 0,
-    bridges: ['Cloud'],
+    collaborationSources: ['Cloud'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Me', 'Cloud peer'],
     messages: [{ role: 'user' as const, isOwnMessage: true, text: 'hi', time: '10:01' }],
-    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_e933bef06cc0499c8287f4fd43205eab', runtime: 'person' },
+    collaborationTarget: { hostId: 'cloud', nodeId: 'acct_e933bef06cc0499c8287f4fd43205eab', runtime: 'person' },
   };
 
   const selected = activeConversationForSelection(
@@ -636,7 +636,7 @@ test('workspace active conversation does not fall back to a local UUID while a C
         activeSession: { id: 'local-session-1', title: 'Local accidental session', subtitle: '', updatedAtLabel: '19:06', messageCount: 1, draft: false, messages: [], project: null, reflectionLessonArtifacts: [] },
         localAgent: { label: 'My Kordi' },
       } as never,
-      desktopBridgeState: null,
+      desktopCollaborationState: null,
       canonicalSessionState: null,
       hiddenSessionIds: new Set(),
       projectWorkspaces: [],
@@ -663,7 +663,7 @@ test('workspace active conversation does not fall back to a local UUID while a C
   renderToStaticMarkup(createElement(Probe));
 
   assert.equal(viewModels?.activeConv.id, 'bridge:cloud:acct_peer:person');
-  assert.equal(viewModels?.activeConv.bridgeTarget?.hostId, 'cloud');
+  assert.equal(viewModels?.activeConv.collaborationTarget?.hostId, 'cloud');
 });
 
 test('workspace view model exposes side-created agent sessions with their live turn for agent session panels', () => {
@@ -691,7 +691,7 @@ test('workspace view model exposes side-created agent sessions with their live t
         activeSession: { id: 'side-agent-session', title: 'Side agent session', subtitle: '', updatedAtLabel: '19:07', messageCount: 0, draft: false, messages: [], project: null, reflectionLessonArtifacts: [] },
         localAgent: { label: 'My Kordi' },
       } as never,
-      desktopBridgeState: null,
+      desktopCollaborationState: null,
       canonicalSessionState: null,
       hiddenSessionIds: new Set(),
       projectWorkspaces: [],
@@ -737,7 +737,7 @@ test('canonical direct person conversations use contact name and latest-message 
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', humanId: 'kh_bob', bridgeNodeId: 'kd_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', humanId: 'kh_bob', sourceIdentityId: 'kd_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{
       id: 'session:bridge:humans:bob',
@@ -747,7 +747,7 @@ test('canonical direct person conversations use contact name and latest-message 
       createdByIdentityId: 'human:me',
       primaryIdentityId: 'human:bob',
       relationshipIdentityId: 'human:bob',
-      metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'kd_bob', peerRuntime: 'person' },
+      metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'kd_bob', peerRuntime: 'person' },
       createdAtMs: 1,
       updatedAtMs: 3,
       lastMessageAtMs: 3,
@@ -779,7 +779,7 @@ test('workspace view model exposes participant spaces alongside flat chat conver
       isNativeShell: false,
       isDesktopChatLoading: false,
       desktopChatState: null,
-      desktopBridgeState: null,
+      desktopCollaborationState: null,
       canonicalSessionState: null,
       hiddenSessionIds: new Set(),
       projectWorkspaces: [{
@@ -877,7 +877,7 @@ test('workspace view model treats canonical Cloud direct and group sessions as n
       isNativeShell: true,
       isDesktopChatLoading: false,
       desktopChatState: null,
-      desktopBridgeState: null,
+      desktopCollaborationState: null,
       canonicalSessionState: canonicalState as never,
       hiddenSessionIds: new Set(),
       projectWorkspaces: [],
@@ -902,7 +902,7 @@ test('workspace view model treats canonical Cloud direct and group sessions as n
 
   renderToStaticMarkup(createElement(Probe));
 
-  assert.equal(viewModels?.activeConversationIsBridge, true);
+  assert.equal(viewModels?.activeConversationUsesCollaboration, true);
 });
 
 test('workspace view model hides cloud-agent runtime sessions from local chat UI', () => {
@@ -942,7 +942,7 @@ test('workspace view model hides cloud-agent runtime sessions from local chat UI
         modelOptions: [],
         slashCommands: [],
       } as never,
-      desktopBridgeState: null,
+      desktopCollaborationState: null,
       canonicalSessionState: null,
       hiddenSessionIds: new Set(),
       projectWorkspaces: [],
@@ -978,10 +978,7 @@ test('workspace view model exposes visible non-contact Bridge people for Add con
       isNativeShell: true,
       isDesktopChatLoading: false,
       desktopChatState: null,
-      desktopBridgeState: {
-        configPath: '/tmp/bridge.json',
-        legacyConfigPath: '/tmp/legacy.json',
-        conversationsPath: '/tmp/conversations.sqlite3',
+      desktopCollaborationState: {
         activeHostId: 'host-1',
         hosts: [{
           id: 'host-1',
@@ -1042,7 +1039,6 @@ test('workspace view model exposes visible non-contact Bridge people for Add con
           lastError: null,
         }],
         conversations: [],
-        localServer: { running: true },
       } as never,
       canonicalSessionState: null,
       hiddenSessionIds: new Set(),
@@ -1159,7 +1155,7 @@ test('restored Cloud self-agent messages are sent as native context for continue
       role: 'user',
       sender: 'Me',
       senderType: 'human',
-      text: '今天沙特阿拉伯图瓦的天气怎么样',
+      text: 'What is the weather in Thuwal, Saudi Arabia today?',
       time: '14:30',
       isOwnMessage: true,
     },
@@ -1173,10 +1169,10 @@ test('restored Cloud self-agent messages are sent as native context for continue
       turn: {
         id: 'turn-1',
         sessionId: 'session:restored',
-        prompt: '今天沙特阿拉伯图瓦的天气怎么样',
+        prompt: 'What is the weather in Thuwal, Saudi Arabia today?',
         status: 'succeeded',
         message: 'Response complete',
-        assistantText: '图瓦今天多云。',
+        assistantText: 'Thuwal is cloudy today.',
         thinkingText: '',
         tools: [],
         completed: true,
@@ -1209,7 +1205,7 @@ test('restored Cloud self-agent messages are sent as native context for continue
       role: 'user',
       sender: 'Me',
       senderType: 'human',
-      text: '你可以看到这里的聊天记录吗',
+      text: 'Can you see the chat history here?',
       time: '14:33',
       isOwnMessage: true,
     },
@@ -1220,14 +1216,14 @@ test('restored Cloud self-agent messages are sent as native context for continue
       id: 'msg:cloud:self:user-1',
       authorName: 'Me',
       authorKind: 'human',
-      text: '今天沙特阿拉伯图瓦的天气怎么样',
+      text: 'What is the weather in Thuwal, Saudi Arabia today?',
       createdAtMs: null,
     },
     {
       id: 'msg:cloud:self:agent-1',
       authorName: 'My Kordi',
       authorKind: 'agent',
-      text: '图瓦今天多云。',
+      text: 'Thuwal is cloudy today.',
       createdAtMs: null,
     },
   ]);
@@ -1311,9 +1307,9 @@ test('canonical read model keeps a creator-anchored group name and normalizes st
       updatedAtMs: 1,
     },
     identities: [
-      { id: 'human:user1', kind: 'human', displayName: 'Testuser1', source: 'bridge', humanId: 'kh_user1', bridgeNodeId: 'kd_user1', avatarKey: 'user1', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:user2', kind: 'human', displayName: 'Testuser2', source: 'bridge', humanId: 'kh_user2', bridgeNodeId: 'kd_user2', avatarKey: 'user2', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:user3', kind: 'human', displayName: 'Testuser3', source: 'bridge', humanId: 'kh_user3', bridgeNodeId: 'kd_user3', avatarKey: 'user3', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user1', kind: 'human', displayName: 'Testuser1', source: 'bridge', humanId: 'kh_user1', sourceIdentityId: 'kd_user1', avatarKey: 'user1', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user2', kind: 'human', displayName: 'Testuser2', source: 'bridge', humanId: 'kh_user2', sourceIdentityId: 'kd_user2', avatarKey: 'user2', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:user3', kind: 'human', displayName: 'Testuser3', source: 'bridge', humanId: 'kh_user3', sourceIdentityId: 'kd_user3', avatarKey: 'user3', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{
       id: 'session:group:shared',
@@ -1522,7 +1518,7 @@ test('canonical read model titles private self-agent forks from the first new tu
       { sessionId, identityId: 'agent:me', role: 'agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
     ],
     messages: [
-      { id: 'snapshot-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '今天thuwal天气怎么样', content: { sender: 'Me', timeLabel: '11:27' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'canonical-fork-snapshot', sourceEventId: 'snapshot:user' },
+      { id: 'snapshot-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Thuwal weather today', content: { sender: 'Me', timeLabel: '11:27' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'canonical-fork-snapshot', sourceEventId: 'snapshot:user' },
       { id: 'snapshot-agent', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'weather answer', content: { sender: 'Kordi', timeLabel: '11:28' }, status: 'complete', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'canonical-fork-snapshot', sourceEventId: 'snapshot:agent' },
       { id: 'new-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello', content: { sender: 'Me', timeLabel: '11:41' }, status: 'sent', sequenceNum: 3, createdAtMs: 30, updatedAtMs: 30, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'new:user' },
       { id: 'new-agent', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hello! How can I help you today?', content: { sender: 'Kordi', timeLabel: '11:41' }, status: 'complete', sequenceNum: 4, createdAtMs: 40, updatedAtMs: 40, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'new:agent' },
@@ -1812,11 +1808,11 @@ test('canonical read model keeps separate direct person bridge sessions for the 
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shared', humanId: 'human-bob', avatarKey: 'human-bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-shared', humanId: 'human-bob', avatarKey: 'human-bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: 'session:bridge:humans:first', kind: 'direct-person', title: 'first hello', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shared', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 },
-      { id: 'session:bridge:humans:second', kind: 'direct-person', title: 'second hello', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shared', peerRuntime: 'person' }, createdAtMs: 2, updatedAtMs: 2, lastMessageAtMs: 2 },
+      { id: 'session:bridge:humans:first', kind: 'direct-person', title: 'first hello', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-shared', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 },
+      { id: 'session:bridge:humans:second', kind: 'direct-person', title: 'second hello', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-shared', peerRuntime: 'person' }, createdAtMs: 2, updatedAtMs: 2, lastMessageAtMs: 2 },
     ],
     participants: [
       { sessionId: 'session:bridge:humans:first', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -1853,11 +1849,11 @@ test('canonical read model suppresses optimistic bridge UI echo after parent bri
     },
     identities: [
       { id: 'human:profile:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bridge:me', kind: 'human', displayName: 'Me', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-me', humanId: 'human-me', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bridge:me', kind: 'human', displayName: 'Me', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-me', humanId: 'human-me', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Bob', status: 'active', createdByIdentityId: 'human:profile:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1_800, lastMessageAtMs: 1_800 },
+      { id: sessionId, kind: 'direct-person', title: 'Bob', status: 'active', createdByIdentityId: 'human:profile:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1_800, lastMessageAtMs: 1_800 },
     ],
     participants: [
       { sessionId, identityId: 'human:bridge:me', role: 'self', state: 'active', addedByIdentityId: 'human:profile:me', addedAtMs: 1 },
@@ -1865,7 +1861,7 @@ test('canonical read model suppresses optimistic bridge UI echo after parent bri
     ],
     messages: [
       { id: 'msg:ui', sessionId, senderIdentityId: 'human:profile:me', senderRole: 'user', messageKind: 'text', contentText: 'hi shu how are you', content: { sender: 'Me', timeLabel: '19:22' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-bridge-ui', sourceEventId: 'desktop-bridge-ui:session:bridge:humans:bob:1000' },
-      { id: 'msg:parent', sessionId, senderIdentityId: 'human:bridge:me', senderRole: 'user', messageKind: 'text', contentText: 'hi shu how are you', content: { sender: 'Me', timeLabel: '19:22', deliveryState: 'read', bridgeConversationId: 'bridge:host-1:node-bob:person' }, status: 'read', sequenceNum: 2, createdAtMs: 1_800, updatedAtMs: 1_800, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'desktop-bridge-parent:session:bridge:humans:bob:bridge:host-1:node-bob:person:bridge_msg_1' },
+      { id: 'msg:parent', sessionId, senderIdentityId: 'human:bridge:me', senderRole: 'user', messageKind: 'text', contentText: 'hi shu how are you', content: { sender: 'Me', timeLabel: '19:22', deliveryState: 'read', sourceConversationId: 'bridge:host-1:node-bob:person' }, status: 'read', sequenceNum: 2, createdAtMs: 1_800, updatedAtMs: 1_800, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'desktop-bridge-parent:session:bridge:humans:bob:bridge:host-1:node-bob:person:bridge_msg_1' },
     ],
     delegatedExchanges: [],
     presence: [],
@@ -1895,10 +1891,10 @@ test('canonical read model preserves unread count from source bridge conversatio
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: 'session:bridge:humans:unread', kind: 'direct-person', title: 'Bob', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+      { id: 'session:bridge:humans:unread', kind: 'direct-person', title: 'Bob', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
     ],
     participants: [
       { sessionId: 'session:bridge:humans:unread', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -1921,7 +1917,7 @@ test('canonical read model preserves unread count from source bridge conversatio
     type: 'person' as const,
     subtitle: 'Direct person chat',
     unread: 3,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Me', 'Bob'],
@@ -1949,11 +1945,11 @@ test('canonical read model preserves unread count when bridge source is routed b
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: latestSessionId, kind: 'direct-person', title: 'new unread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeConversationId: 'bridge:host-1:node-bob:person', bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 2, updatedAtMs: 3, lastMessageAtMs: 3 },
-      { id: olderSessionId, kind: 'direct-person', title: 'old thread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeConversationId: 'bridge:host-1:node-bob:person', bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 },
+      { id: latestSessionId, kind: 'direct-person', title: 'new unread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceConversationId: 'bridge:host-1:node-bob:person', sourceHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 2, updatedAtMs: 3, lastMessageAtMs: 3 },
+      { id: olderSessionId, kind: 'direct-person', title: 'old thread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceConversationId: 'bridge:host-1:node-bob:person', sourceHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 },
     ],
     participants: [
       { sessionId: latestSessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -1979,8 +1975,8 @@ test('canonical read model preserves unread count when bridge source is routed b
     type: 'person' as const,
     subtitle: 'Direct person chat',
     unread: 2,
-    bridgeUnreadByParentSessionId: { [latestSessionId]: 1, [olderSessionId]: 1 },
-    bridges: ['Bridge'],
+    collaborationUnreadByParentSessionId: { [latestSessionId]: 1, [olderSessionId]: 1 },
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Me', 'Bob'],
@@ -2000,9 +1996,9 @@ test('canonical read model preserves unread count when bridge source is routed b
 test('workspace view model hydrates hidden bridge outreach unread into its canonical session', () => {
   const sessionId = 'session:bridge:humans:hidden-unread';
   const olderSessionId = 'session:bridge:humans:older-hidden-unread';
-  const bridgeConversationId = 'bridge:host-1:node-bob:person';
+  const sourceConversationId = 'bridge:host-1:node-bob:person';
   const bridgeConversation = {
-    id: bridgeConversationId,
+    id: sourceConversationId,
     canonicalSessionId: 'session:bridge:humans:stable-pair',
     hostId: 'host-1',
     peerNodeId: 'node-bob',
@@ -2020,11 +2016,11 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
     peerTyping: false,
     peerLastHeartbeatLabel: null,
     outreach: {
-      targetKind: 'bridge-person',
+      targetKind: 'person',
       parentSessionId: sessionId,
-      bridgeHostId: 'host-1',
-      bridgeConversationId,
-      bridgeRequestId: 'bridge_req_hidden',
+      sourceHostId: 'host-1',
+      sourceConversationId,
+      sourceRequestId: 'bridge_req_hidden',
       targetNodeId: 'node-bob',
       targetDisplayName: 'Bob',
       requestText: 'Hi shu',
@@ -2043,11 +2039,11 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
       requestId: 'bridge_req_older_hidden',
       deliveryState: null,
       outreach: {
-        targetKind: 'bridge-person',
+        targetKind: 'person',
         parentSessionId: olderSessionId,
-        bridgeHostId: 'host-1',
-        bridgeConversationId,
-        bridgeRequestId: 'bridge_req_older_hidden',
+        sourceHostId: 'host-1',
+        sourceConversationId,
+        sourceRequestId: 'bridge_req_older_hidden',
         targetNodeId: 'node-bob',
         targetDisplayName: 'Bob',
         requestText: 'Earlier unread',
@@ -2065,11 +2061,11 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
       requestId: 'bridge_req_hidden',
       deliveryState: null,
       outreach: {
-        targetKind: 'bridge-person',
+        targetKind: 'person',
         parentSessionId: sessionId,
-        bridgeHostId: 'host-1',
-        bridgeConversationId,
-        bridgeRequestId: 'bridge_req_hidden',
+        sourceHostId: 'host-1',
+        sourceConversationId,
+        sourceRequestId: 'bridge_req_hidden',
         targetNodeId: 'node-bob',
         targetDisplayName: 'Bob',
         requestText: 'Hi shu',
@@ -2092,11 +2088,11 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-bob', humanId: 'human-bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Hi shu', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeConversationId, bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 2, updatedAtMs: 3, lastMessageAtMs: 3 },
-      { id: olderSessionId, kind: 'direct-person', title: 'Earlier unread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeConversationId, bridgeHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+      { id: sessionId, kind: 'direct-person', title: 'Hi shu', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceConversationId, sourceHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 2, updatedAtMs: 3, lastMessageAtMs: 3 },
+      { id: olderSessionId, kind: 'direct-person', title: 'Earlier unread', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceConversationId, sourceHostId: 'host-1', peerNodeId: 'node-bob', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -2118,10 +2114,7 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
       isNativeShell: true,
       isDesktopChatLoading: false,
       desktopChatState: null,
-      desktopBridgeState: {
-        configPath: '/tmp/bridge.json',
-        legacyConfigPath: '/tmp/legacy.json',
-        conversationsPath: '/tmp/conversations.sqlite3',
+      desktopCollaborationState: {
         activeHostId: 'host-1',
         hosts: [{
           id: 'host-1',
@@ -2142,7 +2135,6 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
           projects: [],
         }],
         conversations: [bridgeConversation],
-        localServer: { running: true },
       } as never,
       canonicalSessionState: canonicalState as never,
       hiddenSessionIds: new Set(),
@@ -2172,7 +2164,7 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
   assert.equal(sessionConversation?.id, sessionId);
   assert.equal(sessionConversation?.unread, 1);
   assert.equal(viewModels?.chatConversations.find((conversation) => conversation.canonicalSessionId === olderSessionId)?.unread, 1);
-  assert.equal(viewModels?.chatConversations.some((conversation) => conversation.id === bridgeConversationId), false);
+  assert.equal(viewModels?.chatConversations.some((conversation) => conversation.id === sourceConversationId), false);
 });
 
 test('canonical read model exposes transient Cloud group unread counts on synthetic sessions', () => {
@@ -2189,7 +2181,7 @@ test('canonical read model exposes transient Cloud group unread counts on synthe
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', humanId: 'acct_peer', bridgeNodeId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', humanId: 'acct_peer', sourceIdentityId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{
       id: 'session:group:cloud-child',

@@ -665,7 +665,7 @@ export function AgentDetailPane({
   const selectedFilePath = activeDetail?.kind === 'file' ? activeDetail.path : null;
   const activeRoutingDraft = routingDraft.agentId === activeAgent.id ? routingDraft : persistedRoutingDraft;
   const canEditModelRouting = Boolean(activeAgent.isOwned && onUpdateModelRouting);
-  const routingPersistsToBridge = Boolean(activeAgent.bridgeHostId && activeAgent.bridgeAgentId);
+  const routingPersistsToCollaboration = Boolean(activeAgent.sourceHostId && activeAgent.sourceAgentId);
   const routeModelOptions = chatModelOptions ?? [];
   const resolvedDefaultModel = resolveRoutingModelValue(
     activeRoutingDraft.defaultModel,
@@ -766,9 +766,9 @@ export function AgentDetailPane({
   };
   const routingDraftDirty = !sameRoutingDraft(activeRoutingDraft, persistedRoutingDraft);
   const routingSaveDirty = !sameRoutingDraft(effectiveRoutingDraft, persistedRoutingDraft);
-  const routingIdleCopy = routingPersistsToBridge
-    ? 'Select routes instantly; saved routes run this Bridge agent.'
-    : 'Saved locally until this agent is connected to Bridge; connected Bridge agents inherit it.';
+  const routingIdleCopy = routingPersistsToCollaboration
+    ? 'Select routes instantly; saved routes run this collaboration agent.'
+    : 'Saved locally until this agent is connected to hosted collaboration; connected agents inherit it.';
   const confirmArchiveAgent = () => {
     if (!archiveConfirmAgent || isArchiveDeleting) return;
     setIsArchiveDeleting(true);
@@ -806,9 +806,9 @@ export function AgentDetailPane({
   const modelRoutingSection = activeAgent.isOwned ? (
     <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned agent. These choices are private and not announced in shared chat history.">
       <div className="app-agent-section-detail text-[13px] leading-5">
-        {routingPersistsToBridge
+        {routingPersistsToCollaboration
           ? 'Use the default model for inbound mentions and reach-outs. If it is unavailable or errors during generation, Kordi retries with the fallback model.'
-          : 'Choose the default and fallback now. Saved locally until this agent is connected to Bridge, then the connected Bridge agent inherits the same routing.'}
+          : 'Choose the default and fallback now. Saved locally until this agent is connected to hosted collaboration, then the connected agent inherits the same routing.'}
       </div>
       <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
         <AgentRoutingSelect
@@ -923,7 +923,7 @@ export function AgentDetailPane({
             <Button
               className="rounded-xl text-[12px]"
               onClick={() => onMessage?.()}
-              disabled={!onMessage || (!activeAgent.cloudAgentId && (!activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId))}
+              disabled={!onMessage || (!activeAgent.cloudAgentId && (!activeAgent.sourceHostId || !activeAgent.sourceParticipantId))}
             >
               Message
             </Button>
@@ -955,10 +955,10 @@ export function AgentDetailPane({
 
           {modelRoutingSection}
 
-          {(activeAgent.bridgeReachouts?.length ?? 0) > 0 ? (
+          {(activeAgent.collaborationReachouts?.length ?? 0) > 0 ? (
             <AgentInspectorSection title="Direct reachouts" detail="People contacting this agent directly appear here instead of in your person chats.">
               <div className="app-agent-inner-list overflow-hidden rounded-[14px] border">
-                {activeAgent.bridgeReachouts?.map((reachout, index) => (
+                {activeAgent.collaborationReachouts?.map((reachout, index) => (
                   <button
                     key={reachout.sessionId}
                     type="button"

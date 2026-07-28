@@ -97,17 +97,17 @@ export function resolveReplicatedGroupTitle(input: {
 
 export function groupParticipantStableKey(participant: Pick<
   ConversationParticipant,
-  'id' | 'name' | 'humanId' | 'bridgeNodeId'
+  'id' | 'name' | 'humanId' | 'sourceIdentityId'
 >) {
   return cleanText(participant.humanId)
-    || cleanText(participant.bridgeNodeId)
+    || cleanText(participant.sourceIdentityId)
     || cleanText(participant.id)
     || cleanText(participant.name).toLocaleLowerCase();
 }
 
 function compareGroupParticipantStableKeys(
-  left: Pick<ConversationParticipant, 'id' | 'name' | 'humanId' | 'bridgeNodeId'>,
-  right: Pick<ConversationParticipant, 'id' | 'name' | 'humanId' | 'bridgeNodeId'>,
+  left: Pick<ConversationParticipant, 'id' | 'name' | 'humanId' | 'sourceIdentityId'>,
+  right: Pick<ConversationParticipant, 'id' | 'name' | 'humanId' | 'sourceIdentityId'>,
 ) {
   return groupParticipantStableKey(left).localeCompare(
     groupParticipantStableKey(right),

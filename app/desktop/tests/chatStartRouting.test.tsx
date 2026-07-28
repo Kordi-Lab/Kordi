@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { assembleMainContentSlot } from '../src/app/assembleMainContentSlot';
 import { assembleSidebarSlot } from '../src/app/assembleSidebarSlot';
-import { buildBridgePageProps, buildChatsPageProps } from '../src/app/mainContentShellBuilders';
+import { buildChatsPageProps } from '../src/app/mainContentShellBuilders';
 
 function directPersonConversation() {
   return {
@@ -13,7 +13,7 @@ function directPersonConversation() {
     type: 'person',
     subtitle: '',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct chat',
     participants: ['Me', 'Bob'],
@@ -23,7 +23,7 @@ function directPersonConversation() {
       kind: 'human',
       role: 'delegate',
       source: 'bridge',
-      bridgeNodeId: 'node-shared',
+      sourceIdentityId: 'node-shared',
       humanId: 'human-bob',
     }],
     messages: [],
@@ -38,7 +38,7 @@ function directAgentConversation() {
     type: 'external-agent',
     subtitle: '',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Agent thread',
     participants: ['Me', 'Bob agent'],
@@ -48,7 +48,7 @@ function directAgentConversation() {
       kind: 'agent',
       role: 'delegate',
       source: 'bridge',
-      bridgeNodeId: 'node-shared',
+      sourceIdentityId: 'node-shared',
       agentId: 'agent-bob',
     }],
     messages: [],
@@ -79,7 +79,7 @@ function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
     handleStartChatWithPerson: async () => {},
     handleStartChatWithAgent: async () => {},
     handleCreateChatGroup: async () => {},
-    handleAddBridgeContact: async () => {},
+    handleAddCollaborationContact: async () => {},
     handleCreateChatSessionInParticipantSpace: async () => {},
     handleRenameChatGroup: async () => {},
     handleAddChatGroupMembers: async () => {},
@@ -108,9 +108,9 @@ function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
     setActiveContactGroup: () => {},
     setActiveContactId: () => {},
     displayedAgents: [],
-    activeBridgeHost: null,
+    activeCollaborationHost: null,
     localProfileAvatarSeed: null,
-    refreshDesktopBridge: async () => {},
+    refreshDesktopCollaboration: async () => {},
     handleCopyBridgeText: async () => {},
     handleCreateBridgeDraft: () => {},
     ...overrides,
@@ -124,9 +124,9 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     setActiveNav: (nav: string) => calls.push(`nav:${nav}`),
     handleSelectChatSession: async (sessionId: string) => { calls.push(`select:${sessionId}`); },
     handleStartChatWithPerson: async () => { calls.push('startChatWithPerson'); },
-    handleOpenBridgeConversation: async () => { calls.push('openBridge'); },
-    handleStartBridgePersonSession: async (target: Record<string, unknown>) => { calls.push(`startPerson:${target.hostId}:${target.nodeId}:${target.humanId}`); },
-    handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startAgent:${agent.bridgeHostId}:${agent.bridgePeerNodeId}:${agent.bridgeAgentId}`); },
+    handleOpenCollaborationConversation: async () => { calls.push('openBridge'); },
+    handleStartCollaborationPersonSession: async (target: Record<string, unknown>) => { calls.push(`startPerson:${target.hostId}:${target.nodeId}:${target.humanId}`); },
+    handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startAgent:${agent.sourceHostId}:${agent.sourceParticipantId}:${agent.sourceAgentId}`); },
     setContactOverlayMode: (value: unknown) => calls.push(`overlay:${String(value)}`),
     displayedAgents: [],
     filteredGroupedContacts: [],
@@ -134,9 +134,9 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     activeContact: {},
     activeContactRequest: {},
     getStatusBadgeClass: () => '',
-    desktopBridgeState: null,
-    activeBridgePeople: [],
-    activeBridgeAgents: [],
+    desktopCollaborationState: null,
+    activeCollaborationPeople: [],
+    activeCollaborationAgents: [],
     handleCreateChatSession: async () => { calls.push('createLocal'); },
     setIsContactRequestsOpen: () => {},
     setExpandedContactGroups: () => {},
@@ -146,7 +146,7 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     setIsAgentOverlayOpen: () => {},
     handleSelectBridgeHost: async () => {},
     handleCreateBridgeDraft: () => {},
-    refreshDesktopBridge: async () => {},
+    refreshDesktopCollaboration: async () => {},
     handleSaveBridgeSettings: async () => {},
     handleRemoveBridgeHost: async () => {},
     handleCopyBridgeText: async () => {},
@@ -154,12 +154,12 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     handleRevealBridgeStorageFile: async () => {},
     handleExportBridgeHostsConfig: async () => {},
     handleImportBridgeHostsConfig: async () => {},
-    handleAddBridgeContact: async () => {},
+    handleAddCollaborationContact: async () => {},
     handleSetBridgeDiscoveryMode: async () => {},
     handleCreateBridgeAgent: async () => {},
     handleActivateBridgeAgent: async () => {},
     handleSetDefaultBridgeAgent: async () => {},
-    handleRemoveBridgeContact: async () => {},
+    handleRemoveCollaborationContact: async () => {},
     handleBridgeWizardPrimary: async () => {},
     handleCreateProjectSession: async () => {},
     handleRenameDesktopSession: async () => {},
@@ -259,12 +259,12 @@ test('contact Message starts a fresh person session instead of selecting an exis
   element.props.contactsPageProps.onMessageContact({
     id: 'contact-bob',
     classType: 'other-users',
-    bridgeHumanId: 'human-bob',
-    bridgePeerNodeId: 'node-shared',
-    bridgeHostId: 'host-1',
+    sourceHumanId: 'human-bob',
+    sourceParticipantId: 'node-shared',
+    sourceHostId: 'host-1',
     name: 'Bob',
     owner: 'Bob',
-    bridgePeerRuntime: 'person',
+    sourceRuntime: 'person',
   });
 
   assert.deepEqual(calls, ['overlay:null', 'startPerson:host-1:node-shared:human-bob']);
@@ -273,7 +273,7 @@ test('contact Message starts a fresh person session instead of selecting an exis
 test('contact detail delete removes the bridge contact and closes the overlay', async () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {
-    handleRemoveBridgeContact: async (hostId: string, peerNodeId: string) => {
+    handleRemoveCollaborationContact: async (hostId: string, peerNodeId: string) => {
       calls.push(`remove:${hostId}:${peerNodeId}`);
     },
   }) as never) as never as { props: { contactsPageProps: { onRemoveContact: (contact: Record<string, unknown>) => Promise<void> } } };
@@ -281,8 +281,8 @@ test('contact detail delete removes the bridge contact and closes the overlay', 
   await element.props.contactsPageProps.onRemoveContact({
     id: 'contact-bob',
     classType: 'other-users',
-    bridgePeerNodeId: 'node-shared',
-    bridgeHostId: 'host-1',
+    sourceParticipantId: 'node-shared',
+    sourceHostId: 'host-1',
     name: 'Bob',
   });
 
@@ -298,11 +298,11 @@ test('agent Message starts a fresh external agent session under My chats', () =>
   element.props.agentsPageProps.onMessageAgent({
     id: 'agent-bob',
     isOwned: false,
-    bridgeAgentId: 'agent-bob',
-    bridgePeerNodeId: 'node-shared',
-    bridgeHostId: 'host-1',
+    sourceAgentId: 'agent-bob',
+    sourceParticipantId: 'node-shared',
+    sourceHostId: 'host-1',
     name: 'Bob agent',
-    bridgePeerRuntime: 'kordi-desktop',
+    sourceRuntime: 'kordi-desktop',
   });
 
   assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
@@ -333,66 +333,26 @@ test('external agent contact Message starts an agent session instead of routing 
   element.props.contactsPageProps.onMessageContact({
     id: 'contact-bob-agent',
     classType: 'other-users-agents',
-    bridgeHumanId: 'human-bob',
-    bridgeAgentId: 'agent-bob',
-    bridgePeerNodeId: 'node-shared',
-    bridgeHostId: 'host-1',
+    sourceHumanId: 'human-bob',
+    sourceAgentId: 'agent-bob',
+    sourceParticipantId: 'node-shared',
+    sourceHostId: 'host-1',
     name: 'Bob agent',
     owner: 'Bob',
-    bridgePeerRuntime: 'kordi-desktop',
+    sourceRuntime: 'kordi-desktop',
   });
 
   assert.deepEqual(calls, ['overlay:null', 'startAgent:host-1:node-shared:agent-bob']);
 });
 
-test('bridge Chat starts a fresh person session instead of selecting an existing one', () => {
-  const calls: string[] = [];
-  const props = buildBridgePageProps(baseShellArgs(calls, {
-    activeNav: 'bridge',
-    chatConversations: [directPersonConversation()],
-  }) as never) as never as {
-    onOpenBridgeConversation: (
-      hostId: string,
-      peerNodeId: string,
-      peerDisplayName?: string | null,
-      peerOwnerName?: string | null,
-      peerRuntime?: string | null,
-      target?: { humanId?: string | null; agentId?: string | null },
-    ) => void;
-  };
 
-  props.onOpenBridgeConversation('host-1', 'node-shared', 'Bob', 'Bob', 'person', { humanId: 'human-bob' });
-
-  assert.deepEqual(calls, ['startPerson:host-1:node-shared:human-bob']);
-});
-
-test('bridge Add + chat without a peer runtime defaults to a person session', () => {
-  const calls: string[] = [];
-  const props = buildBridgePageProps(baseShellArgs(calls, {
-    activeNav: 'bridge',
-    chatConversations: [],
-  }) as never) as never as {
-    onOpenBridgeConversation: (
-      hostId: string,
-      peerNodeId: string,
-      peerDisplayName?: string | null,
-      peerOwnerName?: string | null,
-      peerRuntime?: string | null,
-      target?: { humanId?: string | null; agentId?: string | null },
-    ) => void;
-  };
-
-  props.onOpenBridgeConversation('host-1', 'node-new');
-
-  assert.deepEqual(calls, ['startPerson:host-1:node-new:undefined']);
-});
 
 test('chat transcript contact-request hint calls Add contact for the active bridge person', async () => {
   const calls: string[] = [];
   const props = buildChatsPageProps(baseShellArgs(calls, {
     activeConv: {
       ...directPersonConversation(),
-      bridgeTarget: {
+      collaborationTarget: {
         hostId: 'host-1',
         nodeId: 'node-shared',
         displayName: 'Bob',
@@ -400,12 +360,12 @@ test('chat transcript contact-request hint calls Add contact for the active brid
         runtime: 'person',
       },
     },
-    handleAddBridgeContact: async (hostId: string, peerNodeId: string) => {
+    handleAddCollaborationContact: async (hostId: string, peerNodeId: string) => {
       calls.push(`add:${hostId}:${peerNodeId}`);
     },
-  }) as never) as never as { onRequestBridgeContact?: () => Promise<void> | void };
+  }) as never) as never as { onRequestCollaborationContact?: () => Promise<void> | void };
 
-  await props.onRequestBridgeContact?.();
+  await props.onRequestCollaborationContact?.();
 
   assert.deepEqual(calls, ['add:host-1:node-shared']);
 });
@@ -418,25 +378,4 @@ test('chat transcript member profile reuses the normal person-chat route', () =>
   }) as never);
 
   assert.equal(props.onMessageContact, startPerson);
-});
-
-test('bridge Chat starts an agent session instead of selecting an existing same-node person conversation', () => {
-  const calls: string[] = [];
-  const props = buildBridgePageProps(baseShellArgs(calls, {
-    activeNav: 'bridge',
-    chatConversations: [directPersonConversation(), directAgentConversation()],
-  }) as never) as never as {
-    onOpenBridgeConversation: (
-      hostId: string,
-      peerNodeId: string,
-      peerDisplayName?: string | null,
-      peerOwnerName?: string | null,
-      peerRuntime?: string | null,
-      target?: { humanId?: string | null; agentId?: string | null },
-    ) => void;
-  };
-
-  props.onOpenBridgeConversation('host-1', 'node-shared', 'Bob agent', 'Bob', 'kordi-desktop', { agentId: 'agent-bob' });
-
-  assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
 });

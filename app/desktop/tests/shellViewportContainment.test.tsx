@@ -23,7 +23,7 @@ test('main app shell and chat transcript contain scroll to the intended axis', (
   const chatsPage = readSource('../src/pages/ChatsPage.tsx');
   const projectsPage = readSource('../src/pages/ProjectsPage.tsx');
 
-  assert.match(appShellFrame, /bridge-app app-page-bg w-full min-w-0 max-w-full/);
+  assert.match(appShellFrame, /kordi-app app-page-bg w-full min-w-0 max-w-full/);
   assert.match(appShellFrame, /app-shell relative flex min-w-0 max-w-full flex-col overflow-hidden/);
   assert.match(appShellFrame, /relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border/);
   assert.match(appShellFrame, /relative min-h-0 min-w-0 overflow-hidden/);
@@ -41,6 +41,6 @@ test('main app shell and chat transcript contain scroll to the intended axis', (
 test('standalone auth popup is viewport-bound and scrolls only inside its panel body', () => {
   const authPopup = readSource('../src/AuthPopup.tsx');
 
-  assert.match(authPopup, /bridge-app theme-dark flex h-\[100dvh\] w-full overflow-hidden/);
+  assert.match(authPopup, /kordi-app theme-dark flex h-\[100dvh\] w-full overflow-hidden/);
   assert.match(authPopup, /max-h-\[calc\(100dvh-4rem\)\] overflow-y-auto overflow-x-hidden overscroll-contain/);
 });

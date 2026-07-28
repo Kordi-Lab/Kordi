@@ -598,7 +598,7 @@ export default function AuthPopup({
   }
 
   return (
-    <div className="bridge-app theme-dark flex h-[100dvh] w-full overflow-hidden bg-[radial-gradient(circle_at_top,rgba(58,56,46,0.28),rgba(17,17,15,0.96)_45%,rgba(10,10,11,1))] px-6 py-8 text-white">
+    <div className="kordi-app theme-dark flex h-[100dvh] w-full overflow-hidden bg-[radial-gradient(circle_at_top,rgba(58,56,46,0.28),rgba(17,17,15,0.96)_45%,rgba(10,10,11,1))] px-6 py-8 text-white">
       {shell}
     </div>
   );

@@ -66,7 +66,7 @@ test('provider gate uses the flat shared light workspace surface without modal b
   assert.match(authGateOverlay, /app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden/);
   assert.doesNotMatch(authGateOverlay, /\bapp-overlay\b|\bp-3\b|\bsm:p-4\b|backdrop-blur/);
 
-  const gateLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-gate-overlay,[\s\S]*?\.bridge-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const gateLightRule = themeOverrides.match(/\.kordi-app\.theme-light \.app-auth-gate-overlay,[\s\S]*?\.kordi-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
   assert.match(gateLightRule, /\.app-auth-gate-overlay/);
   assert.match(gateLightRule, /background:\s*var\(--app-main-bg\);/);
   assert.doesNotMatch(gateLightRule, /linear-gradient|rgb\(248 251 255\)|rgb\(241 247 255\)/);
@@ -80,7 +80,7 @@ test('every onboarding provider detail stays in the shared light workspace surfa
   const detailRouteStart = authPage.indexOf('app-auth-gate-shell app-auth-provider-detail-shell');
   const pickerRouteStart = authPage.indexOf('app-auth-gate-shell flex', detailRouteStart);
   const detailRoute = authPage.slice(detailRouteStart, pickerRouteStart);
-  const detailLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-provider-detail-shell \.app-auth-detail-section \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const detailLightRule = themeOverrides.match(/\.kordi-app\.theme-light \.app-auth-provider-detail-shell \.app-auth-detail-section \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.ok(detailRouteStart >= 0 && pickerRouteStart > detailRouteStart);
   assert.match(detailRoute, /items-start justify-center/);
@@ -117,8 +117,8 @@ test('inline auth popup uses cool chat-aligned light cards instead of warm gray'
   assert.match(authFlowSteps, /app-auth-flow-steps/);
 
   const popupPaletteBlock = themeOverrides.slice(
-    themeOverrides.indexOf('.bridge-app.theme-light .app-auth-popup-panel'),
-    themeOverrides.indexOf('.bridge-app.theme-light .app-agent-shell'),
+    themeOverrides.indexOf('.kordi-app.theme-light .app-auth-popup-panel'),
+    themeOverrides.indexOf('.kordi-app.theme-light .app-agent-shell'),
   );
 
   assert.match(popupPaletteBlock, /\.app-auth-popup-panel\s*\{[^}]*background:\s*var\(--app-transient-surface-bg\)[^}]*box-shadow:\s*var\(--app-transient-shadow\)/s);

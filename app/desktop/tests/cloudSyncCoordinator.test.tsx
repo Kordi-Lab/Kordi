@@ -59,7 +59,7 @@ function adoptionDelta(
       ownerIdentityId: null,
       source: 'local',
       sourceHostId: null,
-      bridgeNodeId: null,
+      sourceIdentityId: null,
       humanId: accountId,
       agentId: null,
       avatarKey: accountId,

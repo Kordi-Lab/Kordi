@@ -27,7 +27,7 @@ type ProjectWorkspace = {
   id: string;
   name: string;
   summary: string;
-  bridge: string;
+  collaboration: string;
   scope: string;
   status: string;
   people: string[];

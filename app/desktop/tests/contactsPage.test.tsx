@@ -17,7 +17,7 @@ function contact(overrides: Partial<Contact> = {}): Contact {
     classType: 'other-users',
     entityType: 'Person',
     subtitle: 'Testuser',
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     status: 'Available',
     discoverableOn: [],
     detail: 'Bridge contact',
@@ -212,7 +212,7 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
   assert.doesNotMatch(contactRowBlock, /app-list-item-active/);
   assert.match(shellCss, /\.app-list-item:hover[\s\S]*background:\s*var\(--app-control-bg\)/);
   assert.doesNotMatch(shellCss, /\.app-contact-row\.app-list-item-active/);
-  assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-contact-row\.app-list-item-active/);
+  assert.doesNotMatch(themeOverridesCss, /\.kordi-app\.theme-light \.app-contact-row\.app-list-item-active/);
 });
 
 test('contact detail modal mirrors real presence instead of deriving it from status text', () => {
@@ -253,8 +253,8 @@ test('contact detail modal shows other users with a read-only avatar', () => {
       id: 'cloud:acct_peer',
       name: 'Jiaxin Pei',
       subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
-      bridgeHostId: 'cloud',
-      bridgePeerNodeId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+      sourceHostId: 'cloud',
+      sourceParticipantId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
     }),
   });
 
@@ -272,8 +272,8 @@ test('contact overlays use the shared popup shell with flat actions at rest', ()
       id: 'cloud:acct_peer',
       name: 'Jiaxin Pei',
       subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
-      bridgeHostId: 'cloud',
-      bridgePeerNodeId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+      sourceHostId: 'cloud',
+      sourceParticipantId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
     }),
     onMessageContact: () => undefined,
     onRemoveContact: () => undefined,
@@ -305,10 +305,10 @@ test('contact detail modal removes redundant repeated metadata and unused profil
 
   assert.doesNotMatch(source, />\s*Contact detail\s*</);
   assert.doesNotMatch(source, /Owner: \{selfObjectLabel\(activeContact\.owner\)\}/);
-  assert.doesNotMatch(source, />Joined bridges</);
+  assert.doesNotMatch(source, />Joined collaborationSources</);
   assert.doesNotMatch(source, />Discoverable on</);
   assert.doesNotMatch(source, />\s*View full profile\s*</);
-  assert.doesNotMatch(source, /BridgeChip key=\{bridge\}/);
+  assert.doesNotMatch(source, /CollaborationChip key=\{bridge\}/);
 });
 
 test('contact detail modal suppresses detail text when it repeats the visible account identifier', () => {
@@ -320,8 +320,8 @@ test('contact detail modal suppresses detail text when it repeats the visible ac
       entityType: 'Person',
       subtitle: 'acct_peer_123',
       detail: 'acct_peer_123',
-      bridgePeerNodeId: 'acct_peer_123',
-      bridgeHostId: 'cloud',
+      sourceParticipantId: 'acct_peer_123',
+      sourceHostId: 'cloud',
     }),
   });
 

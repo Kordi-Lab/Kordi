@@ -17,14 +17,14 @@ function localBridgeContact(overrides: Partial<Contact> = {}): Contact {
     classType: 'other-users',
     entityType: 'user',
     subtitle: 'node_alice',
-    bridges: ['local'],
+    collaborationSources: ['local'],
     status: 'online',
     discoverableOn: ['local'],
     detail: 'node_alice',
     owner: 'Alice',
-    bridgeHostId: 'local-host',
-    bridgePeerNodeId: 'node_alice',
-    bridgeContactStatus: 'accepted',
+    sourceHostId: 'local-host',
+    sourceParticipantId: 'node_alice',
+    contactStatus: 'accepted',
     avatarSeed: 'node_alice',
     profileImageUrl: null,
     ...overrides,
@@ -60,10 +60,10 @@ test('cloud contacts carry bridge-compatible routing metadata', () => {
     createdAt: '2026-05-11T00:00:00Z',
   });
 
-  assert.equal(cloud.bridgeHostId, CLOUD_HOST_SENTINEL);
-  assert.equal(cloud.bridgePeerNodeId, 'acct_peer');
-  assert.equal(cloud.bridgePeerRuntime, 'person');
-  assert.equal(cloud.bridgeContactStatus, 'accepted');
+  assert.equal(cloud.sourceHostId, CLOUD_HOST_SENTINEL);
+  assert.equal(cloud.sourceParticipantId, 'acct_peer');
+  assert.equal(cloud.sourceRuntime, 'person');
+  assert.equal(cloud.contactStatus, 'accepted');
   assert.equal(cloud.avatarSeed, 'acct_peer');
   assert.equal(cloud.profileImageUrl, 'data:image/jpeg;base64,shared');
   assert.equal(isCloudContact(localBridgeContact()), false);

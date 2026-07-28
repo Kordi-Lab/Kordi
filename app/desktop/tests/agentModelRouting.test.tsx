@@ -4,19 +4,19 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
-  bridgeAgentRoutingChangeNotice,
-  bridgeAgentRoutingNotice,
-  bridgeChatRoutingControlVisibility,
-  localAgentRuntimeRouteForBridgeState,
-  localOwnedBridgeAgentsForModelRouting,
-  routingSelectionForBridgeAgent,
-} from '../src/features/bridge/agentModelRouting';
+  collaborationAgentRoutingChangeNotice,
+  collaborationAgentRoutingNotice,
+  collaborationChatRoutingControlVisibility,
+  localAgentRuntimeRouteForCollaborationState,
+  localOwnedCollaborationAgentsForModelRouting,
+  routingSelectionForCollaborationAgent,
+} from '../src/features/collaboration/agentModelRouting';
 import { AgentContentPane } from '../src/kordi-app/agents/AgentContentPane';
 import { AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
-import { BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS, BRIDGE_ROUTING_NOTICE_EXIT_MS } from '../src/pages/ChatsPage';
-import type { Agent, DesktopBridgeHost, DesktopChatState } from '../src/kordi-app/types';
+import { COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS, COLLABORATION_ROUTING_NOTICE_EXIT_MS } from '../src/pages/ChatsPage';
+import type { Agent, DesktopCollaborationHost, DesktopChatState } from '../src/kordi-app/types';
 
-const hosts: DesktopBridgeHost[] = [
+const hosts: DesktopCollaborationHost[] = [
   {
     id: 'host-1',
     registered: true,
@@ -90,8 +90,8 @@ test('agent prompt preview placeholders scoped lesson artifact paths instead of 
     '',
     '## Scoped lesson artifacts',
     'Lesson content lives in files, not this prompt.',
-    '- Conversation scope `690702c4-a4ac-4ba5-b443-0e85e886434a`: /Users/shuyang/.config/superpowers/worktrees/kordi/pr289-main-merge-validation/app/desktop/.multi-instance-data/pr289-merge/kordi/artifacts/reflection-lessons/conversation/690702c4-a4ac-4ba5-b443-0e85e886434a-abcd12.md',
-    '- Project scope `/Users/shuyang/.config/superpowers/worktrees/kordi/pr289-main-merge-validation/app/desktop`: /Users/shuyang/.config/superpowers/worktrees/kordi/pr289-main-merge-validation/app/desktop/.multi-instance-data/pr289-merge/kordi/artifacts/reflection-lessons/project/Users-shuyang-config-superpowers-worktrees-kordi-pr289-main-merge-validation-app-desktop-ef3456.md',
+    '- Conversation scope `690702c4-a4ac-4ba5-b443-0e85e886434a`: /Users/example/worktrees/kordi/main/app/desktop/.multi-instance-data/preview/kordi/artifacts/reflection-lessons/conversation/690702c4-a4ac-4ba5-b443-0e85e886434a-abcd12.md',
+    '- Project scope `/Users/example/worktrees/kordi/main/app/desktop`: /Users/example/worktrees/kordi/main/app/desktop/.multi-instance-data/preview/kordi/artifacts/reflection-lessons/project/Users-example-worktrees-kordi-main-app-desktop-ef3456.md',
   ].join('\n');
   const agent: Agent = {
     id: 'agent-scoped-lessons',
@@ -137,8 +137,8 @@ test('agent prompt preview placeholders scoped lesson artifact paths instead of 
   assert.doesNotMatch(markup, /Exact current runtime prompt|Full prompt detail|Runtime-managed|Loaded from/i);
 });
 
-test('localOwnedBridgeAgentsForModelRouting returns only agents owned by local bridge hosts', () => {
-  const agents = localOwnedBridgeAgentsForModelRouting(hosts, desktopChatState);
+test('localOwnedCollaborationAgentsForModelRouting returns only agents owned by local bridge hosts', () => {
+  const agents = localOwnedCollaborationAgentsForModelRouting(hosts, desktopChatState);
 
   assert.deepEqual(agents.map((agent) => agent.id), ['agent-a', 'agent-b']);
   assert.equal(agents.some((agent) => agent.id === 'remote-agent'), false);
@@ -152,7 +152,7 @@ test('missing agent routes inherit the GPT-5.6 Sol runtime default without repla
       defaultModel: 'gpt-5.6-sol',
     },
   } as DesktopChatState;
-  const routedHosts: DesktopBridgeHost[] = [{
+  const routedHosts: DesktopCollaborationHost[] = [{
     ...hosts[0],
     agents: [
       { ...hosts[0].agents[0], defaultModel: null },
@@ -160,16 +160,16 @@ test('missing agent routes inherit the GPT-5.6 Sol runtime default without repla
     ],
   }];
 
-  const agents = localOwnedBridgeAgentsForModelRouting(routedHosts, runtimeState);
+  const agents = localOwnedCollaborationAgentsForModelRouting(routedHosts, runtimeState);
 
   assert.equal(agents[0]?.defaultModel, 'openai/gpt-5.6-sol');
   assert.equal(agents[1]?.defaultModel, 'openai/gpt-5.4');
 });
 
-test('routingSelectionForBridgeAgent uses per-agent default, fallback, and thinking values', () => {
-  const [agent] = localOwnedBridgeAgentsForModelRouting(hosts, desktopChatState);
+test('routingSelectionForCollaborationAgent uses per-agent default, fallback, and thinking values', () => {
+  const [agent] = localOwnedCollaborationAgentsForModelRouting(hosts, desktopChatState);
 
-  assert.deepEqual(routingSelectionForBridgeAgent(agent), {
+  assert.deepEqual(routingSelectionForCollaborationAgent(agent), {
     mode: 'My agent',
     model: 'openai/gpt-5.4',
     authProvider: 'openai-codex',
@@ -179,8 +179,8 @@ test('routingSelectionForBridgeAgent uses per-agent default, fallback, and think
   });
 });
 
-test('localAgentRuntimeRouteForBridgeState applies active owned-agent thinking to group chat local turns', () => {
-  const route = localAgentRuntimeRouteForBridgeState({
+test('localAgentRuntimeRouteForCollaborationState applies active owned-agent thinking to group chat local turns', () => {
+  const route = localAgentRuntimeRouteForCollaborationState({
     activeHostId: 'host-1',
     hosts: [{
       ...hosts[0],
@@ -199,9 +199,9 @@ test('localAgentRuntimeRouteForBridgeState applies active owned-agent thinking t
   });
 });
 
-test('bridgeAgentRoutingNotice is local-only copy with agent label and fallback', () => {
+test('collaborationAgentRoutingNotice is local-only copy with agent label and fallback', () => {
   assert.equal(
-    bridgeAgentRoutingNotice({
+    collaborationAgentRoutingNotice({
       agentLabel: "Shuyang's Kordi",
       modelLabel: 'GPT-5.4',
       fallbackLabel: 'Claude Sonnet 4.5',
@@ -211,19 +211,19 @@ test('bridgeAgentRoutingNotice is local-only copy with agent label and fallback'
 });
 
 test('bridge chat routing controls keep fallback out of the composer', () => {
-  assert.deepEqual(bridgeChatRoutingControlVisibility(1), {
+  assert.deepEqual(collaborationChatRoutingControlVisibility(1), {
     showAgentSelector: false,
     showFallback: false,
   });
-  assert.deepEqual(bridgeChatRoutingControlVisibility(2), {
+  assert.deepEqual(collaborationChatRoutingControlVisibility(2), {
     showAgentSelector: true,
     showFallback: false,
   });
 });
 
-test('bridgeAgentRoutingChangeNotice returns null when the selected value is unchanged', () => {
+test('collaborationAgentRoutingChangeNotice returns null when the selected value is unchanged', () => {
   assert.equal(
-    bridgeAgentRoutingChangeNotice({
+    collaborationAgentRoutingChangeNotice({
       agentLabel: "Shuyang's Kordi",
       currentModel: 'openai/gpt-5.4',
       nextModel: 'openai/gpt-5.4',
@@ -236,9 +236,9 @@ test('bridgeAgentRoutingChangeNotice returns null when the selected value is unc
   );
 });
 
-test('bridgeAgentRoutingChangeNotice reports only the changed private setting', () => {
+test('collaborationAgentRoutingChangeNotice reports only the changed private setting', () => {
   assert.equal(
-    bridgeAgentRoutingChangeNotice({
+    collaborationAgentRoutingChangeNotice({
       agentLabel: "Shuyang's Kordi",
       currentModel: 'openai/gpt-5.4',
       nextModel: undefined,
@@ -252,9 +252,9 @@ test('bridgeAgentRoutingChangeNotice reports only the changed private setting', 
 });
 
 test('bridge routing notice auto-dismisses after two seconds with a short fade', () => {
-  assert.equal(BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS, 2000);
-  assert.ok(BRIDGE_ROUTING_NOTICE_EXIT_MS > 0);
-  assert.ok(BRIDGE_ROUTING_NOTICE_EXIT_MS <= 300);
+  assert.equal(COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS, 2000);
+  assert.ok(COLLABORATION_ROUTING_NOTICE_EXIT_MS > 0);
+  assert.ok(COLLABORATION_ROUTING_NOTICE_EXIT_MS <= 300);
 });
 
 test('owned agent inspector surfaces default and fallback model routing before runtime details', () => {
@@ -273,8 +273,8 @@ test('owned agent inspector surfaces default and fallback model routing before r
     fallbackAuthProvider: 'anthropic',
     fallbackAuthChoice: 'profile:claude-3d9dab',
     defaultThinking: 'high',
-    bridgesConfig: 'bridge.example',
-    contactId: 'bridge-agent:host-1:agent-a',
+    collaborationConfig: 'bridge.example',
+    contactId: 'collaboration-agent:host-1:agent-a',
     systemPrompt: 'You are an expert coding assistant.',
     xMd: '/tmp/workspace',
     identityFiles: [],
@@ -286,11 +286,11 @@ test('owned agent inspector surfaces default and fallback model routing before r
     exposesLoadedSkills: true,
     exposesLoadedTools: true,
     exposesLoadedPlugins: true,
-    bridgeHostId: 'host-1',
-    bridgeAgentId: 'agent-a',
-    bridgePeerNodeId: 'agent-node-a',
+    sourceHostId: 'host-1',
+    sourceAgentId: 'agent-a',
+    sourceParticipantId: 'agent-node-a',
     isOwned: true,
-    isBridgeActive: true,
+    isCollaborationActive: true,
   };
 
   const markup = renderToStaticMarkup(createElement(AgentDetailPane, {
@@ -409,8 +409,8 @@ test('owned agent inspector resolves bare runtime defaults through the same prov
     fallbackAuthProvider: null,
     fallbackAuthChoice: null,
     defaultThinking: 'high',
-    bridgesConfig: 'bridge.example',
-    contactId: 'bridge-agent:host-1:agent-a',
+    collaborationConfig: 'bridge.example',
+    contactId: 'collaboration-agent:host-1:agent-a',
     systemPrompt: 'You are an expert coding assistant.',
     xMd: '/tmp/workspace',
     identityFiles: [],
@@ -422,11 +422,11 @@ test('owned agent inspector resolves bare runtime defaults through the same prov
     exposesLoadedSkills: true,
     exposesLoadedTools: true,
     exposesLoadedPlugins: true,
-    bridgeHostId: 'host-1',
-    bridgeAgentId: 'agent-a',
-    bridgePeerNodeId: 'agent-node-a',
+    sourceHostId: 'host-1',
+    sourceAgentId: 'agent-a',
+    sourceParticipantId: 'agent-node-a',
     isOwned: true,
-    isBridgeActive: true,
+    isCollaborationActive: true,
   };
 
   const markup = renderToStaticMarkup(createElement(AgentDetailPane, {
@@ -503,7 +503,7 @@ test('owned local runtime agent keeps editable default and fallback routing befo
     tasks: 0,
     defaultProvider: 'openai',
     defaultModel: 'gpt-5.5',
-    bridgesConfig: 'Local runtime',
+    collaborationConfig: 'Local runtime',
     contactId: 'desktop:local-agent',
     systemPrompt: 'You are an expert coding assistant.',
     xMd: '/tmp/workspace',
@@ -517,7 +517,7 @@ test('owned local runtime agent keeps editable default and fallback routing befo
     exposesLoadedTools: true,
     exposesLoadedPlugins: true,
     isOwned: true,
-    isBridgeActive: true,
+    isCollaborationActive: true,
   };
 
   const markup = renderToStaticMarkup(createElement(AgentDetailPane, {
@@ -566,8 +566,8 @@ test('owned local runtime agent keeps editable default and fallback routing befo
   assert.match(markup, /Model routing/);
   assert.match(markup, /Default route/);
   assert.match(markup, /Fallback route/);
-  assert.match(markup, /Saved locally until this agent is connected to Bridge/);
+  assert.match(markup, /Saved locally until this agent is connected to hosted collaboration/);
   assert.match(markup, /Unsaved route changes\. Save when ready\./);
-  assert.doesNotMatch(markup, /Register this agent on a Bridge host before setting default or fallback routes\./);
+  assert.doesNotMatch(markup, /Register this agent on a host before setting default or fallback routes\./);
   assert.doesNotMatch(markup, /disabled="">Save routing/);
 });

@@ -4,7 +4,7 @@ import type { MutableRefObject } from 'react';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   ContactRequest,
-  DesktopBridgeHost,
+  DesktopCollaborationHost,
   DesktopChatTurnSnapshot,
   DetailTab,
   EditFilePreview,
@@ -89,14 +89,13 @@ type UseKordiDesktopActivityArgs = {
   activeSettingsSectionId: SettingsSectionId;
   settingsSections: SettingsSection[];
   contactRequests: ContactRequest[];
-  activeBridgeHost: DesktopBridgeHost | null;
   activeNav: NavId;
   activeConvId: string;
   activeConv: { id: string; canonicalSessionId?: string; messages: Message[]; reflectionLessonArtifacts?: SessionArtifact[] };
   activeProjectSessionId: string;
   activeProjectSession: ProjectSession;
-  activeConversationIsBridge: boolean;
-  isDesktopBridgeSending: boolean;
+  activeConversationUsesCollaboration: boolean;
+  isDesktopCollaborationSending: boolean;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot | null | undefined>;
   chatConversations: Array<{ unread?: number | null }>;
   setVisibleLocalSessionId: (sessionId: string | null) => void;
@@ -113,14 +112,13 @@ export function useKordiDesktopActivity({
   activeSettingsSectionId,
   settingsSections,
   contactRequests,
-  activeBridgeHost,
   activeNav,
   activeConvId,
   activeConv,
   activeProjectSessionId,
   activeProjectSession,
-  activeConversationIsBridge,
-  isDesktopBridgeSending,
+  activeConversationUsesCollaboration,
+  isDesktopCollaborationSending,
   desktopLiveTurnsBySession,
   chatConversations,
   setVisibleLocalSessionId,
@@ -133,7 +131,6 @@ export function useKordiDesktopActivity({
 }: UseKordiDesktopActivityArgs) {
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0] as SettingsSection;
-  const activeProjectBridgeHost = activeBridgeHost;
   const activeChatLiveTurn = activeChatLiveTurnForConversation({ activeConv, desktopLiveTurnsBySession });
   const activeProjectLiveTurn = activeProjectSession.id ? (desktopLiveTurnsBySession[activeProjectSession.id] ?? null) : null;
   const activeDesktopLiveTurn = activeNav === 'projects' ? activeProjectLiveTurn : activeChatLiveTurn;
@@ -141,18 +138,18 @@ export function useKordiDesktopActivity({
   const activeProjectArtifactLiveTurn = useArtifactLiveTurn(activeProjectLiveTurn);
   const isDesktopChatSending = activeNav === 'projects'
     ? Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed)
-    : activeNav === 'chats' && activeConversationIsBridge
-      ? isDesktopBridgeSending || Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed)
+    : activeNav === 'chats' && activeConversationUsesCollaboration
+      ? isDesktopCollaborationSending || Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed)
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
   const activeChatArtifacts = useMemo(() => {
     const cloudArtifacts = cloudArtifactsForSession(cloudSessionActivity, activeConv.canonicalSessionId ?? activeConv.id);
-    if (activeConversationIsBridge) return cloudArtifacts;
+    if (activeConversationUsesCollaboration) return cloudArtifacts;
     return [
       ...cloudArtifacts,
       ...extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn, activeConv.reflectionLessonArtifacts),
     ];
-  }, [activeChatArtifactLiveTurn, activeConv.canonicalSessionId, activeConv.id, activeConv.messages, activeConv.reflectionLessonArtifacts, activeConversationIsBridge, cloudSessionActivity]);
+  }, [activeChatArtifactLiveTurn, activeConv.canonicalSessionId, activeConv.id, activeConv.messages, activeConv.reflectionLessonArtifacts, activeConversationUsesCollaboration, cloudSessionActivity]);
   const activeProjectArtifacts = useMemo(
     () => extractSessionArtifacts(activeProjectSession.messages, activeProjectArtifactLiveTurn, activeProjectSession.reflectionLessonArtifacts),
     [activeProjectArtifactLiveTurn, activeProjectSession.messages, activeProjectSession.reflectionLessonArtifacts],
@@ -180,7 +177,7 @@ export function useKordiDesktopActivity({
   }, [activeConv.canonicalSessionId, activeConv.id, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
   useEffect(() => {
-    if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationIsBridge)) {
+    if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationUsesCollaboration)) {
       return;
     }
 
@@ -205,7 +202,7 @@ export function useKordiDesktopActivity({
     setActiveDetailTab('artifacts');
   }, [
     activeArtifacts,
-    activeConversationIsBridge,
+    activeConversationUsesCollaboration,
     activeNav,
     artifactContextKey,
     isDetailPanelCollapsed,
@@ -218,7 +215,6 @@ export function useKordiDesktopActivity({
   return {
     activeContactRequest,
     activeSettingsSection,
-    activeProjectBridgeHost,
     activeChatLiveTurn,
     activeProjectLiveTurn,
     activeDesktopLiveTurn,

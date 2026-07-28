@@ -21,7 +21,6 @@ import {
   type CloudOAuthProvider,
   type CloudProfileUpdateInput,
 } from './authClient';
-import { ensureCloudDeviceRegistered } from './deviceRegistration';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
   CLOUD_SESSION_SIGNED_OUT_EVENT,
@@ -90,11 +89,6 @@ type CompleteCloudAuthResultOptions = {
   saveSession?: (session: StoredSession) => Promise<void>;
   activateAccountStorage?: (accountId: string) => Promise<DesktopCloudAccountStorageActivation>;
   setAuthenticated: (account: CloudAccount) => void;
-  registerDevice: (input: {
-    accountId: string;
-    sessionToken: string;
-    account: CloudAccount;
-  }) => Promise<unknown>;
   reloadWindow?: () => void;
 };
 
@@ -104,7 +98,6 @@ export async function completeCloudAuthResult({
   saveSession: persistSession,
   activateAccountStorage = activateDesktopCloudAccountStorage,
   setAuthenticated: publishAuthenticated,
-  registerDevice,
   reloadWindow,
 }: CompleteCloudAuthResultOptions): Promise<boolean> {
   const session: StoredSession = {
@@ -124,11 +117,6 @@ export async function completeCloudAuthResult({
     return false;
   }
   publishAuthenticated(result.account);
-  void registerDevice({
-    accountId: result.account.accountId,
-    sessionToken: result.session.token,
-    account: result.account,
-  }).catch(() => {});
   return true;
 }
 
@@ -289,7 +277,6 @@ export function useCloudSession({
             setAuthenticated: (next) => {
               if (!cancelled && mountedRef.current) setAuthenticated(next);
             },
-            registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
             reloadWindow: reloadForAccountStorageSwitch,
           });
           if (typeof window !== 'undefined') {
@@ -307,9 +294,6 @@ export function useCloudSession({
         }
         try {
           const me = await authClient.me(stored.token);
-          // Best-effort device registration on bootstrap. We don't await its
-          // failure path — if the bridges register call fails, the user is
-          // still authenticated; we'll retry next sign-in or app launch.
           await completeCloudAuthResult({
             result: {
               account: me,
@@ -322,7 +306,6 @@ export function useCloudSession({
             setAuthenticated: (next) => {
               if (!cancelled && mountedRef.current) setAuthenticated(next);
             },
-            registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
             reloadWindow: reloadForAccountStorageSwitch,
           });
         } catch (caught) {
@@ -353,7 +336,6 @@ export function useCloudSession({
           currentAccountId: accountIdRef.current,
           saveSession,
           setAuthenticated,
-          registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
           reloadWindow: reloadForAccountStorageSwitch,
         });
       } catch (caught) {
@@ -382,7 +364,6 @@ export function useCloudSession({
           currentAccountId: accountIdRef.current,
           saveSession,
           setAuthenticated,
-          registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
           reloadWindow: reloadForAccountStorageSwitch,
         });
       } catch (caught) {
@@ -419,7 +400,6 @@ export function useCloudSession({
             currentAccountId: accountIdRef.current,
             saveSession,
             setAuthenticated,
-            registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
             reloadWindow: reloadForAccountStorageSwitch,
           });
           return;

@@ -2,23 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  bridgeMentionCandidateOptionText,
-  buildBridgeMentionCandidates,
-  filterBridgeMentionCandidatesForConversation,
-  filterBridgeMentionCandidatesForHost,
+  collaborationMentionCandidateOptionText,
+  buildCollaborationMentionCandidates,
+  filterCollaborationMentionCandidatesForConversation,
+  filterCollaborationMentionCandidatesForHost,
   localAgentMentionLabels,
   mentionHandleForLabel,
   mentionsLocalAgent,
   shouldIncludeLocalAgentMentionForConversation,
   mentionScopeConversationForActiveConversation,
-  outreachIdentityForBridgeTarget,
+  outreachIdentityForCollaborationTarget,
   publicLocalAgentMentionText,
-  resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh,
-  resolveMentionedBridgeTarget,
+  resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh,
+  resolveMentionedCollaborationTarget,
 } from '../src/features/chat/messageActions/mentions';
-import type { Conversation, DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
+import type { Conversation, DesktopCollaborationPeer, DesktopCollaborationState, DesktopChatState } from '../src/kordi-app/types';
 
-function peer(overrides: Partial<DesktopBridgePeer> & Pick<DesktopBridgePeer, 'nodeId' | 'runtime'>): DesktopBridgePeer {
+function peer(overrides: Partial<DesktopCollaborationPeer> & Pick<DesktopCollaborationPeer, 'nodeId' | 'runtime'>): DesktopCollaborationPeer {
   return {
     endpoint: `https://${overrides.nodeId}.example`,
     sharedProjects: [],
@@ -28,13 +28,9 @@ function peer(overrides: Partial<DesktopBridgePeer> & Pick<DesktopBridgePeer, 'n
   };
 }
 
-function bridgeStateWithPeers(peers: DesktopBridgePeer[]): DesktopBridgeState {
+function bridgeStateWithPeers(peers: DesktopCollaborationPeer[]): DesktopCollaborationState {
   return {
-    configPath: '/tmp/bridges.json',
-    legacyConfigPath: '/tmp/legacy-bridges.json',
-    conversationsPath: '/tmp/conversations.json',
     conversations: [],
-    localServer: { running: true, serverUrl: 'http://127.0.0.1:1234' },
     activeHostId: 'host-1',
     hosts: [{
       id: 'host-1',
@@ -65,7 +61,7 @@ function bridgeStateWithPeers(peers: DesktopBridgePeer[]): DesktopBridgeState {
   };
 }
 
-function groupConversationWithHumans(humans: Array<{ id: string; name: string; humanId: string; bridgeNodeId: string }>): Conversation {
+function groupConversationWithHumans(humans: Array<{ id: string; name: string; humanId: string; sourceIdentityId: string }>): Conversation {
   return {
     id: 'session:group:test',
     canonicalSessionId: 'session:group:test',
@@ -73,7 +69,7 @@ function groupConversationWithHumans(humans: Array<{ id: string; name: string; h
     type: 'owned-agent',
     subtitle: '',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Group chat',
     participants: ['Host Owner', ...humans.map((human) => human.name)],
@@ -86,7 +82,7 @@ function groupConversationWithHumans(humans: Array<{ id: string; name: string; h
         role: 'self',
         source: 'bridge',
         humanId: 'human-host',
-        bridgeNodeId: 'host-node-1',
+        sourceIdentityId: 'host-node-1',
       },
       ...humans.map((human) => ({
         id: human.id,
@@ -95,7 +91,7 @@ function groupConversationWithHumans(humans: Array<{ id: string; name: string; h
         role: 'person',
         source: 'bridge',
         humanId: human.humanId,
-        bridgeNodeId: human.bridgeNodeId,
+        sourceIdentityId: human.sourceIdentityId,
       })),
     ],
     messages: [],
@@ -110,7 +106,7 @@ function groupConversationWithParticipantNames(names: string[]): Conversation {
     type: 'owned-agent',
     subtitle: '',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Group chat',
     participants: names,
@@ -118,7 +114,7 @@ function groupConversationWithParticipantNames(names: string[]): Conversation {
   } as Conversation;
 }
 
-function directPersonConversationWithHuman(human: { id: string; name: string; humanId: string; bridgeNodeId: string }): Conversation {
+function directPersonConversationWithHuman(human: { id: string; name: string; humanId: string; sourceIdentityId: string }): Conversation {
   return {
     id: 'session:direct-person:test',
     canonicalSessionId: 'session:direct-person:test',
@@ -126,7 +122,7 @@ function directPersonConversationWithHuman(human: { id: string; name: string; hu
     type: 'person',
     subtitle: '',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Host Owner', human.name],
@@ -138,7 +134,7 @@ function directPersonConversationWithHuman(human: { id: string; name: string; hu
         role: 'self',
         source: 'bridge',
         humanId: 'host-human-1',
-        bridgeNodeId: 'host-node-1',
+        sourceIdentityId: 'host-node-1',
       },
       {
         id: human.id,
@@ -147,7 +143,7 @@ function directPersonConversationWithHuman(human: { id: string; name: string; hu
         role: 'person',
         source: 'bridge',
         humanId: human.humanId,
-        bridgeNodeId: human.bridgeNodeId,
+        sourceIdentityId: human.sourceIdentityId,
       },
     ],
     messages: [],
@@ -157,12 +153,12 @@ function directPersonConversationWithHuman(human: { id: string; name: string; hu
 test('mentionHandleForLabel keeps only unicode letters and numbers', () => {
   assert.equal(mentionHandleForLabel("Alice's Kordi"), 'AlicesKordi');
   assert.equal(mentionHandleForLabel('Ann Lee'), 'AnnLee');
-  assert.equal(mentionHandleForLabel('開発 チーム 42'), '開発チーム42');
+  assert.equal(mentionHandleForLabel('Équipe Démo 42'), 'ÉquipeDémo42');
   assert.equal(mentionHandleForLabel('!!!', 'node-123'), 'node123');
 });
 
-test('buildBridgeMentionCandidates creates unique stable handles for sanitized collisions', () => {
-  const bridgeState = bridgeStateWithPeers([
+test('buildCollaborationMentionCandidates creates unique stable handles for sanitized collisions', () => {
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alpha-111',
       displayName: 'Ann Lee',
@@ -183,8 +179,8 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
     }),
   ]);
 
-  const annCandidates = buildBridgeMentionCandidates(bridgeState)
-    .filter((candidate) => candidate.targetKind === 'bridge-person' && candidate.displayLabel.startsWith('Ann'));
+  const annCandidates = buildCollaborationMentionCandidates(collaborationState)
+    .filter((candidate) => candidate.targetKind === 'person' && candidate.displayLabel.startsWith('Ann'));
 
   assert.equal(annCandidates.length, 2);
   assert.deepEqual(
@@ -194,7 +190,7 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
 });
 
 test('bridge mention option text shows display names with product-facing detail labels', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'kd_remote_node_123',
       displayName: "Alice's Kordi",
@@ -206,7 +202,7 @@ test('bridge mention option text shows display names with product-facing detail 
     }),
   ]);
 
-  const options = buildBridgeMentionCandidates(bridgeState).map(bridgeMentionCandidateOptionText);
+  const options = buildCollaborationMentionCandidates(collaborationState).map(collaborationMentionCandidateOptionText);
 
   assert.deepEqual(options, [
     {
@@ -223,7 +219,7 @@ test('bridge mention option text shows display names with product-facing detail 
 });
 
 test('owner-only bridge agents are hidden from mention candidates while their default owner person stays mentionable', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'kd_owner_only',
       displayName: "Alice's Kordi",
@@ -247,13 +243,13 @@ test('owner-only bridge agents are hidden from mention candidates while their de
   ]);
 
   assert.deepEqual(
-    buildBridgeMentionCandidates(bridgeState).map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice'],
+    buildCollaborationMentionCandidates(collaborationState).map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
+    ['person:Alice'],
   );
 });
 
 test('group mention candidates include group people and approved agents, not outside contacts or non-contact agents', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
       displayName: "Alice's Kordi",
@@ -287,15 +283,15 @@ test('group mention candidates include group people and approved agents, not out
     }),
   ]);
   const group = groupConversationWithHumans([
-    { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
-    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
+    { id: 'human:alice', name: 'Alice', humanId: 'human-alice', sourceIdentityId: 'node-alice-person' },
+    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', sourceIdentityId: 'node-bob-person' },
   ]);
 
-  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+  const scoped = filterCollaborationMentionCandidatesForConversation(buildCollaborationMentionCandidates(collaborationState), group);
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob'],
+    ['person:Alice', "agent:Alice's Kordi", 'person:Bob'],
   );
 });
 
@@ -304,7 +300,7 @@ test('participant scoped chats keep the local agent mentionable when self metada
     id: 'human:bob',
     name: 'Bob',
     humanId: 'human-bob',
-    bridgeNodeId: 'node-bob-person',
+    sourceIdentityId: 'node-bob-person',
   });
   direct.participants = ['Bob'];
   direct.canonicalParticipants = direct.canonicalParticipants?.filter((participant) => participant.role !== 'self');
@@ -316,7 +312,7 @@ test('participant scoped chats keep the local agent mentionable when self metada
 });
 
 test('direct person mention candidates include only the contact and their agents', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
       displayName: "Alice's Kordi",
@@ -349,19 +345,19 @@ test('direct person mention candidates include only the contact and their agents
     id: 'human:bob',
     name: 'Bob',
     humanId: 'human-bob',
-    bridgeNodeId: 'node-bob-person',
+    sourceIdentityId: 'node-bob-person',
   });
 
-  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), direct);
+  const scoped = filterCollaborationMentionCandidatesForConversation(buildCollaborationMentionCandidates(collaborationState), direct);
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+    ['person:Bob', "agent:Bob's Kordi"],
   );
 });
 
 test('group mention candidates fall back to participant names when canonical details are missing', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
       displayName: "Alice's Kordi",
@@ -392,16 +388,16 @@ test('group mention candidates fall back to participant names when canonical det
   ]);
   const group = groupConversationWithParticipantNames(['Host Owner', 'Alice', 'Bob']);
 
-  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+  const scoped = filterCollaborationMentionCandidatesForConversation(buildCollaborationMentionCandidates(collaborationState), group);
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+    ['person:Alice', "agent:Alice's Kordi", 'person:Bob', "agent:Bob's Kordi"],
   );
 });
 
 test('group mention scope uses root group participants for legacy child continuations', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
       displayName: "Alice's Kordi",
@@ -432,17 +428,17 @@ test('group mention scope uses root group participants for legacy child continua
   ]);
   const root = {
     ...groupConversationWithHumans([
-      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
-      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
+      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', sourceIdentityId: 'node-alice-person' },
+      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', sourceIdentityId: 'node-bob-person' },
     ]),
     id: 'session:group:root',
     canonicalSessionId: 'session:group:root',
   } as Conversation;
   const child = {
     ...groupConversationWithHumans([
-      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
-      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
-      { id: 'human:carol', name: 'Carol', humanId: 'human-carol', bridgeNodeId: 'node-carol-person' },
+      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', sourceIdentityId: 'node-alice-person' },
+      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', sourceIdentityId: 'node-bob-person' },
+      { id: 'human:carol', name: 'Carol', humanId: 'human-carol', sourceIdentityId: 'node-carol-person' },
     ]),
     id: 'session:group:child',
     canonicalSessionId: 'session:group:child',
@@ -450,11 +446,11 @@ test('group mention scope uses root group participants for legacy child continua
   } as Conversation;
 
   const scope = mentionScopeConversationForActiveConversation(child, [child, root]);
-  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), scope);
+  const scoped = filterCollaborationMentionCandidatesForConversation(buildCollaborationMentionCandidates(collaborationState), scope);
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi", 'bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+    ['person:Alice', "agent:Alice's Kordi", 'person:Bob', "agent:Bob's Kordi"],
   );
 });
 
@@ -467,8 +463,8 @@ test('group mention scope keeps active child participants when legacy root has n
   } as Conversation;
   const child = {
     ...groupConversationWithHumans([
-      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
-      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-person' },
+      { id: 'human:alice', name: 'Alice', humanId: 'human-alice', sourceIdentityId: 'node-alice-person' },
+      { id: 'human:bob', name: 'Bob', humanId: 'human-bob', sourceIdentityId: 'node-bob-person' },
     ]),
     id: 'session:group:child-with-participants',
     canonicalSessionId: 'session:group:child-with-participants',
@@ -482,7 +478,7 @@ test('group mention scope keeps active child participants when legacy root has n
 });
 
 test('group mention candidates hide non-contact contacts-only agents while keeping the person mentionable', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-bob-agent',
       displayName: "Bob's Kordi",
@@ -497,19 +493,19 @@ test('group mention candidates hide non-contact contacts-only agents while keepi
     }),
   ]);
   const group = groupConversationWithHumans([
-    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-agent' },
+    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', sourceIdentityId: 'node-bob-agent' },
   ]);
 
-  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+  const scoped = filterCollaborationMentionCandidatesForConversation(buildCollaborationMentionCandidates(collaborationState), group);
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Bob'],
+    ['person:Bob'],
   );
 });
 
 test('group mention candidates include server-reachable agents even without contact approval', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-bob-agent',
       displayName: "Bob's Kordi",
@@ -524,19 +520,19 @@ test('group mention candidates include server-reachable agents even without cont
     }),
   ]);
   const group = groupConversationWithHumans([
-    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', bridgeNodeId: 'node-bob-agent' },
+    { id: 'human:bob', name: 'Bob', humanId: 'human-bob', sourceIdentityId: 'node-bob-agent' },
   ]);
 
-  const scoped = filterBridgeMentionCandidatesForConversation(buildBridgeMentionCandidates(bridgeState), group);
+  const scoped = filterCollaborationMentionCandidatesForConversation(buildCollaborationMentionCandidates(collaborationState), group);
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Bob', "bridge-agent:Bob's Kordi"],
+    ['person:Bob', "agent:Bob's Kordi"],
   );
 });
 
 test('mention candidates hide active host person and agent duplicates', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'host-node-1',
       displayName: "Host Owner's Kordi",
@@ -557,19 +553,19 @@ test('mention candidates hide active host person and agent duplicates', () => {
     }),
   ]);
 
-  const candidates = filterBridgeMentionCandidatesForHost(
-    buildBridgeMentionCandidates(bridgeState),
-    bridgeState.hosts[0],
+  const candidates = filterCollaborationMentionCandidatesForHost(
+    buildCollaborationMentionCandidates(collaborationState),
+    collaborationState.hosts[0],
   );
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi"],
+    ['person:Alice', "agent:Alice's Kordi"],
   );
 });
 
 test('send-time group mention action resolves member agents but not people or outside agents', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alice-agent',
       displayName: "Alice's Kordi",
@@ -590,14 +586,14 @@ test('send-time group mention action resolves member agents but not people or ou
     }),
   ]);
   const group = groupConversationWithHumans([
-    { id: 'human:alice', name: 'Alice', humanId: 'human-alice', bridgeNodeId: 'node-alice-person' },
+    { id: 'human:alice', name: 'Alice', humanId: 'human-alice', sourceIdentityId: 'node-alice-person' },
   ]);
 
-  const aliceAgent = resolveMentionedBridgeTarget('@AlicesKordi please join', bridgeState, group, { targetKind: 'bridge-agent' });
-  const alicePerson = resolveMentionedBridgeTarget('@Alice please join', bridgeState, group, { targetKind: 'bridge-agent' });
-  const carolAgent = resolveMentionedBridgeTarget('@CarolsKordi please join', bridgeState, group, { targetKind: 'bridge-agent' });
+  const aliceAgent = resolveMentionedCollaborationTarget('@AlicesKordi please join', collaborationState, group, { targetKind: 'agent' });
+  const alicePerson = resolveMentionedCollaborationTarget('@Alice please join', collaborationState, group, { targetKind: 'agent' });
+  const carolAgent = resolveMentionedCollaborationTarget('@CarolsKordi please join', collaborationState, group, { targetKind: 'agent' });
 
-  assert.equal(aliceAgent?.targetKind, 'bridge-agent');
+  assert.equal(aliceAgent?.targetKind, 'agent');
   assert.equal(aliceAgent?.peer.nodeId, 'node-alice-agent');
   assert.equal(aliceAgent?.requestText, 'please join');
   assert.equal(alicePerson, null);
@@ -605,15 +601,15 @@ test('send-time group mention action resolves member agents but not people or ou
 });
 
 test('send-time group mention action refreshes shared Cloud Agents before resolving plain text handles', async () => {
-  const bridgeState = bridgeStateWithPeers([]);
+  const collaborationState = bridgeStateWithPeers([]);
   const group = groupConversationWithHumans([
-    { id: 'human:owner', name: '111', humanId: 'acct_owner', bridgeNodeId: 'acct_owner' },
+    { id: 'human:owner', name: '111', humanId: 'acct_owner', sourceIdentityId: 'acct_owner' },
   ]);
   let refreshCount = 0;
 
-  const target = await resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh(
+  const target = await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
     '@KordiProjectDriver hi',
-    bridgeState,
+    collaborationState,
     group,
     [],
     async () => {
@@ -632,7 +628,7 @@ test('send-time group mention action refreshes shared Cloud Agents before resolv
   );
 
   assert.equal(refreshCount, 1);
-  assert.equal(target?.targetKind, 'bridge-agent');
+  assert.equal(target?.targetKind, 'agent');
   assert.equal(target?.peer.agentId, 'cloud_agent_project_driver');
   assert.equal(target?.peer.humanId, 'acct_owner');
   assert.equal(target?.displayLabel, 'Kordi Project Driver');
@@ -640,7 +636,7 @@ test('send-time group mention action refreshes shared Cloud Agents before resolv
 });
 
 test('group mention resolution ignores stale same-name agents with a different participant identity', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-stale-alice-agent',
       displayName: "Alice's Kordi",
@@ -661,17 +657,17 @@ test('group mention resolution ignores stale same-name agents with a different p
     }),
   ]);
   const group = groupConversationWithHumans([
-    { id: 'human:alice-current', name: 'Alice', humanId: 'human-current-alice', bridgeNodeId: 'node-current-alice-agent' },
+    { id: 'human:alice-current', name: 'Alice', humanId: 'human-current-alice', sourceIdentityId: 'node-current-alice-agent' },
   ]);
 
-  const target = resolveMentionedBridgeTarget('@AlicesKordi please check this', bridgeState, group, { targetKind: 'bridge-agent' });
+  const target = resolveMentionedCollaborationTarget('@AlicesKordi please check this', collaborationState, group, { targetKind: 'agent' });
 
   assert.equal(target?.peer.nodeId, 'node-current-alice-agent');
   assert.equal(target?.peer.humanId, 'human-current-alice');
 });
 
-test('buildBridgeMentionCandidates does not expose node id duplicates when friendly labels exist', () => {
-  const bridgeState = bridgeStateWithPeers([
+test('buildCollaborationMentionCandidates does not expose node id duplicates when friendly labels exist', () => {
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'kd_remote_node_123',
       displayName: "Alice's Kordi",
@@ -683,17 +679,17 @@ test('buildBridgeMentionCandidates does not expose node id duplicates when frien
     }),
   ]);
 
-  const candidates = buildBridgeMentionCandidates(bridgeState);
+  const candidates = buildCollaborationMentionCandidates(collaborationState);
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi"],
+    ['person:Alice', "agent:Alice's Kordi"],
   );
   assert.equal(candidates.some((candidate) => candidate.displayLabel === 'kd_remote_node_123'), false);
 });
 
-test('buildBridgeMentionCandidates does not duplicate a person from their paired agent peer', () => {
-  const bridgeState = bridgeStateWithPeers([
+test('buildCollaborationMentionCandidates does not duplicate a person from their paired agent peer', () => {
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'acct_alice',
       displayName: 'Alice',
@@ -714,16 +710,16 @@ test('buildBridgeMentionCandidates does not duplicate a person from their paired
     }),
   ]);
 
-  const candidates = buildBridgeMentionCandidates(bridgeState);
+  const candidates = buildCollaborationMentionCandidates(collaborationState);
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-person:Alice', "bridge-agent:Alice's Kordi"],
+    ['person:Alice', "agent:Alice's Kordi"],
   );
 });
 
-test('buildBridgeMentionCandidates falls back to node id when no friendly labels exist', () => {
-  const bridgeState = bridgeStateWithPeers([
+test('buildCollaborationMentionCandidates falls back to node id when no friendly labels exist', () => {
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'kd_unlabeled_node_123',
       displayName: null,
@@ -735,16 +731,16 @@ test('buildBridgeMentionCandidates falls back to node id when no friendly labels
     }),
   ]);
 
-  const candidates = buildBridgeMentionCandidates(bridgeState);
+  const candidates = buildCollaborationMentionCandidates(collaborationState);
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['bridge-agent:kd_unlabeled_node_123'],
+    ['agent:kd_unlabeled_node_123'],
   );
 });
 
-test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete candidates', () => {
-  const bridgeState = bridgeStateWithPeers([
+test('resolveMentionedCollaborationTarget uses the same unique handle as autocomplete candidates', () => {
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-alpha-111',
       displayName: 'Ann Lee',
@@ -765,7 +761,7 @@ test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete c
     }),
   ]);
 
-  const target = resolveMentionedBridgeTarget('@AnnLeehumanbet please review', bridgeState);
+  const target = resolveMentionedCollaborationTarget('@AnnLeehumanbet please review', collaborationState);
 
   assert.equal(target?.peer.nodeId, 'node-beta-333');
   assert.equal(target?.label, 'AnnLeehumanbet');
@@ -774,7 +770,7 @@ test('resolveMentionedBridgeTarget uses the same unique handle as autocomplete c
 });
 
 test('outreach identity preserves display label while mention metadata stores safe handle', () => {
-  const bridgeState = bridgeStateWithPeers([
+  const collaborationState = bridgeStateWithPeers([
     peer({
       nodeId: 'node-kordi-1',
       displayName: "Alice's Kordi",
@@ -786,11 +782,11 @@ test('outreach identity preserves display label while mention metadata stores sa
     }),
   ]);
 
-  const target = resolveMentionedBridgeTarget('@AlicesKordi summarize this', bridgeState);
+  const target = resolveMentionedCollaborationTarget('@AlicesKordi summarize this', collaborationState);
   assert.ok(target);
   assert.equal(target.label, 'AlicesKordi');
   assert.equal(target.displayLabel, "Alice's Kordi");
-  assert.equal(outreachIdentityForBridgeTarget(target).targetDisplayName, "Alice's Kordi");
+  assert.equal(outreachIdentityForCollaborationTarget(target).targetDisplayName, "Alice's Kordi");
 });
 
 test('legacy display-label matching works only when unambiguous', () => {
@@ -807,7 +803,7 @@ test('legacy display-label matching works only when unambiguous', () => {
   ]);
 
   assert.equal(
-    resolveMentionedBridgeTarget("@Alice's Kordi summarize", unambiguousState)?.peer.nodeId,
+    resolveMentionedCollaborationTarget("@Alice's Kordi summarize", unambiguousState)?.peer.nodeId,
     'node-alice-1',
   );
 
@@ -832,7 +828,7 @@ test('legacy display-label matching works only when unambiguous', () => {
     }),
   ]);
 
-  assert.equal(resolveMentionedBridgeTarget("@Alice's Kordi summarize", ambiguousState), null);
+  assert.equal(resolveMentionedCollaborationTarget("@Alice's Kordi summarize", ambiguousState), null);
 });
 
 test('publicLocalAgentMentionText rewrites first-person agent mentions for remote viewers', () => {
@@ -861,11 +857,11 @@ test('local agent labels include sanitized aliases', () => {
 });
 
 test('mentionsLocalAgent does not treat the local human display name as an agent mention', () => {
-  const bridgeState = bridgeStateWithPeers([]);
-  bridgeState.hosts[0].displayName = 'Shuyheretest';
-  bridgeState.hosts[0].ownerName = 'Shuyheretest';
-  bridgeState.hosts[0].agents[0].label = 'Kordi';
+  const collaborationState = bridgeStateWithPeers([]);
+  collaborationState.hosts[0].displayName = 'Shuyheretest';
+  collaborationState.hosts[0].ownerName = 'Shuyheretest';
+  collaborationState.hosts[0].agents[0].label = 'Kordi';
 
-  assert.equal(mentionsLocalAgent('@Shuyheretest hi', null, bridgeState), false);
-  assert.equal(mentionsLocalAgent('@ShuyheretestsKordi hi', null, bridgeState), true);
+  assert.equal(mentionsLocalAgent('@Shuyheretest hi', null, collaborationState), false);
+  assert.equal(mentionsLocalAgent('@ShuyheretestsKordi hi', null, collaborationState), true);
 });

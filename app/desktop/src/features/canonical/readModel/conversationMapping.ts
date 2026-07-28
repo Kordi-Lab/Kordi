@@ -2,7 +2,7 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
   Conversation,
-  ConversationBridgeTarget,
+  ConversationCollaborationTarget,
   ConversationParticipant,
   Message,
 } from '@/kordi-app/types';
@@ -14,6 +14,7 @@ import {
   titleSourceFromMetadata,
 } from '@/features/chat/sessionTitlePolicy';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
+import { compatibleSourceHostId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 
 import { stringValue } from './messageMapping';
@@ -126,12 +127,12 @@ export function sessionViewMetadata(session: CanonicalSessionState['sessions'][n
   return session.metadata;
 }
 
-export function syntheticBridgeTarget(
+export function syntheticCollaborationTarget(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
-): ConversationBridgeTarget | null {
+): ConversationCollaborationTarget | null {
   const metadata = sessionMetadata(session);
-  const metadataHostId = stringValue(metadata.bridgeHostId);
+  const metadataHostId = compatibleSourceHostId(metadata);
   const metadataNodeId = stringValue(metadata.peerNodeId);
   const runtime = stringValue(metadata.peerRuntime);
   const metadataDisplayName = stringValue(metadata.peerDisplayName);
@@ -140,16 +141,16 @@ export function syntheticBridgeTarget(
   const metadataAgentId = stringValue(metadata.peerAgentId) ?? stringValue(metadata.targetAgentId);
 
   const matchingParticipant = metadataNodeId
-    ? participants.find((participant) => participant.bridgeNodeId === metadataNodeId)
+    ? participants.find((participant) => participant.sourceIdentityId === metadataNodeId)
     : participants.find((participant) => (
-        participant.source === 'bridge'
+        ['cloud', 'collaboration', 'bridge'].includes(participant.source ?? '')
         && participant.kind === 'human'
         && participant.role !== 'self'
-        && participant.bridgeHostId
-        && participant.bridgeNodeId
+        && participant.sourceHostId
+        && participant.sourceIdentityId
       ));
-  const hostId = metadataHostId ?? matchingParticipant?.bridgeHostId;
-  const nodeId = metadataNodeId ?? matchingParticipant?.bridgeNodeId;
+  const hostId = metadataHostId ?? matchingParticipant?.sourceHostId;
+  const nodeId = metadataNodeId ?? matchingParticipant?.sourceIdentityId;
   if (!hostId || !nodeId) return null;
 
   return {
@@ -251,9 +252,9 @@ function directPersonContactTitle(
 ) {
   if (session.kind !== 'direct-person' && session.kind !== 'relationship') return null;
   const metadata = sessionMetadata(session);
-  const isBridgeDirectPerson = stringValue(metadata.source) === 'bridge-session-thread'
-    || Boolean(stringValue(metadata.bridgeHostId) || stringValue(metadata.peerNodeId));
-  if (!isBridgeDirectPerson) return null;
+  const isLegacyCollaborationDirectPerson = stringValue(metadata.source) === 'bridge-session-thread'
+    || Boolean(compatibleSourceHostId(metadata) || stringValue(metadata.peerNodeId));
+  if (!isLegacyCollaborationDirectPerson) return null;
   const primary = session.primaryIdentityId
     ? participants.find((participant) => participant.id === session.primaryIdentityId && participant.kind === 'human')
     : null;
@@ -314,7 +315,7 @@ export function syntheticConversation(
     }
     return acc;
   }, {});
-  const bridgeTarget = syntheticBridgeTarget(session, participants);
+  const collaborationTarget = syntheticCollaborationTarget(session, participants);
   const updatedAtLabel = formatDesktopLastActiveLabel(sessionChatActivityAtMs(session, rawMessages));
 
   const displayTitle = sessionConversationDisplayTitle(session, participants, messages, session.title, { preferFallback: sessionPrefersPersistedTitle(session) });
@@ -328,8 +329,8 @@ export function syntheticConversation(
     type: syntheticConversationType(session, participants),
     subtitle: buildSubtitle(messages, session.title),
     unread: sessionUnreadCount(session),
-    bridges: bridgeTarget ? ['Bridge'] : ['Local'],
-    trust: bridgeTarget ? 'Bridge' : 'Owned',
+    collaborationSources: collaborationTarget ? ['Cloud'] : ['Local'],
+    trust: collaborationTarget ? 'Cloud' : 'Owned',
     directness: conversationChatKindLabel({
       id: session.id,
       canonicalSessionId: session.id,
@@ -344,7 +345,7 @@ export function syntheticConversation(
     participantAvatarSeeds,
     participantSpaceId: syntheticParticipantSpaceId(session),
     metadata: sessionViewMetadata(session),
-    bridgeTarget,
+    collaborationTarget: collaborationTarget,
     canonicalStoragePath: undefined,
     canonicalParticipantCount: participants.length,
     canonicalMessageCount: messages.length,

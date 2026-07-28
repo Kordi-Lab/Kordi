@@ -24,7 +24,7 @@ function humanMessage(overrides: Partial<Message> = {}): Message {
     text: '@ShenzhesKordi hello',
     time: '16:48',
     statusChips: ['read'],
-    mentions: [{ label: 'ShenzhesKordi', targetKind: 'bridge-agent' }],
+    mentions: [{ label: 'ShenzhesKordi', targetKind: 'agent' }],
     ...overrides,
   };
 }

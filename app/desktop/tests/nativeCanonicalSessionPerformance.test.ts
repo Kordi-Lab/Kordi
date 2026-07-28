@@ -8,7 +8,7 @@ const tauriLibSource = () => readFileSync(new URL('../src-tauri/src/lib.rs', imp
 const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
 const modelsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/models.rs', import.meta.url), 'utf8');
 const typesSource = () => readFileSync(new URL('../src/kordi-app/types.ts', import.meta.url), 'utf8');
-const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 
 test('canonical state loading maps session_messages in one query instead of N+1 select_message calls', () => {
   const source = commandsSource();

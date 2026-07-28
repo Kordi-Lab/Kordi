@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { isCanonicalBridgeSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
+import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
@@ -78,7 +78,7 @@ export function composerConfigTargetSessionId({
 
   const sessionId = activeConvCanonicalSessionId?.trim() || activeConvId.trim();
   if (!sessionId) return desktopActiveSessionId ?? null;
-  if (activeConvId.startsWith('bridge:') || isCanonicalBridgeSessionId(sessionId) || isCanonicalCloudSessionId(sessionId)) {
+  if (activeConvId.startsWith('bridge:') || isLegacyCanonicalCollaborationSessionId(sessionId) || isCanonicalCloudSessionId(sessionId)) {
     return null;
   }
   return activeConvId;

@@ -30,7 +30,7 @@ type CloudPeerChatPanelProps = {
 };
 
 export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatPanelProps) {
-  const peerAccountId = contact.bridgePeerNodeId ?? null;
+  const peerAccountId = contact.sourceParticipantId ?? null;
   const conversation = useCloudConversation(account, peerAccountId);
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);

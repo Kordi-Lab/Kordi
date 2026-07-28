@@ -16,7 +16,7 @@ function conversation(): Conversation {
     type: 'group',
     subtitle: 'hi',
     unread: 0,
-    bridges: [],
+    collaborationSources: [],
     trust: 'Cloud',
     directness: 'Group',
     participants: ['Me'],
@@ -79,9 +79,9 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
     setActiveContactGroup: () => {},
     setActiveContactId: () => {},
     displayedAgents: [],
-    activeBridgeHost: null,
+    activeCollaborationHost: null,
     localProfileAvatarSeed: 'me',
-    isBridgePolling: false,
+    isCollaborationSyncing: false,
     onRefreshBridge: () => {},
     onCopyBridgeHostUrl: () => {},
     onCreateBridgeDraft: () => {},
@@ -193,7 +193,7 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
 
 test('desktop update popover uses a quiet theme-aware surface in dark mode', () => {
   const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
-  const updateSurface = css.match(/\.bridge-app \.app-popover\.app-update-popover \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const updateSurface = css.match(/\.kordi-app \.app-popover\.app-update-popover \{([\s\S]*?)\n\}/)?.[1] ?? '';
 
   assert.match(updateSurface, /--app-update-surface: var\(--app-transient-surface-bg\)/);
   assert.match(updateSurface, /--app-update-edge: var\(--app-transient-border\)/);
@@ -202,7 +202,7 @@ test('desktop update popover uses a quiet theme-aware surface in dark mode', () 
   assert.match(updateSurface, /box-shadow: var\(--app-update-shadow\) !important/);
   assert.doesNotMatch(updateSurface, /var\(--app-shadow-float\)/);
   assert.doesNotMatch(updateSurface, /inset 0 1px 0/);
-  assert.match(css, /\.bridge-app\.theme-light \.app-popover\.app-update-popover/);
+  assert.match(css, /\.kordi-app\.theme-light \.app-popover\.app-update-popover/);
   assert.match(css, /\.app-update-popover-status-danger/);
   assert.match(css, /\.app-update-popover-action:focus-visible/);
 });

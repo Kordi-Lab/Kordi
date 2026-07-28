@@ -99,7 +99,7 @@ test('extractSessionArtifacts keeps generated artifacts but hides package and sk
         toolSnapshot({
           id: 'skill',
           name: 'write',
-          arguments: JSON.stringify({ path: 'app/desktop/docs/superpowers/skills/reviewer/SKILL.md' }),
+          arguments: JSON.stringify({ path: 'app/desktop/docs/generated/skills/reviewer/SKILL.md' }),
           resultText: 'wrote skill notes',
         }),
         toolSnapshot({
@@ -136,7 +136,7 @@ test('extractSessionArtifacts keeps generated artifacts but hides package and sk
 
   assert.equal(byPath.get('docs/reports/kordi-project-structure-report.md')?.category, 'artifact');
   assert.equal(byPath.has('package.json'), false);
-  assert.equal(byPath.has('app/desktop/docs/superpowers/skills/reviewer/SKILL.md'), false);
+  assert.equal(byPath.has('app/desktop/docs/generated/skills/reviewer/SKILL.md'), false);
   assert.equal(byPath.has('app/desktop/src/pages/TaskActivityDashboardPanel.tsx'), false);
   assert.equal(byPath.get('app/desktop/src/reports/report.ts')?.category, 'related');
   assert.equal(byPath.get('tests/generated-report.spec.ts')?.category, 'related');
@@ -144,7 +144,7 @@ test('extractSessionArtifacts keeps generated artifacts but hides package and sk
 });
 
 test('artifact inspector renders generated artifacts like files without full paths', () => {
-  const absolutePath = '/Users/shuyang/.config/superpowers/worktrees/kordi/issue-282-tui-tool-previews/.superpowers/brainstorm/53234-1778054524/content/website-directions.html';
+  const absolutePath = '/Users/example/.local/worktrees/kordi/issue-282-tui-tool-previews/.scratch/brainstorm/53234-1778054524/content/website-directions.html';
   const markup = renderToStaticMarkup(createElement(ArtifactInspector, {
     isNativeShell: false,
     activeArtifactId: null,
@@ -168,7 +168,7 @@ test('artifact inspector renders generated artifacts like files without full pat
   assert.match(markup, /content/);
   assert.doesNotMatch(markup, /\/Users\/shuyang/);
   assert.doesNotMatch(markup, /worktrees\/kordi/);
-  assert.doesNotMatch(markup, /\.superpowers\/brainstorm\/53234-1778054524\/content\/website-directions\.html/);
+  assert.doesNotMatch(markup, /\.scratch\/brainstorm\/53234-1778054524\/content\/website-directions\.html/);
 });
 
 test('artifact preview renders html and markdown as previewable documents', () => {

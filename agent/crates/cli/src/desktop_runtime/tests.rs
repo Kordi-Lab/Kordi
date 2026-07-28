@@ -2,6 +2,22 @@ use super::*;
 use kordi_core::settings::ProviderOverride;
 use std::sync::Mutex;
 
+#[test]
+fn session_prompt_context_strips_current_and_legacy_wrappers() {
+    assert_eq!(
+        strip_session_prompt_context(
+            "base\n\n<desktop_session_context>\ncurrent\n</desktop_session_context>"
+        ),
+        "base"
+    );
+    assert_eq!(
+        strip_session_prompt_context(
+            "base\n\n<desktop_bridge_outreach_context>\nlegacy\n</desktop_bridge_outreach_context>"
+        ),
+        "base"
+    );
+}
+
 fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
     model_options::effective_thinking_for_model_with_auth(requested, model, None)
 }
@@ -169,7 +185,7 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
 }
 
 #[test]
-fn bridge_agent_auth_override_resolves_choice_without_changing_global_provider() {
+fn session_agent_auth_override_resolves_choice_without_changing_global_provider() {
     let _lock = env_lock().lock().unwrap();
     let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "env-openai-key");
     let choice = SessionAuthChoiceOverride {

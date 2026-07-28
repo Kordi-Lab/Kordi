@@ -94,7 +94,10 @@ This public repo is currently set up to support:
 
 See `docs/self-host-guide.md` for the full setup guide and deployment tradeoffs.
 
-If your users are connecting through **Kordi Desktop**, they do not need to manually install the Bridges CLI or local daemon just to join a hosted server. The desktop app bundles the local bridge sidecar it uses for connection and state management.
+The standalone Bridges network is not a Kordi Desktop dependency. Kordi Desktop
+connects directly to the hosted Cloud API and does not build, bundle, or launch
+the Bridges CLI. Teams that deliberately operate the standalone network must
+install, configure, release, and support its CLI or daemon independently.
 
 ## Configure your agent runtime to use the bridge network
 

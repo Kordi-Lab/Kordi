@@ -9,7 +9,7 @@ import type { OverlayShellArgs } from '@/app/kordiShellSlots.types';
 
 function OverlayPortal({ children }: { children: ReactNode }) {
   if (typeof document === 'undefined') return <>{children}</>;
-  return createPortal(children, document.querySelector('.bridge-app') ?? document.body);
+  return createPortal(children, document.querySelector('.kordi-app') ?? document.body);
 }
 
 export function assembleOverlaySlots(args: OverlayShellArgs) {

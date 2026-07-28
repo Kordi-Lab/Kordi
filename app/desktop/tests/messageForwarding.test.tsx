@@ -59,10 +59,10 @@ test('createForwardedMessageDraft preserves an image payload instead of replacin
 
 test('buildForwardDestinations exposes dense selectable chat labels', () => {
   const destinations = buildForwardDestinations([
-    { id: 'local-draft-chat', name: 'Draft', type: 'person', subtitle: '', unread: 0, bridges: [], trust: '', directness: '', participants: [], messages: [] },
-    { id: 'conv:one', canonicalSessionId: 'session:self-agent:one', name: 'Research topic', type: 'owned-agent', subtitle: 'Latest message preview', unread: 0, bridges: [], trust: '', directness: 'Agent chat', participants: [], messages: [] },
-    { id: 'conv:two', canonicalSessionId: 'session:group:two', name: 'Project group', type: 'person', subtitle: '3 members', unread: 0, bridges: [], trust: '', directness: 'Group chat', participants: [], messages: [] },
-    { id: 'conv:three', canonicalSessionId: 'session:direct-person:three', name: 'Alice', type: 'person', subtitle: 'Latest message preview', unread: 0, bridges: [], trust: '', directness: 'Person chat', participants: [], messages: [] },
+    { id: 'local-draft-chat', name: 'Draft', type: 'person', subtitle: '', unread: 0, collaborationSources: [], trust: '', directness: '', participants: [], messages: [] },
+    { id: 'conv:one', canonicalSessionId: 'session:self-agent:one', name: 'Research topic', type: 'owned-agent', subtitle: 'Latest message preview', unread: 0, collaborationSources: [], trust: '', directness: 'Agent chat', participants: [], messages: [] },
+    { id: 'conv:two', canonicalSessionId: 'session:group:two', name: 'Project group', type: 'person', subtitle: '3 members', unread: 0, collaborationSources: [], trust: '', directness: 'Group chat', participants: [], messages: [] },
+    { id: 'conv:three', canonicalSessionId: 'session:direct-person:three', name: 'Alice', type: 'person', subtitle: 'Latest message preview', unread: 0, collaborationSources: [], trust: '', directness: 'Person chat', participants: [], messages: [] },
   ], 'local-draft-chat');
 
   assert.deepEqual(destinations.map((destination) => destination.id), [
@@ -120,7 +120,7 @@ test('forward confirmation requires an existing destination, appends there, and 
   assert.match(body, /const destinationConversation = chatConversations\.find/);
   assert.match(body, /if \(!destinationConversation\)/);
   assert.match(body, /appendCanonicalMessage\(/);
-  assert.match(body, /sendCloudBridgeMessage\(directCloudConversationId/);
+  assert.match(body, /sendCloudCollaborationMessage\(directCloudConversationId/);
   assert.match(body, /prepareCloudForwardAttachments\(draft\.attachments\)/);
   assert.match(body, /attachments: draft\.attachments/);
   assert.match(body, /attachments,/);

@@ -29,8 +29,8 @@ function baseArgs(overrides: Partial<RightDetailShellArgs> = {}): RightDetailShe
       participants: [], artifacts: 0, tasks: 0, messages: [],
     },
     activeProjectLastMessage: undefined,
-    activeProjectBridgeHost: null,
-    activeProjectBridgeProject: null,
+    activeProjectCollaborationHost: null,
+    activeProjectCollaborationProject: null,
     isProjectBridgeBusy: false,
     bridgeInvite: null,
     handleCreateProjectBridgeInvite: async () => {},
@@ -45,7 +45,7 @@ function baseArgs(overrides: Partial<RightDetailShellArgs> = {}): RightDetailShe
       type: 'person',
       subtitle: 'session:group:cloud-one',
       unread: 0,
-      bridges: ['Cloud'],
+      collaborationSources: ['Cloud'],
       trust: 'Cloud',
       directness: 'Group chat',
       participants: ['Me'],
@@ -54,12 +54,12 @@ function baseArgs(overrides: Partial<RightDetailShellArgs> = {}): RightDetailShe
     },
     activeConvHasSubtitle: true,
     activeLastMessage: undefined,
-    activeConversationIsBridge: true,
-    activeBridgeConversationHost: null,
-    activeBridgeConversation: null,
-    activeBridgeAwaitingReply: false,
-    isBridgePolling: false,
-    lastBridgePollAtLabel: null,
+    activeConversationUsesCollaboration: true,
+    activeCollaborationConversationHost: null,
+    activeCollaborationConversation: null,
+    activeCollaborationAwaitingReply: false,
+    isCollaborationSyncing: false,
+    lastCollaborationSyncAtLabel: null,
     activeSessionProject: null,
     activeQueuedDesktopMessages: [],
     chatTranscriptScrollRef: { current: null },
@@ -75,11 +75,11 @@ test('chat detail panel hides internal delivery metadata from normal user surfac
   assert.doesNotMatch(source, /label="Host"/);
   assert.doesNotMatch(source, /label="Peer node"/);
   assert.doesNotMatch(source, /label="Runtime"/);
-  assert.doesNotMatch(source, /activeBridgeConversationHostNodeId \|\| 'desktop node'/);
-  assert.doesNotMatch(source, /activeConv\.bridges\.join/);
+  assert.doesNotMatch(source, /activeCollaborationConversationHostNodeId \|\| 'desktop node'/);
+  assert.doesNotMatch(source, /activeConv\.collaborationSources\.join/);
 });
 
-test('Cloud Edition chat destination contract includes icon tabs and renders one full page', () => {
+test('hosted chat destination contract includes icon tabs and renders one full page', () => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
@@ -148,6 +148,6 @@ test('right rail does not inherit main panel shadows or transparency that create
   );
   assert.match(
     themeOverridesCss,
-    /\.bridge-app\.theme-light\s+\.app-right-detail-rail\s*{[^}]*box-shadow:\s*none\s*;[^}]*}/s,
+    /\.kordi-app\.theme-light\s+\.app-right-detail-rail\s*{[^}]*box-shadow:\s*none\s*;[^}]*}/s,
   );
 });

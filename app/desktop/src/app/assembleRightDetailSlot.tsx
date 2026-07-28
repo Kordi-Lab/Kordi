@@ -77,14 +77,14 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           activeConvHasSubtitle={args.activeConvHasSubtitle}
           activeLastMessage={args.activeLastMessage}
           activeLiveTurn={args.desktopLiveTurn?.sessionId === activeChatSessionId ? args.desktopLiveTurn : null}
-          activeConversationIsBridge={args.activeConversationIsBridge}
-          activeBridgeConversationHostNodeId={args.activeBridgeConversationHost?.nodeId}
-          activeBridgeConversationHostUrl={args.activeBridgeConversationHost?.serverUrl}
-          activeBridgeConversation={args.activeBridgeConversation}
-          activeBridgeAwaitingReply={args.activeBridgeAwaitingReply}
-          isBridgePolling={args.isBridgePolling}
-          lastBridgePollAtLabel={args.lastBridgePollAtLabel}
-          activeSessionProject={!args.activeConversationIsBridge ? args.activeSessionProject : null}
+          activeConversationUsesCollaboration={args.activeConversationUsesCollaboration}
+          activeCollaborationConversationHostNodeId={args.activeCollaborationConversationHost?.nodeId}
+          activeCollaborationConversationHostUrl={args.activeCollaborationConversationHost?.serverUrl}
+          activeCollaborationConversation={args.activeCollaborationConversation}
+          activeCollaborationAwaitingReply={args.activeCollaborationAwaitingReply}
+          isCollaborationSyncing={args.isCollaborationSyncing}
+          lastCollaborationSyncAtLabel={args.lastCollaborationSyncAtLabel}
+          activeSessionProject={!args.activeConversationUsesCollaboration ? args.activeSessionProject : null}
           artifacts={args.activeChatArtifacts}
           activeArtifactId={args.activeArtifactId}
           onSelectArtifact={args.setActiveArtifactId}

@@ -96,51 +96,51 @@
 /* Native macOS window vibrancy is deliberately visible through the complete
  * left navigation stack. The workspace remains opaque, while the lighter
  * rail and session tint preserve contrast over the system material. */
-html.kordi-native-shell .bridge-app.app-page-bg,
-html.kordi-native-shell .bridge-app .app-shell,
-html.kordi-native-shell .bridge-app .app-side-shell {
+html.kordi-native-shell .kordi-app.app-page-bg,
+html.kordi-native-shell .kordi-app .app-shell,
+html.kordi-native-shell .kordi-app .app-side-shell {
   background: transparent;
 }
 
-html.kordi-native-shell .bridge-app .app-shell,
-html.kordi-native-shell .bridge-app .app-side-shell,
-html.kordi-native-shell .bridge-app .app-session-panel,
-html.kordi-native-shell .bridge-app .app-main-panel {
+html.kordi-native-shell .kordi-app .app-shell,
+html.kordi-native-shell .kordi-app .app-side-shell,
+html.kordi-native-shell .kordi-app .app-session-panel,
+html.kordi-native-shell .kordi-app .app-main-panel {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-html.kordi-native-shell .bridge-app .app-shell {
+html.kordi-native-shell .kordi-app .app-shell {
   box-shadow: none;
 }
 
-html.kordi-native-shell .bridge-app .app-workspace-sidebar,
-html.kordi-native-shell .bridge-app .app-main-panel {
+html.kordi-native-shell .kordi-app .app-workspace-sidebar,
+html.kordi-native-shell .kordi-app .app-main-panel {
   border-radius: 0;
 }
 
-html.kordi-native-shell .bridge-app .app-left-glass {
+html.kordi-native-shell .kordi-app .app-left-glass {
   background: var(--app-nav-rail-glass-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-html.kordi-native-shell .bridge-app .app-session-panel {
+html.kordi-native-shell .kordi-app .app-session-panel {
   background: var(--app-native-session-bg);
   box-shadow: none;
 }
 
-html.kordi-native-shell .bridge-app .app-main-panel {
+html.kordi-native-shell .kordi-app .app-main-panel {
   background: var(--app-native-main-bg);
   box-shadow: none;
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  html.kordi-native-shell .bridge-app .app-left-glass {
+  html.kordi-native-shell .kordi-app .app-left-glass {
     background: var(--app-nav-rail-glass-fallback);
   }
 
-  html.kordi-native-shell .bridge-app .app-session-panel {
+  html.kordi-native-shell .kordi-app .app-session-panel {
     background: var(--app-native-session-fallback);
   }
 }
@@ -207,33 +207,33 @@ html.kordi-native-shell .bridge-app .app-main-panel {
   background: #0f1117;
 }
 
-.bridge-app.theme-light .app-artifact-preview-opaque-surface {
+.kordi-app.theme-light .app-artifact-preview-opaque-surface {
   background: #f7f9fc;
 }
 
-.bridge-app.theme-light .app-artifact-preview-window-panel,
-.bridge-app.theme-light .app-artifact-preview-window-body {
+.kordi-app.theme-light .app-artifact-preview-window-panel,
+.kordi-app.theme-light .app-artifact-preview-window-body {
   background: var(--app-transient-surface-bg);
 }
 
-.bridge-app.theme-light .app-artifact-preview-window-backdrop {
+.kordi-app.theme-light .app-artifact-preview-window-backdrop {
   background: var(--app-transient-overlay-bg);
 }
 
-.bridge-app.theme-light .app-artifact-preview-window-header {
+.kordi-app.theme-light .app-artifact-preview-window-header {
   background: var(--app-transient-raised-bg);
 }
 
-.bridge-app.theme-light .app-artifact-preview-toolbar,
-.bridge-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header {
+.kordi-app.theme-light .app-artifact-preview-toolbar,
+.kordi-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header {
   background: #e8edf5;
 }
 
-.bridge-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header + pre {
+.kordi-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header + pre {
   background: #f7f9fc;
 }
 
-.bridge-app.theme-light .app-artifact-preview-title {
+.kordi-app.theme-light .app-artifact-preview-title {
   color: #334155;
 }
 
@@ -1295,7 +1295,7 @@ html.kordi-native-shell .bridge-app .app-main-panel {
     opacity var(--app-motion-fast) var(--app-motion-ease);
 }
 
-.bridge-app.theme-light .app-presence-light {
+.kordi-app.theme-light .app-presence-light {
   --app-presence-online: oklch(0.66 0.15 155);
   --app-presence-offline: oklch(0.56 0.018 250);
   --app-presence-edge: oklch(1 0 0 / 0.94);

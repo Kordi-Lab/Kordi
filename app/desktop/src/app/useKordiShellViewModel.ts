@@ -9,12 +9,12 @@ import type { ComposerConfigTargetOverride } from '@/features/chat/composerContr
 
 type UseKordiShellViewModelArgs = {
   themeMode: ResolvedThemeMode;
-  lastBridgePollAt: number | null;
+  lastCollaborationSyncAt: number | null;
   chatTranscriptScrollRef: MutableRefObject<HTMLDivElement | null>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
   desktopChatState: DesktopChatState | null;
   activeConv: Conversation;
-  activeConversationIsBridge: boolean;
+  activeConversationUsesCollaboration: boolean;
   chatModelOptions: ComposerModelOption[];
   selectComposerValue: (scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
   selectComposerAuthChoice: (scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
@@ -27,12 +27,12 @@ type UseKordiShellViewModelArgs = {
 
 export function useKordiShellViewModel({
   themeMode,
-  lastBridgePollAt,
+  lastCollaborationSyncAt,
   chatTranscriptScrollRef,
   shouldAutoFollowChatRef,
   desktopChatState,
   activeConv,
-  activeConversationIsBridge,
+  activeConversationUsesCollaboration,
   chatModelOptions,
   selectComposerValue,
   selectComposerAuthChoice,
@@ -42,9 +42,9 @@ export function useKordiShellViewModel({
   handleSendChatMessage,
   handleRetryChatMessage,
 }: UseKordiShellViewModelArgs) {
-  const lastBridgePollAtLabel = useMemo(
-    () => (lastBridgePollAt ? formatDesktopClockTime(lastBridgePollAt, { includeSeconds: true }) : null),
-    [lastBridgePollAt],
+  const lastCollaborationSyncAtLabel = useMemo(
+    () => (lastCollaborationSyncAt ? formatDesktopClockTime(lastCollaborationSyncAt, { includeSeconds: true }) : null),
+    [lastCollaborationSyncAt],
   );
 
   const rootThemeClass = themeMode === 'light' ? 'theme-light' : 'theme-dark';
@@ -96,13 +96,13 @@ export function useKordiShellViewModel({
 
   return {
     rootThemeClass,
-    lastBridgePollAtLabel,
+    lastCollaborationSyncAtLabel,
     onProjectTranscriptScroll,
     onChatTranscriptScroll,
     activeRuntimeSessionId: desktopChatState?.activeSessionId,
-    activeRuntimeContextStatus: desktopChatState?.activeSession?.contextWindowStatus ?? (!activeConversationIsBridge ? activeConv.contextWindowStatus : undefined),
-    activeRuntimeCacheText: desktopChatState?.activeSession?.cacheMonitorText ?? (!activeConversationIsBridge ? activeConv.cacheMonitorText : undefined),
-    activeSessionProject: !activeConversationIsBridge ? (desktopChatState?.activeSession?.project ?? null) : null,
+    activeRuntimeContextStatus: desktopChatState?.activeSession?.contextWindowStatus ?? (!activeConversationUsesCollaboration ? activeConv.contextWindowStatus : undefined),
+    activeRuntimeCacheText: desktopChatState?.activeSession?.cacheMonitorText ?? (!activeConversationUsesCollaboration ? activeConv.cacheMonitorText : undefined),
+    activeSessionProject: !activeConversationUsesCollaboration ? (desktopChatState?.activeSession?.project ?? null) : null,
     chatModelOptionsForShell: chatModelOptions.length > 0 ? chatModelOptions : undefined,
     wrappedSelectComposerValue,
     wrappedSelectComposerAuthChoice,

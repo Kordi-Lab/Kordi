@@ -100,14 +100,23 @@ export function isLowInformationSessionSeed(value: string) {
     'thanks', 'thankyou', 'gotit', 'kordi', 'mykordi', 'myagent', 'newchat', 'newsession',
     'hithere', 'hellothere', 'howareyou', 'hihowareyou', 'hellohowareyou',
     'howcanihelp', 'hihowcanihelp', 'hellohowcanihelp',
-    '你好', '您好', '嗨', '测试', '收到', '好的', '谢谢', '你好吗', '你好嗎',
+    '\u4F60\u597D', '\u60A8\u597D', '\u55E8', '\u6D4B\u8BD5',
+    '\u6536\u5230', '\u597D\u7684', '\u8C22\u8C22',
+    '\u4F60\u597D\u5417', '\u4F60\u597D\u55CE',
   ]).has(probe) || /^test(?:reply|message)?\p{N}+$/u.test(probe);
 }
 
 function knownSemanticTitle(value: string) {
   const lower = value.toLocaleLowerCase();
-  if (lower.includes('模型') && (lower.includes('谁') || lower.includes('身份') || lower.includes('你是'))) {
-    return '模型与身份';
+  if (
+    lower.includes('\u6A21\u578B')
+    && (
+      lower.includes('\u8C01')
+      || lower.includes('\u8EAB\u4EFD')
+      || lower.includes('\u4F60\u662F')
+    )
+  ) {
+    return '\u6A21\u578B\u4E0E\u8EAB\u4EFD';
   }
   if (lower.includes('model') && /who are you|which model|what model|identity/u.test(lower)) {
     return 'Model and identity';

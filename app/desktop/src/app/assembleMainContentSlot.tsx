@@ -1,7 +1,8 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
 import { buildChatsPageProps } from '@/app/mainContentShellBuilders';
 import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
-import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
+import { collaborationAgentForChatStart } from '@/features/chat/chatCreateFlows';
+import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import { runDesktopChatSkillCommand } from '@/lib/desktop';
 
@@ -22,24 +23,24 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         contactRequests: args.contactRequests,
         activeContactRequestId: args.activeContactRequestId,
         onAcceptRequest: async (request) => {
-          if (!request.bridgeHostId || !request.bridgeRequestId) return;
-          await args.handleApproveBridgeContactRequest(request.bridgeHostId, request.bridgeRequestId);
+          if (!request.sourceHostId || !request.sourceRequestId) return;
+          await args.handleApproveCollaborationContactRequest(request.sourceHostId, request.sourceRequestId);
           args.setContactOverlayMode(null);
         },
         onRejectRequest: async (request) => {
-          if (!request.bridgeHostId || !request.bridgeRequestId) return;
-          await args.handleRejectBridgeContactRequest(request.bridgeHostId, request.bridgeRequestId);
+          if (!request.sourceHostId || !request.sourceRequestId) return;
+          await args.handleRejectCollaborationContactRequest(request.sourceHostId, request.sourceRequestId);
           args.setContactOverlayMode(null);
         },
         onAddContactByNodeId: async (nodeId) => {
-          if (!args.activeBridgeHost?.id) {
-            throw new Error('Set up a Bridge host before adding contacts.');
+          if (!args.activeCollaborationHost?.id) {
+            throw new Error('A collaboration host is required before adding contacts.');
           }
-          await args.handleAddBridgeContact(args.activeBridgeHost.id, nodeId);
+          await args.handleAddCollaborationContact(args.activeCollaborationHost.id, nodeId);
         },
         onRemoveContact: async (contact) => {
-          if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
-          await args.handleRemoveBridgeContact(contact.bridgeHostId, contact.bridgePeerNodeId);
+          if (!contact.sourceHostId || !contact.sourceParticipantId) return;
+          await args.handleRemoveCollaborationContact(contact.sourceHostId, contact.sourceParticipantId);
           args.setContactOverlayMode(null);
         },
         contactSearch: args.contactSearch,
@@ -58,44 +59,44 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         onCloseOverlay: () => args.setContactOverlayMode(null),
         getStatusBadgeClass: args.getStatusBadgeClass,
         onMessageContact: (contact) => {
-          if (contact.id.startsWith('bridge-self:') || contact.classType === 'my-agents') {
+          if (isCollaborationSelfContactId(contact.id) || contact.classType === 'my-agents') {
             void openLocalAgentChat();
             return;
           }
 
           const contactTargetsAgent = contact.classType === 'other-users-agents';
           args.setContactOverlayMode(null);
-          if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
+          if (!contact.sourceHostId || !contact.sourceParticipantId) return;
 
-          if (contact.bridgeHostId === CLOUD_HOST_SENTINEL) {
-            void args.handleOpenBridgeConversation(
-              contact.bridgeHostId,
-              contact.bridgePeerNodeId,
+          if (contact.sourceHostId === CLOUD_HOST_SENTINEL) {
+            void args.handleOpenCollaborationConversation(
+              contact.sourceHostId,
+              contact.sourceParticipantId,
               contact.name,
               contact.owner,
-              contactTargetsAgent ? contact.bridgePeerRuntime : 'person',
+              contactTargetsAgent ? contact.sourceRuntime : 'person',
             );
             return;
           }
 
           if (!contactTargetsAgent) {
-            void args.handleStartBridgePersonSession({
-              hostId: contact.bridgeHostId,
-              nodeId: contact.bridgePeerNodeId,
+            void args.handleStartCollaborationPersonSession({
+              hostId: contact.sourceHostId,
+              nodeId: contact.sourceParticipantId,
               displayName: contact.name,
               ownerName: contact.owner,
-              humanId: contact.bridgeHumanId,
+              humanId: contact.sourceHumanId,
             });
             return;
           }
 
-          void args.handleStartChatWithAgent(bridgeAgentForChatStart({
-            hostId: contact.bridgeHostId,
-            nodeId: contact.bridgePeerNodeId,
+          void args.handleStartChatWithAgent(collaborationAgentForChatStart({
+            hostId: contact.sourceHostId,
+            nodeId: contact.sourceParticipantId,
             displayName: contact.name,
             ownerName: contact.owner,
-            runtime: contact.bridgePeerRuntime,
-            agentId: contact.bridgeAgentId,
+            runtime: contact.sourceRuntime,
+            agentId: contact.sourceAgentId,
             contactId: contact.id,
             profileImageUrl: contact.profileImageUrl,
           }));
@@ -117,7 +118,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         chatModelOptions: args.chatModelOptions,
         composerProviderOptions: args.composerProviderOptions,
         onUpdateAgentModelRouting: (agent, values) => {
-          if (!agent.bridgeHostId || !agent.bridgeAgentId) {
+          if (!agent.sourceHostId || !agent.sourceAgentId) {
             return args.handleUpdateLocalAgentModelRouting(
               values.defaultModel,
               values.fallbackModel,
@@ -128,9 +129,9 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
               values.fallbackAuthChoice,
             );
           }
-          return args.handleUpdateBridgeAgentModelRouting(
-            agent.bridgeHostId,
-            agent.bridgeAgentId,
+          return args.handleUpdateCollaborationAgentModelRouting(
+            agent.sourceHostId,
+            agent.sourceAgentId,
             values.defaultModel,
             values.fallbackModel,
             values.thinking,
@@ -166,7 +167,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         onUpdateCloudAgent: args.handleUpdateCloudAgent,
         onArchiveCloudAgent: args.handleArchiveCloudAgent,
         onSetAgentSkillEnabled: async (agent, skill, enabled) => {
-          if (!agent.isOwned || (agent.id !== 'desktop:local-agent' && !agent.isBridgeActive)) {
+          if (!agent.isOwned || (agent.id !== 'desktop:local-agent' && !agent.isCollaborationActive)) {
             throw new Error('Only the active local Kordi agent can change runtime skills here.');
           }
           const sessionId = args.desktopChatState?.activeSessionId?.trim();

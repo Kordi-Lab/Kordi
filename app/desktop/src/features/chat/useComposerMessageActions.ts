@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { isCloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
-import type { BridgeAgentRequestControl, ComposerScope } from '@/kordi-app/types';
+import type { CollaborationAgentRequestControl, ComposerScope } from '@/kordi-app/types';
 import { cancelDesktopChatTurn } from '@/lib/desktop';
 
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, resizeComposerTextarea } from './composerController.shared';
@@ -13,7 +13,7 @@ import {
   insertMentionIntoDraft,
   runLocalSlashCommand,
   type LocalChatSendInFlight,
-  type PendingBridgeOutreach,
+  type PendingCollaborationOutreach,
   useChatMessageActions,
   useProjectMessageActions,
 } from './messageActions';
@@ -22,12 +22,12 @@ import {
 type UseComposerMessageActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'isNativeShell'
-  | 'activeConversationIsBridge'
+  | 'activeConversationUsesCollaboration'
   | 'chatConversations'
   | 'activeConvId'
   | 'activeConvCanonicalSessionId'
   | 'activeConvMessages'
-  | 'activeConvBridgeTarget'
+  | 'activeConvCollaborationTarget'
   | 'activeConvMentionScope'
   | 'sharedCloudAgents'
   | 'resolveSharedCloudAgentsForMention'
@@ -36,7 +36,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'activeProjectRoot'
   | 'selectProjectSession'
   | 'desktopChatState'
-  | 'desktopBridgeState'
+  | 'desktopCollaborationState'
   | 'canonicalSessionState'
   | 'hasAnyDesktopAuth'
   | 'canonicalHumanIdentityId'
@@ -69,10 +69,10 @@ type UseComposerMessageActionsArgs = Pick<
   | 'queuedDesktopMessagesBySession'
   | 'setQueuedDesktopMessagesBySession'
   | 'setDesktopLiveTurnsBySession'
-  | 'setCloudBridgeState'
-  | 'sendCloudBridgeMessage'
+  | 'setCloudCollaborationState'
+  | 'sendCloudCollaborationMessage'
   | 'sendCloudGroupControl'
-  | 'cancelCloudBridgeAgentRequest'
+  | 'cancelCloudAgentRequest'
   | 'watchDesktopLiveTurn'
   | 'shouldAutoFollowChatRef'
   | 'setActiveConvId'
@@ -85,12 +85,12 @@ type UseComposerMessageActionsArgs = Pick<
 
 export function useComposerMessageActions({
   isNativeShell,
-  activeConversationIsBridge,
+  activeConversationUsesCollaboration,
   chatConversations,
   activeConvId,
   activeConvCanonicalSessionId,
   activeConvMessages,
-  activeConvBridgeTarget,
+  activeConvCollaborationTarget,
   activeConvMentionScope,
   sharedCloudAgents,
   resolveSharedCloudAgentsForMention,
@@ -99,7 +99,7 @@ export function useComposerMessageActions({
   activeProjectRoot,
   selectProjectSession,
   desktopChatState,
-  desktopBridgeState,
+  desktopCollaborationState,
   canonicalSessionState,
   hasAnyDesktopAuth,
   canonicalHumanIdentityId,
@@ -132,10 +132,10 @@ export function useComposerMessageActions({
   queuedDesktopMessagesBySession,
   setQueuedDesktopMessagesBySession,
   setDesktopLiveTurnsBySession,
-  setCloudBridgeState,
-  sendCloudBridgeMessage,
+  setCloudCollaborationState,
+  sendCloudCollaborationMessage,
   sendCloudGroupControl,
-  cancelCloudBridgeAgentRequest,
+  cancelCloudAgentRequest,
   watchDesktopLiveTurn,
   shouldAutoFollowChatRef,
   setActiveConvId,
@@ -144,25 +144,25 @@ export function useComposerMessageActions({
   appendProjectDraft,
   appendChatDraft,
 }: UseComposerMessageActionsArgs) {
-  const [pendingBridgeOutreach, setPendingBridgeOutreach] = useState<PendingBridgeOutreach | null>(null);
-  const pendingBridgeOutreachRef = useRef<PendingBridgeOutreach | null>(null);
-  const pendingBridgeCancelRequestedRef = useRef(false);
+  const [pendingCollaborationOutreach, setPendingCollaborationOutreach] = useState<PendingCollaborationOutreach | null>(null);
+  const pendingCollaborationOutreachRef = useRef<PendingCollaborationOutreach | null>(null);
+  const pendingCollaborationCancelRequestedRef = useRef(false);
   const localChatSendInFlightRef = useRef<LocalChatSendInFlight | null>(null);
   const userCancelledTurnIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    pendingBridgeOutreachRef.current = pendingBridgeOutreach;
-  }, [pendingBridgeOutreach]);
+    pendingCollaborationOutreachRef.current = pendingCollaborationOutreach;
+  }, [pendingCollaborationOutreach]);
 
   useEffect(() => {
-    if (!pendingBridgeOutreach) return;
-    const conversation = desktopBridgeState?.conversations.find((candidate) => candidate.id === pendingBridgeOutreach.conversationId);
+    if (!pendingCollaborationOutreach) return;
+    const conversation = desktopCollaborationState?.conversations.find((candidate) => candidate.id === pendingCollaborationOutreach.conversationId);
     const status = conversation?.outreach?.status?.trim().toLowerCase();
     if (status && ['completed', 'complete', 'failed', 'cancelled', 'timeout'].includes(status)) {
-      setPendingBridgeOutreach(null);
+      setPendingCollaborationOutreach(null);
       setIsDesktopChatSending(false);
     }
-  }, [desktopBridgeState?.conversations, pendingBridgeOutreach, setIsDesktopChatSending]);
+  }, [desktopCollaborationState?.conversations, pendingCollaborationOutreach, setIsDesktopChatSending]);
 
   const appendDesktopSystemMessage = useCallback((text: string) => {
     appendDesktopSystemMessageToState({ setDesktopChatState }, text);
@@ -209,8 +209,8 @@ export function useComposerMessageActions({
   ]);
 
   const { handleSendChatMessage, handleRetryChatMessage } = useChatMessageActions({
-    activeConversationIsBridge,
-    activeConvBridgeTarget,
+    activeConversationUsesCollaboration,
+    activeConvCollaborationTarget,
     activeConvCanonicalSessionId,
     activeConvId,
     activeConvMessages,
@@ -226,13 +226,13 @@ export function useComposerMessageActions({
     composerSelections,
     composerDrafts,
     activeChatQuote,
-    desktopBridgeState,
+    desktopCollaborationState,
     desktopChatState,
     desktopLiveTurn,
     handleLocalSlashCommand,
     isDesktopChatSending,
     isNativeShell,
-    pendingBridgeCancelRequestedRef,
+    pendingCollaborationCancelRequestedRef,
     localChatSendInFlightRef,
     userCancelledTurnIdsRef,
     refreshDesktopChat,
@@ -240,15 +240,15 @@ export function useComposerMessageActions({
     setCanonicalSessionState,
     setChatComposerAttachments,
     setComposerDrafts,
-    setCloudBridgeState,
-    sendCloudBridgeMessage,
+    setCloudCollaborationState,
+    sendCloudCollaborationMessage,
     sendCloudGroupControl,
     setDesktopChatError,
     setDesktopChatState,
     setDesktopLiveTurnsBySession,
     setIsDesktopChatSending,
     setOpenComposerSelector,
-    setPendingBridgeOutreach,
+    setPendingCollaborationOutreach,
     setPendingUserChatMessage,
     queuedDesktopMessagesBySession,
     setQueuedDesktopMessagesBySession,
@@ -267,7 +267,7 @@ export function useComposerMessageActions({
     canonicalHumanIdentityId,
     chatComposerAttachments,
     composerDrafts,
-    desktopBridgeState,
+    desktopCollaborationState,
     desktopChatState,
     desktopLiveTurn,
     isNativeShell,
@@ -301,18 +301,18 @@ export function useComposerMessageActions({
     resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', insertMentionIntoDraft(composerDrafts.project, label));
   }, [activeProjectSessionId, composerDrafts.project, setComposerDrafts]);
 
-  const stopBridgeOutreach = useCallback(async (conversationId: string, requestId?: string | null) => {
+  const stopCollaborationOutreach = useCallback(async (conversationId: string, requestId?: string | null) => {
     setDesktopChatError(null);
-    const pendingOutreach = pendingBridgeOutreachRef.current;
+    const pendingOutreach = pendingCollaborationOutreachRef.current;
     if (pendingOutreach?.conversationId === conversationId && pendingOutreach.requestId === requestId) {
-      setPendingBridgeOutreach(null);
+      setPendingCollaborationOutreach(null);
       setIsDesktopChatSending(false);
     }
     try {
-      if (isCloudBridgeConversationId(conversationId) || isCloudGroupAgentConversationId(conversationId)) {
+      if (isCloudCollaborationConversationId(conversationId) || isCloudGroupAgentConversationId(conversationId)) {
         if (!requestId?.trim()) throw new Error('Unable to stop request');
-        if (!cancelCloudBridgeAgentRequest) throw new Error('Chat is still loading. Try again in a moment.');
-        await cancelCloudBridgeAgentRequest(conversationId, requestId);
+        if (!cancelCloudAgentRequest) throw new Error('Chat is still loading. Try again in a moment.');
+        await cancelCloudAgentRequest(conversationId, requestId);
         return;
       }
       throw new Error('This chat is unavailable. Try again from the chat list.');
@@ -320,26 +320,26 @@ export function useComposerMessageActions({
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop request');
       throw error;
     }
-  }, [cancelCloudBridgeAgentRequest, setDesktopChatError, setIsDesktopChatSending, setPendingBridgeOutreach]);
+  }, [cancelCloudAgentRequest, setDesktopChatError, setIsDesktopChatSending, setPendingCollaborationOutreach]);
 
-  const handleStopBridgeAgentRequest = useCallback(async (request: BridgeAgentRequestControl) => {
-    await stopBridgeOutreach(request.conversationId, request.requestId);
-  }, [stopBridgeOutreach]);
+  const handleStopCollaborationAgentRequest = useCallback(async (request: CollaborationAgentRequestControl) => {
+    await stopCollaborationOutreach(request.conversationId, request.requestId);
+  }, [stopCollaborationOutreach]);
 
   const handleStopDesktopChatTurn = useCallback(async () => {
-    const pendingOutreach = pendingBridgeOutreachRef.current;
+    const pendingOutreach = pendingCollaborationOutreachRef.current;
     if (pendingOutreach) {
       try {
-        await stopBridgeOutreach(pendingOutreach.conversationId, pendingOutreach.requestId);
+        await stopCollaborationOutreach(pendingOutreach.conversationId, pendingOutreach.requestId);
       } catch {
-        // stopBridgeOutreach already surfaced the error in chat state.
+        // stopCollaborationOutreach already surfaced the error in chat state.
       }
       return;
     }
 
     if (!desktopLiveTurn || desktopLiveTurn.completed) {
       if (isDesktopChatSending) {
-        pendingBridgeCancelRequestedRef.current = true;
+        pendingCollaborationCancelRequestedRef.current = true;
         localChatSendInFlightRef.current = null;
         setIsDesktopChatSending(false);
       }
@@ -364,14 +364,14 @@ export function useComposerMessageActions({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop chat turn');
     }
-  }, [desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopBridgeOutreach]);
+  }, [desktopLiveTurn, isDesktopChatSending, refreshDesktopChat, setDesktopChatError, setDesktopLiveTurnsBySession, setIsDesktopChatSending, stopCollaborationOutreach]);
 
   return {
     handleSendChatMessage,
     handleRetryChatMessage,
     handleSendProjectMessage,
     handleStopDesktopChatTurn,
-    handleStopBridgeAgentRequest,
+    handleStopCollaborationAgentRequest,
     acceptChatSlashCommand: appendChatDraft,
     acceptProjectSlashCommand: appendProjectDraft,
     acceptChatMentionTarget,

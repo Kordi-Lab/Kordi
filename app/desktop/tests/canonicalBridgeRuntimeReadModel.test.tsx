@@ -1,5 +1,5 @@
 // These fixtures cover Local Edition desktop Bridge read-model compatibility.
-// Cloud Edition must not use these source transports as live collaboration transport.
+// Hosted collaboration must not use these legacy source transports.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -22,7 +22,7 @@ test('canonical group unread honors persisted self read marker at latest message
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'cloud', sourceHostId: 'cloud', bridgeNodeId: 'acct_bob', humanId: 'acct_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'cloud', sourceHostId: 'cloud', sourceIdentityId: 'acct_bob', humanId: 'acct_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{
       id: sessionId,
@@ -120,7 +120,7 @@ test('canonical group conversation title stays on first message when synced clou
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_bob', humanId: 'acct_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_bob', humanId: 'acct_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{
       id: sessionId,
@@ -222,11 +222,11 @@ test('canonical read model keeps shared bridge transcript with local owned-agent
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shared', humanId: 'human-bob', avatarKey: 'human-bob', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-shared', humanId: 'human-bob', avatarKey: 'human-bob', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'stale later reply', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shared', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+      { id: sessionId, kind: 'direct-person', title: 'stale later reply', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:bob', relationshipIdentityId: 'human:bob', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-shared', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -249,7 +249,7 @@ test('canonical read model keeps shared bridge transcript with local owned-agent
     type: 'owned-agent',
     subtitle: '',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'Kordi'],
@@ -297,7 +297,7 @@ test('canonical read model inherits bridge targets for participant-space continu
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
@@ -311,7 +311,7 @@ test('canonical read model inherits bridge targets for participant-space continu
         relationshipIdentityId: 'human:peer',
         metadata: {
           source: 'bridge-session-thread',
-          bridgeHostId: 'host-1',
+          sourceHostId: 'host-1',
           peerNodeId: 'node-peer',
           peerRuntime: 'person',
           peerDisplayName: 'Peer display',
@@ -361,7 +361,7 @@ test('canonical read model inherits bridge targets for participant-space continu
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
   const continuation = conversations.find((conversation) => conversation.canonicalSessionId === continuationSessionId);
 
-  assert.deepEqual(continuation?.bridgeTarget, {
+  assert.deepEqual(continuation?.collaborationTarget, {
     hostId: 'host-1',
     nodeId: 'node-peer',
     displayName: 'Peer',
@@ -370,7 +370,7 @@ test('canonical read model inherits bridge targets for participant-space continu
     humanId: 'human-peer',
     agentId: null,
   });
-  assert.deepEqual(continuation?.bridges, ['Bridge']);
+  assert.deepEqual(continuation?.collaborationSources, ['Cloud']);
 });
 
 test('canonical read model keeps shared relationship history when local runtime has richer tool details', () => {
@@ -388,11 +388,11 @@ test('canonical read model keeps shared relationship history when local runtime 
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'relationship', title: 'check the core agent loop', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
+      { id: sessionId, kind: 'relationship', title: 'check the core agent loop', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 4, lastMessageAtMs: 4 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -403,7 +403,7 @@ test('canonical read model keeps shared relationship history when local runtime 
       { id: 'msg:history:1', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'person', messageKind: 'text', contentText: 'check the core agent loop of https://github.com/openai/codex', content: { sender: 'Shenzhe', timeLabel: '20:15' }, status: 'complete', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-thread-snapshot', sourceEventId: 'history-1' },
       { id: 'msg:history:2', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'The core loop is in session handlers.', content: { sender: 'My Kordi', timeLabel: '20:15' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-thread-snapshot', sourceEventId: 'history-2' },
       { id: 'msg:translate:1', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi can you translate it to chinese', content: { sender: 'Shenzhe', timeLabel: '20:16' }, status: 'sent', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'translate-1' },
-      { id: 'msg:translate:2', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: '当然，翻译如下。', content: { sender: 'My Kordi', timeLabel: '20:16' }, status: 'complete', sequenceNum: 4, createdAtMs: 4, updatedAtMs: 4, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'translate-2' },
+      { id: 'msg:translate:2', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Bien sûr, voici la traduction.', content: { sender: 'My Kordi', timeLabel: '20:16' }, status: 'complete', sequenceNum: 4, createdAtMs: 4, updatedAtMs: 4, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'translate-2' },
     ],
     delegatedExchanges: [],
     presence: [],
@@ -417,15 +417,15 @@ test('canonical read model keeps shared relationship history when local runtime 
     type: 'owned-agent',
     subtitle: '',
     unread: 1,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'Kordi'],
-    bridgeTarget: { hostId: 'host-1', nodeId: 'node-shenzhe', displayName: 'Shenzhe', ownerName: 'Shenzhe', runtime: 'person', humanId: 'human-shenzhe', agentId: null },
+    collaborationTarget: { hostId: 'host-1', nodeId: 'node-shenzhe', displayName: 'Shenzhe', ownerName: 'Shenzhe', runtime: 'person', humanId: 'human-shenzhe', agentId: null },
     messages: [{
       role: 'owned-agent',
       sender: 'My Kordi',
-      text: '当然，翻译如下。',
+      text: 'Bien sûr, voici la traduction.',
       time: '20:16',
       turn: {
         id: 'local-turn-translate',
@@ -433,7 +433,7 @@ test('canonical read model keeps shared relationship history when local runtime 
         prompt: 'translate it',
         status: 'succeeded',
         message: 'Response complete',
-        assistantText: '当然，翻译如下。',
+        assistantText: 'Bien sûr, voici la traduction.',
         thinkingText: '',
         tools: [{ name: 'web_search' }],
         completed: true,
@@ -451,7 +451,7 @@ test('canonical read model keeps shared relationship history when local runtime 
       'check the core agent loop of https://github.com/openai/codex',
       'The core loop is in session handlers.',
       '@MyKordi can you translate it to chinese',
-      '当然，翻译如下。',
+      'Bien sûr, voici la traduction.',
     ],
   );
   assert.deepEqual(conversations[0]?.messages[3]?.turn?.tools.map((tool: { name: string }) => tool.name), ['web_search']);
@@ -472,11 +472,11 @@ test('canonical read model prefers local rich owned-agent runtime over later pla
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'inspect repo', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
+      { id: sessionId, kind: 'direct-person', title: 'inspect repo', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -519,11 +519,11 @@ test('canonical read model does not duplicate raw bridge processing while local 
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Testuser5', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Testuser4', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Testuser4', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: "Testuser5's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Testuser4', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2_000, lastMessageAtMs: 2_000 },
+      { id: sessionId, kind: 'direct-person', title: 'Testuser4', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2_000, lastMessageAtMs: 2_000 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -534,7 +534,7 @@ test('canonical read model does not duplicate raw bridge processing while local 
       { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@Testuser5sKordi which model are you using?', content: { sender: 'Testuser4', timeLabel: '14:02', kind: 'mention-request', deliveryState: 'processing' }, status: 'complete', sequenceNum: 1, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
     ],
     delegatedExchanges: [
-      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 2_000, updatedAtMs: 2_100 },
+      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', sourceHostId: 'host-1', sourceConversationId: 'bridge:host-1:node-peer:person', sourceRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 2_000, updatedAtMs: 2_100 },
     ],
     presence: [],
     contextSnapshots: [],
@@ -546,19 +546,19 @@ test('canonical read model does not duplicate raw bridge processing while local 
     type: 'person',
     subtitle: '',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Me', 'Testuser4'],
     messages: [
       {
-        id: 'bridge-live-turn:bridge:host-1:node-peer:person:processing',
+        id: 'collaboration-live-turn:bridge:host-1:node-peer:person:processing',
         role: 'owned-agent',
         sender: 'My Kordi',
         text: '',
         time: '14:02',
         turn: {
-          id: 'bridge-live-turn:processing',
+          id: 'collaboration-live-turn:processing',
           sessionId: 'bridge:host-1:node-peer:person',
           prompt: '',
           status: 'processing',
@@ -579,7 +579,7 @@ test('canonical read model does not duplicate raw bridge processing while local 
   const processingMessages = conversation?.messages.filter((message) => message.turn?.status === 'processing') ?? [];
 
   assert.equal(processingMessages.length, 1);
-  assert.equal(processingMessages[0]?.id?.startsWith('bridge-live-turn:'), false);
+  assert.equal(processingMessages[0]?.id?.startsWith('collaboration-live-turn:'), false);
 });
 
 test('canonical read model hides joined mention notices while keeping responses after the request', () => {
@@ -597,11 +597,11 @@ test('canonical read model hides joined mention notices while keeping responses 
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Kordi User 3', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: "Kordi User 3's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Kordi User 2', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 14_100, lastMessageAtMs: 14_100 },
+      { id: sessionId, kind: 'direct-person', title: 'Kordi User 2', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 14_100, lastMessageAtMs: 14_100 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -611,11 +611,11 @@ test('canonical read model hides joined mention notices while keeping responses 
     messages: [
       { id: 'msg:previous', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: 'i accept your request, let\'s chat', content: { sender: 'Kordi User 2', timeLabel: '14:13' }, status: 'complete', sequenceNum: 1, createdAtMs: 13_000, updatedAtMs: 13_000, contentHash: null, sourceTransport: 'desktop-bridge-parent', sourceEventId: 'previous' },
       { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@KordiUser3sKordi create a task for me', content: { sender: 'Kordi User 2', timeLabel: '14:14', kind: 'mention-request' }, status: 'complete', sequenceNum: 2, createdAtMs: 14_000, updatedAtMs: 14_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
-      { id: 'msg:join', sessionId, senderIdentityId: 'human:peer', senderRole: 'system', messageKind: 'status', contentText: "Kordi User 3's Kordi joined via @mention", content: { kind: 'delegation-join-event', targetKind: 'bridge-agent', targetIdentityId: 'agent:local', targetDisplayName: "Kordi User 3's Kordi" }, status: 'complete', sequenceNum: 3, createdAtMs: 13_900, updatedAtMs: 13_900, parentMessageId: 'msg:request', contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'join' },
+      { id: 'msg:join', sessionId, senderIdentityId: 'human:peer', senderRole: 'system', messageKind: 'status', contentText: "Kordi User 3's Kordi joined via @mention", content: { kind: 'delegation-join-event', targetKind: 'agent', targetIdentityId: 'agent:local', targetDisplayName: "Kordi User 3's Kordi" }, status: 'complete', sequenceNum: 3, createdAtMs: 13_900, updatedAtMs: 13_900, parentMessageId: 'msg:request', contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'join' },
       { id: 'msg:response', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Created the task: Finish Kordi Issue 317 Review', content: { sender: 'My Kordi', timeLabel: '14:14', deliveryState: 'responded', delegatedExchangeId: 'delegation:pending' }, status: 'complete', sequenceNum: 4, createdAtMs: 14_100, updatedAtMs: 14_100, parentMessageId: 'msg:join', delegatedExchangeId: 'delegation:pending', contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'response' },
     ],
     delegatedExchanges: [
-      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: 'msg:response', transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: 'bridge_req_ordered', contextPolicy: 'recent-window', status: 'complete', error: null, createdAtMs: 13_900, updatedAtMs: 14_100 },
+      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: 'msg:response', transport: 'bridge', sourceHostId: 'host-1', sourceConversationId: 'bridge:host-1:node-peer:person', sourceRequestId: 'bridge_req_ordered', contextPolicy: 'recent-window', status: 'complete', error: null, createdAtMs: 13_900, updatedAtMs: 14_100 },
     ],
     presence: [],
     contextSnapshots: [],
@@ -648,11 +648,11 @@ test('canonical read model shows one processing item for pending inbound local a
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Kordi User 3', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: "Kordi User 3's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Kordi User 2', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 14_000, lastMessageAtMs: 14_000 },
+      { id: sessionId, kind: 'direct-person', title: 'Kordi User 2', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 14_000, lastMessageAtMs: 14_000 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -664,7 +664,7 @@ test('canonical read model shows one processing item for pending inbound local a
       { id: 'msg:raw-processing', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Processing…', content: { sender: "Kordi User 3's Kordi", timeLabel: '14:14', deliveryState: 'processing', delegatedExchangeId: 'delegation:pending' }, status: 'processing', sequenceNum: 2, createdAtMs: 14_050, updatedAtMs: 14_050, delegatedExchangeId: 'delegation:pending', contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'raw-processing' },
     ],
     delegatedExchanges: [
-      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 14_000, updatedAtMs: 14_050 },
+      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', sourceHostId: 'host-1', sourceConversationId: 'bridge:host-1:node-peer:person', sourceRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 14_000, updatedAtMs: 14_050 },
     ],
     presence: [],
     contextSnapshots: [],
@@ -697,12 +697,12 @@ test('canonical read model treats viewer-owned bridge agent delegations as local
       updatedAtMs: 1,
     },
     identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Kordi User 3', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-me', humanId: 'human-me', avatarKey: 'human-me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:bridge-owned-by-me', kind: 'agent', displayName: "Kordi User 3's Kordi", source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-me', humanId: 'human-me', agentId: 'agent-me', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:me', kind: 'human', displayName: 'Kordi User 3', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-me', humanId: 'human-me', avatarKey: 'human-me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Kordi User 2', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:bridge-owned-by-me', kind: 'agent', displayName: "Kordi User 3's Kordi", source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-me', humanId: 'human-me', agentId: 'agent-me', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Kordi User 2', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 15_000, lastMessageAtMs: 15_000 },
+      { id: sessionId, kind: 'direct-person', title: 'Kordi User 2', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 15_000, lastMessageAtMs: 15_000 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -713,7 +713,7 @@ test('canonical read model treats viewer-owned bridge agent delegations as local
       { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@KordiUser3sKordi close the task', content: { sender: 'Kordi User 2', timeLabel: '15:26', kind: 'mention-request' }, status: 'complete', sequenceNum: 1, createdAtMs: 15_000, updatedAtMs: 15_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
     ],
     delegatedExchanges: [
-      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:bridge-owned-by-me', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 15_000, updatedAtMs: 15_100 },
+      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:bridge-owned-by-me', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', sourceHostId: 'host-1', sourceConversationId: 'bridge:host-1:node-peer:person', sourceRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 15_000, updatedAtMs: 15_100 },
     ],
     presence: [],
     contextSnapshots: [],
@@ -725,7 +725,7 @@ test('canonical read model treats viewer-owned bridge agent delegations as local
     type: 'owned-agent',
     subtitle: '',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'My Kordi'],
@@ -783,11 +783,11 @@ test('canonical read model replaces pending delegation placeholder with active l
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Bob', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: "Alice's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Bob', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2_000, lastMessageAtMs: 2_000 },
+      { id: sessionId, kind: 'direct-person', title: 'Bob', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 2_000, lastMessageAtMs: 2_000 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -799,7 +799,7 @@ test('canonical read model replaces pending delegation placeholder with active l
       { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@AlicesKordi how are you', content: { sender: 'Bob', timeLabel: '11:38', kind: 'mention-request' }, status: 'complete', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'request' },
     ],
     delegatedExchanges: [
-      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 2_000, updatedAtMs: 2_100 },
+      { id: 'delegation:pending', sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', sourceHostId: 'host-1', sourceConversationId: 'bridge:host-1:node-peer:person', sourceRequestId: 'bridge_req_pending', contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: 2_000, updatedAtMs: 2_100 },
     ],
     presence: [],
     contextSnapshots: [],
@@ -811,20 +811,20 @@ test('canonical read model replaces pending delegation placeholder with active l
     type: 'person',
     subtitle: '',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Me', 'Bob'],
     messages: [
       {
-        id: 'bridge-message:runtime-progress',
+        id: 'collaboration-message:runtime-progress',
         role: 'owned-agent',
         sender: 'My Kordi',
         text: '',
         time: '11:38',
-        replyToMessageId: 'bridge-message:stale-local-id',
+        replyToMessageId: 'collaboration-message:stale-local-id',
         turn: {
-          id: 'bridge-live-turn:runtime-progress',
+          id: 'collaboration-live-turn:runtime-progress',
           sessionId: 'bridge:host-1:node-peer:person',
           prompt: '',
           status: 'thinking',
@@ -835,7 +835,7 @@ test('canonical read model replaces pending delegation placeholder with active l
           completed: false,
           succeeded: false,
           error: null,
-          replyToMessageId: 'bridge-message:stale-local-id',
+          replyToMessageId: 'collaboration-message:stale-local-id',
         },
       },
     ],
@@ -874,7 +874,7 @@ test('canonical read model replaces bridge relay copy with active local owned-ag
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Testuser4', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Testuser6', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Testuser6', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
@@ -900,7 +900,7 @@ test('canonical read model replaces bridge relay copy with active local owned-ag
     type: 'owned-agent',
     subtitle: '',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Group chat',
     participants: ['Me', 'My Kordi', 'Testuser6'],
@@ -954,11 +954,11 @@ test('canonical read model dedupes owned-agent runtime and bridge relay when onl
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
+      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -1001,11 +1001,11 @@ test('canonical read model dedupes plain local owned-agent runtime and bridge re
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
+      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -1048,11 +1048,11 @@ test('canonical read model hides stale bridge processing placeholders after late
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
+      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 3, lastMessageAtMs: 3 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -1093,8 +1093,8 @@ test('canonical read model hides stale bridge processing placeholders after late
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 20 * 60_000, lastMessageAtMs: 20 * 60_000 },
@@ -1142,11 +1142,11 @@ test('canonical read model does not duplicate raw bridge processing when a deleg
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', bridgeHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
+      { id: sessionId, kind: 'direct-person', title: 'Peer', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:peer', relationshipIdentityId: 'human:peer', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-peer', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
@@ -1158,7 +1158,7 @@ test('canonical read model does not duplicate raw bridge processing when a deleg
       { id: 'msg:raw-processing', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: "Peer's Kordi", timeLabel: '15:05', kind: 'mention-request', direction: 'outbound-response', deliveryState: 'processing', requestId }, status: 'processing', sequenceNum: 2, createdAtMs: now - 1_000, updatedAtMs: now - 1_000, contentHash: null, sourceTransport: 'desktop-bridge-outreach', sourceEventId: 'processing' },
     ],
     delegatedExchanges: [
-      { id: exchangeId, sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', bridgeHostId: 'host-1', bridgeConversationId: 'bridge:host-1:node-peer:person', bridgeRequestId: requestId, contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: now - 2_000, updatedAtMs: now - 1_000 },
+      { id: exchangeId, sessionId, initiatorIdentityId: 'human:peer', targetIdentityId: 'agent:local', triggerMessageId: 'msg:request', requestMessageId: 'msg:request', responseMessageId: null, transport: 'bridge', sourceHostId: 'host-1', sourceConversationId: 'bridge:host-1:node-peer:person', sourceRequestId: requestId, contextPolicy: 'recent-window', status: 'processing', error: null, createdAtMs: now - 2_000, updatedAtMs: now - 1_000 },
     ],
     presence: [],
     contextSnapshots: [],
@@ -1188,8 +1188,8 @@ test('canonical read model shows fresh bridge-parent processing placeholders for
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
@@ -1231,8 +1231,8 @@ test('canonical read model keeps later active processing placeholder when an ear
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
@@ -1277,8 +1277,8 @@ test('canonical read model suppresses stale raw bridge-parent processing placeho
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: 5_000, lastMessageAtMs: 5_000 },
@@ -1322,8 +1322,8 @@ test('canonical read model suppresses aged bridge session-relay processing place
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
@@ -1365,8 +1365,8 @@ test('canonical read model preserves fresh bridge session-relay processing place
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', bridgeNodeId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', humanId: 'human-peer', avatarKey: 'human-peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', ownerIdentityId: 'human:peer', sourceHostId: 'host-1', sourceIdentityId: 'node-peer', agentId: 'agent-peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
       { id: sessionId, kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { source: 'bridge-session-thread', groupId: sessionId, groupSpaceId: sessionId }, createdAtMs: 1, updatedAtMs: now, lastMessageAtMs: now },
@@ -1405,7 +1405,7 @@ test('canonical read model anchors cloud group agent progress and replies to the
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:me', kind: 'agent', displayName: "Me's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
@@ -1446,7 +1446,7 @@ test('canonical read model suppresses legacy cloud-group processing rows after a
     profile: { id: 'profile:me', displayName: 'Me', humanIdentityId: 'human:me', activeAgentIdentityId: 'agent:me', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:cloud:acct_owner', kind: 'agent', displayName: 'Kordi Project Driver', source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:peer', avatarKey: 'agent-cloud', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{ id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 }],
@@ -1486,7 +1486,7 @@ test('canonical read model suppresses cloud-group requesting rows after a termin
     profile: { id: 'profile:me', displayName: 'Me', humanIdentityId: 'human:me', activeAgentIdentityId: 'agent:me', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:owner', kind: 'human', displayName: '111', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_owner', humanId: 'acct_owner', avatarKey: 'owner', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:owner', kind: 'human', displayName: '111', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_owner', humanId: 'acct_owner', avatarKey: 'owner', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:cloud:acct_owner', kind: 'agent', displayName: 'Kordi Project Driver', source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:owner', avatarKey: 'agent-cloud', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{ id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 }],
@@ -1527,7 +1527,7 @@ test('canonical read model renders cloud group requesting placeholders as active
     profile: { id: 'profile:me', displayName: 'Me', humanIdentityId: 'human:me', activeAgentIdentityId: 'agent:me', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{ id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 }],
@@ -1538,7 +1538,7 @@ test('canonical read model renders cloud group requesting placeholders as active
     ],
     messages: [
       { id: requestId, sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@PeersKordi stop test', content: { sender: 'Me' }, status: 'sent', sequenceNum: 1, createdAtMs: now, updatedAtMs: now, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-request' },
-      { id: `msg:cloud-agent-offline:${requestId}:acct_peer`, sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Requesting…', content: { sender: "Peer's Kordi", deliveryState: 'processing', bridgeConversationId: groupConversationId, requestId, replyToMessageId: requestId }, parentMessageId: requestId, status: 'processing', sequenceNum: 2, createdAtMs: now + 1, updatedAtMs: now + 1, contentHash: null, sourceTransport: 'cloud-group-agent-offline', sourceEventId: 'cloud-requesting' },
+      { id: `msg:cloud-agent-offline:${requestId}:acct_peer`, sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Requesting…', content: { sender: "Peer's Kordi", deliveryState: 'processing', sourceConversationId: groupConversationId, requestId, replyToMessageId: requestId }, parentMessageId: requestId, status: 'processing', sequenceNum: 2, createdAtMs: now + 1, updatedAtMs: now + 1, contentHash: null, sourceTransport: 'cloud-group-agent-offline', sourceEventId: 'cloud-requesting' },
     ],
     delegatedExchanges: [],
     presence: [],
@@ -1552,7 +1552,7 @@ test('canonical read model renders cloud group requesting placeholders as active
   assert.equal(requestingTurn?.status, 'processing');
   assert.equal(requestingTurn?.message, 'Processing…');
   assert.equal(requestingTurn?.assistantText, '');
-  assert.deepEqual(requestingTurn?.pendingBridgeAgentRequest, {
+  assert.deepEqual(requestingTurn?.pendingCollaborationAgentRequest, {
     conversationId: groupConversationId,
     requestId,
   });
@@ -1565,7 +1565,7 @@ test('canonical read model renders cloud group cancellations as one request-canc
     profile: { id: 'profile:me', displayName: 'Me', humanIdentityId: 'human:me', activeAgentIdentityId: 'agent:me', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{ id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 }],
@@ -1665,7 +1665,7 @@ test('canonical read model exposes cloud group agent stop controls to requester 
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:me', kind: 'agent', displayName: "Me's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
     ],
@@ -1685,7 +1685,7 @@ test('canonical read model exposes cloud group agent stop controls to requester 
   const processingContent = {
     sender: 'My Kordi',
     deliveryState: 'processing',
-    bridgeConversationId: groupConversationId,
+    sourceConversationId: groupConversationId,
     requestId,
     replyToMessageId: requestId,
   };
@@ -1708,7 +1708,7 @@ test('canonical read model exposes cloud group agent stop controls to requester 
     const readModel = createCanonicalSessionReadModel(state as never);
     const conversation = readModel?.applyConversation({ id: sessionId, canonicalSessionId: sessionId, messages: [] } as never, (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '');
     const processingTurn = conversation?.messages.find((message) => message.turn?.status === 'processing')?.turn;
-    assert.deepEqual(processingTurn?.pendingBridgeAgentRequest, {
+    assert.deepEqual(processingTurn?.pendingCollaborationAgentRequest, {
       conversationId: groupConversationId,
       requestId,
     });

@@ -1,4 +1,4 @@
-import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
 import { deriveSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
@@ -6,25 +6,25 @@ import type {
   CanonicalSessionState,
   ContactRequest,
   Conversation,
-  DesktopBridgeConversation,
-  DesktopBridgeHost,
-  DesktopBridgePeer,
+  DesktopCollaborationConversation,
+  DesktopCollaborationHost,
+  DesktopCollaborationPeer,
   DesktopChatTurnSnapshot,
   Message,
   SessionStatusIndicator,
 } from '@/kordi-app/types';
 import { CHAT_KIND_LABELS, chatKindDescriptionLabel, sessionIdChatKindLabel } from '@/features/chat/sessionKindLabels';
 
-export function canExposeBridgePerson(peer: DesktopBridgePeer) {
+export function canExposeCollaborationPerson(peer: DesktopCollaborationPeer) {
   return Boolean(
-    isBridgeAgentRuntime(peer.runtime)
+    isCollaborationAgentRuntime(peer.runtime)
       && peer.isDefaultAgent
       && peer.ownerName?.trim()
       && peer.humanId?.trim(),
   );
 }
 
-export function toBridgePersonPeer(peer: DesktopBridgePeer): DesktopBridgePeer {
+export function toCollaborationPersonPeer(peer: DesktopCollaborationPeer): DesktopCollaborationPeer {
   return {
     ...peer,
     displayName: peer.ownerName?.trim() || peer.displayName,
@@ -34,13 +34,13 @@ export function toBridgePersonPeer(peer: DesktopBridgePeer): DesktopBridgePeer {
   };
 }
 
-export function bridgePeerIsApprovedContact(peer: DesktopBridgePeer) {
+export function collaborationPeerIsApprovedContact(peer: DesktopCollaborationPeer) {
   const status = peer.contactRequestStatus?.trim().toLowerCase() ?? '';
   return Boolean(peer.isContact || status === 'contact' || status === 'approved');
 }
 
-export function bridgePeerIsReachableAgent(peer: DesktopBridgePeer) {
-  if (!isBridgeAgentRuntime(peer.runtime)) return false;
+export function collaborationPeerIsReachableAgent(peer: DesktopCollaborationPeer) {
+  if (!isCollaborationAgentRuntime(peer.runtime)) return false;
   const agentReachabilityPolicy = peer.agentReachabilityPolicy?.trim().toLowerCase() || 'contacts';
   return agentReachabilityPolicy !== 'owner';
 }
@@ -55,7 +55,7 @@ function contactRequestInitials(label: string) {
   return words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? '').join('') || '?';
 }
 
-export function bridgeContactRequestsForContactsPage(host: DesktopBridgeHost | null | undefined): ContactRequest[] {
+export function collaborationContactRequestsForContactsPage(host: DesktopCollaborationHost | null | undefined): ContactRequest[] {
   if (!host) return [];
   return (host.contactRequests ?? [])
     .filter((request) => request.direction === 'incoming' && request.status === 'pending')
@@ -67,20 +67,20 @@ export function bridgeContactRequestsForContactsPage(host: DesktopBridgeHost | n
         peer?.displayName,
         peer?.humanId,
         requesterNodeId,
-        'Bridge user',
+        'Kordi user',
       );
       const message = request.message?.trim();
       return {
-        id: `bridge-contact-request:${host.id}:${request.requestId}`,
+        id: `collaboration-contact-request:${host.id}:${request.requestId}`,
         initials: contactRequestInitials(requesterName),
         title: `${requesterName} wants to connect`,
-        detail: message || `Approve before direct messages and group invites are allowed. Node: ${requesterNodeId}`,
+        detail: message || `Approve before direct messages and group invites are allowed. Account: ${requesterNodeId}`,
         time: 'Pending approval',
         profileImageUrl: null,
         avatarSeed: peer?.humanId ?? peer?.agentId ?? requesterNodeId,
-        source: 'bridge',
-        bridgeHostId: host.id,
-        bridgeRequestId: request.requestId,
+        source: 'collaboration',
+        sourceHostId: host.id,
+        sourceRequestId: request.requestId,
         requesterNodeId,
         targetNodeId: request.targetNodeId,
         status: request.status,
@@ -89,30 +89,30 @@ export function bridgeContactRequestsForContactsPage(host: DesktopBridgeHost | n
     });
 }
 
-export function visibleBridgePeople(peers: DesktopBridgePeer[]) {
-  const people: DesktopBridgePeer[] = [];
+export function visibleCollaborationPeople(peers: DesktopCollaborationPeer[]) {
+  const people: DesktopCollaborationPeer[] = [];
   const seen = new Set<string>();
 
   for (const peer of peers) {
-    if (!isBridgeAgentRuntime(peer.runtime)) {
+    if (!isCollaborationAgentRuntime(peer.runtime)) {
       if (seen.has(peer.nodeId)) continue;
       seen.add(peer.nodeId);
       people.push(peer);
       continue;
     }
 
-    if (!canExposeBridgePerson(peer)) continue;
+    if (!canExposeCollaborationPerson(peer)) continue;
 
     const key = peer.humanId?.trim() || peer.ownerName?.trim() || peer.nodeId;
     if (seen.has(key)) continue;
     seen.add(key);
-    people.push(toBridgePersonPeer(peer));
+    people.push(toCollaborationPersonPeer(peer));
   }
 
   return people;
 }
 
-export function normalizeBridgeProjectKey(value?: string | null) {
+export function normalizeCollaborationProjectKey(value?: string | null) {
   return (value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
@@ -151,7 +151,7 @@ export function inlineRequestPreview(text: string) {
   return normalized.length > 140 ? `${normalized.slice(0, 137)}…` : normalized;
 }
 
-export function buildOutreachInlineMessages(conversation: DesktopBridgeConversation): Message[] {
+export function buildOutreachInlineMessages(conversation: DesktopCollaborationConversation): Message[] {
   const outreach = conversation.outreach;
   if (!outreach) return [];
   if (
@@ -162,7 +162,7 @@ export function buildOutreachInlineMessages(conversation: DesktopBridgeConversat
     || outreach.contextPolicy === 'session-title-update'
   ) return [];
 
-  const isAgent = outreach.targetKind === 'bridge-agent';
+  const isAgent = outreach.targetKind === 'agent';
   const targetName = outreach.targetDisplayName || conversation.title;
   const avatarSeed = isAgent
     ? outreach.targetAgentId || outreach.targetNodeId
@@ -179,11 +179,11 @@ export function buildOutreachInlineMessages(conversation: DesktopBridgeConversat
   for (const message of conversation.messages) {
     if (message.timestampMs < cutoffMs) continue;
     if (message.direction !== 'inbound' && message.direction !== 'inbound-response') continue;
-    if (isAgent && outreach.bridgeRequestId && message.requestId !== outreach.bridgeRequestId) continue;
+    if (isAgent && outreach.sourceRequestId && message.requestId !== outreach.sourceRequestId) continue;
     const isProcessingAgent = isAgent && message.deliveryState === 'processing';
     const agentTurn = isAgent
       ? {
-          id: `bridge-outreach-live-turn:${conversation.id}:${message.id}`,
+          id: `collaboration-outreach-live-turn:${conversation.id}:${message.id}`,
           sessionId: outreach.parentSessionId ?? conversation.canonicalSessionId,
           prompt: outreach.requestText,
           status: isProcessingAgent ? (message.text.trim() ? 'writing' : 'typing') : 'complete',
@@ -363,7 +363,7 @@ export function suppressLiveTurnEchoMessages(messages: Message[], turn?: Desktop
   const filtered = messages.filter((message, index) => {
     if (index <= lastUserIndex) return true;
     if (message.role === 'owned-agent') return false;
-    // The bridge fanout placeholder for an inbound ASK on the agent owner's instance
+    // The legacy collaboration placeholder for an inbound ASK on the agent owner's instance
     // surfaces as an external-agent agent-turn with an in-flight `turn`; the live turn
     // overlay already represents that work. Drop in-flight external-agent rows so the
     // viewer doesn't see a redundant "Processing…" row underneath the live turn.
@@ -518,12 +518,12 @@ export function canonicalProjectDisplayName(session: CanonicalSessionState['sess
   return projectRoot?.split(/[\\/]/).filter(Boolean).pop() ?? 'Project';
 }
 
-export function findBridgeProjectForWorkspace(host: DesktopBridgeHost | null | undefined, projectName?: string | null, projectRoot?: string | null) {
+export function findCollaborationProjectForWorkspace(host: DesktopCollaborationHost | null | undefined, projectName?: string | null, projectRoot?: string | null) {
   if (!host) return null;
   const rootLeaf = (projectRoot ?? '').split(/[\\/]/).filter(Boolean).pop() ?? '';
   const candidates = new Set([
-    normalizeBridgeProjectKey(projectName),
-    normalizeBridgeProjectKey(rootLeaf),
+    normalizeCollaborationProjectKey(projectName),
+    normalizeCollaborationProjectKey(rootLeaf),
   ].filter(Boolean));
-  return host.projects.find((project) => candidates.has(normalizeBridgeProjectKey(project.name))) ?? null;
+  return host.projects.find((project) => candidates.has(normalizeCollaborationProjectKey(project.name))) ?? null;
 }

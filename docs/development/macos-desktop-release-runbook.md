@@ -11,7 +11,7 @@ One immutable, merged `origin/main` commit must identify all of the following:
 
 - the version metadata
 - the deployed Cloud server and runner images
-- the agent and Bridges sidecars
+- the Kordi agent runtime sidecar
 - `Kordi.app`, its updater archive, and its DMG
 - the product updater metadata
 - the Git tag and GitHub prerelease
@@ -86,7 +86,7 @@ test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
 test -z "$(git status --short)"
 ```
 
-Use path remapping for the desktop binary and both native sidecars:
+Use path remapping for the desktop binary and its native Kordi runtime sidecar:
 
 ```bash
 export RUSTFLAGS="--remap-path-prefix=$HOME=/build"
@@ -95,7 +95,7 @@ unset VITE_KORDI_CLOUD_API_BASE
 ```
 
 `CARGO_BUILD_JOBS=1` is the safe default on the release Mac. Building the
-agent, Bridges, and Tauri dependency graph concurrently caused severe memory
+agent runtime and Tauri dependency graph concurrently caused severe memory
 pressure and multiple multi-gigabyte Kordi processes during beta.9.
 
 Persistent `CARGO_TARGET_DIR` caches under

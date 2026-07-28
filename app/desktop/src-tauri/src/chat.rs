@@ -13,23 +13,21 @@ use kordi_cli::desktop_runtime::{
 };
 
 pub(crate) mod agent_builder;
+pub(crate) mod agent_prompt_runner;
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
-pub(crate) mod bridge_agent_runner;
-pub(crate) mod bridge_outreach;
 pub(crate) mod canonical_sync;
 pub(crate) mod message_route;
 pub(crate) mod model_options;
 pub(crate) mod session_actions;
 pub(crate) mod session_observation;
+pub(crate) mod session_preparation;
 pub(crate) mod turns;
 
-pub(crate) use attachments::{
-    allow_attachment_asset_scope, store_chat_attachment_bytes, stored_chat_attachment_from_path,
-};
+pub(crate) use attachments::allow_attachment_asset_scope;
 
-pub(crate) use bridge_agent_runner::{run_bridge_agent_prompt, DesktopBridgeAgentModelRouting};
-pub(super) use bridge_outreach::bridge_agent_session_cwd;
+pub(crate) use agent_prompt_runner::{run_agent_prompt, DesktopAgentModelRouting};
+pub(super) use session_preparation::agent_session_cwd;
 
 pub(super) fn now_millis() -> i64 {
     SystemTime::now()
@@ -72,7 +70,6 @@ fn attach_cloud_scheduled_task_runtime_for_session(
     }
 }
 
-use bridge_outreach::prepare_desktop_session_for_send;
 use canonical_sync::{
     desktop_state_for_canonical_sync, is_cloud_agent_runtime_session_id,
     sync_completed_desktop_session_to_canonical,
@@ -86,6 +83,7 @@ use session_actions::{
     resolve_existing_session_action_target, resolve_project_root_input,
     resolve_session_action_fallback_target,
 };
+use session_preparation::prepare_desktop_session_for_send;
 
 use turns::{
     apply_desktop_turn_event, desktop_task_tools_from_messages, prune_finished_turns,
@@ -575,9 +573,9 @@ async fn build_chat_state(
 pub async fn desktop_shape_agent_draft(
     manager: State<'_, DesktopChatManager>,
     prompt: String,
-    route: DesktopBridgeAgentModelRouting,
+    route: DesktopAgentModelRouting,
 ) -> Result<DesktopChatTurnSnapshot, String> {
-    run_bridge_agent_prompt(
+    run_agent_prompt(
         manager.inner(),
         "shape-agent-creator",
         "shape-agent-draft",
@@ -890,7 +888,7 @@ pub async fn desktop_chat_fork_session_from_message(
 
     let cwd = chat_cwd()?;
     // Route by where the clicked entry actually lives. We can't infer
-    // this from the session id alone: in the cloud edition the local
+    // this from the session id alone: for hosted sessions the local
     // kordi_session store mirrors self-agent chats into the canonical
     // `session_messages` table for sync, so a plain-uuid session id
     // can still surface canonical-format message ids in the
