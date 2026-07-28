@@ -4,10 +4,6 @@ use std::path::{Path, PathBuf};
 
 use super::CANONICAL_SESSIONS_DB_FILENAME;
 
-pub(crate) fn canonical_bridge_session_id(conversation_id: &str) -> String {
-    format!("session:bridge:{}", conversation_id.trim())
-}
-
 pub(super) fn now_ms() -> i64 {
     Utc::now().timestamp_millis()
 }

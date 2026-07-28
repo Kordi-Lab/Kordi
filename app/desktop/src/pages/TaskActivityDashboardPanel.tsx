@@ -5,6 +5,7 @@ import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptRe
 import type { ConversationParticipant, DesktopChatTurnSnapshot, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import type { ScheduledTask, ScheduledTaskRun } from '@/features/cloud/scheduledTasksClient';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
+import { collaborationMessageSourceId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { cn } from '@/lib/utils';
 
 type TaskTargetParticipant = Pick<ConversationParticipant,
@@ -400,7 +401,7 @@ function enrichTaskParticipant(participant: SessionTaskActivity['participants'][
 
 function taskActivityToDashboardItem(activity: SessionTaskActivity, targetParticipants: TaskTargetParticipant[]): TaskDashboardItemWithParticipants {
   const status = dashboardStatusFromActivity(activity.status);
-  const title = activity.target?.name ?? activity.bridgeRequestId ?? 'Cloud task';
+  const title = activity.target?.name ?? activity.sourceRequestId ?? 'Cloud task';
   const initiator = matchingCanonicalParticipant(activity.initiator, targetParticipants) ?? activity.initiator;
   const participants = activity.participants.map((participant) => enrichTaskParticipant(participant, targetParticipants));
   return {
@@ -410,13 +411,13 @@ function taskActivityToDashboardItem(activity: SessionTaskActivity, targetPartic
     status,
     statusLabel: dashboardStatusLabel(status),
     tone: dashboardToneFromStatus(status),
-    target: activity.bridgeRequestId ? `ID: ${activity.bridgeRequestId}` : null,
+    target: activity.sourceRequestId ? `ID: ${activity.sourceRequestId}` : null,
     writeScope: [],
     live: status === 'active',
     timeLabel: null,
     startedAtMs: activity.createdAtMs || null,
-    responseMessageId: activity.bridgeRequestId ?? null,
-    taskId: activity.bridgeRequestId ?? activity.id,
+    responseMessageId: activity.sourceRequestId ?? null,
+    taskId: activity.sourceRequestId ?? activity.id,
     artifactIds: [],
     involvedParticipantNames: Array.from(new Set(participants.map((participant) => participant.name).filter(Boolean))),
     targetParticipants: participants.map((participant) => ({
@@ -505,7 +506,7 @@ function messageCloudIds(message: Message): string[] {
   return [
     id,
     id.startsWith('msg:cloud:self:') ? id.slice('msg:cloud:self:'.length) : null,
-    id.startsWith('bridge-message:') ? id.split(':').filter(Boolean).pop() ?? null : null,
+    collaborationMessageSourceId(id),
   ].filter((value): value is string => Boolean(value?.trim()));
 }
 
@@ -711,7 +712,7 @@ function mergeTaskTargetParticipants(participants: TaskTargetParticipant[]) {
 }
 
 export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], scheduledRunsByTaskId = {}, currentSessionId = null, targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
-  // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
+  // Conversation message arrays can be updated in place while collaboration/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
   const dashboard = buildTaskActivityDashboard({ messages, liveTurn });

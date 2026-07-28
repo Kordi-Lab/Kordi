@@ -22,7 +22,7 @@ function conversation(overrides: Partial<Conversation>): Conversation {
     type: 'person',
     subtitle: '',
     unread: 0,
-    bridges: [],
+    collaborationSources: [],
     trust: 'Trusted',
     directness: 'Direct',
     participants: [],
@@ -126,7 +126,7 @@ test('chat companion pairing links human chats to that human owner agent chat', 
     id: 'human-chat',
     name: 'Jiaxin',
     type: 'person',
-    bridgeTarget: {
+    collaborationTarget: {
       hostId: 'cloud',
       nodeId: 'acct_jiaxin',
       displayName: 'Jiaxin',
@@ -140,8 +140,8 @@ test('chat companion pairing links human chats to that human owner agent chat', 
       kind: 'human',
       role: 'participant',
       source: 'bridge',
-      bridgeHostId: 'cloud',
-      bridgeNodeId: 'acct_jiaxin',
+      sourceHostId: 'cloud',
+      sourceIdentityId: 'acct_jiaxin',
       humanId: 'acct_jiaxin',
     }],
   });
@@ -149,7 +149,7 @@ test('chat companion pairing links human chats to that human owner agent chat', 
     id: 'agent-chat',
     name: 'Jiaxin Agent',
     type: 'external-agent',
-    bridgeTarget: {
+    collaborationTarget: {
       hostId: 'cloud',
       nodeId: 'agent_jiaxin',
       displayName: 'Jiaxin Agent',
@@ -165,8 +165,8 @@ test('chat companion pairing links human chats to that human owner agent chat', 
       source: 'bridge',
       ownerIdentityId: 'human:acct_jiaxin',
       ownerName: 'Jiaxin',
-      bridgeHostId: 'cloud',
-      bridgeNodeId: 'agent_jiaxin',
+      sourceHostId: 'cloud',
+      sourceIdentityId: 'agent_jiaxin',
       agentId: 'agent_jiaxin',
     }],
   });
@@ -197,7 +197,7 @@ test('ask agent candidates include only agent sessions from any current chat', (
   const secondAgentChat = conversation({
     id: 'second-agent',
     type: 'external-agent',
-    bridgeTarget: {
+    collaborationTarget: {
       hostId: 'cloud',
       nodeId: 'agent_unrelated',
       displayName: 'Unrelated Agent',
@@ -241,8 +241,8 @@ test('chat companion candidates treat owned-agent chats with human participants 
       kind: 'human',
       role: 'participant',
       source: 'bridge',
-      bridgeHostId: 'cloud',
-      bridgeNodeId: 'acct_shu',
+      sourceHostId: 'cloud',
+      sourceIdentityId: 'acct_shu',
       humanId: 'acct_shu',
     }],
   });
@@ -404,12 +404,12 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /activePaneKind === 'agent' && !activeConversationIsBridge/);
+  assert.match(source, /activePaneKind === 'agent' && !activeConversationUsesCollaboration/);
   assert.match(source, /companionPaneKind === 'agent' \? 'Ask the agent…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
-  assert.match(source, /companionConversationIsBridgeAgent/);
-  assert.match(source, /companionPaneKind === 'agent' && !companionConversationIsBridgeAgent/);
-  assert.match(source, /data-companion-bridge-model-controls="true"/);
+  assert.match(source, /companionConversationIsCollaborationAgent/);
+  assert.match(source, /companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent/);
+  assert.match(source, /data-companion-collaboration-model-controls="true"/);
   assert.match(source, /contextStatus=\{companionRuntimeContextStatus\}/);
 });
 

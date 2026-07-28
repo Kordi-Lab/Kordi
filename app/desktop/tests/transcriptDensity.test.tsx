@@ -220,7 +220,7 @@ test('renders bridge agent stop control beside pending processing text', () => {
     completed: false,
     succeeded: false,
     error: null,
-    pendingBridgeAgentRequest: {
+    pendingCollaborationAgentRequest: {
       conversationId: 'bridge:host-1:node-agent',
       requestId: 'bridge_req_stop',
     },
@@ -228,12 +228,12 @@ test('renders bridge agent stop control beside pending processing text', () => {
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
     turn,
-    onStopBridgeAgentRequest: () => undefined,
+    onStopCollaborationAgentRequest: () => undefined,
   }));
 
   assert.match(markup, /aria-label="Stop agent request"/);
   assert.match(markup, /title="Stop agent request"/);
-  assert.match(markup, /app-bridge-agent-stop-button/);
+  assert.match(markup, /app-collaboration-agent-stop-button/);
   assert.match(markup, /h-\[18px\] w-\[18px\]/);
   assert.match(markup, /text-slate-400/);
   assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
@@ -993,7 +993,7 @@ test('renders contact-gated failed sends as a centered notice instead of changin
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, {
     msg: message,
-    onRequestBridgeContact: async () => undefined,
+    onRequestCollaborationContact: async () => undefined,
   }));
 
   assert.match(markup, /app-contact-request-failure-notice/);
@@ -1025,7 +1025,7 @@ test('renders pending contact request failures with the same explicit request ac
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, {
     msg: message,
-    onRequestBridgeContact: async () => undefined,
+    onRequestCollaborationContact: async () => undefined,
   }));
 
   assert.match(markup, />Message not delivered\.</);
@@ -1089,7 +1089,7 @@ test('renders peer human sender names inside the bubble with colorful bold styli
     senderType: 'human',
     isOwnMessage: false,
     showSenderMeta: true,
-    text: '我都不知道',
+    text: 'I honestly do not know',
     time: '10:00',
     senderAvatarSeed: 'person:xinhai',
   };
@@ -1110,7 +1110,7 @@ test('compact contact density hides peer sender names and uses squarer tighter h
     senderType: 'human',
     isOwnMessage: false,
     showSenderMeta: true,
-    text: '我都不知道',
+    text: 'I honestly do not know',
     time: '10:00',
     senderAvatarSeed: 'person:xinhai',
   };
@@ -1236,18 +1236,18 @@ test('groups consecutive same-sender human messages with one inline name and one
   const first: Message = {
     id: 'msg:first',
     role: 'person',
-    sender: '成龙',
+    sender: 'Márta',
     senderType: 'human',
     isOwnMessage: false,
     showSenderMeta: true,
-    text: '一会草坪婚礼还有重头戏',
+    text: 'The ceremony still has a main event',
     time: '09:57',
     senderAvatarSeed: 'person:chenglong',
   };
   const second: Message = {
     ...first,
     id: 'msg:second',
-    text: '俩人要念清真言',
+    text: 'They will read their vows next',
   };
 
   const markup = renderToStaticMarkup(createElement('div', null,
@@ -1473,7 +1473,7 @@ test('styles source quote colors contextually inside own message bubbles for dar
   const shellCss = readDesktopShellCss();
   const quoteRootBlock = shellCss.match(/\.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
   const ownBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightOwnBubbleQuoteBlock = shellCss.match(/\.bridge-app\.theme-light \.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightOwnBubbleQuoteBlock = shellCss.match(/\.kordi-app\.theme-light \.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
   const peerBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-peer \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(quoteRootBlock, /--app-source-message-quote-foreground:\s*var\(--utility-foreground\)/);
@@ -1564,8 +1564,8 @@ test('styles folded answer reveal as a compact inline control', () => {
 
 test('light theme keeps folded assistant markdown readable against the answer surface', () => {
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
-  const lightAnswerMarkdownBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-live-assistant-answer-markdown :where\(p, li, blockquote, td, th, strong, em\) \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightAnswerListBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-live-assistant-answer-markdown :where\(ol, ul\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightAnswerMarkdownBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-live-assistant-answer-markdown :where\(p, li, blockquote, td, th, strong, em\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightAnswerListBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-live-assistant-answer-markdown :where\(ol, ul\) \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(lightAnswerMarkdownBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
   assert.match(lightAnswerListBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);

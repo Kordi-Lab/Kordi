@@ -8,7 +8,12 @@ import type {
   MessageAttachment,
   MessageMention,
 } from '@/kordi-app/types';
-import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/bridge/agentPlaceholderText';
+import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
+import {
+  compatibleSourceConversationId,
+  compatibleSourceHostId,
+  normalizeCollaborationTargetKind,
+} from '@/features/collaboration/legacyBridgeCompatibility';
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
@@ -40,8 +45,8 @@ export function canonicalMentions(value: unknown): MessageMention[] | undefined 
     if (!label) return [];
     return [{
       label,
-      targetKind: stringValue(record.targetKind) ?? undefined,
-      bridgeHostId: stringValue(record.bridgeHostId) ?? null,
+      targetKind: normalizeCollaborationTargetKind(record.targetKind),
+      sourceHostId: compatibleSourceHostId(record) ?? null,
       nodeId: stringValue(record.nodeId) ?? null,
       humanId: stringValue(record.humanId) ?? null,
       agentId: stringValue(record.agentId) ?? null,
@@ -246,7 +251,7 @@ function toolsWithEventTaskTarget(tools: DesktopChatToolSnapshot[], content: Rec
   });
 }
 
-export function directBridgeSourceEventForOutreachDuplicate(message: CanonicalSessionMessage) {
+export function directCollaborationSourceEventForOutreachDuplicate(message: CanonicalSessionMessage) {
   if (message.sourceTransport !== 'desktop-bridge-outreach') return null;
   const sourceEventId = message.sourceEventId?.trim();
   if (!sourceEventId?.startsWith('desktop-bridge-outreach:')) return null;
@@ -326,13 +331,13 @@ export function delegationOptimisticFallbackKey(exchange: CanonicalSessionState[
   return [exchange.sessionId, exchange.targetIdentityId, exchange.requestMessageId].join(':');
 }
 
-function bridgeAgentRequestControlForExchange(
+function collaborationAgentRequestControlForExchange(
   exchange: CanonicalSessionState['delegatedExchanges'][number],
   profileHumanIdentityId?: string | null,
 ) {
   if (exchange.initiatorIdentityId !== profileHumanIdentityId) return undefined;
-  const conversationId = exchange.bridgeConversationId?.trim();
-  const requestId = exchange.bridgeRequestId?.trim();
+  const conversationId = exchange.sourceConversationId?.trim();
+  const requestId = exchange.sourceRequestId?.trim();
   if (!conversationId || !requestId) return undefined;
   return { conversationId, requestId };
 }
@@ -352,7 +357,7 @@ export function processingAgentMessage(
 ): Message {
   const role = agentRoleForViewer(target, profileHumanIdentityId);
   const time = formatDesktopClockTime(exchange.createdAtMs);
-  const pendingBridgeAgentRequest = bridgeAgentRequestControlForExchange(exchange, profileHumanIdentityId);
+  const pendingCollaborationAgentRequest = collaborationAgentRequestControlForExchange(exchange, profileHumanIdentityId);
   const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
   return {
     id: `canonical-delegation-processing:${exchange.id}`,
@@ -379,19 +384,19 @@ export function processingAgentMessage(
       succeeded: false,
       error: null,
       replyToMessageId,
-      pendingBridgeAgentRequest,
+      pendingCollaborationAgentRequest,
     },
   };
 }
 
-export function cancelledBridgeAgentDelegationMessage(
+export function cancelledCollaborationAgentDelegationMessage(
   exchange: CanonicalSessionState['delegatedExchanges'][number],
   target: CanonicalIdentity,
   identityById: Map<string, CanonicalIdentity>,
   profileHumanIdentityId?: string | null,
 ): Message | null {
   if (exchange.initiatorIdentityId !== profileHumanIdentityId) return null;
-  if (!exchange.bridgeConversationId?.trim() || !exchange.bridgeRequestId?.trim()) return null;
+  if (!exchange.sourceConversationId?.trim() || !exchange.sourceRequestId?.trim()) return null;
   const role = agentRoleForViewer(target, profileHumanIdentityId);
   const time = formatDesktopClockTime(exchange.createdAtMs);
   const replyToMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim() || null;
@@ -446,9 +451,9 @@ export function mapCanonicalMessage(
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
-  const bridgeAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
-  const bridgeConversationId = stringValue(content.bridgeConversationId)?.trim();
-  const bridgeRequestId = stringValue(content.requestId)?.trim();
+  const legacyCollaborationAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
+  const sourceConversationId = compatibleSourceConversationId(content)?.trim();
+  const sourceRequestId = stringValue(content.requestId)?.trim();
   const desktopEntryId = message.sourceTransport?.startsWith('desktop-chat')
     ? stringValue(content.desktopEntryId)?.trim()
     : undefined;
@@ -461,7 +466,7 @@ export function mapCanonicalMessage(
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
-  const replyAliasIds = [parentMessageId, bridgeRequestId]
+  const replyAliasIds = [parentMessageId, sourceRequestId]
     .filter((value): value is string => Boolean(value && value !== message.id));
   const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
   const viewerOwnsAgent = isAgentTurn
@@ -487,17 +492,17 @@ export function mapCanonicalMessage(
     && Boolean(initiatorIdentityId)
     && initiatorIdentityId === trimmedProfileIdentityId;
   const cloudGroupAgentRequestConversationId = message.sourceTransport?.startsWith('cloud-group-agent')
-    ? (bridgeConversationId || cloudGroupAgentConversationId(message.sessionId))
+    ? (sourceConversationId || cloudGroupAgentConversationId(message.sessionId))
     : null;
-  const pendingBridgeAgentRequest = isAgentTurn
+  const pendingCollaborationAgentRequest = isAgentTurn
     && !completed
     && deliveryState === 'processing'
-    && bridgeRequestId
+    && sourceRequestId
     && (viewerOwnsAgent || viewerIsInitiator)
-    ? message.sourceTransport?.startsWith('desktop-bridge') && bridgeConversationId
-      ? { conversationId: bridgeConversationId, requestId: bridgeRequestId }
+    ? message.sourceTransport?.startsWith('desktop-bridge') && sourceConversationId
+      ? { conversationId: sourceConversationId, requestId: sourceRequestId }
       : cloudGroupAgentRequestConversationId
-        ? { conversationId: cloudGroupAgentRequestConversationId, requestId: bridgeRequestId }
+        ? { conversationId: cloudGroupAgentRequestConversationId, requestId: sourceRequestId }
         : undefined
     : undefined;
   const tools = toolsWithEventTaskTarget(canonicalTools(content.tools), content);
@@ -537,7 +542,7 @@ export function mapCanonicalMessage(
   const isProcessingAgentPlaceholder = isAgentTurn
     && deliveryState === 'processing'
     && isProcessingPlaceholderText(rawDisplayText);
-  const displayText = isProcessingAgentPlaceholder || bridgeAgentFailure || noProviderFailure ? '' : rawDisplayText;
+  const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
   const cancelledTurnText = cancelled
     ? (displayText.trim() || (cancelledByRole ? `Request canceled by ${cancelledByRole}.` : 'Request canceled.'))
@@ -604,9 +609,9 @@ export function mapCanonicalMessage(
           tools: visibleTools,
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: cancelled ? null : failed ? (bridgeAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
+          error: cancelled ? null : failed ? (legacyCollaborationAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
           replyToMessageId,
-          pendingBridgeAgentRequest,
+          pendingCollaborationAgentRequest,
         }
       : undefined,
   };

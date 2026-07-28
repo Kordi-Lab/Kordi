@@ -1,35 +1,35 @@
-.bridge-app.theme-light button,
-.bridge-app.theme-light input,
-.bridge-app.theme-light .app-shell,
-.bridge-app.theme-light .app-side-shell,
-.bridge-app.theme-light .app-left-glass,
-.bridge-app.theme-light .app-session-panel,
-.bridge-app.theme-light .app-main-panel,
-.bridge-app.theme-light .app-surface-card,
-.bridge-app.theme-light .app-modal-panel,
-.bridge-app.theme-light .app-code-panel,
-.bridge-app.theme-light .app-code-toolbar {
+.kordi-app.theme-light button,
+.kordi-app.theme-light input,
+.kordi-app.theme-light .app-shell,
+.kordi-app.theme-light .app-side-shell,
+.kordi-app.theme-light .app-left-glass,
+.kordi-app.theme-light .app-session-panel,
+.kordi-app.theme-light .app-main-panel,
+.kordi-app.theme-light .app-surface-card,
+.kordi-app.theme-light .app-modal-panel,
+.kordi-app.theme-light .app-code-panel,
+.kordi-app.theme-light .app-code-toolbar {
   transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
   transition-duration: var(--app-motion-base);
   transition-timing-function: var(--app-motion-ease);
 }
 
-.bridge-app.theme-light .transition,
-.bridge-app.theme-light .transition-all,
-.bridge-app.theme-light .transition-colors,
-.bridge-app.theme-light .transition-shadow,
-.bridge-app.theme-light .transition-transform {
+.kordi-app.theme-light .transition,
+.kordi-app.theme-light .transition-all,
+.kordi-app.theme-light .transition-colors,
+.kordi-app.theme-light .transition-shadow,
+.kordi-app.theme-light .transition-transform {
   transition-duration: var(--app-motion-base) !important;
   transition-timing-function: var(--app-motion-ease) !important;
 }
 
-.bridge-app.theme-light .duration-300 {
+.kordi-app.theme-light .duration-300 {
   transition-duration: var(--app-motion-slow) !important;
 }
 
-.bridge-app.theme-light .app-surface-card,
-.bridge-app.theme-light .app-modal-panel,
-.bridge-app.theme-light .app-code-panel {
+.kordi-app.theme-light .app-surface-card,
+.kordi-app.theme-light .app-modal-panel,
+.kordi-app.theme-light .app-code-panel {
   box-shadow:
     0 0 0 1px rgba(15, 23, 42, 0.035),
     0 10px 24px rgba(15, 23, 42, 0.055),
@@ -38,8 +38,8 @@
     inset 0 -1px 0 rgba(15, 23, 42, 0.04);
 }
 
-.bridge-app.theme-light .app-session-panel,
-.bridge-app.theme-light .app-main-panel {
+.kordi-app.theme-light .app-session-panel,
+.kordi-app.theme-light .app-main-panel {
   box-shadow:
     0 0 0 1px rgba(15, 23, 42, 0.028),
     0 8px 20px rgba(15, 23, 42, 0.045),
@@ -48,23 +48,23 @@
     inset 0 -1px 0 rgba(15, 23, 42, 0.04);
 }
 
-.bridge-app.theme-light .app-badge-neutral {
+.kordi-app.theme-light .app-badge-neutral {
   color: rgb(71 85 105);
 }
 
-.bridge-app.theme-light .app-badge-owned {
+.kordi-app.theme-light .app-badge-owned {
   border-color: rgba(124, 58, 237, 0.22);
   background: rgba(139, 92, 246, 0.14);
   color: rgb(91 33 182);
 }
 
-.bridge-app.theme-light .app-badge-attention {
+.kordi-app.theme-light .app-badge-attention {
   border-color: rgba(180, 83, 9, 0.18);
   background: rgba(245, 158, 11, 0.16);
   color: rgb(146 64 14);
 }
 
-.bridge-app.theme-light .app-detail-sheet {
+.kordi-app.theme-light .app-detail-sheet {
   box-shadow:
     0 0 0 1px rgba(15, 23, 42, 0.035),
     0 12px 26px rgba(15, 23, 42, 0.055),
@@ -75,14 +75,14 @@
 
 /* Popovers use the same cool, near-opaque transient hierarchy as the
  * Start-a-chat reference. */
-.bridge-app.theme-light .app-popover {
+.kordi-app.theme-light .app-popover {
   background: var(--app-transient-surface-bg) !important;
   border-color: var(--app-transient-border) !important;
   box-shadow: var(--app-transient-shadow) !important;
 }
 
 /* Update feedback keeps status-specific accents inside the shared shell. */
-.bridge-app .app-popover.app-update-popover {
+.kordi-app .app-popover.app-update-popover {
   --app-update-surface: var(--app-transient-surface-bg);
   --app-update-edge: var(--app-transient-border);
   --app-update-shadow: var(--app-transient-shadow);
@@ -102,7 +102,7 @@
   box-shadow: var(--app-update-shadow) !important;
 }
 
-.bridge-app.theme-light .app-popover.app-update-popover {
+.kordi-app.theme-light .app-popover.app-update-popover {
   --app-update-surface: var(--app-transient-surface-bg);
   --app-update-edge: var(--app-transient-border);
   --app-update-shadow: var(--app-transient-shadow);
@@ -208,7 +208,7 @@
   box-shadow: var(--app-transient-shadow);
 }
 
-.bridge-app.theme-light .app-profile-popover {
+.kordi-app.theme-light .app-profile-popover {
   background: var(--app-transient-surface-bg) !important;
   border-color: var(--app-transient-border) !important;
   box-shadow: var(--app-transient-shadow) !important;
@@ -247,106 +247,101 @@
   }
 }
 
-.bridge-app.theme-light .app-right-detail-rail {
+.kordi-app.theme-light .app-right-detail-rail {
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-right-detail-rail .app-detail-sheet {
+.kordi-app.theme-light .app-right-detail-rail .app-detail-sheet {
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-detail-block {
+.kordi-app.theme-light .app-detail-block {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
     inset 0 -1px 0 rgba(138, 118, 98, 0.05);
 }
 
-.bridge-app.theme-light .app-detail-note {
+.kordi-app.theme-light .app-detail-note {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.34),
     inset 0 -1px 0 rgba(138, 118, 98, 0.05),
     0 4px 10px rgba(147, 128, 109, 0.03);
 }
 
-.bridge-app.theme-light .app-right-detail-rail .app-inspector-emphasis {
+.kordi-app.theme-light .app-right-detail-rail .app-inspector-emphasis {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
     inset 0 -1px 0 rgba(138, 118, 98, 0.04),
     0 4px 10px rgba(147, 128, 109, 0.025);
 }
 
-.bridge-app.theme-light .app-workspace-sidebar .app-workspace-note,
-.bridge-app.theme-light .app-workspace-sidebar .app-workspace-search,
-.bridge-app.theme-light .app-workspace-sidebar .app-filter-tabs,
-.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section,
-.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
-.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section,
-.bridge-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section,
-.bridge-app.theme-light .app-settings-page .app-settings-surface,
-.bridge-app.theme-light .app-settings-page .app-settings-control,
-.bridge-app.theme-light .app-settings-page .app-settings-toggle,
-.bridge-app.theme-light .app-settings-page .app-settings-action-button,
-.bridge-app.theme-light .app-bridge-page .app-bridge-card,
-.bridge-app.theme-light .app-bridge-page .app-bridge-meta-block,
-.bridge-app.theme-light .app-bridge-page .app-bridge-empty,
-.bridge-app.theme-light .app-bridge-page .app-bridge-list-item,
-.bridge-app.theme-light .app-bridge-page .app-bridge-wizard-option {
+.kordi-app.theme-light .app-workspace-sidebar .app-workspace-note,
+.kordi-app.theme-light .app-workspace-sidebar .app-workspace-search,
+.kordi-app.theme-light .app-workspace-sidebar .app-filter-tabs,
+.kordi-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section,
+.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-list,
+.kordi-app.theme-light .app-auth-settings-page .app-auth-detail-section,
+.kordi-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section,
+.kordi-app.theme-light .app-settings-page .app-settings-surface,
+.kordi-app.theme-light .app-settings-page .app-settings-control,
+.kordi-app.theme-light .app-settings-page .app-settings-toggle,
+.kordi-app.theme-light .app-settings-page .app-settings-action-button {
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-auth-gate-overlay,
-.bridge-app.theme-light .app-auth-gate-shell {
+.kordi-app.theme-light .app-auth-gate-overlay,
+.kordi-app.theme-light .app-auth-gate-shell {
   background: var(--app-main-bg);
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
-.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section {
+.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-list,
+.kordi-app.theme-light .app-auth-settings-page .app-auth-detail-section {
   border-color: rgba(15, 23, 42, 0.10);
   background: transparent;
 }
 
-.bridge-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section {
+.kordi-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section {
   background: var(--app-main-raised-bg);
   border-color: rgba(37, 99, 235, 0.12);
 }
 
-.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-count-chip {
+.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-count-chip {
   border-color: rgba(37, 99, 235, 0.14);
   background: rgba(37, 99, 235, 0.055);
   color: rgb(71 85 105);
 }
 
-.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-rows {
+.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-rows {
   border-color: rgba(15, 23, 42, 0.10) !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
-.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-row {
+.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-row {
   border-color: rgba(37, 99, 235, 0.08) !important;
 }
 
-.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-row:hover {
+.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-row:hover {
   background: rgba(37, 99, 235, 0.045) !important;
 }
 
-.bridge-app.theme-light .app-cloud-account-settings-overlay {
+.kordi-app.theme-light .app-cloud-account-settings-overlay {
   background: rgb(15 23 42 / 0.24) !important;
 }
 
-.bridge-app.theme-light .app-cloud-account-settings-dialog {
+.kordi-app.theme-light .app-cloud-account-settings-dialog {
   border: 0 !important;
   background: var(--app-main-bg) !important;
   box-shadow: 0 12px 30px rgb(15 23 42 / 0.11) !important;
 }
 
-.bridge-app.theme-light .app-cloud-account-settings-rail {
+.kordi-app.theme-light .app-cloud-account-settings-rail {
   border-color: var(--app-divider) !important;
   background: var(--app-session-bg);
 }
 
-.bridge-app.theme-light .app-avatar-upload-button {
+.kordi-app.theme-light .app-avatar-upload-button {
   border-color: color-mix(in oklab, rgb(148 163 184) 32%, transparent);
   background: color-mix(in oklab, rgb(255 255 255) 72%, rgb(226 232 240));
   color: rgb(51 65 85);
@@ -355,143 +350,143 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.68);
 }
 
-.bridge-app.theme-light .app-avatar-upload-button:hover {
+.kordi-app.theme-light .app-avatar-upload-button:hover {
   background: color-mix(in oklab, rgb(255 255 255) 56%, rgb(226 232 240));
   color: rgb(15 23 42);
 }
 
-.bridge-app.theme-light .app-auth-popup-panel {
+.kordi-app.theme-light .app-auth-popup-panel {
   border-color: var(--app-transient-border) !important;
   background: var(--app-transient-surface-bg) !important;
   box-shadow: var(--app-transient-shadow) !important;
 }
 
-.bridge-app.theme-light .app-auth-popup-header,
-.bridge-app.theme-light .app-auth-popup-footer {
+.kordi-app.theme-light .app-auth-popup-header,
+.kordi-app.theme-light .app-auth-popup-footer {
   border-color: var(--app-transient-divider) !important;
   background: var(--app-transient-raised-bg);
 }
 
-.bridge-app.theme-light .app-auth-flow-steps,
-.bridge-app.theme-light .app-auth-popup-info-card,
-.bridge-app.theme-light .app-auth-popup-note {
+.kordi-app.theme-light .app-auth-flow-steps,
+.kordi-app.theme-light .app-auth-popup-info-card,
+.kordi-app.theme-light .app-auth-popup-note {
   border-color: var(--app-transient-border) !important;
   background: var(--app-transient-raised-bg) !important;
   box-shadow: none !important;
 }
 
-.bridge-app.theme-light .app-auth-popup-info-card > div:first-child {
+.kordi-app.theme-light .app-auth-popup-info-card > div:first-child {
   color: rgb(15 23 42) !important;
 }
 
-.bridge-app.theme-light .app-agent-shell {
+.kordi-app.theme-light .app-agent-shell {
   border-color: transparent;
   background: transparent;
 }
 
-.bridge-app.theme-light .app-agent-sidebar,
-.bridge-app.theme-light .app-agent-detail-pane {
+.kordi-app.theme-light .app-agent-sidebar,
+.kordi-app.theme-light .app-agent-detail-pane {
   border-right-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
   background: transparent;
 }
 
-.bridge-app.theme-light .app-agent-content-pane {
+.kordi-app.theme-light .app-agent-content-pane {
   background: transparent;
 }
 
-.bridge-app.theme-light .app-agent-panel-header,
-.bridge-app.theme-light .app-agent-code-toolbar,
-.bridge-app.theme-light .app-agent-inner-list-row {
+.kordi-app.theme-light .app-agent-panel-header,
+.kordi-app.theme-light .app-agent-code-toolbar,
+.kordi-app.theme-light .app-agent-inner-list-row {
   border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
 }
 
-.bridge-app.theme-light .app-agent-inner-list,
-.bridge-app.theme-light .app-agent-inspector-row {
+.kordi-app.theme-light .app-agent-inner-list,
+.kordi-app.theme-light .app-agent-inspector-row {
   border-color: color-mix(in oklab, rgb(148 163 184) 24%, transparent);
   background: var(--app-main-raised-bg);
 }
 
-.bridge-app.theme-light .app-agent-section {
+.kordi-app.theme-light .app-agent-section {
   border-color: color-mix(in oklab, rgb(148 163 184) 24%, transparent);
   background: transparent;
 }
 
-.bridge-app.theme-light .app-agent-empty-callout {
+.kordi-app.theme-light .app-agent-empty-callout {
   background: transparent;
 }
 
-.bridge-app.theme-light .app-agent-code-panel {
+.kordi-app.theme-light .app-agent-code-panel {
   border-color: color-mix(in oklab, rgb(148 163 184) 30%, transparent);
   background: var(--app-main-muted-bg);
 }
 
-.bridge-app.theme-light .app-agent-code-toolbar {
+.kordi-app.theme-light .app-agent-code-toolbar {
   background: color-mix(in oklab, var(--app-main-muted-bg) 88%, var(--app-divider));
 }
 
-.bridge-app.theme-light .app-agent-list-row:hover,
-.bridge-app.theme-light .app-agent-inspector-row:hover,
-.bridge-app.theme-light .app-agent-skill-chip-editable:hover {
+.kordi-app.theme-light .app-agent-list-row:hover,
+.kordi-app.theme-light .app-agent-inspector-row:hover,
+.kordi-app.theme-light .app-agent-skill-chip-editable:hover {
   background: color-mix(in oklab, var(--app-main-muted-bg) 88%, var(--app-divider));
 }
 
-.bridge-app.theme-light .app-agent-list-row-active,
-.bridge-app.theme-light .app-agent-inspector-row-active {
+.kordi-app.theme-light .app-agent-list-row-active,
+.kordi-app.theme-light .app-agent-inspector-row-active {
   border-color: color-mix(in oklab, rgb(100 116 139) 28%, transparent);
   background: color-mix(in oklab, var(--app-sidebar-selected-bg) 62%, var(--app-main-raised-bg));
 }
 
-.bridge-app.theme-light .app-agent-panel-title,
-.bridge-app.theme-light .app-agent-section-title,
-.bridge-app.theme-light .app-agent-row-title,
-.bridge-app.theme-light .app-agent-hero-title,
-.bridge-app.theme-light .app-agent-content-title,
-.bridge-app.theme-light .app-agent-code-text {
+.kordi-app.theme-light .app-agent-panel-title,
+.kordi-app.theme-light .app-agent-section-title,
+.kordi-app.theme-light .app-agent-row-title,
+.kordi-app.theme-light .app-agent-hero-title,
+.kordi-app.theme-light .app-agent-content-title,
+.kordi-app.theme-light .app-agent-code-text {
   color: rgb(15 23 42) !important;
 }
 
-.bridge-app.theme-light .app-agent-panel-subtitle,
-.bridge-app.theme-light .app-agent-section-detail,
-.bridge-app.theme-light .app-agent-row-copy,
-.bridge-app.theme-light .app-agent-empty-state,
-.bridge-app.theme-light .app-agent-empty-copy,
-.bridge-app.theme-light .app-agent-row-meta,
-.bridge-app.theme-light .app-agent-code-label {
+.kordi-app.theme-light .app-agent-panel-subtitle,
+.kordi-app.theme-light .app-agent-section-detail,
+.kordi-app.theme-light .app-agent-row-copy,
+.kordi-app.theme-light .app-agent-empty-state,
+.kordi-app.theme-light .app-agent-empty-copy,
+.kordi-app.theme-light .app-agent-row-meta,
+.kordi-app.theme-light .app-agent-code-label {
   color: rgb(71 85 105) !important;
 }
 
-.bridge-app.theme-light .app-agent-chip,
-.bridge-app.theme-light .app-agent-skill-chip {
+.kordi-app.theme-light .app-agent-chip,
+.kordi-app.theme-light .app-agent-skill-chip {
   border-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
   background: var(--app-main-raised-bg);
   color: rgb(71 85 105) !important;
 }
 
-.bridge-app.theme-light .app-agent-skill-chip-selected {
+.kordi-app.theme-light .app-agent-skill-chip-selected {
   border-color: color-mix(in oklab, rgb(37 99 235) 26%, transparent);
   background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, var(--app-main-raised-bg));
   color: rgb(30 64 175) !important;
 }
 
-.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section {
+.kordi-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section {
   background: rgba(15, 23, 42, 0.035);
   border-color: rgba(15, 23, 42, 0.08);
 }
 
-.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-nav-row:hover,
-.bridge-app.theme-light .app-workspace-sidebar .app-project-group-toggle:hover,
-.bridge-app.theme-light .app-workspace-sidebar .app-project-session-row:hover {
+.kordi-app.theme-light .app-workspace-sidebar .app-sidebar-nav-row:hover,
+.kordi-app.theme-light .app-workspace-sidebar .app-project-group-toggle:hover,
+.kordi-app.theme-light .app-workspace-sidebar .app-project-session-row:hover {
   background: rgba(15, 23, 42, 0.05) !important;
 }
 
-.bridge-app.theme-light .app-page-header {
+.kordi-app.theme-light .app-page-header {
   background: transparent;
 }
 
-.bridge-app.theme-light .app-input-shell,
-.bridge-app.theme-light .app-list-item:hover,
-.bridge-app.theme-light .app-composer-shell,
-.bridge-app.theme-light .app-surface-muted {
+.kordi-app.theme-light .app-input-shell,
+.kordi-app.theme-light .app-list-item:hover,
+.kordi-app.theme-light .app-composer-shell,
+.kordi-app.theme-light .app-surface-muted {
   box-shadow:
     0 0 0 1px rgba(131, 112, 93, 0.028),
     0 8px 18px rgba(147, 128, 109, 0.045),
@@ -500,31 +495,31 @@
     inset 0 -1px 0 rgba(138, 118, 98, 0.05);
 }
 
-.bridge-app.theme-light .app-icon-button,
-.bridge-app.theme-light .app-utility-button,
-.bridge-app.theme-light .app-control-chip {
+.kordi-app.theme-light .app-icon-button,
+.kordi-app.theme-light .app-utility-button,
+.kordi-app.theme-light .app-control-chip {
   border-color: rgba(15, 23, 42, 0.10);
   background: rgba(15, 23, 42, 0.055);
   color: rgb(31 41 55);
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-icon-button:hover,
-.bridge-app.theme-light .app-utility-button:hover,
-.bridge-app.theme-light .app-control-chip:hover {
+.kordi-app.theme-light .app-icon-button:hover,
+.kordi-app.theme-light .app-utility-button:hover,
+.kordi-app.theme-light .app-control-chip:hover {
   border-color: rgba(15, 23, 42, 0.13);
   background: rgba(15, 23, 42, 0.08);
   color: rgb(17 24 39);
 }
 
-.bridge-app.theme-light .app-control-chip-active {
+.kordi-app.theme-light .app-control-chip-active {
   border-color: rgba(15, 23, 42, 0.13);
   background: rgba(15, 23, 42, 0.095);
   color: rgb(17 24 39);
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-list-item-active {
+.kordi-app.theme-light .app-list-item-active {
   border-color: rgba(43, 35, 32, 0.08);
   background: rgba(43, 35, 32, 0.075);
   box-shadow:
@@ -535,79 +530,79 @@
     inset 0 -1px 0 rgba(138, 118, 98, 0.045);
 }
 
-.bridge-app.theme-light .app-session-row-active {
+.kordi-app.theme-light .app-session-row-active {
   border-color: transparent;
   background: var(--app-sidebar-selected-bg);
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-row-title,
-.bridge-app.theme-light .app-workspace-sidebar .app-session-row-title,
-.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-session-title {
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-row-title,
+.kordi-app.theme-light .app-workspace-sidebar .app-session-row-title,
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-session-title {
   color: var(--app-sidebar-title-text) !important;
 }
 
-.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-row-preview,
-.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-session-preview {
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-row-preview,
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-session-preview {
   color: var(--app-sidebar-preview-text) !important;
 }
 
-.bridge-app.theme-light .app-workspace-sidebar .app-session-meta-time,
-.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-row-detail {
+.kordi-app.theme-light .app-workspace-sidebar .app-session-meta-time,
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-row-detail {
   color: var(--app-sidebar-time-text) !important;
 }
 
-.bridge-app.theme-light .app-icon-button,
-.bridge-app.theme-light .app-utility-button,
-.bridge-app.theme-light .app-control-chip,
-.bridge-app.theme-light .app-input-shell,
-.bridge-app.theme-light .app-composer-shell {
+.kordi-app.theme-light .app-icon-button,
+.kordi-app.theme-light .app-utility-button,
+.kordi-app.theme-light .app-control-chip,
+.kordi-app.theme-light .app-input-shell,
+.kordi-app.theme-light .app-composer-shell {
   color: rgb(31 27 25);
 }
 
 /* The Chats header actions share one quiet utility-button geometry. Update
  * state is communicated with a restrained tint and a small availability dot,
  * not a second button shape or a floating white surface. */
-.bridge-app .app-chat-sidebar-actions .app-icon-button:focus-visible {
+.kordi-app .app-chat-sidebar-actions .app-icon-button:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--app-sidebar-accent) 72%, transparent);
   outline-offset: 2px;
 }
 
-.bridge-app .app-update-logo-button {
+.kordi-app .app-update-logo-button {
   --app-update-control-active: oklch(0.78 0.09 255);
   --app-update-control-success: oklch(0.79 0.1 158);
   --app-update-control-danger: oklch(0.78 0.12 24);
   position: relative;
 }
 
-.bridge-app.theme-light .app-update-logo-button {
+.kordi-app.theme-light .app-update-logo-button {
   --app-update-control-active: oklch(0.52 0.15 255);
   --app-update-control-success: oklch(0.48 0.12 158);
   --app-update-control-danger: oklch(0.52 0.17 24);
 }
 
-.bridge-app .app-update-logo-button[data-update-status='available'],
-.bridge-app .app-update-logo-button[data-update-status='downloading'],
-.bridge-app .app-update-logo-button[data-update-status='installing'],
-.bridge-app .app-update-logo-button[data-update-status='relaunching'] {
+.kordi-app .app-update-logo-button[data-update-status='available'],
+.kordi-app .app-update-logo-button[data-update-status='downloading'],
+.kordi-app .app-update-logo-button[data-update-status='installing'],
+.kordi-app .app-update-logo-button[data-update-status='relaunching'] {
   border-color: color-mix(in oklab, var(--app-update-control-active) 24%, transparent);
   background: color-mix(in oklab, var(--app-update-control-active) 11%, transparent);
   color: var(--app-update-control-active);
 }
 
-.bridge-app .app-update-logo-button[data-update-status='up-to-date'] {
+.kordi-app .app-update-logo-button[data-update-status='up-to-date'] {
   border-color: color-mix(in oklab, var(--app-update-control-success) 24%, transparent);
   background: color-mix(in oklab, var(--app-update-control-success) 10%, transparent);
   color: var(--app-update-control-success);
 }
 
-.bridge-app .app-update-logo-button[data-update-status='failed'] {
+.kordi-app .app-update-logo-button[data-update-status='failed'] {
   border-color: color-mix(in oklab, var(--app-update-control-danger) 24%, transparent);
   background: color-mix(in oklab, var(--app-update-control-danger) 10%, transparent);
   color: var(--app-update-control-danger);
 }
 
-.bridge-app .app-update-logo-button[data-update-status='available']::after {
+.kordi-app .app-update-logo-button[data-update-status='available']::after {
   position: absolute;
   top: 3px;
   right: 3px;
@@ -619,7 +614,7 @@
   content: '';
 }
 
-.bridge-app.theme-light .app-input-shell {
+.kordi-app.theme-light .app-input-shell {
   border-color: rgba(73, 62, 54, 0.2);
   background: rgba(255, 255, 255, 0.58);
   color: rgb(31 27 25) !important;
@@ -629,9 +624,9 @@
     inset 0 -1px 0 rgba(73, 62, 54, 0.06);
 }
 
-.bridge-app.theme-light .app-input-shell:hover,
-.bridge-app.theme-light .app-input-shell:focus,
-.bridge-app.theme-light .app-input-shell:focus-within {
+.kordi-app.theme-light .app-input-shell:hover,
+.kordi-app.theme-light .app-input-shell:focus,
+.kordi-app.theme-light .app-input-shell:focus-within {
   border-color: rgba(73, 62, 54, 0.32);
   background: rgba(255, 255, 255, 0.76);
   box-shadow:
@@ -640,21 +635,21 @@
     inset 0 -1px 0 rgba(73, 62, 54, 0.07);
 }
 
-.bridge-app.theme-light .app-input-shell::placeholder,
-.bridge-app.theme-light .app-input-shell input::placeholder,
-.bridge-app.theme-light .app-input-shell textarea::placeholder,
-.bridge-app.theme-light input::placeholder,
-.bridge-app.theme-light textarea::placeholder {
+.kordi-app.theme-light .app-input-shell::placeholder,
+.kordi-app.theme-light .app-input-shell input::placeholder,
+.kordi-app.theme-light .app-input-shell textarea::placeholder,
+.kordi-app.theme-light input::placeholder,
+.kordi-app.theme-light textarea::placeholder {
   color: rgba(83, 72, 64, 0.68) !important;
 }
 
-.bridge-app.theme-light .app-input-shell input,
-.bridge-app.theme-light .app-input-shell textarea,
-.bridge-app.theme-light .app-composer-input {
+.kordi-app.theme-light .app-input-shell input,
+.kordi-app.theme-light .app-input-shell textarea,
+.kordi-app.theme-light .app-composer-input {
   color: rgb(31 27 25) !important;
 }
 
-.bridge-app.theme-light .app-composer-shell {
+.kordi-app.theme-light .app-composer-shell {
   border-color: rgba(37, 99, 235, 0.12);
   background: var(--app-main-raised-bg);
   box-shadow:
@@ -665,7 +660,7 @@
     inset 0 -1px 0 rgba(37, 99, 235, 0.035);
 }
 
-.bridge-app.theme-light .app-composer-shell:focus-within {
+.kordi-app.theme-light .app-composer-shell:focus-within {
   border-color: rgba(37, 99, 235, 0.22);
   background: var(--app-main-raised-bg);
   box-shadow:
@@ -675,127 +670,127 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.66);
 }
 
-.bridge-app.theme-light .bg-slate-800 {
+.kordi-app.theme-light .bg-slate-800 {
   background-color: rgb(222 216 207) !important;
 }
 
-.bridge-app.theme-light .bg-slate-900 {
+.kordi-app.theme-light .bg-slate-900 {
   background-color: rgb(235 230 223) !important;
 }
 
-.bridge-app.theme-light .bg-slate-950 {
+.kordi-app.theme-light .bg-slate-950 {
   background-color: rgb(35 31 28) !important;
 }
 
-.bridge-app.theme-dark .bg-slate-800 {
+.kordi-app.theme-dark .bg-slate-800 {
   background-color: rgb(31 31 35) !important;
 }
 
-.bridge-app.theme-dark .bg-slate-900 {
+.kordi-app.theme-dark .bg-slate-900 {
   background-color: rgb(18 18 21) !important;
 }
 
-.bridge-app.theme-dark .bg-slate-950 {
+.kordi-app.theme-dark .bg-slate-950 {
   background-color: rgb(9 9 11) !important;
 }
 
-.bridge-app.theme-light .text-white,
-.bridge-app.theme-light .text-white\/95,
-.bridge-app.theme-light .text-white\/92,
-.bridge-app.theme-light .text-white\/88,
-.bridge-app.theme-light .text-slate-100 {
+.kordi-app.theme-light .text-white,
+.kordi-app.theme-light .text-white\/95,
+.kordi-app.theme-light .text-white\/92,
+.kordi-app.theme-light .text-white\/88,
+.kordi-app.theme-light .text-slate-100 {
   color: rgb(15 23 42) !important;
 }
 
-.bridge-app.theme-light .text-white\/75 {
+.kordi-app.theme-light .text-white\/75 {
   color: rgb(51 65 85) !important;
 }
 
-.bridge-app.theme-light .text-slate-200 {
+.kordi-app.theme-light .text-slate-200 {
   color: rgb(51 65 85) !important;
 }
 
-.bridge-app.theme-light .text-slate-300 {
+.kordi-app.theme-light .text-slate-300 {
   color: rgb(71 85 105) !important;
 }
 
-.bridge-app.theme-light .text-slate-400 {
+.kordi-app.theme-light .text-slate-400 {
   color: rgb(82 94 109) !important;
 }
 
-.bridge-app.theme-light .text-slate-500,
-.bridge-app.theme-light .text-slate-600 {
+.kordi-app.theme-light .text-slate-500,
+.kordi-app.theme-light .text-slate-600 {
   color: rgb(73 83 97) !important;
 }
 
-.bridge-app.theme-light .placeholder\:text-slate-400::placeholder {
+.kordi-app.theme-light .placeholder\:text-slate-400::placeholder {
   color: rgba(83, 72, 64, 0.68) !important;
 }
 
-.bridge-app.theme-light .border-white\/6,
-.bridge-app.theme-light .border-white\/8 {
+.kordi-app.theme-light .border-white\/6,
+.kordi-app.theme-light .border-white\/8 {
   border-color: rgba(15, 23, 42, 0.06) !important;
 }
 
-.bridge-app.theme-light .border-white\/10,
-.bridge-app.theme-light .border-white\/12 {
+.kordi-app.theme-light .border-white\/10,
+.kordi-app.theme-light .border-white\/12 {
   border-color: rgba(15, 23, 42, 0.08) !important;
 }
 
-.bridge-app.theme-light .border-white\/14,
-.bridge-app.theme-light .border-white\/15,
-.bridge-app.theme-light .border-white\/16 {
+.kordi-app.theme-light .border-white\/14,
+.kordi-app.theme-light .border-white\/15,
+.kordi-app.theme-light .border-white\/16 {
   border-color: rgba(15, 23, 42, 0.12) !important;
 }
 
-.bridge-app.theme-light .border-white\/18,
-.bridge-app.theme-light .border-white\/20 {
+.kordi-app.theme-light .border-white\/18,
+.kordi-app.theme-light .border-white\/20 {
   border-color: rgba(15, 23, 42, 0.15) !important;
 }
 
-.bridge-app.theme-light .border-white\/30 {
+.kordi-app.theme-light .border-white\/30 {
   border-color: rgba(15, 23, 42, 0.20) !important;
 }
 
-.bridge-app.theme-light .bg-white\/5,
-.bridge-app.theme-light .bg-white\/6,
-.bridge-app.theme-light .bg-white\/8,
-.bridge-app.theme-light .bg-white\/\[0\.02\],
-.bridge-app.theme-light .bg-white\/\[0\.025\],
-.bridge-app.theme-light .bg-white\/\[0\.03\],
-.bridge-app.theme-light .bg-white\/\[0\.035\],
-.bridge-app.theme-light .bg-white\/\[0\.04\],
-.bridge-app.theme-light .bg-white\/\[0\.045\],
-.bridge-app.theme-light .bg-white\/\[0\.05\],
-.bridge-app.theme-light .bg-white\/\[0\.055\] {
+.kordi-app.theme-light .bg-white\/5,
+.kordi-app.theme-light .bg-white\/6,
+.kordi-app.theme-light .bg-white\/8,
+.kordi-app.theme-light .bg-white\/\[0\.02\],
+.kordi-app.theme-light .bg-white\/\[0\.025\],
+.kordi-app.theme-light .bg-white\/\[0\.03\],
+.kordi-app.theme-light .bg-white\/\[0\.035\],
+.kordi-app.theme-light .bg-white\/\[0\.04\],
+.kordi-app.theme-light .bg-white\/\[0\.045\],
+.kordi-app.theme-light .bg-white\/\[0\.05\],
+.kordi-app.theme-light .bg-white\/\[0\.055\] {
   background-color: rgba(15, 23, 42, 0.035) !important;
 }
 
-.bridge-app.theme-light .bg-white\/10,
-.bridge-app.theme-light .bg-white\/\[0\.06\],
-.bridge-app.theme-light .bg-white\/\[0\.07\] {
+.kordi-app.theme-light .bg-white\/10,
+.kordi-app.theme-light .bg-white\/\[0\.06\],
+.kordi-app.theme-light .bg-white\/\[0\.07\] {
   background-color: rgba(15, 23, 42, 0.06) !important;
 }
 
-.bridge-app.theme-light .bg-white\/12,
-.bridge-app.theme-light .bg-white\/15,
-.bridge-app.theme-light .bg-white\/16,
-.bridge-app.theme-light .bg-white\/\[0\.08\] {
+.kordi-app.theme-light .bg-white\/12,
+.kordi-app.theme-light .bg-white\/15,
+.kordi-app.theme-light .bg-white\/16,
+.kordi-app.theme-light .bg-white\/\[0\.08\] {
   background-color: rgba(15, 23, 42, 0.09) !important;
 }
 
-.bridge-app.theme-light .bg-white\/20 {
+.kordi-app.theme-light .bg-white\/20 {
   background-color: rgba(15, 23, 42, 0.12) !important;
 }
 
 /* Auth control-centers (LM Studio / Ollama) use bg-black/10 and bg-black/15
  * as their inner-panel fills. Those darken the surface regardless of theme;
  * flip them to a subtle slate tint so the panels read on light mode too. */
-.bridge-app.theme-light .bg-black\/10 {
+.kordi-app.theme-light .bg-black\/10 {
   background-color: rgba(15, 23, 42, 0.04) !important;
 }
 
-.bridge-app.theme-light .bg-black\/15 {
+.kordi-app.theme-light .bg-black\/15 {
   background-color: rgba(15, 23, 42, 0.06) !important;
 }
 
@@ -809,7 +804,7 @@
  *
  * Dark mode keeps the existing translucent gradient look (defined inline
  * via Tailwind classes), so this override is scoped to .theme-light only. */
-.bridge-app.theme-light .app-auth-button-neutral {
+.kordi-app.theme-light .app-auth-button-neutral {
   background: rgba(255, 255, 255, 0.92) !important;
   border-color: rgba(15, 23, 42, 0.10) !important;
   color: rgb(15, 23, 42) !important;
@@ -818,12 +813,12 @@
     0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }
 
-.bridge-app.theme-light .app-auth-button-neutral:hover {
+.kordi-app.theme-light .app-auth-button-neutral:hover {
   background: rgb(248, 250, 252) !important;
   border-color: rgba(15, 23, 42, 0.18) !important;
 }
 
-.bridge-app.theme-light .app-auth-button-primary {
+.kordi-app.theme-light .app-auth-button-primary {
   background: rgba(16, 185, 129, 0.10) !important;
   border-color: rgba(5, 150, 105, 0.28) !important;
   color: rgb(6, 95, 70) !important;
@@ -832,12 +827,12 @@
     0 1px 2px rgba(5, 150, 105, 0.04) !important;
 }
 
-.bridge-app.theme-light .app-auth-button-primary:hover {
+.kordi-app.theme-light .app-auth-button-primary:hover {
   background: rgba(16, 185, 129, 0.16) !important;
   border-color: rgba(5, 150, 105, 0.40) !important;
 }
 
-.bridge-app.theme-light .app-auth-button-danger {
+.kordi-app.theme-light .app-auth-button-danger {
   background: rgba(244, 63, 94, 0.08) !important;
   border-color: rgba(225, 29, 72, 0.24) !important;
   color: rgb(159, 18, 57) !important;
@@ -846,12 +841,12 @@
     0 1px 2px rgba(225, 29, 72, 0.04) !important;
 }
 
-.bridge-app.theme-light .app-auth-button-danger:hover {
+.kordi-app.theme-light .app-auth-button-danger:hover {
   background: rgba(244, 63, 94, 0.14) !important;
   border-color: rgba(225, 29, 72, 0.36) !important;
 }
 
-.bridge-app.theme-light .app-auth-badge-active {
+.kordi-app.theme-light .app-auth-badge-active {
   background: rgba(139, 92, 246, 0.10) !important;
   border-color: rgba(124, 58, 237, 0.24) !important;
   color: rgb(91, 33, 182) !important;
@@ -861,337 +856,315 @@
 /* Provider glyph avatars carry per-provider dark gradient fills that are
  * tuned for dark mode. In light mode we replace the neutral gray disc with
  * a quiet blue-tinted surface so the auth panel aligns with the chat shell. */
-.bridge-app.theme-light .app-auth-provider-glyph {
+.kordi-app.theme-light .app-auth-provider-glyph {
   background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(219, 234, 254, 0.72) 100%) !important;
   border-color: rgba(37, 99, 235, 0.14) !important;
   box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.04) !important;
 }
 
-.bridge-app.theme-light .bg-slate-800 {
+.kordi-app.theme-light .bg-slate-800 {
   background-color: rgba(226, 232, 240, 0.92) !important;
 }
 
-.bridge-app.theme-light .bg-slate-800.text-slate-100 {
+.kordi-app.theme-light .bg-slate-800.text-slate-100 {
   color: rgb(30 41 59) !important;
 }
 
-.bridge-app.theme-light .bg-slate-900,
-.bridge-app.theme-light .bg-slate-900\/80,
-.bridge-app.theme-light .bg-slate-950,
-.bridge-app.theme-light .bg-slate-950\/70 {
+.kordi-app.theme-light .bg-slate-900,
+.kordi-app.theme-light .bg-slate-900\/80,
+.kordi-app.theme-light .bg-slate-950,
+.kordi-app.theme-light .bg-slate-950\/70 {
   background-color: rgba(255, 255, 255, 0.88) !important;
 }
 
-.bridge-app.theme-light .ring-white\/15 {
+.kordi-app.theme-light .ring-white\/15 {
   --tw-ring-color: rgba(15, 23, 42, 0.12) !important;
 }
 
-.bridge-app.theme-light .border-emerald-400\/20,
-.bridge-app.theme-light .border-emerald-400\/25 {
+.kordi-app.theme-light .border-emerald-400\/20,
+.kordi-app.theme-light .border-emerald-400\/25 {
   border-color: rgba(5, 150, 105, 0.26) !important;
 }
 
-.bridge-app.theme-light .bg-emerald-400\/10 {
+.kordi-app.theme-light .bg-emerald-400\/10 {
   background-color: rgba(16, 185, 129, 0.16) !important;
 }
 
-.bridge-app.theme-light .text-emerald-50,
-.bridge-app.theme-light .text-emerald-50\/75,
-.bridge-app.theme-light .text-emerald-50\/80,
-.bridge-app.theme-light .text-emerald-100,
-.bridge-app.theme-light .text-emerald-200,
-.bridge-app.theme-light .text-emerald-200\/80 {
+.kordi-app.theme-light .text-emerald-50,
+.kordi-app.theme-light .text-emerald-50\/75,
+.kordi-app.theme-light .text-emerald-50\/80,
+.kordi-app.theme-light .text-emerald-100,
+.kordi-app.theme-light .text-emerald-200,
+.kordi-app.theme-light .text-emerald-200\/80 {
   color: rgb(6 95 70) !important;
 }
 
-.bridge-app.theme-light .text-emerald-300,
-.bridge-app.theme-light .text-emerald-400 {
+.kordi-app.theme-light .text-emerald-300,
+.kordi-app.theme-light .text-emerald-400 {
   color: rgb(4 120 87) !important;
 }
 
-.bridge-app.theme-light .text-amber-50,
-.bridge-app.theme-light .text-amber-50\/90,
-.bridge-app.theme-light .text-amber-100,
-.bridge-app.theme-light .text-amber-100\/90,
-.bridge-app.theme-light .text-amber-200 {
+.kordi-app.theme-light .text-amber-50,
+.kordi-app.theme-light .text-amber-50\/90,
+.kordi-app.theme-light .text-amber-100,
+.kordi-app.theme-light .text-amber-100\/90,
+.kordi-app.theme-light .text-amber-200 {
   color: rgb(120 53 15) !important;
 }
 
-.bridge-app.theme-light .text-yellow-100,
-.bridge-app.theme-light .text-yellow-200 {
+.kordi-app.theme-light .text-yellow-100,
+.kordi-app.theme-light .text-yellow-200 {
   color: rgb(120 53 15) !important;
 }
 
-.bridge-app.theme-light .text-indigo-100,
-.bridge-app.theme-light .text-indigo-200 {
+.kordi-app.theme-light .text-indigo-100,
+.kordi-app.theme-light .text-indigo-200 {
   color: rgb(55 48 163) !important;
 }
 
-.bridge-app.theme-light .text-fuchsia-100,
-.bridge-app.theme-light .text-fuchsia-200 {
+.kordi-app.theme-light .text-fuchsia-100,
+.kordi-app.theme-light .text-fuchsia-200 {
   color: rgb(134 25 143) !important;
 }
 
-.bridge-app.theme-light .text-blue-100,
-.bridge-app.theme-light .text-blue-200 {
+.kordi-app.theme-light .text-blue-100,
+.kordi-app.theme-light .text-blue-200 {
   color: rgb(30 58 138) !important;
 }
 
-.bridge-app.theme-light .border-violet-400\/30 {
+.kordi-app.theme-light .border-violet-400\/30 {
   border-color: rgba(124, 58, 237, 0.28) !important;
 }
 
-.bridge-app.theme-light .bg-violet-400\/20 {
+.kordi-app.theme-light .bg-violet-400\/20 {
   background-color: rgba(139, 92, 246, 0.18) !important;
 }
 
-.bridge-app.theme-light .text-violet-50 {
+.kordi-app.theme-light .text-violet-50 {
   color: rgb(91 33 182) !important;
 }
 
-.bridge-app.theme-light .border-cyan-400\/35,
-.bridge-app.theme-light .border-cyan-500\/20,
-.bridge-app.theme-light .border-sky-300\/25,
-.bridge-app.theme-light .border-sky-400\/30 {
+.kordi-app.theme-light .border-cyan-400\/35,
+.kordi-app.theme-light .border-cyan-500\/20,
+.kordi-app.theme-light .border-sky-300\/25,
+.kordi-app.theme-light .border-sky-400\/30 {
   border-color: rgba(8, 145, 178, 0.3) !important;
 }
 
-.bridge-app.theme-light .bg-cyan-400\/15,
-.bridge-app.theme-light .bg-cyan-500\/10,
-.bridge-app.theme-light .bg-sky-300\/12,
-.bridge-app.theme-light .bg-sky-400\/10 {
+.kordi-app.theme-light .bg-cyan-400\/15,
+.kordi-app.theme-light .bg-cyan-500\/10,
+.kordi-app.theme-light .bg-sky-300\/12,
+.kordi-app.theme-light .bg-sky-400\/10 {
   background-color: rgba(8, 145, 178, 0.12) !important;
 }
 
-.bridge-app.theme-light .text-cyan-50,
-.bridge-app.theme-light .text-cyan-100,
-.bridge-app.theme-light .text-cyan-200,
-.bridge-app.theme-light .text-cyan-300,
-.bridge-app.theme-light .text-sky-100,
-.bridge-app.theme-light .text-sky-200,
-.bridge-app.theme-light .text-sky-300,
-.bridge-app.theme-light .text-sky-400,
-.bridge-app.theme-light .text-blue-300,
-.bridge-app.theme-light .text-blue-400 {
+.kordi-app.theme-light .text-cyan-50,
+.kordi-app.theme-light .text-cyan-100,
+.kordi-app.theme-light .text-cyan-200,
+.kordi-app.theme-light .text-cyan-300,
+.kordi-app.theme-light .text-sky-100,
+.kordi-app.theme-light .text-sky-200,
+.kordi-app.theme-light .text-sky-300,
+.kordi-app.theme-light .text-sky-400,
+.kordi-app.theme-light .text-blue-300,
+.kordi-app.theme-light .text-blue-400 {
   color: rgb(14 116 144) !important;
 }
 
-.bridge-app.theme-light .text-rose-50,
-.bridge-app.theme-light .text-rose-100 {
+.kordi-app.theme-light .text-rose-50,
+.kordi-app.theme-light .text-rose-100 {
   color: rgb(159 18 57) !important;
 }
 
-.bridge-app.theme-light .text-rose-300 {
+.kordi-app.theme-light .text-rose-300 {
   color: rgb(190 24 93) !important;
 }
 
-.bridge-app.theme-light .app-bridge-page .app-bridge-meta-block {
-  border-color: rgba(73, 62, 54, 0.16);
-  background: rgba(255, 255, 255, 0.42);
-}
-
-.bridge-app.theme-light .app-bridge-page .app-bridge-field {
-  border-color: rgba(73, 62, 54, 0.22);
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.bridge-app.theme-light .app-bridge-page .app-bridge-notice-success {
-  border-color: rgba(8, 145, 178, 0.28);
-  background: rgba(8, 145, 178, 0.1);
-  color: rgb(14 116 144) !important;
-}
-
-.bridge-app.theme-light .app-bridge-page .app-bridge-notice-error {
-  border-color: rgba(225, 29, 72, 0.24);
-  background: rgba(225, 29, 72, 0.1);
-  color: rgb(159 18 57) !important;
-}
-
-.bridge-app.theme-light a {
+.kordi-app.theme-light a {
   color: rgb(14 116 144);
 }
 
-.bridge-app.theme-light .bg-rose-400\/12 {
+.kordi-app.theme-light .bg-rose-400\/12 {
   background-color: rgba(251, 113, 133, 0.14) !important;
 }
 
-.bridge-app.theme-light .bg-emerald-400\/12 {
+.kordi-app.theme-light .bg-emerald-400\/12 {
   background-color: rgba(16, 185, 129, 0.12) !important;
 }
 
-.bridge-app.theme-light .bg-emerald-400\/8 {
+.kordi-app.theme-light .bg-emerald-400\/8 {
   background-color: rgba(16, 185, 129, 0.09) !important;
 }
 
-.bridge-app.theme-light .bg-amber-400\/10 {
+.kordi-app.theme-light .bg-amber-400\/10 {
   background-color: rgba(180, 83, 9, 0.13) !important;
 }
 
-.bridge-app.theme-light .app-auth-notice,
-.bridge-app.theme-light .app-compression-card-active {
+.kordi-app.theme-light .app-auth-notice,
+.kordi-app.theme-light .app-compression-card-active {
   border-color: rgba(180, 83, 9, 0.34);
   background: rgba(245, 158, 11, 0.18);
   color: rgb(85 47 12) !important;
 }
 
-.bridge-app.theme-light .app-queued-message {
+.kordi-app.theme-light .app-queued-message {
   --app-message-bubble-fill: rgba(245, 158, 11, 0.18);
   --app-message-bubble-stroke: rgba(180, 83, 9, 0.34);
   background: transparent;
   color: rgb(85 47 12) !important;
 }
 
-.bridge-app.theme-light .app-auth-notice-title {
+.kordi-app.theme-light .app-auth-notice-title {
   color: rgb(63 42 13) !important;
 }
 
-.bridge-app.theme-light .app-auth-notice-icon {
+.kordi-app.theme-light .app-auth-notice-icon {
   color: rgb(180 83 9) !important;
 }
 
-.bridge-app.theme-light .app-auth-notice-description {
+.kordi-app.theme-light .app-auth-notice-description {
   color: rgb(103 63 18) !important;
 }
 
-.bridge-app.theme-light .app-auth-notice-action {
+.kordi-app.theme-light .app-auth-notice-action {
   border-color: rgba(73, 62, 54, 0.24);
   background: rgba(255, 255, 255, 0.62);
   color: rgb(31 27 25) !important;
 }
 
-.bridge-app.theme-light .app-compression-card-success {
+.kordi-app.theme-light .app-compression-card-success {
   border-color: rgba(5, 150, 105, 0.28);
   background: rgba(16, 185, 129, 0.14);
   color: rgb(6 95 70) !important;
 }
 
-.bridge-app.theme-light .app-compression-card-error {
+.kordi-app.theme-light .app-compression-card-error {
   border-color: rgba(225, 29, 72, 0.26);
   background: rgba(225, 29, 72, 0.12);
   color: rgb(159 18 57) !important;
 }
 
-.bridge-app.theme-light .app-compression-title,
-.bridge-app.theme-light .app-compression-detail,
-.bridge-app.theme-light .app-queued-message-label,
-.bridge-app.theme-light .app-queued-message-text,
-.bridge-app.theme-light .app-queued-message-meta {
+.kordi-app.theme-light .app-compression-title,
+.kordi-app.theme-light .app-compression-detail,
+.kordi-app.theme-light .app-queued-message-label,
+.kordi-app.theme-light .app-queued-message-text,
+.kordi-app.theme-light .app-queued-message-meta {
   color: inherit !important;
 }
 
-.bridge-app.theme-light .app-compression-detail,
-.bridge-app.theme-light .app-queued-message-label,
-.bridge-app.theme-light .app-queued-message-meta {
+.kordi-app.theme-light .app-compression-detail,
+.kordi-app.theme-light .app-queued-message-label,
+.kordi-app.theme-light .app-queued-message-meta {
   opacity: 0.82;
 }
 
-.bridge-app.theme-light .app-transcript-live-status {
+.kordi-app.theme-light .app-transcript-live-status {
   color: rgb(88 102 119) !important;
 }
 
-.bridge-app.theme-light .app-transcript-live-status span {
+.kordi-app.theme-light .app-transcript-live-status span {
   color: rgb(71 85 105) !important;
 }
 
-.bridge-app.theme-light .app-transcript-block-label,
-.bridge-app.theme-light .app-transcript-section-meta {
+.kordi-app.theme-light .app-transcript-block-label,
+.kordi-app.theme-light .app-transcript-section-meta {
   color: rgb(100 116 139) !important;
 }
 
-.bridge-app.theme-light .app-transcript-section-title {
+.kordi-app.theme-light .app-transcript-section-title {
   color: rgb(30 41 59) !important;
 }
 
-.bridge-app.theme-light .app-transcript-section-toggle {
+.kordi-app.theme-light .app-transcript-section-toggle {
   color: rgb(88 102 119) !important;
 }
 
-.bridge-app.theme-light .app-transcript-wrap-toggle {
+.kordi-app.theme-light .app-transcript-wrap-toggle {
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(15, 23, 42, 0.05) !important;
   color: rgb(71 85 105) !important;
 }
 
-.bridge-app.theme-light .app-transcript-wrap-toggle:hover {
+.kordi-app.theme-light .app-transcript-wrap-toggle:hover {
   background: rgba(15, 23, 42, 0.08) !important;
   color: rgb(30 41 59) !important;
 }
 
-.bridge-app.theme-light .app-transcript-utility-chip {
+.kordi-app.theme-light .app-transcript-utility-chip {
   background: rgba(15, 23, 42, 0.06) !important;
   color: rgb(88 102 119) !important;
 }
 
-.bridge-app.theme-light .app-transcript-tool-badge {
+.kordi-app.theme-light .app-transcript-tool-badge {
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-transcript-tool-badge-neutral {
+.kordi-app.theme-light .app-transcript-tool-badge-neutral {
   border-color: rgba(15, 23, 42, 0.08) !important;
   background: rgba(15, 23, 42, 0.05) !important;
   color: rgb(100 116 139) !important;
 }
 
-.bridge-app.theme-light .app-transcript-tool-badge-done {
+.kordi-app.theme-light .app-transcript-tool-badge-done {
   border-color: rgba(5, 150, 105, 0.16) !important;
   background: rgba(16, 185, 129, 0.1) !important;
   color: rgb(6 95 70) !important;
 }
 
-.bridge-app.theme-light .app-transcript-tool-badge-error {
+.kordi-app.theme-light .app-transcript-tool-badge-error {
   border-color: rgba(225, 29, 72, 0.16) !important;
   background: rgba(244, 63, 94, 0.08) !important;
   color: rgb(159 18 57) !important;
 }
 
-.bridge-app.theme-light .app-transcript-sheen-title-char {
+.kordi-app.theme-light .app-transcript-sheen-title-char {
   color: rgb(30 41 59);
 }
 
-.bridge-app.theme-light .app-transcript-tool-pin-running,
-.bridge-app.theme-light .app-transcript-status-text-running {
+.kordi-app.theme-light .app-transcript-tool-pin-running,
+.kordi-app.theme-light .app-transcript-status-text-running {
   color: var(--app-tool-running-fg) !important;
 }
 
-.bridge-app.theme-light .app-transcript-tool-pin-error,
-.bridge-app.theme-light .app-transcript-status-text-error {
+.kordi-app.theme-light .app-transcript-tool-pin-error,
+.kordi-app.theme-light .app-transcript-status-text-error {
   color: rgb(159 18 57) !important;
 }
 
-.bridge-app.theme-light .app-transcript-status-text-done {
+.kordi-app.theme-light .app-transcript-status-text-done {
   color: rgb(6 95 70) !important;
 }
 
-.bridge-app.theme-light .app-transcript-tool-activity-line strong,
-.bridge-app.theme-light .app-transcript-tool-activity-latest strong,
-.bridge-app.theme-light .app-transcript-tool-row-name,
-.bridge-app.theme-light .app-transcript-tool-pin strong {
+.kordi-app.theme-light .app-transcript-tool-activity-line strong,
+.kordi-app.theme-light .app-transcript-tool-activity-latest strong,
+.kordi-app.theme-light .app-transcript-tool-row-name,
+.kordi-app.theme-light .app-transcript-tool-pin strong {
   color: rgb(30 41 59) !important;
 }
 
-.bridge-app.theme-light .app-live-assistant-answer-markdown :where(p, li, blockquote, td, th, strong, em) {
+.kordi-app.theme-light .app-live-assistant-answer-markdown :where(p, li, blockquote, td, th, strong, em) {
   color: var(--utility-foreground) !important;
 }
 
-.bridge-app.theme-light .app-live-assistant-answer-markdown :where(ol, ul) {
+.kordi-app.theme-light .app-live-assistant-answer-markdown :where(ol, ul) {
   color: var(--utility-foreground) !important;
 }
 
-.bridge-app.theme-light .app-markdown-muted-heading {
+.kordi-app.theme-light .app-markdown-muted-heading {
   color: rgb(71 85 105) !important;
 }
 
-.bridge-app.theme-light .app-markdown-muted-copy {
+.kordi-app.theme-light .app-markdown-muted-copy {
   color: rgb(88 102 119) !important;
 }
 
-.bridge-app.theme-light .app-markdown-muted-quote {
+.kordi-app.theme-light .app-markdown-muted-quote {
   border-color: rgba(100, 116, 139, 0.18) !important;
   color: rgb(100 116 139) !important;
 }
 
 /* --- Cloud login (gate + signup + loading splash) ---
- * The page renders before the shell mounts, so it relies on .bridge-app
+ * The page renders before the shell mounts, so it relies on .kordi-app
  * being applied by KordiAppRoot. All palette is driven by the
  * --app-cloud-login-* tokens defined in theme-tokens.css.
  */
@@ -1207,16 +1180,16 @@
   color: var(--utility-foreground);
 }
 
-.bridge-app .app-cloud-login-page,
-.bridge-app .app-cloud-login-loading {
+.kordi-app .app-cloud-login-page,
+.kordi-app .app-cloud-login-loading {
   --app-cloud-login-page-bg:
     radial-gradient(circle at top left, rgba(132, 122, 196, 0.10), transparent 36%),
     radial-gradient(circle at 86% 12%, rgba(132, 199, 196, 0.06), transparent 30%),
     linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
 }
 
-.bridge-app.theme-light .app-cloud-login-page,
-.bridge-app.theme-light .app-cloud-login-loading {
+.kordi-app.theme-light .app-cloud-login-page,
+.kordi-app.theme-light .app-cloud-login-loading {
   --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
 }
 
@@ -1228,7 +1201,7 @@
     radial-gradient(circle at 74% 82%, oklch(0.82 0.16 83 / 0.18), transparent 34%);
 }
 
-.bridge-app.theme-light .app-cloud-login-accents {
+.kordi-app.theme-light .app-cloud-login-accents {
   background:
     radial-gradient(circle at 14% 10%, oklch(0.70 0.13 232 / 0.12), transparent 28%),
     radial-gradient(circle at 84% 14%, oklch(0.74 0.11 190 / 0.10), transparent 26%),
@@ -1249,7 +1222,7 @@
   opacity: 0.30;
 }
 
-.bridge-app.theme-light .app-cloud-login-grain {
+.kordi-app.theme-light .app-cloud-login-grain {
   background-image: repeating-linear-gradient(
     7deg,
     rgba(51, 65, 85, 0.035) 0 1px,
@@ -1284,7 +1257,7 @@
     0 6px 14px rgba(0, 0, 0, 0.32);
 }
 
-.bridge-app.theme-light .app-cloud-login-avatar {
+.kordi-app.theme-light .app-cloud-login-avatar {
   border-color: oklch(0.62 0.05 82 / 0.28);
   box-shadow:
     inset 0 1px 0 oklch(1 0 0 / 0.45),
@@ -1296,7 +1269,7 @@
   color: var(--utility-foreground);
 }
 
-.bridge-app.theme-light .app-cloud-login-social-pill:hover {
+.kordi-app.theme-light .app-cloud-login-social-pill:hover {
   color: oklch(0.16 0.02 125);
 }
 
@@ -1307,7 +1280,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
 }
 
-.bridge-app.theme-light .app-cloud-login-tab-pill {
+.kordi-app.theme-light .app-cloud-login-tab-pill {
   box-shadow: 0 4px 12px oklch(0.42 0.04 82 / 0.10);
 }
 
@@ -1369,7 +1342,7 @@
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
-.bridge-app.theme-light .app-cloud-login-submit {
+.kordi-app.theme-light .app-cloud-login-submit {
   background: oklch(0.22 0.02 125);
   color: oklch(0.985 0.015 82);
   border-color: oklch(0.27 0.02 125 / 0.10);
@@ -1396,14 +1369,14 @@
   color: var(--utility-foreground);
 }
 
-.bridge-app .app-cloud-starting-screen {
+.kordi-app .app-cloud-starting-screen {
   --app-cloud-login-page-bg:
     radial-gradient(circle at top left, rgba(132, 122, 196, 0.08), transparent 36%),
     radial-gradient(circle at 86% 12%, rgba(132, 199, 196, 0.05), transparent 30%),
     linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
 }
 
-.bridge-app.theme-light .app-cloud-starting-screen {
+.kordi-app.theme-light .app-cloud-starting-screen {
   --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
   --app-cloud-starting-dot-a: oklch(0.56 0.13 232 / 0.68);
   --app-cloud-starting-dot-b: oklch(0.58 0.10 190 / 0.64);

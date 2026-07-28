@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = dirname(scriptDir);
 const workspaceRoot = resolve(desktopRoot, '..', '..');
+const expectedCloudExecutables = new Set(['kordi-desktop', 'kordi']);
 
 export function defaultDmgBundleDir({ cargoTargetDir = process.env.CARGO_TARGET_DIR ?? '' } = {}) {
   if (cargoTargetDir) {
@@ -34,6 +35,31 @@ export function validateDmgVolumeLayout(volumePath, { appName }) {
   const target = readlinkSync(applicationsPath);
   if (target !== '/Applications') {
     throw new Error(`Applications symlink must point to /Applications, got ${target}`);
+  }
+
+  validateCloudAppExecutables(appBundlePath);
+}
+
+export function validateCloudAppExecutables(appBundlePath) {
+  const executableDir = join(appBundlePath, 'Contents', 'MacOS');
+  if (!existsSync(executableDir) || !lstatSync(executableDir).isDirectory()) {
+    throw new Error(`Missing Contents/MacOS in app bundle: ${appBundlePath}`);
+  }
+
+  const executableNames = readdirSync(executableDir)
+    .filter((name) => {
+      const entry = lstatSync(join(executableDir, name));
+      return entry.isFile() || entry.isSymbolicLink();
+    })
+    .sort();
+  const missing = [...expectedCloudExecutables].filter((name) => !executableNames.includes(name));
+  const unexpected = executableNames.filter((name) => !expectedCloudExecutables.has(name));
+
+  if (missing.length > 0) {
+    throw new Error(`Cloud app bundle is missing expected executables: ${missing.join(', ')}`);
+  }
+  if (unexpected.length > 0) {
+    throw new Error(`Cloud app bundle contains unexpected executables: ${unexpected.join(', ')}`);
   }
 }
 
@@ -134,7 +160,9 @@ async function main() {
   const options = parseCliArgs(process.argv.slice(2));
   const artifact = verifyDmgArtifact(options);
   console.log(`[kordi] Verified macOS DMG installer: ${artifact}`);
-  console.log(`[kordi] DMG contains ${options.appName}.app and an /Applications drag target.`);
+  console.log(
+    `[kordi] DMG contains ${options.appName}.app, only the expected Cloud executables, and an /Applications drag target.`,
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

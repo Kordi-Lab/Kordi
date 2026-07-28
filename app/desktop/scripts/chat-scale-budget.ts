@@ -1,5 +1,5 @@
 export type ChatScaleBenchmarkMetrics = {
-  bridgeMapMs: number;
+  collaborationMapMs: number;
   canonicalIndexMs: number;
   cloudIndexMs: number;
   cloudIndexDeltaMs: number;
@@ -14,7 +14,7 @@ export type ChatScaleBenchmarkBudgets = ChatScaleBenchmarkMetrics;
 // the extra headroom prevents normal renderer/system contention from making the
 // deterministic fixture gate flaky.
 export const CHAT_SCALE_BENCHMARK_BUDGETS: ChatScaleBenchmarkBudgets = {
-  bridgeMapMs: 100,
+  collaborationMapMs: 100,
   canonicalIndexMs: 160,
   cloudIndexMs: 4_000,
   cloudIndexDeltaMs: 80,

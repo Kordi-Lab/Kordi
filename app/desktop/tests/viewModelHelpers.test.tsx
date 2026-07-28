@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bridgeContactRequestsForContactsPage, bridgePeerIsApprovedContact, bridgePeerIsReachableAgent, buildConversationPreview, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, preferLatestMessages, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
-import type { DesktopBridgeHost, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { collaborationContactRequestsForContactsPage, collaborationPeerIsApprovedContact, collaborationPeerIsReachableAgent, buildConversationPreview, conversationSessionId, dedupeAdjacentAgentTurns, formatSessionIdSubtitle, hideRawConversationIds, localOwnedAgentSenderLabel, preferLatestMessages, suppressLiveTurnEchoMessages } from '../src/app/viewModels/helpers';
+import type { DesktopCollaborationHost, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
-function bridgeHost(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHost {
+function bridgeHost(overrides: Partial<DesktopCollaborationHost> = {}): DesktopCollaborationHost {
   return {
     id: 'host-1',
     registered: true,
@@ -30,7 +30,7 @@ function bridgeHost(overrides: Partial<DesktopBridgeHost> = {}): DesktopBridgeHo
   };
 }
 
-test('bridgePeerIsApprovedContact treats only approved bridge peers as Contacts-page contacts', () => {
+test('collaborationPeerIsApprovedContact treats only approved bridge peers as Contacts-page contacts', () => {
   const basePeer = {
     nodeId: 'kd_bob',
     displayName: 'Bob Agent',
@@ -51,13 +51,13 @@ test('bridgePeerIsApprovedContact treats only approved bridge peers as Contacts-
     contactRequestDirection: null,
   };
 
-  assert.equal(bridgePeerIsApprovedContact(basePeer), false);
-  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'pending' }), false);
-  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, isContact: true }), true);
-  assert.equal(bridgePeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'approved' }), true);
+  assert.equal(collaborationPeerIsApprovedContact(basePeer), false);
+  assert.equal(collaborationPeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'pending' }), false);
+  assert.equal(collaborationPeerIsApprovedContact({ ...basePeer, isContact: true }), true);
+  assert.equal(collaborationPeerIsApprovedContact({ ...basePeer, contactRequestStatus: 'approved' }), true);
 });
 
-test('bridgePeerIsReachableAgent hides owner-only agents from other people', () => {
+test('collaborationPeerIsReachableAgent hides owner-only agents from other people', () => {
   const basePeer = {
     nodeId: 'kd_agent',
     displayName: 'Owner Kordi',
@@ -77,14 +77,14 @@ test('bridgePeerIsReachableAgent hides owner-only agents from other people', () 
     contactRequestDirection: null,
   };
 
-  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'owner' }), false);
-  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'contacts' }), true);
-  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'server' }), true);
-  assert.equal(bridgePeerIsReachableAgent({ ...basePeer, runtime: 'person', agentReachabilityPolicy: 'owner' }), false);
+  assert.equal(collaborationPeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'owner' }), false);
+  assert.equal(collaborationPeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'contacts' }), true);
+  assert.equal(collaborationPeerIsReachableAgent({ ...basePeer, agentReachabilityPolicy: 'server' }), true);
+  assert.equal(collaborationPeerIsReachableAgent({ ...basePeer, runtime: 'person', agentReachabilityPolicy: 'owner' }), false);
 });
 
-test('bridgeContactRequestsForContactsPage exposes pending incoming approvals only', () => {
-  const requests = bridgeContactRequestsForContactsPage(bridgeHost({
+test('collaborationContactRequestsForContactsPage exposes pending incoming approvals only', () => {
+  const requests = collaborationContactRequestsForContactsPage(bridgeHost({
     visiblePeers: [{
       nodeId: 'kd_bob',
       displayName: 'Bob Agent',
@@ -114,8 +114,8 @@ test('bridgeContactRequestsForContactsPage exposes pending incoming approvals on
   assert.equal(requests.length, 1);
   assert.equal(requests[0].title, 'Bob wants to connect');
   assert.equal(requests[0].detail, 'Please add me');
-  assert.equal(requests[0].bridgeHostId, 'host-1');
-  assert.equal(requests[0].bridgeRequestId, 'req-in');
+  assert.equal(requests[0].sourceHostId, 'host-1');
+  assert.equal(requests[0].sourceRequestId, 'req-in');
 });
 
 test('buildConversationPreview uses the latest agent turn response when message text is empty', () => {
@@ -150,7 +150,7 @@ test('hideRawConversationIds keeps friendly names and preserves canonical ids as
     type: 'person',
     subtitle: 'Direct human chat',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Me', 'Bob'],
@@ -181,7 +181,7 @@ test('hideRawConversationIds replaces raw names with stable friendly fallbacks',
     type: 'person',
     subtitle: 'Direct human chat',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct person chat',
     participants: ['Me', 'Alice'],
@@ -197,7 +197,7 @@ test('hideRawConversationIds replaces raw names with stable friendly fallbacks',
     type: 'owned-agent',
     subtitle: 'Draft',
     unread: 0,
-    bridges: ['Local'],
+    collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'Kordi'],

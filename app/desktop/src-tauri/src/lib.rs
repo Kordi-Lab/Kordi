@@ -1,6 +1,4 @@
 mod auth;
-#[path = "bridge/mod.rs"]
-mod bridge;
 mod canonical_sessions;
 mod chat;
 mod cloud_account_paths;
@@ -51,9 +49,9 @@ fn configure_cloud_app_data_dir(app: &tauri::App, is_cloud_edition: bool) {
     let Ok(app_data_dir) = app.path().app_data_dir() else {
         return;
     };
-    // Cloud Edition must not read/write the local/localhost Kordi stores under
+    // Hosted sessions must not read/write the local/localhost Kordi stores under
     // ~/.korde. The Cloud bundle uses a separate identifier, so Tauri's app
-    // data dir is isolated from the local build and from old Bridge state.
+    // data dir is isolated from the local build and from retired collaboration state.
     unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
 }
 
@@ -75,7 +73,6 @@ fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
 }
 
 use auth::DesktopAuthManager;
-use bridge::DesktopBridgeManager;
 use chat::DesktopChatManager;
 use tauri::Manager;
 use workspace::DesktopWorkspaceStatus;
@@ -442,7 +439,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
-        .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
         .setup(|app| {
             let is_cloud_edition = is_cloud_edition_app(app);
@@ -458,11 +454,6 @@ pub fn run() {
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }
-            let bridge_manager = app.state::<DesktopBridgeManager>();
-            tauri::async_runtime::block_on(bridge::set_bridge_app_handle(
-                &bridge_manager,
-                app.handle().clone(),
-            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -474,32 +465,6 @@ pub fn run() {
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,
             project::desktop_save_project_settings,
-            bridge::desktop_bridge_open_config_folder,
-            bridge::desktop_bridge_reveal_storage_file,
-            bridge::desktop_bridge_export_hosts_config,
-            bridge::desktop_bridge_import_hosts_config,
-            bridge::desktop_save_bridge_host,
-            bridge::desktop_remove_bridge_host,
-            bridge::desktop_set_active_bridge_host,
-            bridge::desktop_bridge_register_cloud_host,
-            bridge::desktop_bridge_set_discovery_mode,
-            bridge::desktop_bridge_set_host_privacy_policy,
-            bridge::desktop_bridge_set_agent_reachability_policy,
-            bridge::desktop_bridge_create_agent,
-            bridge::desktop_bridge_activate_agent,
-            bridge::desktop_bridge_rename_agent,
-            bridge::desktop_bridge_update_agent_model_routing,
-            bridge::desktop_bridge_update_local_agent_model_routing,
-            bridge::desktop_bridge_set_default_agent,
-            bridge::desktop_bridge_create_project,
-            bridge::desktop_bridge_create_invite,
-            bridge::desktop_bridge_join_project,
-            bridge::desktop_bridge_add_contact,
-            bridge::desktop_bridge_remove_contact,
-            bridge::desktop_bridge_approve_contact_request,
-            bridge::desktop_bridge_reject_contact_request,
-            bridge::desktop_bridge_open_conversation,
-            bridge::desktop_bridge_mark_conversation_read,
             canonical_sessions::desktop_canonical_session_state,
             canonical_sessions::desktop_canonical_session_catalog,
             canonical_sessions::desktop_canonical_session_messages,
@@ -611,9 +576,6 @@ pub fn run() {
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
             cloud_session::cloud_session_clear,
-            cloud_session::cloud_device_keypair_load_or_create,
-            cloud_session::cloud_bridges_api_key_store,
-            cloud_session::cloud_bridges_api_key_load,
             remote_image::desktop_fetch_remote_image_data_url
         ])
         .build(tauri::generate_context!())

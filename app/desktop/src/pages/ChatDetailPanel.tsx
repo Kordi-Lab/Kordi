@@ -3,7 +3,7 @@ import { memo, useEffect, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
+import type { DesktopCollaborationIdentitySnapshot, DesktopCollaborationOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
@@ -32,20 +32,20 @@ type ActiveConversation = {
     presenceStatus?: string | null;
     presenceDetail?: string | null;
     source?: string | null;
-    bridgeHostId?: string | null;
-    bridgeNodeId?: string | null;
+    sourceHostId?: string | null;
+    sourceIdentityId?: string | null;
     humanId?: string | null;
     agentId?: string | null;
   }>;
   subtitle: string;
   type: 'person' | 'owned-agent' | 'external-agent';
-  bridges: string[];
+  collaborationSources: string[];
   trust: string;
   directness: string;
   participants: string[];
   messages: Message[];
-  outreach?: DesktopBridgeOutreachMetadata | null;
-  identity?: DesktopBridgeIdentitySnapshot | null;
+  outreach?: DesktopCollaborationOutreachMetadata | null;
+  identity?: DesktopCollaborationIdentitySnapshot | null;
   outreachThreads?: OutreachThreadSummary[];
   taskActivities?: SessionTaskActivity[];
   participantAvatarSeeds?: Record<string, string>;
@@ -154,22 +154,22 @@ type SessionProjectInfo = {
 };
 
 export function chatArtifactPreviewBaseRoot({
-  activeConversationIsBridge,
+  activeConversationUsesCollaboration,
   activeSessionProjectRoot,
   activeSessionWorkspaceRoot,
 }: {
-  activeConversationIsBridge: boolean;
+  activeConversationUsesCollaboration: boolean;
   activeSessionProjectRoot?: string | null;
   activeSessionWorkspaceRoot?: string | null;
 }) {
-  if (activeConversationIsBridge) return null;
+  if (activeConversationUsesCollaboration) return null;
   const projectRoot = activeSessionProjectRoot?.trim();
   if (projectRoot) return projectRoot;
   const sessionRoot = activeSessionWorkspaceRoot?.trim();
   return sessionRoot || null;
 }
 
-type BridgeConversation = {
+type CollaborationConversation = {
   peerNodeId: string;
   peerRuntime: string;
   projectName?: string | null;
@@ -185,13 +185,13 @@ type ChatDetailPanelProps = {
   activeConvHasSubtitle: boolean;
   activeLastMessage?: { time?: string; text?: string };
   activeLiveTurn?: DesktopChatTurnSnapshot | null;
-  activeConversationIsBridge: boolean;
-  activeBridgeConversationHostNodeId?: string | null;
-  activeBridgeConversationHostUrl?: string | null;
-  activeBridgeConversation?: BridgeConversation | null;
-  activeBridgeAwaitingReply: boolean;
-  isBridgePolling: boolean;
-  lastBridgePollAtLabel?: string | null;
+  activeConversationUsesCollaboration: boolean;
+  activeCollaborationConversationHostNodeId?: string | null;
+  activeCollaborationConversationHostUrl?: string | null;
+  activeCollaborationConversation?: CollaborationConversation | null;
+  activeCollaborationAwaitingReply: boolean;
+  isCollaborationSyncing: boolean;
+  lastCollaborationSyncAtLabel?: string | null;
   activeSessionProject?: SessionProjectInfo | null;
   artifacts: SessionArtifact[];
   activeArtifactId: string | null;
@@ -232,7 +232,7 @@ function ChatDetailPanelView({
   activeConvHasSubtitle,
   activeLastMessage,
   activeLiveTurn,
-  activeConversationIsBridge,
+  activeConversationUsesCollaboration,
   activeSessionProject,
   artifacts,
   activeArtifactId,
@@ -245,7 +245,7 @@ function ChatDetailPanelView({
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
   const artifactPreviewBaseRoot = chatArtifactPreviewBaseRoot({
-    activeConversationIsBridge,
+    activeConversationUsesCollaboration,
     activeSessionProjectRoot: activeSessionProject?.root,
     activeSessionWorkspaceRoot: activeConv.localSessionCwd,
   });
@@ -324,7 +324,7 @@ function ChatDetailPanelView({
           </div>
         </section>
 
-        {!activeConversationIsBridge && activeSessionProject ? (
+        {!activeConversationUsesCollaboration && activeSessionProject ? (
           <>
             <section className="app-detail-section">
               <div className="app-detail-kicker">Related project</div>
@@ -383,7 +383,7 @@ function ChatDetailPanelView({
           activeArtifactId={activeArtifactId}
           onSelectArtifact={onSelectArtifact}
           previewBaseRoot={artifactPreviewBaseRoot}
-          emptyMessage={activeConversationIsBridge ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
+          emptyMessage={activeConversationUsesCollaboration ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
         />
       </div>
     );
@@ -399,7 +399,7 @@ function ChatDetailPanelView({
         scheduledRunsByTaskId={scheduledTasks.runsByTaskId}
         currentSessionId={activeConv.canonicalSessionId ?? activeConv.id}
         targetParticipants={activeConv.canonicalParticipants ?? []}
-        emptyMessage={activeConversationIsBridge ? 'No planning or execution task activity in this chat yet.' : 'No planning or execution task activity in this session yet.'}
+        emptyMessage={activeConversationUsesCollaboration ? 'No planning or execution task activity in this chat yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}
         onNavigateToResponse={onNavigateToResponse}
@@ -417,13 +417,13 @@ function chatDetailPanelPropsEqual(previous: ChatDetailPanelProps, next: ChatDet
     && previous.activeLastMessage?.time === next.activeLastMessage?.time
     && previous.activeLastMessage?.text === next.activeLastMessage?.text
     && previous.activeLiveTurn === next.activeLiveTurn
-    && previous.activeConversationIsBridge === next.activeConversationIsBridge
-    && previous.activeBridgeConversationHostNodeId === next.activeBridgeConversationHostNodeId
-    && previous.activeBridgeConversationHostUrl === next.activeBridgeConversationHostUrl
-    && previous.activeBridgeConversation === next.activeBridgeConversation
-    && previous.activeBridgeAwaitingReply === next.activeBridgeAwaitingReply
-    && previous.isBridgePolling === next.isBridgePolling
-    && previous.lastBridgePollAtLabel === next.lastBridgePollAtLabel
+    && previous.activeConversationUsesCollaboration === next.activeConversationUsesCollaboration
+    && previous.activeCollaborationConversationHostNodeId === next.activeCollaborationConversationHostNodeId
+    && previous.activeCollaborationConversationHostUrl === next.activeCollaborationConversationHostUrl
+    && previous.activeCollaborationConversation === next.activeCollaborationConversation
+    && previous.activeCollaborationAwaitingReply === next.activeCollaborationAwaitingReply
+    && previous.isCollaborationSyncing === next.isCollaborationSyncing
+    && previous.lastCollaborationSyncAtLabel === next.lastCollaborationSyncAtLabel
     && previous.activeSessionProject === next.activeSessionProject
     && previous.artifacts === next.artifacts
     && previous.activeArtifactId === next.activeArtifactId

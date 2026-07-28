@@ -387,6 +387,6 @@ export function CloudAccountSettingsDialog({
         </div>
       </div>
     </div>,
-    document.querySelector('.bridge-app') ?? document.body,
+    document.querySelector('.kordi-app') ?? document.body,
   );
 }

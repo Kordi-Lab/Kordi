@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
-import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/useCloudBridgeState';
+import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/useCloudCollaborationState';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 const account: CloudAccount = {

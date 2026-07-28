@@ -35,8 +35,8 @@ import {
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import type {
-  DesktopBridgeHost,
-  DesktopBridgeProject,
+  DesktopCollaborationHost,
+  DesktopCollaborationProject,
   DesktopChatContextWindowStatus,
   DesktopChatSlashCommand,
   DesktopChatTurnSnapshot,
@@ -61,7 +61,7 @@ type ProjectWorkspace = {
   id: string;
   name: string;
   summary: string;
-  bridge: string;
+  collaboration: string;
   scope: string;
   status: string;
   people: Array<unknown>;
@@ -290,7 +290,7 @@ export function ProjectsPage({
               <span className="truncate">{activeProject.name}</span>
             </div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
-              <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {activeProject.bridge}</span>
+              <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {activeProject.collaboration}</span>
               <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" /> {activeProject.people.length + activeProject.agents.length} members</span>
               <span className="inline-flex items-center gap-1"><Layers3 className="h-3 w-3" /> {activeProject.sessions.length} sessions</span>
               <span className="inline-flex items-center gap-1"><FolderOpen className="h-3 w-3" /> {activeProject.artifacts} artifacts</span>

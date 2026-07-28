@@ -1,4 +1,4 @@
-// CloudContactsAdapter — when the desktop runs in cloud edition, wrap
+// CloudContactsAdapter maps hosted account data into the desktop contacts UI.
 // the existing ContactsPage with a thin layer that overrides its
 // callbacks + data with the cloud auth client's responses. The page's
 // markup, grouping, incoming request inbox, and sender-side pending
@@ -29,7 +29,7 @@ type CloudContactsAdapterProps = {
  *   - contactRequests          (replaces with cloud pending requests)
  *   - onAcceptRequest / onRejectRequest / onAddContactByNodeId
  *     (routes them through the cloud auth client)
- *   - addableContacts          (clears bridge-only addables; cloud's add
+ *   - addableContacts          (clears legacy local addables; the hosted add
  *                               flow is a free-text account ID lookup)
  */
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
@@ -40,7 +40,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
     const matches = search
       ? cloud.contacts.filter((contact) =>
-          (contact.name + ' ' + contact.subtitle + ' ' + (contact.bridgePeerNodeId ?? '')).toLowerCase().includes(search),
+          (contact.name + ' ' + contact.subtitle + ' ' + (contact.sourceParticipantId ?? '')).toLowerCase().includes(search),
         )
       : cloud.contacts;
     return dedupeContactsByCloudAccount(matches).map((contact) => {
@@ -51,7 +51,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
 
   const filteredGroupedContacts = useMemo(() => {
     // Cloud contacts should be one row per human account. Do not merge the
-    // Bridge-derived person/agent rows from the local view model, otherwise the
+    // Collaboration-derived person/agent rows from the local view model, otherwise the
     // Contacts page shows the same person twice and also exposes local/remote
     // agent runtime rows ("My agent", "other users' agents") as contacts.
     const groups = contactsPageProps.filteredGroupedContacts
@@ -73,13 +73,13 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
   }, [contactsPageProps.filteredGroupedContacts, visibleCloudContacts]);
 
   const onAcceptRequest = async (request: ContactRequest) => {
-    const requestId = request.bridgeRequestId;
+    const requestId = request.sourceRequestId;
     if (!requestId) return;
     await cloud.acceptRequest(requestId);
   };
 
   const onRejectRequest = async (request: ContactRequest) => {
-    const requestId = request.bridgeRequestId;
+    const requestId = request.sourceRequestId;
     if (!requestId) return;
     await cloud.rejectRequest(requestId);
   };
@@ -184,11 +184,11 @@ export function resolveCloudActiveContact({
 
 function cloudAccountIdForContact(contact: Contact | undefined): string | null {
   if (!contact) return null;
-  return (contact.bridgeHumanId || contact.bridgePeerNodeId || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length) : '')).trim() || null;
+  return (contact.sourceHumanId || contact.sourceParticipantId || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length) : '')).trim() || null;
 }
 
 function isCloudSelfAgentContact(contact: Contact | undefined): boolean {
-  return contact?.classType === 'my-agents' && contact.bridgeHostId === CLOUD_HOST_SENTINEL;
+  return contact?.classType === 'my-agents' && contact.sourceHostId === CLOUD_HOST_SENTINEL;
 }
 
 function hasOutgoingPendingRequestForAccount(requests: ContactRequest[], accountId: string): boolean {
@@ -223,7 +223,7 @@ function dedupeContactsByCloudAccount(items: Contact[]): Contact[] {
   const seen = new Set<string>();
   const out: Contact[] = [];
   for (const item of items) {
-    const key = item.bridgePeerNodeId || item.bridgeHumanId || item.id;
+    const key = item.sourceParticipantId || item.sourceHumanId || item.id;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);

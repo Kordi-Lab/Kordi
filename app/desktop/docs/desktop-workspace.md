@@ -1,128 +1,46 @@
 # Kordi Desktop Workspace
 
-This app is the macOS desktop shell for three product layers:
+Kordi Desktop is the Cloud product shell. It contains:
 
-- `Kordi` UI — this repository
-- `agent` — local agent runtime
-- `Bridges` — local bridge node, daemon, and network client
+- the React product UI under `app/desktop/src`;
+- the Tauri application boundary under `app/desktop/src-tauri`;
+- the reusable local agent runtime under `agent`;
+- direct clients for hosted Kordi Cloud services.
 
-## Recommended repository model
+The hosted Cloud server and hosted agent runner live in the same monorepo but
+are independently buildable and deployable services. Their location under
+`bridges/` is historical and does not make the standalone Bridges network part
+of the desktop runtime.
 
-Do **not** merge all three codebases into one source-of-truth monorepo yet.
+## Runtime and packaging boundary
 
-The cleaner setup is:
+Desktop development and release builds prepare one external binary:
 
-1. keep `agent` as its own runtime repository
-2. keep `Bridges` as its own network repository
-3. use this repository as the desktop product repository
+- `agent` builds the `kordi` local agent runtime;
+- `scripts/prepare-sidecars.mjs` copies it to
+  `src-tauri/binaries/kordi-<target-triple>`;
+- Tauri packages it as `Kordi.app/Contents/MacOS/kordi`.
 
-That gives you:
+Desktop does not compile, copy, launch, sign, or package the standalone Bridges
+CLI. Cloud collaboration goes directly through the hosted API and the
+transport-neutral collaboration model.
 
-- clear ownership boundaries
-- cleaner releases
-- independent CI for runtime and network code
-- less coupling while both backends are still evolving quickly
+## Workspace configuration
 
-## Local development layout
+`kordi.workspace.json` records the local agent runtime path, Cargo manifest, and
+release binary path. Keep it limited to dependencies that the desktop actually
+builds and packages.
 
-For development, keep the three repositories as siblings:
+## Ownership
 
-```text
-Desktop/
-  Kordi/
-  agent/
-  Bridges/
-```
+- `app/desktop`: product UI, native shell, packaging, signing, and updates.
+- `agent`: local model execution, provider configuration, session engine,
+  tools, and skills.
+- `bridges/cloud-server`: hosted Cloud API.
+- `bridges/cloud-agent-runner`: hosted execution service.
+- `bridges/cli`, `bridges/registry`, and `bridges/skills/bridges`: standalone
+  local/P2P product surfaces with an independent lifecycle.
 
-This repository reads those sibling locations from `kordi.workspace.json`.
-
-## Why a fourth desktop integration repo is better than collapsing everything
-
-If you put everything into one repo right now, you will mix:
-
-- product UI iteration
-- agent runtime internals
-- network/daemon internals
-- release packaging
-
-That usually slows all three down.
-
-The desktop app should be the integration layer, not the new home for every backend concern.
-
-## How the macOS app should be organized
-
-### This repository
-
-- React frontend
-- Tauri shell
-- native desktop orchestration commands
-- sidecar preparation script
-- packaging, signing, and update flow
-
-### agent repository
-
-- local model execution
-- provider configuration
-- session engine
-- tools and skills
-
-### Bridges repository
-
-- local node identity
-- local daemon
-- peer networking
-- project membership
-- coordination client
-
-## Current integration approach
-
-The current Tauri setup uses **sidecar binaries**:
-
-- `agent` builds `kordi`
-- `Bridges` builds `bridges`
-- `scripts/prepare-sidecars.mjs` builds both repos and copies the binaries into `src-tauri/binaries/`
-
-This is the fastest route to a shippable macOS app.
-
-## Recommended long-term architecture
-
-After the desktop product stabilizes, extract library-facing entry points:
-
-### agent
-
-Add a reusable service layer crate, for example:
-
-- `kordi-service`
-
-That crate should expose:
-
-- session operations
-- model/provider execution
-- streaming response hooks
-- tool events
-
-### Bridges
-
-Split the current Rust backend into clearer crates:
-
-- `bridges-core`
-- `bridges-client`
-- `bridges-daemon`
-- `bridges-cli`
-
-Then the Tauri app can link directly to Rust crates instead of supervising sidecar binaries forever.
-
-## Recommendation
-
-### Do now
-
-- keep three repos
-- keep this repo as the desktop app
-- use sibling clones in development
-- use Tauri sidecars for packaging
-
-### Do later
-
-- add service/library entry points to `agent`
-- add crate boundaries inside `Bridges`
-- reduce sidecar dependence once those APIs stabilize
+See
+[Cloud and standalone Bridges boundary](../../../docs/architecture/bridges-boundary.md)
+for ownership, compatibility, and disposition details.

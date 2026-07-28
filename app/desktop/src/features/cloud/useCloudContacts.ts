@@ -463,7 +463,7 @@ export const CLOUD_HOST_SENTINEL = 'cloud';
 
 export function isCloudContact(contact: Contact): boolean {
   return contact.id.startsWith('cloud:')
-    || contact.bridgeHostId === CLOUD_HOST_SENTINEL
+    || contact.sourceHostId === CLOUD_HOST_SENTINEL
     || contact.discoverableOn.includes(CLOUD_HOST_SENTINEL);
 }
 
@@ -476,17 +476,17 @@ export function cloudContactToContact(row: CloudContactSummary): Contact {
     classType: 'other-users',
     entityType: 'user',
     subtitle: row.accountId,
-    bridges: [CLOUD_HOST_SENTINEL],
+    collaborationSources: [CLOUD_HOST_SENTINEL],
     status: 'online',
     discoverableOn: [CLOUD_HOST_SENTINEL],
     detail: row.accountId,
     owner: name,
-    bridgeHostId: CLOUD_HOST_SENTINEL,
-    bridgePeerNodeId: row.accountId,
-    bridgePeerRuntime: 'person',
-    bridgeHumanId: row.accountId,
-    bridgeContactStatus: 'accepted',
-    bridgeContactRequestDirection: 'outgoing',
+    sourceHostId: CLOUD_HOST_SENTINEL,
+    sourceParticipantId: row.accountId,
+    sourceRuntime: 'person',
+    sourceHumanId: row.accountId,
+    contactStatus: 'accepted',
+    contactRequestDirection: 'outgoing',
     avatarSeed: cloudAvatarSeedForAccount(row.accountId, row.avatarUrl),
     profileImageUrl: cloudAvatarImageUrl(row.avatarUrl),
   };
@@ -513,9 +513,9 @@ export function cloudRequestToContactRequest(row: CloudContactRequest): ContactR
     profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
     avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),
     avatarName: counterpartName,
-    source: 'bridge',
-    bridgeHostId: CLOUD_HOST_SENTINEL,
-    bridgeRequestId: row.requestId,
+    source: 'collaboration',
+    sourceHostId: CLOUD_HOST_SENTINEL,
+    sourceRequestId: row.requestId,
     requesterNodeId: row.fromAccountId,
     targetNodeId: row.toAccountId,
     status: row.status,

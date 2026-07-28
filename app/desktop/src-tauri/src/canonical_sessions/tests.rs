@@ -59,10 +59,171 @@ fn seed_identity_with_source(
 
 mod desktop_sync;
 mod direct_message_sync;
-mod group_agent_requests;
-mod group_agent_responses;
-mod group_message_sync;
 mod session_observation;
+
+#[test]
+fn canonical_wire_uses_neutral_source_fields_and_reads_legacy_aliases() {
+    let legacy_identity: UpsertCanonicalIdentityRequest =
+        serde_json::from_value(serde_json::json!({
+            "kind": "human",
+            "displayName": "Legacy person",
+            "bridgeNodeId": "legacy-node"
+        }))
+        .expect("deserialize legacy identity alias");
+    assert_eq!(
+        legacy_identity.bridge_node_id.as_deref(),
+        Some("legacy-node")
+    );
+
+    let identity = CanonicalIdentity {
+        id: "human:legacy".to_string(),
+        kind: "human".to_string(),
+        display_name: "Legacy person".to_string(),
+        owner_identity_id: None,
+        source: "cloud".to_string(),
+        source_host_id: Some("cloud".to_string()),
+        bridge_node_id: Some("acct_legacy".to_string()),
+        human_id: Some("acct_legacy".to_string()),
+        agent_id: None,
+        avatar_key: "acct_legacy".to_string(),
+        profile_image_url: None,
+        metadata: None,
+        created_at_ms: 1,
+        updated_at_ms: 1,
+    };
+    let identity_json = serde_json::to_value(identity).expect("serialize identity");
+    assert_eq!(
+        identity_json
+            .get("sourceIdentityId")
+            .and_then(serde_json::Value::as_str),
+        Some("acct_legacy")
+    );
+    assert!(identity_json.get("bridgeNodeId").is_none());
+
+    let legacy_exchange: CreateCanonicalDelegatedExchangeRequest =
+        serde_json::from_value(serde_json::json!({
+            "sessionId": "session:test",
+            "initiatorIdentityId": "human:self",
+            "targetIdentityId": "agent:remote",
+            "bridgeHostId": "cloud",
+            "bridgeConversationId": "legacy-conversation",
+            "bridgeRequestId": "legacy-request"
+        }))
+        .expect("deserialize legacy exchange aliases");
+    assert_eq!(legacy_exchange.bridge_host_id.as_deref(), Some("cloud"));
+    assert_eq!(
+        legacy_exchange.bridge_conversation_id.as_deref(),
+        Some("legacy-conversation")
+    );
+    assert_eq!(
+        legacy_exchange.bridge_request_id.as_deref(),
+        Some("legacy-request")
+    );
+
+    let exchange = CanonicalDelegatedExchange {
+        id: "exchange:test".to_string(),
+        session_id: "session:test".to_string(),
+        initiator_identity_id: "human:self".to_string(),
+        target_identity_id: "agent:remote".to_string(),
+        trigger_message_id: None,
+        request_message_id: None,
+        response_message_id: None,
+        transport: "cloud".to_string(),
+        bridge_host_id: Some("cloud".to_string()),
+        bridge_conversation_id: Some("conversation:test".to_string()),
+        bridge_request_id: Some("request:test".to_string()),
+        context_policy: "last-message".to_string(),
+        status: "pending".to_string(),
+        error: None,
+        created_at_ms: 1,
+        updated_at_ms: 1,
+    };
+    let exchange_json = serde_json::to_value(exchange).expect("serialize exchange");
+    assert_eq!(
+        exchange_json
+            .get("sourceHostId")
+            .and_then(serde_json::Value::as_str),
+        Some("cloud")
+    );
+    assert_eq!(
+        exchange_json
+            .get("sourceConversationId")
+            .and_then(serde_json::Value::as_str),
+        Some("conversation:test")
+    );
+    assert_eq!(
+        exchange_json
+            .get("sourceRequestId")
+            .and_then(serde_json::Value::as_str),
+        Some("request:test")
+    );
+    assert!(exchange_json.get("bridgeHostId").is_none());
+    assert!(exchange_json.get("bridgeConversationId").is_none());
+    assert!(exchange_json.get("bridgeRequestId").is_none());
+}
+
+#[test]
+fn source_identity_fallback_reuses_legacy_ids_and_creates_neutral_ids() {
+    let conn = test_conn();
+    let legacy = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("human:bridge-node:legacy-node".to_string()),
+            kind: "human".to_string(),
+            display_name: "Legacy person".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: Some("legacy-host".to_string()),
+            bridge_node_id: Some("legacy-node".to_string()),
+            human_id: None,
+            agent_id: None,
+            avatar_key: None,
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("seed legacy identity");
+
+    let reused = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: None,
+            kind: "human".to_string(),
+            display_name: "Legacy person".to_string(),
+            owner_identity_id: None,
+            source: Some("cloud".to_string()),
+            source_host_id: Some("cloud".to_string()),
+            bridge_node_id: Some("legacy-node".to_string()),
+            human_id: None,
+            agent_id: None,
+            avatar_key: None,
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("reuse legacy identity");
+    assert_eq!(reused.id, legacy.id);
+
+    let created = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: None,
+            kind: "human".to_string(),
+            display_name: "New person".to_string(),
+            owner_identity_id: None,
+            source: Some("cloud".to_string()),
+            source_host_id: Some("cloud".to_string()),
+            bridge_node_id: Some("new-node".to_string()),
+            human_id: None,
+            agent_id: None,
+            avatar_key: None,
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("create neutral identity");
+    assert_eq!(created.id, "human:source:new-node");
+}
 
 #[test]
 fn upsert_identity_preserves_existing_profile_image_when_update_has_none() {
@@ -172,8 +333,6 @@ fn identity_context_renderer_preserves_people_agents_and_permissions() {
         ],
         permissions: IdentityContextPermissions {
             reply_as_identity_id: "agent:alice-kordi".to_string(),
-            allowed_targets: vec!["agent:bob-kordi".to_string()],
-            reach_out_allowed: true,
             context_policy: "recent-window".to_string(),
             requires_approval: false,
         },
@@ -188,125 +347,6 @@ fn identity_context_renderer_preserves_people_agents_and_permissions() {
     assert!(rendered.contains("Current target:"));
     assert!(rendered.contains("agent:bob-kordi | Bob's Kordi | agent"));
     assert!(rendered.contains("owner: Bob (human:bob)"));
-    assert!(rendered.contains("allowedTargets: [\"agent:bob-kordi\"]"));
-}
-
-#[test]
-fn bridge_agent_prompt_includes_inline_identity_frame_for_parent_session() {
-    let storage = crate::test_support::ScopedKordiStorageRoot::new("identity-context-prompt");
-    let conn = open_db().expect("open db");
-    seed_identity_with_source(&conn, "human:alice", "Alice", "human", "local", None);
-    seed_identity_with_source(
-        &conn,
-        "agent:alice-kordi",
-        "Alice's Kordi",
-        "agent",
-        "local",
-        Some("human:alice"),
-    );
-    seed_identity_with_source(&conn, "human:bob", "Bob", "human", "bridge", None);
-    seed_identity_with_source(
-        &conn,
-        "agent:bob-kordi",
-        "Bob's Kordi",
-        "agent",
-        "bridge",
-        Some("human:bob"),
-    );
-    open_or_create_session_in_db(
-        &conn,
-        OpenCanonicalSessionRequest {
-            id: Some("session:alice-bob".to_string()),
-            kind: "group".to_string(),
-            title: Some("Alice and Bob".to_string()),
-            status: Some("active".to_string()),
-            created_by_identity_id: "human:alice".to_string(),
-            primary_identity_id: Some("agent:alice-kordi".to_string()),
-            project_id: None,
-            project_name: None,
-            relationship_identity_id: None,
-            participant_identity_ids: vec![
-                "human:alice".to_string(),
-                "agent:alice-kordi".to_string(),
-                "human:bob".to_string(),
-                "agent:bob-kordi".to_string(),
-            ],
-            metadata: None,
-        },
-    )
-    .expect("seed group session");
-    drop(conn);
-
-    let prompt = bridge_agent_parent_session_prompt(
-        Some("session:alice-bob"),
-        "Bob's Kordi",
-        Some("Bob"),
-        "Can you review this?",
-        None,
-    )
-    .expect("prompt");
-
-    assert!(prompt.contains("<multi_participant_identity_context version=\"v1\">"));
-    assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
-    assert!(prompt.contains("- identityId: human:alice"));
-    assert!(prompt.contains("agent:bob-kordi | Bob's Kordi | agent"));
-    assert!(prompt
-        .contains("If the request asks you to create, manage, persist, search, or close a task"));
-    assert!(prompt.contains("use task_operator"));
-    assert!(prompt.contains("action=create"));
-    assert!(prompt.contains("action=search"));
-    assert!(prompt.contains("action=close"));
-    assert!(prompt.contains("involvedParticipants"));
-    assert!(!prompt.contains("taskTarget"));
-    assert!(!prompt.contains("right task panel"));
-    assert!(!prompt.contains("Session identity file:"));
-    drop(storage);
-}
-
-#[test]
-fn shared_agent_display_name_keeps_already_scoped_remote_agent_name() {
-    let conn = test_conn();
-    upsert_identity_in_db(
-        &conn,
-        UpsertCanonicalIdentityRequest {
-            id: Some("human:remote".to_string()),
-            kind: "human".to_string(),
-            display_name: "Me".to_string(),
-            owner_identity_id: None,
-            source: Some("bridge".to_string()),
-            source_host_id: Some("bridge-host".to_string()),
-            bridge_node_id: Some("kd_remote".to_string()),
-            human_id: Some("kh_remote".to_string()),
-            agent_id: None,
-            avatar_key: Some("kh_remote".to_string()),
-            profile_image_url: None,
-            metadata: None,
-        },
-    )
-    .expect("seed remote human");
-    let agent = upsert_identity_in_db(
-        &conn,
-        UpsertCanonicalIdentityRequest {
-            id: Some("agent:remote".to_string()),
-            kind: "agent".to_string(),
-            display_name: "Testuser2's Kordi".to_string(),
-            owner_identity_id: Some("human:remote".to_string()),
-            source: Some("bridge".to_string()),
-            source_host_id: Some("bridge-host".to_string()),
-            bridge_node_id: Some("kd_remote".to_string()),
-            human_id: Some("kh_remote".to_string()),
-            agent_id: Some("ka_remote".to_string()),
-            avatar_key: Some("ka_remote".to_string()),
-            profile_image_url: None,
-            metadata: None,
-        },
-    )
-    .expect("seed remote agent");
-
-    assert_eq!(
-        shared_agent_display_name(&conn, &agent.id).expect("shared agent label"),
-        Some("Testuser2's Kordi".to_string())
-    );
 }
 
 #[test]
@@ -1728,199 +1768,6 @@ fn local_agent_identity_uses_delegate_name_stable_agent_id_and_owner() {
             .and_then(|value| value.as_str()),
         Some("Kordi"),
     );
-}
-
-#[test]
-fn direct_person_sessions_do_not_keep_auto_agent_participants() {
-    let conn = test_conn();
-    for (id, kind, display_name, owner) in [
-        ("human:local", "human", "Local", None),
-        ("human:remote", "human", "Remote", None),
-        ("agent:local", "agent", "Kordi", Some("human:local")),
-    ] {
-        upsert_identity_in_db(
-            &conn,
-            UpsertCanonicalIdentityRequest {
-                id: Some(id.to_string()),
-                kind: kind.to_string(),
-                display_name: display_name.to_string(),
-                owner_identity_id: owner.map(ToString::to_string),
-                source: Some("local".to_string()),
-                source_host_id: None,
-                bridge_node_id: None,
-                human_id: None,
-                agent_id: (kind == "agent").then(|| "local:test-agent".to_string()),
-                avatar_key: Some(id.to_string()),
-                profile_image_url: None,
-                metadata: None,
-            },
-        )
-        .expect("identity");
-    }
-
-    for session_id in ["session:no-agent", "session:mentioned-agent"] {
-        open_or_create_session_in_db(
-            &conn,
-            OpenCanonicalSessionRequest {
-                id: Some(session_id.to_string()),
-                kind: "direct-person".to_string(),
-                title: Some("Remote".to_string()),
-                status: None,
-                created_by_identity_id: "human:local".to_string(),
-                primary_identity_id: Some("human:remote".to_string()),
-                project_id: None,
-                project_name: None,
-                relationship_identity_id: Some("human:remote".to_string()),
-                participant_identity_ids: vec![
-                    "human:remote".to_string(),
-                    "agent:local".to_string(),
-                ],
-                metadata: None,
-            },
-        )
-        .expect("session");
-    }
-
-    create_delegated_exchange_in_db(
-        &conn,
-        CreateCanonicalDelegatedExchangeRequest {
-            id: Some("delegation:test".to_string()),
-            session_id: "session:mentioned-agent".to_string(),
-            initiator_identity_id: "human:local".to_string(),
-            target_identity_id: "agent:local".to_string(),
-            trigger_message_id: None,
-            request_message_id: None,
-            response_message_id: None,
-            transport: Some("bridge".to_string()),
-            bridge_host_id: None,
-            bridge_conversation_id: None,
-            bridge_request_id: None,
-            context_policy: None,
-            status: None,
-            error: None,
-        },
-    )
-    .expect("delegation");
-
-    cleanup_unmentioned_agent_participants(&conn, "session:no-agent").expect("cleanup no-agent");
-    cleanup_unmentioned_agent_participants(&conn, "session:mentioned-agent")
-        .expect("cleanup mentioned-agent");
-
-    let no_agent_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM session_participants WHERE session_id = 'session:no-agent' AND identity_id = 'agent:local'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("no-agent count");
-    let mentioned_agent_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM session_participants WHERE session_id = 'session:mentioned-agent' AND identity_id = 'agent:local'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("mentioned-agent count");
-
-    assert_eq!(no_agent_count, 0);
-    assert_eq!(mentioned_agent_count, 1);
-}
-
-#[test]
-fn bridge_fallback_node_identity_can_be_reconciled_to_human_id() {
-    let conn = test_conn();
-    upsert_identity_in_db(
-        &conn,
-        UpsertCanonicalIdentityRequest {
-            id: None,
-            kind: "human".to_string(),
-            display_name: "Alice".to_string(),
-            owner_identity_id: None,
-            source: Some("bridge".to_string()),
-            source_host_id: Some("host-1".to_string()),
-            bridge_node_id: Some("kd_alice".to_string()),
-            human_id: None,
-            agent_id: None,
-            avatar_key: None,
-            profile_image_url: None,
-            metadata: None,
-        },
-    )
-    .expect("upsert fallback identity");
-    let human = upsert_identity_in_db(
-        &conn,
-        UpsertCanonicalIdentityRequest {
-            id: None,
-            kind: "human".to_string(),
-            display_name: "Alice".to_string(),
-            owner_identity_id: None,
-            source: Some("bridge".to_string()),
-            source_host_id: Some("host-1".to_string()),
-            bridge_node_id: Some("kd_alice".to_string()),
-            human_id: Some("kh_alice".to_string()),
-            agent_id: None,
-            avatar_key: Some("kh_alice".to_string()),
-            profile_image_url: None,
-            metadata: None,
-        },
-    )
-    .expect("upsert canonical human identity");
-
-    let resolved = bridge_human_identity_for_node(&conn, "host-1", "kd_alice")
-        .expect("resolve peer human")
-        .expect("human identity");
-    assert_eq!(resolved.id, human.id);
-
-    open_or_create_session_in_db(
-        &conn,
-        OpenCanonicalSessionRequest {
-            id: Some("session:bridge:alice".to_string()),
-            kind: "direct-person".to_string(),
-            title: None,
-            status: None,
-            created_by_identity_id: "human:local".to_string(),
-            primary_identity_id: Some("human:bridge-node:kd_alice".to_string()),
-            project_id: None,
-            project_name: None,
-            relationship_identity_id: Some("human:bridge-node:kd_alice".to_string()),
-            participant_identity_ids: vec!["human:bridge-node:kd_alice".to_string()],
-            metadata: None,
-        },
-    )
-    .expect("open fallback session");
-    append_message_in_db(
-        &conn,
-        AppendCanonicalMessageRequest {
-            id: Some("message:1".to_string()),
-            session_id: "session:bridge:alice".to_string(),
-            sender_identity_id: "human:bridge-node:kd_alice".to_string(),
-            sender_role: "person".to_string(),
-            message_kind: "text".to_string(),
-            content_text: "hello".to_string(),
-            content: None,
-            created_at_ms: Some(1),
-            parent_message_id: None,
-            delegated_exchange_id: None,
-            status: None,
-            source_transport: None,
-            source_event_id: None,
-        },
-    )
-    .expect("append fallback message");
-
-    cleanup_bridge_fallback_identity_for_session(
-        &conn,
-        "session:bridge:alice",
-        "kd_alice",
-        &human.id,
-    )
-    .expect("cleanup fallback identity");
-
-    let state = commands::load_state_from_db(&conn).expect("load state");
-    assert!(state
-        .participants
-        .iter()
-        .all(|participant| participant.identity_id != "human:bridge-node:kd_alice"));
-    assert_eq!(state.messages[0].sender_identity_id, human.id);
 }
 
 #[test]

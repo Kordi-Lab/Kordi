@@ -49,47 +49,6 @@ pub(crate) fn similar_agent_message_exists(
     Ok(false)
 }
 
-pub(crate) fn existing_delegation_join_message_id(
-    conn: &Connection,
-    session_id: &str,
-    target_identity_id: &str,
-    target_kind: &str,
-    target_display_name: &str,
-) -> Result<Option<String>, String> {
-    conn.query_row(
-        "SELECT id
-         FROM session_messages
-         WHERE session_id = ?1
-           AND message_kind = 'status'
-           AND json_extract(content_json, '$.kind') = 'delegation-join-event'
-           AND json_extract(content_json, '$.targetKind') = ?3
-           AND (
-             json_extract(content_json, '$.targetIdentityId') = ?2
-             OR json_extract(content_json, '$.targetDisplayName') = ?4
-           )
-         ORDER BY created_at_ms ASC, sequence_num ASC
-         LIMIT 1",
-        params![
-            session_id,
-            target_identity_id,
-            target_kind,
-            target_display_name
-        ],
-        |row| row.get::<_, String>(0),
-    )
-    .optional()
-    .map_err(|err| err.to_string())
-}
-
-pub(crate) fn session_message_count(conn: &Connection, session_id: &str) -> Result<i64, String> {
-    conn.query_row(
-        "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
-        params![session_id],
-        |row| row.get(0),
-    )
-    .map_err(|err| err.to_string())
-}
-
 /// Returns true if a row exists in `session_messages` for the given
 /// (session_id, message_id) pair. Used to route fork dispatch: if the
 /// clicked entry lives in the canonical store, the fork has to go

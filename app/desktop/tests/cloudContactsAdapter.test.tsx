@@ -20,21 +20,21 @@ const account: CloudAccount = {
 
 function contact(overrides: Partial<Contact> = {}): Contact {
   return {
-    id: 'bridge-peer-person:acct_peer:acct_peer',
+    id: 'collaboration-peer-person:acct_peer:acct_peer',
     name: 'Shuyhere',
     initials: 'SH',
     classType: 'other-users',
     entityType: 'Person',
     subtitle: "Owner of Shuyhere's Kordi",
-    bridges: ['cloud'],
+    collaborationSources: ['cloud'],
     status: 'Reachable',
     discoverableOn: ['cloud'],
     detail: 'acct_peer',
     owner: 'Shuyhere',
-    bridgeHostId: 'cloud',
-    bridgePeerNodeId: 'acct_peer',
-    bridgePeerRuntime: 'person',
-    bridgeHumanId: 'acct_peer',
+    sourceHostId: 'cloud',
+    sourceParticipantId: 'acct_peer',
+    sourceRuntime: 'person',
+    sourceHumanId: 'acct_peer',
     avatarSeed: 'acct_peer',
     profileImageUrl: null,
     ...overrides,
@@ -50,20 +50,20 @@ test('resolveCloudActiveContact maps stale Cloud self selection to the visible C
     createdAt: '2026-05-11T00:00:00Z',
   });
   const staleSelfContact = contact({
-    id: 'bridge-self:cloud',
+    id: 'collaboration-self:cloud',
     name: 'Me',
     classType: 'my-agents',
     entityType: 'My agent',
     subtitle: 'Direct local chat',
     detail: 'Chat directly with my local Kordi agent. Bridge host: kordi.cloud • acct_me',
-    bridgeHostId: 'cloud',
-    bridgePeerNodeId: 'acct_me',
-    bridgePeerRuntime: 'kordi-desktop',
+    sourceHostId: 'cloud',
+    sourceParticipantId: 'acct_me',
+    sourceRuntime: 'kordi-desktop',
   });
 
   const resolved = resolveCloudActiveContact({
     account,
-    activeContactId: 'bridge-self:cloud',
+    activeContactId: 'collaboration-self:cloud',
     parentActiveContact: staleSelfContact,
     cloudContacts: [cloudContact],
     visibleCloudContacts: [cloudContact],
@@ -71,7 +71,7 @@ test('resolveCloudActiveContact maps stale Cloud self selection to the visible C
 
   assert.equal(resolved?.id, cloudContact.id);
   assert.equal(resolved?.name, 'Peer');
-  assert.equal(resolved?.bridgePeerNodeId, 'acct_peer');
+  assert.equal(resolved?.sourceParticipantId, 'acct_peer');
 });
 
 test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail copy', () => {
@@ -80,15 +80,15 @@ test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail co
     contactsPageProps: {
       filteredGroupedContacts: [
         { id: 'my-agents', label: 'My agents', items: [contact({
-          id: 'bridge-self:cloud',
+          id: 'collaboration-self:cloud',
           name: 'Me',
           classType: 'my-agents',
           entityType: 'My agent',
           subtitle: 'Direct local chat',
           detail: 'Chat directly with my local Kordi agent. Bridge host: kordi.cloud • acct_me',
-          bridgeHostId: 'cloud',
-          bridgePeerNodeId: 'acct_me',
-          bridgePeerRuntime: 'kordi-desktop',
+          sourceHostId: 'cloud',
+          sourceParticipantId: 'acct_me',
+          sourceRuntime: 'kordi-desktop',
         })] },
       ],
       contactSearch: '',
@@ -118,10 +118,10 @@ test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail co
 
 test('Cloud contact selection validation uses the rendered Cloud contact rows', () => {
   const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
-  const cloudBridgeStateSource = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const cloudCollaborationStateSource = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 
   assert.match(
-    cloudBridgeStateSource,
+    cloudCollaborationStateSource,
     /cloudContacts:\s*contacts\.contacts/,
     'Cloud bridge state should expose the same contacts rendered by CloudContactsAdapter',
   );
@@ -147,12 +147,12 @@ test('CloudContactsAdapter shows one human row and removes other people agent gr
       filteredGroupedContacts: [
         { id: 'other-users', label: 'Other users', items: [contact()] },
         { id: 'other-users-agents', label: "Other users' agents", items: [contact({
-          id: 'bridge-peer-agent:acct_peer:cloud-agent',
+          id: 'collaboration-peer-agent:acct_peer:cloud-agent',
           classType: 'other-users-agents',
           entityType: 'External agent',
           subtitle: 'kordi-desktop',
           detail: "Shuyhere's Kordi",
-          bridgePeerRuntime: 'kordi-desktop',
+          sourceRuntime: 'kordi-desktop',
         })] },
       ],
       contactSearch: '',

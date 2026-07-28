@@ -61,8 +61,8 @@ export type ComposerMentionOption = {
   value: string;
   label: string;
   detail?: string | null;
-  targetKind: 'bridge-agent' | 'bridge-person';
-  bridgeHostId: string;
+  targetKind: 'agent' | 'person';
+  sourceHostId: string;
   nodeId: string;
   runtime: string;
   humanId?: string | null;
@@ -166,7 +166,7 @@ export function ComposerSlashMenu({
 
 function initialComposerMentionMenuThemeClass() {
   if (typeof document === 'undefined') return '';
-  return document.querySelector('.bridge-app.theme-light') ? 'app-composer-mention-menu-light' : '';
+  return document.querySelector('.kordi-app.theme-light') ? 'app-composer-mention-menu-light' : '';
 }
 
 export function ComposerMentionMenu({
@@ -193,7 +193,7 @@ export function ComposerMentionMenu({
       Math.max(240, rect.width),
       Math.max(240, window.innerWidth - (viewportPadding * 2)),
     );
-    const appShell = anchor.closest('.bridge-app') ?? document.querySelector('.bridge-app.theme-light');
+    const appShell = anchor.closest('.kordi-app') ?? document.querySelector('.kordi-app.theme-light');
     setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-composer-mention-menu-light' : '');
     const left = Math.min(
       Math.max(viewportPadding, rect.left),
@@ -231,7 +231,7 @@ export function ComposerMentionMenu({
             const active = index === selectedIndex;
             return (
               <button
-                key={`${item.bridgeHostId}-${item.nodeId}-${item.value}`}
+                key={`${item.sourceHostId}-${item.nodeId}-${item.value}`}
                 type="button"
                 onMouseDown={(event) => {
                   event.preventDefault();
@@ -243,7 +243,7 @@ export function ComposerMentionMenu({
                 )}
               >
                 <IdentityAvatar
-                  kind={item.targetKind === 'bridge-agent' ? 'agent' : 'human'}
+                  kind={item.targetKind === 'agent' ? 'agent' : 'human'}
                   seed={item.avatarSeed ?? item.agentId ?? item.humanId ?? item.nodeId ?? item.label}
                   name={item.label}
                   imageUrl={item.avatarImageUrl}
@@ -253,7 +253,7 @@ export function ComposerMentionMenu({
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="app-composer-mention-menu-label truncate text-[13px] font-semibold leading-5"><span className="app-composer-mention-menu-at mr-px">@</span>{item.label}</span>
                     <span className="app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]">
-                      {item.targetKind === 'bridge-agent' ? 'agent' : 'person'}
+                      {item.targetKind === 'agent' ? 'agent' : 'person'}
                     </span>
                   </div>
                 </div>
@@ -427,7 +427,7 @@ export function CompactComposerModelMenu({
       Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
     );
     const availableAbove = Math.max(192, rect.top - viewportPadding);
-    const appShell = trigger.closest('.bridge-app');
+    const appShell = trigger.closest('.kordi-app');
     setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-compact-model-menu-light' : '');
     setMenuStyle({
       left: `${left}px`,
@@ -740,7 +740,7 @@ export function ComposerModelControls({
       Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
     );
     const availableAbove = Math.max(160, rect.top - viewportPadding);
-    const appShell = trigger.closest('.bridge-app');
+    const appShell = trigger.closest('.kordi-app');
     setSelectorMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-compact-model-menu-light' : '');
     setSelectorMenuStyle({
       left: `${left}px`,

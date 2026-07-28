@@ -2,14 +2,15 @@ import type {
   CanonicalSessionState,
   CanonicalSessionSummary,
   Conversation,
-  ConversationBridgeTarget,
+  ConversationCollaborationTarget,
   ConversationParticipant,
   Message,
   SessionTaskActivity,
 } from '@/kordi-app/types';
-import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import { isLegacyCanonicalCollaborationSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
+import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
@@ -22,7 +23,7 @@ import {
   sessionUnreadCount,
   sessionViewMetadata,
   shouldUseCanonicalMessages,
-  syntheticBridgeTarget,
+  syntheticCollaborationTarget,
   syntheticConversation,
   syntheticParticipantSpaceId,
 } from './readModel/conversationMapping';
@@ -41,9 +42,9 @@ type CanonicalConversationLike = {
   desktopRuntimeBacked?: boolean;
   desktopRuntimeTranscriptLoaded?: boolean;
   canonicalParticipants?: ConversationParticipant[];
-  bridgeTarget?: ConversationBridgeTarget | null;
-  bridgeUnreadByParentSessionId?: Record<string, number>;
-  bridges: string[];
+  collaborationTarget?: ConversationCollaborationTarget | null;
+  collaborationUnreadByParentSessionId?: Record<string, number>;
+  collaborationSources: string[];
   trust: string;
   outreach?: { parentSessionId?: string | null } | null;
   participantSpaceId?: string | null;
@@ -262,8 +263,8 @@ function sameOwnedAgentTurn(canonical: Message, local: Message) {
   return false;
 }
 
-function isBridgeProcessingOnlyRuntimePlaceholder(message: Message) {
-  if (!message.id?.startsWith('bridge-live-turn:') || !message.turn) return false;
+function isLegacyCollaborationProcessingOnlyRuntimePlaceholder(message: Message) {
+  if (!isCollaborationLiveTurnId(message.id) || !message.turn) return false;
   return !message.turn.completed
     && !message.text.trim()
     && !message.turn.assistantText.trim()
@@ -274,7 +275,7 @@ function isBridgeProcessingOnlyRuntimePlaceholder(message: Message) {
 function hasLocalOwnedAgentRuntimeStatus(message: Message) {
   return message.role === 'owned-agent'
     && Boolean(message.turn)
-    && !isBridgeProcessingOnlyRuntimePlaceholder(message)
+    && !isLegacyCollaborationProcessingOnlyRuntimePlaceholder(message)
     && (
       (message.turn?.tools?.length ?? 0) > 0
       || (message.turn?.thinkingText?.trim().length ?? 0) > 0
@@ -307,7 +308,7 @@ function localRuntimeProgressForCanonicalPlaceholder(canonicalMessage: Message, 
       sessionId: canonicalMessage.turn?.sessionId ?? localMessage.turn.sessionId,
       replyToMessageId: canonicalReplyToMessageId ?? localMessage.turn.replyToMessageId,
       sourceMessage: canonicalMessage.turn?.sourceMessage ?? localMessage.turn.sourceMessage,
-      pendingBridgeAgentRequest: canonicalMessage.turn?.pendingBridgeAgentRequest ?? localMessage.turn.pendingBridgeAgentRequest,
+      pendingCollaborationAgentRequest: canonicalMessage.turn?.pendingCollaborationAgentRequest ?? localMessage.turn.pendingCollaborationAgentRequest,
     },
   };
 }
@@ -402,8 +403,8 @@ function shouldKeepLegacyChatConversationExtra(
   }
 
   return conversation.id.startsWith('bridge:')
-    || isCanonicalBridgeSessionId(sessionId)
-    || conversation.bridges.some((bridge) => bridge.trim().toLowerCase() === 'local')
+    || isLegacyCanonicalCollaborationSessionId(sessionId)
+    || conversation.collaborationSources.some((source) => source.trim().toLowerCase() === 'local')
     || !conversation.canonicalSessionId;
 }
 
@@ -427,7 +428,7 @@ function metadataStringValue(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function bridgeTargetForSession(
+function legacyCollaborationTargetForSession(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
   indexes: CanonicalIndexes,
@@ -438,7 +439,7 @@ function bridgeTargetForSession(
 
   while (currentSession && !visitedSessionIds.has(currentSession.id)) {
     visitedSessionIds.add(currentSession.id);
-    const target = syntheticBridgeTarget(currentSession, currentParticipants);
+    const target = syntheticCollaborationTarget(currentSession, currentParticipants);
     if (target) return target;
 
     const sourceSessionId = metadataStringValue(sessionMetadata(currentSession).continuedFromSessionId);
@@ -460,7 +461,7 @@ function addUnreadForSession(unreadBySessionId: Map<string, number>, sessionId: 
 function mergedUnreadBySessionId(conversations: Conversation[]) {
   const unreadBySessionId = new Map<string, number>();
   for (const conversation of conversations) {
-    const scopedUnread = conversation.bridgeUnreadByParentSessionId ?? {};
+    const scopedUnread = conversation.collaborationUnreadByParentSessionId ?? {};
     const scopedEntries = Object.entries(scopedUnread);
     if (scopedEntries.length > 0) {
       for (const [sessionId, unread] of scopedEntries) {
@@ -477,8 +478,8 @@ function withMergedUnreadForSession<T extends Conversation>(conversation: T, ses
   return {
     ...conversation,
     unread,
-    bridgeUnreadByParentSessionId: {
-      ...(conversation.bridgeUnreadByParentSessionId ?? {}),
+    collaborationUnreadByParentSessionId: {
+      ...(conversation.collaborationUnreadByParentSessionId ?? {}),
       [sessionId]: unread,
     },
   };
@@ -563,13 +564,13 @@ export function createCanonicalSessionReadModel(
       const session = indexes.sessionById.get(sessionId);
       if (!session) return conversation;
 
-      const isBridgePersonSession = session.kind === 'direct-person' && isCanonicalBridgeSessionId(sessionId);
-      const isBridgeSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
+      const isLegacyCollaborationPersonSession = session.kind === 'direct-person' && isLegacyCanonicalCollaborationSessionId(sessionId);
+      const isLegacyCollaborationSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
       const messages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
         ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
-        : (isBridgePersonSession || isBridgeSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
+        : (isLegacyCollaborationPersonSession || isLegacyCollaborationSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
           ? canonicalMessages
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
@@ -582,13 +583,13 @@ export function createCanonicalSessionReadModel(
       const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionPrefersPersistedTitle(session) });
       const latestTime = formatDesktopLastActiveLabel(sessionActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
-      const directBridgeTarget = conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants);
-      const bridgeTarget = directBridgeTarget ?? bridgeTargetForSession(session, rawCanonicalParticipants, indexes);
-      const inheritedBridgeTarget = !directBridgeTarget && Boolean(bridgeTarget);
+      const directLegacyCollaborationTarget = conversation.collaborationTarget ?? syntheticCollaborationTarget(session, rawCanonicalParticipants);
+      const collaborationTarget = directLegacyCollaborationTarget ?? legacyCollaborationTargetForSession(session, rawCanonicalParticipants, indexes);
+      const inheritedLegacyCollaborationTarget = !directLegacyCollaborationTarget && Boolean(collaborationTarget);
 
       const scopedUnread = cloudUnreadReady
-        ? conversation.bridgeUnreadByParentSessionId
-          ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
+        ? conversation.collaborationUnreadByParentSessionId
+          ? conversation.collaborationUnreadByParentSessionId[sessionId] ?? 0
           : conversation.unread ?? 0
         : 0;
       const canonicalUnread = cloudUnreadReady ? unreadCountForSession(session) : 0;
@@ -623,8 +624,8 @@ export function createCanonicalSessionReadModel(
         name: displayTitle,
         subtitle: buildSubtitle(messages, conversation.subtitle),
         unread,
-        bridges: inheritedBridgeTarget ? ['Bridge'] : conversation.bridges,
-        trust: inheritedBridgeTarget ? 'Bridge' : conversation.trust,
+        collaborationSources: inheritedLegacyCollaborationTarget ? ['Cloud'] : conversation.collaborationSources,
+        trust: inheritedLegacyCollaborationTarget ? 'Cloud' : conversation.trust,
         participants,
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
@@ -633,7 +634,7 @@ export function createCanonicalSessionReadModel(
         messages,
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
-        bridgeTarget,
+        collaborationTarget: collaborationTarget,
         taskActivities,
         canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: summaryBySessionId.get(sessionId)?.messageCount
@@ -655,7 +656,7 @@ export function createCanonicalSessionReadModel(
       for (const conversation of conversations) {
         const parentSessionIds = new Set([
           conversation.outreach?.parentSessionId?.trim(),
-          ...Object.keys(conversation.bridgeUnreadByParentSessionId ?? {}),
+          ...Object.keys(conversation.collaborationUnreadByParentSessionId ?? {}),
         ].filter((value): value is string => Boolean(value)));
         for (const parentSessionId of parentSessionIds) {
           if (!sourceByOutreachParentSessionId.has(parentSessionId)) {

@@ -116,17 +116,17 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
   const side = sidePanelBlock(source);
   const appModel = appModelSource();
 
-  assert.match(source, /const \[selectedCompanionBridgeAgentId, setSelectedCompanionBridgeAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
-  assert.match(source, /const companionBridgeRoutingAgents = useMemo/, 'side-panel bridge agent menu should derive routing agents for the companion session');
-  assert.match(side, /companionConversationIsBridgeAgent[\s\S]*selectedCompanionBridgeRoutingAgent/, 'side-panel cloud agents should render a bridge-routing model branch');
-  assert.match(side, /selection=\{companionBridgeRoutingSelection\}/, 'side-panel cloud agent model controls should use bridge routing selection');
-  assert.match(side, /updateCompanionBridgeAgentRouting\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing');
-  assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*updateCompanionBridgeAgentRouting/, 'side-panel cloud agent provider changes should update bridge routing');
-  assert.match(source, /const companionBridgeRoutingTargetSessionId = companionConversation\?\.canonicalSessionId \?\? companionConversation\?\.id \?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
-  assert.match(source, /onUpdateBridgeAgentModelRouting\([\s\S]*nextFallbackAuthChoice,\s*companionBridgeRoutingTargetSessionId,\s*\)/, 'side-panel cloud route changes should pass the companion session id through the bridge routing callback');
+  assert.match(source, /const \[selectedCompanionCollaborationAgentId, setSelectedCompanionCollaborationAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
+  assert.match(source, /const companionCollaborationRoutingAgents = useMemo/, 'side-panel bridge agent menu should derive routing agents for the companion session');
+  assert.match(side, /companionConversationIsCollaborationAgent[\s\S]*selectedCompanionCollaborationRoutingAgent/, 'side-panel cloud agents should render a bridge-routing model branch');
+  assert.match(side, /selection=\{companionCollaborationRoutingSelection\}/, 'side-panel cloud agent model controls should use bridge routing selection');
+  assert.match(side, /updateCompanionCollaborationAgentRouting\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing');
+  assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*updateCompanionCollaborationAgentRouting/, 'side-panel cloud agent provider changes should update bridge routing');
+  assert.match(source, /const companionCollaborationRoutingTargetSessionId = companionConversation\?\.canonicalSessionId \?\? companionConversation\?\.id \?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
+  assert.match(source, /onUpdateCollaborationAgentModelRouting\([\s\S]*nextFallbackAuthChoice,\s*companionCollaborationRoutingTargetSessionId,\s*\)/, 'side-panel cloud route changes should pass the companion session id through the bridge routing callback');
   assert.match(appModel, /targetSessionIdOverride\?: string \| null/, 'cloud bridge route updater should accept an explicit target session override');
   assert.match(appModel, /targetSessionIdOverride\?\.trim\(\)\s*\|\|\s*activeConv\.canonicalSessionId/, 'cloud bridge route updater should prefer the explicit side-panel session id before falling back to activeConv');
-  assert.doesNotMatch(side, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport[\s\S]*<ComposerModelControls/, 'side-panel model menu must not disappear for bridge-backed agent sessions');
+  assert.doesNotMatch(side, /companionPaneKind === 'agent' && !companionConversationUsesCollaborationTransport[\s\S]*<ComposerModelControls/, 'side-panel model menu must not disappear for bridge-backed agent sessions');
 });
 
 test('split-pane Agent bottom controls stay compact without changing composer height during resize', () => {

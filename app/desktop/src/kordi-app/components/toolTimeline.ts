@@ -18,6 +18,9 @@ export type ToolTimelineFoldedLabelInput = ToolTimelineSummaryInput & {
   runningElapsed?: string | null;
 };
 
+// Historical transcripts can contain this retired tool name.
+export const LEGACY_PARTICIPANT_REQUEST_TOOL_NAME = 'reach_out';
+
 function normalizedToolName(toolName: string) {
   return toolName.trim().toLowerCase();
 }
@@ -165,7 +168,7 @@ export function toolTimelineTypeLabel(tool: ToolTimelineInput) {
 
   if (normalized === 'reflection') return 'Reflection';
   if (normalized === 'update_plan') return 'Planning';
-  if (normalized === 'task_operator' || normalized === 'reach_out') return 'Operator';
+  if (normalized === 'task_operator' || normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) return 'Operator';
   if (normalized.includes('bash') || normalized.includes('shell') || normalized.includes('command') || normalized.includes('terminal')) return 'Execution';
   if (normalized.includes('edit') || normalized.includes('write') || normalized.includes('patch')) return 'Execution';
 
@@ -177,7 +180,7 @@ export function toolTimelineToolLabel(tool: ToolTimelineInput) {
   const command = commandFromTool(tool);
   const path = pathFromTool(tool);
 
-  if (normalized === 'reach_out') return 'Contact participant';
+  if (normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) return 'Contact participant';
   if (normalized === 'update_plan') return 'Update plan';
   if (normalized === 'task_operator') return 'Coordinate task';
   if (normalized === 'reflection') return 'Save lesson';
@@ -309,7 +312,7 @@ export function toolTimelineRunningToolLabel(tool: ToolTimelineInput) {
   const searchQuery = searchQueryFromTool(tool);
   const url = urlFromTool(tool);
 
-  if (normalized === 'reach_out') return 'Contacting participant';
+  if (normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) return 'Contacting participant';
   if (normalized === 'update_plan') return 'Updating plan';
   if (normalized === 'task_operator') return 'Coordinating task';
   if (normalized === 'reflection') return 'Saving lesson';

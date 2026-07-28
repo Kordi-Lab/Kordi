@@ -179,7 +179,7 @@ function groupAdminIds(space: ParticipantSpaceViewModel | null, members: Convers
 
 function memberStableId(member: ConversationParticipant) {
   return member.humanId?.trim()
-    || member.bridgeNodeId?.trim()
+    || member.sourceIdentityId?.trim()
     || member.id.trim();
 }
 
@@ -196,7 +196,7 @@ function memberIdentityKeys(member: ConversationParticipant, currentAccountId?: 
     ...identityKeyVariants(member.id),
     ...identityKeyVariants(memberStableId(member)),
     ...identityKeyVariants(member.humanId),
-    ...identityKeyVariants(member.bridgeNodeId),
+    ...identityKeyVariants(member.sourceIdentityId),
     ...(isSelfMember(member) ? identityKeyVariants(currentAccountId) : []),
   ]);
 }
@@ -212,8 +212,8 @@ function memberMatchesIdentity(member: ConversationParticipant, identityId?: str
 }
 
 function contactStableId(contact: Contact) {
-  return contact.bridgeHumanId?.trim()
-    || contact.bridgePeerNodeId?.trim()
+  return contact.sourceHumanId?.trim()
+    || contact.sourceParticipantId?.trim()
     || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '')
     || contact.id.trim();
 }
@@ -252,7 +252,7 @@ export function filterGroupManagementMembers(
     member.name,
     member.id,
     member.humanId,
-    member.bridgeNodeId,
+    member.sourceIdentityId,
   ].some((value) => value?.toLocaleLowerCase().includes(needle)));
 }
 

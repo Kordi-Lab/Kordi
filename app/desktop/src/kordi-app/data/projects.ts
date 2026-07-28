@@ -2,10 +2,10 @@ import type { Project } from '../types';
 
 export const projects: Project[] = [
   {
-    id: 'proj-bridge-ui',
-    name: 'Bridge Workspace UI',
-    summary: 'Shared design and implementation space for the Bridges app shell, sessions, and project coordination surfaces.',
-    bridge: 'Alpha',
+    id: 'proj-collaboration-ui',
+    name: 'Collaboration Workspace UI',
+    summary: 'Shared design and implementation space for the app shell, sessions, and project coordination surfaces.',
+    collaboration: 'Alpha',
     scope: 'Cross-functional build',
     status: 'Active',
     people: ['Me', 'Alice', 'Bob', 'Diana'],
@@ -65,7 +65,7 @@ export const projects: Project[] = [
     id: 'proj-rent-agent',
     name: 'Rental Negotiation Project',
     summary: 'Coordinate housing search, listing outreach, and document preparation across people and agents.',
-    bridge: 'Gamma',
+    collaboration: 'Gamma',
     scope: 'Personal logistics',
     status: 'Pending replies',
     people: ['Me', 'Michael', 'Rachel'],
@@ -108,7 +108,7 @@ export const projects: Project[] = [
     id: 'proj-open-source-wrap',
     name: 'Open-Source Warp Launch',
     summary: 'Shared product and launch workspace with contributors, partner agents, and milestone sessions.',
-    bridge: 'Beta',
+    collaboration: 'Beta',
     scope: 'Long-running project',
     status: 'Planning',
     people: ['Me', 'Carol', 'Diana', 'Rachel'],

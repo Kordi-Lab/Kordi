@@ -31,13 +31,13 @@ import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
 import {
-  bridgeAgentRoutingChangeNotice,
-  bridgeChatRoutingControlVisibility,
-  localOwnedBridgeAgentsForModelRouting,
-  routingSelectionForBridgeAgent,
-} from '@/features/bridge/agentModelRouting';
-import { isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
-import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
+  collaborationAgentRoutingChangeNotice,
+  collaborationChatRoutingControlVisibility,
+  localOwnedCollaborationAgentsForModelRouting,
+  routingSelectionForCollaborationAgent,
+} from '@/features/collaboration/agentModelRouting';
+import { isCloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
+import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
 import type { CloudAccount, CloudSessionPin } from '@/features/cloud/authClient';
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { Button } from '@/components/ui/button';
@@ -64,7 +64,7 @@ import type {
   Contact,
   Conversation,
   ConversationParticipant,
-  DesktopBridgeHost,
+  DesktopCollaborationHost,
   DesktopChatContextWindowStatus,
   DesktopChatSlashCommand,
   DesktopChatState,
@@ -90,6 +90,7 @@ import {
   transcriptWindowMessageIdentity,
   transcriptWindowMessageMatchesId,
 } from '@/features/chat/transcriptWindowing';
+import { collaborationMessageSourceId } from '@/features/collaboration/legacyBridgeCompatibility';
 import {
   VirtualTranscript,
   type VirtualTranscriptNavigationRequest,
@@ -108,8 +109,8 @@ import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { MemberContactProfilePopover } from '@/pages/MemberContactProfilePopover';
 
-export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
-export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
+export const COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
+export const COLLABORATION_ROUTING_NOTICE_EXIT_MS = 180;
 
 type ChatDestination = 'messages' | 'info' | 'artifacts' | 'tasks';
 type ChatDetailDestination = Exclude<ChatDestination, 'messages'>;
@@ -370,11 +371,7 @@ function chatMessageActionId(message: Message) {
 
 function stableCloudPinMessageId(message: Message, conversationId: string) {
   const actionId = chatMessageActionId(message);
-  const bridgePrefix = `bridge-message:${conversationId}:`;
-  if (actionId.startsWith(bridgePrefix)) {
-    return actionId.slice(bridgePrefix.length).trim() || actionId;
-  }
-  return actionId;
+  return collaborationMessageSourceId(actionId, conversationId) ?? actionId;
 }
 
 function pinnedMessageCandidateIds(message: Message, conversationId: string) {
@@ -562,9 +559,9 @@ type ChatSessionPaneProps = {
   onOpenAuthSettings: () => void;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenMessageDetail?: (message: Message) => void;
-  onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
+  onStopCollaborationAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']>;
   onStopActiveTurn?: () => void;
-  onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
+  onRequestCollaborationContact?: ComponentProps<typeof MessageBubble>['onRequestCollaborationContact'];
   onOpenSenderProfile?: ComponentProps<typeof MessageBubble>['onOpenSenderProfile'];
   onForkMessage?: (entryId: string) => void;
   messageForksByEntryId?: Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>;
@@ -623,9 +620,9 @@ function ChatSessionPane({
   onOpenAuthSettings,
   onNavigateToMessage,
   onOpenMessageDetail,
-  onStopBridgeAgentRequest,
+  onStopCollaborationAgentRequest,
   onStopActiveTurn,
-  onRequestBridgeContact,
+  onRequestCollaborationContact,
   onOpenSenderProfile,
   onForkMessage,
   messageForksByEntryId,
@@ -718,8 +715,8 @@ function ChatSessionPane({
               onOpenArtifact={onOpenArtifact}
               onOpenAuthSettings={onOpenAuthSettings}
               onNavigateToMessage={onNavigateToMessage}
-              onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-              onRequestBridgeContact={onRequestBridgeContact}
+              onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
+              onRequestCollaborationContact={onRequestCollaborationContact}
               onOpenSenderProfile={onOpenSenderProfile}
               onForkMessage={onForkMessage}
               messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
@@ -770,7 +767,7 @@ function ChatSessionPane({
               <LiveChatTurnMessage
                 turn={attributedLiveTurn}
                 sender={liveTurnSender}
-                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
                 onStopActiveTurn={onStopActiveTurn}
                 plainAgentResponse={plainAgentResponse}
                 onNavigateToMessage={onNavigateToMessage}
@@ -895,7 +892,7 @@ export function transcriptHumanParticipant(
     const exact = humanParticipants.find((participant) => (
       participant.id === senderIdentityId
       || participant.humanId?.trim() === senderIdentityId
-      || participant.bridgeNodeId?.trim() === senderIdentityId
+      || participant.sourceIdentityId?.trim() === senderIdentityId
     ));
     if (exact) return exact;
   }
@@ -919,11 +916,11 @@ function addPersonRelationshipKey(keys: Set<string>, hostScope: string, value?: 
 
 function conversationRelationshipKeys(conversation: Conversation) {
   const keys = new Set<string>();
-  const hostScope = cleanKey(conversation.bridgeTarget?.hostId) || cleanKey(conversation.identity?.bridgeHostId) || 'local';
+  const hostScope = cleanKey(conversation.collaborationTarget?.hostId) || cleanKey(conversation.identity?.sourceHostId) || 'local';
 
-  addPersonRelationshipKey(keys, hostScope, conversation.bridgeTarget?.humanId);
-  addScopedKey(keys, `${hostScope}:node`, conversation.bridgeTarget?.nodeId);
-  addScopedKey(keys, `${hostScope}:owner`, conversation.bridgeTarget?.ownerName);
+  addPersonRelationshipKey(keys, hostScope, conversation.collaborationTarget?.humanId);
+  addScopedKey(keys, `${hostScope}:node`, conversation.collaborationTarget?.nodeId);
+  addScopedKey(keys, `${hostScope}:owner`, conversation.collaborationTarget?.ownerName);
   addPersonRelationshipKey(keys, hostScope, conversation.identity?.remoteHumanId);
   addScopedKey(keys, `${hostScope}:node`, conversation.identity?.remoteHumanNodeId);
 
@@ -932,7 +929,7 @@ function conversationRelationshipKeys(conversation: Conversation) {
     addPersonRelationshipKey(keys, hostScope, participant.id);
     addPersonRelationshipKey(keys, hostScope, participant.humanId);
     addPersonRelationshipKey(keys, hostScope, participant.ownerIdentityId);
-    addScopedKey(keys, `${hostScope}:node`, participant.bridgeNodeId);
+    addScopedKey(keys, `${hostScope}:node`, participant.sourceIdentityId);
 
     if (participant.kind === 'human') {
       addScopedKey(keys, `${hostScope}:owner`, participant.name);
@@ -1124,13 +1121,13 @@ function clampChatSplitFraction(value: number) {
   return Math.min(0.68, Math.max(0.32, value));
 }
 
-function bridgeModelDisplayName(modelValue?: string | null, modelOptions?: ComposerModelOption[]) {
+function collaborationModelDisplayName(modelValue?: string | null, modelOptions?: ComposerModelOption[]) {
   if (!modelValue?.trim()) return 'model default';
   const option = modelOptions?.find((candidate) => candidate.value === modelValue);
   return option?.label ?? modelValue;
 }
 
-function bridgeThinkingDisplayName(value?: string | null) {
+function collaborationThinkingDisplayName(value?: string | null) {
   if (!value?.trim() || value === 'default') return 'model default';
   return value[0]?.toUpperCase() + value.slice(1);
 }
@@ -1162,7 +1159,7 @@ function firstModelForProvider(providerId: string, modelOptions?: ComposerModelO
   return modelOptions?.find((option) => normalizeRoutingProviderId(option.provider ?? '') === normalized)?.value ?? null;
 }
 
-function bridgeAuthDisplayName(authProvider?: string | null, authChoice?: string | null, providerOptions?: ComposerProviderOption[]) {
+function collaborationAuthDisplayName(authProvider?: string | null, authChoice?: string | null, providerOptions?: ComposerProviderOption[]) {
   if (!authProvider?.trim() && !authChoice?.trim()) return null;
   const option = providerOptions?.find((candidate) => (
     candidate.providerId === authProvider && authChoiceFromProviderOption(candidate) === (authChoice ?? null)
@@ -1171,15 +1168,15 @@ function bridgeAuthDisplayName(authProvider?: string | null, authChoice?: string
   return authProvider ?? null;
 }
 
-function bridgeRouteDisplayName(
+function collaborationRouteDisplayName(
   modelValue?: string | null,
   authProvider?: string | null,
   authChoice?: string | null,
   modelOptions?: ComposerModelOption[],
   providerOptions?: ComposerProviderOption[],
 ) {
-  const model = bridgeModelDisplayName(modelValue, modelOptions);
-  const auth = bridgeAuthDisplayName(authProvider, authChoice, providerOptions);
+  const model = collaborationModelDisplayName(modelValue, modelOptions);
+  const auth = collaborationAuthDisplayName(authProvider, authChoice, providerOptions);
   return auth ? `${auth} · ${model}` : model;
 }
 
@@ -1200,14 +1197,14 @@ type ChatsPageProps = {
   onDetailResizeMouseDown?: MouseEventHandler<HTMLDivElement>;
   activeConv: Conversation;
   chatConversations: Conversation[];
-  activeConversationIsBridge: boolean;
-  activeBridgeModelHost: DesktopBridgeHost | null;
+  activeConversationUsesCollaboration: boolean;
+  activeCollaborationModelHost: DesktopCollaborationHost | null;
   desktopChatState: DesktopChatState | null;
   cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
   cloudAccount?: CloudAccount | null;
   cloudSessionPin?: CloudSessionPin | null;
   onUpdateCloudSessionPin?: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
-  onUpdateBridgeAgentModelRouting: (
+  onUpdateCollaborationAgentModelRouting: (
     hostId: string,
     agentId: string,
     defaultModel?: string | null,
@@ -1283,8 +1280,8 @@ type ChatsPageProps = {
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
   onStopDesktopChatTurn: () => void;
-  onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
-  onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
+  onStopCollaborationAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']>;
+  onRequestCollaborationContact?: ComponentProps<typeof MessageBubble>['onRequestCollaborationContact'];
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   onRetryChatMessage?: (message: Message) => void;
@@ -1311,14 +1308,14 @@ export function ChatsPage({
   setActiveArtifactId,
   activeConv,
   chatConversations,
-  activeConversationIsBridge,
-  activeBridgeModelHost,
+  activeConversationUsesCollaboration,
+  activeCollaborationModelHost,
   desktopChatState,
   cloudSelfAgentSyncStatus,
   cloudAccount = null,
   cloudSessionPin,
   onUpdateCloudSessionPin,
-  onUpdateBridgeAgentModelRouting,
+  onUpdateCollaborationAgentModelRouting,
   isEditingDesktopSessionTitle,
   setIsEditingDesktopSessionTitle,
   desktopSessionRenameDraft,
@@ -1383,8 +1380,8 @@ export function ChatsPage({
   chatModelOptions,
   isDesktopChatSending,
   onStopDesktopChatTurn,
-  onStopBridgeAgentRequest,
-  onRequestBridgeContact,
+  onStopCollaborationAgentRequest,
+  onRequestCollaborationContact,
   onMessageContact,
   onForkChatMessage,
   onRetryChatMessage,
@@ -1411,7 +1408,7 @@ export function ChatsPage({
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
   const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
-  const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
+  const activeConvUsesCollaborationTransport = activeConv.collaborationSources.some((source) => source.trim().toLowerCase() !== 'local');
   const activeSessionSubtitle = chatHeaderSubtitle(activeConv);
   const activeCloudSelfAgentSyncLabel = cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus);
   const activeSelfAgentSessionId = selfAgentSessionIdForTitleRename(activeConv);
@@ -1425,11 +1422,11 @@ export function ChatsPage({
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
-  const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
-  const [selectedCompanionBridgeAgentId, setSelectedCompanionBridgeAgentId] = useState<string | null>(null);
-  const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
-  const [companionBridgeRoutingNotice, setCompanionBridgeRoutingNotice] = useState<string | null>(null);
-  const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
+  const [selectedCollaborationAgentId, setSelectedCollaborationAgentId] = useState<string | null>(null);
+  const [selectedCompanionCollaborationAgentId, setSelectedCompanionCollaborationAgentId] = useState<string | null>(null);
+  const [collaborationRoutingNotice, setCollaborationRoutingNotice] = useState<string | null>(null);
+  const [companionCollaborationRoutingNotice, setCompanionCollaborationRoutingNotice] = useState<string | null>(null);
+  const [optimisticCollaborationAgentRouting, setOptimisticCollaborationAgentRouting] = useState<Record<string, {
     defaultModel?: string | null;
     defaultAuthProvider?: string | null;
     defaultAuthChoice?: string | null;
@@ -1520,10 +1517,10 @@ export function ChatsPage({
     activeSessionId
       && onUpdateCloudSessionPin
       && (
-        activeConv.bridges.some((bridgeId) => isCloudBridgeHostId(bridgeId))
-        || isCloudBridgeHostId(activeConv.bridgeTarget?.hostId)
-        || isCloudBridgeHostId(activeConv.identity?.bridgeHostId)
-        || isCloudBridgeConversationId(activeConv.id)
+        activeConv.collaborationSources.some((sourceId) => isCloudCollaborationHostId(sourceId))
+        || isCloudCollaborationHostId(activeConv.collaborationTarget?.hostId)
+        || isCloudCollaborationHostId(activeConv.identity?.sourceHostId)
+        || isCloudCollaborationConversationId(activeConv.id)
         || activeConversationIsGroupSession
       ),
   );
@@ -1549,7 +1546,7 @@ export function ChatsPage({
     : null;
   // Forking is hidden for group chats and historical group-derived forks because
   // the resulting private continuation/visibility semantics are confusing in a
-  // shared chat. The local draft and ephemeral bridge transports remain excluded
+  // shared chat. Local drafts and legacy ephemeral collaboration transports remain excluded
   // because they have no persistent backing to read from.
   const activeConversationIsForkable = Boolean(
     onForkChatMessage
@@ -1588,9 +1585,9 @@ export function ChatsPage({
   const canOpenSideAgentPanel = Boolean(suggestedSideAgentConversation || (activePaneKind === 'agent' && onCreateAgentSession));
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
   const companionSide = chatCompanionSideForPaneKinds(activePaneKind, humanPaneSide);
-  const companionConversationHasBridgeTransport = companionConversation?.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local') ?? false;
-  const companionConversationIsBridgeAgent = Boolean(companionPaneKind === 'agent' && companionConversationHasBridgeTransport);
-  const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationIsBridgeAgent;
+  const companionConversationUsesCollaborationTransport = companionConversation?.collaborationSources.some((source) => source.trim().toLowerCase() !== 'local') ?? false;
+  const companionConversationIsCollaborationAgent = Boolean(companionPaneKind === 'agent' && companionConversationUsesCollaborationTransport);
+  const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent;
   const companionLocalAgentConfigTargetSessionId = companionConversation
     ? localAgentComposerConfigTargetSessionId(companionConversation)
     : null;
@@ -1630,37 +1627,37 @@ export function ChatsPage({
   const companionLiveTurnSender = companionConversation ? localOwnedAgentSenderLabel(companionConversation) : 'Kordi';
   const companionRuntimeContextStatus = companionConversation?.contextWindowStatus ?? null;
   const companionRuntimeCacheText = companionConversation?.cacheMonitorText ?? null;
-  const companionBridgeModelHost = useMemo(() => {
-    if (!companionConversationIsBridgeAgent) return null;
-    const companionHostId = companionConversation?.bridgeTarget?.hostId?.trim() || null;
-    if (companionHostId && activeBridgeModelHost?.id === companionHostId) return activeBridgeModelHost;
-    if (!companionHostId && activeBridgeModelHost) return activeBridgeModelHost;
-    return activeBridgeModelHost;
-  }, [activeBridgeModelHost, companionConversation?.bridgeTarget?.hostId, companionConversationIsBridgeAgent]);
-  const companionBridgeRoutingAgents = useMemo(
-    () => localOwnedBridgeAgentsForModelRouting(companionBridgeModelHost ? [companionBridgeModelHost] : [], desktopChatState),
-    [companionBridgeModelHost, desktopChatState],
+  const companionCollaborationModelHost = useMemo(() => {
+    if (!companionConversationIsCollaborationAgent) return null;
+    const companionHostId = companionConversation?.collaborationTarget?.hostId?.trim() || null;
+    if (companionHostId && activeCollaborationModelHost?.id === companionHostId) return activeCollaborationModelHost;
+    if (!companionHostId && activeCollaborationModelHost) return activeCollaborationModelHost;
+    return activeCollaborationModelHost;
+  }, [activeCollaborationModelHost, companionConversation?.collaborationTarget?.hostId, companionConversationIsCollaborationAgent]);
+  const companionCollaborationRoutingAgents = useMemo(
+    () => localOwnedCollaborationAgentsForModelRouting(companionCollaborationModelHost ? [companionCollaborationModelHost] : [], desktopChatState),
+    [companionCollaborationModelHost, desktopChatState],
   );
-  const selectedCompanionBridgeRoutingAgentBase = companionBridgeRoutingAgents.find((agent) => agent.id === selectedCompanionBridgeAgentId)
-    ?? companionBridgeRoutingAgents.find((agent) => agent.isActive)
-    ?? companionBridgeRoutingAgents.find((agent) => agent.isDefault)
-    ?? companionBridgeRoutingAgents[0]
+  const selectedCompanionCollaborationRoutingAgentBase = companionCollaborationRoutingAgents.find((agent) => agent.id === selectedCompanionCollaborationAgentId)
+    ?? companionCollaborationRoutingAgents.find((agent) => agent.isActive)
+    ?? companionCollaborationRoutingAgents.find((agent) => agent.isDefault)
+    ?? companionCollaborationRoutingAgents[0]
     ?? null;
-  const selectedCompanionBridgeRoutingKey = selectedCompanionBridgeRoutingAgentBase && companionConversation
-    ? isCloudBridgeHostId(selectedCompanionBridgeRoutingAgentBase.hostId)
-      ? `${selectedCompanionBridgeRoutingAgentBase.hostId}:${companionConversation.canonicalSessionId ?? companionConversation.id}:${selectedCompanionBridgeRoutingAgentBase.id}`
-      : `${selectedCompanionBridgeRoutingAgentBase.hostId}:${selectedCompanionBridgeRoutingAgentBase.id}`
+  const selectedCompanionCollaborationRoutingKey = selectedCompanionCollaborationRoutingAgentBase && companionConversation
+    ? isCloudCollaborationHostId(selectedCompanionCollaborationRoutingAgentBase.hostId)
+      ? `${selectedCompanionCollaborationRoutingAgentBase.hostId}:${companionConversation.canonicalSessionId ?? companionConversation.id}:${selectedCompanionCollaborationRoutingAgentBase.id}`
+      : `${selectedCompanionCollaborationRoutingAgentBase.hostId}:${selectedCompanionCollaborationRoutingAgentBase.id}`
     : null;
-  const selectedCompanionBridgeRoutingAgent = selectedCompanionBridgeRoutingAgentBase
+  const selectedCompanionCollaborationRoutingAgent = selectedCompanionCollaborationRoutingAgentBase
     ? {
-      ...selectedCompanionBridgeRoutingAgentBase,
-      ...(selectedCompanionBridgeRoutingKey ? optimisticBridgeAgentRouting[selectedCompanionBridgeRoutingKey] : null),
+      ...selectedCompanionCollaborationRoutingAgentBase,
+      ...(selectedCompanionCollaborationRoutingKey ? optimisticCollaborationAgentRouting[selectedCompanionCollaborationRoutingKey] : null),
     }
     : null;
-  const companionBridgeRoutingSelection = routingSelectionForBridgeAgent(selectedCompanionBridgeRoutingAgent);
-  const companionBridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(companionBridgeRoutingAgents.length);
-  const companionBridgeAgentSelectorOpen = companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === 'mode';
-  const companionBridgeRoutingTargetSessionId = companionConversation?.canonicalSessionId ?? companionConversation?.id ?? null;
+  const companionCollaborationRoutingSelection = routingSelectionForCollaborationAgent(selectedCompanionCollaborationRoutingAgent);
+  const companionCollaborationRoutingControlVisibility = collaborationChatRoutingControlVisibility(companionCollaborationRoutingAgents.length);
+  const companionCollaborationAgentSelectorOpen = companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === 'mode';
+  const companionCollaborationRoutingTargetSessionId = companionConversation?.canonicalSessionId ?? companionConversation?.id ?? null;
 
   useEffect(() => {
     setOpenSideAgentConversationId(null);
@@ -1736,29 +1733,29 @@ export function ChatsPage({
     }
     return result;
   }, [activeConv.id, activeConversationIsGroupSession, desktopChatState?.sessions]);
-  const bridgeRoutingAgents = useMemo(
-    () => localOwnedBridgeAgentsForModelRouting(activeBridgeModelHost ? [activeBridgeModelHost] : [], desktopChatState),
-    [activeBridgeModelHost, desktopChatState],
+  const collaborationRoutingAgents = useMemo(
+    () => localOwnedCollaborationAgentsForModelRouting(activeCollaborationModelHost ? [activeCollaborationModelHost] : [], desktopChatState),
+    [activeCollaborationModelHost, desktopChatState],
   );
-  const selectedBridgeRoutingAgentBase = bridgeRoutingAgents.find((agent) => agent.id === selectedBridgeAgentId)
-    ?? bridgeRoutingAgents.find((agent) => agent.isActive)
-    ?? bridgeRoutingAgents.find((agent) => agent.isDefault)
-    ?? bridgeRoutingAgents[0]
+  const selectedCollaborationRoutingAgentBase = collaborationRoutingAgents.find((agent) => agent.id === selectedCollaborationAgentId)
+    ?? collaborationRoutingAgents.find((agent) => agent.isActive)
+    ?? collaborationRoutingAgents.find((agent) => agent.isDefault)
+    ?? collaborationRoutingAgents[0]
     ?? null;
-  const selectedBridgeRoutingKey = selectedBridgeRoutingAgentBase
-    ? isCloudBridgeHostId(selectedBridgeRoutingAgentBase.hostId)
-      ? `${selectedBridgeRoutingAgentBase.hostId}:${activeConv.canonicalSessionId ?? activeConv.id}:${selectedBridgeRoutingAgentBase.id}`
-      : `${selectedBridgeRoutingAgentBase.hostId}:${selectedBridgeRoutingAgentBase.id}`
+  const selectedCollaborationRoutingKey = selectedCollaborationRoutingAgentBase
+    ? isCloudCollaborationHostId(selectedCollaborationRoutingAgentBase.hostId)
+      ? `${selectedCollaborationRoutingAgentBase.hostId}:${activeConv.canonicalSessionId ?? activeConv.id}:${selectedCollaborationRoutingAgentBase.id}`
+      : `${selectedCollaborationRoutingAgentBase.hostId}:${selectedCollaborationRoutingAgentBase.id}`
     : null;
-  const selectedBridgeRoutingAgent = selectedBridgeRoutingAgentBase
+  const selectedCollaborationRoutingAgent = selectedCollaborationRoutingAgentBase
     ? {
-      ...selectedBridgeRoutingAgentBase,
-      ...(selectedBridgeRoutingKey ? optimisticBridgeAgentRouting[selectedBridgeRoutingKey] : null),
+      ...selectedCollaborationRoutingAgentBase,
+      ...(selectedCollaborationRoutingKey ? optimisticCollaborationAgentRouting[selectedCollaborationRoutingKey] : null),
     }
     : null;
-  const bridgeRoutingSelection = routingSelectionForBridgeAgent(selectedBridgeRoutingAgent);
-  const bridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(bridgeRoutingAgents.length);
-  const bridgeAgentSelectorOpen = openComposerSelector?.scope === 'chat' && openComposerSelector.type === 'mode';
+  const collaborationRoutingSelection = routingSelectionForCollaborationAgent(selectedCollaborationRoutingAgent);
+  const collaborationRoutingControlVisibility = collaborationChatRoutingControlVisibility(collaborationRoutingAgents.length);
+  const collaborationAgentSelectorOpen = openComposerSelector?.scope === 'chat' && openComposerSelector.type === 'mode';
   const transcriptMessages = collapseAdjacentSessionConfigNotices(
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
@@ -1935,16 +1932,16 @@ export function ChatsPage({
       return next;
     });
   };
-  const closeCompanionBridgeRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
+  const closeCompanionCollaborationRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
     if (companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === type) {
       setCompanionOpenComposerSelector(null);
     }
   };
-  const companionDefaultThinkingForBridgeModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
+  const companionDefaultThinkingForCollaborationModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
     const thinkingLevels = chatModelOptions?.find((option) => option.value === modelValue)?.thinkingLevels ?? [];
     return fallbackComposerThinkingValue(thinkingLevels, currentThinking ?? 'default');
   };
-  const updateCompanionBridgeAgentRouting = ({
+  const updateCompanionCollaborationAgentRouting = ({
     defaultModel,
     defaultAuthProvider,
     defaultAuthChoice,
@@ -1963,20 +1960,20 @@ export function ChatsPage({
     thinking?: string | null;
     selectorType?: 'provider' | 'model' | 'thinking';
   }) => {
-    if (selectorType) closeCompanionBridgeRoutingSelector(selectorType);
-    if (!selectedCompanionBridgeRoutingAgent || !selectedCompanionBridgeRoutingKey) return;
+    if (selectorType) closeCompanionCollaborationRoutingSelector(selectorType);
+    if (!selectedCompanionCollaborationRoutingAgent || !selectedCompanionCollaborationRoutingKey) return;
     if (isDesktopChatSending || companionLiveTurnIsRunning) {
-      setCompanionBridgeRoutingNotice("Stop the running task before changing this session's model or thinking level.");
+      setCompanionCollaborationRoutingNotice("Stop the running task before changing this session's model or thinking level.");
       return;
     }
 
-    const currentModel = selectedCompanionBridgeRoutingAgent.defaultModel ?? null;
-    const currentDefaultAuthProvider = selectedCompanionBridgeRoutingAgent.defaultAuthProvider ?? null;
-    const currentDefaultAuthChoice = selectedCompanionBridgeRoutingAgent.defaultAuthChoice ?? null;
-    const currentFallback = selectedCompanionBridgeRoutingAgent.fallbackModel ?? null;
-    const currentFallbackAuthProvider = selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null;
-    const currentFallbackAuthChoice = selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null;
-    const currentThinking = selectedCompanionBridgeRoutingAgent.thinking ?? null;
+    const currentModel = selectedCompanionCollaborationRoutingAgent.defaultModel ?? null;
+    const currentDefaultAuthProvider = selectedCompanionCollaborationRoutingAgent.defaultAuthProvider ?? null;
+    const currentDefaultAuthChoice = selectedCompanionCollaborationRoutingAgent.defaultAuthChoice ?? null;
+    const currentFallback = selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null;
+    const currentFallbackAuthProvider = selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null;
+    const currentFallbackAuthChoice = selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null;
+    const currentThinking = selectedCompanionCollaborationRoutingAgent.thinking ?? null;
     const nextModel = defaultModel !== undefined ? defaultModel : currentModel;
     const nextDefaultAuthProvider = defaultAuthProvider !== undefined ? defaultAuthProvider : currentDefaultAuthProvider;
     const nextDefaultAuthChoice = defaultAuthChoice !== undefined ? defaultAuthChoice : currentDefaultAuthChoice;
@@ -1988,22 +1985,22 @@ export function ChatsPage({
       || (defaultAuthChoice !== undefined && nextDefaultAuthChoice !== currentDefaultAuthChoice);
     const fallbackAuthChanged = (fallbackAuthProvider !== undefined && nextFallbackAuthProvider !== currentFallbackAuthProvider)
       || (fallbackAuthChoice !== undefined && nextFallbackAuthChoice !== currentFallbackAuthChoice);
-    const noticeText = bridgeAgentRoutingChangeNotice({
-      agentLabel: selectedCompanionBridgeRoutingAgent.label,
+    const noticeText = collaborationAgentRoutingChangeNotice({
+      agentLabel: selectedCompanionCollaborationRoutingAgent.label,
       currentModel,
       nextModel: defaultModel,
       currentThinking,
       nextThinking: thinking,
-      modelLabel: bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
-      thinkingLabel: bridgeThinkingDisplayName(nextThinking),
+      modelLabel: collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
+      thinkingLabel: collaborationThinkingDisplayName(nextThinking),
     }) ?? ((defaultAuthChanged || fallbackAuthChanged)
-      ? `${selectedCompanionBridgeRoutingAgent.label} model route changed to ${bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
+      ? `${selectedCompanionCollaborationRoutingAgent.label} model route changed to ${collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
       : null);
     if (!noticeText) return;
 
-    setOptimisticBridgeAgentRouting((current) => ({
+    setOptimisticCollaborationAgentRouting((current) => ({
       ...current,
-      [selectedCompanionBridgeRoutingKey]: {
+      [selectedCompanionCollaborationRoutingKey]: {
         defaultModel: nextModel,
         defaultAuthProvider: nextDefaultAuthProvider,
         defaultAuthChoice: nextDefaultAuthChoice,
@@ -2013,10 +2010,10 @@ export function ChatsPage({
         thinking: nextThinking,
       },
     }));
-    setCompanionBridgeRoutingNotice(noticeText);
-    void onUpdateBridgeAgentModelRouting(
-      selectedCompanionBridgeRoutingAgent.hostId,
-      selectedCompanionBridgeRoutingAgent.id,
+    setCompanionCollaborationRoutingNotice(noticeText);
+    void onUpdateCollaborationAgentModelRouting(
+      selectedCompanionCollaborationRoutingAgent.hostId,
+      selectedCompanionCollaborationRoutingAgent.id,
       nextModel,
       nextFallback,
       nextThinking,
@@ -2024,9 +2021,9 @@ export function ChatsPage({
       nextDefaultAuthChoice,
       nextFallbackAuthProvider,
       nextFallbackAuthChoice,
-      companionBridgeRoutingTargetSessionId,
+      companionCollaborationRoutingTargetSessionId,
     ).catch((error) => {
-      setCompanionBridgeRoutingNotice(error instanceof Error ? error.message : 'Unable to update bridge agent model routing');
+      setCompanionCollaborationRoutingNotice(error instanceof Error ? error.message : 'Unable to update collaboration agent model routing');
     });
   };
   const createSideAgentSession = async (initialPrompt = '') => {
@@ -2129,13 +2126,13 @@ export function ChatsPage({
           activeConvHasSubtitle={Boolean(formatSessionIdSubtitle(companionConversation.subtitle))}
           activeLastMessage={companionConversation.messages[companionConversation.messages.length - 1]}
           activeLiveTurn={attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.id || attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.canonicalSessionId ? attributedCompanionTranscriptLiveTurn : null}
-          activeConversationIsBridge={false}
-          activeBridgeConversationHostNodeId={null}
-          activeBridgeConversationHostUrl={null}
-          activeBridgeConversation={null}
-          activeBridgeAwaitingReply={false}
-          isBridgePolling={false}
-          lastBridgePollAtLabel={null}
+          activeConversationUsesCollaboration={false}
+          activeCollaborationConversationHostNodeId={null}
+          activeCollaborationConversationHostUrl={null}
+          activeCollaborationConversation={null}
+          activeCollaborationAwaitingReply={false}
+          isCollaborationSyncing={false}
+          lastCollaborationSyncAtLabel={null}
           activeSessionProject={null}
           artifacts={companionArtifacts}
           activeArtifactId={companionActiveArtifactId}
@@ -2331,9 +2328,9 @@ export function ChatsPage({
         onOpenAuthSettings={openAuthentication}
         onNavigateToMessage={handleNavigateToCompanionTranscriptMessage}
         onOpenMessageDetail={onSelectMessage}
-        onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+        onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
         onStopActiveTurn={onStopDesktopChatTurn}
-        onRequestBridgeContact={onRequestBridgeContact}
+        onRequestCollaborationContact={onRequestCollaborationContact}
         onOpenSenderProfile={openCompanionTranscriptSenderProfile}
         onForkMessage={onForkChatMessage ? (entryId) => {
           void onForkChatMessage(companionConversation.id, entryId);
@@ -2433,19 +2430,19 @@ export function ChatsPage({
                 </div>
               </div>
               <AnimatePresence initial={false}>
-                {companionConversationIsBridgeAgent && companionBridgeRoutingNotice ? (
+                {companionConversationIsCollaborationAgent && companionCollaborationRoutingNotice ? (
                   <motion.div
-                    key={companionBridgeRoutingNotice}
+                    key={companionCollaborationRoutingNotice}
                     className="mb-2 flex justify-center"
                     role="status"
                     aria-live="polite"
                     initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
-                    transition={{ duration: prefersReducedMotion ? 0.01 : BRIDGE_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: prefersReducedMotion ? 0.01 : COLLABORATION_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
                   >
                     <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
-                      Private · {companionBridgeRoutingNotice}
+                      Private · {companionCollaborationRoutingNotice}
                     </div>
                   </motion.div>
                 ) : null}
@@ -2513,34 +2510,34 @@ export function ChatsPage({
                     >
                       Retry model
                     </button>
-                  ) : companionConversationIsBridgeAgent && selectedCompanionBridgeRoutingAgent ? (
-                    <div className="relative flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true" data-companion-bridge-model-controls="true">
-                      {companionBridgeRoutingControlVisibility.showAgentSelector ? (
+                  ) : companionConversationIsCollaborationAgent && selectedCompanionCollaborationRoutingAgent ? (
+                    <div className="relative flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true" data-companion-collaboration-model-controls="true">
+                      {companionCollaborationRoutingControlVisibility.showAgentSelector ? (
                         <button
                           type="button"
                           onClick={() => toggleCompanionComposerSelector('chat', 'mode')}
                           className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
                           title="Choose which owned agent these session settings apply to"
                         >
-                          <span className="truncate">{selectedCompanionBridgeRoutingAgent.label}</span>
-                          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', companionBridgeAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
+                          <span className="truncate">{selectedCompanionCollaborationRoutingAgent.label}</span>
+                          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', companionCollaborationAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
                         </button>
                       ) : null}
-                      {companionBridgeAgentSelectorOpen ? (
+                      {companionCollaborationAgentSelectorOpen ? (
                         <div className="app-transient-surface app-transient-scroll absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]">
                           <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
                           <div className="space-y-1">
-                            {companionBridgeRoutingAgents.map((agent) => (
+                            {companionCollaborationRoutingAgents.map((agent) => (
                               <button
                                 key={`${agent.hostId}:${agent.id}`}
                                 type="button"
                                 onClick={() => {
-                                  setSelectedCompanionBridgeAgentId(agent.id);
+                                  setSelectedCompanionCollaborationAgentId(agent.id);
                                   setCompanionOpenComposerSelector(null);
                                 }}
                                 className={cn(
                                   'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                                  selectedCompanionBridgeRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
+                                  selectedCompanionCollaborationRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
                                 )}
                               >
                                 <span className="truncate">{agent.label}</span>
@@ -2552,29 +2549,29 @@ export function ChatsPage({
                       ) : null}
                       <ComposerModelControls
                         scope="chat"
-                        selection={companionBridgeRoutingSelection}
+                        selection={companionCollaborationRoutingSelection}
                         openSelector={companionOpenComposerSelector}
                         onToggleSelector={toggleCompanionComposerSelector}
                         onSelectValue={(_scope, type, value) => {
                           if (type === 'model') {
-                            updateCompanionBridgeAgentRouting({
+                            updateCompanionCollaborationAgentRouting({
                               defaultModel: value,
-                              defaultAuthProvider: selectedCompanionBridgeRoutingAgent.defaultAuthProvider ?? null,
-                              defaultAuthChoice: selectedCompanionBridgeRoutingAgent.defaultAuthChoice ?? null,
-                              fallbackModel: selectedCompanionBridgeRoutingAgent.fallbackModel ?? null,
-                              fallbackAuthProvider: selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null,
-                              fallbackAuthChoice: selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null,
-                              thinking: companionDefaultThinkingForBridgeModel(value, selectedCompanionBridgeRoutingAgent.thinking),
+                              defaultAuthProvider: selectedCompanionCollaborationRoutingAgent.defaultAuthProvider ?? null,
+                              defaultAuthChoice: selectedCompanionCollaborationRoutingAgent.defaultAuthChoice ?? null,
+                              fallbackModel: selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null,
+                              fallbackAuthProvider: selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null,
+                              fallbackAuthChoice: selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null,
+                              thinking: companionDefaultThinkingForCollaborationModel(value, selectedCompanionCollaborationRoutingAgent.thinking),
                               selectorType: 'model',
                             });
                           } else if (type === 'thinking') {
-                            updateCompanionBridgeAgentRouting({
-                              defaultModel: selectedCompanionBridgeRoutingAgent.defaultModel ?? null,
-                              defaultAuthProvider: selectedCompanionBridgeRoutingAgent.defaultAuthProvider ?? null,
-                              defaultAuthChoice: selectedCompanionBridgeRoutingAgent.defaultAuthChoice ?? null,
-                              fallbackModel: selectedCompanionBridgeRoutingAgent.fallbackModel ?? null,
-                              fallbackAuthProvider: selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null,
-                              fallbackAuthChoice: selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                            updateCompanionCollaborationAgentRouting({
+                              defaultModel: selectedCompanionCollaborationRoutingAgent.defaultModel ?? null,
+                              defaultAuthProvider: selectedCompanionCollaborationRoutingAgent.defaultAuthProvider ?? null,
+                              defaultAuthChoice: selectedCompanionCollaborationRoutingAgent.defaultAuthChoice ?? null,
+                              fallbackModel: selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null,
+                              fallbackAuthProvider: selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null,
+                              fallbackAuthChoice: selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null,
                               thinking: value,
                               selectorType: 'thinking',
                             });
@@ -2586,14 +2583,14 @@ export function ChatsPage({
                         onSelectProviderChoice={(_scope, option) => {
                           const nextModel = firstModelForProvider(option.providerId, chatModelOptions);
                           if (!nextModel) return;
-                          updateCompanionBridgeAgentRouting({
+                          updateCompanionCollaborationAgentRouting({
                             defaultModel: nextModel,
                             defaultAuthProvider: option.providerId,
                             defaultAuthChoice: authChoiceFromProviderOption(option),
-                            fallbackModel: selectedCompanionBridgeRoutingAgent.fallbackModel ?? null,
-                            fallbackAuthProvider: selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null,
-                            fallbackAuthChoice: selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null,
-                            thinking: companionDefaultThinkingForBridgeModel(nextModel, selectedCompanionBridgeRoutingAgent.thinking),
+                            fallbackModel: selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null,
+                            fallbackAuthProvider: selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null,
+                            fallbackAuthChoice: selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null,
+                            thinking: companionDefaultThinkingForCollaborationModel(nextModel, selectedCompanionCollaborationRoutingAgent.thinking),
                             selectorType: 'provider',
                           });
                         }}
@@ -2650,25 +2647,25 @@ export function ChatsPage({
     </div>
   ) : null;
   useEffect(() => {
-    if (!bridgeRoutingNotice) return;
+    if (!collaborationRoutingNotice) return;
     const timeoutId = window.setTimeout(() => {
-      setBridgeRoutingNotice(null);
-    }, BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS);
+      setCollaborationRoutingNotice(null);
+    }, COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS);
     return () => window.clearTimeout(timeoutId);
-  }, [bridgeRoutingNotice]);
+  }, [collaborationRoutingNotice]);
 
-  const closeBridgeRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
+  const closeCollaborationRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
     if (openComposerSelector?.scope === 'chat' && openComposerSelector.type === type) {
       toggleComposerSelector('chat', type);
     }
   };
 
-  const defaultThinkingForBridgeModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
+  const defaultThinkingForCollaborationModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
     const thinkingLevels = chatModelOptions?.find((option) => option.value === modelValue)?.thinkingLevels ?? [];
     return fallbackComposerThinkingValue(thinkingLevels, currentThinking ?? 'default');
   };
 
-  const updateBridgeAgentRouting = ({
+  const updateCollaborationAgentRouting = ({
     defaultModel,
     defaultAuthProvider,
     defaultAuthChoice,
@@ -2687,21 +2684,21 @@ export function ChatsPage({
     thinking?: string | null;
     selectorType?: 'provider' | 'model' | 'thinking';
   }) => {
-    if (selectorType) closeBridgeRoutingSelector(selectorType);
+    if (selectorType) closeCollaborationRoutingSelector(selectorType);
     focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-    if (!selectedBridgeRoutingAgent || !selectedBridgeRoutingKey) return;
+    if (!selectedCollaborationRoutingAgent || !selectedCollaborationRoutingKey) return;
     if (isDesktopChatSending || activeLiveTurnIsRunning) {
-      setBridgeRoutingNotice("Stop the running task before changing this session's model or thinking level.");
+      setCollaborationRoutingNotice("Stop the running task before changing this session's model or thinking level.");
       return;
     }
 
-    const currentModel = selectedBridgeRoutingAgent.defaultModel ?? null;
-    const currentDefaultAuthProvider = selectedBridgeRoutingAgent.defaultAuthProvider ?? null;
-    const currentDefaultAuthChoice = selectedBridgeRoutingAgent.defaultAuthChoice ?? null;
-    const currentFallback = selectedBridgeRoutingAgent.fallbackModel ?? null;
-    const currentFallbackAuthProvider = selectedBridgeRoutingAgent.fallbackAuthProvider ?? null;
-    const currentFallbackAuthChoice = selectedBridgeRoutingAgent.fallbackAuthChoice ?? null;
-    const currentThinking = selectedBridgeRoutingAgent.thinking ?? null;
+    const currentModel = selectedCollaborationRoutingAgent.defaultModel ?? null;
+    const currentDefaultAuthProvider = selectedCollaborationRoutingAgent.defaultAuthProvider ?? null;
+    const currentDefaultAuthChoice = selectedCollaborationRoutingAgent.defaultAuthChoice ?? null;
+    const currentFallback = selectedCollaborationRoutingAgent.fallbackModel ?? null;
+    const currentFallbackAuthProvider = selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null;
+    const currentFallbackAuthChoice = selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null;
+    const currentThinking = selectedCollaborationRoutingAgent.thinking ?? null;
     const nextModel = defaultModel !== undefined ? defaultModel : currentModel;
     const nextDefaultAuthProvider = defaultAuthProvider !== undefined ? defaultAuthProvider : currentDefaultAuthProvider;
     const nextDefaultAuthChoice = defaultAuthChoice !== undefined ? defaultAuthChoice : currentDefaultAuthChoice;
@@ -2713,22 +2710,22 @@ export function ChatsPage({
       || (defaultAuthChoice !== undefined && nextDefaultAuthChoice !== currentDefaultAuthChoice);
     const fallbackAuthChanged = (fallbackAuthProvider !== undefined && nextFallbackAuthProvider !== currentFallbackAuthProvider)
       || (fallbackAuthChoice !== undefined && nextFallbackAuthChoice !== currentFallbackAuthChoice);
-    const noticeText = bridgeAgentRoutingChangeNotice({
-      agentLabel: selectedBridgeRoutingAgent.label,
+    const noticeText = collaborationAgentRoutingChangeNotice({
+      agentLabel: selectedCollaborationRoutingAgent.label,
       currentModel,
       nextModel: defaultModel,
       currentThinking,
       nextThinking: thinking,
-      modelLabel: bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
-      thinkingLabel: bridgeThinkingDisplayName(nextThinking),
+      modelLabel: collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
+      thinkingLabel: collaborationThinkingDisplayName(nextThinking),
     }) ?? ((defaultAuthChanged || fallbackAuthChanged)
-      ? `${selectedBridgeRoutingAgent.label} model route changed to ${bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
+      ? `${selectedCollaborationRoutingAgent.label} model route changed to ${collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
       : null);
     if (!noticeText) return;
 
-    setOptimisticBridgeAgentRouting((current) => ({
+    setOptimisticCollaborationAgentRouting((current) => ({
       ...current,
-      [selectedBridgeRoutingKey]: {
+      [selectedCollaborationRoutingKey]: {
         defaultModel: nextModel,
         defaultAuthProvider: nextDefaultAuthProvider,
         defaultAuthChoice: nextDefaultAuthChoice,
@@ -2738,10 +2735,10 @@ export function ChatsPage({
         thinking: nextThinking,
       },
     }));
-    setBridgeRoutingNotice(noticeText);
-    void onUpdateBridgeAgentModelRouting(
-      selectedBridgeRoutingAgent.hostId,
-      selectedBridgeRoutingAgent.id,
+    setCollaborationRoutingNotice(noticeText);
+    void onUpdateCollaborationAgentModelRouting(
+      selectedCollaborationRoutingAgent.hostId,
+      selectedCollaborationRoutingAgent.id,
       nextModel,
       nextFallback,
       nextThinking,
@@ -2750,19 +2747,19 @@ export function ChatsPage({
       nextFallbackAuthProvider,
       nextFallbackAuthChoice,
     ).catch((error) => {
-      setBridgeRoutingNotice(error instanceof Error ? error.message : 'Unable to update bridge agent model routing');
+      setCollaborationRoutingNotice(error instanceof Error ? error.message : 'Unable to update collaboration agent model routing');
     });
   };
 
   const saveCompactModelRoute = (input: CompactComposerModelMenuSaveInput) => {
-    if (activeConversationIsBridge && selectedBridgeRoutingAgent) {
-      updateBridgeAgentRouting({
+    if (activeConversationUsesCollaboration && selectedCollaborationRoutingAgent) {
+      updateCollaborationAgentRouting({
         defaultModel: input.model,
-        defaultAuthProvider: input.providerOption?.providerId ?? selectedBridgeRoutingAgent.defaultAuthProvider ?? null,
-        defaultAuthChoice: input.providerOption ? authChoiceFromProviderOption(input.providerOption) : selectedBridgeRoutingAgent.defaultAuthChoice ?? null,
-        fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
-        fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
-        fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
+        defaultAuthProvider: input.providerOption?.providerId ?? selectedCollaborationRoutingAgent.defaultAuthProvider ?? null,
+        defaultAuthChoice: input.providerOption ? authChoiceFromProviderOption(input.providerOption) : selectedCollaborationRoutingAgent.defaultAuthChoice ?? null,
+        fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
+        fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
+        fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
         thinking: input.thinking,
       });
       return;
@@ -2978,7 +2975,7 @@ export function ChatsPage({
         data-chat-destination-page="messages"
         data-chat-destination-scope="main"
       >
-      {!hasAnyAuth && !activeConversationIsBridge ? (
+      {!hasAnyAuth && !activeConversationUsesCollaboration ? (
         <AuthNoticeBanner
           title="No provider connected yet"
           description={authNoticeDescription}
@@ -3027,9 +3024,9 @@ export function ChatsPage({
         onOpenAuthSettings={openAuthentication}
         onNavigateToMessage={handleNavigateToTranscriptMessage}
         onOpenMessageDetail={onSelectMessage}
-        onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+        onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
         onStopActiveTurn={onStopDesktopChatTurn}
-        onRequestBridgeContact={onRequestBridgeContact}
+        onRequestCollaborationContact={onRequestCollaborationContact}
         onOpenSenderProfile={openActiveTranscriptSenderProfile}
         onForkMessage={handleForkMessage}
         messageForksByEntryId={messageForksByEntryId}
@@ -3101,19 +3098,19 @@ export function ChatsPage({
           </div>
         ) : null}
         <AnimatePresence initial={false}>
-          {activeConversationIsBridge && bridgeRoutingNotice ? (
+          {activeConversationUsesCollaboration && collaborationRoutingNotice ? (
             <motion.div
-              key={bridgeRoutingNotice}
+              key={collaborationRoutingNotice}
               className="mb-2 flex justify-center"
               role="status"
               aria-live="polite"
               initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
-              transition={{ duration: prefersReducedMotion ? 0.01 : BRIDGE_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: prefersReducedMotion ? 0.01 : COLLABORATION_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
-                Private · {bridgeRoutingNotice}
+                Private · {collaborationRoutingNotice}
               </div>
             </motion.div>
           ) : null}
@@ -3285,7 +3282,7 @@ export function ChatsPage({
               {shouldUseCompactModelRouteMenu(activeConv) ? (
                 <CompactComposerModelMenu
                   scope="chat"
-                  selection={activeConversationIsBridge && selectedBridgeRoutingAgent ? bridgeRoutingSelection : composerSelection}
+                  selection={activeConversationUsesCollaboration && selectedCollaborationRoutingAgent ? collaborationRoutingSelection : composerSelection}
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
                   onSave={saveCompactModelRoute}
@@ -3303,13 +3300,13 @@ export function ChatsPage({
               </Button>
             </div>
             <div className={cn('flex min-w-0 items-center overflow-visible', showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3')}>
-              {activePaneKind === 'agent' && !activeConversationIsBridge && (isNativeShell || activeRuntimeContextStatus) ? (
+              {activePaneKind === 'agent' && !activeConversationUsesCollaboration && (isNativeShell || activeRuntimeContextStatus) ? (
                 <ComposerRuntimeStatus
                   contextStatus={activeRuntimeContextStatus}
                   cacheText={activeRuntimeCacheText}
                 />
               ) : null}
-              {activePaneKind === 'agent' && !activeConversationIsBridge && !shouldUseCompactModelRouteMenu(activeConv) ? (
+              {activePaneKind === 'agent' && !activeConversationUsesCollaboration && !shouldUseCompactModelRouteMenu(activeConv) ? (
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}
@@ -3330,34 +3327,34 @@ export function ChatsPage({
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
                   compact={showCompanionPane}
                 />
-              ) : activePaneKind === 'agent' && activeConversationIsBridge && !shouldUseCompactModelRouteMenu(activeConv) && selectedBridgeRoutingAgent ? (
+              ) : activePaneKind === 'agent' && activeConversationUsesCollaboration && !shouldUseCompactModelRouteMenu(activeConv) && selectedCollaborationRoutingAgent ? (
                 <div className="relative flex min-w-0 items-center gap-2 overflow-visible">
-                  {bridgeRoutingControlVisibility.showAgentSelector ? (
+                  {collaborationRoutingControlVisibility.showAgentSelector ? (
                     <button
                       type="button"
                       onClick={() => toggleComposerSelector('chat', 'mode')}
                       className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
                       title="Choose which owned agent these session settings apply to"
                     >
-                      <span className="truncate">{selectedBridgeRoutingAgent.label}</span>
-                      <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', bridgeAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
+                      <span className="truncate">{selectedCollaborationRoutingAgent.label}</span>
+                      <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', collaborationAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
                     </button>
                   ) : null}
-                  {bridgeAgentSelectorOpen ? (
+                  {collaborationAgentSelectorOpen ? (
                     <div className="app-transient-surface app-transient-scroll absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]">
                       <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
                       <div className="space-y-1">
-                        {bridgeRoutingAgents.map((agent) => (
+                        {collaborationRoutingAgents.map((agent) => (
                           <button
                             key={`${agent.hostId}:${agent.id}`}
                             type="button"
                             onClick={() => {
-                              setSelectedBridgeAgentId(agent.id);
+                              setSelectedCollaborationAgentId(agent.id);
                               toggleComposerSelector('chat', 'mode');
                             }}
                             className={cn(
                               'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                              selectedBridgeRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
+                              selectedCollaborationRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
                             )}
                           >
                             <span className="truncate">{agent.label}</span>
@@ -3369,29 +3366,29 @@ export function ChatsPage({
                   ) : null}
                   <ComposerModelControls
                     scope="chat"
-                    selection={bridgeRoutingSelection}
+                    selection={collaborationRoutingSelection}
                     openSelector={openComposerSelector}
                     onToggleSelector={toggleComposerSelector}
                     onSelectValue={(_scope, type, value) => {
                       if (type === 'model') {
-                        updateBridgeAgentRouting({
+                        updateCollaborationAgentRouting({
                           defaultModel: value,
-                          defaultAuthProvider: selectedBridgeRoutingAgent.defaultAuthProvider ?? null,
-                          defaultAuthChoice: selectedBridgeRoutingAgent.defaultAuthChoice ?? null,
-                          fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
-                          fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
-                          fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
-                          thinking: defaultThinkingForBridgeModel(value, selectedBridgeRoutingAgent.thinking),
+                          defaultAuthProvider: selectedCollaborationRoutingAgent.defaultAuthProvider ?? null,
+                          defaultAuthChoice: selectedCollaborationRoutingAgent.defaultAuthChoice ?? null,
+                          fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
+                          fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
+                          fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
+                          thinking: defaultThinkingForCollaborationModel(value, selectedCollaborationRoutingAgent.thinking),
                           selectorType: 'model',
                         });
                       } else if (type === 'thinking') {
-                        updateBridgeAgentRouting({
-                          defaultModel: selectedBridgeRoutingAgent.defaultModel ?? null,
-                          defaultAuthProvider: selectedBridgeRoutingAgent.defaultAuthProvider ?? null,
-                          defaultAuthChoice: selectedBridgeRoutingAgent.defaultAuthChoice ?? null,
-                          fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
-                          fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
-                          fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                        updateCollaborationAgentRouting({
+                          defaultModel: selectedCollaborationRoutingAgent.defaultModel ?? null,
+                          defaultAuthProvider: selectedCollaborationRoutingAgent.defaultAuthProvider ?? null,
+                          defaultAuthChoice: selectedCollaborationRoutingAgent.defaultAuthChoice ?? null,
+                          fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
+                          fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
+                          fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
                           thinking: value,
                           selectorType: 'thinking',
                         });
@@ -3403,14 +3400,14 @@ export function ChatsPage({
                     onSelectProviderChoice={(_scope, option) => {
                       const nextModel = firstModelForProvider(option.providerId, chatModelOptions);
                       if (!nextModel) return;
-                      updateBridgeAgentRouting({
+                      updateCollaborationAgentRouting({
                         defaultModel: nextModel,
                         defaultAuthProvider: option.providerId,
                         defaultAuthChoice: authChoiceFromProviderOption(option),
-                        fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
-                        fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
-                        fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
-                        thinking: defaultThinkingForBridgeModel(nextModel, selectedBridgeRoutingAgent.thinking),
+                        fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
+                        fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
+                        fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
+                        thinking: defaultThinkingForCollaborationModel(nextModel, selectedCollaborationRoutingAgent.thinking),
                         selectorType: 'provider',
                       });
                     }}

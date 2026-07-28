@@ -1,15 +1,12 @@
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
-import { isCanonicalBridgeSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
-import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
-import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
+import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
+import type { DesktopChatState } from '@/kordi-app/types';
 import { startSessionClickToFirstMessage } from '@/features/performance/chatPerformance';
 import {
   createDesktopChatSession,
   forkDesktopChatSessionFromMessage,
-  markDesktopBridgeConversationRead,
   prepareDesktopChatDraftSession,
   renameDesktopChatSession,
 } from '@/lib/desktop';
@@ -45,7 +42,7 @@ function draftDesktopChatState(current: DesktopChatState | null): DesktopChatSta
 
 type UseDesktopSessionControllerArgs = {
   isNativeShell: boolean;
-  activeConversationIsBridge: boolean;
+  activeConversationUsesCollaboration: boolean;
   activeConvId: string;
   desktopChatState: DesktopChatState | null;
   desktopSessionRenameDraft: string;
@@ -55,7 +52,6 @@ type UseDesktopSessionControllerArgs = {
   setActiveConvId: Dispatch<SetStateAction<string>>;
   setPendingUserChatMessage: Dispatch<SetStateAction<{ text: string; time: string } | null>>;
   setChatComposerAttachments: Dispatch<SetStateAction<AttachmentItem[]>>;
-  setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
   setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
@@ -67,7 +63,7 @@ type UseDesktopSessionControllerArgs = {
 
 export function useDesktopSessionController({
   isNativeShell,
-  activeConversationIsBridge,
+  activeConversationUsesCollaboration,
   activeConvId,
   desktopChatState,
   desktopSessionRenameDraft,
@@ -77,7 +73,6 @@ export function useDesktopSessionController({
   setActiveConvId,
   setPendingUserChatMessage,
   setChatComposerAttachments,
-  setDesktopBridgeState,
   setDesktopChatError,
   setDesktopChatState,
   setComposerDrafts,
@@ -96,25 +91,11 @@ export function useDesktopSessionController({
 
     if (
       isLocalDraftChatConversationId(sessionId)
-      || isCanonicalBridgeSessionId(sessionId)
+      || isLegacyCanonicalCollaborationSessionId(sessionId)
       || isCanonicalCloudSessionId(sessionId)
+      || sessionId.startsWith('bridge:')
     ) {
       setDesktopChatError(null);
-      return;
-    }
-
-    if (sessionId.startsWith('bridge:')) {
-      if (isCloudBridgeConversationId(sessionId)) {
-        setDesktopChatError(null);
-        return;
-      }
-      try {
-        const nextState = await markDesktopBridgeConversationRead(sessionId);
-        setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-        setDesktopChatError(null);
-      } catch (error) {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to open bridge chat');
-      }
       return;
     }
 
@@ -124,7 +105,7 @@ export function useDesktopSessionController({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
     }
-  }, [isNativeShell, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopBridgeState, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [isNativeShell, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleCreateChatSession = useCallback(async () => {
     if (!isNativeShell) return;
@@ -160,7 +141,7 @@ export function useDesktopSessionController({
   }, [isNativeShell, refreshDesktopChat, selectProjectSession, setChatComposerAttachments, setDesktopChatError, setOpenComposerSelector, shouldAutoFollowChatRef]);
 
   const handleRenameDesktopSession = useCallback(async (fallbackName?: string) => {
-    if (!isNativeShell || activeConversationIsBridge || !desktopChatState?.activeSessionId) return;
+    if (!isNativeShell || activeConversationUsesCollaboration || !desktopChatState?.activeSessionId) return;
     const name = desktopSessionRenameDraft.trim();
     const baselineName = fallbackName ?? desktopChatState.activeSession.title;
     const isTransientDraft = isLocalDraftChatConversationId(activeConvId)
@@ -191,7 +172,7 @@ export function useDesktopSessionController({
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to rename session');
     }
-  }, [activeConvId, activeConversationIsBridge, desktopChatState, desktopSessionRenameDraft, isNativeShell, setActiveConvId, setDesktopChatError, setDesktopChatState, setDesktopSessionRenameDraft, setIsEditingDesktopSessionTitle]);
+  }, [activeConvId, activeConversationUsesCollaboration, desktopChatState, desktopSessionRenameDraft, isNativeShell, setActiveConvId, setDesktopChatError, setDesktopChatState, setDesktopSessionRenameDraft, setIsEditingDesktopSessionTitle]);
 
   const handleForkChatMessage = useCallback(async (sessionId: string, messageEntryId: string) => {
     if (!isNativeShell) return;

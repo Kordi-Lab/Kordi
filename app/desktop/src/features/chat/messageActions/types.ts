@@ -1,15 +1,15 @@
-import type { DesktopBridgeState } from '@/kordi-app/types';
+import type { DesktopCollaborationState } from '@/kordi-app/types';
 
-export type ResolvedMentionedBridgeTarget = {
-  host: DesktopBridgeState['hosts'][number];
-  peer: DesktopBridgeState['hosts'][number]['visiblePeers'][number];
+export type ResolvedMentionedCollaborationTarget = {
+  host: DesktopCollaborationState['hosts'][number];
+  peer: DesktopCollaborationState['hosts'][number]['visiblePeers'][number];
   label: string;
   displayLabel: string;
-  targetKind: 'bridge-person' | 'bridge-agent';
+  targetKind: 'person' | 'agent';
   requestText: string;
 };
 
-export type PendingBridgeOutreach = {
+export type PendingCollaborationOutreach = {
   conversationId: string;
   requestId?: string | null;
   parentSessionId: string;

@@ -1,7 +1,5 @@
 use rusqlite::{params, Connection};
 
-use super::open_db;
-
 fn leading_address_match<'a>(text_after_at: &'a str, label: &str) -> Option<&'a str> {
     let label = label.trim();
     if label.is_empty() {
@@ -104,19 +102,4 @@ pub(super) fn sanitize_shared_agent_response_text_with_conn(
         labels.extend(session_address_labels(conn, session_id)?);
     }
     Ok(strip_leading_address_mentions(text, &labels))
-}
-
-pub(crate) fn sanitize_shared_agent_response_text(
-    parent_session_id: Option<&str>,
-    text: &str,
-    extra_labels: &[String],
-) -> Result<String, String> {
-    let Some(session_id) = parent_session_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(strip_leading_address_mentions(text, extra_labels));
-    };
-    let conn = open_db()?;
-    sanitize_shared_agent_response_text_with_conn(&conn, Some(session_id), text, extra_labels)
 }

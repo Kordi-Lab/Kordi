@@ -68,7 +68,6 @@ test('representative popup families opt into the shared transient contract', () 
     ['AuthPopup.tsx', /app-transient-surface app-auth-popup-panel app-modal-panel/],
     ['kordi-app/agents/AgentCreateDialog.tsx', /app-transient-surface app-agent-create-dialog/],
     ['kordi-app/agents/AgentDetailPane.tsx', /<AppDialog[\s\S]{0,180}titleId="delete-agent-dialog-title"/],
-    ['pages/bridge/BridgeConfigModals.tsx', /app-transient-surface app-modal-panel/],
     ['features/cloud/CloudContactsPanel.tsx', /app-transient-surface w-full/],
     ['features/cloud/CloudPeerChatPanel.tsx', /app-transient-surface app-frosted-popover/],
     ['pages/ArtifactInspector.tsx', /app-transient-surface app-artifact-preview-window-panel/],

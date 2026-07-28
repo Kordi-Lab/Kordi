@@ -23,7 +23,7 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
   cloudGroupParticipantsWithProfiles,
-  cloudGroupParticipantsForBridgeSessionParticipants,
+  cloudGroupParticipantsForCollaborationSession,
   cloudGroupRelatedControlsForSend,
   cloudGroupTargetAccountIds,
   cloudGroupTitleForOutgoingControl,
@@ -133,7 +133,7 @@ test('explicit outgoing membership snapshots do not resurrect historical recipie
 });
 
 test('Cloud participant snapshots do not silently promote the local sender', () => {
-  const participants = cloudGroupParticipantsForBridgeSessionParticipants({
+  const participants = cloudGroupParticipantsForCollaborationSession({
     accountId: 'acct_self',
     displayName: 'Self',
     primaryEmail: 'self@example.com',
@@ -682,7 +682,7 @@ test('placeholder session titles are not replicated as manual Cloud titles', () 
         sessionTitleUpdatedAtMs: 700,
       },
     },
-    identities: [{ id: 'human:acct_creator', humanId: 'acct_creator', bridgeNodeId: null }],
+    identities: [{ id: 'human:acct_creator', humanId: 'acct_creator', sourceIdentityId: null }],
   }), null);
 });
 
@@ -700,7 +700,7 @@ test('group controls preserve the administrator-authored manual session title sn
         sessionTitleUpdatedAtMs: 700,
       },
     },
-    identities: [{ id: 'human:acct_creator', humanId: 'acct_creator', bridgeNodeId: null }],
+    identities: [{ id: 'human:acct_creator', humanId: 'acct_creator', sourceIdentityId: null }],
   });
   assert.deepEqual(sessionTitle, {
     title: 'main',
@@ -789,8 +789,8 @@ test('group title updates build a remote visible group rename notice separately 
       groupSpaceId: 'space:cloud',
       groupTitle: 'Good group',
       createdByAccountId: 'acct_sender',
-      actor: { accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null },
-      participants: [{ accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null }],
+      actor: { accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null },
+      participants: [{ accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null }],
       message: null,
     },
     actorIdentityId: 'human:cloud:acct_sender',
@@ -800,12 +800,12 @@ test('group title updates build a remote visible group rename notice separately 
 
   assert.equal(request?.id, 'cloud-group-title-notice:cloud-msg-group-rename');
   assert.equal(request?.sessionId, 'session:group:cloud');
-  assert.equal(request?.contentText, '杨谢 changed the group name to Good group');
+  assert.equal(request?.contentText, 'Álvaro changed the group name to Good group');
   assert.deepEqual(request?.content, {
     kind: 'group-title-update',
     scope: 'group',
     title: 'Good group',
-    actorDisplayName: '杨谢',
+    actorDisplayName: 'Álvaro',
   });
 });
 
@@ -817,8 +817,8 @@ test('session title updates build a remote visible rename notice without changin
       groupSpaceId: 'space:cloud',
       groupTitle: 'Sprint follow-up',
       createdByAccountId: 'acct_sender',
-      actor: { accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null },
-      participants: [{ accountId: 'acct_sender', displayName: '杨谢', avatarUrl: null }],
+      actor: { accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null },
+      participants: [{ accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null }],
       message: null,
     },
     actorIdentityId: 'human:cloud:acct_sender',
@@ -830,12 +830,12 @@ test('session title updates build a remote visible rename notice without changin
   assert.equal(request?.sessionId, 'session:group:cloud');
   assert.equal(request?.senderRole, 'system');
   assert.equal(request?.messageKind, 'status');
-  assert.equal(request?.contentText, '杨谢 changed the session name to Sprint follow-up');
+  assert.equal(request?.contentText, 'Álvaro changed the session name to Sprint follow-up');
   assert.deepEqual(request?.content, {
     kind: 'session-title-update',
     scope: 'session',
     title: 'Sprint follow-up',
-    actorDisplayName: '杨谢',
+    actorDisplayName: 'Álvaro',
   });
 });
 
@@ -961,7 +961,7 @@ test('cloud group requesting notice uses the final response slot for smooth in-p
     sessionId: 'session:group:one',
     requestMessageId: 'msg_request',
     targetAccountId: 'acct_yang',
-    targetAgentDisplayName: "杨涛's Kordi",
+    targetAgentDisplayName: "Márta's Kordi",
     createdAtMs: 123,
     sequenceNum: 9,
   });
@@ -972,7 +972,7 @@ test('cloud group requesting notice uses the final response slot for smooth in-p
   assert.equal(message.status, 'processing');
   assert.equal(message.sourceTransport, 'cloud-group-agent-offline');
   assert.deepEqual(message.content, {
-    sender: "杨涛's Kordi",
+    sender: "Márta's Kordi",
     timestampMs: 123,
     deliveryState: 'processing',
     requestId: 'msg_request',
@@ -985,7 +985,7 @@ test('cloud group offline notice replies as the mentioned agent and marks the tu
     sessionId: 'session:group:one',
     requestMessageId: 'msg_request',
     targetAccountId: 'acct_yang',
-    targetHumanDisplayName: '杨涛',
+    targetHumanDisplayName: 'Márta',
     createdAtMs: 123,
   });
 
@@ -997,12 +997,12 @@ test('cloud group offline notice replies as the mentioned agent and marks the tu
   assert.equal(request.parentMessageId, 'msg_request');
   assert.equal(request.status, 'failed');
   assert.deepEqual(request.content, {
-    sender: "杨涛's Kordi",
+    sender: "Márta's Kordi",
     timestampMs: 123,
     deliveryState: 'failed',
     requestId: 'msg_request',
     replyToMessageId: 'msg_request',
-    error: "杨涛 and 杨涛's Kordi are offline.",
+    error: "Márta and Márta's Kordi are offline.",
   });
 });
 
@@ -1423,10 +1423,10 @@ test('cloud agent mentions inside cloud groups stay on cloud group transport', (
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true }), false);
   assert.equal(shouldRouteMentionThroughCloudGroup({ activeGroupSessionIsGroup: true, hasCloudGroupRecipients: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsLocalAgent: true }), true);
-  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: true }), true);
-  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: false }), false);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsCollaborationAgent: true, hasCloudGroupRecipients: true }), true);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsCollaborationAgent: true, hasCloudGroupRecipients: false }), false);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: false, mentionsLocalAgent: true }), false);
-  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: false, mentionsBridgeAgent: true, hasCloudGroupRecipients: true }), false);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: false, mentionsCollaborationAgent: true, hasCloudGroupRecipients: true }), false);
 });
 
 test('cloud group helpers split cloud recipients from bridge recipients', () => {
@@ -1482,15 +1482,15 @@ test('cloud group contact participant does not synthesize generated avatar urls'
     classType: 'other-users',
     entityType: 'user',
     subtitle: 'acct_b',
-    bridges: [CLOUD_HOST_SENTINEL],
+    collaborationSources: [CLOUD_HOST_SENTINEL],
     status: 'online',
     discoverableOn: [CLOUD_HOST_SENTINEL],
     detail: 'acct_b',
     owner: 'Bob',
-    bridgeHostId: CLOUD_HOST_SENTINEL,
-    bridgePeerNodeId: 'acct_b',
-    bridgeHumanId: 'acct_b',
-    bridgeContactStatus: 'accepted',
+    sourceHostId: CLOUD_HOST_SENTINEL,
+    sourceParticipantId: 'acct_b',
+    sourceHumanId: 'acct_b',
+    contactStatus: 'accepted',
     avatarSeed: 'bob-seed',
     profileImageUrl: null,
   });

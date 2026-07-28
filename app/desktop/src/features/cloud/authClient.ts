@@ -1,7 +1,7 @@
 // Cloud-edition auth HTTP client. Talks to the cloud server's /v1/cloud/* routes.
 // Stays a pure TS module: no React, no Tauri imports — easy to test with a fetch stub.
 
-// Production Cloud Edition must not silently fall back to a localhost Bridge.
+// Production sessions must not silently fall back to a localhost transport.
 // Local tunnels/dev servers remain available by explicitly setting
 // VITE_KORDI_CLOUD_API_BASE.
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
@@ -273,11 +273,6 @@ export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivity
 export type UpsertCloudArtifactActivityInput = Omit<CloudArtifactActivity, 'artifactActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
-};
-
-export type RegisterDeviceResult = {
-  nodeId: string;
-  apiKey: string;
 };
 
 export type CloudPresenceStatus = 'online' | 'offline';
@@ -720,21 +715,6 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not revoke Cloud provider-auth snapshot.',
-    );
-  }
-
-  async registerDevice(
-    token: string,
-    input: { ed25519Pubkey: string; x25519Pubkey: string; displayName?: string },
-  ): Promise<RegisterDeviceResult> {
-    return this.send<RegisterDeviceResult>(
-      '/v1/cloud/auth/register-device',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(input),
-      },
-      'Could not register device on bridges.',
     );
   }
 

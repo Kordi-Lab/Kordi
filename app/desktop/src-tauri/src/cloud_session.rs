@@ -1,4 +1,4 @@
-//! Secret storage for Cloud Edition credentials.
+//! Secret storage for hosted account credentials.
 //!
 //! Packaged apps use the OS keychain. Multi-instance dev runs set `APP_DATA_DIR`,
 //! so they use isolated files under that throwaway data directory instead; this
@@ -6,16 +6,12 @@
 //! rebuilt while still keeping Cloud sessions out of browser localStorage.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use ed25519_dalek::SigningKey;
 use keyring::Entry;
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
 const KEYCHAIN_SERVICE: &str = "com.kordi.cloud-session";
 const KEYCHAIN_USERNAME: &str = "default";
-const KEYCHAIN_DEVICE_KEY_SERVICE: &str = "com.kordi.cloud-device-key";
-const KEYCHAIN_BRIDGES_API_KEY_SERVICE: &str = "com.kordi.cloud-bridges-api-key";
 const DEV_FILE_SECRETS_DIR_NAME: &str = "cloud-secrets";
 
 /// Suffix the keychain service name with the running instance id when
@@ -102,89 +98,6 @@ fn secret_delete(service: &str, account_id: &str) -> Result<(), String> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CloudDeviceKeypair {
-    /// Base58-encoded ed25519 public key.
-    #[serde(rename = "ed25519Pubkey")]
-    pub ed25519_pubkey: String,
-    /// Base58-encoded x25519 public key derived from the ed25519 key.
-    #[serde(rename = "x25519Pubkey")]
-    pub x25519_pubkey: String,
-}
-
-fn ed25519_to_x25519_public(ed_pub: &[u8; 32]) -> Result<[u8; 32], String> {
-    use curve25519_dalek::edwards::CompressedEdwardsY;
-    let compressed = CompressedEdwardsY(*ed_pub);
-    let edwards = compressed
-        .decompress()
-        .ok_or_else(|| "invalid_ed25519_pubkey".to_string())?;
-    let montgomery = edwards.to_montgomery();
-    Ok(montgomery.to_bytes())
-}
-
-#[tauri::command]
-pub fn cloud_device_keypair_load_or_create(
-    account_id: String,
-) -> Result<CloudDeviceKeypair, String> {
-    let trimmed = account_id.trim();
-    if trimmed.is_empty() {
-        return Err("invalid_account_id".to_string());
-    }
-    let secret_bytes: [u8; 32] = match secret_load(KEYCHAIN_DEVICE_KEY_SERVICE, trimmed)? {
-        Some(value) => {
-            let decoded = URL_SAFE_NO_PAD
-                .decode(value.as_bytes())
-                .map_err(|err| format!("keychain_payload_invalid: {err}"))?;
-            if decoded.len() != 32 {
-                return Err("keychain_payload_invalid: secret length".to_string());
-            }
-            let mut out = [0u8; 32];
-            out.copy_from_slice(&decoded);
-            out
-        }
-        None => {
-            let signing = SigningKey::generate(&mut OsRng);
-            let bytes = signing.to_bytes();
-            let encoded = URL_SAFE_NO_PAD.encode(bytes);
-            secret_store(KEYCHAIN_DEVICE_KEY_SERVICE, trimmed, &encoded)?;
-            bytes
-        }
-    };
-
-    let signing = SigningKey::from_bytes(&secret_bytes);
-    let ed_pub = signing.verifying_key();
-    let ed_pub_bytes = *ed_pub.as_bytes();
-    let x_pub_bytes = ed25519_to_x25519_public(&ed_pub_bytes)?;
-
-    Ok(CloudDeviceKeypair {
-        ed25519_pubkey: bs58::encode(ed_pub_bytes).into_string(),
-        x25519_pubkey: bs58::encode(x_pub_bytes).into_string(),
-    })
-}
-
-#[tauri::command]
-pub fn cloud_bridges_api_key_store(account_id: String, api_key: String) -> Result<(), String> {
-    let trimmed_account = account_id.trim();
-    let trimmed_key = api_key.trim();
-    if trimmed_account.is_empty() || trimmed_key.is_empty() {
-        return Err("invalid_input".to_string());
-    }
-    secret_store(
-        KEYCHAIN_BRIDGES_API_KEY_SERVICE,
-        trimmed_account,
-        trimmed_key,
-    )
-}
-
-#[tauri::command]
-pub fn cloud_bridges_api_key_load(account_id: String) -> Result<Option<String>, String> {
-    let trimmed = account_id.trim();
-    if trimmed.is_empty() {
-        return Err("invalid_account_id".to_string());
-    }
-    secret_load(KEYCHAIN_BRIDGES_API_KEY_SERVICE, trimmed)
-}
-
 #[tauri::command]
 pub fn cloud_session_store(
     token: String,
@@ -261,16 +174,6 @@ mod tests {
 
             cloud_session_clear().unwrap();
             assert!(cloud_session_load().unwrap().is_none());
-        });
-    }
-
-    #[test]
-    fn cloud_device_key_uses_stable_app_data_file_store() {
-        with_isolated_app_data_dir(|_| {
-            let first = cloud_device_keypair_load_or_create("acct_123".to_string()).unwrap();
-            let second = cloud_device_keypair_load_or_create("acct_123".to_string()).unwrap();
-            assert_eq!(first.ed25519_pubkey, second.ed25519_pubkey);
-            assert_eq!(first.x25519_pubkey, second.x25519_pubkey);
         });
     }
 }

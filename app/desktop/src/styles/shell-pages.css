@@ -124,186 +124,6 @@
   box-shadow: none;
 }
 
-.app-bridge-page .app-bridge-card {
-  border-color: color-mix(in oklab, var(--app-divider) 62%, transparent);
-  background: color-mix(in oklab, var(--app-card-bg) 58%, transparent);
-  box-shadow: none;
-}
-
-.app-bridge-page .app-bridge-card > :first-child {
-  padding: 14px 16px 6px;
-}
-
-.app-bridge-page .app-bridge-card > :last-child {
-  padding: 0 16px 16px;
-}
-
-.app-bridge-page .app-bridge-main {
-  align-items: start;
-}
-
-.app-bridge-page .app-bridge-section-content {
-  padding-top: 0;
-}
-
-.app-bridge-page .app-bridge-field {
-  line-height: 1.45;
-  letter-spacing: -0.004em;
-  font-variant-numeric: tabular-nums;
-}
-
-.app-bridge-page .app-bridge-list-item {
-  box-shadow: none;
-  background: transparent;
-}
-
-.app-bridge-page .app-bridge-list-item:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 44%, transparent);
-}
-
-.app-bridge-page .app-bridge-list-item > div {
-  min-width: 0;
-}
-
-.app-bridge-page .app-bridge-meta-block {
-  border-color: color-mix(in oklab, var(--app-divider) 56%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 34%, transparent);
-  box-shadow: none;
-}
-
-.app-bridge-page .app-bridge-empty {
-  box-shadow: none;
-  background: color-mix(in oklab, var(--app-control-bg) 24%, transparent);
-}
-
-.app-bridge-page .app-bridge-notice {
-  border: 1px solid var(--app-divider);
-  font-weight: 500;
-  letter-spacing: -0.002em;
-}
-
-.app-bridge-page .app-bridge-notice-success {
-  border-color: rgba(34, 211, 238, 0.24);
-  background: rgba(34, 211, 238, 0.1);
-  color: rgb(207 250 254);
-}
-
-.app-bridge-page .app-bridge-notice-error {
-  border-color: rgba(244, 63, 94, 0.24);
-  background: rgba(244, 63, 94, 0.1);
-  color: rgb(255 228 230);
-}
-
-.app-bridge-page .app-bridge-empty-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--utility-foreground);
-}
-
-.app-bridge-page .app-bridge-wizard-panel {
-  border-color: color-mix(in oklab, var(--app-divider) 66%, transparent);
-}
-
-.app-bridge-page .app-bridge-wizard-stepper {
-  padding: 2px 0 0;
-}
-
-.app-bridge-page .app-bridge-timeline {
-  position: relative;
-}
-
-.app-bridge-page .app-bridge-timeline-step {
-  box-shadow: none;
-}
-
-.app-bridge-page .app-bridge-timeline-dot {
-  font-variant-numeric: tabular-nums;
-}
-
-.app-bridge-page .app-bridge-inline-timeline {
-  display: grid;
-  gap: 10px;
-}
-
-.app-bridge-page .app-bridge-timeline-segment {
-  border: 1px solid transparent;
-  background: transparent;
-  transition: border-color 180ms ease, background-color 180ms ease;
-}
-
-.app-bridge-page .app-bridge-timeline-segment.is-active {
-  border-color: color-mix(in oklab, var(--app-divider) 74%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 30%, transparent);
-}
-
-.app-bridge-page .app-bridge-timeline-segment > .app-bridge-timeline-step {
-  border-color: transparent;
-  background: transparent;
-}
-
-.app-bridge-page .app-bridge-timeline-segment:not(.is-active):not(.is-disabled) > .app-bridge-timeline-step:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 34%, transparent);
-}
-
-.app-bridge-page .app-bridge-step-detail-region {
-  animation: app-bridge-step-reveal 220ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.app-bridge-page .app-bridge-step-detail-inner {
-  overflow: hidden;
-  padding: 0 14px 14px 52px;
-}
-
-.app-bridge-page .app-bridge-step-detail-region .app-bridge-card {
-  border-radius: 18px;
-  border-color: color-mix(in oklab, var(--app-divider) 58%, transparent);
-  background: color-mix(in oklab, var(--app-card-bg) 42%, transparent);
-}
-
-.app-bridge-page .app-bridge-step-detail-region .app-bridge-card > :first-child {
-  padding: 12px 12px 4px;
-}
-
-.app-bridge-page .app-bridge-step-detail-region .app-bridge-card > :last-child {
-  padding: 0 12px 12px;
-}
-
-@keyframes app-bridge-step-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 760px) {
-  .app-bridge-page .app-bridge-step-detail-inner {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-bridge-page .app-bridge-step-detail-region {
-    animation: none;
-  }
-}
-
-.app-bridge-page .app-bridge-wizard-step {
-  box-shadow: none;
-}
-
-.app-bridge-page .app-bridge-wizard-option {
-  box-shadow: none;
-}
-
-.app-bridge-page .app-bridge-wizard-option:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
-}
-
 .app-auth-gate-overlay,
 .app-auth-gate-shell {
   background: #0f1115;
@@ -417,42 +237,42 @@
   background: var(--app-transient-raised-bg);
 }
 
-.bridge-app.theme-light .app-agent-create-overlay {
+.kordi-app.theme-light .app-agent-create-overlay {
   background: var(--app-transient-overlay-bg);
 }
 
-.bridge-app.theme-light .app-agent-create-dialog {
+.kordi-app.theme-light .app-agent-create-dialog {
   border-color: var(--app-transient-border);
 }
 
-.bridge-app.theme-light .app-agent-create-surface {
+.kordi-app.theme-light .app-agent-create-surface {
   background: var(--app-transient-surface-bg);
   box-shadow: var(--app-transient-shadow);
 }
 
-.bridge-app.theme-light .app-agent-panel-header,
-.bridge-app.theme-light .app-agent-create-actions,
-.bridge-app.theme-light .app-agent-create-panel {
+.kordi-app.theme-light .app-agent-panel-header,
+.kordi-app.theme-light .app-agent-create-actions,
+.kordi-app.theme-light .app-agent-create-panel {
   border-color: var(--app-transient-divider);
 }
 
-.bridge-app.theme-light .app-agent-create-dialog .app-agent-panel-header,
-.bridge-app.theme-light .app-agent-create-actions {
+.kordi-app.theme-light .app-agent-create-dialog .app-agent-panel-header,
+.kordi-app.theme-light .app-agent-create-actions {
   background: var(--app-transient-raised-bg);
 }
 
-.bridge-app.theme-light .app-agent-create-panel {
+.kordi-app.theme-light .app-agent-create-panel {
   background: transparent;
 }
 
-.bridge-app.theme-light .app-agent-create-muted {
+.kordi-app.theme-light .app-agent-create-muted {
   border-color: var(--app-transient-border);
   background: var(--app-transient-raised-bg);
   box-shadow: none;
 }
 
-.bridge-app.theme-light .app-agent-create-dialog .app-agent-inspector-row,
-.bridge-app.theme-light .app-agent-create-dialog .app-agent-code-panel {
+.kordi-app.theme-light .app-agent-create-dialog .app-agent-inspector-row,
+.kordi-app.theme-light .app-agent-create-dialog .app-agent-code-panel {
   border-color: var(--app-transient-border);
   background: var(--app-transient-raised-bg);
   box-shadow: none;
@@ -549,7 +369,7 @@
   font-kerning: normal;
 }
 
-.bridge-app.theme-light .app-agent-studio-page {
+.kordi-app.theme-light .app-agent-studio-page {
   --agent-studio-accent: oklch(52% 0.115 242);
   --agent-studio-accent-soft: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
   --agent-studio-success: oklch(48% 0.12 156);
@@ -2493,7 +2313,7 @@
   color: oklch(74% 0.1 74);
 }
 
-.bridge-app.theme-light .app-agent-studio-capability-icon.is-tool {
+.kordi-app.theme-light .app-agent-studio-capability-icon.is-tool {
   color: oklch(49% 0.105 74);
 }
 
@@ -2502,7 +2322,7 @@
   color: oklch(70% 0.1 310);
 }
 
-.bridge-app.theme-light .app-agent-studio-capability-icon.is-plugin {
+.kordi-app.theme-light .app-agent-studio-capability-icon.is-plugin {
   color: oklch(48% 0.105 310);
 }
 

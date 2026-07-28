@@ -55,12 +55,12 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   assert.doesNotMatch(modal, /bg-black\/45/);
   assert.doesNotMatch(`${modal}\n${authPage}`, /rgba\(126,111,64/);
   const modalPaletteBlock = themeOverrides.slice(
-    themeOverrides.indexOf('.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list'),
-    themeOverrides.indexOf('.bridge-app.theme-light .app-agent-shell'),
+    themeOverrides.indexOf('.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-list'),
+    themeOverrides.indexOf('.kordi-app.theme-light .app-agent-shell'),
   );
 
-  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-dialog\s*\{/);
-  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-overlay\s*\{/);
+  assert.match(themeOverrides, /\.kordi-app\.theme-light \.app-cloud-account-settings-dialog\s*\{/);
+  assert.match(themeOverrides, /\.kordi-app\.theme-light \.app-cloud-account-settings-overlay\s*\{/);
   assert.match(modal, /app-session-panel app-cloud-account-settings-rail/);
   assert.match(modal, /app-main-panel app-cloud-account-settings-page/);
   assert.doesNotMatch(modal, /app-surface-muted rounded-\[24px\]/);
@@ -72,7 +72,7 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   assert.match(shellPages, /\.app-transient-surface\.app-cloud-account-settings-dialog\s*\{[^}]*border:\s*0[^}]*box-shadow:\s*0 14px 36px rgb\(0 0 0 \/ 0\.28\)/s);
   assert.doesNotMatch(shellPages, /\.app-cloud-account-profile\s*\{[^}]*border-(?:top|bottom)/s);
   assert.doesNotMatch(modal, /app-cloud-account-theme[^\n]*border-y/);
-  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-glyph[\s\S]*rgba\(239, 246, 255, 0\.96\)/);
+  assert.match(themeOverrides, /\.kordi-app\.theme-light \.app-auth-provider-glyph[\s\S]*rgba\(239, 246, 255, 0\.96\)/);
   assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });
 

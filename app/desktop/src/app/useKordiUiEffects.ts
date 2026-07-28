@@ -4,14 +4,14 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ResolvedThemeMode } from '@/kordi-app/types';
+import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, NavId, ResolvedThemeMode } from '@/kordi-app/types';
 
 type UseKordiUiEffectsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
   desktopAuthState: DesktopAuthState | null;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
-  activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
+  activeNav: NavId;
   activeConvId: string;
   activeProjectId: string;
   activeProjectSessionId: string;
@@ -30,7 +30,7 @@ type UseKordiUiEffectsArgs = {
   openComposerSelector: { scope: ComposerScope; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   themeMode: ResolvedThemeMode;
-  activeConversationIsBridge: boolean;
+  activeConversationUsesCollaboration: boolean;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
   setComposerSelections: Dispatch<SetStateAction<Record<ComposerScope, { mode: string; model: string; thinking: string }>>>;
@@ -104,7 +104,7 @@ export function useKordiUiEffects({
   openComposerSelector,
   composerControlsRef,
   themeMode,
-  activeConversationIsBridge,
+  activeConversationUsesCollaboration,
   setDesktopSessionRenameDraft,
   setIsEditingDesktopSessionTitle,
   setComposerSelections,
@@ -191,7 +191,7 @@ export function useKordiUiEffects({
           && option.label === desktopChatState.activeSession.model,
       )?.value ?? `${desktopChatState.activeSession.provider}/${desktopChatState.activeSession.model}`;
 
-    if (!activeConversationIsBridge) {
+    if (!activeConversationUsesCollaboration) {
       setDesktopSessionRenameDraft(desktopChatState.activeSession.title);
       setIsEditingDesktopSessionTitle(false);
     }
@@ -213,7 +213,7 @@ export function useKordiUiEffects({
       },
     }));
   }, [
-    activeConversationIsBridge,
+    activeConversationUsesCollaboration,
     activeConvId,
     activeProjectSessionId,
     desktopChatState?.activeSession,

@@ -1,6 +1,6 @@
 import {
   adminIdentityIdsFromMetadata,
-  buildChatGroupBridgeUpdateParticipants,
+  buildChatGroupCollaborationUpdateParticipants,
 } from '@/features/chat/chatCreateFlows';
 import { sharedGroupCustomTitle } from '@/features/chat/groupTitle';
 import type { ComposerMentionOption } from '@/kordi-app/components';
@@ -8,8 +8,8 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
   ConversationParticipant,
-  DesktopBridgeSessionParticipant,
-  DesktopBridgeSessionThreadMessage,
+  DesktopCollaborationSessionParticipant,
+  DesktopCollaborationSessionThreadMessage,
   DesktopChatState,
   ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
@@ -108,20 +108,20 @@ function optimisticCanonicalMessageStatusIsPreservable(message: CanonicalSession
   return status === 'sending' || status === 'sent' || status === 'failed' || deliveryState === 'sending' || deliveryState === 'sent' || deliveryState === 'failed';
 }
 
-function isBridgeUiMessageToPreserve(message: CanonicalSessionMessage) {
+function isLegacyCollaborationUiMessageToPreserve(message: CanonicalSessionMessage) {
   return message.sourceTransport === 'desktop-bridge-ui'
     && message.senderRole === 'user'
     && optimisticCanonicalMessageStatusIsPreservable(message);
 }
 
-function isBridgeContactLocalAgentUiMessageToPreserve(message: CanonicalSessionMessage) {
+function isLegacyCollaborationContactLocalAgentUiMessageToPreserve(message: CanonicalSessionMessage) {
   return message.sourceTransport === 'desktop-chat-ui'
     && message.senderRole === 'user'
     && message.sessionId.startsWith('session:bridge:')
     && optimisticCanonicalMessageStatusIsPreservable(message);
 }
 
-function isBridgeSessionSyncMessageToPreserve(message: CanonicalSessionMessage) {
+function isLegacyCollaborationSessionSyncMessageToPreserve(message: CanonicalSessionMessage) {
   if (!message.sessionId.startsWith('session:bridge:')) return false;
   const sourceTransport = message.sourceTransport?.trim().toLowerCase() ?? '';
   return sourceTransport === 'desktop-chat'
@@ -151,12 +151,12 @@ function canonicalRefreshMessageAlreadyFetched(
 }
 
 function shouldPreserveCanonicalMessageDuringRefresh(message: CanonicalSessionMessage) {
-  return isBridgeUiMessageToPreserve(message)
-    || isBridgeContactLocalAgentUiMessageToPreserve(message)
-    || isBridgeSessionSyncMessageToPreserve(message);
+  return isLegacyCollaborationUiMessageToPreserve(message)
+    || isLegacyCollaborationContactLocalAgentUiMessageToPreserve(message)
+    || isLegacyCollaborationSessionSyncMessageToPreserve(message);
 }
 
-export function mergeCanonicalStatePreservingBridgeUiMessages(
+export function mergeCanonicalStatePreservingCollaborationUiMessages(
   fetched: CanonicalSessionState | null,
   current: CanonicalSessionState | null,
 ): CanonicalSessionState | null {
@@ -301,8 +301,8 @@ export function canonicalGroupParticipantsForSession(state: CanonicalSessionStat
         role,
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
-        bridgeHostId: identity.sourceHostId,
-        bridgeNodeId: identity.bridgeNodeId,
+        sourceHostId: identity.sourceHostId,
+        sourceIdentityId: identity.sourceIdentityId,
         humanId: identity.humanId,
         agentId: identity.agentId,
         avatarKey: identity.avatarKey,
@@ -426,9 +426,9 @@ function compareCanonicalInviteMessages(left: CanonicalSessionMessage, right: Ca
 export function canonicalSessionMessagesForGroupInvite(
   state: CanonicalSessionState | null,
   sessionId: string,
-): DesktopBridgeSessionThreadMessage[] {
+): DesktopCollaborationSessionThreadMessage[] {
   const identityById = new Map((state?.identities ?? []).map((identity) => [identity.id, identity]));
-  const snapshots: DesktopBridgeSessionThreadMessage[] = [];
+  const snapshots: DesktopCollaborationSessionThreadMessage[] = [];
   for (const message of [...(state?.messages ?? [])]
     .filter((candidate) => candidate.sessionId === sessionId)
     .sort(compareCanonicalInviteMessages)) {
@@ -453,8 +453,8 @@ export function canonicalSessionMessagesForGroupInvite(
 export type CanonicalGroupInviteContext = {
   parentSessionTitle: string | null;
   parentGroupSpaceId: string | null;
-  parentSessionParticipants: DesktopBridgeSessionParticipant[];
-  parentSessionMessages: DesktopBridgeSessionThreadMessage[];
+  parentSessionParticipants: DesktopCollaborationSessionParticipant[];
+  parentSessionMessages: DesktopCollaborationSessionThreadMessage[];
 };
 
 function groupSpaceIdForSession(state: CanonicalSessionState | null, sessionId: string, fallbackGroupSpaceId: string) {
@@ -464,7 +464,7 @@ function groupSpaceIdForSession(state: CanonicalSessionState | null, sessionId: 
 }
 
 function groupSessionParticipantsForSync(state: CanonicalSessionState | null, sessionId: string) {
-  return buildChatGroupBridgeUpdateParticipants({
+  return buildChatGroupCollaborationUpdateParticipants({
     participants: canonicalGroupParticipantsForSession(state, sessionId),
     adminIdentityIds: activeGroupAdminIds(state, sessionId),
   });

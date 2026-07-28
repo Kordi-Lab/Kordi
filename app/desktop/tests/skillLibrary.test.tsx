@@ -52,7 +52,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     tasks: 0,
     defaultProvider: 'OpenAI',
     defaultModel: 'gpt-test',
-    bridgesConfig: 'Local runtime',
+    collaborationConfig: 'Local runtime',
     contactId: 'agent:kordi',
     systemPrompt: '',
     xMd: '',

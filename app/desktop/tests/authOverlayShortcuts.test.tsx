@@ -58,6 +58,6 @@ test('inline auth popup portals outside the app shell stacking context', () => {
   const source = readFileSync(new URL('../src/app/assembleOverlaySlots.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /createPortal/);
-  assert.match(source, /document\.querySelector\('\.bridge-app'\) \?\? document\.body/);
+  assert.match(source, /document\.querySelector\('\.kordi-app'\) \?\? document\.body/);
   assert.match(source, /function OverlayPortal/);
 });

@@ -4,8 +4,8 @@ import type { CloudMessage, CloudMessageAttachment } from '../../src/features/cl
 import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
-  DesktopBridgeConversation,
-  DesktopBridgeConversationMessage,
+  DesktopCollaborationConversation,
+  DesktopCollaborationConversationMessage,
 } from '../../src/kordi-app/types';
 
 export const CHAT_SCALE = {
@@ -295,8 +295,8 @@ export function buildScaleCloudMessagesByPeer(): Record<string, CloudMessage[]> 
   return result;
 }
 
-export function buildScaleBridgeConversation(): DesktopBridgeConversation {
-  const messages: DesktopBridgeConversationMessage[] = Array.from(
+export function buildScaleCollaborationConversation(): DesktopCollaborationConversation {
+  const messages: DesktopCollaborationConversationMessage[] = Array.from(
     { length: CHAT_SCALE.selectedSessionMessages },
     (_, index) => {
       const blockIndex = Math.floor(index / 20);
@@ -305,7 +305,7 @@ export function buildScaleBridgeConversation(): DesktopBridgeConversation {
       const timestampMs = SCALE_START_MS + index * 1_000;
       if (blockPosition === 0) {
         return {
-          id: `bridge-message:${index}`,
+          id: `collaboration-message:${index}`,
           direction: 'outbound',
           sender: 'Me',
           text: `Scale request ${blockIndex}`,
@@ -317,7 +317,7 @@ export function buildScaleBridgeConversation(): DesktopBridgeConversation {
       }
       if (blockPosition === 1) {
         return {
-          id: `bridge-message:${index}`,
+          id: `collaboration-message:${index}`,
           direction: 'inbound-response',
           sender: 'Scale agent',
           text: 'processing...',
@@ -329,7 +329,7 @@ export function buildScaleBridgeConversation(): DesktopBridgeConversation {
       }
       if (blockPosition === 2) {
         return {
-          id: `bridge-message:${index}`,
+          id: `collaboration-message:${index}`,
           direction: 'inbound-response',
           sender: 'Scale agent',
           text: `Scale response ${blockIndex}`,
@@ -340,7 +340,7 @@ export function buildScaleBridgeConversation(): DesktopBridgeConversation {
         };
       }
       return {
-        id: `bridge-message:${index}`,
+        id: `collaboration-message:${index}`,
         direction: index % 2 === 0 ? 'outbound' : 'inbound-response',
         sender: index % 2 === 0 ? 'Me' : 'Scale agent',
         text: `Scale transcript row ${index}`,

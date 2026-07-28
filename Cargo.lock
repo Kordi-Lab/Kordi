@@ -2797,11 +2797,7 @@ name = "kordi-desktop"
 version = "0.0.1-beta.9"
 dependencies = [
  "base64 0.22.1",
- "bs58",
- "chacha20poly1305",
  "chrono",
- "curve25519-dalek",
- "ed25519-dalek",
  "futures-util",
  "hex",
  "keyring",
@@ -2809,7 +2805,6 @@ dependencies = [
  "kordi-core",
  "kordi-session",
  "kordi-tools",
- "rand 0.8.6",
  "reqwest 0.12.28",
  "reqwest 0.13.2",
  "rusqlite",
@@ -2823,10 +2818,8 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tokio",
- "tokio-tungstenite",
  "tokio-util",
  "uuid",
- "x25519-dalek",
 ]
 
 [[package]]

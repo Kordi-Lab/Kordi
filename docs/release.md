@@ -16,7 +16,7 @@ The desktop app is the end-user product surface. It packages:
 
 - the React app
 - the Tauri shell
-- local sidecar binaries for `agent` and `bridges`
+- the local `kordi` agent runtime sidecar
 
 ### Agent runtime
 
@@ -28,7 +28,7 @@ pnpm build:agent
 
 This build produces the local runtime binary used by the desktop app and any standalone runtime workflows.
 
-### Bridges network layer
+### Standalone Bridges network layer
 
 Primary entrypoints:
 
@@ -37,10 +37,13 @@ pnpm build:bridges
 pnpm build:registry
 ```
 
-The Bridges layer ships in two forms:
+These explicit commands build standalone products with release lifecycles that
+are separate from Kordi Desktop:
 
 - the local CLI / daemon binary
 - the registry service
+
+They are not invoked by the desktop release workflow.
 
 ## Sidecar packaging
 
@@ -53,8 +56,7 @@ pnpm prepare:sidecars
 This command:
 
 1. builds the agent binary
-2. builds the Bridges binary
-3. copies both into `app/desktop/src-tauri/binaries`
+2. copies `kordi` into `app/desktop/src-tauri/binaries`
 
 `pnpm dev:desktop` and `pnpm build:desktop` both call this workflow.
 

@@ -227,7 +227,7 @@ function BlueprintView({
               {creating || agent?.cloudAgentId ? cloudAgentAccessLabel(accessScope) : 'Local runtime'}
             </div>
             <div className="app-agent-studio-blueprint-detail">
-              {creating || agent?.cloudAgentId ? cloudAgentAccessDescription(accessScope) : 'Access follows the connected Bridge runtime.'}
+              {creating || agent?.cloudAgentId ? cloudAgentAccessDescription(accessScope) : 'Access follows the connected collaboration runtime.'}
             </div>
           </div>
           {creating || agent?.cloudAgentId ? (
@@ -320,7 +320,6 @@ const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
   find: 'Find files and folders by name.',
   grep: 'Search text across workspace files.',
   ls: 'List files and folders in the workspace.',
-  reach_out: 'Ask another person or agent for help.',
   read: 'Read files from the workspace.',
   read_session: 'Read a previous Kordi conversation.',
   reflection: 'Review progress before choosing the next step.',
@@ -795,7 +794,7 @@ function RunsView({
       </div>
     );
   }
-  const reachouts = agent?.bridgeReachouts ?? [];
+  const reachouts = agent?.collaborationReachouts ?? [];
   const activities = agent?.lastActivities ?? [];
   return (
     <div className="app-agent-studio-view-scroll">

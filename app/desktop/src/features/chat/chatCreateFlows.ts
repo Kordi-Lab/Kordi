@@ -5,7 +5,7 @@ import type {
   Contact,
   Conversation,
   ConversationParticipant,
-  DesktopBridgeSessionParticipant,
+  DesktopCollaborationSessionParticipant,
   ParticipantSpaceViewModel,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
@@ -31,7 +31,7 @@ export type ChatCreateAgentOption = {
 
 export type ChatAgentSessionKind = 'self-agent' | 'direct-agent';
 
-export type BridgeAgentStartInput = {
+export type CollaborationAgentStartInput = {
   hostId: string;
   nodeId: string;
   displayName?: string | null;
@@ -42,7 +42,7 @@ export type BridgeAgentStartInput = {
   profileImageUrl?: string | null;
 };
 
-const BRIDGE_HUMAN_SESSION_PREFIX = 'session:bridge:humans:';
+const LEGACY_COLLABORATION_HUMAN_SESSION_PREFIX = 'session:bridge:humans:';
 
 export type ChatGroupMetadata = {
   schemaVersion: 1;
@@ -90,7 +90,7 @@ function uniqueNonEmpty(values: string[]) {
 
 export function buildChatCreatePersonOptions(contacts: Contact[]): ChatCreatePersonOption[] {
   return contacts
-    .filter((contact) => !isContactAgent(contact) && isApprovedBridgeContact(contact))
+    .filter((contact) => !isContactAgent(contact) && isApprovedCollaborationContact(contact))
     .map((contact) => ({
       id: contact.id,
       label: firstNonEmpty(contact.name, contact.owner, contact.id),
@@ -101,23 +101,23 @@ export function buildChatCreatePersonOptions(contacts: Contact[]): ChatCreatePer
     }));
 }
 
-export function isApprovedBridgeContact(contact: Contact) {
-  const peerNodeId = cleanText(contact.bridgePeerNodeId);
+export function isApprovedCollaborationContact(contact: Contact) {
+  const peerNodeId = cleanText(contact.sourceParticipantId);
   if (!peerNodeId) return true;
-  const status = cleanText(contact.bridgeContactStatus).toLowerCase();
+  const status = cleanText(contact.contactStatus).toLowerCase();
   return status === 'contact' || status === 'approved' || status === 'accepted';
 }
 
 export function buildChatCreateGroupPersonOptions(contacts: Contact[]): ChatCreatePersonOption[] {
-  return buildChatCreatePersonOptions(contacts).filter((option) => isApprovedBridgeContact(option.contact));
+  return buildChatCreatePersonOptions(contacts).filter((option) => isApprovedCollaborationContact(option.contact));
 }
 
 export function buildChatCreatePeopleContactLookup(contacts: Contact[]): Map<string, Contact> {
   const lookup = new Map<string, Contact>();
   for (const option of buildChatCreatePersonOptions(contacts)) {
     lookup.set(option.id, option.contact);
-    const cloudAccountId = option.contact.bridgeHostId === 'cloud'
-      ? cleanText(option.contact.bridgePeerNodeId) || cleanText(option.contact.bridgeHumanId)
+    const cloudAccountId = option.contact.sourceHostId === 'cloud'
+      ? cleanText(option.contact.sourceParticipantId) || cleanText(option.contact.sourceHumanId)
       : '';
     if (cloudAccountId) lookup.set(`cloud:${cloudAccountId}`, option.contact);
   }
@@ -135,7 +135,7 @@ export function buildChatCreateAgentOptions(agents: Agent[]): ChatCreateAgentOpt
   }));
 }
 
-export function bridgeAgentForChatStart(input: BridgeAgentStartInput): Agent {
+export function collaborationAgentForChatStart(input: CollaborationAgentStartInput): Agent {
   const hostId = cleanText(input.hostId);
   const nodeId = cleanText(input.nodeId);
   const agentId = cleanText(input.agentId);
@@ -143,18 +143,18 @@ export function bridgeAgentForChatStart(input: BridgeAgentStartInput): Agent {
   const displayName = firstNonEmpty(input.displayName, ownerName ? `${ownerName}'s Kordi` : null, agentId, nodeId);
   const canonicalId = agentId
     ? `agent:${stableIdentitySegment(agentId)}`
-    : `agent:bridge-node:${stableIdentitySegment(nodeId || displayName)}`;
+    : `agent:source:${stableIdentitySegment(nodeId || displayName)}`;
 
   return {
     id: canonicalId,
     name: displayName,
-    role: 'External Bridge agent',
-    messaging: 'Start a Bridge agent chat',
+    role: 'External collaboration agent',
+    messaging: 'Start a hosted agent chat',
     status: 'Available',
     tasks: 0,
     defaultProvider: '',
     defaultModel: '',
-    bridgesConfig: 'Bridge',
+    collaborationConfig: 'Cloud',
     contactId: cleanText(input.contactId) || canonicalId,
     systemPrompt: '',
     xMd: '',
@@ -163,11 +163,11 @@ export function bridgeAgentForChatStart(input: BridgeAgentStartInput): Agent {
     loadedSkills: [],
     loadedPlugins: [],
     lastActivities: [],
-    bridgeHostId: hostId || undefined,
-    bridgePeerNodeId: nodeId || undefined,
-    bridgePeerRuntime: cleanText(input.runtime) || 'kordi-desktop',
-    bridgeAgentId: agentId || undefined,
-    bridgeOwnerName: ownerName || undefined,
+    sourceHostId: hostId || undefined,
+    sourceParticipantId: nodeId || undefined,
+    sourceRuntime: cleanText(input.runtime) || 'kordi-desktop',
+    sourceAgentId: agentId || undefined,
+    collaborationOwnerName: ownerName || undefined,
     isOwned: false,
     avatarSeed: agentId || nodeId || canonicalId,
     profileImageUrl: input.profileImageUrl ?? null,
@@ -189,22 +189,22 @@ export function chatSessionIdForAgentStart(agent: Agent, randomId: string) {
 }
 
 export function buildChatAgentSessionMetadata(agent: Agent) {
-  const bridgeHostId = cleanText(agent.bridgeHostId);
-  const peerNodeId = cleanText(agent.bridgePeerNodeId);
-  const peerRuntime = cleanText(agent.bridgePeerRuntime);
+  const sourceHostId = cleanText(agent.sourceHostId);
+  const peerNodeId = cleanText(agent.sourceParticipantId);
+  const peerRuntime = cleanText(agent.sourceRuntime);
   const peerDisplayName = cleanText(agent.name);
-  const peerOwnerName = cleanText(agent.bridgeOwnerName);
-  const peerAgentId = cleanText(agent.bridgeAgentId);
+  const peerOwnerName = cleanText(agent.collaborationOwnerName);
+  const peerAgentId = cleanText(agent.sourceAgentId);
   const cloudAgentId = cleanText(agent.cloudAgentId);
 
   return {
     createdFrom: 'chat-create-flow' as const,
     agentId: agent.id,
     participantSpaceKind: 'self' as const,
-    ...(bridgeHostId ? { bridgeHostId } : {}),
+    ...(sourceHostId ? { sourceHostId } : {}),
     ...(peerNodeId ? { peerNodeId } : {}),
     ...(peerRuntime ? { peerRuntime } : {}),
-    ...(peerDisplayName && bridgeHostId ? { peerDisplayName } : {}),
+    ...(peerDisplayName && sourceHostId ? { peerDisplayName } : {}),
     ...(peerOwnerName ? { peerOwnerName } : {}),
     ...(peerAgentId ? { peerAgentId, targetAgentId: peerAgentId } : {}),
     ...(cloudAgentId ? {
@@ -280,10 +280,10 @@ export type ParticipantSpaceContinuationMetadataInput = {
   participantSpaceKind: ParticipantSpaceViewModel['kind'];
 };
 
-const BRIDGE_CONTINUATION_METADATA_KEYS = [
+const LEGACY_COLLABORATION_METADATA_KEYS = [
   'source',
-  'bridgeConversationId',
-  'bridgeHostId',
+  'sourceConversationId',
+  'sourceHostId',
   'peerNodeId',
   'peerRuntime',
   'peerDisplayName',
@@ -295,7 +295,7 @@ const BRIDGE_CONTINUATION_METADATA_KEYS = [
 
 export function buildParticipantSpaceContinuationMetadata(input: ParticipantSpaceContinuationMetadataInput) {
   const sourceMetadata = metadataRecord(input.sourceMetadata);
-  const inheritedBridgeMetadata = BRIDGE_CONTINUATION_METADATA_KEYS.reduce<Record<string, string>>((metadata, key) => {
+  const inheritedLegacyCollaborationMetadata = LEGACY_COLLABORATION_METADATA_KEYS.reduce<Record<string, string>>((metadata, key) => {
     const value = sourceMetadata[key];
     if (typeof value !== 'string') return metadata;
     const trimmed = value.trim();
@@ -307,7 +307,7 @@ export function buildParticipantSpaceContinuationMetadata(input: ParticipantSpac
 
   return {
     createdFrom: 'chat-create-flow' as const,
-    ...inheritedBridgeMetadata,
+    ...inheritedLegacyCollaborationMetadata,
     continuedFromSessionId: input.continuedFromSessionId,
     continuedFromSpaceId: input.continuedFromSpaceId,
     participantSpaceKind: input.participantSpaceKind,
@@ -358,7 +358,7 @@ function agentMatchKeys(agent: Agent) {
   const baseKeys = uniqueNonEmpty([
     agent.id,
     cleanText(agent.id).replace(/^agent:/, ''),
-    agent.bridgeAgentId ?? '',
+    agent.sourceAgentId ?? '',
     agent.contactId ?? '',
     canonicalIdentityId ?? '',
     cleanText(canonicalIdentityId).replace(/^agent:/, ''),
@@ -372,8 +372,8 @@ function personMatchKeys(contact: Contact) {
   const baseKeys = uniqueNonEmpty([
     contact.id,
     cleanText(contact.id).replace(/^human:/, ''),
-    contact.bridgeHumanId ?? '',
-    contact.bridgePeerNodeId ?? '',
+    contact.sourceHumanId ?? '',
+    contact.sourceParticipantId ?? '',
     canonicalIdentityId ?? '',
     cleanText(canonicalIdentityId).replace(/^human:/, ''),
   ]);
@@ -386,12 +386,12 @@ function conversationPersonMatchKeys(conversation: Conversation) {
     metadataText(metadata, 'contactId'),
     metadataText(metadata, 'peerHumanId'),
     metadataText(metadata, 'peerNodeId'),
-    conversation.bridgeTarget?.humanId ?? '',
-    conversation.bridgeTarget?.nodeId ?? '',
+    conversation.collaborationTarget?.humanId ?? '',
+    conversation.collaborationTarget?.nodeId ?? '',
     ...(conversation.canonicalParticipants ?? []).filter((participant) => participant.kind === 'human' && participant.role !== 'self').flatMap((participant) => [
       participant.id,
       participant.humanId ?? '',
-      participant.bridgeNodeId ?? '',
+      participant.sourceIdentityId ?? '',
       participant.avatarKey ?? '',
     ]),
   ]).flatMap((key) => [key, key.replace(/^human:/, '')]);
@@ -402,7 +402,7 @@ function conversationAgentMatchKeys(conversation: Conversation) {
   return uniqueNonEmpty([
     metadataText(metadata, 'agentId'),
     metadataText(metadata, 'contactId'),
-    conversation.bridgeTarget?.agentId ?? '',
+    conversation.collaborationTarget?.agentId ?? '',
     ...(conversation.canonicalParticipants ?? []).filter((participant) => participant.kind === 'agent').flatMap((participant) => [
       participant.id,
       participant.agentId ?? '',
@@ -451,7 +451,7 @@ export function groupDefaultName(names: string[]) {
   return `${clean.slice(0, 2).join(', ')} +${clean.length - 2} more`;
 }
 
-export type ChatCreateGroupBridgeInviteTarget = {
+export type ChatCreateGroupCollaborationInviteTarget = {
   hostId: string;
   nodeId: string;
   displayName: string;
@@ -459,41 +459,41 @@ export type ChatCreateGroupBridgeInviteTarget = {
   humanId: string | null;
 };
 
-export type ChatCreateGroupInviteCreator = Pick<CanonicalIdentity, 'id' | 'displayName' | 'bridgeNodeId' | 'humanId'>;
+export type ChatCreateGroupInviteCreator = Pick<CanonicalIdentity, 'id' | 'displayName' | 'sourceIdentityId' | 'humanId'>;
 
 export const CHAT_GROUP_INVITE_CONTEXT_POLICY = 'session-invite';
 export const CHAT_GROUP_UPDATE_CONTEXT_POLICY = 'session-update';
 export const CHAT_GROUP_SESSION_TITLE_UPDATE_CONTEXT_POLICY = 'session-title-update';
 
-export type ChatGroupBridgeUpdateTarget = ChatCreateGroupBridgeInviteTarget;
+export type ChatGroupCollaborationUpdateTarget = ChatCreateGroupCollaborationInviteTarget;
 
 export function buildChatCreateGroupInviteText(groupName?: string | null) {
   const name = cleanText(groupName);
   return name ? `You were added to ${name}` : 'You were added to a group chat';
 }
 
-export function buildChatCreateGroupBridgeInviteTargets(contacts: Contact[]): ChatCreateGroupBridgeInviteTarget[] {
-  const targets = new Map<string, ChatCreateGroupBridgeInviteTarget>();
+export function buildChatCreateGroupCollaborationInviteTargets(contacts: Contact[]): ChatCreateGroupCollaborationInviteTarget[] {
+  const targets = new Map<string, ChatCreateGroupCollaborationInviteTarget>();
   for (const contact of contacts) {
-    if (!isApprovedBridgeContact(contact)) continue;
-    const hostId = cleanText(contact.bridgeHostId);
-    const nodeId = cleanText(contact.bridgePeerNodeId);
+    if (!isApprovedCollaborationContact(contact)) continue;
+    const hostId = cleanText(contact.sourceHostId);
+    const nodeId = cleanText(contact.sourceParticipantId);
     if (!hostId || !nodeId) continue;
     const displayName = firstNonEmpty(contact.name, contact.owner, contact.id);
     const ownerName = firstNonEmpty(contact.owner, contact.name, contact.id);
-    const humanId = cleanText(contact.bridgeHumanId) || null;
+    const humanId = cleanText(contact.sourceHumanId) || null;
     targets.set(`${hostId}:${nodeId}:${humanId ?? ''}`, { hostId, nodeId, displayName, ownerName, humanId });
   }
   return [...targets.values()];
 }
 
-export function buildChatCreateGroupBridgeInviteParticipants(input: {
+export function buildChatCreateGroupCollaborationInviteParticipants(input: {
   creator: ChatCreateGroupInviteCreator | null | undefined;
   contacts: Contact[];
-}): DesktopBridgeSessionParticipant[] {
-  const participants = new Map<string, DesktopBridgeSessionParticipant>();
-  const append = (participant: DesktopBridgeSessionParticipant) => {
-    const key = participant.identityId || `${participant.bridgeNodeId ?? ''}:${participant.humanId ?? ''}:${participant.displayName}`;
+}): DesktopCollaborationSessionParticipant[] {
+  const participants = new Map<string, DesktopCollaborationSessionParticipant>();
+  const append = (participant: DesktopCollaborationSessionParticipant) => {
+    const key = participant.identityId || `${participant.sourceIdentityId ?? ''}:${participant.humanId ?? ''}:${participant.displayName}`;
     if (!participant.displayName.trim() || participants.has(key)) return;
     participants.set(key, participant);
   };
@@ -503,7 +503,7 @@ export function buildChatCreateGroupBridgeInviteParticipants(input: {
       identityId: cleanText(input.creator.id) || null,
       displayName: firstNonEmpty(input.creator.displayName, input.creator.id),
       role: 'admin',
-      bridgeNodeId: cleanText(input.creator.bridgeNodeId) || null,
+      sourceIdentityId: cleanText(input.creator.sourceIdentityId) || null,
       humanId: cleanText(input.creator.humanId) || null,
       agentId: null,
     });
@@ -515,8 +515,8 @@ export function buildChatCreateGroupBridgeInviteParticipants(input: {
       identityId: cleanText(identity.id) || null,
       displayName: firstNonEmpty(contact.name, contact.owner, contact.id),
       role: 'person',
-      bridgeNodeId: cleanText(contact.bridgePeerNodeId) || null,
-      humanId: cleanText(contact.bridgeHumanId) || null,
+      sourceIdentityId: cleanText(contact.sourceParticipantId) || null,
+      humanId: cleanText(contact.sourceHumanId) || null,
       agentId: null,
     });
   }
@@ -524,16 +524,16 @@ export function buildChatCreateGroupBridgeInviteParticipants(input: {
   return [...participants.values()];
 }
 
-export function buildChatGroupBridgeUpdateTargets(input: {
+export function buildChatGroupCollaborationUpdateTargets(input: {
   actorIdentityId: string;
   participants: ConversationParticipant[];
-}): ChatGroupBridgeUpdateTarget[] {
+}): ChatGroupCollaborationUpdateTarget[] {
   const actorIdentityId = cleanText(input.actorIdentityId);
-  const targets = new Map<string, ChatGroupBridgeUpdateTarget>();
+  const targets = new Map<string, ChatGroupCollaborationUpdateTarget>();
   for (const participant of input.participants) {
     if (participant.kind !== 'human' || participant.id === actorIdentityId) continue;
-    const hostId = cleanText(participant.bridgeHostId);
-    const nodeId = cleanText(participant.bridgeNodeId);
+    const hostId = cleanText(participant.sourceHostId);
+    const nodeId = cleanText(participant.sourceIdentityId);
     if (!hostId || !nodeId) continue;
     const displayName = firstNonEmpty(participant.name, participant.id);
     const humanId = cleanText(participant.humanId) || null;
@@ -548,24 +548,24 @@ export function buildChatGroupBridgeUpdateTargets(input: {
   return [...targets.values()];
 }
 
-export function buildChatGroupBridgeUpdateParticipants(input: {
+export function buildChatGroupCollaborationUpdateParticipants(input: {
   participants: ConversationParticipant[];
   adminIdentityIds: string[];
-}): DesktopBridgeSessionParticipant[] {
+}): DesktopCollaborationSessionParticipant[] {
   const adminIds = new Set(uniqueNonEmpty(input.adminIdentityIds));
-  const participants = new Map<string, DesktopBridgeSessionParticipant>();
+  const participants = new Map<string, DesktopCollaborationSessionParticipant>();
   for (const participant of input.participants) {
     if (participant.kind !== 'human') continue;
     const displayName = firstNonEmpty(participant.name, participant.id);
     const humanId = cleanText(participant.humanId) || null;
-    const bridgeNodeId = cleanText(participant.bridgeNodeId) || null;
-    const key = participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`;
+    const sourceIdentityId = cleanText(participant.sourceIdentityId) || null;
+    const key = participant.id || `${sourceIdentityId ?? ''}:${humanId ?? ''}:${displayName}`;
     if (!displayName || participants.has(key)) continue;
     participants.set(key, {
       identityId: cleanText(participant.id) || null,
       displayName,
       role: adminIds.has(participant.id) ? 'admin' : 'person',
-      bridgeNodeId,
+      sourceIdentityId,
       humanId,
       agentId: null,
       avatarKey: cleanText(participant.avatarKey) || null,
@@ -575,11 +575,17 @@ export function buildChatGroupBridgeUpdateParticipants(input: {
   return [...participants.values()];
 }
 
-function participantSpaceHasBridgeHuman(space: ParticipantSpaceViewModel) {
+function participantSpaceHasLegacyCollaborationHuman(space: ParticipantSpaceViewModel) {
   return space.participants.some((participant) => (
     participant.kind === 'human'
     && participant.role !== 'self'
-    && (participant.source === 'bridge' || Boolean(participant.bridgeNodeId?.trim()) || Boolean(participant.humanId?.trim()))
+    && (
+      participant.source === 'cloud'
+      || participant.source === 'collaboration'
+      || participant.source === 'bridge'
+      || Boolean(participant.sourceIdentityId?.trim())
+      || Boolean(participant.humanId?.trim())
+    )
   ));
 }
 
@@ -587,8 +593,8 @@ function chatSessionIdPrefixForParticipantSpaceContinuation(space: ParticipantSp
   const sourceSessionId = cleanText(space.sessions[0]?.canonicalSessionId) || cleanText(space.sessions[0]?.id);
 
   if (space.kind === 'direct-human') {
-    if (sourceSessionId.startsWith(BRIDGE_HUMAN_SESSION_PREFIX) || participantSpaceHasBridgeHuman(space)) {
-      return BRIDGE_HUMAN_SESSION_PREFIX;
+    if (sourceSessionId.startsWith(LEGACY_COLLABORATION_HUMAN_SESSION_PREFIX) || participantSpaceHasLegacyCollaborationHuman(space)) {
+      return LEGACY_COLLABORATION_HUMAN_SESSION_PREFIX;
     }
     return 'session:direct-person:';
   }
@@ -659,22 +665,22 @@ export function adminIdentityIdsFromMetadata(metadata: unknown) {
 }
 
 export function contactCanonicalIdentityRequest(contact: Contact): UpsertCanonicalIdentityRequest {
-  const humanId = cleanText(contact.bridgeHumanId);
-  const bridgeNodeId = cleanText(contact.bridgePeerNodeId);
+  const humanId = cleanText(contact.sourceHumanId);
+  const sourceIdentityId = cleanText(contact.sourceParticipantId);
   const explicitId = contact.id.startsWith('human:')
     ? contact.id
     : humanId
       ? `human:${humanId}`
-      : bridgeNodeId
-        ? `human:bridge-node:${bridgeNodeId}`
+      : sourceIdentityId
+        ? null
         : `human:contact:${stableIdentitySegment(contact.id)}`;
   return {
     id: explicitId,
     kind: 'human',
     displayName: firstNonEmpty(contact.name, contact.owner, contact.id),
-    source: contact.bridgeHostId || contact.bridgePeerNodeId ? 'bridge' : 'local',
-    sourceHostId: contact.bridgeHostId ?? null,
-    bridgeNodeId: bridgeNodeId || null,
+    source: contact.sourceHostId || contact.sourceParticipantId ? 'cloud' : 'local',
+    sourceHostId: contact.sourceHostId ?? null,
+    sourceIdentityId: sourceIdentityId || null,
     humanId: humanId || null,
     agentId: null,
     avatarKey: contact.avatarSeed ?? (humanId || contact.id),
@@ -688,16 +694,25 @@ export function contactCanonicalIdentityRequest(contact: Contact): UpsertCanonic
 }
 
 export function agentCanonicalIdentityRequest(agent: Agent): UpsertCanonicalIdentityRequest {
-  const agentId = cleanText(agent.bridgeAgentId) || cleanText(agent.id).replace(/^agent:/, '');
-  const explicitId = agent.id.startsWith('agent:') ? agent.id : agentId ? `agent:${stableIdentitySegment(agentId)}` : null;
+  const canonicalId = cleanText(agent.id);
+  const sourceFallbackId = canonicalId.startsWith('agent:source:');
+  const agentId = cleanText(agent.sourceAgentId)
+    || (!sourceFallbackId ? canonicalId.replace(/^agent:/, '') : '');
+  const explicitId = sourceFallbackId
+    ? null
+    : canonicalId.startsWith('agent:')
+      ? canonicalId
+      : agentId
+        ? `agent:${stableIdentitySegment(agentId)}`
+        : null;
   return {
     id: explicitId,
     kind: 'agent',
     displayName: firstNonEmpty(agent.name, agent.id),
     ownerIdentityId: null,
-    source: agent.bridgeHostId || agent.bridgePeerNodeId ? 'bridge' : 'local',
-    sourceHostId: agent.bridgeHostId ?? null,
-    bridgeNodeId: agent.bridgePeerNodeId ?? null,
+    source: agent.sourceHostId || agent.sourceParticipantId ? 'cloud' : 'local',
+    sourceHostId: agent.sourceHostId ?? null,
+    sourceIdentityId: agent.sourceParticipantId ?? null,
     humanId: null,
     agentId: agentId || null,
     avatarKey: agent.avatarSeed ?? (agentId || agent.id),

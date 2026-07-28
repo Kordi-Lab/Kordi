@@ -11,11 +11,11 @@ import type {
 } from '@/kordi-app/types';
 
 import {
-  cancelledBridgeAgentDelegationMessage,
+  cancelledCollaborationAgentDelegationMessage,
   contentRecord,
   delegationOptimisticFallbackKey,
   delegationTerminalStatus,
-  directBridgeSourceEventForOutreachDuplicate,
+  directCollaborationSourceEventForOutreachDuplicate,
   isProcessingPlaceholderText,
   mapCanonicalMessage,
   ownerScopedAgentName,
@@ -228,7 +228,7 @@ function localAgentRuntimeUserEchoMatches(messages: CanonicalSessionMessage[]) {
   const confirmedUiIds = new Set<string>();
   const matchedUiIds = new Set<string>();
   const runtimeReplyAliasIdsByUiId = new Map<string, string[]>();
-  const bridgeUiMessagesByKey = new Map<string, CanonicalSessionMessage[]>();
+  const legacyCollaborationUiMessagesByKey = new Map<string, CanonicalSessionMessage[]>();
   const duplicateKey = (message: CanonicalSessionMessage) => [
     message.sessionId,
     message.senderIdentityId,
@@ -242,14 +242,14 @@ function localAgentRuntimeUserEchoMatches(messages: CanonicalSessionMessage[]) {
     ) continue;
     const key = duplicateKey(message);
     if (key.endsWith('\u0000')) continue;
-    pushMapArray(bridgeUiMessagesByKey, key, message);
+    pushMapArray(legacyCollaborationUiMessagesByKey, key, message);
   }
   for (const message of messages) {
     if (message.sourceTransport !== 'desktop-chat' || message.senderRole !== 'user') continue;
     const normalizedText = normalizedLeadingMentionText(message.contentText);
     if (!normalizedText) continue;
     const candidate = messagesInCreatedAtRange(
-      bridgeUiMessagesByKey.get(duplicateKey(message)),
+      legacyCollaborationUiMessagesByKey.get(duplicateKey(message)),
       message.createdAtMs - 5_000,
       message.createdAtMs + 5_000,
     )
@@ -284,7 +284,7 @@ function normalizedDuplicateText(value: string) {
   return value.trim().replace(/\s+/gu, ' ').toLowerCase();
 }
 
-function bridgeUiOptimisticEchoKey(message: CanonicalSessionMessage) {
+function legacyCollaborationUiOptimisticEchoKey(message: CanonicalSessionMessage) {
   return [
     message.sessionId,
     message.senderRole,
@@ -293,13 +293,13 @@ function bridgeUiOptimisticEchoKey(message: CanonicalSessionMessage) {
   ].join('\u0000');
 }
 
-function bridgeUiOptimisticEchoIds(messages: CanonicalSessionMessage[]) {
+function legacyCollaborationUiOptimisticEchoIds(messages: CanonicalSessionMessage[]) {
   const echoIds = new Set<string>();
   const optimisticByKey = new Map<string, CanonicalSessionMessage[]>();
   const parentsByKey = new Map<string, CanonicalSessionMessage[]>();
   for (const message of messages) {
     if (message.senderRole !== 'user') continue;
-    const key = bridgeUiOptimisticEchoKey(message);
+    const key = legacyCollaborationUiOptimisticEchoKey(message);
     if (message.sourceTransport === 'desktop-bridge-ui') {
       pushMapArray(optimisticByKey, key, message);
     } else if (message.sourceTransport === 'desktop-bridge-parent') {
@@ -375,7 +375,7 @@ function selfAgentLogicalSenderKey(
   const ownerIdentity = ownerIdentityId ? identityById.get(ownerIdentityId) : null;
   const identityMetadata = contentRecord(identity?.metadata);
   const ownerAccountId = ownerIdentity?.humanId?.trim()
-    || ownerIdentity?.bridgeNodeId?.trim()
+    || ownerIdentity?.sourceIdentityId?.trim()
     || ownerIdentityId
     || stringValue(identityMetadata.accountId)?.trim();
   return `owned-agent:${ownerAccountId || 'self'}`;
@@ -518,7 +518,7 @@ function isOwnedAgentTurn(message: CanonicalSessionMessage) {
   return message.senderRole === 'owned-agent' && message.messageKind === 'agent-turn';
 }
 
-function isBridgeAgentProcessingPlaceholder(message: CanonicalSessionMessage) {
+function isLegacyCollaborationAgentProcessingPlaceholder(message: CanonicalSessionMessage) {
   return (message.senderRole === 'owned-agent' || message.senderRole === 'external-agent')
     && message.messageKind === 'agent-turn'
     && isProcessingPlaceholderText(message.contentText);
@@ -529,10 +529,10 @@ function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {
     || message.sourceTransport === 'desktop-bridge-parent'
     || message.sourceTransport === 'cloud-group-agent'
     || message.sourceTransport === 'cloud-group-agent-offline')
-    && isBridgeAgentProcessingPlaceholder(message);
+    && isLegacyCollaborationAgentProcessingPlaceholder(message);
 }
 
-const BRIDGE_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60 * 1_000;
+const LEGACY_COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60 * 1_000;
 
 function isActiveProcessingStatus(message: CanonicalSessionMessage) {
   const content = contentRecord(message.content);
@@ -541,19 +541,19 @@ function isActiveProcessingStatus(message: CanonicalSessionMessage) {
   return deliveryState === 'processing' || status === 'processing';
 }
 
-function isAgedBridgeProcessingPlaceholder(message: CanonicalSessionMessage) {
+function isAgedLegacyCollaborationProcessingPlaceholder(message: CanonicalSessionMessage) {
   if (!isStaleableProcessingPlaceholder(message)) return false;
   if (!isActiveProcessingStatus(message)) return true;
 
-  return Date.now() - message.createdAtMs > BRIDGE_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
+  return Date.now() - message.createdAtMs > LEGACY_COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
 }
 
-function isPureBridgeAgentStatusRow(message: CanonicalSessionMessage) {
+function isPureLegacyCollaborationAgentStatusRow(message: CanonicalSessionMessage) {
   if (message.sourceTransport !== 'desktop-bridge-session-relay') return false;
   if (!isOwnedAgentTurn(message)) return false;
   const content = contentRecord(message.content);
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
-  // `processing` is the in-flight placeholder that the bridge fanout writes to peers; on the
+  // `processing` is the in-flight placeholder that the legacy fanout wrote to peers; on the
   // sender's own canonical session it duplicates the local desktop-chat turn until the
   // assistant text streams in. Cancelled/failed are the terminal status markers.
   return deliveryState === 'processing'
@@ -579,7 +579,7 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
   const duplicateIds = new Set<string>();
   const localRuntimeMessagesByPairKey = new Map<string, CanonicalSessionMessage[]>();
   const localRuntimeMessagesByResponseKey = new Map<string, CanonicalSessionMessage[]>();
-  const bridgeRelayMessages: CanonicalSessionMessage[] = [];
+  const legacyCollaborationRelayMessages: CanonicalSessionMessage[] = [];
 
   for (const message of messages) {
     if (!isOwnedAgentTurn(message)) continue;
@@ -588,32 +588,32 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
       const responseKey = localOwnedAgentResponseKey(message);
       if (responseKey) pushMapArray(localRuntimeMessagesByResponseKey, responseKey, message);
     } else if (message.sourceTransport === 'desktop-bridge-session-relay') {
-      bridgeRelayMessages.push(message);
+      legacyCollaborationRelayMessages.push(message);
     }
   }
 
-  for (const bridgeMessage of bridgeRelayMessages) {
-    const responseKey = localOwnedAgentResponseKey(bridgeMessage);
+  for (const legacyCollaborationMessage of legacyCollaborationRelayMessages) {
+    const responseKey = localOwnedAgentResponseKey(legacyCollaborationMessage);
     const matchingLocalMessages = responseKey
       ? messagesInCreatedAtRange(
           localRuntimeMessagesByResponseKey.get(responseKey),
-          bridgeMessage.createdAtMs - 30_000,
-          bridgeMessage.createdAtMs + 30_000,
+          legacyCollaborationMessage.createdAtMs - 30_000,
+          legacyCollaborationMessage.createdAtMs + 30_000,
         )
       : [];
     if (matchingLocalMessages.length === 0) {
-      // Cancelled/failed bridge fanout rows are pure status markers — when the
+      // Cancelled/failed legacy fanout rows are pure status markers — when the
       // sender's instance also has a desktop-chat owned-agent turn for the same
-      // request, the bridge row is the redundant copy.
+      // request, the legacy transport row is the redundant copy.
       if (
-        isPureBridgeAgentStatusRow(bridgeMessage)
+        isPureLegacyCollaborationAgentStatusRow(legacyCollaborationMessage)
         && hasMessageInCreatedAtRange(
-          localRuntimeMessagesByPairKey.get(localOwnedAgentPairKey(bridgeMessage)),
-          bridgeMessage.createdAtMs - 30_000,
-          bridgeMessage.createdAtMs + 30_000,
+          localRuntimeMessagesByPairKey.get(localOwnedAgentPairKey(legacyCollaborationMessage)),
+          legacyCollaborationMessage.createdAtMs - 30_000,
+          legacyCollaborationMessage.createdAtMs + 30_000,
         )
       ) {
-        duplicateIds.add(bridgeMessage.id);
+        duplicateIds.add(legacyCollaborationMessage.id);
       }
       continue;
     }
@@ -622,7 +622,7 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
       const candidateRichness = ownedAgentRuntimeRichness(candidate);
       const bestRichness = ownedAgentRuntimeRichness(best);
       if (candidateRichness !== bestRichness) return candidateRichness > bestRichness ? candidate : best;
-      return Math.abs(candidate.createdAtMs - bridgeMessage.createdAtMs) < Math.abs(best.createdAtMs - bridgeMessage.createdAtMs)
+      return Math.abs(candidate.createdAtMs - legacyCollaborationMessage.createdAtMs) < Math.abs(best.createdAtMs - legacyCollaborationMessage.createdAtMs)
         ? candidate
         : best;
     });
@@ -630,7 +630,7 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
     for (const localMessage of matchingLocalMessages) {
       if (localMessage.id !== bestLocal.id) duplicateIds.add(localMessage.id);
     }
-    duplicateIds.add(bridgeMessage.id);
+    duplicateIds.add(legacyCollaborationMessage.id);
   }
 
   return duplicateIds;
@@ -696,7 +696,7 @@ function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
   return duplicateIds;
 }
 
-function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[]) {
+function legacyCollaborationRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[]) {
   const duplicateIds = new Set<string>();
   const messagesByRequest = new Map<string, CanonicalSessionMessage[]>();
 
@@ -737,14 +737,14 @@ function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[])
   return duplicateIds;
 }
 
-const STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS = 10 * 60 * 1_000;
+const STALE_LEGACY_COLLABORATION_PLACEHOLDER_MS = 10 * 60 * 1_000;
 
 function isHumanConversationActivity(message: CanonicalSessionMessage) {
   return (message.senderRole === 'user' || message.senderRole === 'person')
     && message.messageKind !== 'agent-turn';
 }
 
-function bridgeRequestIdForMessage(message: CanonicalSessionMessage) {
+function legacyCollaborationRequestIdForMessage(message: CanonicalSessionMessage) {
   const content = contentRecord(message.content);
   const contentRequestId = stringValue(content.requestId)?.trim();
   if (contentRequestId) return contentRequestId;
@@ -753,20 +753,20 @@ function bridgeRequestIdForMessage(message: CanonicalSessionMessage) {
   return /\bbridge_req_[A-Za-z0-9_]+\b/u.exec(sourceEventId)?.[0] ?? null;
 }
 
-function pendingBridgeDelegationRequestKey(sessionId: string, requestId: string) {
+function pendingLegacyCollaborationDelegationRequestKey(sessionId: string, requestId: string) {
   return `${sessionId}\u0000${requestId}`;
 }
 
-function pendingBridgeDelegationRequestKeys(exchanges: CanonicalSessionState['delegatedExchanges']) {
+function pendingLegacyCollaborationDelegationRequestKeys(exchanges: CanonicalSessionState['delegatedExchanges']) {
   return new Set(exchanges.flatMap((exchange) => {
     const status = exchange.status.trim().toLowerCase();
-    const requestId = exchange.bridgeRequestId?.trim();
+    const requestId = exchange.sourceRequestId?.trim();
     if (!['pending', 'sending', 'processing'].includes(status) || !requestId) return [];
-    return [pendingBridgeDelegationRequestKey(exchange.sessionId, requestId)];
+    return [pendingLegacyCollaborationDelegationRequestKey(exchange.sessionId, requestId)];
   }));
 }
 
-function pendingBridgeDelegationIds(exchanges: CanonicalSessionState['delegatedExchanges']) {
+function pendingLegacyCollaborationDelegationIds(exchanges: CanonicalSessionState['delegatedExchanges']) {
   return new Set(exchanges.flatMap((exchange) => {
     const status = exchange.status.trim().toLowerCase();
     if (!['pending', 'sending', 'processing'].includes(status)) return [];
@@ -774,14 +774,14 @@ function pendingBridgeDelegationIds(exchanges: CanonicalSessionState['delegatedE
   }));
 }
 
-function rawBridgeProcessingPlaceholderCoveredByPendingDelegation(
+function rawLegacyCollaborationProcessingPlaceholderCoveredByPendingDelegation(
   message: CanonicalSessionMessage,
   pendingDelegationRequestKeys: Set<string>,
   pendingDelegationIds: Set<string>,
 ) {
-  if (!isBridgeAgentProcessingPlaceholder(message) || !isActiveProcessingStatus(message)) return false;
-  const requestId = bridgeRequestIdForMessage(message);
-  if (requestId && pendingDelegationRequestKeys.has(pendingBridgeDelegationRequestKey(message.sessionId, requestId))) return true;
+  if (!isLegacyCollaborationAgentProcessingPlaceholder(message) || !isActiveProcessingStatus(message)) return false;
+  const requestId = legacyCollaborationRequestIdForMessage(message);
+  if (requestId && pendingDelegationRequestKeys.has(pendingLegacyCollaborationDelegationRequestKey(message.sessionId, requestId))) return true;
   const content = contentRecord(message.content);
   const delegatedExchangeId = message.delegatedExchangeId?.trim() || stringValue(content.delegatedExchangeId)?.trim();
   return Boolean(delegatedExchangeId && pendingDelegationIds.has(delegatedExchangeId));
@@ -850,7 +850,7 @@ function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
     if (!completedAgentResponse) continue;
     const baseKey = participantKey(message);
     pushMapArray(completedByParticipant, baseKey, message);
-    const requestId = bridgeRequestIdForMessage(message);
+    const requestId = legacyCollaborationRequestIdForMessage(message);
     if (requestId) {
       pushMapArray(completedByParticipantAndRequest, `${baseKey}\u0000${requestId}`, message);
     } else {
@@ -861,16 +861,16 @@ function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   for (const placeholder of messages) {
     if (!isStaleableProcessingPlaceholder(placeholder)) continue;
     const baseKey = participantKey(placeholder);
-    const requestId = bridgeRequestIdForMessage(placeholder);
+    const requestId = legacyCollaborationRequestIdForMessage(placeholder);
     const rangeStart = placeholder.createdAtMs;
-    const rangeEnd = placeholder.createdAtMs + STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS;
+    const rangeEnd = placeholder.createdAtMs + STALE_LEGACY_COLLABORATION_PLACEHOLDER_MS;
     const hasLaterResponse = requestId
       ? hasMessageInCreatedAtRange(completedByParticipantAndRequest.get(`${baseKey}\u0000${requestId}`), rangeStart, rangeEnd)
         || hasMessageInCreatedAtRange(completedWithoutRequestByParticipant.get(baseKey), rangeStart, rangeEnd)
       : hasMessageInCreatedAtRange(completedByParticipant.get(baseKey), rangeStart, rangeEnd);
     const hasMuchLaterHumanActivity = (
       (latestHumanActivityBySessionId.get(placeholder.sessionId) ?? 0)
-      >= placeholder.createdAtMs + STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
+      >= placeholder.createdAtMs + STALE_LEGACY_COLLABORATION_PLACEHOLDER_MS
     );
     if (hasLaterResponse || hasMuchLaterHumanActivity) staleIds.add(placeholder.id);
   }
@@ -893,8 +893,8 @@ function taskParticipantFromIdentity(
     source: identity.source,
     ownerIdentityId: identity.ownerIdentityId,
     ownerName: owner ? (ownerScopedAgentName(owner, identityById, profileHumanIdentityId) ?? owner.displayName) : null,
-    bridgeHostId: identity.sourceHostId,
-    bridgeNodeId: identity.bridgeNodeId,
+    sourceHostId: identity.sourceHostId,
+    sourceIdentityId: identity.sourceIdentityId,
     humanId: identity.humanId,
     agentId: identity.agentId,
     avatarKey: identity.avatarKey,
@@ -921,8 +921,8 @@ function buildTaskActivitiesBySessionId(
       participants: participants.map((participant) => ({ ...participant })),
       createdAtMs: exchange.createdAtMs,
       updatedAtMs: exchange.updatedAtMs,
-      bridgeConversationId: exchange.bridgeConversationId,
-      bridgeRequestId: exchange.bridgeRequestId,
+      sourceConversationId: exchange.sourceConversationId,
+      sourceRequestId: exchange.sourceRequestId,
       contextPolicy: exchange.contextPolicy,
       error: exchange.error,
     };
@@ -979,8 +979,8 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         source: identity.source,
         ownerIdentityId: identity.ownerIdentityId,
         ownerName,
-        bridgeHostId: identity.sourceHostId,
-        bridgeNodeId: identity.bridgeNodeId,
+        sourceHostId: identity.sourceHostId,
+        sourceIdentityId: identity.sourceIdentityId,
         humanId: identity.humanId,
         agentId: identity.agentId,
         avatarKey: identity.avatarKey,
@@ -1024,9 +1024,9 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   }
   const messageSortById = buildMessageSortPositions(canonicalState.messages);
 
-  const bridgedDelegationFallbackKeys = new Set(
+  const legacyCollaborationDelegationFallbackKeys = new Set(
     canonicalState.delegatedExchanges.flatMap((exchange) => {
-      if (!exchange.bridgeRequestId) return [];
+      if (!exchange.sourceRequestId) return [];
       const key = delegationOptimisticFallbackKey(exchange);
       return key ? [key] : [];
     }),
@@ -1045,21 +1045,21 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       return requestMessageId ? [requestMessageId] : [];
     }),
   );
-  const pendingDelegationRequestKeys = pendingBridgeDelegationRequestKeys(canonicalState.delegatedExchanges);
-  const pendingDelegationIds = pendingBridgeDelegationIds(canonicalState.delegatedExchanges);
+  const pendingDelegationRequestKeys = pendingLegacyCollaborationDelegationRequestKeys(canonicalState.delegatedExchanges);
+  const pendingDelegationIds = pendingLegacyCollaborationDelegationIds(canonicalState.delegatedExchanges);
   const processingDelegationMessagesBySessionId = new Map<string, SortableCanonicalMessage[]>();
   const cancelledDelegationMessagesBySessionId = new Map<string, SortableCanonicalMessage[]>();
   for (const exchange of canonicalState.delegatedExchanges) {
     const status = exchange.status.trim().toLowerCase();
     if (!['pending', 'sending', 'processing'].includes(status)) continue;
-    if (!exchange.bridgeRequestId) {
+    if (!exchange.sourceRequestId) {
       if (exchange.transport?.trim().toLowerCase() === 'bridge') continue;
       const fallbackKey = delegationOptimisticFallbackKey(exchange);
-      if (fallbackKey && (bridgedDelegationFallbackKeys.has(fallbackKey) || completedDelegationFallbackKeys.has(fallbackKey))) continue;
+      if (fallbackKey && (legacyCollaborationDelegationFallbackKeys.has(fallbackKey) || completedDelegationFallbackKeys.has(fallbackKey))) continue;
     }
     if (exchange.responseMessageId) {
       const responseMessage = rawMessageById.get(exchange.responseMessageId);
-      if (responseMessage && !rawBridgeProcessingPlaceholderCoveredByPendingDelegation(responseMessage, pendingDelegationRequestKeys, pendingDelegationIds)) continue;
+      if (responseMessage && !rawLegacyCollaborationProcessingPlaceholderCoveredByPendingDelegation(responseMessage, pendingDelegationRequestKeys, pendingDelegationIds)) continue;
     }
     const target = identityById.get(exchange.targetIdentityId);
     if (!target || target.kind !== 'agent') continue;
@@ -1074,7 +1074,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     if (exchange.status.trim().toLowerCase() !== 'cancelled') continue;
     const target = identityById.get(exchange.targetIdentityId);
     if (!target || target.kind !== 'agent') continue;
-    const stoppedMessage = cancelledBridgeAgentDelegationMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId);
+    const stoppedMessage = cancelledCollaborationAgentDelegationMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId);
     if (!stoppedMessage) continue;
     pushMapArray(cancelledDelegationMessagesBySessionId, exchange.sessionId, {
       message: stoppedMessage,
@@ -1087,15 +1087,15 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const rawMessageCountBySessionId = new Map<string, number>();
   for (const [sessionId, messages] of rawMessagesBySessionId) {
     const sortedMessages = [...messages].sort((left, right) => left.createdAtMs - right.createdAtMs || left.sequenceNum - right.sequenceNum);
-    const directBridgeSourceEvents = new Set(
+    const directLegacyCollaborationSourceEvents = new Set(
       sortedMessages
         .filter((message) => message.sourceTransport === 'desktop-bridge' && message.sourceEventId)
         .map((message) => message.sourceEventId!),
     );
     const delegatedOutreachDirectSources = new Set(
       sortedMessages.flatMap((message) => {
-        const directSource = directBridgeSourceEventForOutreachDuplicate(message);
-        if (!directSource || !directBridgeSourceEvents.has(directSource)) return [];
+        const directSource = directCollaborationSourceEventForOutreachDuplicate(message);
+        if (!directSource || !directLegacyCollaborationSourceEvents.has(directSource)) return [];
         const content = contentRecord(message.content);
         const isDelegatedOutreach = Boolean(message.delegatedExchangeId)
           || Boolean(stringValue(content.delegatedExchangeId))
@@ -1104,12 +1104,12 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       }),
     );
     const seenJoinEventKeys = new Set<string>();
-    const suppressedBridgeUiEchoIds = bridgeUiOptimisticEchoIds(sortedMessages);
+    const suppressedLegacyCollaborationUiEchoIds = legacyCollaborationUiOptimisticEchoIds(sortedMessages);
     const localAgentRuntimeUserEchoes = localAgentRuntimeUserEchoMatches(sortedMessages);
     const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoes.runtimeEchoIds;
     const confirmedLocalAgentUiMessageIds = localAgentRuntimeUserEchoes.confirmedUiIds;
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
-    const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
+    const suppressedLegacyCollaborationRelayAgentFanoutDuplicateIds = legacyCollaborationRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedNoProviderRuntimeDuplicateIds = noProviderRuntimeDuplicateIds(sortedMessages);
     const suppressedCloudGroupAgentResponseDuplicateIds = duplicateCloudGroupAgentResponseIds(sortedMessages);
     const suppressedSelfAgentMirrorDuplicateIds = selfAgentMirrorDuplicateIds(
@@ -1119,12 +1119,12 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       sessionById.get(sessionId)?.kind === 'self-agent',
     );
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
-    const suppressedAgedBridgeProcessingPlaceholderIds = new Set(
-      sortedMessages.filter(isAgedBridgeProcessingPlaceholder).map((message) => message.id),
+    const suppressedAgedLegacyCollaborationProcessingPlaceholderIds = new Set(
+      sortedMessages.filter(isAgedLegacyCollaborationProcessingPlaceholder).map((message) => message.id),
     );
     const suppressedPendingDelegationRawProcessingPlaceholderIds = new Set(
       sortedMessages
-        .filter((message) => rawBridgeProcessingPlaceholderCoveredByPendingDelegation(message, pendingDelegationRequestKeys, pendingDelegationIds))
+        .filter((message) => rawLegacyCollaborationProcessingPlaceholderCoveredByPendingDelegation(message, pendingDelegationRequestKeys, pendingDelegationIds))
         .map((message) => message.id),
     );
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
@@ -1142,15 +1142,15 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     }
     const mappedMessages = sortedMessages.flatMap<SortableCanonicalMessage>((message) => {
       if (
-        suppressedBridgeUiEchoIds.has(message.id)
+        suppressedLegacyCollaborationUiEchoIds.has(message.id)
         || suppressedLocalRuntimeEchoIds.has(message.id)
         || suppressedLocalRuntimeDuplicateIds.has(message.id)
-        || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
+        || suppressedLegacyCollaborationRelayAgentFanoutDuplicateIds.has(message.id)
         || suppressedNoProviderRuntimeDuplicateIds.has(message.id)
         || suppressedCloudGroupAgentResponseDuplicateIds.has(message.id)
         || suppressedSelfAgentMirrorDuplicateIds.has(message.id)
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
-        || suppressedAgedBridgeProcessingPlaceholderIds.has(message.id)
+        || suppressedAgedLegacyCollaborationProcessingPlaceholderIds.has(message.id)
         || suppressedPendingDelegationRawProcessingPlaceholderIds.has(message.id)
       ) return [];
       const displaySourceMessage: CanonicalSessionMessage = confirmedLocalAgentUiMessageIds.has(message.id)
@@ -1180,10 +1180,10 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         && delegatedOutreachDirectSources.has(message.sourceEventId)) {
         return [];
       }
-      const duplicatedDirectBridgeSource = directBridgeSourceEventForOutreachDuplicate(message);
-      if (duplicatedDirectBridgeSource
-        && directBridgeSourceEvents.has(duplicatedDirectBridgeSource)
-        && !delegatedOutreachDirectSources.has(duplicatedDirectBridgeSource)) {
+      const duplicatedDirectLegacyCollaborationSource = directCollaborationSourceEventForOutreachDuplicate(message);
+      if (duplicatedDirectLegacyCollaborationSource
+        && directLegacyCollaborationSourceEvents.has(duplicatedDirectLegacyCollaborationSource)
+        && !delegatedOutreachDirectSources.has(duplicatedDirectLegacyCollaborationSource)) {
         return [];
       }
       const mapped = mapCanonicalMessage(

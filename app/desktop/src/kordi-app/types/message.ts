@@ -75,8 +75,8 @@ export type MessageAttachment = {
 
 export type MessageMention = {
   label: string;
-  targetKind?: 'bridge-agent' | 'bridge-person' | string;
-  bridgeHostId?: string | null;
+  targetKind?: 'agent' | 'person' | string;
+  sourceHostId?: string | null;
   nodeId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
@@ -199,7 +199,7 @@ export type QueuedDesktopChatMessage = {
   contextMessages?: DesktopChatContextMessage[];
 };
 
-export type BridgeAgentRequestControl = {
+export type CollaborationAgentRequestControl = {
   conversationId: string;
   requestId: string;
 };
@@ -221,5 +221,5 @@ export type DesktopChatTurnSnapshot = {
   transcriptRefreshRequired?: boolean;
   replyToMessageId?: string | null;
   sourceMessage?: MessageSourceReference | null;
-  pendingBridgeAgentRequest?: BridgeAgentRequestControl | null;
+  pendingCollaborationAgentRequest?: CollaborationAgentRequestControl | null;
 };

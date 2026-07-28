@@ -1,12 +1,12 @@
-import { BRIDGE_MESSAGE_DIRECTION_OUTBOUND } from '@/features/bridge/messages';
-import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { COLLABORATION_MESSAGE_DIRECTION_OUTBOUND } from '@/features/collaboration/messages';
+import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionMessage,
   CanonicalSessionState,
-  ConversationBridgeTarget,
-  DesktopBridgeConversation,
-  DesktopBridgeState,
+  ConversationCollaborationTarget,
+  DesktopCollaborationConversation,
+  DesktopCollaborationState,
   DesktopChatState,
   MessageMention,
   Message,
@@ -46,7 +46,7 @@ export function retryAttachmentItemsFromMessage(message: Message): AttachmentIte
     : null;
 }
 
-export function bridgeAttachmentTransportFields(attachments: AttachmentItem[]) {
+export function collaborationAttachmentTransportFields(attachments: AttachmentItem[]) {
   return {
     attachmentPaths: attachments.map((attachment) => attachment.path),
     attachmentNames: attachments.map((attachment) => attachment.name),
@@ -152,8 +152,8 @@ export function appendOptimisticOutboundMessage(
   };
 }
 
-export function appendOptimisticBridgeMessage(
-  current: DesktopBridgeState | null,
+export function appendOptimisticCollaborationMessage(
+  current: DesktopCollaborationState | null,
   conversationId: string,
   text: string,
   sentAt: string,
@@ -161,7 +161,7 @@ export function appendOptimisticBridgeMessage(
   attachments: AttachmentItem[] = [],
   subtitleText = text,
   quote: ComposerQuoteState | null = null,
-): DesktopBridgeState | null {
+): DesktopCollaborationState | null {
   if (!current) return current;
 
   const timestampMs = Date.now();
@@ -173,12 +173,12 @@ export function appendOptimisticBridgeMessage(
       subtitle: subtitleText,
       updatedAtMs: timestampMs,
       updatedAtLabel: sentAt,
-      awaitingReply: isBridgeAgentRuntime(conversation.peerRuntime),
+      awaitingReply: isCollaborationAgentRuntime(conversation.peerRuntime),
       messages: [
         ...conversation.messages,
         {
           id: optimisticMessageId,
-          direction: BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+          direction: COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
           sender: 'Me',
           text,
           timeLabel: sentAt,
@@ -197,12 +197,12 @@ export function appendOptimisticBridgeMessage(
   };
 }
 
-export function markOptimisticBridgeMessageFailed(
-  current: DesktopBridgeState | null,
+export function markOptimisticCollaborationMessageFailed(
+  current: DesktopCollaborationState | null,
   conversationId: string,
   optimisticMessageId: string,
   detail?: string | null,
-): DesktopBridgeState | null {
+): DesktopCollaborationState | null {
   if (!current) return current;
 
   return {
@@ -226,11 +226,11 @@ export function markOptimisticBridgeMessageFailed(
   };
 }
 
-export function markOptimisticBridgeMessageSending(
-  current: DesktopBridgeState | null,
+export function markOptimisticCollaborationMessageSending(
+  current: DesktopCollaborationState | null,
   conversationId: string,
   messageId: string,
-): DesktopBridgeState | null {
+): DesktopCollaborationState | null {
   if (!current) return current;
 
   return {
@@ -324,10 +324,10 @@ export function markOptimisticCanonicalMessageSending(
   };
 }
 
-export function findBridgeConversationForTarget(
-  state: DesktopBridgeState,
-  target: ConversationBridgeTarget,
-): DesktopBridgeConversation | null {
+export function findCollaborationConversationForTarget(
+  state: DesktopCollaborationState,
+  target: ConversationCollaborationTarget,
+): DesktopCollaborationConversation | null {
   const normalizedRuntime = target.runtime?.trim().toLowerCase();
   return state.conversations.find((conversation) => (
     conversation.hostId === target.hostId

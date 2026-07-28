@@ -19,7 +19,7 @@ test('chat scale budgets tolerate ordinary host contention without hiding algori
   );
 
   assert.deepEqual(chatScaleBenchmarkBudgetFailures({
-    bridgeMapMs: 1,
+    collaborationMapMs: 1,
     canonicalIndexMs: 125,
     cloudIndexMs: 2_800,
     cloudIndexDeltaMs: 65,
@@ -28,7 +28,7 @@ test('chat scale budgets tolerate ordinary host contention without hiding algori
   }), []);
 
   assert.deepEqual(chatScaleBenchmarkBudgetFailures({
-    bridgeMapMs: 1,
+    collaborationMapMs: 1,
     canonicalIndexMs: 250,
     cloudIndexMs: 5_000,
     cloudIndexDeltaMs: 500,

@@ -297,7 +297,7 @@ export function AgentsPage({
   );
   const canToggleRuntimeSkills = Boolean(
     selectedAgent?.isOwned
-      && (selectedAgent.id === 'desktop:local-agent' || selectedAgent.isBridgeActive)
+      && (selectedAgent.id === 'desktop:local-agent' || selectedAgent.isCollaborationActive)
       && onSetAgentSkillEnabled,
   );
   const skillAgentTargets = useMemo(() => agents
@@ -309,7 +309,7 @@ export function AgentsPage({
         isNativeDesktopShell() && configPath && isRepoFilePath(configPath),
       );
       const canToggleActiveRuntime = Boolean(
-        (agent.id === 'desktop:local-agent' || agent.isBridgeActive) && onSetAgentSkillEnabled,
+        (agent.id === 'desktop:local-agent' || agent.isCollaborationActive) && onSetAgentSkillEnabled,
       );
       return hasWritableConfig || canToggleActiveRuntime;
     })

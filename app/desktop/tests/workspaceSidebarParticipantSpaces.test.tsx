@@ -6,9 +6,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { applyCloudPresenceToConversations, bridgeChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
+import { applyCloudPresenceToConversations, collaborationChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
 import type { CloudAccount } from '../src/features/cloud/authClient';
-import type { Agent, Contact, Conversation, DesktopBridgeConversation } from '../src/kordi-app/types';
+import type { Agent, Contact, Conversation, DesktopCollaborationConversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import {
   filterGroupManagementMembers,
@@ -32,7 +32,7 @@ function conversation(overrides: Partial<ConversationFixture> = {}): Conversatio
     type: 'person',
     subtitle: 'Old preview',
     unread: 1,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct chat',
     participants: ['Me', 'Bob'],
@@ -55,7 +55,7 @@ function contact(overrides: Partial<Contact> = {}): Contact {
     classType: 'other-users',
     entityType: 'Person',
     subtitle: 'Human contact',
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     status: 'Online',
     discoverableOn: ['Bridge'],
     detail: 'Works on product',
@@ -66,7 +66,7 @@ function contact(overrides: Partial<Contact> = {}): Contact {
   };
 }
 
-function bridgeConversation(overrides: Partial<DesktopBridgeConversation> = {}): DesktopBridgeConversation {
+function bridgeConversation(overrides: Partial<DesktopCollaborationConversation> = {}): DesktopCollaborationConversation {
   return {
     id: 'bridge:host-1:node-bob:kordi-desktop',
     canonicalSessionId: 'session:bridge:host-1:node-bob:kordi-desktop',
@@ -85,9 +85,9 @@ function bridgeConversation(overrides: Partial<DesktopBridgeConversation> = {}):
     awaitingReply: false,
     peerTyping: false,
     outreach: {
-      targetKind: 'bridge-agent',
+      targetKind: 'agent',
       parentSessionId: null,
-      bridgeHostId: 'host-1',
+      sourceHostId: 'host-1',
       targetNodeId: 'node-me',
       targetAgentId: 'agent-local',
       targetDisplayName: 'My Kordi',
@@ -98,7 +98,7 @@ function bridgeConversation(overrides: Partial<DesktopBridgeConversation> = {}):
       updatedAtMs: 1,
     },
     identity: {
-      bridgeHostId: 'host-1',
+      sourceHostId: 'host-1',
       localHumanId: 'human-me',
       localHumanName: 'Me',
       localAgentId: 'agent-local',
@@ -121,7 +121,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     tasks: 0,
     defaultProvider: 'openai',
     defaultModel: 'gpt-5.2',
-    bridgesConfig: 'Bridge',
+    collaborationConfig: 'Bridge',
     contactId: 'contact:kordi',
     systemPrompt: '',
     xMd: '',
@@ -203,7 +203,7 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     setActiveContactGroup: () => {},
     setActiveContactId: () => {},
     displayedAgents: [],
-    activeBridgeHost: null,
+    activeCollaborationHost: null,
     localProfileAvatarSeed: 'me',
     onRefreshBridge: () => {},
     onCopyBridgeHostUrl: () => {},
@@ -261,7 +261,7 @@ test('cloud presence hydrates fallback direct chat participants by account id', 
   const chatConversations = [conversation({
     canonicalParticipants: undefined,
     participants: ['Me', '333'],
-    bridgeTarget: {
+    collaborationTarget: {
       hostId: 'cloud',
       nodeId: 'acct_333',
       displayName: '333',
@@ -589,27 +589,27 @@ function countMatches(value: string, pattern: RegExp) {
 
 test('WorkspaceSidebar shows Bridge message sync progress inline in the chats subtitle', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
-    isBridgePolling: true,
+    isCollaborationSyncing: true,
   }) as never));
 
   assert.match(markup, /2 total/);
   assert.match(markup, /syncing…/);
-  assert.match(markup, /data-bridge-sync-status="syncing"/);
-  assert.match(markup, /app-bridge-sync-dot/);
+  assert.match(markup, /data-collaboration-sync-status="syncing"/);
+  assert.match(markup, /app-collaboration-sync-dot/);
   assert.doesNotMatch(markup, /Syncing messages/);
   assert.doesNotMatch(markup, /pulling missed Bridge updates/);
 });
 
 test('direct remote-human to my-agent Bridge reachouts route to the Agent page, while group reachouts stay in the group', () => {
-  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation()), true);
-  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation({
+  assert.equal(collaborationChatConversationRoutesToLocalAgentPage(bridgeConversation()), true);
+  assert.equal(collaborationChatConversationRoutesToLocalAgentPage(bridgeConversation({
     outreach: {
       ...bridgeConversation().outreach!,
       parentSessionId: 'session:group:launch',
       parentSessionKind: 'group',
     },
   })), false);
-  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation({
+  assert.equal(collaborationChatConversationRoutesToLocalAgentPage(bridgeConversation({
     outreach: {
       ...bridgeConversation().outreach!,
       targetAgentId: 'agent-remote',
@@ -618,14 +618,14 @@ test('direct remote-human to my-agent Bridge reachouts route to the Agent page, 
 });
 
 test('Cloud self-agent reachouts stay in the contact chat rail instead of routing away to the Agent page', () => {
-  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation({
+  assert.equal(collaborationChatConversationRoutesToLocalAgentPage(bridgeConversation({
     id: 'bridge:cloud:acct-peer:person',
     canonicalSessionId: 'session:bridge:bridge:cloud:acct-peer:person',
     hostId: 'cloud',
     outreach: {
       ...bridgeConversation().outreach!,
-      bridgeHostId: 'cloud',
-      bridgeConversationId: 'bridge:cloud:acct-peer:person',
+      sourceHostId: 'cloud',
+      sourceConversationId: 'bridge:cloud:acct-peer:person',
       targetAgentId: 'agent-local',
     },
   })), false);
@@ -638,12 +638,12 @@ test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () =
   ];
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations: caughtUpConversations,
-    isBridgePolling: false,
+    isCollaborationSyncing: false,
   }) as never));
 
   assert.match(markup, /2 total/);
   assert.match(markup, /all caught up/);
-  assert.match(markup, /data-bridge-sync-status="idle"/);
+  assert.match(markup, /data-collaboration-sync-status="idle"/);
   assert.doesNotMatch(markup, /syncing…/);
 });
 
@@ -855,19 +855,19 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none;/s);
   assert.doesNotMatch(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*0 8px 18px/s);
   assert.match(shellCss, /\.app-participant-space-inline-group:not\(\.app-participant-space-inline-group-expanded\) \.app-participant-space-row-actions\s*{[^}]*opacity:\s*0\.46/s);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[^}]*--app-sidebar-title-text:\s*rgb\(248 250 252\);[^}]*--app-sidebar-preview-text:\s*rgb\(148 163 184\);[^}]*--app-sidebar-time-text:\s*rgb\(100 116 139\);[^}]*--app-sidebar-accent:\s*#60A5FA;[^}]*--app-sidebar-selected-bg:\s*rgba\(37, 99, 235, 0\.18\);/s);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[^}]*--app-sidebar-title-text:\s*#111827;[^}]*--app-sidebar-preview-text:\s*#6B7280;[^}]*--app-sidebar-time-text:\s*#9CA3AF;[^}]*--app-sidebar-accent:\s*#2563EB;[^}]*--app-sidebar-selected-bg:\s*#EEF4FF;/s);
-  assert.match(themeOverrideCss, /\.bridge-app\.theme-light \.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none;/s);
-  assert.doesNotMatch(themeOverrideCss, /\.bridge-app\.theme-light \.app-workspace-sidebar \.app-session-row-active,[\s\S]*?\{\s*box-shadow:\s*none;/s);
+  assert.match(themeTokensCss, /\.kordi-app\s*{[^}]*--app-sidebar-title-text:\s*rgb\(248 250 252\);[^}]*--app-sidebar-preview-text:\s*rgb\(148 163 184\);[^}]*--app-sidebar-time-text:\s*rgb\(100 116 139\);[^}]*--app-sidebar-accent:\s*#60A5FA;[^}]*--app-sidebar-selected-bg:\s*rgba\(37, 99, 235, 0\.18\);/s);
+  assert.match(themeTokensCss, /\.kordi-app\.theme-light\s*{[^}]*--app-sidebar-title-text:\s*#111827;[^}]*--app-sidebar-preview-text:\s*#6B7280;[^}]*--app-sidebar-time-text:\s*#9CA3AF;[^}]*--app-sidebar-accent:\s*#2563EB;[^}]*--app-sidebar-selected-bg:\s*#EEF4FF;/s);
+  assert.match(themeOverrideCss, /\.kordi-app\.theme-light \.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none;/s);
+  assert.doesNotMatch(themeOverrideCss, /\.kordi-app\.theme-light \.app-workspace-sidebar \.app-session-row-active,[\s\S]*?\{\s*box-shadow:\s*none;/s);
 });
 
 test('Bridge sync subtitle CSS uses color and reduced-motion-safe animation', () => {
   const shellCss = readDesktopShellCss();
 
-  assert.match(shellCss, /\.app-bridge-sync-status\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 68%, var\(--utility-muted-text\)\)/s);
-  assert.match(shellCss, /\.app-bridge-sync-dot\s*{[^}]*background:\s*conic-gradient/s);
-  assert.match(shellCss, /\.app-bridge-sync-status\[data-bridge-sync-status="syncing"\]\s+\.app-bridge-sync-dot\s*{[^}]*animation:\s*app-bridge-sync-pulse/s);
-  assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)\s*{[^}]*\.app-bridge-sync-status\[data-bridge-sync-status="syncing"\]\s+\.app-bridge-sync-dot\s*{[^}]*animation:\s*none/s);
+  assert.match(shellCss, /\.app-collaboration-sync-status\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 68%, var\(--utility-muted-text\)\)/s);
+  assert.match(shellCss, /\.app-collaboration-sync-dot\s*{[^}]*background:\s*conic-gradient/s);
+  assert.match(shellCss, /\.app-collaboration-sync-status\[data-collaboration-sync-status="syncing"\]\s+\.app-collaboration-sync-dot\s*{[^}]*animation:\s*app-collaboration-sync-pulse/s);
+  assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)\s*{[^}]*\.app-collaboration-sync-status\[data-collaboration-sync-status="syncing"\]\s+\.app-collaboration-sync-dot\s*{[^}]*animation:\s*none/s);
 });
 
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
@@ -1021,7 +1021,7 @@ test('ChatCreateDialog cloud lookup copy asks for an account id, not a Bridge no
   assert.doesNotMatch(markup, /Bridge node ID/);
 });
 
-test('ChatCreateDialog add contact mode requests a private Bridge node id', () => {
+test('ChatCreateDialog add contact mode requests a Kordi account id', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     initialMode: 'add-contact',
@@ -1035,9 +1035,9 @@ test('ChatCreateDialog add contact mode requests a private Bridge node id', () =
   }));
 
   assert.match(markup, /Add contact/);
-  assert.match(markup, /Bridge node ID/);
+  assert.match(markup, /Kordi account ID/);
   assert.match(markup, /Send request/);
-  assert.match(markup, /private\/unlisted user node ID/);
+  assert.match(markup, /Paste a Kordi account ID/);
 });
 
 test('ChatCreateDialog add contact mode shows visible non-contact Bridge users', () => {
@@ -1052,9 +1052,9 @@ test('ChatCreateDialog add contact mode shows visible non-contact Bridge users',
         entityType: 'Person',
         subtitle: 'Needs approval',
         detail: 'Node: kd_user6',
-        bridgeHostId: 'host-1',
-        bridgePeerNodeId: 'kd_user6',
-        bridgeContactStatus: 'none',
+        sourceHostId: 'host-1',
+        sourceParticipantId: 'kd_user6',
+        contactStatus: 'none',
       }),
     ],
     agents: [],
@@ -1318,7 +1318,7 @@ test('GroupDetailsDialog resolves a group-only member to the account used by Add
   const member = {
     id: 'human:acct_group_member',
     humanId: 'acct_group_member',
-    bridgeNodeId: 'acct_group_member',
+    sourceIdentityId: 'acct_group_member',
     name: 'Group member',
     kind: 'human' as const,
     role: 'person' as const,
@@ -1327,10 +1327,10 @@ test('GroupDetailsDialog resolves a group-only member to the account used by Add
   };
   const groupOnlyContact = contact({
     id: 'cloud:acct_group_member',
-    bridgeHostId: 'cloud',
-    bridgePeerNodeId: 'acct_group_member',
-    bridgeHumanId: 'acct_group_member',
-    bridgeContactStatus: 'group-member',
+    sourceHostId: 'cloud',
+    sourceParticipantId: 'acct_group_member',
+    sourceHumanId: 'acct_group_member',
+    contactStatus: 'group-member',
   });
 
   const resolvedContact = contactForGroupMember([groupOnlyContact], member);
@@ -1342,7 +1342,7 @@ test('existing group contact profile offers Send message instead of a passive co
   const member = {
     id: 'human:acct_alice',
     humanId: 'acct_alice',
-    bridgeNodeId: 'acct_alice',
+    sourceIdentityId: 'acct_alice',
     name: 'Alice',
     kind: 'human' as const,
     role: 'person' as const,
@@ -1351,10 +1351,10 @@ test('existing group contact profile offers Send message instead of a passive co
   };
   const acceptedContact = contact({
     id: 'cloud:acct_alice',
-    bridgeHostId: 'cloud',
-    bridgePeerNodeId: 'acct_alice',
-    bridgeHumanId: 'acct_alice',
-    bridgeContactStatus: 'accepted',
+    sourceHostId: 'cloud',
+    sourceParticipantId: 'acct_alice',
+    sourceHumanId: 'acct_alice',
+    contactStatus: 'accepted',
   });
 
   const markup = renderToStaticMarkup(createElement(MemberContactProfileContent, {
@@ -1468,7 +1468,7 @@ test('GroupDetailsDialog ignores a child session that falsely promotes its local
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
         { id: 'human:old-admin', name: 'Old Admin', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'old' },
-        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', bridgeNodeId: 'acct_new', bridgeHostId: 'cloud' },
+        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', sourceIdentityId: 'acct_new', sourceHostId: 'cloud' },
       ],
     }),
     conversation({
@@ -1482,7 +1482,7 @@ test('GroupDetailsDialog ignores a child session that falsely promotes its local
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
         { id: 'human:old-admin', name: 'Old Admin', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'old' },
-        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', bridgeNodeId: 'acct_new', bridgeHostId: 'cloud' },
+        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', sourceIdentityId: 'acct_new', sourceHostId: 'cloud' },
       ],
     }),
   ];
@@ -1563,14 +1563,14 @@ test('GroupDetailsDialog disambiguates same-name members before progressively op
     participants: ['Me', 'Shu Yang'],
     canonicalParticipants: [
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-      { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'a', humanId: 'acct_a', bridgeNodeId: 'acct_a', bridgeHostId: 'cloud' },
+      { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'a', humanId: 'acct_a', sourceIdentityId: 'acct_a', sourceHostId: 'cloud' },
     ],
   })];
   const [space] = buildParticipantSpaces(chatConversations);
   const markup = renderToStaticMarkup(createElement(GroupDetailsDialog, {
     isOpen: true,
     space,
-    contacts: [contact({ id: 'cloud:acct_b', name: 'Shu Yang', bridgeHostId: 'cloud', bridgePeerNodeId: 'acct_b', bridgeHumanId: 'acct_b', bridgeContactStatus: 'accepted' })],
+    contacts: [contact({ id: 'cloud:acct_b', name: 'Shu Yang', sourceHostId: 'cloud', sourceParticipantId: 'acct_b', sourceHumanId: 'acct_b', contactStatus: 'accepted' })],
     onClose: () => {},
     onRename: () => {},
     onAddMembers: () => {},

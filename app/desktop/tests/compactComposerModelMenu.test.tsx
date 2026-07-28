@@ -26,7 +26,7 @@ function conversation(overrides: Partial<Conversation>): Conversation {
     type: 'person',
     subtitle: '',
     unread: 0,
-    bridges: ['cloud'],
+    collaborationSources: ['cloud'],
     trust: 'cloud',
     directness: 'direct person chat',
     participants: ['me', 'alice'],
@@ -97,7 +97,7 @@ test('compact model route menu uses light-theme tokenized popover colors', () =>
   assert.match(css, /\.app-compact-model-menu-section \+ \.app-compact-model-menu-section\s*{[\s\S]*border-top:\s*1px solid var\(--app-transient-divider\);/);
   assert.match(css, /\.app-compact-model-menu \.app-compact-model-menu-option,[\s\S]*background:\s*transparent;/);
   assert.match(css, /\.app-compact-model-menu \.app-compact-model-menu-option:hover,[\s\S]*background:\s*var\(--app-transient-hover-bg\);/);
-  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*color-scheme:\s*light;/);
+  assert.match(css, /\.kordi-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*color-scheme:\s*light;/);
   assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-foreground:\s*var\(--app-transient-text\);/);
   assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-muted-text:\s*var\(--app-transient-muted-text\);/);
   assert.doesNotMatch(css, /--app-compact-model-menu-header-bg/);
@@ -125,7 +125,7 @@ test('compact model route menu sits above transcript fold controls and uses the 
   assert.match(layerRule, /z-index:\s*2147483000/);
   assert.match(source, /createPortal\(renderMenu\(\), document\.body\)/);
   assert.match(source, /getBoundingClientRect\(\)/);
-  assert.match(source, /closest\('\.bridge-app'\)/);
+  assert.match(source, /closest\('\.kordi-app'\)/);
   assert.match(source, /app-compact-model-menu-light/);
   assert.match(css, /@keyframes\s+app-compact-model-menu-enter/);
   assert.match(layerRule, /animation:\s*app-compact-model-menu-enter/);
@@ -181,5 +181,5 @@ test('ChatsPage places compact model route control before attachment and keeps e
 test('ChatsPage shows compact model route for group/contact chats even without a bridge routing agent', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   assert.match(source, /\{shouldUseCompactModelRouteMenu\(activeConv\) \? \(/);
-  assert.doesNotMatch(source, /shouldUseCompactModelRouteMenu\(activeConv\) && \(!activeConversationIsBridge \|\| selectedBridgeRoutingAgent\)/);
+  assert.doesNotMatch(source, /shouldUseCompactModelRouteMenu\(activeConv\) && \(!activeConversationUsesCollaboration \|\| selectedCollaborationRoutingAgent\)/);
 });

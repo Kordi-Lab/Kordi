@@ -14,7 +14,7 @@ import {
 } from '../src/features/canonical/readModel/conversationMapping';
 
 test('low-information prompts remain temporary until a topic appears', () => {
-  for (const value of ['hi', 'hiiii', 'hello!', 'hi, how are you?', 'Hi! How can I help?', 'test', 'test reply 11', '111', '👍🏽', '@MyKordi', '你好']) {
+  for (const value of ['hi', 'hiiii', 'hello!', 'hi, how are you?', 'Hi! How can I help?', 'test', 'test reply 11', '111', '👍🏽', '@MyKordi', '\u4F60\u597D']) {
     assert.equal(deriveSessionTitle(value), null, value);
   }
   assert.equal(sessionDisplayTitle([
@@ -26,7 +26,10 @@ test('low-information prompts remain temporary until a topic appears', () => {
 
 test('local titles preserve Unicode and remove reply, command, mention, URL, and path noise', () => {
   assert.equal(deriveSessionTitle('which model are you'), 'Model and identity');
-  assert.equal(deriveSessionTitle('你是谁你在使用什么模型'), '模型与身份');
+  assert.equal(
+    deriveSessionTitle('\u4F60\u662F\u8C01\u4F60\u5728\u4F7F\u7528\u4EC0\u4E48\u6A21\u578B'),
+    '\u6A21\u578B\u4E0E\u8EAB\u4EFD',
+  );
   assert.equal(deriveSessionTitle('@MyKordi help diagnose high Node CPU usage'), 'Diagnose high Node CPU');
   assert.equal(
     deriveSessionTitle('> quoted response\n/retry @MyKordi plan release validation https://example.com /tmp/debug.log'),

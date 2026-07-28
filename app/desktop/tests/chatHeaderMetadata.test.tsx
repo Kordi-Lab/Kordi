@@ -29,7 +29,7 @@ test('chat header subtitle removes internal group/direct session labels but keep
 test('ChatsPage header does not render trust, bridge, or directness metadata chips', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /<Shield[\s\S]*activeConv\.trust/);
-  assert.doesNotMatch(source, /activeConv\.bridges\.map/);
+  assert.doesNotMatch(source, /activeConv\.collaborationSources\.map/);
   assert.doesNotMatch(source, /<Globe[\s\S]*bridge/);
   assert.doesNotMatch(source, /<ArrowRightLeft[\s\S]*activeConv\.directness/);
   assert.doesNotMatch(source, /shouldShowConversationTypeBadge\(activeConv\)/);

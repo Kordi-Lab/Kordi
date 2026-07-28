@@ -18,7 +18,7 @@ function conversation(overrides: Partial<ConversationFixture> = {}): Conversatio
     type: 'person',
     subtitle: 'Preview',
     unread: 0,
-    bridges: ['Bridge'],
+    collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Direct chat',
     participants: ['Me', 'Bob'],
@@ -108,7 +108,7 @@ test('buildParticipantSpaces separates direct human and self spaces on same Brid
       _updatedAtMs: 2,
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', bridgeNodeId: 'node-bob', avatarKey: 'bob' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', sourceIdentityId: 'node-bob', avatarKey: 'bob' },
       ],
     }),
     conversation({
@@ -119,7 +119,7 @@ test('buildParticipantSpaces separates direct human and self spaces on same Brid
       _updatedAtMs: 1,
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'agent:bob-kordi', name: "Bob's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', bridgeNodeId: 'node-bob', ownerName: 'Bob', avatarKey: 'agent-bob' },
+        { id: 'agent:bob-kordi', name: "Bob's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', sourceIdentityId: 'node-bob', ownerName: 'Bob', avatarKey: 'agent-bob' },
       ],
     }),
   ]);
@@ -749,8 +749,8 @@ test('buildParticipantSpaces keeps a stable group space when invited members cha
 
 test('buildParticipantSpaces uses the authoritative group id when Cloud membership changes', () => {
   const self = { id: 'human:acct_self', name: 'Me', kind: 'human' as const, role: 'self', source: 'local' as const, humanId: 'acct_self', avatarKey: 'me' };
-  const alice = { id: 'human:acct_alice', name: 'Alice', kind: 'human' as const, role: 'person', source: 'bridge' as const, humanId: 'acct_alice', bridgeNodeId: 'acct_alice', bridgeHostId: 'cloud', avatarKey: 'alice' };
-  const bob = { id: 'human:acct_bob', name: 'Bob', kind: 'human' as const, role: 'person', source: 'bridge' as const, humanId: 'acct_bob', bridgeNodeId: 'acct_bob', bridgeHostId: 'cloud', avatarKey: 'bob' };
+  const alice = { id: 'human:acct_alice', name: 'Alice', kind: 'human' as const, role: 'person', source: 'bridge' as const, humanId: 'acct_alice', sourceIdentityId: 'acct_alice', sourceHostId: 'cloud', avatarKey: 'alice' };
+  const bob = { id: 'human:acct_bob', name: 'Bob', kind: 'human' as const, role: 'person', source: 'bridge' as const, humanId: 'acct_bob', sourceIdentityId: 'acct_bob', sourceHostId: 'cloud', avatarKey: 'bob' };
   const spaces = buildParticipantSpaces([
     conversation({
       id: 'session:group:cloud-root',

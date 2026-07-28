@@ -440,22 +440,6 @@ pub(crate) fn remove_session_participant_in_db(
     Ok(())
 }
 
-pub(crate) fn session_has_participant(
-    conn: &Connection,
-    session_id: &str,
-    identity_id: &str,
-) -> Result<bool, String> {
-    conn.query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM session_participants
-            WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active'
-         )",
-        params![session_id, identity_id],
-        |row| row.get::<_, bool>(0),
-    )
-    .map_err(|err| err.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

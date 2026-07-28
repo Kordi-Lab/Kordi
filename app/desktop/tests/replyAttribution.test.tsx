@@ -607,7 +607,7 @@ test('buildReplyAttribution keeps pending live turn on agent request before late
     humanRequest({
       id: 'msg:person-mention',
       text: '@Testuser6 also you need find the popular github repo',
-      mentions: [{ label: 'Testuser6', targetKind: 'bridge-person' }],
+      mentions: [{ label: 'Testuser6', targetKind: 'person' }],
     }),
   ];
   const liveTurn = turn({

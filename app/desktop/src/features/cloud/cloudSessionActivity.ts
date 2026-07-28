@@ -232,7 +232,7 @@ export function cloudTaskToSessionTaskActivity(task: CloudTaskActivity): Session
     participants,
     createdAtMs: Date.parse(task.createdAt) || 0,
     updatedAtMs: Date.parse(task.updatedAt) || 0,
-    bridgeRequestId: task.taskId,
+    sourceRequestId: task.taskId,
     contextPolicy: 'cloud-session-activity',
     error: null,
   };

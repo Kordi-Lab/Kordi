@@ -6,7 +6,7 @@ import type {
   CanonicalIdentity,
   CanonicalSession,
   CanonicalSessionMessage,
-  DesktopBridgeSessionParticipant,
+  DesktopCollaborationSessionParticipant,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
@@ -15,7 +15,7 @@ import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitleP
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
-import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
+import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
@@ -168,7 +168,7 @@ export function normalizeCloudGroupSessionTitleSnapshot(
 
 export function cloudGroupManualSessionTitleSnapshot(input: {
   session?: Pick<CanonicalSession, 'title' | 'metadata' | 'createdByIdentityId' | 'updatedAtMs'> | null;
-  identities?: Array<Pick<CanonicalIdentity, 'id' | 'humanId' | 'bridgeNodeId'>>;
+  identities?: Array<Pick<CanonicalIdentity, 'id' | 'humanId' | 'sourceIdentityId'>>;
 }): CloudGroupSessionTitleSnapshot | null {
   const session = input.session;
   if (!session) return null;
@@ -184,7 +184,7 @@ export function cloudGroupManualSessionTitleSnapshot(input: {
   );
   const creatorIdentity = identityById.get(creatorIdentityId);
   const fallbackCreatorAccountId = cloudAccountIdOrNull(creatorIdentity?.humanId)
-    ?? cloudAccountIdOrNull(creatorIdentity?.bridgeNodeId)
+    ?? cloudAccountIdOrNull(creatorIdentity?.sourceIdentityId)
     ?? cloudAccountIdOrNull(creatorIdentityId.replace(/^human:/, ''));
   return normalizeCloudGroupSessionTitleSnapshot({
     title: session.title,
@@ -730,7 +730,7 @@ export function cloudGroupSelfParticipant(account: CloudAccount, role: CloudGrou
 }
 
 export function cloudGroupParticipantFromContact(contact: Contact, role: CloudGroupParticipant['role'] = 'person'): CloudGroupParticipant | null {
-  const accountId = cleanText(contact.bridgeHumanId) || cleanText(contact.bridgePeerNodeId) || cleanText(contact.id.replace(/^cloud:/, ''));
+  const accountId = cleanText(contact.sourceHumanId) || cleanText(contact.sourceParticipantId) || cleanText(contact.id.replace(/^cloud:/, ''));
   if (!accountId) return null;
   return {
     accountId,
@@ -746,7 +746,7 @@ export function cloudGroupParticipantFromConversationParticipant(
 ): CloudGroupParticipant | null {
   const isSelf = participant.role === 'self' || participant.source === 'local';
   if (isSelf) return cloudGroupSelfParticipant(account, participant.role || 'self');
-  const accountId = cleanText(participant.humanId) || cleanText(participant.bridgeNodeId);
+  const accountId = cleanText(participant.humanId) || cleanText(participant.sourceIdentityId);
   if (!accountId) return null;
   return {
     accountId,
@@ -776,12 +776,12 @@ export function cloudGroupParticipantsForConversation(
   return uniqueByAccount([self, ...mapped]);
 }
 
-export function cloudGroupParticipantsForBridgeSessionParticipants(
+export function cloudGroupParticipantsForCollaborationSession(
   account: CloudAccount,
-  participants: DesktopBridgeSessionParticipant[],
+  participants: DesktopCollaborationSessionParticipant[],
 ): CloudGroupParticipant[] {
   const mapped = participants.flatMap((participant): CloudGroupParticipant[] => {
-      const accountId = cleanText(participant.humanId) || cleanText(participant.bridgeNodeId);
+      const accountId = cleanText(participant.humanId) || cleanText(participant.sourceIdentityId);
       if (!accountId) return [];
       return [{
         accountId,
@@ -1250,7 +1250,7 @@ export function shouldRouteMentionThroughCloudGroup(input: {
   mentionedHostId?: string | null;
   activeGroupSessionIsGroup: boolean;
   mentionsLocalAgent?: boolean;
-  mentionsBridgeAgent?: boolean;
+  mentionsCollaborationAgent?: boolean;
   hasCloudGroupRecipients?: boolean;
 }): boolean {
   const mentionedCloudTarget = cleanText(input.mentionedHostId) === CLOUD_HOST_SENTINEL;
@@ -1270,7 +1270,7 @@ export function cloudGroupTargetAccountIds<T extends { hostId?: string | null; n
     .filter((accountId): accountId is string => Boolean(accountId)))];
 }
 
-export const cloudOnlyGroupTargetAccountIds = (targets: Array<{ hostId?: string | null; nodeId?: string | null }>): string[] => rejectNonCloudBridgeTargets(targets);
+export const cloudOnlyGroupTargetAccountIds = (targets: Array<{ hostId?: string | null; nodeId?: string | null }>): string[] => rejectNonCloudCollaborationTargets(targets);
 
 export function nonCloudGroupTargets<T extends { hostId?: string | null }>(targets: T[]): T[] {
   return targets.filter((target) => target.hostId !== CLOUD_HOST_SENTINEL);
@@ -1319,9 +1319,9 @@ export function cloudGroupIdentityRequest(
     id,
     kind: 'human',
     displayName: participant.displayName,
-    source: isSelf ? 'local' : 'bridge',
+    source: isSelf ? 'local' : 'cloud',
     sourceHostId: isSelf ? null : CLOUD_HOST_SENTINEL,
-    bridgeNodeId: isSelf ? null : participant.accountId,
+    sourceIdentityId: isSelf ? null : participant.accountId,
     humanId: participant.accountId,
     agentId: null,
     avatarKey: cloudAvatarSeedForAccount(participant.accountId, participant.avatarUrl),

@@ -32,6 +32,7 @@ import { InlineChangedFiles } from './transcriptChangedFiles';
 import {
   firstMeaningfulThinkingLine,
   formatRunningElapsed,
+  LEGACY_PARTICIPANT_REQUEST_TOOL_NAME,
   toolTimelineDisplayArguments,
   toolTimelineFailureLabel,
   toolTimelineFoldedLabel,
@@ -41,7 +42,7 @@ import {
   toolTimelineTypeLabel,
   type ToolTimelineLayerGroup,
 } from './toolTimeline';
-import type { BridgeAgentRequestControl, DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
+import type { CollaborationAgentRequestControl, DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
 
 function looksLikeTerminalTable(text: string) {
   const lines = text
@@ -167,7 +168,7 @@ function ProcessingStatusCircle({ className }: { className?: string }) {
 function toolDisplayConfig(toolName: string) {
   const normalized = toolName.toLowerCase();
 
-  if (normalized === 'reach_out') {
+  if (normalized === LEGACY_PARTICIPANT_REQUEST_TOOL_NAME) {
     return { icon: ArrowRightLeft, label: '@ participant', argumentsLabel: 'Request', resultLabel: 'Participant response' };
   }
   if (normalized.includes('web_fetch')) {
@@ -577,7 +578,7 @@ function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180
   return shouldShow && visible;
 }
 
-export type StopBridgeAgentRequestHandler = (request: BridgeAgentRequestControl) => Promise<void> | void;
+export type StopCollaborationAgentRequestHandler = (request: CollaborationAgentRequestControl) => Promise<void> | void;
 export type StopActiveTurnHandler = () => Promise<void> | void;
 
 const GENERIC_LIVE_STATUS_MESSAGES = new Set(['working…', 'running tool…']);
@@ -648,7 +649,7 @@ function TurnStopButton({
   return (
     <button
       type="button"
-      className="app-bridge-agent-stop-button inline-grid h-[18px] w-[18px] place-items-center rounded-full border border-slate-500/25 bg-slate-800/30 text-slate-400 transition hover:border-rose-300/40 hover:bg-rose-400/[0.08] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-55"
+      className="app-collaboration-agent-stop-button inline-grid h-[18px] w-[18px] place-items-center rounded-full border border-slate-500/25 bg-slate-800/30 text-slate-400 transition hover:border-rose-300/40 hover:bg-rose-400/[0.08] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-55"
       aria-label={stopping ? stoppingLabel : ariaLabel}
       title={stopping ? 'Stopping…' : ariaLabel}
       disabled={stopping}
@@ -666,12 +667,12 @@ function TurnStopButton({
   );
 }
 
-function BridgeAgentStopButton({
+function CollaborationAgentStopButton({
   request,
   onStop,
 }: {
-  request: BridgeAgentRequestControl;
-  onStop?: StopBridgeAgentRequestHandler;
+  request: CollaborationAgentRequestControl;
+  onStop?: StopCollaborationAgentRequestHandler;
 }) {
   if (!onStop) return null;
   return <TurnStopButton onStop={() => onStop(request)} />;
@@ -744,7 +745,7 @@ function LiveChatTurnCardView({
   turn,
   historical = false,
   plainAgentResponse = false,
-  onStopBridgeAgentRequest,
+  onStopCollaborationAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
   onOpenArtifact,
@@ -753,7 +754,7 @@ function LiveChatTurnCardView({
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
   plainAgentResponse?: boolean;
-  onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
@@ -763,7 +764,7 @@ function LiveChatTurnCardView({
   // Suppress assistantText when it's just a "Failed: <error>" or duplicate of
   // visibleTurn.error so the failure surface shows the red error line once,
   // not twice. Wrappers like cloud-agent response writer at
-  // useCloudBridgeState.ts:1169 store the failure as `Failed: ${error}` in
+  // useCloudCollaborationState.ts:1169 store the failure as `Failed: ${error}` in
   // canonical contentText; the read model surfaces that as assistantText, and
   // the error field already carries the same message — rendering both is
   // visually redundant. Retain assistantText whenever it contains additional
@@ -786,11 +787,11 @@ function LiveChatTurnCardView({
   const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
-  const pendingBridgeAgentRequest = visibleTurn.pendingBridgeAgentRequest ?? null;
+  const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
-  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingBridgeAgentRequest;
+  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest;
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && (pendingBridgeAgentRequest || activeStopAvailable || visibleTurn.sourceMessage));
+    || Boolean(shouldShowLiveStatusHeader && (pendingCollaborationAgentRequest || activeStopAvailable || visibleTurn.sourceMessage));
   const liveStatusText = visibleTurn.status === 'cancelling'
     ? 'Stopping…'
     : visibleTurn.status === 'retrying'
@@ -838,10 +839,10 @@ function LiveChatTurnCardView({
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
               <ProcessingStatusCircle className="h-3.5 w-3.5" />
               <span className="text-slate-300">{liveStatusText}</span>
-              {pendingBridgeAgentRequest ? (
-                <BridgeAgentStopButton
-                  request={pendingBridgeAgentRequest}
-                  onStop={onStopBridgeAgentRequest}
+              {pendingCollaborationAgentRequest ? (
+                <CollaborationAgentStopButton
+                  request={pendingCollaborationAgentRequest}
+                  onStop={onStopCollaborationAgentRequest}
                 />
               ) : activeStopAvailable ? (
                 <TurnStopButton onStop={onStopActiveTurn} />
@@ -878,10 +879,10 @@ function LiveChatTurnCardView({
           thinkingText={visibleTurn.thinkingText}
           active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
           completed={visibleTurn.completed}
-          trailing={pendingBridgeAgentRequest && onStopBridgeAgentRequest ? (
-            <BridgeAgentStopButton
-              request={pendingBridgeAgentRequest}
-              onStop={onStopBridgeAgentRequest}
+          trailing={pendingCollaborationAgentRequest && onStopCollaborationAgentRequest ? (
+            <CollaborationAgentStopButton
+              request={pendingCollaborationAgentRequest}
+              onStop={onStopCollaborationAgentRequest}
             />
           ) : activeStopAvailable ? (
             <TurnStopButton onStop={onStopActiveTurn} />
@@ -943,8 +944,8 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
     turn.transcriptRefreshRequired ? 'refresh' : 'stable',
     turn.replyToMessageId ?? '',
     turn.sourceMessage ? [turn.sourceMessage.messageId, turn.sourceMessage.text, turn.sourceMessage.senderLabel ?? ''].join(':') : '',
-    turn.pendingBridgeAgentRequest?.conversationId ?? '',
-    turn.pendingBridgeAgentRequest?.requestId ?? '',
+    turn.pendingCollaborationAgentRequest?.conversationId ?? '',
+    turn.pendingCollaborationAgentRequest?.requestId ?? '',
     ...turn.tools.map((tool) => [
       tool.id,
       tool.name,
@@ -964,7 +965,7 @@ export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
     && previous.plainAgentResponse === next.plainAgentResponse
-    && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
@@ -976,7 +977,7 @@ function LiveChatTurnMessageView({
   turn,
   sender = 'My Kordi',
   plainAgentResponse = false,
-  onStopBridgeAgentRequest,
+  onStopCollaborationAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
   onOpenArtifact,
@@ -985,7 +986,7 @@ function LiveChatTurnMessageView({
   turn: DesktopChatTurnSnapshot;
   sender?: string;
   plainAgentResponse?: boolean;
-  onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
+  onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
@@ -1001,7 +1002,7 @@ function LiveChatTurnMessageView({
       <LiveChatTurnCard
         turn={turn}
         plainAgentResponse={plainAgentResponse}
-        onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+        onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
         onStopActiveTurn={onStopActiveTurn}
         onNavigateToMessage={onNavigateToMessage}
         onOpenArtifact={onOpenArtifact}
@@ -1015,7 +1016,7 @@ export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender
     && previous.plainAgentResponse === next.plainAgentResponse
-    && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
+    && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact

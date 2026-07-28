@@ -2,27 +2,27 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
-import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
   cloudGroupMessageSessionId,
   cloudGroupTargetAccountIds,
   shouldRouteMentionThroughCloudGroup,
 } from '@/features/cloud/cloudGroupMessages';
-import { bridgeConversationIdsToMarkReadOnUserActivity } from '@/features/bridge/readReceipts';
-import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { collaborationConversationIdsToMarkReadOnUserActivity } from '@/features/collaboration/readReceipts';
+import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
   ComposerScope,
   Conversation,
-  ConversationBridgeTarget,
+  ConversationCollaborationTarget,
   Message,
   DesktopChatState,
-  DesktopBridgePromptIdentity,
-  DesktopBridgeState,
-  DesktopBridgeSessionParticipant,
+  DesktopCollaborationPromptIdentity,
+  DesktopCollaborationState,
+  DesktopCollaborationSessionParticipant,
   DesktopChatTurnSnapshot,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
@@ -46,21 +46,21 @@ import { NO_PROVIDER_PENDING_LIVE_TURN_PREFIX } from '../desktopLiveTurns';
 import {
   localAgentRuntimeText,
   localHumanAddressLabels,
-  mentionForBridgeTarget,
-  mentionedPersonIsActiveBridgeTarget,
+  mentionForCollaborationTarget,
+  mentionedPersonIsActiveCollaborationTarget,
   mentionsLocalAgent,
-  resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh,
+  resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh,
   stripLeadingAddressMentions,
 } from './mentions';
 import {
-  appendOptimisticBridgeMessage,
+  appendOptimisticCollaborationMessage,
   appendOptimisticCanonicalMessage,
   appendOptimisticOutboundMessage,
   failedPreparedCanonicalUserMessage,
   optimisticSessionTitleFromMessage,
-  findBridgeConversationForTarget,
-  markOptimisticBridgeMessageFailed,
-  markOptimisticBridgeMessageSending,
+  findCollaborationConversationForTarget,
+  markOptimisticCollaborationMessageFailed,
+  markOptimisticCollaborationMessageSending,
   markOptimisticCanonicalMessageFailed,
   markOptimisticCanonicalMessageSending,
   persistCanonicalUserMessage,
@@ -68,7 +68,7 @@ import {
   retryAttachmentItemsFromMessage,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
-import type { PendingBridgeOutreach } from './types';
+import type { PendingCollaborationOutreach } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
 
@@ -76,15 +76,15 @@ export type LocalChatSendInFlight = {
   sessionId: string | null;
 };
 
-export function bridgeSendFailureDetail(error: unknown, fallback = 'Unable to send bridge message') {
+export function collaborationSendFailureDetail(error: unknown, fallback = 'Unable to send collaboration message') {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function shouldShowBridgeSendFailureNotice(hasInlineFailureTarget: boolean) {
+export function shouldShowCollaborationSendFailureNotice(hasInlineFailureTarget: boolean) {
   return !hasInlineFailureTarget;
 }
 
-export function shouldAppendOptimisticBridgeMessage(_conversationId: string): boolean {
+export function shouldAppendOptimisticCollaborationMessage(_conversationId: string): boolean {
   return true;
 }
 
@@ -128,18 +128,18 @@ function generatedSelfAgentSessionId() {
 }
 
 export function shouldUseNoProviderSelfAgentShortcut({
-  activeConversationUsesBridgeRouting,
+  activeConversationUsesCollaborationRouting,
   activeConvCanonicalSessionId,
   canonicalSessionState,
   hasAnyDesktopAuth,
 }: {
-  activeConversationUsesBridgeRouting: boolean;
+  activeConversationUsesCollaborationRouting: boolean;
   activeConvCanonicalSessionId?: string | null;
   canonicalSessionState: CanonicalSessionState | null;
   hasAnyDesktopAuth: boolean;
 }) {
   if (hasAnyDesktopAuth) return false;
-  if (activeConversationUsesBridgeRouting) return false;
+  if (activeConversationUsesCollaborationRouting) return false;
   const sessionId = activeConvCanonicalSessionId?.trim();
   if (!sessionId) return true;
   const session = canonicalSessionState?.sessions.find((candidate) => candidate.id === sessionId);
@@ -411,25 +411,25 @@ export async function waitForCompletedDesktopTurn(
   return turn;
 }
 
-export function bridgeConversationSendPlan({
+export function collaborationConversationSendPlan({
   activeConvId,
-  hasMaterializedBridgeConversation,
+  hasMaterializedCollaborationConversation,
   existingTargetConversationId,
   shouldStayInCanonicalSession,
 }: {
   activeConvId: string;
-  hasMaterializedBridgeConversation: boolean;
+  hasMaterializedCollaborationConversation: boolean;
   existingTargetConversationId?: string | null;
   shouldStayInCanonicalSession: boolean;
 }) {
-  const targetConversationId = hasMaterializedBridgeConversation
+  const targetConversationId = hasMaterializedCollaborationConversation
     ? activeConvId
     : existingTargetConversationId ?? null;
 
   return {
     targetConversationId,
     shouldOpenBeforeOptimisticSend: !targetConversationId && !shouldStayInCanonicalSession,
-    canAppendBridgeOptimisticMessage: Boolean(targetConversationId),
+    canAppendCollaborationOptimisticMessage: Boolean(targetConversationId),
   };
 }
 
@@ -437,17 +437,17 @@ function cleanText(value?: string | null) {
   return value?.trim() || null;
 }
 
-function bridgeTargetIsAgent(target?: ConversationBridgeTarget | null) {
+function collaborationTargetIsAgent(target?: ConversationCollaborationTarget | null) {
   const runtime = cleanText(target?.runtime);
-  return Boolean(cleanText(target?.agentId) || (runtime && isBridgeAgentRuntime(runtime)));
+  return Boolean(cleanText(target?.agentId) || (runtime && isCollaborationAgentRuntime(runtime)));
 }
 
-export function bridgeSessionOutreachTarget(target: ConversationBridgeTarget) {
-  const targetIsAgent = bridgeTargetIsAgent(target);
+export function collaborationSessionOutreachTarget(target: ConversationCollaborationTarget) {
+  const targetIsAgent = collaborationTargetIsAgent(target);
   const displayName = cleanText(target.displayName) ?? cleanText(target.ownerName);
   const ownerName = cleanText(target.ownerName) ?? (targetIsAgent ? null : displayName);
   return {
-    targetKind: targetIsAgent ? 'bridge-agent' as const : 'bridge-person' as const,
+    targetKind: targetIsAgent ? 'agent' as const : 'person' as const,
     targetRuntime: targetIsAgent ? (cleanText(target.runtime) ?? 'kordi-desktop') : 'person',
     targetDisplayName: displayName,
     targetOwnerName: ownerName,
@@ -460,7 +460,7 @@ function participantIsSelf(participant: NonNullable<Conversation['canonicalParti
   return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
 }
 
-export function isBridgeGroupSession(conversation?: {
+export function isCollaborationGroupSession(conversation?: {
   canonicalSessionId?: string | null;
   participantSpaceId?: string | null;
   directness?: string | null;
@@ -476,7 +476,7 @@ export function isBridgeGroupSession(conversation?: {
   return humanCount > 1;
 }
 
-export function bridgeGroupSessionSpaceId(conversation?: {
+export function collaborationGroupSessionSpaceId(conversation?: {
   canonicalSessionId?: string | null;
   participantSpaceId?: string | null;
 } | null) {
@@ -487,7 +487,7 @@ export function bridgeGroupSessionSpaceId(conversation?: {
   return cleanText(conversation?.canonicalSessionId);
 }
 
-function asSelfBridgeNodeIdSet(value?: ReadonlySet<string> | Iterable<string | null | undefined> | null) {
+function asSelfCollaborationNodeIdSet(value?: ReadonlySet<string> | Iterable<string | null | undefined> | null) {
   if (!value) return new Set<string>();
   if (value instanceof Set) return value;
   const result = new Set<string>();
@@ -498,20 +498,20 @@ function asSelfBridgeNodeIdSet(value?: ReadonlySet<string> | Iterable<string | n
   return result;
 }
 
-export function bridgeGroupSessionSendTargets(
+export function collaborationGroupSessionSendTargets(
   conversation: Pick<Conversation, 'canonicalParticipants'>,
-  fallbackTarget?: ConversationBridgeTarget | null,
-  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
+  fallbackTarget?: ConversationCollaborationTarget | null,
+  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
 ) {
-  const targets = new Map<string, ConversationBridgeTarget>();
+  const targets = new Map<string, ConversationCollaborationTarget>();
   const fallbackHostId = cleanText(fallbackTarget?.hostId);
-  const selfNodeIdSet = asSelfBridgeNodeIdSet(selfBridgeNodeIds);
+  const selfNodeIdSet = asSelfCollaborationNodeIdSet(selfCollaborationNodeIds);
 
   for (const participant of conversation.canonicalParticipants ?? []) {
     if (participant.kind !== 'human' || participantIsSelf(participant)) continue;
-    const nodeId = cleanText(participant.bridgeNodeId);
+    const nodeId = cleanText(participant.sourceIdentityId);
     if (nodeId && selfNodeIdSet.has(nodeId)) continue;
-    const hostId = cleanText(participant.bridgeHostId) ?? fallbackHostId;
+    const hostId = cleanText(participant.sourceHostId) ?? fallbackHostId;
     if (!nodeId || !hostId) continue;
     targets.set(`${hostId}:${nodeId}:${cleanText(participant.humanId) ?? ''}`, {
       hostId,
@@ -539,39 +539,39 @@ export function bridgeGroupSessionSendTargets(
   return [...targets.values()];
 }
 
-export function shouldUseBridgeConversationRouting({
-  activeConversationIsBridge,
-  activeConvBridgeTarget,
+export function shouldUseCollaborationConversationRouting({
+  activeConversationUsesCollaboration,
+  activeConvCollaborationTarget,
   activeGroupSessionScope,
-  selfBridgeNodeIds,
+  selfCollaborationNodeIds,
 }: {
-  activeConversationIsBridge: boolean;
-  activeConvBridgeTarget?: ConversationBridgeTarget | null;
+  activeConversationUsesCollaboration: boolean;
+  activeConvCollaborationTarget?: ConversationCollaborationTarget | null;
   activeGroupSessionScope?: (Pick<Conversation, 'canonicalParticipants'> & {
     canonicalSessionId?: string | null;
     participantSpaceId?: string | null;
     directness?: string | null;
   }) | null;
-  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null;
+  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null;
 }) {
-  return activeConversationIsBridge
-    || Boolean(activeConvBridgeTarget)
+  return activeConversationUsesCollaboration
+    || Boolean(activeConvCollaborationTarget)
     || Boolean(
-      isBridgeGroupSession(activeGroupSessionScope)
-      && bridgeGroupSessionSendTargets(activeGroupSessionScope ?? {}, activeConvBridgeTarget, selfBridgeNodeIds).length > 0,
+      isCollaborationGroupSession(activeGroupSessionScope)
+      && collaborationGroupSessionSendTargets(activeGroupSessionScope ?? {}, activeConvCollaborationTarget, selfCollaborationNodeIds).length > 0,
     );
 }
 
 export function activeLocalTurnShouldDelayChatSend({
-  activeConversationUsesBridgeRouting,
+  activeConversationUsesCollaborationRouting,
   activeConvId,
   desktopLiveTurn,
 }: {
-  activeConversationUsesBridgeRouting: boolean;
+  activeConversationUsesCollaborationRouting: boolean;
   activeConvId: string;
   desktopLiveTurn?: { sessionId?: string | null; completed?: boolean } | null;
 }) {
-  return !activeConversationUsesBridgeRouting
+  return !activeConversationUsesCollaborationRouting
     && !activeConvId.startsWith('bridge:')
     && !isLocalDraftChatConversationId(activeConvId)
     && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
@@ -652,42 +652,42 @@ export function restoredSelfAgentContextMessages(messages: readonly Message[]): 
   });
 }
 
-export function bridgeLocalAgentMentionCanRelayToBridge({
+export function collaborationLocalAgentMentionCanRelay({
   activeGroupSessionIsGroup,
-  activeConvBridgeTarget,
+  activeConvCollaborationTarget,
   hasLocalAgentMention,
 }: {
   activeGroupSessionIsGroup: boolean;
-  activeConvBridgeTarget?: ConversationBridgeTarget | null;
+  activeConvCollaborationTarget?: ConversationCollaborationTarget | null;
   hasLocalAgentMention: boolean;
 }) {
-  return Boolean(hasLocalAgentMention && (activeGroupSessionIsGroup || activeConvBridgeTarget));
+  return Boolean(hasLocalAgentMention && (activeGroupSessionIsGroup || activeConvCollaborationTarget));
 }
 
-export function bridgeLocalAgentRelayTargets(
+export function collaborationLocalAgentRelayTargets(
   conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
-  fallbackTarget?: ConversationBridgeTarget | null,
-  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
+  fallbackTarget?: ConversationCollaborationTarget | null,
+  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
 ) {
-  if (isBridgeGroupSession(conversation)) {
-    return bridgeGroupSessionSendTargets(conversation, fallbackTarget, selfBridgeNodeIds);
+  if (isCollaborationGroupSession(conversation)) {
+    return collaborationGroupSessionSendTargets(conversation, fallbackTarget, selfCollaborationNodeIds);
   }
   if (!fallbackTarget?.hostId || !fallbackTarget.nodeId) return [];
-  const selfNodeIdSet = asSelfBridgeNodeIdSet(selfBridgeNodeIds);
+  const selfNodeIdSet = asSelfCollaborationNodeIdSet(selfCollaborationNodeIds);
   if (selfNodeIdSet.has(fallbackTarget.nodeId)) return [];
   return [{ ...fallbackTarget, runtime: 'person', agentId: null }];
 }
 
-export function bridgeGroupMentionRelayTargets(
+export function collaborationGroupMentionRelayTargets(
   conversation: Pick<Conversation, 'canonicalParticipants'> & { directness?: string | null },
   mentionedTarget?: { peer?: { nodeId?: string | null; humanId?: string | null } | null } | null,
-  fallbackTarget?: ConversationBridgeTarget | null,
-  selfBridgeNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
+  fallbackTarget?: ConversationCollaborationTarget | null,
+  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
 ) {
-  if (!isBridgeGroupSession(conversation)) return [];
+  if (!isCollaborationGroupSession(conversation)) return [];
   const mentionedNodeId = cleanText(mentionedTarget?.peer?.nodeId);
   const mentionedHumanId = cleanText(mentionedTarget?.peer?.humanId);
-  return bridgeGroupSessionSendTargets(conversation, fallbackTarget, selfBridgeNodeIds).filter((target) => {
+  return collaborationGroupSessionSendTargets(conversation, fallbackTarget, selfCollaborationNodeIds).filter((target) => {
     if (mentionedHumanId && target.humanId === mentionedHumanId) return false;
     if (mentionedNodeId && target.nodeId === mentionedNodeId) return false;
     return true;
@@ -699,31 +699,31 @@ function isSelfReferencePeerLabel(value: string | null | undefined) {
   return trimmed === 'me' || trimmed === 'you';
 }
 
-export function bridgeGroupSessionParticipants(
+export function collaborationGroupSessionParticipants(
   conversation: Pick<Conversation, 'canonicalParticipants'>,
   options: { selfPublicName?: string | null } = {},
-): DesktopBridgeSessionParticipant[] {
+): DesktopCollaborationSessionParticipant[] {
   const selfPublicName = cleanText(options.selfPublicName ?? undefined);
-  const participants = new Map<string, DesktopBridgeSessionParticipant>();
+  const participants = new Map<string, DesktopCollaborationSessionParticipant>();
   for (const participant of conversation.canonicalParticipants ?? []) {
     if (participant.kind !== 'human') continue;
     const rawDisplayName = cleanText(participant.name);
     if (!rawDisplayName) continue;
-    const bridgeNodeId = cleanText(participant.bridgeNodeId);
+    const sourceIdentityId = cleanText(participant.sourceIdentityId);
     const humanId = cleanText(participant.humanId);
     const isSelf = participantIsSelf(participant);
-    if (isSelf && !bridgeNodeId && !humanId) continue;
+    if (isSelf && !sourceIdentityId && !humanId) continue;
     // Don't broadcast self-reference labels like "Me"/"You" to other peers — those collide on
     // the receiver side and end up rendered as "Me" for every group member.
     const displayName = isSelf && isSelfReferencePeerLabel(rawDisplayName) && selfPublicName
       ? selfPublicName
       : rawDisplayName;
-    participants.set(participant.id || `${bridgeNodeId ?? ''}:${humanId ?? ''}:${displayName}`, {
+    participants.set(participant.id || `${sourceIdentityId ?? ''}:${humanId ?? ''}:${displayName}`, {
       identityId: cleanText(participant.id),
       displayName,
       kind: 'human',
       role: isSelf ? 'self' : (cleanText(participant.role) ?? 'person'),
-      bridgeNodeId,
+      sourceIdentityId,
       humanId,
       runtime: 'person',
     });
@@ -731,26 +731,26 @@ export function bridgeGroupSessionParticipants(
   return [...participants.values()];
 }
 
-function bridgeDirectSessionParticipants(
+function collaborationDirectSessionParticipants(
   conversation: Pick<Conversation, 'canonicalParticipants'>,
-  activeBridgeHost: DesktopBridgeState['hosts'][number] | null | undefined,
-  activeTarget: ConversationBridgeTarget | null | undefined,
+  activeCollaborationHost: DesktopCollaborationState['hosts'][number] | null | undefined,
+  activeTarget: ConversationCollaborationTarget | null | undefined,
   options: { selfPublicName?: string | null } = {},
-): DesktopBridgeSessionParticipant[] {
-  const canonicalParticipants = bridgeGroupSessionParticipants(conversation, options);
+): DesktopCollaborationSessionParticipant[] {
+  const canonicalParticipants = collaborationGroupSessionParticipants(conversation, options);
   if (canonicalParticipants.length > 0) return canonicalParticipants;
 
-  const participants: DesktopBridgeSessionParticipant[] = [];
-  const selfDisplayName = cleanText(options.selfPublicName) || cleanText(activeBridgeHost?.ownerName) || cleanText(activeBridgeHost?.displayName) || 'Me';
-  const selfNodeId = cleanText(activeBridgeHost?.nodeId);
-  const selfHumanId = cleanText(activeBridgeHost?.humanId);
+  const participants: DesktopCollaborationSessionParticipant[] = [];
+  const selfDisplayName = cleanText(options.selfPublicName) || cleanText(activeCollaborationHost?.ownerName) || cleanText(activeCollaborationHost?.displayName) || 'Me';
+  const selfNodeId = cleanText(activeCollaborationHost?.nodeId);
+  const selfHumanId = cleanText(activeCollaborationHost?.humanId);
   if (selfNodeId || selfHumanId) {
     participants.push({
       identityId: selfHumanId ? `human:${selfHumanId}` : null,
       displayName: selfDisplayName,
       kind: 'human',
       role: 'self',
-      bridgeNodeId: selfNodeId,
+      sourceIdentityId: selfNodeId,
       humanId: selfHumanId,
       runtime: 'person',
     });
@@ -765,7 +765,7 @@ function bridgeDirectSessionParticipants(
       displayName: targetDisplayName,
       kind: 'human',
       role: 'person',
-      bridgeNodeId: targetNodeId,
+      sourceIdentityId: targetNodeId,
       humanId: targetHumanId,
       runtime: 'person',
     });
@@ -773,26 +773,26 @@ function bridgeDirectSessionParticipants(
   return participants;
 }
 
-function initiatorIdentityForBridgeHost(
-  activeBridgeHost: DesktopBridgeState['hosts'][number] | null | undefined,
+function initiatorIdentityForCollaborationHost(
+  activeCollaborationHost: DesktopCollaborationState['hosts'][number] | null | undefined,
   canonicalHumanIdentityId: string | null | undefined,
-): DesktopBridgePromptIdentity | null {
-  const displayName = cleanText(activeBridgeHost?.ownerName) || cleanText(activeBridgeHost?.displayName);
+): DesktopCollaborationPromptIdentity | null {
+  const displayName = cleanText(activeCollaborationHost?.ownerName) || cleanText(activeCollaborationHost?.displayName);
   if (!displayName && !canonicalHumanIdentityId) return null;
   return {
-    identityId: canonicalHumanIdentityId || activeBridgeHost?.humanId || activeBridgeHost?.id || null,
+    identityId: canonicalHumanIdentityId || activeCollaborationHost?.humanId || activeCollaborationHost?.id || null,
     displayName: displayName ?? 'Me',
     kind: 'human',
-    bridgeNodeId: activeBridgeHost?.nodeId ?? null,
-    humanId: activeBridgeHost?.humanId ?? null,
+    sourceIdentityId: activeCollaborationHost?.nodeId ?? null,
+    humanId: activeCollaborationHost?.humanId ?? null,
     runtime: 'person',
   };
 }
 
 type UseChatMessageActionsArgs = Pick<
   UseComposerControllerArgs,
-  | 'activeConversationIsBridge'
-  | 'activeConvBridgeTarget'
+  | 'activeConversationUsesCollaboration'
+  | 'activeConvCollaborationTarget'
   | 'activeConvCanonicalSessionId'
   | 'activeConvId'
   | 'activeConvMessages'
@@ -805,7 +805,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'composerSelections'
   | 'composerDrafts'
   | 'activeChatQuote'
-  | 'desktopBridgeState'
+  | 'desktopCollaborationState'
   | 'desktopChatState'
   | 'canonicalSessionState'
   | 'hasAnyDesktopAuth'
@@ -818,8 +818,8 @@ type UseChatMessageActionsArgs = Pick<
   | 'setCanonicalSessionState'
   | 'setChatComposerAttachments'
   | 'setComposerDrafts'
-  | 'setCloudBridgeState'
-  | 'sendCloudBridgeMessage'
+  | 'setCloudCollaborationState'
+  | 'sendCloudCollaborationMessage'
   | 'sendCloudGroupControl'
   | 'setDesktopChatError'
   | 'setDesktopChatState'
@@ -833,15 +833,15 @@ type UseChatMessageActionsArgs = Pick<
 > & {
   attachmentSummaryText: (text: string) => string;
   handleLocalSlashCommand: (rawText: string, scope?: ComposerScope) => Promise<boolean>;
-  pendingBridgeCancelRequestedRef: MutableRefObject<boolean>;
+  pendingCollaborationCancelRequestedRef: MutableRefObject<boolean>;
   localChatSendInFlightRef: MutableRefObject<LocalChatSendInFlight | null>;
   userCancelledTurnIdsRef: MutableRefObject<Set<string>>;
-  setPendingBridgeOutreach: Dispatch<SetStateAction<PendingBridgeOutreach | null>>;
+  setPendingCollaborationOutreach: Dispatch<SetStateAction<PendingCollaborationOutreach | null>>;
 };
 
 export function useChatMessageActions({
-  activeConversationIsBridge,
-  activeConvBridgeTarget,
+  activeConversationUsesCollaboration,
+  activeConvCollaborationTarget,
   activeConvCanonicalSessionId,
   activeConvId,
   activeConvMessages,
@@ -855,7 +855,7 @@ export function useChatMessageActions({
   composerSelections,
   composerDrafts,
   activeChatQuote,
-  desktopBridgeState,
+  desktopCollaborationState,
   desktopChatState,
   canonicalSessionState,
   hasAnyDesktopAuth,
@@ -863,7 +863,7 @@ export function useChatMessageActions({
   handleLocalSlashCommand,
   isNativeShell,
   queuedDesktopMessagesBySession,
-  pendingBridgeCancelRequestedRef,
+  pendingCollaborationCancelRequestedRef,
   localChatSendInFlightRef,
   userCancelledTurnIdsRef,
   refreshDesktopChat,
@@ -871,15 +871,15 @@ export function useChatMessageActions({
   setCanonicalSessionState,
   setChatComposerAttachments,
   setComposerDrafts,
-  setCloudBridgeState,
-  sendCloudBridgeMessage,
+  setCloudCollaborationState,
+  sendCloudCollaborationMessage,
   sendCloudGroupControl,
   setDesktopChatError,
   setDesktopChatState,
   setDesktopLiveTurnsBySession,
   setIsDesktopChatSending,
   setOpenComposerSelector,
-  setPendingBridgeOutreach,
+  setPendingCollaborationOutreach,
   setPendingUserChatMessage,
   setQueuedDesktopMessagesBySession,
   shouldAutoFollowChatRef,
@@ -1013,7 +1013,7 @@ export function useChatMessageActions({
   }, [dequeueLocalQueuedMessage, sendQueuedLocalMessage]);
 
   useEffect(() => {
-    if (!isNativeShell || activeConversationIsBridge || activeConvId.startsWith('bridge:') || isLocalDraftChatConversationId(activeConvId)) return;
+    if (!isNativeShell || activeConversationUsesCollaboration || activeConvId.startsWith('bridge:') || isLocalDraftChatConversationId(activeConvId)) return;
     if ((queuedDesktopMessagesBySession[activeConvId] ?? []).length === 0) return;
     const delayReason = localChatSendDelayReason({
       inFlight: localChatSendInFlightRef.current,
@@ -1022,7 +1022,7 @@ export function useChatMessageActions({
     });
     if (delayReason) return;
     flushQueuedDesktopMessagesForSessionRef.current(activeConvId);
-  }, [activeConvId, activeConversationIsBridge, desktopLiveTurn, isNativeShell, localChatSendInFlightRef, queuedDesktopMessagesBySession]);
+  }, [activeConvId, activeConversationUsesCollaboration, desktopLiveTurn, isNativeShell, localChatSendInFlightRef, queuedDesktopMessagesBySession]);
 
   const sendLocalAgentChatMessage = useCallback(async ({
     targetConversationId,
@@ -1187,13 +1187,13 @@ export function useChatMessageActions({
       directness: targetConversation.directness,
       canonicalParticipants: targetConversation.canonicalParticipants,
     };
-    const localBridgeNodeIds = new Set(
-      (desktopBridgeState?.hosts ?? [])
+    const localCollaborationNodeIds = new Set(
+      (desktopCollaborationState?.hosts ?? [])
         .map((host) => host.nodeId?.trim())
         .filter((value): value is string => Boolean(value)),
     );
-    const groupTargets = isBridgeGroupSession(targetGroupScope)
-      ? bridgeGroupSessionSendTargets(targetConversation, targetConversation.bridgeTarget, localBridgeNodeIds)
+    const groupTargets = isCollaborationGroupSession(targetGroupScope)
+      ? collaborationGroupSessionSendTargets(targetConversation, targetConversation.collaborationTarget, localCollaborationNodeIds)
       : [];
     const cloudGroupTargetIds = cloudGroupTargetAccountIds(groupTargets);
     if (cloudGroupTargetIds.length > 0) {
@@ -1202,13 +1202,13 @@ export function useChatMessageActions({
         return;
       }
       const canonicalSessionId = targetConversation.canonicalSessionId ?? targetConversation.id;
-      const activeBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
-        ?? desktopBridgeState?.hosts[0]
+      const activeCollaborationHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
+        ?? desktopCollaborationState?.hosts[0]
         ?? null;
-      const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
-        || activeBridgeHost?.displayName?.trim()
+      const selfPublicCollaborationName = activeCollaborationHost?.ownerName?.trim()
+        || activeCollaborationHost?.displayName?.trim()
         || null;
-      const activeGroupSessionSpaceId = bridgeGroupSessionSpaceId(targetGroupScope);
+      const activeGroupSessionSpaceId = collaborationGroupSessionSpaceId(targetGroupScope);
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         canonicalSessionId,
         canonicalHumanIdentityId,
@@ -1237,7 +1237,7 @@ export function useChatMessageActions({
           groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId: canonicalSessionId, activeGroupSessionSpaceId }),
           groupSpaceId: activeGroupSessionSpaceId,
           groupTitle: null,
-          bridgeParticipants: bridgeGroupSessionParticipants(targetConversation, { selfPublicName: selfPublicBridgeName }),
+          collaborationParticipants: collaborationGroupSessionParticipants(targetConversation, { selfPublicName: selfPublicCollaborationName }),
           message: {
             id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
             senderAccountId: '',
@@ -1247,7 +1247,7 @@ export function useChatMessageActions({
           attachments: chatComposerAttachments,
         });
       } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group message');
+        const failureDetail = collaborationSendFailureDetail(error, 'Unable to send group message');
         setDesktopChatError(failureDetail);
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
           current,
@@ -1266,8 +1266,8 @@ export function useChatMessageActions({
       return;
     }
 
-    if (isCloudBridgeConversationId(targetConversation.id)) {
-      if (!sendCloudBridgeMessage || !setCloudBridgeState) {
+    if (isCloudCollaborationConversationId(targetConversation.id)) {
+      if (!sendCloudCollaborationMessage || !setCloudCollaborationState) {
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
@@ -1275,7 +1275,7 @@ export function useChatMessageActions({
       try {
         shouldAutoFollowChatRef.current = true;
         setDesktopChatError(null);
-        setCloudBridgeState((current) => appendOptimisticBridgeMessage(
+        setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(
           current,
           targetConversation.id,
           text,
@@ -1286,16 +1286,16 @@ export function useChatMessageActions({
         ));
         clearTargetDraft();
         setChatComposerAttachments([]);
-        await sendCloudBridgeMessage(
+        await sendCloudCollaborationMessage(
           targetConversation.id,
           text,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
         );
-        setCloudBridgeState(null);
+        setCloudCollaborationState(null);
       } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
-        setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
+        const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
+        setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
         setDesktopChatError(failureDetail);
       }
       return;
@@ -1333,16 +1333,16 @@ export function useChatMessageActions({
     canonicalHumanIdentityId,
     chatComposerAttachments,
     chatConversations,
-    desktopBridgeState,
+    desktopCollaborationState,
     isNativeShell,
     localChatSendInFlightRef,
     queueLocalDraftForSession,
-    sendCloudBridgeMessage,
+    sendCloudCollaborationMessage,
     sendCloudGroupControl,
     sendLocalAgentChatMessage,
     setCanonicalSessionState,
     setChatComposerAttachments,
-    setCloudBridgeState,
+    setCloudCollaborationState,
     setComposerDrafts,
     setDesktopChatError,
     setDesktopChatState,
@@ -1370,9 +1370,9 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && (retryAttachments ?? chatComposerAttachments).length === 0) return;
 
-    const mentionedTarget = await resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh(
+    const mentionedTarget = await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
       text,
-      desktopBridgeState,
+      desktopCollaborationState,
       activeConvMentionScope,
       sharedCloudAgents,
       resolveSharedCloudAgentsForMention,
@@ -1387,35 +1387,35 @@ export function useChatMessageActions({
       directness: activeConvMentionScope?.directness,
       canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
     };
-    const localBridgeNodeIds = new Set(
-      (desktopBridgeState?.hosts ?? [])
+    const localCollaborationNodeIds = new Set(
+      (desktopCollaborationState?.hosts ?? [])
         .map((host) => host.nodeId?.trim())
         .filter((value): value is string => Boolean(value)),
     );
-    const activeGroupSessionIsGroup = isBridgeGroupSession(activeGroupSessionScope);
-    const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopBridgeState);
-    const activeConversationUsesBridgeRouting = shouldUseBridgeConversationRouting({
-      activeConversationIsBridge,
-      activeConvBridgeTarget,
+    const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
+    const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
+    const activeConversationUsesCollaborationRouting = shouldUseCollaborationConversationRouting({
+      activeConversationUsesCollaboration,
+      activeConvCollaborationTarget,
       activeGroupSessionScope,
-      selfBridgeNodeIds: localBridgeNodeIds,
+      selfCollaborationNodeIds: localCollaborationNodeIds,
     });
-    const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? bridgeGroupSessionSpaceId(activeGroupSessionScope) : null;
-    const activeBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
-      ?? desktopBridgeState?.hosts[0]
+    const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? collaborationGroupSessionSpaceId(activeGroupSessionScope) : null;
+    const activeCollaborationHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
+      ?? desktopCollaborationState?.hosts[0]
       ?? null;
-    const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
-      || activeBridgeHost?.displayName?.trim()
+    const selfPublicCollaborationName = activeCollaborationHost?.ownerName?.trim()
+      || activeCollaborationHost?.displayName?.trim()
       || null;
-    const bridgePromptInitiatorIdentity = initiatorIdentityForBridgeHost(
-      activeBridgeHost,
+    const collaborationPromptInitiatorIdentity = initiatorIdentityForCollaborationHost(
+      activeCollaborationHost,
       canonicalHumanIdentityId,
     );
     const activeGroupSessionParticipants = activeGroupSessionIsGroup
-      ? bridgeGroupSessionParticipants(activeGroupSessionScope, { selfPublicName: selfPublicBridgeName })
+      ? collaborationGroupSessionParticipants(activeGroupSessionScope, { selfPublicName: selfPublicCollaborationName })
       : [];
     const allGroupSendTargets = activeGroupSessionIsGroup
-      ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
+      ? collaborationGroupSessionSendTargets(activeGroupSessionScope, activeConvCollaborationTarget, localCollaborationNodeIds)
       : [];
     const cloudGroupTargetIds = cloudGroupTargetAccountIds(allGroupSendTargets);
     const directCloudSharedAgentTargetIds = !activeGroupSessionIsGroup && mentionedCloudSharedAgentOwnerAccountId
@@ -1424,7 +1424,7 @@ export function useChatMessageActions({
     const cloudAgentMentionTargetIds = activeGroupSessionIsGroup ? cloudGroupTargetIds : directCloudSharedAgentTargetIds;
     const cloudAgentMentionParticipants = activeGroupSessionIsGroup
       ? activeGroupSessionParticipants
-      : bridgeDirectSessionParticipants(activeGroupSessionScope, activeBridgeHost, activeConvBridgeTarget, { selfPublicName: selfPublicBridgeName });
+      : collaborationDirectSessionParticipants(activeGroupSessionScope, activeCollaborationHost, activeConvCollaborationTarget, { selfPublicName: selfPublicCollaborationName });
     const cloudAgentMentionSessionId = activeGroupSessionIsGroup
       ? cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId })
       : (activeConvCanonicalSessionId ?? activeConvId);
@@ -1437,7 +1437,7 @@ export function useChatMessageActions({
       }
 
       if (
-        activeConversationUsesBridgeRouting
+        activeConversationUsesCollaborationRouting
         && activeGroupSessionIsGroup
         && activeConvCanonicalSessionId
         && cloudGroupTargetIds.length > 0
@@ -1468,7 +1468,7 @@ export function useChatMessageActions({
             groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
             groupSpaceId: activeGroupSessionSpaceId,
             groupTitle: null,
-            bridgeParticipants: activeGroupSessionParticipants,
+            collaborationParticipants: activeGroupSessionParticipants,
             message: {
               id: retryMessageId,
               senderAccountId: '',
@@ -1480,7 +1480,7 @@ export function useChatMessageActions({
             retryFailed: true,
           });
         } catch (error) {
-          const failureDetail = bridgeSendFailureDetail(error, 'Unable to retry group message');
+          const failureDetail = collaborationSendFailureDetail(error, 'Unable to retry group message');
           setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
             current,
             activeConvCanonicalSessionId,
@@ -1504,30 +1504,30 @@ export function useChatMessageActions({
       }
 
       if (
-        activeConversationUsesBridgeRouting
-        && isCloudBridgeConversationId(activeConvId)
-        && sendCloudBridgeMessage
-        && setCloudBridgeState
+        activeConversationUsesCollaborationRouting
+        && isCloudCollaborationConversationId(activeConvId)
+        && sendCloudCollaborationMessage
+        && setCloudCollaborationState
       ) {
         try {
           shouldAutoFollowChatRef.current = true;
           setIsDesktopChatSending(true);
           setDesktopChatError(null);
-          setCloudBridgeState((current) => markOptimisticBridgeMessageSending(
+          setCloudCollaborationState((current) => markOptimisticCollaborationMessageSending(
             current,
             activeConvId,
             retryMessageId,
           ));
-          await sendCloudBridgeMessage(
+          await sendCloudCollaborationMessage(
             activeConvId,
             text,
             retryAttachments,
             { clientMessageId: retryMessageId },
           );
-          setCloudBridgeState(null);
+          setCloudCollaborationState(null);
         } catch (error) {
-          const failureDetail = bridgeSendFailureDetail(error, 'Unable to retry message');
-          setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(
+          const failureDetail = collaborationSendFailureDetail(error, 'Unable to retry message');
+          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(
             current,
             activeConvId,
             retryMessageId,
@@ -1544,7 +1544,7 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesBridgeRouting, activeConvId, desktopLiveTurn })) {
+    if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesCollaborationRouting, activeConvId, desktopLiveTurn })) {
       const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
       if (chatComposerAttachments.length === 0 && isSharedLocalSlashCommand(leadingCommand)) {
         setDesktopChatError('Commands are unavailable while this session is running. Your draft is preserved.');
@@ -1554,11 +1554,11 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({
+    if (activeConversationUsesCollaborationRouting && shouldRouteMentionThroughCloudGroup({
       mentionedHostId: mentionedTarget?.host.id,
       activeGroupSessionIsGroup,
       mentionsLocalAgent: localAgentMentioned,
-      mentionsBridgeAgent: mentionedTarget?.targetKind === 'bridge-agent',
+      mentionsCollaborationAgent: mentionedTarget?.targetKind === 'agent',
       hasCloudGroupRecipients: cloudAgentMentionTargetIds.length > 0,
     })) {
       if (!activeConvCanonicalSessionId) {
@@ -1582,7 +1582,7 @@ export function useChatMessageActions({
         sentAt,
         'cloud-group-ui',
         'sending',
-        mentionForBridgeTarget(mentionedTarget),
+        mentionForCollaborationTarget(mentionedTarget),
         activeChatQuote,
       );
       if (preparedCanonicalMessage) {
@@ -1606,7 +1606,7 @@ export function useChatMessageActions({
           groupId: cloudAgentMentionSessionId,
           groupSpaceId: activeGroupSessionSpaceId,
           groupTitle: null,
-          bridgeParticipants: cloudAgentMentionParticipants,
+          collaborationParticipants: cloudAgentMentionParticipants,
           message: {
             id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
             senderAccountId: '',
@@ -1621,7 +1621,7 @@ export function useChatMessageActions({
           attachments: chatComposerAttachments,
         });
       } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group mention');
+        const failureDetail = collaborationSendFailureDetail(error, 'Unable to send group mention');
         setDesktopChatError(failureDetail);
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
           current,
@@ -1642,7 +1642,7 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeConversationUsesBridgeRouting && activeGroupSessionIsGroup && cloudGroupTargetIds.length > 0) {
+    if (activeConversationUsesCollaborationRouting && activeGroupSessionIsGroup && cloudGroupTargetIds.length > 0) {
       if (!activeConvCanonicalSessionId) {
         setDesktopChatError('Unable to open group chat.');
         return;
@@ -1684,7 +1684,7 @@ export function useChatMessageActions({
           groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
           groupSpaceId: activeGroupSessionSpaceId,
           groupTitle: null,
-          bridgeParticipants: activeGroupSessionParticipants,
+          collaborationParticipants: activeGroupSessionParticipants,
           message: {
             id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
             senderAccountId: '',
@@ -1695,7 +1695,7 @@ export function useChatMessageActions({
           attachments: chatComposerAttachments,
         });
       } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group message');
+        const failureDetail = collaborationSendFailureDetail(error, 'Unable to send group message');
         setDesktopChatError(failureDetail);
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
           current,
@@ -1716,14 +1716,14 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId)) {
-      if (!sendCloudBridgeMessage || !setCloudBridgeState) {
+    if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeConvId)) {
+      if (!sendCloudCollaborationMessage || !setCloudCollaborationState) {
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = `cloud-pending-${Date.now()}`;
-      const appendedOptimisticBridgeMessage = shouldAppendOptimisticBridgeMessage(activeConvId);
+      const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeConvId);
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -1731,8 +1731,8 @@ export function useChatMessageActions({
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        if (appendedOptimisticBridgeMessage) {
-          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
+        if (appendedOptimisticCollaborationMessage) {
+          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
         }
         const directHostedAgentTarget = targetCloudAgentId ? {
           targetCloudAgentId,
@@ -1750,19 +1750,19 @@ export function useChatMessageActions({
               ...(directHostedAgentTarget ?? {}),
             })
           : text;
-        await sendCloudBridgeMessage(
+        await sendCloudCollaborationMessage(
           activeConvId,
           cloudBody,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
         );
-        if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
-          setCloudBridgeState(null);
+        if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeConvId)) {
+          setCloudCollaborationState(null);
         }
       } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
-        if (appendedOptimisticBridgeMessage) {
-          setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
+        const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
+        if (appendedOptimisticCollaborationMessage) {
+          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
         }
         setDesktopChatError(failureDetail);
       } finally {
@@ -1771,12 +1771,12 @@ export function useChatMessageActions({
       return;
     }
 
-    if (mentionedTarget && activeConversationUsesBridgeRouting) {
+    if (mentionedTarget && activeConversationUsesCollaborationRouting) {
       setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
     }
 
-    if (activeConversationUsesBridgeRouting && !localAgentMentioned) {
+    if (activeConversationUsesCollaborationRouting && !localAgentMentioned) {
       setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
     }
@@ -1817,7 +1817,7 @@ export function useChatMessageActions({
     const noProviderShortcutSessionId = activeConvCanonicalSessionId?.trim()
       || (isTransientDraftConversation ? generatedSelfAgentSessionId() : null);
     if (noProviderShortcutSessionId && shouldUseNoProviderSelfAgentShortcut({
-      activeConversationUsesBridgeRouting,
+      activeConversationUsesCollaborationRouting,
       activeConvCanonicalSessionId: activeConvCanonicalSessionId?.trim() || null,
       canonicalSessionState,
       hasAnyDesktopAuth,
@@ -1930,7 +1930,7 @@ export function useChatMessageActions({
     let materializedState: DesktopChatState | null = null;
     const ensureLocalSessionId = async () => {
       if (targetSessionId) {
-        if (!activeConvBridgeTarget && desktopChatState?.activeSessionId !== targetSessionId) {
+        if (!activeConvCollaborationTarget && desktopChatState?.activeSessionId !== targetSessionId) {
           await refreshDesktopChat(targetSessionId);
         }
         return targetSessionId;
@@ -1976,7 +1976,7 @@ export function useChatMessageActions({
         activeChatQuote,
       );
       const noProviderLocalShortcut = shouldUseNoProviderSelfAgentShortcut({
-        activeConversationUsesBridgeRouting,
+        activeConversationUsesCollaborationRouting,
         activeConvCanonicalSessionId,
         canonicalSessionState,
         hasAnyDesktopAuth,
@@ -2090,8 +2090,8 @@ export function useChatMessageActions({
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send chat message');
     }
   }, [
-    activeConversationIsBridge,
-    activeConvBridgeTarget,
+    activeConversationUsesCollaboration,
+    activeConvCollaborationTarget,
     activeConvCanonicalSessionId,
     activeConvId,
     activeConvMessages,
@@ -2105,7 +2105,7 @@ export function useChatMessageActions({
     composerDrafts.chat,
     composerSelections.chat.model,
     composerSelections.chat.thinking,
-    desktopBridgeState,
+    desktopCollaborationState,
     desktopChatState,
     canonicalSessionState,
     hasAnyDesktopAuth,
@@ -2119,8 +2119,8 @@ export function useChatMessageActions({
     setCanonicalSessionState,
     setChatComposerAttachments,
     setComposerDrafts,
-    setCloudBridgeState,
-    sendCloudBridgeMessage,
+    setCloudCollaborationState,
+    sendCloudCollaborationMessage,
     sendCloudGroupControl,
     sendTargetedChatMessage,
     setDesktopChatError,

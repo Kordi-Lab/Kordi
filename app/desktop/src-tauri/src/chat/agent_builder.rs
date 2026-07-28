@@ -313,6 +313,7 @@ fn is_safe_relative_path(path: &Path) -> bool {
             .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
 }
 
+#[cfg(test)]
 fn is_canonical_skill_file_path(path: &Path) -> bool {
     let components = path.components().collect::<Vec<_>>();
     if components.len() != 3

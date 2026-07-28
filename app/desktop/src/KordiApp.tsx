@@ -6,7 +6,7 @@ import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
-import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/edition';
+import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
 import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
@@ -139,7 +139,7 @@ export function KordiAppRoot({
 }
 
 // Hosts whatever gate-time screen is showing (login form or restoring-session
-// splash) inside the same `bridge-app` root the main shell uses, so the
+// splash) inside the same `kordi-app` root the main shell uses, so the
 // theme-tokens.css palette resolves. The wrapping hook installs the system
 // theme class on <body> until the shell takes over.
 function CloudGateShell({ children }: { children: React.ReactNode }) {
@@ -162,7 +162,7 @@ function CloudGateShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className={`bridge-app app-cloud-login-shell theme-${theme}`}
+      className={`kordi-app app-cloud-login-shell theme-${theme}`}
       onMouseDownCapture={handleGateWindowDragMouseDown}
     >
       {children}
@@ -236,7 +236,7 @@ function KordiAppShell({ cloudSession }: { cloudSession?: UseCloudSessionResult 
   const { cloudInitialSync } = appShellFrameProps;
   if (cloudInitialSync.status !== 'ready') {
     return (
-      <div className={`bridge-app ${appShellFrameProps.rootThemeClass}`}>
+      <div className={`kordi-app ${appShellFrameProps.rootThemeClass}`}>
         <CloudStartingScreen
           status={cloudInitialSync.status === 'error' ? 'error' : 'syncing'}
           onRetry={cloudInitialSync.onRetry}

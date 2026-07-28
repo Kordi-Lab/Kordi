@@ -116,7 +116,10 @@ fn is_false(value: &bool) -> bool {
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
 const CLOUD_AGENT_CONTEXT_CUSTOM_TYPE: &str = "cloud_agent_context_message";
-const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
+const DESKTOP_SESSION_CONTEXT_START: &str = "\n\n<desktop_session_context>";
+const DESKTOP_SESSION_CONTEXT_END: &str = "</desktop_session_context>";
+const LEGACY_DESKTOP_BRIDGE_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
+const LEGACY_DESKTOP_BRIDGE_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 
 fn visible_task_record_status_for_store(status: &str) -> String {
     match status.trim().to_ascii_lowercase().as_str() {
@@ -125,7 +128,6 @@ fn visible_task_record_status_for_store(status: &str) -> String {
         _ => "open".to_string(),
     }
 }
-const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatAttachment {
@@ -830,8 +832,8 @@ impl DesktopRuntimeSession {
         Ok(count)
     }
 
-    pub fn set_bridge_outreach_prompt_context(&mut self, context: Option<String>) {
-        let base_prompt = strip_bridge_outreach_prompt_context(&self.setup.system_prompt);
+    pub fn set_session_prompt_context(&mut self, context: Option<String>) {
+        let base_prompt = strip_session_prompt_context(&self.setup.system_prompt);
         let Some(context) = context
             .as_deref()
             .map(str::trim)
@@ -841,7 +843,7 @@ impl DesktopRuntimeSession {
             return;
         };
         self.setup.system_prompt = format!(
-            "{base_prompt}{DESKTOP_BRIDGE_OUTREACH_CONTEXT_START}\n{context}\n{DESKTOP_BRIDGE_OUTREACH_CONTEXT_END}"
+            "{base_prompt}{DESKTOP_SESSION_CONTEXT_START}\n{context}\n{DESKTOP_SESSION_CONTEXT_END}"
         );
     }
 
@@ -1082,17 +1084,30 @@ fn apply_runtime_profile(setup: &mut SessionRuntimeSetup, profile: &DesktopRunti
     }
 }
 
-fn strip_bridge_outreach_prompt_context(prompt: &str) -> String {
-    let Some(start) = prompt.find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_START) else {
+fn strip_tagged_prompt_context(prompt: &str, start_tag: &str, end_tag: &str) -> String {
+    let Some(start) = prompt.find(start_tag) else {
         return prompt.to_string();
     };
-    let Some(end_relative) = prompt[start..].find(DESKTOP_BRIDGE_OUTREACH_CONTEXT_END) else {
+    let Some(end_relative) = prompt[start..].find(end_tag) else {
         return prompt.to_string();
     };
-    let end = start + end_relative + DESKTOP_BRIDGE_OUTREACH_CONTEXT_END.len();
+    let end = start + end_relative + end_tag.len();
     format!("{}{}", &prompt[..start], &prompt[end..])
         .trim_end()
         .to_string()
+}
+
+fn strip_session_prompt_context(prompt: &str) -> String {
+    let without_current = strip_tagged_prompt_context(
+        prompt,
+        DESKTOP_SESSION_CONTEXT_START,
+        DESKTOP_SESSION_CONTEXT_END,
+    );
+    strip_tagged_prompt_context(
+        &without_current,
+        LEGACY_DESKTOP_BRIDGE_CONTEXT_START,
+        LEGACY_DESKTOP_BRIDGE_CONTEXT_END,
+    )
 }
 
 pub fn session_exists(session_id: &str) -> Result<bool> {

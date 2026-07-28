@@ -2,14 +2,14 @@ import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 import type { CloudAgentDefinition } from './cloudAgents';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
-import { cloudPeerAccountIdFromConversationId } from './cloudBridgeState';
+import { cloudPeerAccountIdFromConversationId } from './cloudCollaborationState';
 
 function cleanText(value?: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
-function canonicalBridgeConversationId(sessionId: string): string | null {
+function legacyCanonicalCollaborationConversationId(sessionId: string): string | null {
   const prefix = 'session:bridge:';
   if (!sessionId.startsWith(prefix)) return null;
   const value = sessionId.slice(prefix.length);
@@ -30,8 +30,8 @@ export function cloudAgentRuntimeSessionId(accountId?: string | null, cloudSessi
 
   if (rawSessionKey.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)) return rawSessionKey;
 
-  const bridgeConversationId = canonicalBridgeConversationId(rawSessionKey) ?? rawSessionKey;
-  const peerAccountId = cloudPeerAccountIdFromConversationId(bridgeConversationId)
+  const collaborationConversationId = legacyCanonicalCollaborationConversationId(rawSessionKey) ?? rawSessionKey;
+  const peerAccountId = cloudPeerAccountIdFromConversationId(collaborationConversationId)
     ?? canonicalCloudDirectPeerAccountId(rawSessionKey);
   const runtimeTargetId = cleanText(peerAccountId) ?? rawSessionKey;
   return `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${localAccountId}:${runtimeTargetId}`;

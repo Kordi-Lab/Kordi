@@ -768,11 +768,11 @@
   transform: translateY(0.5px);
 }
 
-.bridge-app.theme-light .app-message-reply-line-icon {
+.kordi-app.theme-light .app-message-reply-line-icon {
   color: rgb(37 99 235);
 }
 
-.bridge-app.theme-dark .app-message-reply-line-icon {
+.kordi-app.theme-dark .app-message-reply-line-icon {
   color: rgb(147 197 253);
 }
 
@@ -782,11 +782,11 @@
   letter-spacing: 0.01em;
 }
 
-.bridge-app.theme-light .app-message-reply-count {
+.kordi-app.theme-light .app-message-reply-count {
   color: rgb(37 99 235);
 }
 
-.bridge-app.theme-dark .app-message-reply-count {
+.kordi-app.theme-dark .app-message-reply-count {
   color: rgb(147 197 253);
 }
 
@@ -814,7 +814,7 @@
   --app-source-message-quote-fade-bg: var(--app-chat-bubble-user-bg);
 }
 
-.bridge-app.theme-light .app-chat-bubble-user .app-source-message-quote {
+.kordi-app.theme-light .app-chat-bubble-user .app-source-message-quote {
   --app-source-message-quote-foreground: rgb(31 49 69);
   --app-source-message-quote-muted: rgba(31, 49, 69, 0.62);
   --app-source-message-quote-accent: rgb(59 99 148);

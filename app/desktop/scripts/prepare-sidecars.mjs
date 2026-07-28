@@ -97,22 +97,12 @@ const kordiRuntimeManifestPath =
   workspaceConfig.kordiRuntimeManifestPath
   ?? workspaceConfig.bbAgentManifestPath
   ?? 'crates/cli/Cargo.toml';
-const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
-const bridgesManifestPath =
-  workspaceConfig.bridgesManifestPath ?? 'cli/Cargo.toml';
 
 console.log('[kordi] Building Kordi runtime sidecar...');
 run(
   'cargo',
   ['build', '--release', '--manifest-path', kordiRuntimeManifestPath],
   kordiRuntimeRepo
-);
-
-console.log('[kordi] Building Bridges sidecar...');
-run(
-  'cargo',
-  ['build', '--release', '--manifest-path', bridgesManifestPath],
-  bridgesRepo
 );
 
 copyBinary(
@@ -124,10 +114,4 @@ copyBinary(
   `kordi-${targetTriple}`
 );
 
-copyBinary(
-  'Bridges',
-  resolveBuiltBinary(bridgesRepo, workspaceConfig.bridgesBinary),
-  `bridges-${targetTriple}`
-);
-
-console.log('[kordi] Sidecars are ready for Tauri.');
+console.log('[kordi] Runtime sidecar is ready for Tauri.');

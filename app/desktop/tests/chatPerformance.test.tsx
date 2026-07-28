@@ -43,7 +43,7 @@ test('performance spans expose only fixed numeric counts and payload bytes', () 
     finishChatPerformanceSpan(span, () => ({
       messageCount: 20_000,
       rowCount: 1_000,
-      payloadBytes: chatPerformancePayloadBytes('你好'),
+      payloadBytes: chatPerformancePayloadBytes('\u4F60\u597D'),
       accountId: 'acct_secret',
     } as never));
   } finally {

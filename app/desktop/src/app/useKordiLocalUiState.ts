@@ -40,7 +40,7 @@ export function useKordiLocalUiState() {
     [projects[0]?.id ?? '']: true,
   });
 
-  const [activeSettingsSectionId, setActiveSettingsSectionId] = useState<(typeof settingsSections)[number]['id']>('general');
+  const [activeSettingsSectionId, setActiveSettingsSectionId] = useState<(typeof settingsSections)[number]['id']>('auth');
   const [activeSourcePreview, setActiveSourcePreview] = useState<EditFilePreview | null>(null);
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => readStoredThemeMode());

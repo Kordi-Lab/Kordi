@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, LoaderCircle, Plus, Search, Trash2, UserPlus
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { ContactRequestRow, ContactRow } from './components';
 import { IdentityAvatar } from './components/IdentityAvatar';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
@@ -52,7 +53,7 @@ export function contactDetailBodyText(contact: Contact): string {
   const visibleIdentifiers = new Set([
     normalizedContactText(contact.name),
     normalizedContactText(contact.subtitle),
-    normalizedContactText(contact.bridgePeerNodeId),
+    normalizedContactText(contact.sourceParticipantId),
   ].filter(Boolean));
   return visibleIdentifiers.has(normalizedContactText(detail)) ? '' : detail;
 }
@@ -151,9 +152,9 @@ export function ContactsPage({
   };
 
   const addableContactButtonLabel = (contact: Contact) => {
-    const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
-    const status = contact.bridgeContactStatus?.trim().toLowerCase() ?? '';
-    const direction = contact.bridgeContactRequestDirection?.trim().toLowerCase() ?? '';
+    const nodeId = contact.sourceParticipantId?.trim() ?? '';
+    const status = contact.contactStatus?.trim().toLowerCase() ?? '';
+    const direction = contact.contactRequestDirection?.trim().toLowerCase() ?? '';
     if (requestingContactNodeId === nodeId) return 'Sending…';
     if (requestedContactNodeIds.includes(nodeId)) return 'Requested';
     if (status === 'pending' && direction === 'outgoing') return 'Pending';
@@ -162,9 +163,9 @@ export function ContactsPage({
   };
 
   const addableContactButtonDisabled = (contact: Contact) => {
-    const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
-    const status = contact.bridgeContactStatus?.trim().toLowerCase() ?? '';
-    const direction = contact.bridgeContactRequestDirection?.trim().toLowerCase() ?? '';
+    const nodeId = contact.sourceParticipantId?.trim() ?? '';
+    const status = contact.contactStatus?.trim().toLowerCase() ?? '';
+    const direction = contact.contactRequestDirection?.trim().toLowerCase() ?? '';
     return !onAddContactByNodeId
       || !nodeId
       || addContactState === 'saving'
@@ -208,9 +209,9 @@ export function ContactsPage({
 
   const canRemoveActiveContact = Boolean(
     onRemoveContact
-      && activeContact.bridgeHostId
-      && activeContact.bridgePeerNodeId
-      && !activeContact.id.startsWith('bridge-self:')
+      && activeContact.sourceHostId
+      && activeContact.sourceParticipantId
+      && !isCollaborationSelfContactId(activeContact.id)
       && activeContact.classType !== 'my-agents',
   );
 
@@ -529,7 +530,7 @@ export function ContactsPage({
                     <div className="mb-4 flex items-center gap-3">
                       <IdentityAvatar
                         kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
-                        seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
+                        seed={activeContact.avatarSeed ?? activeContact.sourceParticipantId ?? activeContact.id}
                         name={activeContact.name}
                         imageUrl={activeContact.profileImageUrl}
                         presenceStatus={activeContactPresenceStatus}
@@ -544,7 +545,7 @@ export function ContactsPage({
                     </div>
                     {activeContactDetailBody ? <div className="app-transient-muted mb-5 text-sm">{activeContactDetailBody}</div> : null}
                     <div className="grid gap-1">
-                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
+                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.sourceHostId || !activeContact.sourceParticipantId}>
                         Message
                       </Button>
                       {canRemoveActiveContact ? (

@@ -3,13 +3,13 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
-const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 const cloudGroupOutboxSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupOutbox.ts', import.meta.url), 'utf8');
 
 test('plain cloud group messages send through cloud group transport instead of falling through to unavailable', () => {
   const source = chatMessagesSource();
-  const mentionBranch = source.indexOf('if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({');
-  const unavailableBranch = source.indexOf("if (activeConversationUsesBridgeRouting && !localAgentMentioned)", mentionBranch);
+  const mentionBranch = source.indexOf('if (activeConversationUsesCollaborationRouting && shouldRouteMentionThroughCloudGroup({');
+  const unavailableBranch = source.indexOf("if (activeConversationUsesCollaborationRouting && !localAgentMentioned)", mentionBranch);
   assert.notEqual(mentionBranch, -1, 'expected cloud group mention branch');
   assert.notEqual(unavailableBranch, -1, 'expected unavailable bridge-routing fallback branch');
 
@@ -32,8 +32,8 @@ test('active composer sends prefer Cloud group routing before direct Cloud bridg
   const normalSendStart = bridgeRoutingSection.indexOf('if (activeLocalTurnShouldDelayChatSend({');
   assert.notEqual(normalSendStart, -1, 'expected normal send path after retry handling');
   const normalSendSection = bridgeRoutingSection.slice(normalSendStart);
-  const directCloudBranch = normalSendSection.indexOf('if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId))');
-  const mentionGroupBranch = normalSendSection.indexOf('if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({');
+  const directCloudBranch = normalSendSection.indexOf('if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeConvId))');
+  const mentionGroupBranch = normalSendSection.indexOf('if (activeConversationUsesCollaborationRouting && shouldRouteMentionThroughCloudGroup({');
   const plainGroupSend = normalSendSection.indexOf("kind: 'group-message'", mentionGroupBranch + 1);
 
   assert.notEqual(directCloudBranch, -1, 'expected direct Cloud bridge branch');

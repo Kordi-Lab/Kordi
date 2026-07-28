@@ -2,20 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, LoaderCircle, MessageCircle, UserPlus, X } from 'lucide-react';
 
-import { isApprovedBridgeContact } from '@/features/chat/chatCreateFlows';
+import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Contact, ConversationParticipant } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
 function memberStableId(member: ConversationParticipant) {
   return member.humanId?.trim()
-    || member.bridgeNodeId?.trim()
+    || member.sourceIdentityId?.trim()
     || member.id.trim();
 }
 
 function contactStableId(contact: Contact) {
-  return contact.bridgeHumanId?.trim()
-    || contact.bridgePeerNodeId?.trim()
+  return contact.sourceHumanId?.trim()
+    || contact.sourceParticipantId?.trim()
     || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '')
     || contact.id.trim();
 }
@@ -25,24 +25,24 @@ export function contactForGroupMember(contacts: Contact[], member: ConversationP
     member.id,
     memberStableId(member),
     member.humanId?.trim(),
-    member.bridgeNodeId?.trim(),
+    member.sourceIdentityId?.trim(),
     member.id.startsWith('human:') ? member.id.slice('human:'.length).trim() : '',
   ].filter(Boolean));
   return contacts.find((contact) => [
     contact.id,
     contactStableId(contact),
-    contact.bridgePeerNodeId?.trim(),
-    contact.bridgeHumanId?.trim(),
+    contact.sourceParticipantId?.trim(),
+    contact.sourceHumanId?.trim(),
     contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '',
   ].some((identityId) => Boolean(identityId && memberIds.has(identityId)))) ?? null;
 }
 
 export function groupMemberAccountId(member: ConversationParticipant, contact: Contact | null) {
   const candidates = [
-    contact?.bridgePeerNodeId,
-    contact?.bridgeHumanId,
+    contact?.sourceParticipantId,
+    contact?.sourceHumanId,
     member.humanId,
-    member.bridgeNodeId,
+    member.sourceIdentityId,
     member.id.startsWith('human:') ? member.id.slice('human:'.length) : '',
   ];
   return candidates.map((value) => value?.trim() ?? '').find((value) => value.startsWith('acct_')) ?? '';
@@ -60,8 +60,8 @@ function readableContactDetail(contact: Contact | null, accountId: string) {
   const opaqueValues = [
     accountId,
     contact.id,
-    contact.bridgeHumanId,
-    contact.bridgePeerNodeId,
+    contact.sourceHumanId,
+    contact.sourceParticipantId,
   ].map((value) => value?.trim().toLowerCase() ?? '').filter(Boolean);
   return [contact.detail, contact.subtitle]
     .map((value) => value?.trim() ?? '')
@@ -102,8 +102,8 @@ export function MemberContactProfileContent({
     [contacts, participant],
   );
   const accountId = groupMemberAccountId(participant, contact);
-  const contactStatus = contact?.bridgeContactStatus?.trim().toLowerCase() ?? '';
-  const isExistingContact = Boolean(contact && isApprovedBridgeContact(contact));
+  const contactStatus = contact?.contactStatus?.trim().toLowerCase() ?? '';
+  const isExistingContact = Boolean(contact && isApprovedCollaborationContact(contact));
   const requestPending = contactStatus === 'pending' || requestState === 'sent';
   const canRequestContact = Boolean(onAddContact && accountId && !isSelf && !isExistingContact);
   const resolvedPresence = presenceStatus ?? contact?.presenceStatus ?? participant.presenceStatus ?? 'offline';

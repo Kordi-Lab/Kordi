@@ -25,7 +25,7 @@ import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from '../src/features/cloud/cloudAgentRuntime';
-import { buildCloudBridgeHost, cloudMessageToBridgeMessage } from '../src/features/cloud/cloudBridgeState';
+import { buildCloudCollaborationHost, cloudMessageToCollaborationMessage } from '../src/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 
@@ -103,14 +103,14 @@ test('cloud agent runtime route is reflected on the synthetic local cloud agent 
       thinking: 'high',
     },
   }, runtimeSessionId);
-  const host = buildCloudBridgeHost(account, [], route);
+  const host = buildCloudCollaborationHost(account, [], route);
   const agent = host.agents[0];
 
   assert.equal(agent?.defaultModel, 'anthropic/claude-opus-4-7');
   assert.equal(agent?.defaultAuthProvider, 'anthropic');
   assert.equal(agent?.defaultAuthChoice, 'work');
   assert.equal(agent?.thinking, 'high');
-  assert.equal(buildCloudBridgeHost(account, []).agents[0]?.defaultModel, null);
+  assert.equal(buildCloudCollaborationHost(account, []).agents[0]?.defaultModel, null);
 });
 
 test('group hosted Cloud Agent runtime route prefers the targeted agent definition route', () => {
@@ -252,7 +252,7 @@ test('cloud agent failed response envelope marks bridge replies failed', () => {
     deliveryState: 'failed',
   });
 
-  const mapped = cloudMessageToBridgeMessage(account, {
+  const mapped = cloudMessageToCollaborationMessage(account, {
     messageId: 'msg_response',
     fromAccountId: 'acct_me',
     toAccountId: 'acct_peer',
