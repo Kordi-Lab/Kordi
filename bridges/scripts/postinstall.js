@@ -3,8 +3,9 @@
 import { existsSync, chmodSync, createWriteStream, mkdirSync, readFileSync, unlinkSync, writeFileSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { get as httpsGet } from 'node:https';
+
+import { resolvePlatformBinaryName } from './platform-binary.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,45 +28,11 @@ function getRepositoryUrl() {
 }
 
 /**
- * Detect whether the current Linux system uses musl libc.
- * @returns {boolean}
- */
-function isMusl() {
-  if (process.platform !== 'linux') return false;
-  try {
-    const maps = readFileSync('/proc/self/maps', 'utf8');
-    if (maps.includes('musl')) return true;
-  } catch {
-    // ignore
-  }
-  try {
-    const result = spawnSync('ldd', ['--version'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-    const output = (result.stdout || '') + (result.stderr || '');
-    if (output.toLowerCase().includes('musl')) return true;
-  } catch {
-    // ignore
-  }
-  return false;
-}
-
-/**
  * Map process.platform + process.arch to the binary suffix.
  * @returns {string|null} Binary filename or null if unsupported
  */
 function getBinaryName() {
-  const platform = process.platform;
-  const arch = process.arch;
-  const cliName = getCliName();
-
-  const platformMap = {
-    'darwin-arm64': `${cliName}-darwin-arm64`,
-    'darwin-x64': `${cliName}-darwin-x64`,
-    'linux-x64': isMusl() ? `${cliName}-linux-musl-x64` : `${cliName}-linux-x64`,
-    'linux-arm64': isMusl() ? `${cliName}-linux-musl-arm64` : `${cliName}-linux-arm64`,
-    'win32-x64': `${cliName}-win32-x64.exe`,
-  };
-
-  return platformMap[`${platform}-${arch}`] || null;
+  return resolvePlatformBinaryName({ cliName: getCliName() });
 }
 
 /**
