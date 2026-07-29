@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
 
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
@@ -11,6 +10,7 @@ import {
   scaleMessageCount,
   scaleSessionId,
 } from './fixtures/chatScale';
+import { measureCpuMs } from './helpers/cpuBudget';
 
 test('scale canonical fixture has stable catalog and transcript cardinality', () => {
   const state = buildScaleCanonicalState();
@@ -65,10 +65,10 @@ test('Bridge processing placeholder classification stays linear at 5,000 rows', 
     },
   ).flat();
 
-  const startedAt = performance.now();
-  const view = mapCollaborationConversationToViewModel({ ...conversation, messages }, undefined, 'My Kordi');
-  const elapsedMs = performance.now() - startedAt;
+  const { result: view, cpuMs } = measureCpuMs(
+    () => mapCollaborationConversationToViewModel({ ...conversation, messages }, undefined, 'My Kordi'),
+  );
 
   assert.equal(view.messages.length, messages.length);
-  assert.ok(elapsedMs < 100, `Expected 5,000 Bridge rows below 100ms, received ${elapsedMs.toFixed(1)}ms`);
+  assert.ok(cpuMs < 100, `Expected 5,000 Bridge rows below 100 CPU ms, received ${cpuMs.toFixed(1)}ms`);
 });

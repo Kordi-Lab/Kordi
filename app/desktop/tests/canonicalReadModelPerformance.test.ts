@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
 
 import { buildCanonicalIndexes } from '../src/features/canonical/readModel/indexes';
@@ -9,6 +8,7 @@ import {
   buildScaleCanonicalState,
   scaleSessionId,
 } from './fixtures/chatScale';
+import { measureCpuMs } from './helpers/cpuBudget';
 
 test('canonical index construction stays linear for a 16,000-row transcript', () => {
   const base = buildScaleCanonicalState();
@@ -24,9 +24,7 @@ test('canonical index construction stays linear for a 16,000-row transcript', ()
     messages,
   };
 
-  const startedAt = performance.now();
-  const indexes = buildCanonicalIndexes(state);
-  const elapsedMs = performance.now() - startedAt;
+  const { result: indexes, cpuMs } = measureCpuMs(() => buildCanonicalIndexes(state));
 
   assert.equal(indexes.rawMessageCountBySessionId.get(sessionId), messages.length);
   const expectedLatestReadable = [...messages]
@@ -38,7 +36,7 @@ test('canonical index construction stays linear for a 16,000-row transcript', ()
   ), 0);
   assert.equal(indexes.latestReadableMessageBySessionId.get(sessionId)?.id, expectedLatestReadable?.id);
   assert.equal(indexes.latestActivityMessageBySessionId.get(sessionId)?.createdAtMs, expectedLatestActivityAtMs);
-  assert.ok(elapsedMs < 250, `Expected 16,000 canonical rows below 250ms, received ${elapsedMs.toFixed(1)}ms`);
+  assert.ok(cpuMs < 250, `Expected 16,000 canonical rows below 250 CPU ms, received ${cpuMs.toFixed(1)}ms`);
 });
 
 test('runtime transcript reconciliation stays subquadratic with 12,000 canonical overlays', () => {
@@ -60,14 +58,14 @@ test('runtime transcript reconciliation stays subquadratic with 12,000 canonical
     },
   ]);
 
-  const startedAt = performance.now();
-  const merged = mergeCanonicalHistoryIntoRuntime(canonicalMessages, runtimeMessages);
-  const elapsedMs = performance.now() - startedAt;
+  const { result: merged, cpuMs } = measureCpuMs(
+    () => mergeCanonicalHistoryIntoRuntime(canonicalMessages, runtimeMessages),
+  );
 
   assert.equal(merged.length, 24_000);
   assert.equal(merged[0]?.text, 'canonical-only message 0');
   assert.equal(merged[1]?.text, 'runtime message 0');
   assert.equal(merged.at(-2)?.text, 'canonical-only message 11999');
   assert.equal(merged.at(-1)?.text, 'runtime message 11999');
-  assert.ok(elapsedMs < 250, `Expected 12,000 transcript overlays below 250ms, received ${elapsedMs.toFixed(1)}ms`);
+  assert.ok(cpuMs < 250, `Expected 12,000 transcript overlays below 250 CPU ms, received ${cpuMs.toFixed(1)}ms`);
 });
