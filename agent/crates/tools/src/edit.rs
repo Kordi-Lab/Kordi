@@ -147,7 +147,7 @@ impl Tool for EditTool {
 
         let mut content = old_content.clone();
         let mut applied = 0;
-        planned.sort_by(|left, right| right.start.cmp(&left.start));
+        planned.sort_by_key(|edit| std::cmp::Reverse(edit.start));
         for edit in planned {
             if overlapping_edits.contains(&edit.index) {
                 continue;
