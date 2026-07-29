@@ -55,8 +55,9 @@ pub(crate) use self::identity_context::{
     IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
 };
 use self::identity_helpers::{
-    canonical_avatar_key, canonical_identity_id, default_session_title, stable_session_id,
-    validate_identity_kind, validate_session_kind,
+    canonical_avatar_key, canonical_identity_id, default_session_title,
+    replace_identity_in_json_value, stable_session_id, validate_identity_kind,
+    validate_session_kind,
 };
 pub(crate) use self::identity_helpers::{
     clean_optional, identity_display_name, json_from_db, json_to_db, validate_status,
@@ -1414,34 +1415,6 @@ fn stable_cloud_human_identity_id(account_id: &str) -> Result<String, String> {
         return Err("Cloud account id must start with acct_".to_string());
     }
     Ok(format!("human:{account_id}"))
-}
-
-fn replace_identity_in_json_value(
-    value: &mut Value,
-    old_identity_id: &str,
-    new_identity_id: &str,
-) -> bool {
-    match value {
-        Value::String(current) if current == old_identity_id => {
-            *current = new_identity_id.to_string();
-            true
-        }
-        Value::Array(items) => {
-            let mut changed = false;
-            for item in items {
-                changed |= replace_identity_in_json_value(item, old_identity_id, new_identity_id);
-            }
-            changed
-        }
-        Value::Object(entries) => {
-            let mut changed = false;
-            for entry in entries.values_mut() {
-                changed |= replace_identity_in_json_value(entry, old_identity_id, new_identity_id);
-            }
-            changed
-        }
-        _ => false,
-    }
 }
 
 fn update_json_identity_references(
