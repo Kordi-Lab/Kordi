@@ -34,7 +34,6 @@ perl -0pi -e '
 mv "$AGENT_WORKSPACE" "$ROOT_DIR/agent/Cargo.toml.legacy"
 
 mkdir -p "$ROOT_DIR/shared/rust/protocol/src"
-mkdir -p "$ROOT_DIR/shared/typescript/protocol/src"
 
 cat > "$ROOT_DIR/shared/rust/protocol/Cargo.toml" <<'EOF'
 [package]
@@ -55,22 +54,6 @@ use serde::{Deserialize, Serialize};
 pub struct HealthSnapshot {
     pub status: String,
 }
-EOF
-
-cat > "$ROOT_DIR/shared/typescript/protocol/package.json" <<'EOF'
-{
-  "name": "@kordi/protocol",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "main": "src/index.ts"
-}
-EOF
-
-cat > "$ROOT_DIR/shared/typescript/protocol/src/index.ts" <<'EOF'
-export type HealthSnapshot = {
-  status: string;
-};
 EOF
 
 cat <<EOF

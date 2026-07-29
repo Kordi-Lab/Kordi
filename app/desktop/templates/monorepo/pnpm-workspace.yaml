@@ -2,4 +2,3 @@ packages:
   - app/desktop
   - bridges
   - bridges/registry
-  - shared/typescript/*

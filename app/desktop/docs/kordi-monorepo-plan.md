@@ -50,8 +50,6 @@ kordi/
   shared/
     rust/
       protocol/                # shared Rust types for app-facing contract
-    typescript/
-      protocol/                # shared TS types for desktop UI / registry
 
   docs/
   scripts/
