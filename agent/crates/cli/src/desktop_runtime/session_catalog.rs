@@ -178,9 +178,9 @@ fn first_post_fork_user_title(
         // inherited canonical snapshot into the runtime database. In that
         // case every local entry created at or after the fork shell is a
         // post-fork entry and is eligible to name the child session.
-        fork_created_at_ms.map_or(true, |created_at_ms| {
+        fork_created_at_ms.is_none_or(|created_at_ms| {
             parse_db_timestamp_millis(&entry.timestamp)
-                .map_or(true, |entry_at_ms| entry_at_ms >= created_at_ms)
+                .is_none_or(|entry_at_ms| entry_at_ms >= created_at_ms)
         })
     }) {
         let entry = kordi_session::store::parse_entry(entry_row)?;
@@ -252,15 +252,14 @@ pub(super) fn runtime_cwd_for_session(
         return Ok(fallback_cwd);
     };
 
-    if row.session_scope == "project" {
-        if let Some(project_root) = row
+    if row.session_scope == "project"
+        && let Some(project_root) = row
             .project_root
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-        {
-            return Ok(std::path::PathBuf::from(project_root));
-        }
+    {
+        return Ok(std::path::PathBuf::from(project_root));
     }
 
     let row_cwd = row.cwd.trim();

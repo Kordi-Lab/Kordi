@@ -128,10 +128,9 @@ impl TuiController {
                 if !self.streaming
                     && !self.manual_compaction_in_progress
                     && !self.queued_prompts.is_empty()
+                    && let Err(err) = self.drain_queued_prompts(submission_rx).await
                 {
-                    if let Err(err) = self.drain_queued_prompts(submission_rx).await {
-                        self.report_error("drain queued", &err);
-                    }
+                    self.report_error("drain queued", &err);
                 }
                 Ok(())
             }

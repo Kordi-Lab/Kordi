@@ -315,7 +315,7 @@ fn direct_person_peer_account_id(session_id: &str, owner_account_id: &str) -> Op
         .collect::<Vec<_>>();
     ids.sort_unstable();
     ids.dedup();
-    if ids.len() != 2 || !ids.iter().any(|id| *id == owner_account_id) {
+    if ids.len() != 2 || !ids.contains(&owner_account_id) {
         return None;
     }
     ids.into_iter()

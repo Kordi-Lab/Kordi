@@ -150,31 +150,6 @@ fn redact_url_credentials(value: &str) -> String {
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::redact_url_credentials;
-
-    #[test]
-    fn redacts_credentials_from_logged_urls() {
-        assert_eq!(
-            redact_url_credentials(
-                "redis://default:secret-password@redis.kordi-cloud.svc.cluster.local:6379/0"
-            ),
-            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
-        );
-        assert_eq!(
-            redact_url_credentials(
-                "redis://default:secret/with+reserved=chars@redis.kordi-cloud.svc.cluster.local:6379/0"
-            ),
-            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
-        );
-        assert_eq!(
-            redact_url_credentials("nats://nats.kordi-cloud.svc.cluster.local:4222"),
-            "nats://nats.kordi-cloud.svc.cluster.local:4222"
-        );
-    }
-}
-
 pub async fn run(
     port: u16,
     database_url: &str,
@@ -267,4 +242,29 @@ pub async fn run(
     .await
     .map_err(RunError::Serve)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_url_credentials;
+
+    #[test]
+    fn redacts_credentials_from_logged_urls() {
+        assert_eq!(
+            redact_url_credentials(
+                "redis://default:secret-password@redis.kordi-cloud.svc.cluster.local:6379/0"
+            ),
+            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
+        );
+        assert_eq!(
+            redact_url_credentials(
+                "redis://default:secret/with+reserved=chars@redis.kordi-cloud.svc.cluster.local:6379/0"
+            ),
+            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
+        );
+        assert_eq!(
+            redact_url_credentials("nats://nats.kordi-cloud.svc.cluster.local:4222"),
+            "nats://nats.kordi-cloud.svc.cluster.local:4222"
+        );
+    }
 }

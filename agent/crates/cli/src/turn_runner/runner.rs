@@ -25,7 +25,7 @@ use crate::compaction_exec::execute_session_compaction;
 
 use super::TurnConfig;
 use super::TurnEvent;
-use super::hooks::send_extension_event_safe;
+use super::hooks::{request_mutation_flags, send_extension_event_safe};
 use super::panic::catch_contained_panics;
 use super::persistence::{
     append_assistant_cancelled_message, append_assistant_error_message, append_assistant_message,
@@ -557,8 +557,7 @@ async fn build_request(
         apply_context_hook(config, event_tx, context.messages).await?;
     let provider_messages = messages_to_provider(&messages);
 
-    let mut mutation_flags = RequestMutationFlags::default();
-    mutation_flags.context_rewritten = context_rewritten;
+    let mut mutation_flags = request_mutation_flags(context_rewritten);
 
     let mut tool_defs = config.tool_registry.tool_defs().to_vec();
     if config.tool_ctx.reach_out.is_none() {

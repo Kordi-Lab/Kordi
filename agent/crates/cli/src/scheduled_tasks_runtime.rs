@@ -132,13 +132,12 @@ fn normalize_request_for_cloud_at(
             }
         }
         ScheduleTaskSchedule::Once { at } => {
-            if DateTime::parse_from_rfc3339(at).is_err() && !request_mentions_explicit_utc(&request)
-            {
-                if let Some(utc_at) =
+            if DateTime::parse_from_rfc3339(at).is_err()
+                && !request_mentions_explicit_utc(&request)
+                && let Some(utc_at) =
                     local_once_wall_time_to_utc_rfc3339(at, local_offset_minutes, now_utc)
-                {
-                    request.schedule = ScheduleTaskSchedule::Once { at: utc_at };
-                }
+            {
+                request.schedule = ScheduleTaskSchedule::Once { at: utc_at };
             }
         }
     }

@@ -50,7 +50,7 @@ fn active_oauth_model_ids_for_provider(
     }
 }
 
-#[cfg_attr(not(feature = "desktop-runtime"), allow(dead_code))]
+#[cfg_attr(not(test), allow(dead_code, reason = "used by desktop library target"))]
 pub fn model_id_allowed_for_active_auth(
     settings: &Settings,
     provider: &str,
@@ -58,23 +58,20 @@ pub fn model_id_allowed_for_active_auth(
 ) -> bool {
     let normalized = normalize_provider_for_model_selection(provider);
     match active_oauth_model_ids_for_provider(settings, &normalized) {
-        Some(_) if normalized == "anthropic" => is_safe_anthropic_model_id(model_id),
+        Some(_) if normalized == "anthropic" => {
+            let trimmed = model_id.trim();
+            trimmed
+                .strip_prefix("claude-")
+                .is_some_and(|suffix| !suffix.is_empty())
+                && trimmed
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        }
         Some(ids) => ids
             .iter()
             .any(|allowed| allowed.eq_ignore_ascii_case(model_id.trim())),
         None => true,
     }
-}
-
-fn is_safe_anthropic_model_id(model_id: &str) -> bool {
-    let trimmed = model_id.trim();
-    let Some(suffix) = trimmed.strip_prefix("claude-") else {
-        return false;
-    };
-    !suffix.is_empty()
-        && trimmed
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 pub fn model_candidates_for_provider_auth_mode(

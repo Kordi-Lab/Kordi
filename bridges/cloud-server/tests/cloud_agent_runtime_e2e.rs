@@ -1554,13 +1554,10 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
     assert_eq!(envelope["groupId"], session_id);
     assert_eq!(envelope["message"]["senderAccountId"], owner.account_id);
     assert_eq!(envelope["message"]["senderKind"], "agent");
-    assert_eq!(
-        envelope["message"]["requestId"]
-            .as_str()
-            .unwrap()
-            .starts_with("scheduled_run_"),
-        true
-    );
+    assert!(envelope["message"]["requestId"]
+        .as_str()
+        .unwrap()
+        .starts_with("scheduled_run_"));
     assert_eq!(envelope["message"]["deliveryState"], "complete");
     assert_eq!(
         envelope["message"]["text"],

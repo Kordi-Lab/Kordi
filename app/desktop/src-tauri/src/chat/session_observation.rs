@@ -31,5 +31,5 @@ where
     tokio::task::spawn_blocking(operation)
         .await
         .map_err(|err| KordiError::Tool(format!("session observation task failed: {err}")))?
-        .map_err(|err| KordiError::Tool(err))
+        .map_err(KordiError::Tool)
 }

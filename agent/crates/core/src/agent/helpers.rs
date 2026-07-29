@@ -56,6 +56,34 @@ pub(crate) fn context_with_prompt(
     context
 }
 
+pub(crate) fn default_convert_to_llm() -> ConvertToLlmFn {
+    Arc::new(|messages| {
+        Box::pin(async move {
+            messages
+                .into_iter()
+                .filter(|message| {
+                    matches!(
+                        message.role,
+                        AgentMessageRole::User
+                            | AgentMessageRole::Assistant
+                            | AgentMessageRole::ToolResult
+                    )
+                })
+                .collect()
+        })
+    })
+}
+
+pub(crate) fn default_stream_fn() -> super::callbacks::StreamFn {
+    Arc::new(|_context, _config, _sink, _signal| {
+        Box::pin(async move {
+            anyhow::bail!(
+                "kordi-core requires an explicit runtime stream_fn; the legacy agent_loop surface remains transitional and is not a stable default runtime"
+            )
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::DEFAULT_SYSTEM_PROMPT;
@@ -102,32 +130,4 @@ mod tests {
         assert!(DEFAULT_SYSTEM_PROMPT.contains("message index"));
         assert!(DEFAULT_SYSTEM_PROMPT.contains("specific messageIds"));
     }
-}
-
-pub(crate) fn default_convert_to_llm() -> ConvertToLlmFn {
-    Arc::new(|messages| {
-        Box::pin(async move {
-            messages
-                .into_iter()
-                .filter(|message| {
-                    matches!(
-                        message.role,
-                        AgentMessageRole::User
-                            | AgentMessageRole::Assistant
-                            | AgentMessageRole::ToolResult
-                    )
-                })
-                .collect()
-        })
-    })
-}
-
-pub(crate) fn default_stream_fn() -> super::callbacks::StreamFn {
-    Arc::new(|_context, _config, _sink, _signal| {
-        Box::pin(async move {
-            anyhow::bail!(
-                "kordi-core requires an explicit runtime stream_fn; the legacy agent_loop surface remains transitional and is not a stable default runtime"
-            )
-        })
-    })
 }

@@ -119,13 +119,9 @@ pub(super) fn find_lm_studio_home_dir() -> Option<PathBuf> {
         }
     }
 
-    for candidate in [home.join(".cache/lm-studio"), home.join(".lmstudio")] {
-        if candidate.is_dir() {
-            return Some(candidate);
-        }
-    }
-
-    None
+    [home.join(".cache/lm-studio"), home.join(".lmstudio")]
+        .into_iter()
+        .find(|candidate| candidate.is_dir())
 }
 
 pub(super) fn find_lm_studio_bin_dir() -> Option<PathBuf> {

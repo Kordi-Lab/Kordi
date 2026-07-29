@@ -61,7 +61,7 @@ fn sanitize_file_operation_path(path: &str) -> Option<String> {
     let trimmed = path
         .trim()
         .trim_matches(|ch| matches!(ch, '\'' | '"' | '`'))
-        .trim_end_matches(|ch| matches!(ch, ',' | ';'));
+        .trim_end_matches([',', ';']);
     if trimmed.is_empty()
         || trimmed.len() > 4096
         || trimmed == "-"

@@ -722,7 +722,7 @@ mod tests {
         assert_eq!(metrics.total_latency_ms, 100);
         assert_eq!(metrics.tool_wait_ms, 7);
         assert_eq!(metrics.resume_latency_ms, Some(5));
-        assert_eq!(metrics.request_rewritten, true);
+        assert!(metrics.request_rewritten);
         assert!(metrics.cache_read_hit_rate_pct.is_some());
         assert!(metrics.cache_effective_utilization_pct.is_some());
     }

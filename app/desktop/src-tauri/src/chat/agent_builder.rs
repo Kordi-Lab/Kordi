@@ -347,8 +347,7 @@ fn default_skill_content(skill: &DesktopAgentBuilderSkillSeed, slug: &str) -> St
     let escaped_description = description
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
-        .replace('\r', " ")
-        .replace('\n', " ");
+        .replace(['\r', '\n'], " ");
     format!(
         "---\nname: {slug}\ndescription: \"{escaped_description}\"\n---\n\n# {}\n\nFollow the user's request using this focused capability. Ask for clarification when required, preserve user data, and report concrete results.\n",
         skill.name.trim()
