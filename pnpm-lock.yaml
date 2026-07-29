@@ -133,8 +133,6 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  shared/typescript/protocol: {}
-
 packages:
 
   '@asamuzakjp/css-color@5.1.11':

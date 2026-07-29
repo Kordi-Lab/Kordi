@@ -10,7 +10,7 @@ kordi/
   bridges/cloud-server     # Hosted API
   bridges/cloud-agent-runner # Hosted runner/sandbox
   agent                    # Agent/runtime source shared with runner/internal tooling
-  shared                   # Shared protocol/type contracts
+  shared/rust/protocol     # App-server protocol source of truth
 ```
 
 ## Product runtime
@@ -49,9 +49,12 @@ Owns hosted execution: runner polling, sandbox policy, model loop, tools, and ar
 
 Owns runtime internals that can be reused by hosted runner integration and internal developer workflows.
 
-### `shared`
+### `shared/rust/protocol`
 
-Owns contracts shared between Rust and TypeScript where cross-package consistency is required.
+Owns the app-server protocol contract. It is the single source of truth for
+those Rust request and response types; do not add a hand-maintained TypeScript
+mirror. The desktop Cloud client owns a separate API surface and should derive
+or generate cross-language types if it ever consumes this protocol directly.
 
 ## Standalone Bridges boundary
 
