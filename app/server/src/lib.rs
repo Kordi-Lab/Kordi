@@ -613,7 +613,7 @@ fn load_session_detail(
     let session = session_summary_from_row(&conn, &row, active_turns, &fork_counts)?;
     let entries = store::get_entries(&conn, session_id)?
         .iter()
-        .map(|entry| timeline_entry_from_row(entry))
+        .map(timeline_entry_from_row)
         .collect::<Result<Vec<_>>>()?;
     Ok(SessionDetail {
         session,
@@ -826,13 +826,13 @@ fn validate_turn_request(
         return Err(AppError::bad_request("input must not be empty"));
     }
 
-    if let Some(body_session_id) = request.session_id.as_deref() {
-        if body_session_id != session_id {
-            return Err(AppError::bad_request(format!(
-                "session_id {} does not match route session {}",
-                body_session_id, session_id
-            )));
-        }
+    if let Some(body_session_id) = request.session_id.as_deref()
+        && body_session_id != session_id
+    {
+        return Err(AppError::bad_request(format!(
+            "session_id {} does not match route session {}",
+            body_session_id, session_id
+        )));
     }
 
     if request.new_session.unwrap_or(false) {
@@ -936,10 +936,10 @@ fn first_content_text(content: &[ContentBlock]) -> Option<String> {
 }
 
 fn first_assistant_text(content: &[AssistantContent]) -> Option<String> {
-    content.iter().find_map(|block| match block {
-        AssistantContent::Text { text } => Some(text.clone()),
-        AssistantContent::Thinking { thinking } => Some(thinking.clone()),
-        AssistantContent::ToolCall { name, .. } => Some(format!("Tool call: {name}")),
+    content.first().map(|block| match block {
+        AssistantContent::Text { text } => text.clone(),
+        AssistantContent::Thinking { thinking } => thinking.clone(),
+        AssistantContent::ToolCall { name, .. } => format!("Tool call: {name}"),
     })
 }
 
@@ -1113,14 +1113,14 @@ fn default_bridges_port() -> u16 {
 fn resolve_turn_command() -> TurnCommand {
     // Preserve the legacy env var as a fallback while preferring the new Kordi name.
     for key in ["KORDI_BIN", "KORDI_BB_BIN"] {
-        if let Ok(path) = std::env::var(key) {
-            if !path.trim().is_empty() {
-                return TurnCommand {
-                    program: path,
-                    base_args: Vec::new(),
-                    current_dir: None,
-                };
-            }
+        if let Ok(path) = std::env::var(key)
+            && !path.trim().is_empty()
+        {
+            return TurnCommand {
+                program: path,
+                base_args: Vec::new(),
+                current_dir: None,
+            };
         }
     }
 

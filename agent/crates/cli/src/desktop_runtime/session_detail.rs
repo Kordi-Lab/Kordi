@@ -91,12 +91,10 @@ fn reflection_lesson_artifacts_for_session(
     if let Some(project_root) = project_root
         .map(str::trim)
         .filter(|value| !value.is_empty())
-    {
-        if let Some(artifact) =
+        && let Some(artifact) =
             scoped_lesson_artifact(&setup.tool_ctx.artifacts_dir, "project", project_root)
-        {
-            artifacts.push(artifact);
-        }
+    {
+        artifacts.push(artifact);
     }
     artifacts
 }
@@ -119,10 +117,10 @@ fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
     let mut files = Vec::new();
 
     let project_settings = kordi_core::config::project_settings_path(cwd);
-    if project_settings.exists() {
-        if let Some(relative) = repo_relative_display_path(&workspace_root, &project_settings) {
-            files.push(relative);
-        }
+    if project_settings.exists()
+        && let Some(relative) = repo_relative_display_path(&workspace_root, &project_settings)
+    {
+        files.push(relative);
     }
 
     let mut dir = cwd.to_path_buf();

@@ -101,54 +101,52 @@ impl TuiController {
             let settings = Settings::load_merged(&self.session_setup.tool_ctx.cwd);
             if let Ok(session_context) =
                 context::build_context(&self.session_setup.conn, session_id)
+                && let Some(model_info) = session_context.model.clone()
             {
-                if let Some(model_info) = session_context.model.clone() {
-                    let mut registry = ModelRegistry::new();
-                    registry.load_custom_models(&settings);
-                    crate::login::add_cached_github_copilot_models(&mut registry);
-                    {
-                        let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
-                            &registry,
-                            &settings,
-                            &model_info.provider,
-                            &model_info.model_id,
-                        );
-                        let runtime = crate::runtime_model::resolve_runtime_config_with_settings(
-                            &model, &settings,
-                        );
+                let mut registry = ModelRegistry::new();
+                registry.load_custom_models(&settings);
+                crate::login::add_cached_github_copilot_models(&mut registry);
+                {
+                    let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
+                        &registry,
+                        &settings,
+                        &model_info.provider,
+                        &model_info.model_id,
+                    );
+                    let runtime = crate::runtime_model::resolve_runtime_config_with_settings(
+                        &model, &settings,
+                    );
 
-                        self.runtime_host.session_mut().set_model(ModelRef {
+                    self.runtime_host.session_mut().set_model(ModelRef {
+                        provider: model.provider.clone(),
+                        id: model.id.clone(),
+                        reasoning: model.reasoning,
+                    });
+                    self.runtime_host
+                        .runtime_mut()
+                        .set_model(Some(RuntimeModelRef {
                             provider: model.provider.clone(),
                             id: model.id.clone(),
-                            reasoning: model.reasoning,
-                        });
-                        self.runtime_host
-                            .runtime_mut()
-                            .set_model(Some(RuntimeModelRef {
-                                provider: model.provider.clone(),
-                                id: model.id.clone(),
-                                context_window: model.context_window as usize,
-                            }));
-                        self.session_setup.model = model;
-                        self.session_setup.provider = runtime.provider.clone();
-                        self.session_setup.auth = runtime.auth;
-                        self.session_setup.api_key = runtime.api_key.clone();
-                        self.session_setup.base_url = runtime.base_url.clone();
-                        self.session_setup.headers = runtime.headers.clone();
-                        self.session_setup.tool_ctx.web_search =
-                            Some(kordi_tools::WebSearchRuntime {
-                                provider: self.session_setup.provider.clone(),
-                                model: self.session_setup.model.clone(),
-                                api_key: self.session_setup.api_key.clone(),
-                                base_url: self.session_setup.base_url.clone(),
-                                headers: runtime.headers,
-                                enabled: true,
-                            });
-                        self.options.model_display = Some(format!(
-                            "{}/{}",
-                            self.session_setup.model.provider, self.session_setup.model.id
-                        ));
-                    }
+                            context_window: model.context_window as usize,
+                        }));
+                    self.session_setup.model = model;
+                    self.session_setup.provider = runtime.provider.clone();
+                    self.session_setup.auth = runtime.auth;
+                    self.session_setup.api_key = runtime.api_key.clone();
+                    self.session_setup.base_url = runtime.base_url.clone();
+                    self.session_setup.headers = runtime.headers.clone();
+                    self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
+                        provider: self.session_setup.provider.clone(),
+                        model: self.session_setup.model.clone(),
+                        api_key: self.session_setup.api_key.clone(),
+                        base_url: self.session_setup.base_url.clone(),
+                        headers: runtime.headers,
+                        enabled: true,
+                    });
+                    self.options.model_display = Some(format!(
+                        "{}/{}",
+                        self.session_setup.model.provider, self.session_setup.model.id
+                    ));
                 }
             }
 

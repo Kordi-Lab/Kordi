@@ -749,6 +749,168 @@ pub(crate) fn nodes_can_directly_reach(
     }
 }
 
+const SERVER_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS registered_nodes (
+    node_id             TEXT PRIMARY KEY,
+    ed25519_pubkey      TEXT NOT NULL,
+    x25519_pubkey       TEXT NOT NULL,
+    display_name        TEXT,
+    owner_name          TEXT,
+    runtime             TEXT,
+    human_id            TEXT,
+    agent_id            TEXT,
+    discovery_mode      TEXT,
+    is_default_agent    INTEGER NOT NULL DEFAULT 0,
+    api_key_hash        TEXT NOT NULL,
+    endpoint_hints      TEXT,
+    revoked_at          TEXT,
+    revocation_reason   TEXT,
+    replacement_node_id TEXT,
+    human_visibility_policy TEXT,
+    contact_approval_policy TEXT,
+    agent_reachability_policy TEXT,
+    account_id          TEXT,
+    device_id           TEXT,
+    created_at          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS server_contacts (
+    node_id             TEXT NOT NULL,
+    contact_node_id     TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    PRIMARY KEY (node_id, contact_node_id)
+);
+
+CREATE TABLE IF NOT EXISTS server_contact_requests (
+    request_id          TEXT PRIMARY KEY,
+    requester_node_id   TEXT NOT NULL,
+    target_node_id      TEXT NOT NULL,
+    status              TEXT NOT NULL,
+    message             TEXT,
+    created_at          TEXT NOT NULL,
+    decided_at          TEXT
+);
+
+CREATE TABLE IF NOT EXISTS server_projects (
+    project_id      TEXT PRIMARY KEY,
+    slug            TEXT UNIQUE NOT NULL,
+    display_name    TEXT,
+    description     TEXT,
+    created_by      TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS server_members (
+    project_id      TEXT NOT NULL,
+    node_id         TEXT NOT NULL,
+    agent_role      TEXT,
+    joined_at       TEXT NOT NULL,
+    PRIMARY KEY (project_id, node_id)
+);
+
+CREATE TABLE IF NOT EXISTS server_invites (
+    invite_id       TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL,
+    token_hash      TEXT NOT NULL,
+    created_by      TEXT NOT NULL,
+    max_uses        INTEGER,
+    use_count       INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS server_skills (
+    skill_id        TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL,
+    node_id         TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    created_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS server_mailbox (
+    message_id      TEXT PRIMARY KEY,
+    target_node_id  TEXT NOT NULL,
+    from_node_id    TEXT NOT NULL,
+    blob            TEXT NOT NULL,
+    project_id      TEXT,
+    created_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cloud_accounts (
+    account_id      TEXT PRIMARY KEY,
+    display_name    TEXT,
+    primary_email   TEXT,
+    avatar_url      TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cloud_account_identities (
+    identity_id      TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    provider         TEXT NOT NULL,
+    provider_subject TEXT NOT NULL,
+    provider_username TEXT,
+    email            TEXT,
+    email_verified   INTEGER NOT NULL DEFAULT 0,
+    avatar_url       TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    UNIQUE(provider, provider_subject),
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_devices (
+    device_id        TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    device_name      TEXT,
+    device_public_key TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    last_seen_at     TEXT NOT NULL,
+    revoked_at       TEXT,
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_refresh_tokens (
+    token_id         TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    device_id        TEXT NOT NULL,
+    token_hash       TEXT NOT NULL UNIQUE,
+    created_at       TEXT NOT NULL,
+    expires_at       TEXT NOT NULL,
+    revoked_at       TEXT,
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE,
+    FOREIGN KEY(device_id) REFERENCES cloud_devices(device_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_audit_events (
+    event_id         TEXT PRIMARY KEY,
+    account_id       TEXT,
+    device_id        TEXT,
+    event_type       TEXT NOT NULL,
+    metadata_json    TEXT,
+    created_at       TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_server_contacts_node_created
+    ON server_contacts (node_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_server_contact_requests_target_status
+    ON server_contact_requests (target_node_id, status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_server_contact_requests_requester_status
+    ON server_contact_requests (requester_node_id, status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created
+    ON server_mailbox (target_node_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_cloud_account_identities_account
+    ON cloud_account_identities (account_id, provider);
+
+CREATE INDEX IF NOT EXISTS idx_cloud_devices_account
+    ON cloud_devices (account_id, revoked_at, last_seen_at);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -996,165 +1158,3 @@ mod tests {
         let _ = std::fs::remove_file(db_path);
     }
 }
-
-const SERVER_SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS registered_nodes (
-    node_id             TEXT PRIMARY KEY,
-    ed25519_pubkey      TEXT NOT NULL,
-    x25519_pubkey       TEXT NOT NULL,
-    display_name        TEXT,
-    owner_name          TEXT,
-    runtime             TEXT,
-    human_id            TEXT,
-    agent_id            TEXT,
-    discovery_mode      TEXT,
-    is_default_agent    INTEGER NOT NULL DEFAULT 0,
-    api_key_hash        TEXT NOT NULL,
-    endpoint_hints      TEXT,
-    revoked_at          TEXT,
-    revocation_reason   TEXT,
-    replacement_node_id TEXT,
-    human_visibility_policy TEXT,
-    contact_approval_policy TEXT,
-    agent_reachability_policy TEXT,
-    account_id          TEXT,
-    device_id           TEXT,
-    created_at          TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS server_contacts (
-    node_id             TEXT NOT NULL,
-    contact_node_id     TEXT NOT NULL,
-    created_at          TEXT NOT NULL,
-    PRIMARY KEY (node_id, contact_node_id)
-);
-
-CREATE TABLE IF NOT EXISTS server_contact_requests (
-    request_id          TEXT PRIMARY KEY,
-    requester_node_id   TEXT NOT NULL,
-    target_node_id      TEXT NOT NULL,
-    status              TEXT NOT NULL,
-    message             TEXT,
-    created_at          TEXT NOT NULL,
-    decided_at          TEXT
-);
-
-CREATE TABLE IF NOT EXISTS server_projects (
-    project_id      TEXT PRIMARY KEY,
-    slug            TEXT UNIQUE NOT NULL,
-    display_name    TEXT,
-    description     TEXT,
-    created_by      TEXT NOT NULL,
-    created_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS server_members (
-    project_id      TEXT NOT NULL,
-    node_id         TEXT NOT NULL,
-    agent_role      TEXT,
-    joined_at       TEXT NOT NULL,
-    PRIMARY KEY (project_id, node_id)
-);
-
-CREATE TABLE IF NOT EXISTS server_invites (
-    invite_id       TEXT PRIMARY KEY,
-    project_id      TEXT NOT NULL,
-    token_hash      TEXT NOT NULL,
-    created_by      TEXT NOT NULL,
-    max_uses        INTEGER,
-    use_count       INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS server_skills (
-    skill_id        TEXT PRIMARY KEY,
-    project_id      TEXT NOT NULL,
-    node_id         TEXT NOT NULL,
-    name            TEXT NOT NULL,
-    description     TEXT,
-    created_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS server_mailbox (
-    message_id      TEXT PRIMARY KEY,
-    target_node_id  TEXT NOT NULL,
-    from_node_id    TEXT NOT NULL,
-    blob            TEXT NOT NULL,
-    project_id      TEXT,
-    created_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS cloud_accounts (
-    account_id      TEXT PRIMARY KEY,
-    display_name    TEXT,
-    primary_email   TEXT,
-    avatar_url      TEXT,
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS cloud_account_identities (
-    identity_id      TEXT PRIMARY KEY,
-    account_id       TEXT NOT NULL,
-    provider         TEXT NOT NULL,
-    provider_subject TEXT NOT NULL,
-    provider_username TEXT,
-    email            TEXT,
-    email_verified   INTEGER NOT NULL DEFAULT 0,
-    avatar_url       TEXT,
-    created_at       TEXT NOT NULL,
-    updated_at       TEXT NOT NULL,
-    UNIQUE(provider, provider_subject),
-    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS cloud_devices (
-    device_id        TEXT PRIMARY KEY,
-    account_id       TEXT NOT NULL,
-    device_name      TEXT,
-    device_public_key TEXT NOT NULL,
-    created_at       TEXT NOT NULL,
-    last_seen_at     TEXT NOT NULL,
-    revoked_at       TEXT,
-    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS cloud_refresh_tokens (
-    token_id         TEXT PRIMARY KEY,
-    account_id       TEXT NOT NULL,
-    device_id        TEXT NOT NULL,
-    token_hash       TEXT NOT NULL UNIQUE,
-    created_at       TEXT NOT NULL,
-    expires_at       TEXT NOT NULL,
-    revoked_at       TEXT,
-    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE,
-    FOREIGN KEY(device_id) REFERENCES cloud_devices(device_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS cloud_audit_events (
-    event_id         TEXT PRIMARY KEY,
-    account_id       TEXT,
-    device_id        TEXT,
-    event_type       TEXT NOT NULL,
-    metadata_json    TEXT,
-    created_at       TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_server_contacts_node_created
-    ON server_contacts (node_id, created_at);
-
-CREATE INDEX IF NOT EXISTS idx_server_contact_requests_target_status
-    ON server_contact_requests (target_node_id, status, created_at);
-
-CREATE INDEX IF NOT EXISTS idx_server_contact_requests_requester_status
-    ON server_contact_requests (requester_node_id, status, created_at);
-
-CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created
-    ON server_mailbox (target_node_id, created_at);
-
-CREATE INDEX IF NOT EXISTS idx_cloud_account_identities_account
-    ON cloud_account_identities (account_id, provider);
-
-CREATE INDEX IF NOT EXISTS idx_cloud_devices_account
-    ON cloud_devices (account_id, revoked_at, last_seen_at);
-"#;

@@ -1,17 +1,12 @@
 use kordi_tools::{Tool, ToolMetadata, builtin_tools};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub(crate) enum ToolSelectionPreference {
+    #[default]
     UseSettings,
     None,
     Only(Vec<String>),
-}
-
-impl Default for ToolSelectionPreference {
-    fn default() -> Self {
-        Self::UseSettings
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,6 +50,7 @@ struct RegisteredTool {
     tool: Box<dyn Tool>,
 }
 
+#[derive(Default)]
 pub(crate) struct ToolRegistry {
     active_tools: Vec<Box<dyn Tool>>,
     tool_defs: Vec<serde_json::Value>,
@@ -64,20 +60,6 @@ pub(crate) struct ToolRegistry {
     active_names: Vec<String>,
     #[cfg(test)]
     available_tools: Vec<ToolDescriptor>,
-}
-
-impl Default for ToolRegistry {
-    fn default() -> Self {
-        Self {
-            active_tools: Vec::new(),
-            tool_defs: Vec::new(),
-            metadata_by_name: HashMap::new(),
-            #[cfg(test)]
-            active_names: Vec::new(),
-            #[cfg(test)]
-            available_tools: Vec::new(),
-        }
-    }
 }
 
 impl ToolRegistry {

@@ -768,7 +768,7 @@ fn strip_ansi_sequences(value: &str) -> String {
     let mut chars = value.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch == '\u{1b}' {
-            while let Some(next) = chars.next() {
+            for next in chars.by_ref() {
                 if next.is_ascii_alphabetic() || next == 'm' {
                     break;
                 }

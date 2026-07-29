@@ -97,10 +97,10 @@ pub(super) fn desktop_state_for_canonical_sync(
         .messages
         .iter()
         .enumerate()
-        .filter_map(|(index, message)| {
-            (!(index > last_user_index && desktop_chat_message_is_agent(message)))
-                .then(|| message.clone())
+        .filter(|&(index, message)| {
+            !(index > last_user_index && desktop_chat_message_is_agent(message))
         })
+        .map(|(_index, message)| message.clone())
         .collect();
     next.active_session.message_count = next.active_session.messages.len();
     next

@@ -142,7 +142,7 @@ fn normalize_preview_url(value: Option<&str>) -> Result<String, Response> {
     Ok(trimmed.to_string())
 }
 
-fn s3_or_503<'a>(state: &'a ServerState) -> Result<&'a S3Config, Response> {
+fn s3_or_503(state: &ServerState) -> Result<&S3Config, Response> {
     state.s3().ok_or_else(|| {
         err(
             "attachments_unavailable",

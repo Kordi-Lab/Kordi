@@ -161,6 +161,9 @@ pub(super) async fn append_assistant_cancelled_message(
     Ok(())
 }
 
+// This source is compiled into both the CLI binary and the desktop-runtime
+// library; only the latter runs interruption recovery outside tests.
+#[cfg_attr(not(test), allow(dead_code))]
 fn active_path_has_unanswered_user_request(
     conn: &rusqlite::Connection,
     session_id: &str,
@@ -184,7 +187,7 @@ fn active_path_has_unanswered_user_request(
     Ok(pending_user_request)
 }
 
-#[cfg_attr(not(feature = "desktop-runtime"), allow(dead_code))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) async fn append_interrupted_unanswered_request_if_needed(
     conn: &Arc<Mutex<rusqlite::Connection>>,
     session_id: &str,

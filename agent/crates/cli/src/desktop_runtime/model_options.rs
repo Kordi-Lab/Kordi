@@ -14,12 +14,11 @@ use super::DesktopChatModelOption;
 
 const DESKTOP_MODEL_OPTIONS_CACHE_TTL: Duration = Duration::from_secs(300);
 
-static DESKTOP_MODEL_OPTIONS_CACHE: OnceLock<
-    StdMutex<HashMap<String, (Instant, Vec<DesktopChatModelOption>)>>,
-> = OnceLock::new();
+type DesktopModelOptionsCache = StdMutex<HashMap<String, (Instant, Vec<DesktopChatModelOption>)>>;
 
-fn desktop_model_options_cache()
--> &'static StdMutex<HashMap<String, (Instant, Vec<DesktopChatModelOption>)>> {
+static DESKTOP_MODEL_OPTIONS_CACHE: OnceLock<DesktopModelOptionsCache> = OnceLock::new();
+
+fn desktop_model_options_cache() -> &'static DesktopModelOptionsCache {
     DESKTOP_MODEL_OPTIONS_CACHE.get_or_init(|| StdMutex::new(HashMap::new()))
 }
 

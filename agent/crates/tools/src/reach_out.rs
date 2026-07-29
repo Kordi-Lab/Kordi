@@ -215,10 +215,10 @@ fn normalize_context_policy(value: &str) -> KordiResult<String> {
 
 fn build_context(input: &ReachOutInput, ctx: &ToolContext) -> Option<String> {
     let mut sections = Vec::new();
-    if input.include_project_context {
-        if let Some(project_context) = build_project_context(ctx) {
-            sections.push(project_context);
-        }
+    if input.include_project_context
+        && let Some(project_context) = build_project_context(ctx)
+    {
+        sections.push(project_context);
     }
     if let Some(extra) = input
         .context

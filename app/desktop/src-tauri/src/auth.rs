@@ -268,7 +268,7 @@ fn build_auth_state() -> Result<DesktopAuthState, String> {
                             &normalized_provider,
                             &normalized_default,
                         )
-                        .then(|| settings.default_model.as_deref())
+                        .then_some(settings.default_model.as_deref())
                         .flatten()
                         .map(str::trim)
                         .filter(|model| !model.is_empty())
