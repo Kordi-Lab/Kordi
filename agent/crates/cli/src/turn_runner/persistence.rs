@@ -176,10 +176,8 @@ fn active_path_has_unanswered_user_request(
         };
         match message {
             AgentMessage::User(_) => pending_user_request = true,
-            AgentMessage::Assistant(assistant) => {
-                if assistant.stop_reason != StopReason::ToolUse {
-                    pending_user_request = false;
-                }
+            AgentMessage::Assistant(assistant) if assistant.stop_reason != StopReason::ToolUse => {
+                pending_user_request = false;
             }
             _ => {}
         }

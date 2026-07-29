@@ -37,6 +37,10 @@ use crate::auth::password::{
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
+use crate::auth::rows::{
+    AccountRecordRow, AttachmentOwnerRow, CloudSyncEventRow, ContactRequestRow,
+    MessageAttachmentRow, MessageRecordRow,
+};
 use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
     SESSION_TOKEN_PREFIX,
@@ -500,9 +504,13 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
     (status, Json(body)).into_response()
 }
 
+fn boxed_err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Box<Response> {
+    Box::new(err(code, message, status))
+}
+
 fn normalize_message_attachment_preview_url(
     value: Option<&str>,
-) -> Result<Option<String>, Response> {
+) -> Result<Option<String>, Box<Response>> {
     let Some(raw) = value else {
         return Ok(None);
     };
@@ -511,7 +519,7 @@ fn normalize_message_attachment_preview_url(
         return Ok(None);
     }
     if trimmed.len() > 360_000 {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_attachment",
             "Attachment preview is too large.",
             StatusCode::BAD_REQUEST,
@@ -524,7 +532,7 @@ fn normalize_message_attachment_preview_url(
         || lower.starts_with("data:image/webp;base64,")
         || lower.starts_with("data:image/gif;base64,");
     if !allowed {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_attachment",
             "Attachment preview must be a data:image base64 URL.",
             StatusCode::BAD_REQUEST,
@@ -539,10 +547,10 @@ fn normalize_message_attachment(
     db_mime_type: Option<String>,
     db_size_bytes: Option<i64>,
     _download_url: Option<String>,
-) -> Result<MessageAttachmentSummary, Response> {
+) -> Result<MessageAttachmentSummary, Box<Response>> {
     let name = input.name.trim().chars().take(255).collect::<String>();
     if name.is_empty() {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_attachment",
             "Attachment name is required.",
             StatusCode::BAD_REQUEST,
@@ -552,7 +560,7 @@ fn normalize_message_attachment(
         "image" => "image".to_string(),
         "file" => "file".to_string(),
         _ => {
-            return Err(err(
+            return Err(boxed_err(
                 "invalid_attachment",
                 "Attachment kind must be image or file.",
                 StatusCode::BAD_REQUEST,
@@ -626,13 +634,7 @@ async fn account_response_row(
     pool: &PgPool,
     account_id: &str,
 ) -> Result<Option<AccountResponse>, sqlx_core::Error> {
-    let row: Option<(
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = query_as(
+    let row: Option<AccountRecordRow> = query_as(
         "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
              FROM cloud_accounts WHERE account_id = $1",
     )
@@ -1290,7 +1292,7 @@ async fn update_me(
     let display_name = clean_profile_display_name(req.display_name.as_deref());
     let avatar_url = match clean_optional_uploaded_avatar_url(req.avatar_url.as_deref()) {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let now = Utc::now().to_rfc3339();
     if query(
@@ -1365,12 +1367,14 @@ fn decoded_base64_len(encoded: &str) -> usize {
     (trimmed.len() * 3) / 4
 }
 
-fn clean_optional_uploaded_avatar_url(value: Option<&str>) -> Result<Option<String>, Response> {
+fn clean_optional_uploaded_avatar_url(
+    value: Option<&str>,
+) -> Result<Option<String>, Box<Response>> {
     let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
     if raw.starts_with(AVATAR_SEED_PREFIX) {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_avatar",
             "Avatar must be an uploaded image.",
             StatusCode::BAD_REQUEST,
@@ -1384,23 +1388,23 @@ fn clean_optional_uploaded_avatar_url(value: Option<&str>) -> Result<Option<Stri
         if decoded_base64_len(payload) <= AVATAR_UPLOAD_MAX_BYTES {
             return Ok(Some(raw.to_string()));
         }
-        return Err(err(
+        return Err(boxed_err(
             "invalid_avatar",
             "Avatar payload is too large after processing.",
             StatusCode::BAD_REQUEST,
         ));
     }
-    Err(err(
+    Err(boxed_err(
         "invalid_avatar",
         "Avatar must be a PNG, JPEG, or WebP image.",
         StatusCode::BAD_REQUEST,
     ))
 }
 
-fn clean_required_signup_avatar_url(value: Option<&str>) -> Result<String, Response> {
+fn clean_required_signup_avatar_url(value: Option<&str>) -> Result<String, Box<Response>> {
     match clean_optional_uploaded_avatar_url(value) {
         Ok(Some(value)) => Ok(value),
-        Ok(None) => Err(err(
+        Ok(None) => Err(boxed_err(
             "missing_avatar",
             "Upload an avatar to sign up.",
             StatusCode::BAD_REQUEST,
@@ -1438,7 +1442,7 @@ async fn signup(
 
     let avatar_url = match clean_required_signup_avatar_url(req.avatar_url.as_deref()) {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     let pool = state.db_pool();
@@ -1643,13 +1647,7 @@ async fn login(
 
     let pool = state.db_pool();
 
-    let row: Option<(
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = match query_as(
+    let row: Option<AccountRecordRow> = match query_as(
         "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
              FROM cloud_accounts WHERE LOWER(primary_email) = $1",
     )
@@ -2296,15 +2294,7 @@ async fn list_contact_requests(
 ) -> Response {
     let pool = state.db_pool();
 
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        String,
-        Option<String>,
-    )> = match query_as(
+    let rows: Vec<ContactRequestRow> = match query_as(
         "SELECT r.request_id, r.from_account_id, r.to_account_id, r.status, \
                 r.message, r.created_at, r.decided_at \
          FROM cloud_contact_requests r \
@@ -2672,15 +2662,15 @@ async fn finalize_request_acceptance(
             // recipient = requester (from_id). The recipient is the
             // one who needs the live WS frame.
             events
-                .publish_message_arrived(
-                    &hello_id,
-                    &to,
-                    &from,
-                    &hello_body,
-                    &now,
-                    Some(&hello_session_id),
-                    serde_json::json!([]),
-                )
+                .publish_message_arrived(crate::events::MessageArrived {
+                    message_id: &hello_id,
+                    from_account_id: &to,
+                    to_account_id: &from,
+                    body: &hello_body,
+                    created_at: &now,
+                    session_id: Some(&hello_session_id),
+                    attachments: serde_json::json!([]),
+                })
                 .await;
         });
     }
@@ -3134,14 +3124,7 @@ async fn sync_cloud_events(
     let cursor = q.cursor.unwrap_or(0).max(0);
     let limit = q.limit.unwrap_or(500).clamp(1, 1000);
     let fetch_limit = limit + 1;
-    let rows: Vec<(
-        i64,
-        String,
-        Option<String>,
-        Option<String>,
-        serde_json::Value,
-        String,
-    )> = match query_as(
+    let rows: Vec<CloudSyncEventRow> = match query_as(
         "SELECT event_id, event_type, peer_account_id, message_id, payload_json, occurred_at \
              FROM cloud_sync_events \
              WHERE account_id = $1 AND event_id > $2 \
@@ -3256,25 +3239,24 @@ async fn send_message(
                 StatusCode::BAD_REQUEST,
             );
         }
-        let row: Option<(String, String, Option<String>, Option<i64>, Option<String>)> =
-            match query_as(
-                "SELECT owner_account_id, object_key, content_type, size_bytes, finalized_at \
+        let row: Option<AttachmentOwnerRow> = match query_as(
+            "SELECT owner_account_id, object_key, content_type, size_bytes, finalized_at \
              FROM cloud_attachments \
              WHERE attachment_id = $1",
-            )
-            .bind(attachment_id)
-            .fetch_optional(pool)
-            .await
-            {
-                Ok(value) => value,
-                Err(_) => {
-                    return err(
-                        "server_error",
-                        "Database error.",
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                    );
-                }
-            };
+        )
+        .bind(attachment_id)
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        };
         let Some((owner_account_id, _object_key, db_mime_type, db_size_bytes, finalized_at)) = row
         else {
             return err(
@@ -3305,7 +3287,7 @@ async fn send_message(
             None,
         ) {
             Ok(value) => value,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
         attachments.push(normalized);
     }
@@ -3445,15 +3427,15 @@ async fn send_message(
             serde_json::to_value(&summary.attachments).unwrap_or_else(|_| serde_json::json!([]));
         tokio::spawn(async move {
             events
-                .publish_message_arrived(
-                    &message_id,
-                    &from,
-                    &to,
-                    &body_clone,
-                    &created_at,
-                    session_id.as_deref(),
-                    event_attachments,
-                )
+                .publish_message_arrived(crate::events::MessageArrived {
+                    message_id: &message_id,
+                    from_account_id: &from,
+                    to_account_id: &to,
+                    body: &body_clone,
+                    created_at: &created_at,
+                    session_id: session_id.as_deref(),
+                    attachments: event_attachments,
+                })
                 .await;
         });
     }
@@ -3681,16 +3663,7 @@ async fn list_messages(
 
     let pool = state.db_pool();
 
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        String,
-        Option<String>,
-        Option<String>,
-    )> = match query_as(
+    let rows: Vec<MessageRecordRow> = match query_as(
         "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
                 delivered_at, \
                 COALESCE(read_at, \
@@ -3750,16 +3723,7 @@ async fn list_messages(
     };
 
     let message_ids: Vec<String> = rows.iter().map(|row| row.0.clone()).collect();
-    let attachment_rows: Vec<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<String>,
-        String,
-    )> = if message_ids.is_empty() {
+    let attachment_rows: Vec<MessageAttachmentRow> = if message_ids.is_empty() {
         Vec::new()
     } else {
         match query_as(
@@ -4336,7 +4300,7 @@ async fn cloud_session_pin_summary(
     })
 }
 
-fn normalize_cloud_pin_message_id(value: Option<&str>) -> Result<Option<String>, Response> {
+fn normalize_cloud_pin_message_id(value: Option<&str>) -> Result<Option<String>, Box<Response>> {
     let Some(raw) = value else {
         return Ok(None);
     };
@@ -4345,7 +4309,7 @@ fn normalize_cloud_pin_message_id(value: Option<&str>) -> Result<Option<String>,
         return Ok(None);
     }
     if trimmed.len() > 512 {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_message_id",
             "messageId is too long.",
             StatusCode::BAD_REQUEST,
@@ -4417,7 +4381,7 @@ async fn update_cloud_session_pin(
     }
     let message_id = match normalize_cloud_pin_message_id(req.message_id.as_deref()) {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let pool = state.db_pool();
     let participants = match cloud_session_participants(pool, &session_id).await {

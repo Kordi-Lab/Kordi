@@ -80,7 +80,7 @@ pub(crate) fn default_session_title(
         return Ok(project_name.to_string());
     }
 
-    for identity_id in receiver_identity_ids(request) {
+    if let Some(identity_id) = receiver_identity_ids(request).into_iter().next() {
         if let Some(display_name) = identity_display_name(conn, &identity_id)?
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
@@ -97,6 +97,34 @@ pub(crate) fn clean_optional(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+pub(crate) fn replace_identity_in_json_value(
+    value: &mut Value,
+    old_identity_id: &str,
+    new_identity_id: &str,
+) -> bool {
+    match value {
+        Value::String(current) if current == old_identity_id => {
+            *current = new_identity_id.to_string();
+            true
+        }
+        Value::Array(items) => {
+            let mut changed = false;
+            for item in items {
+                changed |= replace_identity_in_json_value(item, old_identity_id, new_identity_id);
+            }
+            changed
+        }
+        Value::Object(entries) => {
+            let mut changed = false;
+            for entry in entries.values_mut() {
+                changed |= replace_identity_in_json_value(entry, old_identity_id, new_identity_id);
+            }
+            changed
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn validate_identity_kind(kind: &str) -> Result<String, String> {

@@ -14,6 +14,23 @@ pub(crate) struct ExecutedCompaction {
     pub kept_count: usize,
 }
 
+pub(crate) struct ExecuteSessionCompactionRequest<'a> {
+    pub entries: Vec<EntryRow>,
+    pub parent_id: Option<EntryId>,
+    pub db_path: std::path::PathBuf,
+    pub session_id: &'a str,
+    pub provider: Arc<dyn Provider>,
+    pub model_id: &'a str,
+    pub api_key: &'a str,
+    pub auth_mode: ProviderAuthMode,
+    pub auth_account_id: Option<String>,
+    pub base_url: &'a str,
+    pub headers: &'a std::collections::HashMap<String, String>,
+    pub settings: &'a CompactionSettings,
+    pub custom_instructions: Option<&'a str>,
+    pub cancel: CancellationToken,
+}
+
 pub(crate) fn compaction_auth_options(
     auth: Option<&crate::login::ResolvedProviderAuth>,
 ) -> (ProviderAuthMode, Option<String>) {
@@ -28,21 +45,24 @@ pub(crate) fn compaction_auth_options(
 }
 
 pub(crate) async fn execute_session_compaction(
-    entries: Vec<EntryRow>,
-    parent_id: Option<EntryId>,
-    db_path: std::path::PathBuf,
-    session_id: &str,
-    provider: Arc<dyn Provider>,
-    model_id: &str,
-    api_key: &str,
-    auth_mode: ProviderAuthMode,
-    auth_account_id: Option<String>,
-    base_url: &str,
-    headers: &std::collections::HashMap<String, String>,
-    settings: &CompactionSettings,
-    custom_instructions: Option<&str>,
-    cancel: CancellationToken,
+    request: ExecuteSessionCompactionRequest<'_>,
 ) -> Result<ExecutedCompaction> {
+    let ExecuteSessionCompactionRequest {
+        entries,
+        parent_id,
+        db_path,
+        session_id,
+        provider,
+        model_id,
+        api_key,
+        auth_mode,
+        auth_account_id,
+        base_url,
+        headers,
+        settings,
+        custom_instructions,
+        cancel,
+    } = request;
     let prep = kordi_session::compaction::prepare_compaction(&entries, settings)
         .ok_or_else(|| anyhow!("Nothing to compact"))?;
 

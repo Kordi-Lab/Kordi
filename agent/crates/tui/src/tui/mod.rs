@@ -4,6 +4,7 @@
 //! adapter and future controls/streaming/runtime work lands on this shared
 //! stack instead of growing a second TUI implementation.
 
+mod bash_format;
 mod events;
 mod frame;
 mod input;

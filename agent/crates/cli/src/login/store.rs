@@ -674,9 +674,7 @@ impl std::fmt::Debug for AuthEntry {
                 .debug_struct("ApiKey")
                 .field("key", &"[REDACTED]")
                 .finish(),
-            Self::OAuth {
-                expires, extra: _, ..
-            } => f
+            Self::OAuth { expires, .. } => f
                 .debug_struct("OAuth")
                 .field("access", &"[REDACTED]")
                 .field("refresh", &"[REDACTED]")

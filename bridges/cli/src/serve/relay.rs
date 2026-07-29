@@ -805,9 +805,15 @@ fn build_chunk_placeholders(count: usize) -> String {
 }
 
 #[cfg(test)]
+#[path = "relay_test_support.rs"]
+mod relay_test_support;
+
+#[cfg(test)]
 mod tests {
+    use super::relay_test_support::{
+        seed_registered_node, seed_registered_node_with_policy, RegisteredNodePolicy,
+    };
     use super::*;
-    use sha2::{Digest, Sha256};
     use std::path::{Path, PathBuf};
     use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -861,40 +867,6 @@ mod tests {
             )
             .unwrap();
         }
-    }
-
-    fn seed_registered_node(state: &ServerState, node_id: &str, api_key: &str) {
-        seed_registered_node_with_policy(state, node_id, api_key, None, None, None, None, None);
-    }
-
-    fn seed_registered_node_with_policy(
-        state: &ServerState,
-        node_id: &str,
-        api_key: &str,
-        human_id: Option<&str>,
-        agent_id: Option<&str>,
-        human_visibility_policy: Option<&str>,
-        contact_approval_policy: Option<&str>,
-        agent_reachability_policy: Option<&str>,
-    ) {
-        let conn = state.open_connection().unwrap();
-        let mut hash = Sha256::new();
-        hash.update(api_key.as_bytes());
-        let api_key_hash = hex::encode(hash.finalize());
-        conn.execute(
-            "INSERT OR IGNORE INTO registered_nodes (node_id, ed25519_pubkey, x25519_pubkey, display_name, owner_name, human_id, agent_id, api_key_hash, human_visibility_policy, contact_approval_policy, agent_reachability_policy, created_at) VALUES (?1, 'ed25519', 'x25519', ?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                node_id,
-                human_id,
-                agent_id,
-                api_key_hash,
-                human_visibility_policy,
-                contact_approval_policy,
-                agent_reachability_policy,
-                chrono::Utc::now().to_rfc3339(),
-            ],
-        )
-        .unwrap();
     }
 
     async fn connect_test_derp_client(
@@ -1054,11 +1026,7 @@ mod tests {
             &state,
             "receiver",
             "receiver-key",
-            Some("human-receiver"),
-            None,
-            Some("server-open"),
-            Some("auto"),
-            Some("contacts"),
+            RegisteredNodePolicy::human("human-receiver", "server-open", "auto", "contacts"),
         );
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1223,11 +1191,12 @@ mod tests {
             &state,
             "receiver",
             "receiver-key",
-            Some("human-receiver"),
-            None,
-            Some("server-open"),
-            Some("approval-required"),
-            Some("contacts"),
+            RegisteredNodePolicy::human(
+                "human-receiver",
+                "server-open",
+                "approval-required",
+                "contacts",
+            ),
         );
 
         let response = relay_message(
@@ -1270,11 +1239,12 @@ mod tests {
             &state,
             "receiver",
             "receiver-key",
-            Some("human-receiver"),
-            None,
-            Some("server-approval"),
-            Some("approval-required"),
-            Some("contacts"),
+            RegisteredNodePolicy::human(
+                "human-receiver",
+                "server-approval",
+                "approval-required",
+                "contacts",
+            ),
         );
 
         let status = relay_message(
@@ -1303,11 +1273,12 @@ mod tests {
             &state,
             "receiver",
             "receiver-key",
-            Some("human-receiver"),
-            None,
-            Some("server-approval"),
-            Some("approval-required"),
-            Some("contacts"),
+            RegisteredNodePolicy::human(
+                "human-receiver",
+                "server-approval",
+                "approval-required",
+                "contacts",
+            ),
         );
         seed_project_members(&state, "project-1", &["sender", "receiver"]);
 
@@ -1337,11 +1308,12 @@ mod tests {
             &state,
             "receiver",
             "receiver-key",
-            Some("human-receiver"),
-            None,
-            Some("server-approval"),
-            Some("approval-required"),
-            Some("contacts"),
+            RegisteredNodePolicy::human(
+                "human-receiver",
+                "server-approval",
+                "approval-required",
+                "contacts",
+            ),
         );
 
         let response = relay_message(
@@ -1384,11 +1356,7 @@ mod tests {
             &state,
             "receiver",
             "receiver-key",
-            Some("human-receiver"),
-            None,
-            Some("server-open"),
-            Some("auto"),
-            Some("contacts"),
+            RegisteredNodePolicy::human("human-receiver", "server-open", "auto", "contacts"),
         );
 
         let status = relay_message(
@@ -1416,31 +1384,24 @@ mod tests {
             &state,
             "owner-device",
             "owner-key",
-            Some("human-owner"),
-            None,
-            Some("private"),
-            Some("approval-required"),
-            Some("contacts"),
+            RegisteredNodePolicy::human("human-owner", "private", "approval-required", "contacts"),
         );
         seed_registered_node_with_policy(
             &state,
             "owner-agent",
             "agent-key",
-            Some("human-owner"),
-            Some("agent-owner"),
-            Some("private"),
-            Some("approval-required"),
-            Some("owner"),
+            RegisteredNodePolicy::agent("human-owner", "agent-owner", "owner"),
         );
         seed_registered_node_with_policy(
             &state,
             "stranger",
             "stranger-key",
-            Some("human-stranger"),
-            None,
-            Some("private"),
-            Some("approval-required"),
-            Some("contacts"),
+            RegisteredNodePolicy::human(
+                "human-stranger",
+                "private",
+                "approval-required",
+                "contacts",
+            ),
         );
 
         let accepted = relay_message(
@@ -1483,21 +1444,18 @@ mod tests {
             &state,
             "contact",
             "contact-key",
-            Some("human-contact"),
-            None,
-            Some("private"),
-            Some("approval-required"),
-            Some("contacts"),
+            RegisteredNodePolicy::human(
+                "human-contact",
+                "private",
+                "approval-required",
+                "contacts",
+            ),
         );
         seed_registered_node_with_policy(
             &state,
             "owner-agent",
             "agent-key",
-            Some("human-owner"),
-            Some("agent-owner"),
-            Some("private"),
-            Some("approval-required"),
-            Some("owner"),
+            RegisteredNodePolicy::agent("human-owner", "agent-owner", "owner"),
         );
         seed_contact(&state, "contact", "owner-agent");
 

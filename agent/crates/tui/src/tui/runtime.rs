@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use crate::select_list::SelectItem;
 
 use super::{
+    bash_format::{BashVisualResult, format_bash_visual_result_content},
     frame::measure_input,
     layout::{Size, TuiLayout, compute_layout_with_footer},
     menus::{TuiSelectMenuState, TuiSlashMenuState},

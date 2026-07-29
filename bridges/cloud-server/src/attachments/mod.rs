@@ -29,6 +29,7 @@
 //! the client a direct path while keeping access control, since each
 //! URL is scoped to one object key + one verb + a short TTL.
 
+mod response;
 pub mod routes;
 
 use std::time::{Duration, SystemTime};

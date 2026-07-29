@@ -472,14 +472,14 @@ async fn beta5_legacy_metadata_uses_only_the_manual_product_download_path() {
     );
 }
 
-fn environment_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+fn environment_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
 #[tokio::test]
 async fn legacy_metadata_never_authorizes_beta5_native_installation() {
-    let _guard = environment_lock().lock().unwrap();
+    let _guard = environment_lock().lock().await;
     unsafe {
         std::env::set_var("KORDI_RELEASE_VERSION", "0.0.1-beta.5");
         std::env::set_var(

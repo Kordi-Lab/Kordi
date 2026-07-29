@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
+use crate::attachments::response::{boxed_err, err};
 use crate::attachments::{presign_download_url, presign_upload_url, url_expires_at, S3Config};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
@@ -85,27 +86,9 @@ pub struct UpdatePreviewResponse {
 
 type AttachmentAccessRow = (String, String, Option<String>, Option<String>, Option<i64>);
 
-#[derive(Debug, Serialize)]
-struct ErrBody<'a> {
-    #[serde(rename = "errorCode")]
-    error_code: &'a str,
-    message: &'a str,
-}
-
-fn err(code: &str, message: &str, status: StatusCode) -> Response {
-    (
-        status,
-        Json(ErrBody {
-            error_code: code,
-            message,
-        }),
-    )
-        .into_response()
-}
-
-fn normalize_preview_url(value: Option<&str>) -> Result<String, Response> {
+fn normalize_preview_url(value: Option<&str>) -> Result<String, Box<Response>> {
     let Some(raw) = value else {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_attachment",
             "previewUrl is required.",
             StatusCode::BAD_REQUEST,
@@ -113,14 +96,14 @@ fn normalize_preview_url(value: Option<&str>) -> Result<String, Response> {
     };
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_attachment",
             "previewUrl is required.",
             StatusCode::BAD_REQUEST,
         ));
     }
     if trimmed.len() > 360_000 {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_attachment",
             "Attachment preview is too large.",
             StatusCode::BAD_REQUEST,
@@ -133,7 +116,7 @@ fn normalize_preview_url(value: Option<&str>) -> Result<String, Response> {
         || lower.starts_with("data:image/webp;base64,")
         || lower.starts_with("data:image/gif;base64,");
     if !allowed {
-        return Err(err(
+        return Err(boxed_err(
             "invalid_attachment",
             "Attachment preview must be a data:image base64 URL.",
             StatusCode::BAD_REQUEST,
@@ -142,9 +125,9 @@ fn normalize_preview_url(value: Option<&str>) -> Result<String, Response> {
     Ok(trimmed.to_string())
 }
 
-fn s3_or_503(state: &ServerState) -> Result<&S3Config, Response> {
+fn s3_or_503(state: &ServerState) -> Result<&S3Config, Box<Response>> {
     state.s3().ok_or_else(|| {
-        err(
+        boxed_err(
             "attachments_unavailable",
             "Object storage is not configured on this server.",
             StatusCode::SERVICE_UNAVAILABLE,
@@ -237,7 +220,7 @@ pub async fn initiate(
 ) -> Response {
     let s3 = match s3_or_503(&state) {
         Ok(value) => value,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     let pool = state.db_pool();
 
@@ -301,7 +284,7 @@ pub async fn upload(
 ) -> Response {
     let s3 = match s3_or_503(&state) {
         Ok(value) => value,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     let pool = state.db_pool();
 
@@ -501,7 +484,7 @@ pub async fn download_url(
 ) -> Response {
     let s3 = match s3_or_503(&state) {
         Ok(value) => value,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     let (object_key, _, _, _, _) =
@@ -543,7 +526,7 @@ pub async fn update_preview(
 ) -> Response {
     let preview_url = match normalize_preview_url(req.preview_url.as_deref()) {
         Ok(value) => value,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     let (_, owner_account_id, _, _, _) =
@@ -604,7 +587,7 @@ pub async fn content(
 ) -> Response {
     let s3 = match s3_or_503(&state) {
         Ok(value) => value,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     let (object_key, _, _, content_type, size_bytes) =

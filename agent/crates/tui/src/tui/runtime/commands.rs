@@ -1,7 +1,5 @@
 use super::*;
-use crate::tui::streaming::{
-    ActiveTurnState, ToolCallState, format_bash_visual_result_content, format_elapsed_ms,
-};
+use crate::tui::streaming::{ActiveTurnState, ToolCallState, format_elapsed_ms};
 use crate::tui::types::{TuiCommand, TuiMode, TuiNoteLevel, TuiSearchState};
 use crate::tui::{BlockKind, NewBlock};
 use crate::tui::{format_tool_call_content, format_tool_call_title, format_tool_result_content};
@@ -570,16 +568,16 @@ impl TuiState {
             .and_then(|value| value.as_u64())
             .map(format_elapsed_ms);
         Some(if tool.name == "bash" {
-            format_bash_visual_result_content(
-                "Took",
+            format_bash_visual_result_content(BashVisualResult {
+                label: "Took",
                 content,
-                tool.result_details.as_ref(),
-                tool.artifact_path.as_deref(),
-                tool.is_error,
+                details: tool.result_details.as_ref(),
+                artifact_path: tool.artifact_path.as_deref(),
+                is_error: tool.is_error,
                 expanded,
-                self.size.width as usize,
-                elapsed.as_deref(),
-            )
+                total_width: self.size.width as usize,
+                elapsed: elapsed.as_deref(),
+            })
         } else {
             format_tool_result_content(
                 &tool.name,

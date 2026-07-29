@@ -46,6 +46,25 @@ pub struct PersistCloudMessageOutcome {
     pub inserted: bool,
 }
 
+type PersistedAttachmentRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<i64>,
+    Option<String>,
+);
+type PersistedMessageRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+);
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncMessage<'a> {
@@ -82,14 +101,7 @@ async fn load_attachments(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     message_id: &str,
 ) -> Result<Vec<PersistedMessageAttachment>, sqlx_core::Error> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<i64>,
-        Option<String>,
-    )> = query_as(
+    let rows: Vec<PersistedAttachmentRow> = query_as(
         "SELECT attachment_id, name, kind, mime_type, size_bytes, preview_url \
          FROM cloud_message_attachments WHERE message_id = $1 ORDER BY position ASC",
     )
@@ -245,7 +257,7 @@ pub async fn persist_cloud_message(
         message
     } else {
         let client_message_id = input.client_message_id.unwrap_or_default();
-        let row: (String, String, String, String, Option<String>, String, Option<String>, Option<String>) = query_as(
+        let row: PersistedMessageRow = query_as(
             "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, delivered_at, read_at \
              FROM cloud_messages \
              WHERE from_account_id = $1 AND to_account_id = $2 AND client_message_id = $3",

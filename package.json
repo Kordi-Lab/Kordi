@@ -40,7 +40,7 @@
     "test:rust": "cargo test --workspace",
     "check:frontend": "pnpm --dir app/desktop test:unit && pnpm --dir app/desktop typecheck && pnpm --dir app/desktop lint && pnpm --dir app/desktop build",
     "check:rust:fmt": "cargo fmt --all -- --check",
-    "check:rust:clippy": "bash scripts/prepare-tauri-sidecar-placeholders.sh && cargo clippy --workspace --all-targets -- -A clippy::never_loop",
+    "check:rust:clippy": "bash scripts/prepare-tauri-sidecar-placeholders.sh && cargo clippy --workspace --all-targets -- -D warnings",
     "check:rust:test:core": "cargo test -p kordi-session && cargo test -p kordi-cli --lib && cargo test -p kordi-cli desktop_runtime --no-default-features --features desktop-runtime",
     "check:rust:test:desktop": "bash scripts/prepare-tauri-sidecar-placeholders.sh && cargo test -p kordi-desktop --no-default-features",
     "check:rust:deps": "node scripts/check-desktop-dependency-surface.mjs",

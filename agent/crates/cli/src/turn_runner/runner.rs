@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::compaction_exec::execute_session_compaction;
+use crate::compaction_exec::{ExecuteSessionCompactionRequest, execute_session_compaction};
 
 use super::TurnConfig;
 use super::TurnEvent;
@@ -227,22 +227,22 @@ async fn maybe_execute_auto_compaction(
     };
     let local_timeout = local_lock.as_ref().map(|_| local_model_overload_timeout());
 
-    let compaction = execute_session_compaction(
-        active_path,
+    let compaction = execute_session_compaction(ExecuteSessionCompactionRequest {
+        entries: active_path,
         parent_id,
         db_path,
-        &config.session_id,
-        config.provider.clone(),
-        &config.model.id,
-        &config.api_key,
+        session_id: &config.session_id,
+        provider: config.provider.clone(),
+        model_id: &config.model.id,
+        api_key: &config.api_key,
         auth_mode,
         auth_account_id,
-        &config.base_url,
-        &config.headers,
-        &config.compaction_settings,
-        None,
-        CancellationToken::new(),
-    );
+        base_url: &config.base_url,
+        headers: &config.headers,
+        settings: &config.compaction_settings,
+        custom_instructions: None,
+        cancel: CancellationToken::new(),
+    });
     let compaction_result = if let Some(timeout) = local_timeout {
         match tokio::time::timeout(timeout, compaction).await {
             Ok(result) => result,

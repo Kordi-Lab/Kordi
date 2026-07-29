@@ -49,7 +49,7 @@ pub(super) fn parse_catalog_models(html: &str) -> Vec<DesktopLmStudioCatalogMode
         rest = &rest[href_end..];
     }
 
-    models.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    models.sort_by_key(|model| model.name.to_lowercase());
     models
 }
 
@@ -89,7 +89,7 @@ pub(super) fn parse_catalog_variants(html: &str) -> Vec<DesktopLmStudioCatalogVa
         rest = &rest[href_end..];
     }
 
-    variants.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    variants.sort_by_key(|variant| variant.name.to_lowercase());
     variants
 }
 
@@ -158,7 +158,7 @@ pub(super) fn parse_installed_models(
         by_id.entry(model.id.clone()).or_insert(model);
     }
     let mut models = by_id.into_values().collect::<Vec<_>>();
-    models.sort_by(|left, right| left.id.to_lowercase().cmp(&right.id.to_lowercase()));
+    models.sort_by_key(|model| model.id.to_lowercase());
     Ok(models)
 }
 

@@ -96,31 +96,32 @@ fn unavailable() -> Response {
     )
 }
 
-fn update_event_response(
-    mut response: Response,
-    correlation_id: &str,
-    channel: &str,
-    target: &str,
-    architecture: &str,
-    outcome: &str,
-    release_version: Option<&str>,
-    asset: Option<&ReleaseAsset>,
-) -> Response {
+struct UpdateEvent<'a> {
+    correlation_id: &'a str,
+    channel: &'a str,
+    target: &'a str,
+    architecture: &'a str,
+    outcome: &'a str,
+    release_version: Option<&'a str>,
+    asset: Option<&'a ReleaseAsset>,
+}
+
+fn update_event_response(mut response: Response, event: UpdateEvent<'_>) -> Response {
     let safe_component = |value: &str| value.chars().take(64).collect::<String>();
-    let event = serde_json::json!({
+    let event_json = serde_json::json!({
         "event": "desktop_update",
-        "correlationId": correlation_id,
-        "channel": channel,
-        "target": safe_component(target),
-        "architecture": safe_component(architecture),
-        "outcome": outcome,
+        "correlationId": event.correlation_id,
+        "channel": event.channel,
+        "target": safe_component(event.target),
+        "architecture": safe_component(event.architecture),
+        "outcome": event.outcome,
         "httpStatus": response.status().as_u16(),
-        "releaseVersion": release_version,
-        "sizeBytes": asset.map(|value| value.size_bytes),
-        "sha256": asset.map(|value| value.sha256.as_str()),
+        "releaseVersion": event.release_version,
+        "sizeBytes": event.asset.map(|value| value.size_bytes),
+        "sha256": event.asset.map(|value| value.sha256.as_str()),
     });
-    eprintln!("{event}");
-    if let Ok(value) = HeaderValue::from_str(correlation_id) {
+    eprintln!("{event_json}");
+    if let Ok(value) = HeaderValue::from_str(event.correlation_id) {
         response
             .headers_mut()
             .insert(HeaderName::from_static("x-kordi-update-id"), value);
@@ -147,8 +148,11 @@ fn public_base_url() -> String {
     candidate.to_string()
 }
 
-fn release_store(state: &ServerState) -> Result<ReleaseCatalogStore, Response> {
-    state.release_store().cloned().ok_or_else(unavailable)
+fn release_store(state: &ServerState) -> Result<ReleaseCatalogStore, Box<Response>> {
+    state
+        .release_store()
+        .cloned()
+        .ok_or_else(|| Box::new(unavailable()))
 }
 
 async fn beta_update(
@@ -176,13 +180,15 @@ async fn update_for_channel(
     let respond = |response, outcome, release_version, asset| {
         update_event_response(
             response,
-            &correlation_id,
-            channel,
-            &target,
-            &arch,
-            outcome,
-            release_version,
-            asset,
+            UpdateEvent {
+                correlation_id: &correlation_id,
+                channel,
+                target: &target,
+                architecture: &arch,
+                outcome,
+                release_version,
+                asset,
+            },
         )
     };
     if !safe_route_component(&target) || !safe_route_component(&arch) {
@@ -190,7 +196,7 @@ async fn update_for_channel(
     }
     let store = match release_store(&state) {
         Ok(store) => store,
-        Err(response) => return respond(response, "store_unconfigured", None, None),
+        Err(response) => return respond(*response, "store_unconfigured", None, None),
     };
     let catalog = match store.load_channel(channel).await {
         Ok(Some(catalog)) => catalog,
@@ -301,7 +307,7 @@ async fn immutable_asset(
     }
     let store = match release_store(&state) {
         Ok(store) => store,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let allowed = match store.load_allowed_asset(&version, &file_name).await {
         Ok(Some(allowed)) => allowed,
@@ -322,7 +328,7 @@ async fn stable_dmg_head(State(state): State<Arc<ServerState>>) -> Response {
 async fn stable_dmg(state: Arc<ServerState>, head_only: bool) -> Response {
     let store = match release_store(&state) {
         Ok(store) => store,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let catalog = match store.load_channel("beta").await {
         Ok(Some(catalog)) => catalog,

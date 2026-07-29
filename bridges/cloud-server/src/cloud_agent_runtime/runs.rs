@@ -5,6 +5,9 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
+use crate::cloud_agent_runtime::sync_events::{
+    append_cloud_agent_response_sync_event, CloudAgentResponseSyncEvent,
+};
 use crate::scheduled_tasks::store::{
     mark_scheduled_task_run_completed, mark_scheduled_task_run_failed,
 };
@@ -186,47 +189,6 @@ fn encode_cloud_group_envelope(envelope: &CloudGroupEnvelope) -> String {
         CLOUD_GROUP_PREFIX,
         URL_SAFE_NO_PAD.encode(serde_json::to_string(envelope).unwrap_or_default())
     )
-}
-
-async fn append_cloud_agent_response_sync_event(
-    pool: &PgPool,
-    account_id: &str,
-    peer_account_id: &str,
-    message_id: &str,
-    from_account_id: &str,
-    to_account_id: &str,
-    body: &str,
-    session_id: &str,
-    created_at: &str,
-    direction: &str,
-) -> Result<(), sqlx_core::Error> {
-    query(
-        "INSERT INTO cloud_sync_events \
-         (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at) \
-         VALUES ($1, 'message.upsert', $2, $3, $4, $5)",
-    )
-    .bind(account_id)
-    .bind(peer_account_id)
-    .bind(message_id)
-    .bind(serde_json::json!({
-        "sessionId": session_id,
-        "message": {
-            "messageId": message_id,
-            "fromAccountId": from_account_id,
-            "toAccountId": to_account_id,
-            "body": body,
-            "sessionId": session_id,
-            "createdAt": created_at,
-            "deliveredAt": created_at,
-            "readAt": null,
-            "direction": direction,
-            "attachments": [],
-        }
-    }))
-    .bind(created_at)
-    .execute(pool)
-    .await?;
-    Ok(())
 }
 
 fn cloud_group_response_body(
@@ -1290,20 +1252,24 @@ async fn latest_cloud_group_envelope_for_session(
     }))
 }
 
+struct GroupResponse<'a> {
+    run_id: &'a str,
+    owner_account_id: &'a str,
+    session_id: &'a str,
+    request_message_id: &'a str,
+    response_text: &'a str,
+    delivery_state: &'a str,
+}
+
 async fn ensure_group_response_messages(
     pool: &PgPool,
-    run_id: &str,
-    owner_account_id: &str,
-    _requester_account_id: &str,
-    session_id: &str,
-    request_message_id: &str,
-    response_text: &str,
-    delivery_state: &str,
+    response: GroupResponse<'_>,
 ) -> Result<Option<String>, sqlx_core::Error> {
-    let request_envelope = if is_scheduled_run_request_id(request_message_id) {
-        latest_cloud_group_envelope_for_session(pool, session_id).await?
+    let request_envelope = if is_scheduled_run_request_id(response.request_message_id) {
+        latest_cloud_group_envelope_for_session(pool, response.session_id).await?
     } else {
-        cloud_group_request_envelope_for_run(pool, session_id, request_message_id).await?
+        cloud_group_request_envelope_for_run(pool, response.session_id, response.request_message_id)
+            .await?
     };
     let Some(request_envelope) = request_envelope else {
         return Ok(None);
@@ -1314,11 +1280,11 @@ async fn ensure_group_response_messages(
     let now_ms = now.timestamp_millis();
     let response_body = cloud_group_response_body(
         &request_envelope,
-        owner_account_id,
-        request_message_id,
+        response.owner_account_id,
+        response.request_message_id,
         &response_group_message_id,
-        response_text,
-        delivery_state,
+        response.response_text,
+        response.delivery_state,
         now_ms,
     );
     let recipients = cloud_group_response_recipients(&request_envelope);
@@ -1334,30 +1300,35 @@ async fn ensure_group_response_messages(
              ON CONFLICT (message_id) DO NOTHING",
         )
         .bind(&message_id)
-        .bind(owner_account_id)
+        .bind(response.owner_account_id)
         .bind(&recipient_account_id)
         .bind(&response_body)
         .bind(&now_string)
-        .bind(session_id)
+        .bind(response.session_id)
         .execute(pool)
         .await?;
         append_cloud_agent_response_sync_event(
             pool,
-            &recipient_account_id,
-            owner_account_id,
-            &message_id,
-            owner_account_id,
-            &recipient_account_id,
-            &response_body,
-            session_id,
-            &now_string,
-            cloud_group_response_direction(owner_account_id, &recipient_account_id),
+            CloudAgentResponseSyncEvent {
+                account_id: &recipient_account_id,
+                peer_account_id: response.owner_account_id,
+                message_id: &message_id,
+                from_account_id: response.owner_account_id,
+                to_account_id: &recipient_account_id,
+                body: &response_body,
+                session_id: response.session_id,
+                created_at: &now_string,
+                direction: cloud_group_response_direction(
+                    response.owner_account_id,
+                    &recipient_account_id,
+                ),
+            },
         )
         .await?;
     }
     if let Some(message_id) = &first_message_id {
         query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
-            .bind(run_id)
+            .bind(response.run_id)
             .bind(message_id)
             .bind(&now_string)
             .execute(pool)
@@ -1393,28 +1364,32 @@ async fn ensure_scheduled_direct_person_response_message(
     .await?;
     append_cloud_agent_response_sync_event(
         pool,
-        owner_account_id,
-        &peer_account_id,
-        &message_id,
-        owner_account_id,
-        &peer_account_id,
-        response_body,
-        session_id,
-        &now,
-        "outgoing",
+        CloudAgentResponseSyncEvent {
+            account_id: owner_account_id,
+            peer_account_id: &peer_account_id,
+            message_id: &message_id,
+            from_account_id: owner_account_id,
+            to_account_id: &peer_account_id,
+            body: response_body,
+            session_id,
+            created_at: &now,
+            direction: "outgoing",
+        },
     )
     .await?;
     append_cloud_agent_response_sync_event(
         pool,
-        &peer_account_id,
-        owner_account_id,
-        &message_id,
-        owner_account_id,
-        &peer_account_id,
-        response_body,
-        session_id,
-        &now,
-        "incoming",
+        CloudAgentResponseSyncEvent {
+            account_id: &peer_account_id,
+            peer_account_id: owner_account_id,
+            message_id: &message_id,
+            from_account_id: owner_account_id,
+            to_account_id: &peer_account_id,
+            body: response_body,
+            session_id,
+            created_at: &now,
+            direction: "incoming",
+        },
     )
     .await?;
     query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
@@ -1471,13 +1446,14 @@ pub async fn complete_run(
             message_id
         } else if let Some(message_id) = ensure_group_response_messages(
             pool,
-            run_id,
-            &owner_account_id,
-            &requester_account_id,
-            &session_id,
-            &request_message_id,
-            trimmed,
-            "complete",
+            GroupResponse {
+                run_id,
+                owner_account_id: &owner_account_id,
+                session_id: &session_id,
+                request_message_id: &request_message_id,
+                response_text: trimmed,
+                delivery_state: "complete",
+            },
         )
         .await?
         {
@@ -1503,13 +1479,14 @@ pub async fn complete_run(
         }
     } else if let Some(message_id) = ensure_group_response_messages(
         pool,
-        run_id,
-        &owner_account_id,
-        &requester_account_id,
-        &session_id,
-        &request_message_id,
-        trimmed,
-        "complete",
+        GroupResponse {
+            run_id,
+            owner_account_id: &owner_account_id,
+            session_id: &session_id,
+            request_message_id: &request_message_id,
+            response_text: trimmed,
+            delivery_state: "complete",
+        },
     )
     .await?
     {
@@ -1536,15 +1513,17 @@ pub async fn complete_run(
     if let Some(message_id) = direct_response_sync_event.as_deref() {
         append_cloud_agent_response_sync_event(
             pool,
-            &requester_account_id,
-            &owner_account_id,
-            message_id,
-            &owner_account_id,
-            &requester_account_id,
-            &response_body,
-            &session_id,
-            &Utc::now().to_rfc3339(),
-            "incoming",
+            CloudAgentResponseSyncEvent {
+                account_id: &requester_account_id,
+                peer_account_id: &owner_account_id,
+                message_id,
+                from_account_id: &owner_account_id,
+                to_account_id: &requester_account_id,
+                body: &response_body,
+                session_id: &session_id,
+                created_at: &Utc::now().to_rfc3339(),
+                direction: "incoming",
+            },
         )
         .await?;
     }
@@ -1610,13 +1589,14 @@ pub async fn fail_run(
             message_id
         } else if let Some(message_id) = ensure_group_response_messages(
             pool,
-            run_id,
-            &owner_account_id,
-            &requester_account_id,
-            &session_id,
-            &request_message_id,
-            failure_text,
-            "failed",
+            GroupResponse {
+                run_id,
+                owner_account_id: &owner_account_id,
+                session_id: &session_id,
+                request_message_id: &request_message_id,
+                response_text: failure_text,
+                delivery_state: "failed",
+            },
         )
         .await?
         {
@@ -1642,13 +1622,14 @@ pub async fn fail_run(
         }
     } else if let Some(message_id) = ensure_group_response_messages(
         pool,
-        run_id,
-        &owner_account_id,
-        &requester_account_id,
-        &session_id,
-        &request_message_id,
-        failure_text,
-        "failed",
+        GroupResponse {
+            run_id,
+            owner_account_id: &owner_account_id,
+            session_id: &session_id,
+            request_message_id: &request_message_id,
+            response_text: failure_text,
+            delivery_state: "failed",
+        },
     )
     .await?
     {
@@ -1675,15 +1656,17 @@ pub async fn fail_run(
     if let Some(message_id) = direct_response_sync_event.as_deref() {
         append_cloud_agent_response_sync_event(
             pool,
-            &requester_account_id,
-            &owner_account_id,
-            message_id,
-            &owner_account_id,
-            &requester_account_id,
-            &response_body,
-            &session_id,
-            &Utc::now().to_rfc3339(),
-            "incoming",
+            CloudAgentResponseSyncEvent {
+                account_id: &requester_account_id,
+                peer_account_id: &owner_account_id,
+                message_id,
+                from_account_id: &owner_account_id,
+                to_account_id: &requester_account_id,
+                body: &response_body,
+                session_id: &session_id,
+                created_at: &Utc::now().to_rfc3339(),
+                direction: "incoming",
+            },
         )
         .await?;
     }

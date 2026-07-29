@@ -294,12 +294,12 @@ fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
 
 #[test]
 fn cloud_agent_scheduled_responses_are_written_to_cloud_sync_events() {
-    let runs_source = std::fs::read_to_string("src/cloud_agent_runtime/runs.rs")
-        .expect("read cloud agent runs source");
-    assert!(runs_source.contains("INSERT INTO cloud_sync_events"));
-    assert!(runs_source.contains("message.upsert"));
-    assert!(runs_source.contains("\"messageId\""));
-    assert!(runs_source.contains("\"sessionId\""));
+    let sync_source = std::fs::read_to_string("src/cloud_agent_runtime/sync_events.rs")
+        .expect("read cloud agent sync event source");
+    assert!(sync_source.contains("INSERT INTO cloud_sync_events"));
+    assert!(sync_source.contains("message.upsert"));
+    assert!(sync_source.contains("\"messageId\""));
+    assert!(sync_source.contains("\"sessionId\""));
 }
 
 #[test]
