@@ -5,6 +5,8 @@ use rusqlite::Connection;
 use crate::store::{self, EntryRow};
 use crate::tree;
 
+#[cfg(test)]
+mod active_path_tests;
 mod assembly;
 mod formatting;
 #[cfg(test)]
