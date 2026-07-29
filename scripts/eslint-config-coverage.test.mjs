@@ -29,6 +29,7 @@ test('production TSX uses typed TypeScript and React Hooks linting', () => {
 
   assert.match(config.languageOptions.parser, /typescript-eslint\/parser/);
   assert.equal(config.languageOptions.parserOptions.projectService, true);
+  assert.equal(config.linterOptions.noInlineConfig, true);
   assert.equal(severity(config, '@typescript-eslint/no-floating-promises'), 2);
   assert.equal(severity(config, '@typescript-eslint/no-unused-vars'), 2);
   assert.equal(severity(config, 'react-hooks/rules-of-hooks'), 2);
@@ -40,6 +41,7 @@ test('TSX tests remain linted without requiring the production project service',
 
   assert.match(config.languageOptions.parser, /typescript-eslint\/parser/);
   assert.equal(config.languageOptions.parserOptions.projectService, undefined);
+  assert.equal(config.linterOptions.noInlineConfig, true);
   assert.equal(severity(config, '@typescript-eslint/no-unused-vars'), 2);
   assert.equal(severity(config, 'react-hooks/rules-of-hooks'), 2);
   assert.equal(severity(config, 'no-console'), 2);

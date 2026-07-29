@@ -75,6 +75,10 @@ test('evaluateMaintainabilityChanges blocks new and growing hotspots', () => {
 test('source path filtering matches the maintainability scanner exclusions', () => {
   assert.equal(isScannableSourcePath('app/desktop/src/main.tsx'), true);
   assert.equal(isScannableSourcePath('crates/server/src/routes.rs'), true);
+  assert.equal(isScannableSourcePath('bridges/registry/main.go'), true);
+  assert.equal(isScannableSourcePath('scripts/deploy.sh'), true);
+  assert.equal(isScannableSourcePath('migrations/001_sessions.sql'), true);
+  assert.equal(isScannableSourcePath('web/legacy-view.jsx'), true);
   assert.equal(isScannableSourcePath('app/desktop/src-tauri/gen/schema.ts'), false);
   assert.equal(isScannableSourcePath('node_modules/pkg/index.ts'), false);
   assert.equal(isScannableSourcePath('docs/architecture.md'), false);

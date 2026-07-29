@@ -191,7 +191,6 @@ export function useDesktopSessionController({
       try {
         await onForkCreated?.(result);
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.warn('[desktop-session-controller] post-fork sync failed', error);
         setDesktopChatError(`Fork created, but Cloud fork sync failed: ${error instanceof Error ? error.message : String(error)}`);
       }

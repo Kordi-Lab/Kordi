@@ -1474,7 +1474,6 @@ export function useKordiAppModel({
       // Best effort: the local fork remains usable if Cloud lineage is not yet
       // available. Group forks still fall back to the explicit Cloud control
       // below for peers; private self-agent forks use this row for relogin sync.
-      // eslint-disable-next-line no-console
       console.warn('[cloud-fork] failed to record cloud fork lineage', error);
     });
 

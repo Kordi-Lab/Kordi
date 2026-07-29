@@ -312,7 +312,6 @@ function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAu
             void refreshCloudContactsStore(store, client);
           }
         } catch (error) {
-          // eslint-disable-next-line no-console
           console.warn('[cloud-contacts-ws] frame parse failed', error);
         }
       };

@@ -178,12 +178,10 @@ export function useCloudConversation(
             sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
           });
         } catch (err) {
-          // eslint-disable-next-line no-console
           console.warn('[cloud-ws] frame parse failed', err);
         }
       };
       ws.onerror = (event) => {
-        // eslint-disable-next-line no-console
         console.warn('[cloud-ws] error', event);
       };
     };

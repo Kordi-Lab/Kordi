@@ -308,7 +308,6 @@ export function OllamaModelControlCenter({
       refreshInstalledModels(),
       refreshRunningModels(),
     ]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endpoint]);
 
   const runOllamaAction = async (

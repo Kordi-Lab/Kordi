@@ -104,7 +104,6 @@ function emit(record: ChatPerformanceRecord, startedAt: number, endedAt: number)
     window.dispatchEvent(new CustomEvent<ChatPerformanceRecord>(CHAT_PERFORMANCE_EVENT, { detail: record }));
   }
   // Counts, bytes, and durations only; never include source payloads or correlation ids.
-  // eslint-disable-next-line no-console
   console.debug('[kordi-performance]', record);
 }
 

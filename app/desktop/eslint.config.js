@@ -81,6 +81,7 @@ export default defineConfig([
       },
     },
     linterOptions: {
+      noInlineConfig: true,
       reportUnusedDisableDirectives: 'error',
     },
     rules: {
@@ -106,6 +107,7 @@ export default defineConfig([
       },
     },
     linterOptions: {
+      noInlineConfig: true,
       reportUnusedDisableDirectives: 'error',
     },
     rules: {
