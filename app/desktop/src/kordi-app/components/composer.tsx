@@ -21,6 +21,13 @@ import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
 import { IdentityAvatar } from './IdentityAvatar';
+import {
+  normalizeComposerProviderId,
+  providerDisplayLabel,
+  resolveComposerModelSelection,
+  type ComposerModelOption,
+  type ComposerProviderOption,
+} from './composerModelSelection';
 import { composerModeOptions, composerModelOptions, composerThinkingOptions } from '../data';
 import type {
   ComposerScope,
@@ -39,23 +46,7 @@ export type ComposerAuthOption = {
   active: boolean;
 };
 
-export type ComposerProviderOption = {
-  value: string;
-  providerId: string;
-  label: string;
-  detail?: string | null;
-  selectionLabel?: string;
-  active?: boolean;
-};
-
-export type ComposerModelOption = {
-  value: string;
-  label: string;
-  detail?: string | null;
-  provider?: string;
-  providerLabel?: string;
-  thinkingLevels?: string[];
-};
+export type { ComposerModelOption, ComposerProviderOption } from './composerModelSelection';
 
 export type ComposerMentionOption = {
   value: string;
@@ -301,41 +292,6 @@ export function fallbackComposerThinkingValue(levels: string[], requested: strin
   return normalizedLevels[0] ?? requested;
 }
 
-function normalizeComposerProviderId(providerId: string) {
-  const normalized = providerId.trim().toLowerCase();
-  return normalized === 'openai-codex' ? 'openai' : normalized;
-}
-
-function authChoiceFromComposerProviderOption(option: ComposerProviderOption) {
-  return option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
-}
-
-function providerDisplayLabel(providerId: string) {
-  switch (providerId) {
-    case 'anthropic':
-      return 'Claude';
-    case 'openai':
-    case 'openai-codex':
-      return 'OpenAI';
-    case 'google':
-      return 'Google Gemini';
-    case 'github-copilot':
-      return 'GitHub Copilot';
-    case 'groq':
-      return 'Groq';
-    case 'lm-studio':
-      return 'LM Studio';
-    case 'ollama':
-      return 'Ollama';
-    case 'openrouter':
-      return 'OpenRouter';
-    case 'xai':
-      return 'xAI';
-    default:
-      return providerId;
-  }
-}
-
 function lowerComposerLabel(value?: string | null) {
   return (value?.trim() || '').toLocaleLowerCase();
 }
@@ -361,23 +317,11 @@ export function CompactComposerModelMenu({
   defaultOpen?: boolean;
   onSave: (input: CompactComposerModelMenuSaveInput) => void;
 }) {
-  const selectedModelOption = modelOptions.find((option) => option.value === selection.model);
-  const parsedSelection = selection.model.split('/');
-  const fallbackProviderValue = normalizeComposerProviderId(parsedSelection[0] ?? '');
-  const fallbackProviderKnown = Boolean(fallbackProviderValue) && (
-    providerOptions.some((option) => normalizeComposerProviderId(option.providerId) === fallbackProviderValue)
-    || modelOptions.some((option) => option.provider === fallbackProviderValue)
-  );
-  const selectedProviderValue = selectedModelOption?.provider ?? (fallbackProviderKnown ? fallbackProviderValue : '');
-  const selectedAuthProviderOption = selection.authProvider
-    ? providerOptions.find((option) => (
-        option.providerId === selection.authProvider
-        && authChoiceFromComposerProviderOption(option) === (selection.authChoice ?? null)
-      )) ?? null
-    : null;
-  const selectedProviderOption = selectedAuthProviderOption ?? providerOptions.find(
-    (option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue && option.active,
-  ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
+  const {
+    selectedModelOption,
+    selectedProviderOption,
+    selectedProviderValue,
+  } = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
 
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -683,24 +627,12 @@ export function ComposerModelControls({
   const selectorMenuRef = useRef<HTMLDivElement | null>(null);
   const [selectorMenuStyle, setSelectorMenuStyle] = useState<CSSProperties>({});
   const [selectorMenuThemeClass, setSelectorMenuThemeClass] = useState('');
-  const selectedModelOption = modelOptions.find((option) => option.value === selection.model);
-  const parsedSelection = selection.model.split('/');
-  const fallbackProviderValue = normalizeComposerProviderId(parsedSelection[0] ?? '');
-  const fallbackModelLabel = parsedSelection.slice(1).join('/').trim() || selection.model;
-  const fallbackProviderKnown = Boolean(fallbackProviderValue) && (
-    providerOptions.some((option) => normalizeComposerProviderId(option.providerId) === fallbackProviderValue)
-    || modelOptions.some((option) => option.provider === fallbackProviderValue)
-  );
-  const selectedProviderValue = selectedModelOption?.provider ?? (fallbackProviderKnown ? fallbackProviderValue : '');
-  const selectedAuthProviderOption = selection.authProvider
-    ? providerOptions.find((option) => (
-        option.providerId === selection.authProvider
-        && authChoiceFromComposerProviderOption(option) === (selection.authChoice ?? null)
-      )) ?? null
-    : null;
-  const selectedProviderOption = selectedAuthProviderOption ?? providerOptions.find(
-    (option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue && option.active,
-  ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
+  const {
+    fallbackModelLabel,
+    selectedModelOption,
+    selectedProviderOption,
+    selectedProviderValue,
+  } = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
   const selectedProviderLabel = selectedProviderOption?.selectionLabel
     ?? (selectedProviderOption ? [selectedProviderOption.label, selectedProviderOption.detail].filter(Boolean).join(' · ') : null)
     ?? selectedModelOption?.providerLabel
