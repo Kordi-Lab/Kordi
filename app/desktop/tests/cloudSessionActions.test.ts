@@ -12,6 +12,8 @@ import {
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 const cloudCollaborationStateSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
+const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
 const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
@@ -299,21 +301,22 @@ test('cloud group read state is driven by cloud metadata, not transient local un
 });
 
 test('cloud group requesting placeholder times out to unavailable notice instead of misleading auth copy', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+  const source = cloudAgentAvailabilitySource();
+  const stateSource = cloudAgentRequestStateSource();
   assert.match(source, /CLOUD_GROUP_AGENT_STATUS_RECHECK_MS = 5_000/);
   assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 2 \* 60_000/);
-  const timeoutIndex = source.indexOf('const requestDeadlineMs = candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS;');
+  const timeoutIndex = source.indexOf('const requestDeadlineMs = candidate.requestMessage.createdAtMs');
   assert.ok(timeoutIndex >= 0, 'expected bounded requesting placeholder status checks');
   const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 6500);
   assert.match(timeoutBlock, /cloudFallbackRunAlreadyOwnsRequest\(\{/);
   assert.match(timeoutBlock, /cloudFallbackRunClaimsForMessages\(\{/);
-  assert.match(timeoutBlock, /claimCloudFallbackRun\(exactClaim/);
-  assert.match(timeoutBlock, /scheduleStatusCheck\(Math\.min\(CLOUD_GROUP_AGENT_STATUS_RECHECK_MS, remainingMs\)\)/);
+  assert.match(timeoutBlock, /claimCloudFallbackRun\(\s*exactClaim/);
+  assert.match(timeoutBlock, /scheduleStatusCheck\(\s*Math\.min\(\s*CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,\s*remainingMs,?\s*\),?\s*\)/);
   assert.match(timeoutBlock, /cloudGroupAgentUnavailableFallbackRequest\(\{/);
-  assert.match(source, /CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE/);
-  assert.match(source, /sourceEventId: `cloud-group-agent-unavailable-timeout:/);
-  assert.match(source, /status:\s*'failed'/);
-  assert.match(source, /sourceTransport:\s*'cloud-group-agent-offline'/);
+  assert.match(stateSource, /CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE/);
+  assert.match(stateSource, /`cloud-group-agent-unavailable-timeout:/);
+  assert.match(stateSource, /status:\s*'failed'/);
+  assert.match(stateSource, /sourceTransport:\s*'cloud-group-agent-offline'/);
 });
 
 test('fresh group sends claim fallback before waiting for a background Cloud sync', () => {
@@ -342,9 +345,9 @@ test('adding existing group members publishes Cloud authorization before the loc
 });
 
 test('cloud group hosted-agent sends render processing in the final response slot', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  assert.match(source, /msg:cloud-agent-processing:\$\{candidate\.requestMessage\.id\}:\$\{candidate\.targetAccountId\}/);
-  assert.match(source, /setCanonicalSessionState\(\(current\) => upsertCanonicalRequestIntoLocalState\(\s*appendCloudGroupRequestingPlaceholder\(current, candidate, noticeId\),\s*requestingNoticeRequest,\s*\)\);/);
+  const source = cloudAgentAvailabilitySource();
+  assert.match(source, /msg:cloud-agent-processing:\$\{candidate\.requestMessage\.id\}[\s\S]*\$\{candidate\.targetAccountId\}/);
+  assert.match(source, /setCanonicalSessionState\(\(current\) =>\s*upsertCanonicalRequestIntoLocalState\(\s*appendCloudGroupRequestingPlaceholder\(current, candidate, noticeId\),\s*requestingNoticeRequest,\s*\)\s*\);/);
   assert.match(source, /void upsertCanonicalMessageFast\(requestingNoticeRequest\)/);
 });
 
@@ -368,7 +371,7 @@ test('cloud group terminal hosted-agent responses reserve the stable slot even w
 });
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
-  const stateSource = cloudCollaborationStateSource();
+  const stateSource = cloudAgentRequestStateSource();
   const agentSource = cloudGroupAgentControlSource();
   assert.match(stateSource, /removeCloudGroupPendingRowsForTerminalResponse/);
   assert.match(stateSource, /cloudGroupPendingAgentRowMatches/);
