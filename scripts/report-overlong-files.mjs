@@ -17,9 +17,13 @@ export const DEFAULT_SKIP_DIRS = new Set([
 export const DEFAULT_EXTENSIONS = new Set([
   '.cjs',
   '.css',
+  '.go',
   '.js',
+  '.jsx',
   '.mjs',
   '.rs',
+  '.sh',
+  '.sql',
   '.ts',
   '.tsx',
 ]);

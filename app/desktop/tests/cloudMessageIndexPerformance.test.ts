@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
 
 import { parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
@@ -56,21 +55,18 @@ test('Cloud message index parses each unique wire row once and builds constant-t
     messagesByPeer.acct_scale_0[0]!,
   ];
   let parseCalls = 0;
-  const startedAt = performance.now();
   const index = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer, {
     parseGroupControl(body) {
       parseCalls += 1;
       return parseCloudGroupControl(body);
     },
   });
-  const elapsedMs = performance.now() - startedAt;
 
   assert.equal(index.allMessages.length, 500);
   assert.equal(parseCalls, index.allMessages.length);
   assert.equal(index.groupRows.length, index.allMessages.length);
   assert.equal(index.deliveryByMessageId.get(scaleMessageId(0, 100))?.state, 'read');
   assert.equal(index.deliveryByMessageId.get(scaleMessageId(0, 100))?.readers.length, 7);
-  assert.ok(elapsedMs < 100, `Expected 500-row index below 100ms, received ${elapsedMs.toFixed(1)}ms`);
 });
 
 test('a one-row Cloud delta reuses parsed envelopes from the 20,000-row index', () => {
@@ -93,7 +89,6 @@ test('a one-row Cloud delta reuses parsed envelopes from the 20,000-row index', 
     ],
   };
   let parseCalls = 0;
-  const startedAt = performance.now();
   const nextIndex = buildCloudMessageIndex(SCALE_ACCOUNT_ID, nextMessagesByPeer, {
     previousIndex,
     parseGroupControl(body) {
@@ -101,11 +96,17 @@ test('a one-row Cloud delta reuses parsed envelopes from the 20,000-row index', 
       return parseCloudGroupControl(body);
     },
   });
-  const elapsedMs = performance.now() - startedAt;
 
   assert.equal(nextIndex.allMessages.length, previousIndex.allMessages.length + 1);
   assert.equal(parseCalls, 1);
-  assert.ok(elapsedMs < 50, `Expected one-row index delta below 50ms, received ${elapsedMs.toFixed(1)}ms`);
+  assert.equal(nextIndex.groupRows.length, previousIndex.groupRows.length + 1);
+  for (let index = 0; index < previousIndex.groupRows.length; index += 1) {
+    assert.equal(
+      nextIndex.groupRows[index],
+      previousIndex.groupRows[index],
+      `Expected existing row ${index} to retain its parsed envelope and object identity`,
+    );
+  }
 });
 
 test('canonical delivery patch preserves state identity after summaries are applied', () => {

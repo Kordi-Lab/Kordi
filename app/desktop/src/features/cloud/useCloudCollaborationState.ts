@@ -417,7 +417,6 @@ async function publishDerivedCloudSessionActivity({
   }
   const firstFailure = [...taskResults, ...artifactResults].find((result) => result.status === 'rejected') as PromiseRejectedResult | undefined;
   if (firstFailure) {
-    // eslint-disable-next-line no-console
     console.warn('[cloud-session-activity] publish failed', firstFailure.reason);
   }
 }
@@ -2923,7 +2922,6 @@ export function useCloudCollaborationState({
       },
     )
       .catch((error) => {
-        // eslint-disable-next-line no-console
         console.warn('[cloud-profile-identity] failed to adopt stable cloud profile identity', error);
       });
   }, [account, canonicalSessionState?.profile.humanIdentityId, canonicalStateReady, cloudProfileAdoptionSignature, cloudProfileIdentityAdoptionCoordinator, setCanonicalSessionState]);
@@ -3257,7 +3255,6 @@ export function useCloudCollaborationState({
       // Keep them eligible for the bounded status recheck instead of suppressing
       // this request for the remainder of the app session.
       const retryable = cloudFallbackClaimErrorIsRetryable(error);
-      // eslint-disable-next-line no-console
       console.warn('[cloud-agent-fallback] claim failed', error);
       return retryable ? 'retryable-failure' : 'terminal-failure';
     } finally {
@@ -3368,13 +3365,11 @@ export function useCloudCollaborationState({
         const timeoutId = window.setTimeout(() => {
           cloudGroupOfflineTimersRef.current.delete(key);
           void checkRequestStatus().catch((error) => {
-            // eslint-disable-next-line no-console
             console.warn('[cloud-group-agent-requesting] status check failed', error);
             if (Date.now() < requestDeadlineMs) {
               scheduleStatusCheck(CLOUD_GROUP_AGENT_STATUS_RECHECK_MS);
             } else {
               void persistUnavailableNotice().catch((persistError) => {
-                // eslint-disable-next-line no-console
                 console.warn('[cloud-group-agent-requesting] failed to persist unavailable notice', persistError);
               });
             }
@@ -3459,7 +3454,6 @@ export function useCloudCollaborationState({
       ));
       void upsertCanonicalMessageFast(requestingNoticeRequest)
         .catch((error) => {
-          // eslint-disable-next-line no-console
           console.warn('[cloud-group-agent-requesting] failed to persist processing notice', error);
         });
       continue;
@@ -3605,7 +3599,6 @@ export function useCloudCollaborationState({
             return next;
           });
         }
-        // eslint-disable-next-line no-console
         console.warn('[cloud-self-agent-sync] failed to sync local history', error);
       })
       .finally(() => {
@@ -4453,13 +4446,11 @@ export function useCloudCollaborationState({
             void syncCloudCollaborationDiff();
           })().catch((saveError) => {
             processedCloudAgentMentionIdsRef.current.delete(envelope.message!.id);
-            // eslint-disable-next-line no-console
             console.warn('[cloud-group-agent-mention] no-provider notice failed', saveError);
           });
           return;
         }
         processedCloudAgentMentionIdsRef.current.delete(envelope.message!.id);
-        // eslint-disable-next-line no-console
         console.warn('[cloud-group-agent-mention] local agent response failed', error);
       });
     }
@@ -4555,7 +4546,6 @@ export function useCloudCollaborationState({
         if (sentAny) await syncCloudCollaborationDiffRef.current?.();
       } catch (error) {
         // Keep the persisted recipients queued; focus/online/timer will resume.
-        // eslint-disable-next-line no-console
         console.warn('[cloud-group-outbox] retry failed', error);
       } finally {
         draining = false;
@@ -4574,7 +4564,6 @@ export function useCloudCollaborationState({
       }
       await drain();
     }).catch((error) => {
-      // eslint-disable-next-line no-console
       console.warn('[cloud-group-outbox] restore failed', error);
     });
     window.addEventListener('online', resume);
@@ -4655,7 +4644,6 @@ export function useCloudCollaborationState({
           });
           void syncCloudCollaborationDiffRef.current?.();
         } catch (error) {
-          // eslint-disable-next-line no-console
           console.warn('[cloud-collaboration-ws] frame parse failed', error);
         }
       };
@@ -4748,7 +4736,6 @@ export function useCloudCollaborationState({
       },
       onFailure: ({ attempt, retryDelayMs, error }) => {
         const failure = error instanceof Error ? error.message : String(error);
-        // eslint-disable-next-line no-console
         console.warn('[cloud-group] sync failed; retry scheduled', { attempt, retryDelayMs, failure }, error);
       },
     });
@@ -4780,7 +4767,6 @@ export function useCloudCollaborationState({
       await client.publishProviderAuthSnapshot(session.token, input);
     })().catch((error) => {
       syncedProviderAuthSnapshotKeysRef.current.delete(syncKey);
-      // eslint-disable-next-line no-console
       console.warn('[cloud-provider-auth-sync] publish failed', error);
     });
     return () => {
@@ -4818,7 +4804,6 @@ export function useCloudCollaborationState({
       if (turnId) {
         void cancelDesktopChatTurn(turnId)
           .catch((error) => {
-            // eslint-disable-next-line no-console
             console.warn('[cloud-agent-mention] local agent cancel failed', error);
           })
           .finally(() => {
@@ -4869,7 +4854,6 @@ export function useCloudCollaborationState({
       });
       void upsertCanonicalMessageFast(cancelNoticeRequest)
         .catch((error) => {
-          // eslint-disable-next-line no-console
           console.warn('[cloud-agent-mention] group cancel notice failed', error);
         });
     }
@@ -4924,7 +4908,6 @@ export function useCloudCollaborationState({
               prompt,
               error,
             }));
-            // eslint-disable-next-line no-console
             console.warn('[cloud-agent-mention] local session unavailable', error);
             return;
           }
@@ -4988,7 +4971,6 @@ export function useCloudCollaborationState({
               error,
             });
             rememberLocalTurn(finalTurn);
-            // eslint-disable-next-line no-console
             console.warn('[cloud-agent-mention] local agent response failed', error);
           } finally {
             cloudAgentTurnIdsByRequestIdRef.current.delete(message.messageId);
@@ -5061,7 +5043,6 @@ export function useCloudCollaborationState({
           } catch (error) {
             // The local turn is already terminal and visible. A Cloud publish
             // failure must not rerun the model or return the UI to Processing.
-            // eslint-disable-next-line no-console
             console.warn('[cloud-agent-mention] response publish failed', error);
           }
         })();
@@ -5187,7 +5168,6 @@ export function useCloudCollaborationState({
         return changed ? next : current;
       });
     })().catch((error) => {
-      // eslint-disable-next-line no-console
       console.warn('[cloud-self-agent-sync] failed to refresh cloud fork lineage', error);
     });
     return () => {
@@ -5225,7 +5205,6 @@ export function useCloudCollaborationState({
       }
       if (!cancelled) setCanonicalSessionState(nextState);
     })().catch((error) => {
-      // eslint-disable-next-line no-console
       console.warn('[cloud-self-agent-sync] failed to materialize cloud session locally', error);
     });
     return () => {
@@ -5642,7 +5621,6 @@ export function useCloudCollaborationState({
         await persistCloudGroupOutboxDelivery(outcome).catch((error) => {
           // Recipient delivery is durable; canonical acknowledgement replays
           // on startup, focus, or reconnect without resending recipients.
-          // eslint-disable-next-line no-console
           console.warn('[cloud-group-outbox] failed to persist delivery status', error);
         });
       }
@@ -5763,7 +5741,6 @@ export function useCloudCollaborationState({
         sessionTitleSyncOnly: true,
       }).catch((error) => {
         cloudGroupSessionTitleBackfillsRef.current.delete(backfillKey);
-        // eslint-disable-next-line no-console
         console.warn('[cloud-group-session-title] failed to backfill title', error);
       });
     }

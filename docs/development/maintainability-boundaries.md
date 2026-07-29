@@ -20,6 +20,18 @@ pnpm maintainability:scan -- --min-lines 1000 --limit 40
 
 The script skips generated/build/vendor paths including `target/`, `node_modules/`, `dist/`, `.git/`, and `app/desktop/src-tauri/gen/`.
 
+## Automated no-growth ratchet
+
+Run the same changed-code guard used by CI:
+
+```bash
+pnpm maintainability:check
+```
+
+The local command compares the working tree, staged changes, committed branch changes, and untracked source files with the merge base of `origin/main`. CI passes the exact pull-request or push range.
+
+Existing debt is allowed to stay the same or shrink. The check fails when a changed source file reaches 500 lines or when an existing 500+ line hotspot grows. Split the added responsibility into a focused sibling module instead of increasing a mixed-responsibility unit. Do not raise the threshold or add a path exclusion to make an unrelated PR pass.
+
 ## Module boundary guidance
 
 ### Desktop Rust runtime and chat glue

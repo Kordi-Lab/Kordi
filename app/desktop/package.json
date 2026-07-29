@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "tsx --test tests/*.test.tsx && tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:visual": "playwright test -c playwright.visual.config.ts",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0 --suppressions-location eslint-suppressions.json",
+    "lint:prune": "eslint . --prune-suppressions --max-warnings 0 --suppressions-location eslint-suppressions.json",
     "preview": "vite preview",
     "tauri:refresh-icon": "swift scripts/reshape-mac-icon.swift",
     "tauri:prepare-sidecars": "node scripts/prepare-sidecars.mjs",
@@ -64,6 +65,7 @@
     "globals": "^17.4.0",
     "jsdom": "^29.1.1",
     "tsx": "^4.21.0",
+    "typescript-eslint": "^8.65.0",
     "vite": "^8.0.4",
     "yaml": "^2.8.3"
   }

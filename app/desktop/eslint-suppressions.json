@@ -1,0 +1,880 @@
+{
+  "scripts/benchmark-chat-scale.ts": {
+    "no-console": {
+      "count": 1
+    }
+  },
+  "src/AuthPopup.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 3
+    },
+    "react-hooks/immutability": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/assembleOverlaySlots.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/app/assembleSidebarSlot.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/app/kordiShellSlots.types.ts": {
+    "@typescript-eslint/no-duplicate-type-constituents": {
+      "count": 1
+    }
+  },
+  "src/app/mainContentShellBuilders.ts": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    }
+  },
+  "src/app/nativeWindowTheme.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/app/useAppLayoutState.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/useKordiAppModel.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 9
+    },
+    "@typescript-eslint/require-await": {
+      "count": 2
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 18
+    },
+    "no-console": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 20
+    },
+    "react-hooks/preserve-manual-memoization": {
+      "count": 3
+    },
+    "react-hooks/refs": {
+      "count": 8
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "src/app/useKordiDesktopActivity.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-call": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 3
+    }
+  },
+  "src/app/useWorkspaceController.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/useWorkspaceViewModels.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 4
+    }
+  },
+  "src/components/ui/dialog.tsx": {
+    "react-hooks/refs": {
+      "count": 2
+    }
+  },
+  "src/features/auth/useDesktopAuthState.ts": {
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/auth/useDesktopAuthUiState.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/canonical/readModel/messageMapping.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/canonical/sessionReadModel.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/chat/VirtualTranscript.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/prefer-promise-reject-errors": {
+      "count": 1
+    },
+    "react-hooks/incompatible-library": {
+      "count": 1
+    }
+  },
+  "src/features/chat/artifacts.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/chat/chatCreateFlows.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/chat/composerAttachments.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/chat/composerController.shared.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/chat/imeComposition.ts": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "src/features/chat/messageActions/chatMessages.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 10
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 3
+    }
+  },
+  "src/features/chat/messageActions/projectMessages.ts": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/features/chat/messageBubbleShape.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/features/chat/queuedDesktopMessages.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/chat/taskActivityDashboard.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/chat/useCompanionComposerRuntime.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/chat/useComposerInputActions.ts": {
+    "react-hooks/preserve-manual-memoization": {
+      "count": 1
+    }
+  },
+  "src/features/chat/useComposerMessageActions.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/chat/useComposerViewModel.ts": {
+    "react-hooks/preserve-manual-memoization": {
+      "count": 2
+    }
+  },
+  "src/features/chat/useDesktopChatState.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/features/chat/useDesktopSessionController.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 1
+    },
+    "no-console": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/CloudContactsAdapter.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/CloudContactsPanel.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/authClient.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 14
+    }
+  },
+  "src/features/cloud/cloudAgentMessages.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 6
+    }
+  },
+  "src/features/cloud/cloudAgentsClient.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 3
+    }
+  },
+  "src/features/cloud/cloudAttachments.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/cloudDiffSync.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/cloudDirectMessages.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/cloudGroupMessages.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 7
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "src/features/cloud/cloudGroupOutbox.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/cloudGroupReplayCoordinator.ts": {
+    "@typescript-eslint/no-duplicate-type-constituents": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/cloudMessageCache.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 5
+    },
+    "prefer-const": {
+      "count": 2
+    }
+  },
+  "src/features/cloud/cloudSessionActivity.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 2
+    }
+  },
+  "src/features/cloud/cloudSyncCoordinator.ts": {
+    "@typescript-eslint/only-throw-error": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/scheduledTasksClient.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 3
+    }
+  },
+  "src/features/cloud/session.ts": {
+    "@typescript-eslint/require-await": {
+      "count": 3
+    },
+    "no-console": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/useCloudCollaborationState.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 9
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 12
+    },
+    "@typescript-eslint/no-unsafe-return": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 5
+    },
+    "@typescript-eslint/prefer-promise-reject-errors": {
+      "count": 1
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 2
+    },
+    "no-console": {
+      "count": 23
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 6
+    },
+    "react-hooks/preserve-manual-memoization": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 6
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 4
+    }
+  },
+  "src/features/cloud/useCloudContacts.ts": {
+    "@typescript-eslint/no-unsafe-argument": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-call": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 5
+    },
+    "no-console": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/useCloudConversation.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 9
+    },
+    "@typescript-eslint/no-unsafe-call": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 11
+    },
+    "no-console": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/features/cloud/useCloudPresence.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 2
+    },
+    "react-hooks/immutability": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/cloud/useCloudSession.ts": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-argument": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unsafe-member-access": {
+      "count": 3
+    }
+  },
+  "src/features/cloud/useScheduledTasks.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/features/collaboration/transcript.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "src/features/performance/chatPerformance.ts": {
+    "no-console": {
+      "count": 1
+    }
+  },
+  "src/features/projects/useProjectSettingsState.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/agents/AgentDetailPane.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/agents/AgentStudioRoutingEditor.tsx": {
+    "react-hooks/preserve-manual-memoization": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/agents/AgentStudioWorkspace.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "src/kordi-app/agents/AgentsPage.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/kordi-app/agents/SkillLibraryView.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 4
+    }
+  },
+  "src/kordi-app/agents/useAgentBuilderSession.ts": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/agents/useSkillLibrary.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/auth/AuthDetailPrimitives.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/auth/AuthPage.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/auth/LmStudioModelControlCenter.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 9
+    },
+    "no-console": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    },
+    "react-refresh/only-export-components": {
+      "count": 5
+    }
+  },
+  "src/kordi-app/auth/LocalProviderSetup.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-console": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/auth/OllamaModelControlCenter.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "no-console": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/cloud/CloudLoginPage.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/kordi-app/components.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 3
+    }
+  },
+  "src/kordi-app/components/IdentityAvatar.tsx": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 2
+    },
+    "react-refresh/only-export-components": {
+      "count": 7
+    }
+  },
+  "src/kordi-app/components/avatarOverrides.ts": {
+    "@typescript-eslint/no-unsafe-argument": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/components/composer.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 3
+    }
+  },
+  "src/kordi-app/components/markdown.tsx": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "no-console": {
+      "count": 2
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/components/remoteAvatarImage.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/prefer-promise-reject-errors": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/components/toolTimeline.ts": {
+    "@typescript-eslint/no-unsafe-assignment": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/components/transcript.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/kordi-app/components/transcriptAttachments.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 6
+    }
+  },
+  "src/kordi-app/components/transcriptChangedFiles.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/components/transcriptLiveTurns.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 5
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    },
+    "react-hooks/static-components": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/kordi-app/components/transcriptReplyAttribution.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 4
+    }
+  },
+  "src/kordi-app/pages.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/kordi-app/types.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 128
+    }
+  },
+  "src/kordi-app/types/message.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 2
+    }
+  },
+  "src/lib/desktop.ts": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 13
+    }
+  },
+  "src/pages/ArtifactInspector.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 4
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/pages/ChatCreateDialog.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/pages/ChatDetailPanel.tsx": {
+    "@typescript-eslint/no-redundant-type-constituents": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/pages/ChatsPage.tsx": {
+    "@typescript-eslint/await-thenable": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 4
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 8
+    },
+    "react-refresh/only-export-components": {
+      "count": 20
+    }
+  },
+  "src/pages/CloudAccountSettingsDialog.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/pages/GroupDetailsDialog.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/pages/MemberContactProfilePopover.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/pages/SettingsPage.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "src/pages/TaskActivityDashboardPanel.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/pages/WorkspaceSidebar.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react-hooks/preserve-manual-memoization": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 4
+    },
+    "react-refresh/only-export-components": {
+      "count": 6
+    }
+  },
+  "src/pages/sidebar/VirtualChatList.tsx": {
+    "react-hooks/incompatible-library": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "tests/chatPerformance.test.tsx": {
+    "no-console": {
+      "count": 9
+    }
+  },
+  "tests/chatRouting.test.tsx": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "tests/chatsPageQuotePreview.test.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "tests/cloudSession.test.tsx": {
+    "no-console": {
+      "count": 3
+    }
+  }
+}

@@ -102,6 +102,12 @@ Frontend:
 pnpm check:frontend
 ```
 
+Desktop linting covers JavaScript, TypeScript, TSX, type-aware production rules, and React Hooks. Existing violations are recorded by file and rule in `app/desktop/eslint-suppressions.json`; new violations remain hard errors, and CI rejects suppression-count growth. Inline ESLint configuration comments are disabled for TypeScript and TSX so they cannot bypass the audited baseline. Do not regenerate that baseline to make a PR pass. When a cleanup removes existing violations, reduce the baseline with:
+
+```bash
+pnpm --dir app/desktop lint:prune
+```
+
 Rust formatting:
 
 ```bash
@@ -126,9 +132,11 @@ Repository hygiene:
 
 ```bash
 pnpm check:hygiene
+pnpm maintainability:check
+pnpm lint:suppressions:check
 ```
 
-This checks committed changes against `origin/main` plus staged and unstaged edits. Set `KORDI_HYGIENE_BASE=<ref>` when your branch targets a different base.
+These commands check committed changes against `origin/main` plus staged, unstaged, and relevant untracked edits. Set `KORDI_HYGIENE_BASE=<ref>`, `KORDI_MAINTAINABILITY_BASE=<ref>`, or `KORDI_ESLINT_BASE=<ref>` when your branch targets a different base.
 
 Full local CI equivalent:
 
