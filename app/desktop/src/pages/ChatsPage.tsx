@@ -34,7 +34,9 @@ import {
   collaborationAgentRoutingChangeNotice,
   collaborationChatRoutingControlVisibility,
   localOwnedCollaborationAgentsForModelRouting,
+  resolveCollaborationAgentRoutingUpdate,
   routingSelectionForCollaborationAgent,
+  type LocalCollaborationAgentRoutingOption,
 } from '@/features/collaboration/agentModelRouting';
 import { isCloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
@@ -64,6 +66,7 @@ import type {
   Contact,
   Conversation,
   ConversationParticipant,
+  DesktopCollaborationAgentRouting,
   DesktopCollaborationHost,
   DesktopChatContextWindowStatus,
   DesktopChatSlashCommand,
@@ -1426,15 +1429,9 @@ export function ChatsPage({
   const [selectedCompanionCollaborationAgentId, setSelectedCompanionCollaborationAgentId] = useState<string | null>(null);
   const [collaborationRoutingNotice, setCollaborationRoutingNotice] = useState<string | null>(null);
   const [companionCollaborationRoutingNotice, setCompanionCollaborationRoutingNotice] = useState<string | null>(null);
-  const [optimisticCollaborationAgentRouting, setOptimisticCollaborationAgentRouting] = useState<Record<string, {
-    defaultModel?: string | null;
-    defaultAuthProvider?: string | null;
-    defaultAuthChoice?: string | null;
-    fallbackModel?: string | null;
-    fallbackAuthProvider?: string | null;
-    fallbackAuthChoice?: string | null;
-    thinking?: string | null;
-  }>>({});
+  const [optimisticCollaborationAgentRouting, setOptimisticCollaborationAgentRouting] = useState<
+    Record<string, DesktopCollaborationAgentRouting>
+  >({});
   const [humanPaneSide, setHumanPaneSide] = useState<CompanionSide>('left');
   const [selectedCompanionConversationId, setSelectedCompanionConversationId] = useState<string | null>(null);
   const [openSideAgentConversationId, setOpenSideAgentConversationId] = useState<string | null>(null);
@@ -1941,6 +1938,73 @@ export function ChatsPage({
     const thinkingLevels = chatModelOptions?.find((option) => option.value === modelValue)?.thinkingLevels ?? [];
     return fallbackComposerThinkingValue(thinkingLevels, currentThinking ?? 'default');
   };
+  const applyCollaborationAgentRoutingUpdate = ({
+    agent,
+    routingKey,
+    patch,
+    isBusy,
+    setNotice,
+    targetSessionId,
+  }: {
+    agent: LocalCollaborationAgentRoutingOption | null;
+    routingKey: string | null;
+    patch: DesktopCollaborationAgentRouting;
+    isBusy: boolean;
+    setNotice: Dispatch<SetStateAction<string | null>>;
+    targetSessionId?: string | null;
+  }) => {
+    if (!agent || !routingKey) return;
+    if (isBusy) {
+      setNotice("Stop the running task before changing this session's model or thinking level.");
+      return;
+    }
+
+    const { routing, defaultAuthChanged, fallbackAuthChanged } = resolveCollaborationAgentRoutingUpdate(agent, patch);
+    const noticeText = collaborationAgentRoutingChangeNotice({
+      agentLabel: agent.label,
+      currentModel: agent.defaultModel,
+      nextModel: patch.defaultModel,
+      currentThinking: agent.thinking,
+      nextThinking: patch.thinking,
+      modelLabel: collaborationRouteDisplayName(
+        routing.defaultModel,
+        routing.defaultAuthProvider,
+        routing.defaultAuthChoice,
+        chatModelOptions,
+        composerProviderOptions,
+      ),
+      thinkingLabel: collaborationThinkingDisplayName(routing.thinking),
+    }) ?? ((defaultAuthChanged || fallbackAuthChanged)
+      ? `${agent.label} model route changed to ${collaborationRouteDisplayName(
+        routing.defaultModel,
+        routing.defaultAuthProvider,
+        routing.defaultAuthChoice,
+        chatModelOptions,
+        composerProviderOptions,
+      )}. Only you can see this.`
+      : null);
+    if (!noticeText) return;
+
+    setOptimisticCollaborationAgentRouting((current) => ({
+      ...current,
+      [routingKey]: routing,
+    }));
+    setNotice(noticeText);
+    void onUpdateCollaborationAgentModelRouting(
+      agent.hostId,
+      agent.id,
+      routing.defaultModel,
+      routing.fallbackModel,
+      routing.thinking,
+      routing.defaultAuthProvider,
+      routing.defaultAuthChoice,
+      routing.fallbackAuthProvider,
+      routing.fallbackAuthChoice,
+      targetSessionId,
+    ).catch((error) => {
+      setNotice(error instanceof Error ? error.message : 'Unable to update collaboration agent model routing');
+    });
+  };
   const updateCompanionCollaborationAgentRouting = ({
     defaultModel,
     defaultAuthProvider,
@@ -1961,69 +2025,21 @@ export function ChatsPage({
     selectorType?: 'provider' | 'model' | 'thinking';
   }) => {
     if (selectorType) closeCompanionCollaborationRoutingSelector(selectorType);
-    if (!selectedCompanionCollaborationRoutingAgent || !selectedCompanionCollaborationRoutingKey) return;
-    if (isDesktopChatSending || companionLiveTurnIsRunning) {
-      setCompanionCollaborationRoutingNotice("Stop the running task before changing this session's model or thinking level.");
-      return;
-    }
-
-    const currentModel = selectedCompanionCollaborationRoutingAgent.defaultModel ?? null;
-    const currentDefaultAuthProvider = selectedCompanionCollaborationRoutingAgent.defaultAuthProvider ?? null;
-    const currentDefaultAuthChoice = selectedCompanionCollaborationRoutingAgent.defaultAuthChoice ?? null;
-    const currentFallback = selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null;
-    const currentFallbackAuthProvider = selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null;
-    const currentFallbackAuthChoice = selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null;
-    const currentThinking = selectedCompanionCollaborationRoutingAgent.thinking ?? null;
-    const nextModel = defaultModel !== undefined ? defaultModel : currentModel;
-    const nextDefaultAuthProvider = defaultAuthProvider !== undefined ? defaultAuthProvider : currentDefaultAuthProvider;
-    const nextDefaultAuthChoice = defaultAuthChoice !== undefined ? defaultAuthChoice : currentDefaultAuthChoice;
-    const nextFallback = fallbackModel !== undefined ? fallbackModel : currentFallback;
-    const nextFallbackAuthProvider = fallbackAuthProvider !== undefined ? fallbackAuthProvider : currentFallbackAuthProvider;
-    const nextFallbackAuthChoice = fallbackAuthChoice !== undefined ? fallbackAuthChoice : currentFallbackAuthChoice;
-    const nextThinking = thinking !== undefined ? thinking : currentThinking;
-    const defaultAuthChanged = (defaultAuthProvider !== undefined && nextDefaultAuthProvider !== currentDefaultAuthProvider)
-      || (defaultAuthChoice !== undefined && nextDefaultAuthChoice !== currentDefaultAuthChoice);
-    const fallbackAuthChanged = (fallbackAuthProvider !== undefined && nextFallbackAuthProvider !== currentFallbackAuthProvider)
-      || (fallbackAuthChoice !== undefined && nextFallbackAuthChoice !== currentFallbackAuthChoice);
-    const noticeText = collaborationAgentRoutingChangeNotice({
-      agentLabel: selectedCompanionCollaborationRoutingAgent.label,
-      currentModel,
-      nextModel: defaultModel,
-      currentThinking,
-      nextThinking: thinking,
-      modelLabel: collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
-      thinkingLabel: collaborationThinkingDisplayName(nextThinking),
-    }) ?? ((defaultAuthChanged || fallbackAuthChanged)
-      ? `${selectedCompanionCollaborationRoutingAgent.label} model route changed to ${collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
-      : null);
-    if (!noticeText) return;
-
-    setOptimisticCollaborationAgentRouting((current) => ({
-      ...current,
-      [selectedCompanionCollaborationRoutingKey]: {
-        defaultModel: nextModel,
-        defaultAuthProvider: nextDefaultAuthProvider,
-        defaultAuthChoice: nextDefaultAuthChoice,
-        fallbackModel: nextFallback,
-        fallbackAuthProvider: nextFallbackAuthProvider,
-        fallbackAuthChoice: nextFallbackAuthChoice,
-        thinking: nextThinking,
+    applyCollaborationAgentRoutingUpdate({
+      agent: selectedCompanionCollaborationRoutingAgent,
+      routingKey: selectedCompanionCollaborationRoutingKey,
+      patch: {
+        defaultModel,
+        defaultAuthProvider,
+        defaultAuthChoice,
+        fallbackModel,
+        fallbackAuthProvider,
+        fallbackAuthChoice,
+        thinking,
       },
-    }));
-    setCompanionCollaborationRoutingNotice(noticeText);
-    void onUpdateCollaborationAgentModelRouting(
-      selectedCompanionCollaborationRoutingAgent.hostId,
-      selectedCompanionCollaborationRoutingAgent.id,
-      nextModel,
-      nextFallback,
-      nextThinking,
-      nextDefaultAuthProvider,
-      nextDefaultAuthChoice,
-      nextFallbackAuthProvider,
-      nextFallbackAuthChoice,
-      companionCollaborationRoutingTargetSessionId,
-    ).catch((error) => {
-      setCompanionCollaborationRoutingNotice(error instanceof Error ? error.message : 'Unable to update collaboration agent model routing');
+      isBusy: isDesktopChatSending || companionLiveTurnIsRunning,
+      setNotice: setCompanionCollaborationRoutingNotice,
+      targetSessionId: companionCollaborationRoutingTargetSessionId,
     });
   };
   const createSideAgentSession = async (initialPrompt = '') => {
@@ -2686,68 +2702,20 @@ export function ChatsPage({
   }) => {
     if (selectorType) closeCollaborationRoutingSelector(selectorType);
     focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-    if (!selectedCollaborationRoutingAgent || !selectedCollaborationRoutingKey) return;
-    if (isDesktopChatSending || activeLiveTurnIsRunning) {
-      setCollaborationRoutingNotice("Stop the running task before changing this session's model or thinking level.");
-      return;
-    }
-
-    const currentModel = selectedCollaborationRoutingAgent.defaultModel ?? null;
-    const currentDefaultAuthProvider = selectedCollaborationRoutingAgent.defaultAuthProvider ?? null;
-    const currentDefaultAuthChoice = selectedCollaborationRoutingAgent.defaultAuthChoice ?? null;
-    const currentFallback = selectedCollaborationRoutingAgent.fallbackModel ?? null;
-    const currentFallbackAuthProvider = selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null;
-    const currentFallbackAuthChoice = selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null;
-    const currentThinking = selectedCollaborationRoutingAgent.thinking ?? null;
-    const nextModel = defaultModel !== undefined ? defaultModel : currentModel;
-    const nextDefaultAuthProvider = defaultAuthProvider !== undefined ? defaultAuthProvider : currentDefaultAuthProvider;
-    const nextDefaultAuthChoice = defaultAuthChoice !== undefined ? defaultAuthChoice : currentDefaultAuthChoice;
-    const nextFallback = fallbackModel !== undefined ? fallbackModel : currentFallback;
-    const nextFallbackAuthProvider = fallbackAuthProvider !== undefined ? fallbackAuthProvider : currentFallbackAuthProvider;
-    const nextFallbackAuthChoice = fallbackAuthChoice !== undefined ? fallbackAuthChoice : currentFallbackAuthChoice;
-    const nextThinking = thinking !== undefined ? thinking : currentThinking;
-    const defaultAuthChanged = (defaultAuthProvider !== undefined && nextDefaultAuthProvider !== currentDefaultAuthProvider)
-      || (defaultAuthChoice !== undefined && nextDefaultAuthChoice !== currentDefaultAuthChoice);
-    const fallbackAuthChanged = (fallbackAuthProvider !== undefined && nextFallbackAuthProvider !== currentFallbackAuthProvider)
-      || (fallbackAuthChoice !== undefined && nextFallbackAuthChoice !== currentFallbackAuthChoice);
-    const noticeText = collaborationAgentRoutingChangeNotice({
-      agentLabel: selectedCollaborationRoutingAgent.label,
-      currentModel,
-      nextModel: defaultModel,
-      currentThinking,
-      nextThinking: thinking,
-      modelLabel: collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
-      thinkingLabel: collaborationThinkingDisplayName(nextThinking),
-    }) ?? ((defaultAuthChanged || fallbackAuthChanged)
-      ? `${selectedCollaborationRoutingAgent.label} model route changed to ${collaborationRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
-      : null);
-    if (!noticeText) return;
-
-    setOptimisticCollaborationAgentRouting((current) => ({
-      ...current,
-      [selectedCollaborationRoutingKey]: {
-        defaultModel: nextModel,
-        defaultAuthProvider: nextDefaultAuthProvider,
-        defaultAuthChoice: nextDefaultAuthChoice,
-        fallbackModel: nextFallback,
-        fallbackAuthProvider: nextFallbackAuthProvider,
-        fallbackAuthChoice: nextFallbackAuthChoice,
-        thinking: nextThinking,
+    applyCollaborationAgentRoutingUpdate({
+      agent: selectedCollaborationRoutingAgent,
+      routingKey: selectedCollaborationRoutingKey,
+      patch: {
+        defaultModel,
+        defaultAuthProvider,
+        defaultAuthChoice,
+        fallbackModel,
+        fallbackAuthProvider,
+        fallbackAuthChoice,
+        thinking,
       },
-    }));
-    setCollaborationRoutingNotice(noticeText);
-    void onUpdateCollaborationAgentModelRouting(
-      selectedCollaborationRoutingAgent.hostId,
-      selectedCollaborationRoutingAgent.id,
-      nextModel,
-      nextFallback,
-      nextThinking,
-      nextDefaultAuthProvider,
-      nextDefaultAuthChoice,
-      nextFallbackAuthProvider,
-      nextFallbackAuthChoice,
-    ).catch((error) => {
-      setCollaborationRoutingNotice(error instanceof Error ? error.message : 'Unable to update collaboration agent model routing');
+      isBusy: isDesktopChatSending || activeLiveTurnIsRunning,
+      setNotice: setCollaborationRoutingNotice,
     });
   };
 
