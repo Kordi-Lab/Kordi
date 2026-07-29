@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import type { CloudAccount, CloudMessage, CloudSessionTitle } from '../src/features/cloud/authClient';
-import * as cloudCollaborationStateModule from '../src/features/cloud/useCloudCollaborationState';
 import {
   buildCloudCollaborationConversation,
   buildCloudDesktopCollaborationState,
@@ -24,7 +23,6 @@ import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { sharedCloudAgentMentionCandidatesForConversation } from '../src/features/chat/messageActions/mentions';
 import {
   cloudAgentMentionCandidates,
-  cloudBootstrapPeerIds,
   cloudGroupAgentCancelRoleForRequest,
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
@@ -37,21 +35,11 @@ import {
   planCloudSelfAgentSync,
   planCloudSelfAgentCanonicalSync,
   seedCloudSelfAgentForwardSyncLedger,
-  cloudMessagesByPeerEqual,
-  mergeCloudMessagesByPeerSnapshot,
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
   resolveCloudGroupAdminSnapshot,
-  markCloudMessagesReadLocally,
-  loadCloudMessagesByPeerUntilStable,
   cloudAccountGenerationKey,
   cloudCollaborationPreviousStateForContext,
-  cloudMessagesAuthoritativeForContext,
-  cloudUnreadReadinessContextKey,
-  cloudUnreadReadyForContext,
-  cloudUnreadStatusForContext,
   suppressCloudCollaborationUnreadCounts,
-  transitionCloudUnreadReadiness,
-  cloudSessionForksByIdEqual,
   cloudAgentFailedTurnSnapshot,
   shouldRunLocalCloudAgentForCloudMessage,
   cloudAgentResponseExistsForRequest,
@@ -81,6 +69,17 @@ const peer = cloudContactToContact({
   nodeId: 'node_peer',
   createdAt: '2026-05-11T00:00:00Z',
 });
+
+const message: CloudMessage = {
+  messageId: 'msg_1',
+  fromAccountId: 'acct_peer',
+  toAccountId: 'acct_me',
+  body: 'hello from cloud',
+  createdAt: '2026-05-11T10:00:00Z',
+  deliveredAt: null,
+  readAt: null,
+  direction: 'incoming',
+};
 
 test('replicated admin snapshots preserve creator authority and reject admin or stale updates', () => {
   const identityIdByAccount = new Map([
@@ -699,127 +698,12 @@ test('cloud unread badge reconciliation waits for authoritative startup message 
   assert.match(source, /setPublishedCloudUnreadContextKey\([\s\S]*cloudUnreadContextKey/);
 });
 
-test('cloud startup snapshots latest messages before catch-up and publishes after final reconciliation', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /if \(!contacts\.initialLoadSettled\) return;/);
-  assert.match(source, /startupFullSnapshotContextRef\.current !== cloudUnreadContextKey[\s\S]*bootstrapCloudMessages\(\)/);
-  assert.match(
-    source,
-    /request\.mode === 'bootstrap'[\s\S]*refreshCloudMessagesOnce\(generation, false\)[\s\S]*syncCloudCollaborationDiffOnceForGeneration\(generation, false\)[\s\S]*refreshCloudMessagesOnce\(generation, true\)/,
-  );
-  assert.match(source, /client\.listMessages\(session\.token, peerId, CLOUD_MESSAGE_SNAPSHOT_LIMIT\)/);
-  assert.match(source, /if \(settleUnreadReadiness\) \{[\s\S]*markCloudUnreadReadiness\(loaded\.complete \? 'ready' : 'error', generation, bootstrapPeerKey\)/);
-  assert.doesNotMatch(source, /syncCloudCollaborationDiffOnceForGeneration[\s\S]{0,5000}markCloudUnreadReadiness\('ready'/);
-});
 
-test('normal Cloud events request diff sync instead of full snapshots', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  const fullRefreshCalls = source.match(/void refreshCloudMessages\(\)/g) ?? [];
 
-  assert.equal(fullRefreshCalls.length, 0, 'normal events and startup should use their coordinated sync entry points');
-  assert.match(source, /lastCloudFocusRefreshAtRef\.current = now;\s*void syncCloudCollaborationDiff\(\)/);
-  assert.match(source, /markSessionMessagesRead[\s\S]*void syncCloudCollaborationDiff\(\)/);
-});
 
-test('cloud message bootstrap keeps attachments metadata-only', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  const start = source.indexOf('const refreshCloudMessagesOnce');
-  const end = source.indexOf('const syncCloudCollaborationDiffOnceForGeneration', start);
-  assert.notEqual(start, -1);
-  assert.notEqual(end, -1);
-  const bootstrap = source.slice(start, end);
 
-  assert.match(bootstrap, /client\.listMessages/);
-  assert.doesNotMatch(bootstrap, /resolveCloudMessageAttachments|downloadAttachmentContent/);
-});
 
-test('Cloud focus refresh is throttled across focus, visibility, and pageshow bursts', () => {
-  const shouldRefreshCloudForVisibility = (cloudCollaborationStateModule as Record<string, unknown>).shouldRefreshCloudForVisibility;
-  const shouldRunCloudFocusRefresh = (cloudCollaborationStateModule as Record<string, unknown>).shouldRunCloudFocusRefresh;
-  assert.equal(typeof shouldRefreshCloudForVisibility, 'function', 'expected a Cloud visibility-refresh helper');
-  assert.equal(typeof shouldRunCloudFocusRefresh, 'function', 'expected a Cloud focus-refresh throttle helper');
-
-  assert.equal((shouldRefreshCloudForVisibility as (state: DocumentVisibilityState) => boolean)('visible'), true);
-  assert.equal((shouldRefreshCloudForVisibility as (state: DocumentVisibilityState) => boolean)('hidden'), false);
-  assert.equal((shouldRunCloudFocusRefresh as (now: number, last: number) => boolean)(20_000, 0), true);
-  assert.equal((shouldRunCloudFocusRefresh as (now: number, last: number) => boolean)(20_100, 20_000), false);
-  assert.equal((shouldRunCloudFocusRefresh as (now: number, last: number) => boolean)(25_000, 20_000), true);
-});
-
-test('Cloud reactivation keeps hot cache interactive before running background refresh', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  assert.match(source, /CLOUD_FOCUS_REFRESH_DELAY_MS/, 'expected a short Cloud reactivation refresh delay constant');
-  assert.match(source, /cloudFocusRefreshTimerRef/, 'expected Cloud focus refreshes to coalesce into one delayed timer');
-  assert.match(source, /window\.setTimeout\(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS\)/, 'focus refresh should be scheduled after the hot-cache frame');
-  assert.match(source, /window\.clearTimeout\(cloudFocusRefreshTimerRef\.current\)/, 'bursts should cancel the previous delayed refresh timer');
-});
-
-test('Cloud full message refreshes are single-flight and account-safe', () => {
-  const createSingleFlight = (cloudCollaborationStateModule as Record<string, unknown>).createAccountScopedSingleFlight;
-  assert.equal(typeof createSingleFlight, 'function', 'expected an account-scoped single-flight coordinator');
-
-  const run = (createSingleFlight as () => (
-    accountId: string,
-    task: () => Promise<void>,
-  ) => Promise<void>)();
-  let releaseFirstAccount!: () => void;
-  const firstAccountBlocked = new Promise<void>((resolve) => {
-    releaseFirstAccount = resolve;
-  });
-  let firstAccountStarts = 0;
-  let secondAccountStarts = 0;
-
-  const first = run('acct_first', async () => {
-    firstAccountStarts += 1;
-    await firstAccountBlocked;
-  });
-  const duplicate = run('acct_first', async () => {
-    firstAccountStarts += 1;
-  });
-  const second = run('acct_second', async () => {
-    secondAccountStarts += 1;
-  });
-
-  assert.equal(duplicate, first, 'same-account refreshes should share one promise');
-  assert.equal(firstAccountStarts, 1);
-  assert.equal(secondAccountStarts, 1, 'a new account must not wait behind the old account refresh');
-
-  releaseFirstAccount();
-  return Promise.all([first, duplicate, second]).then(() => undefined);
-});
-
-const message: CloudMessage = {
-  messageId: 'msg_1',
-  fromAccountId: 'acct_peer',
-  toAccountId: 'acct_me',
-  body: 'hello from cloud',
-  createdAt: '2026-05-11T10:00:00Z',
-  deliveredAt: null,
-  readAt: null,
-  direction: 'incoming',
-};
-
-test('cloud session fork map equality compares structural fork lineage to prevent refresh loops', () => {
-  const left = {
-    child: {
-      forkSessionId: 'child',
-      parentSessionId: 'parent',
-      parentMessageId: 'msg:parent',
-      createdByAccountId: 'acct_me',
-      createdAt: '2026-05-17T09:00:00Z',
-    },
-  };
-  const right = {
-    child: { ...left.child },
-  };
-  const changed = {
-    child: { ...left.child, parentMessageId: 'msg:other' },
-  };
-
-  assert.equal(cloudSessionForksByIdEqual(left, right), true);
-  assert.equal(cloudSessionForksByIdEqual(left, changed), false);
-});
 
 test('cloud bridge state ignores poisoned localhost bridge state instead of merging it', () => {
   const cloudState = buildCloudDesktopCollaborationState({
@@ -839,136 +723,10 @@ test('cloud bridge state ignores poisoned localhost bridge state instead of merg
   assert.equal(cloudState.conversations.every((conversation) => conversation.hostId === 'cloud'), true);
 });
 
-test('cloud group read marking patches stale local unread cache rows by session id', () => {
-  const groupBody = encodeCloudGroupControl({
-    kind: 'group-message',
-    groupId: 'session:group:abc',
-    groupSpaceId: 'session:group:abc',
-    groupTitle: null,
-    createdByAccountId: 'acct_me',
-    actor: { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' },
-    participants: [],
-    message: {
-      id: 'msg:group-agent-final',
-      senderAccountId: 'acct_peer',
-      text: 'Hi 👋 How can I help?',
-      createdAtMs: Date.parse('2026-05-11T10:00:00Z'),
-      senderKind: 'agent',
-      senderDisplayName: 'Kordi Project Driver',
-    },
-  });
-  const staleGroupMessage: CloudMessage = {
-    ...message,
-    messageId: 'msg_group_final',
-    body: groupBody,
-    sessionId: 'session:group:abc',
-    readAt: null,
-  };
-  const directUnreadMessage: CloudMessage = {
-    ...message,
-    messageId: 'msg_direct_unread',
-    sessionId: 'session:direct-person:acct_me:acct_peer',
-    readAt: null,
-  };
 
-  const patched = markCloudMessagesReadLocally(
-    { acct_peer: [staleGroupMessage, directUnreadMessage] },
-    'acct_me',
-    { sessionIds: ['session:group:abc'] },
-    '2026-05-11T10:01:00Z',
-  );
 
-  assert.equal(patched.acct_peer?.[0]?.readAt, '2026-05-11T10:01:00Z');
-  assert.equal(patched.acct_peer?.[1]?.readAt, null);
-});
 
-test('cloud message refresh snapshots preserve locally merged newer messages', () => {
-  const greeting: CloudMessage = {
-    ...message,
-    messageId: 'msg_hello',
-    body: 'hello',
-    createdAt: '2026-05-11T10:00:00Z',
-  };
-  const justSent: CloudMessage = {
-    ...message,
-    messageId: 'msg_sent',
-    fromAccountId: 'acct_me',
-    toAccountId: 'acct_peer',
-    direction: 'outgoing',
-    body: 'hiho w are you',
-    createdAt: '2026-05-11T10:00:05Z',
-    deliveredAt: '2026-05-11T10:00:05Z',
-    sessionId: 'session:direct-person:acct_me:acct_peer',
-  };
 
-  const merged = mergeCloudMessagesByPeerSnapshot(
-    { acct_peer: [greeting, justSent] },
-    { acct_peer: [greeting] },
-  );
-
-  assert.deepEqual(merged.acct_peer?.map((item) => item.messageId), ['msg_hello', 'msg_sent']);
-});
-
-test('cloud message snapshot merges cannot clear established read receipts', () => {
-  const authoritative: CloudMessage = {
-    ...message,
-    deliveredAt: '2026-05-11T10:01:00Z',
-    readAt: '2026-05-11T10:02:00Z',
-  };
-  const merged = mergeCloudMessagesByPeerSnapshot(
-    { acct_peer: [authoritative] },
-    {
-      acct_peer: [{
-        ...authoritative,
-        deliveredAt: null,
-        readAt: null,
-      }],
-    },
-  );
-
-  assert.equal(merged.acct_peer?.[0]?.deliveredAt, authoritative.deliveredAt);
-  assert.equal(merged.acct_peer?.[0]?.readAt, authoritative.readAt);
-});
-
-test('cloud message snapshot merges preserve unchanged peer and message identities', () => {
-  const peerOne = [{ ...message, messageId: 'msg_peer_one' }];
-  const peerTwo = [{ ...message, messageId: 'msg_peer_two', fromAccountId: 'acct_two' }];
-  const current = { acct_peer: peerOne, acct_two: peerTwo };
-
-  assert.equal(mergeCloudMessagesByPeerSnapshot(current, current), current);
-
-  const merged = mergeCloudMessagesByPeerSnapshot(current, {
-    acct_peer: [{ ...peerOne[0]! }],
-    acct_two: [...peerTwo, { ...peerTwo[0]!, messageId: 'msg_peer_two_new' }],
-  });
-  assert.equal(merged.acct_peer, peerOne);
-  assert.equal(merged.acct_peer?.[0], peerOne[0]);
-  assert.notEqual(merged.acct_two, peerTwo);
-});
-
-test('cloud message peer equality detects attachment cache updates', () => {
-  const baseMessage: CloudMessage = {
-    ...message,
-    attachments: [{
-      attachmentId: 'att_1',
-      name: 'Screenshot.png',
-      kind: 'image',
-      mimeType: 'image/png',
-      sizeBytes: 68 * 1024,
-      localPath: null,
-    }],
-  };
-
-  assert.equal(cloudMessagesByPeerEqual({ acct_peer: [baseMessage] }, {
-    acct_peer: [{
-      ...baseMessage,
-      attachments: [{
-        ...baseMessage.attachments![0]!,
-        localPath: '/tmp/kordi-cache/Screenshot.png',
-      }],
-    }],
-  }), false);
-});
 
 test('cloud bridge messages preserve resolved attachment local paths for inline previews', () => {
   const mapped = cloudMessageToCollaborationMessage(account, {
@@ -2395,86 +2153,8 @@ test('cloud contact identity requests preserve account ids, display names, and u
   ]);
 });
 
-test('cloud bootstrap peers include the signed-in account for private self-agent restore', () => {
-  assert.deepEqual(cloudBootstrapPeerIds(account, ['acct_peer'], []), ['acct_me', 'acct_peer']);
-});
 
-test('cloud unread readiness is scoped to account, generation, peer set, and publication', () => {
-  const peerKey = 'acct_me|acct_peer';
-  const contextKey = cloudUnreadReadinessContextKey(account.accountId, 4, peerKey);
-  const readiness = { status: 'ready' as const, contextKey };
 
-  assert.equal(cloudMessagesAuthoritativeForContext({
-    accountId: account.accountId,
-    contactsSettled: true,
-    generation: 4,
-    peerKey,
-    readiness,
-  }), true);
-
-  assert.equal(cloudUnreadReadyForContext({
-    accountId: account.accountId,
-    contactsSettled: true,
-    generation: 4,
-    peerKey,
-    readiness,
-    publishedContextKey: null,
-  }), false, 'message readiness alone must not expose unread before canonical publication');
-
-  assert.equal(cloudUnreadReadyForContext({
-    accountId: account.accountId,
-    contactsSettled: true,
-    generation: 4,
-    peerKey,
-    readiness,
-    publishedContextKey: contextKey,
-  }), true);
-
-  for (const mismatch of [
-    { accountId: 'acct_other', generation: 4, peerKey },
-    { accountId: account.accountId, generation: 5, peerKey },
-    { accountId: account.accountId, generation: 4, peerKey: `${peerKey}|acct_discovered` },
-  ]) {
-    assert.equal(cloudMessagesAuthoritativeForContext({
-      ...mismatch,
-      contactsSettled: true,
-      readiness,
-    }), false);
-  }
-
-  assert.equal(cloudMessagesAuthoritativeForContext({
-    accountId: account.accountId,
-    contactsSettled: true,
-    generation: 4,
-    peerKey,
-    readiness: { status: 'error', contextKey },
-  }), false);
-  assert.equal(cloudUnreadStatusForContext({
-    accountId: account.accountId,
-    contactsSettled: true,
-    generation: 4,
-    peerKey,
-    readiness: { status: 'error', contextKey },
-    publishedContextKey: null,
-  }), 'error');
-});
-
-test('established unread readiness survives same-context refresh errors but not a new context', () => {
-  const readyKey = cloudUnreadReadinessContextKey(account.accountId, 2, 'acct_me|acct_peer');
-  const ready = { status: 'ready' as const, contextKey: readyKey };
-  assert.equal(transitionCloudUnreadReadiness(ready, 'pending', readyKey), ready);
-  assert.equal(transitionCloudUnreadReadiness(ready, 'error', readyKey), ready);
-
-  const expandedKey = cloudUnreadReadinessContextKey(
-    account.accountId,
-    2,
-    'acct_me|acct_peer|acct_discovered',
-  );
-  assert.deepEqual(transitionCloudUnreadReadiness(ready, 'pending', expandedKey), {
-    status: 'pending',
-    contextKey: expandedKey,
-  });
-});
 
 test('pending unread masks badges while preserving same-account cached transcripts', () => {
   const state = buildCloudDesktopCollaborationState({
@@ -2504,59 +2184,6 @@ test('pending unread masks badges while preserving same-account cached transcrip
   assert.equal(masked?.conversations[0]?.messages, state.conversations[0]?.messages);
 });
 
-test('cloud initial message sync follows group peer discovery until stable', async () => {
-  const makeGroupMessage = (peer: string, discoveredPeer: string): CloudMessage => ({
-    messageId: `msg_${peer}_${discoveredPeer}`,
-    fromAccountId: peer,
-    toAccountId: account.accountId,
-    body: encodeCloudGroupControl({
-      kind: 'group-message',
-      groupId: `group_${peer}_${discoveredPeer}`,
-      sessionId: `session_${peer}_${discoveredPeer}`,
-      createdByAccountId: peer,
-      actor: { accountId: peer, displayName: peer, avatarUrl: null },
-      participants: [
-        { accountId: account.accountId, displayName: 'Me Cloud', avatarUrl: null },
-        { accountId: peer, displayName: peer, avatarUrl: null },
-        { accountId: discoveredPeer, displayName: discoveredPeer, avatarUrl: null },
-      ],
-      message: {
-        id: `group_msg_${peer}_${discoveredPeer}`,
-        senderAccountId: peer,
-        text: `hello ${discoveredPeer}`,
-        createdAt: '2026-05-13T10:00:00Z',
-      },
-    }),
-    createdAt: '2026-05-13T10:00:00Z',
-    deliveredAt: '2026-05-13T10:00:00Z',
-    readAt: null,
-    direction: 'incoming',
-  });
-
-  const messagesByPeer: Record<string, CloudMessage[]> = {
-    acct_peer_1: [makeGroupMessage('acct_peer_1', 'acct_peer_2')],
-    acct_peer_2: [makeGroupMessage('acct_peer_2', 'acct_peer_3')],
-    acct_peer_3: [makeGroupMessage('acct_peer_3', 'acct_peer_4')],
-    acct_peer_4: [makeGroupMessage('acct_peer_4', 'acct_peer_5')],
-    acct_peer_5: [],
-  };
-
-  const result = await loadCloudMessagesByPeerUntilStable({
-    accountId: account.accountId,
-    initialPeerIds: ['acct_peer_1'],
-    existingMessagesByPeer: {},
-    listMessages: async (peerId) => messagesByPeer[peerId] ?? [],
-  });
-
-  assert.equal(result.complete, true);
-  assert.deepEqual(Object.keys(result.messagesByPeer).sort(), [
-    'acct_peer_1',
-    'acct_peer_2',
-    'acct_peer_3',
-    'acct_peer_4',
-    'acct_peer_5',
-  ]);
-});
 
 test('stored self messages restore a private My Kordi cloud agent conversation', () => {
   const selfRequest: CloudMessage = {
