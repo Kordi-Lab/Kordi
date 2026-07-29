@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
 const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 
 test('desktop chat start message forwards visible scheduled-task session id to Tauri', () => {
   const source = desktopSource();
@@ -17,13 +18,13 @@ test('desktop chat start message forwards visible scheduled-task session id to T
 });
 
 test('cloud group agent scheduling uses the visible group session id, not the hidden runtime session id', () => {
-  const source = cloudBridgeSource();
+  const source = cloudGroupAgentControlSource();
   const runtimeStart = source.indexOf('const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${envelope.groupId}`;');
-  const publishStart = source.indexOf('await publishDerivedCloudSessionActivity', runtimeStart);
+  const publishStart = source.indexOf('await policy.publishActivity', runtimeStart);
   assert.ok(runtimeStart >= 0 && publishStart > runtimeStart, 'expected group cloud agent start block');
   const block = source.slice(runtimeStart, publishStart);
 
-  assert.match(block, /startDesktopChatMessage\([\s\S]*visibleTaskRecords,\s*\n\s*envelope\.groupId,\s*\n\s*\)/);
+  assert.match(block, /startDesktopChatMessage\([\s\S]*cloudVisibleTaskRecordsForSession\([\s\S]*envelope\.groupId\),\s*\n\s*envelope\.groupId,\s*\n\s*\)/);
 });
 
 test('direct contact agent scheduling uses the visible contact activity session id, not the hidden runtime session id', () => {

@@ -11,6 +11,11 @@ import {
 } from '../src/features/chat/messageActions/chatMessages';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
+const cloudCollaborationStateSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
+const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
+const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
+
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
   assert.equal(shouldUseCloudSessionAction('session:group:abc'), true);
@@ -344,52 +349,52 @@ test('cloud group hosted-agent sends render processing in the final response slo
 });
 
 test('cloud group owner processing upserts the shared slot so a local placeholder cannot block broadcast', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  const processingMessageIdIndex = source.indexOf('const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;');
+  const source = cloudGroupAgentControlSource();
+  const processingMessageIdIndex = source.indexOf('const processingMessageId = `msg:cloud-agent-processing:${message.id}:${account.accountId}`;');
   assert.ok(processingMessageIdIndex >= 0, 'expected owner cloud group processing slot');
-  const processingBlock = source.slice(processingMessageIdIndex, processingMessageIdIndex + 3200);
+  const processingBlock = source.slice(processingMessageIdIndex);
   assert.match(processingBlock, /await upsertCanonicalMessageFast\(processingRequest\)/);
-  assert.match(processingBlock, /upsertCanonicalRequestIntoLocalState\(current, processingRequest\)/);
+  assert.match(processingBlock, /upsertRequest\(current, processingRequest\)/);
   assert.doesNotMatch(processingBlock, /await (?:append|upsert)CanonicalMessage\(\{/);
   assert.match(processingBlock, /sourceTransport:\s*'cloud-group-agent'/);
-  assert.match(processingBlock, /targetAccountIds\.map\(\(targetAccountId\) => client\.sendMessage/);
+  assert.match(processingBlock, /targetAccountIds\.map\(\(targetAccountId\) => \([\s\S]*runtime\.client\.sendMessage/);
 });
 
 test('cloud group terminal hosted-agent responses reserve the stable slot even when processing is not visible yet', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+  const source = cloudGroupMessageControlSource();
   assert.match(source, /terminalStableAgentNoticeId/);
-  assert.match(source, /replacementAgentSlot\?\.id \?\? terminalStableAgentNoticeId \?\? envelope\.message\.id/);
+  assert.match(source, /replacementAgentSlot\?\.id \?\? terminalStableAgentNoticeId \?\? message\.id/);
   assert.match(source, /existingStableRowTerminalLocked[\s\S]*existingStableRowDeliveryState/);
 });
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  assert.match(source, /removeCloudGroupPendingRowsForTerminalResponse/);
-  assert.match(source, /cloudGroupPendingAgentRowMatches/);
-  assert.match(source, /cloud-group-agent-unavailable-timeout:/);
-  assert.match(source, /sender: agentDisplayName/);
-  assert.doesNotMatch(source, /sender:\s*'My Kordi'/);
+  const stateSource = cloudCollaborationStateSource();
+  const agentSource = cloudGroupAgentControlSource();
+  assert.match(stateSource, /removeCloudGroupPendingRowsForTerminalResponse/);
+  assert.match(stateSource, /cloudGroupPendingAgentRowMatches/);
+  assert.match(stateSource, /cloud-group-agent-unavailable-timeout:/);
+  assert.match(agentSource, /sender: agentDisplayName/);
+  assert.doesNotMatch(agentSource, /sender:\s*'My Kordi'/);
 });
 
 test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  assert.match(source, /export function cloudGroupMessageTargetsLocalAgent/);
-  assert.match(source, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
-  assert.match(source, /message\.targetCloudAgentOwnerAccountId\) === account\.accountId/);
-  assert.match(source, /message\.targetCloudAgentId\)\.startsWith\('cloud_agent_'\)/);
-  assert.match(source, /targetsOwnedHostedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
-  assert.match(source, /cloudGroupMessageTargetsLocalAgent\(envelope\.message, account\)/);
-  assert.match(source, /targetCloudAgentId: envelope\.message!\.targetCloudAgentId/);
+  const stateSource = cloudCollaborationStateSource();
+  const agentSource = cloudGroupAgentControlSource();
+  assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
+  assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
+  assert.match(stateSource, /message\.targetCloudAgentOwnerAccountId\) === account\.accountId/);
+  assert.match(stateSource, /message\.targetCloudAgentId\)\.startsWith\('cloud_agent_'\)/);
+  assert.match(stateSource, /targetsOwnedHostedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
+  assert.match(agentSource, /policy\.messageTargetsLocalAgent\(message, account\)/);
+  assert.match(agentSource, /targetCloudAgentId: message\.targetCloudAgentId/);
 });
 
 test('cloud group no-provider catch broadcasts a failed agent response to requesters', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  const catchIndex = source.indexOf('if (isCloudAgentNoProviderConfiguredError(error)) {');
-  assert.ok(catchIndex >= 0, 'expected group no-provider catch branch');
-  const catchBlock = source.slice(catchIndex, source.indexOf('processedCloudAgentMentionIdsRef.current.delete(envelope.message!.id);', catchIndex));
-  assert.match(catchBlock, /encodeCloudGroupControl\(\{/);
-  assert.match(catchBlock, /deliveryState:\s*'failed'/);
-  assert.match(catchBlock, /client\.sendMessage/);
+  const source = cloudGroupAgentFailureSource();
+  assert.match(source, /isCloudAgentNoProviderConfiguredError\(error\)/);
+  assert.match(source, /encodeCloudGroupControl\(\{/);
+  assert.match(source, /deliveryState:\s*'failed'/);
+  assert.match(source, /runtime\.client\.sendMessage/);
 });
 
 test('cloud removed sessions are included in workspace hidden ids for restored canonical self-agent forks', () => {
