@@ -5,6 +5,11 @@ import { existsSync, chmodSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  SUPPORTED_PLATFORM_KEYS,
+  resolvePlatformBinaryName,
+} from '../scripts/platform-binary.js';
+
 function getCliName() {
   try {
     const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
@@ -19,56 +24,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Detect whether the current Linux system uses musl libc.
- * Checks for the musl dynamic linker in /lib64 or /lib.
- * @returns {boolean}
- */
-function isMusl() {
-  if (process.platform !== 'linux') return false;
-  try {
-    // Check for musl dynamic linker
-    const paths = ['/lib64', '/lib'];
-    for (const dir of paths) {
-      try {
-        const entries = readFileSync('/proc/self/maps', 'utf8');
-        if (entries.includes('musl')) return true;
-      } catch {
-        // ignore
-      }
-    }
-    // Fallback: check if ldd mentions musl
-    const result = spawnSync('ldd', ['--version'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-    const output = (result.stdout || '') + (result.stderr || '');
-    if (output.toLowerCase().includes('musl')) return true;
-  } catch {
-    // ignore
-  }
-  return false;
-}
-
-/**
  * Map process.platform + process.arch to the binary suffix.
  * @returns {string} Binary filename for this platform
  */
 function getBinaryName() {
   const platform = process.platform;
   const arch = process.arch;
-  const cliName = getCliName();
-
-  const platformMap = {
-    'darwin-arm64': `${cliName}-darwin-arm64`,
-    'darwin-x64': `${cliName}-darwin-x64`,
-    'linux-x64': isMusl() ? `${cliName}-linux-musl-x64` : `${cliName}-linux-x64`,
-    'linux-arm64': isMusl() ? `${cliName}-linux-musl-arm64` : `${cliName}-linux-arm64`,
-    'win32-x64': `${cliName}-win32-x64.exe`,
-  };
-
-  const key = `${platform}-${arch}`;
-  const name = platformMap[key];
+  const name = resolvePlatformBinaryName({ cliName: getCliName(), platform, arch });
 
   if (!name) {
     console.error(`Unsupported platform: ${platform}-${arch}`);
-    console.error('Supported platforms: darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64');
+    console.error(`Supported platforms: ${SUPPORTED_PLATFORM_KEYS.join(', ')}`);
     process.exit(1);
   }
 

@@ -8,7 +8,8 @@
 import { copyFileSync, chmodSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+
+import { resolvePlatformBinaryName } from './platform-binary.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,22 +20,6 @@ function getCliBinaryBaseName() {
   const cargoToml = readFileSync(join(ROOT, 'cli', 'Cargo.toml'), 'utf8');
   const match = cargoToml.match(/^name\s*=\s*"([^"]+)"/m);
   return match?.[1] || 'bridges';
-}
-
-/**
- * Detect whether the current Linux system uses musl libc.
- * @returns {boolean}
- */
-function isMusl() {
-  if (process.platform !== 'linux') return false;
-  try {
-    const result = spawnSync('ldd', ['--version'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-    const output = (result.stdout || '') + (result.stderr || '');
-    if (output.toLowerCase().includes('musl')) return true;
-  } catch {
-    // ignore
-  }
-  return false;
 }
 
 function main() {
@@ -56,23 +41,12 @@ function main() {
     process.exit(1);
   }
 
-  // Destination binary name
-  let platformSuffix;
-  if (platform === 'darwin') {
-    platformSuffix = `darwin-${arch}`;
-  } else if (platform === 'linux') {
-    const libc = isMusl() ? 'musl' : '';
-    platformSuffix = libc ? `linux-${libc}-${arch}` : `linux-${arch}`;
-  } else if (platform === 'win32') {
-    platformSuffix = `win32-${arch}`;
-  } else {
-    console.error(`Unsupported platform: ${platform}`);
+  const destName = resolvePlatformBinaryName({ cliName, platform, arch });
+  if (!destName) {
+    console.error(`Unsupported platform: ${platform}-${arch}`);
     process.exit(1);
   }
 
-  const destName = isWindows
-    ? `${cliName}-${platformSuffix}.exe`
-    : `${cliName}-${platformSuffix}`;
   const destPath = join(BIN_DIR, destName);
 
   // Ensure bin/ exists
