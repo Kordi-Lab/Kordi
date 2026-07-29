@@ -7,6 +7,7 @@ use kordi_monitor::{
     SessionCacheMetricsSource, latest_request_metrics_for_session, render_cache_monitor_text,
     render_context_window_status, resolve_context_window_status,
 };
+use kordi_session::context::active_path_context_state;
 
 use crate::login;
 use crate::session_bootstrap::SessionRuntimeSetup;
@@ -338,39 +339,6 @@ fn request_matches_cache_domain(
         && current_context_epoch.is_none_or(|epoch| metrics.context_epoch == epoch)
 }
 
-fn active_path_has_contextful_entries(path: &[kordi_session::store::EntryRow]) -> bool {
-    path.iter().any(|row| row.entry_type == "message")
-}
-
-fn estimate_active_path_context_tokens(path: &[kordi_session::store::EntryRow]) -> Option<u64> {
-    let latest_compaction_index = path.iter().rposition(|row| row.entry_type == "compaction");
-    if let Some(compaction_index) = latest_compaction_index {
-        let has_post_compaction_usage = path.iter().skip(compaction_index + 1).rev().any(|row| {
-            let Ok(entry) = kordi_session::store::parse_entry(row) else {
-                return false;
-            };
-            match entry {
-                kordi_core::types::SessionEntry::Message {
-                    message: kordi_core::types::AgentMessage::Assistant(assistant),
-                    ..
-                } => {
-                    assistant.stop_reason != kordi_core::types::StopReason::Aborted
-                        && assistant.stop_reason != kordi_core::types::StopReason::Error
-                        && kordi_session::compaction::calculate_context_tokens(&assistant.usage) > 0
-                }
-                _ => false,
-            }
-        });
-        if !has_post_compaction_usage {
-            return None;
-        }
-    }
-
-    kordi_session::context::build_context_from_path(path)
-        .ok()
-        .map(|ctx| kordi_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
-}
-
 fn current_cache_monitor_text(setup: &SessionRuntimeSetup) -> Option<String> {
     let summary = collect_session_info_summary(
         &setup.conn,
@@ -433,26 +401,22 @@ fn current_cache_monitor_text(setup: &SessionRuntimeSetup) -> Option<String> {
 
 fn current_context_window_status(setup: &SessionRuntimeSetup) -> ContextWindowStatus {
     let active_path = kordi_session::tree::active_path(&setup.conn, &setup.session_id).ok();
-    let latest_entry_is_compaction = active_path
-        .as_ref()
-        .and_then(|rows| rows.last())
-        .is_some_and(|row| row.entry_type == "compaction");
-    let suppress_runtime_usage = latest_entry_is_compaction;
+    let active_path_context = active_path
+        .as_deref()
+        .map(active_path_context_state)
+        .unwrap_or_default();
+    let suppress_runtime_usage = active_path_context.latest_entry_is_compaction;
     let context_window = setup.model.context_window;
     let active_path_tokens = if suppress_runtime_usage {
         None
     } else {
-        active_path
-            .as_deref()
-            .and_then(estimate_active_path_context_tokens)
+        active_path_context.estimated_tokens
     };
 
     resolve_context_window_status(&ContextResolutionInput {
         runtime_usage: None,
         active_path_tokens,
-        has_contextful_active_path: active_path
-            .as_deref()
-            .is_some_and(active_path_has_contextful_entries),
+        has_contextful_active_path: active_path_context.has_contextful_entries,
         context_window,
         auto_compaction: setup.compaction_enabled,
         suppress_runtime_usage,
