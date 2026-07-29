@@ -3,18 +3,12 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 const cloudCollaborationStateSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
+const cloudGroupSessionControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupSessionControl.ts', import.meta.url), 'utf8');
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
 
 test('cloud group replay persists messages with compact canonical writes instead of full state reloads', () => {
-  const source = cloudCollaborationStateSource();
-  const replayStart = source.indexOf('const messageRequest = {');
-  const replayEnd = source.indexOf(
-    'const groupMessageMentionsLocalAgent = cloudGroupMessageTargetsLocalAgent(envelope.message, account);',
-    replayStart,
-  );
-  assert.notEqual(replayStart, -1, 'expected cloud group replay message request block');
-  assert.notEqual(replayEnd, -1, 'expected cloud group replay block end');
-  const replayBlock = source.slice(replayStart, replayEnd);
+  const replayBlock = cloudGroupMessageControlSource();
 
   assert.match(replayBlock, /const persistedMessage = await upsertCanonicalMessageFast\(messageRequest\)/, 'all replay messages should use compact idempotent upsert');
   assert.doesNotMatch(replayBlock, /appendCanonicalMessageFast\(messageRequest\)/, 'replay must not race another writer through the append-only path');
@@ -23,12 +17,7 @@ test('cloud group replay persists messages with compact canonical writes instead
 });
 
 test('cloud group replay prepares identities and sessions with compact canonical writes', () => {
-  const source = cloudCollaborationStateSource();
-  const replayStart = source.indexOf('const participantByAccount = new Map<string, CloudGroupParticipant>();');
-  const replayEnd = source.indexOf('if (envelope.kind !== \'group-message\' || !envelope.message)', replayStart);
-  assert.notEqual(replayStart, -1, 'expected cloud group participant preparation block');
-  assert.notEqual(replayEnd, -1, 'expected cloud group preparation block end');
-  const replaySetupBlock = source.slice(replayStart, replayEnd);
+  const replaySetupBlock = cloudGroupSessionControlSource();
 
   assert.match(replaySetupBlock, /upsertCanonicalIdentityFast\(request\)/, 'participant identities should use compact upsert');
   assert.match(replaySetupBlock, /openOrCreateCanonicalSessionFast\(/, 'group session open should use compact open');

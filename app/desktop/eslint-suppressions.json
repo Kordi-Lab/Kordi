@@ -353,19 +353,13 @@
       "count": 2
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 5
+      "count": 3
     },
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 9
     },
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 12
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 5
     },
     "@typescript-eslint/prefer-promise-reject-errors": {
       "count": 1
@@ -377,7 +371,7 @@
       "count": 23
     },
     "react-hooks/exhaustive-deps": {
-      "count": 6
+      "count": 5
     },
     "react-hooks/preserve-manual-memoization": {
       "count": 1

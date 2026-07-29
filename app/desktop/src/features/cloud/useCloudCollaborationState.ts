@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
-import { resolveReplicatedGroupTitle } from '@/features/chat/groupTitle';
 import {
   deriveSessionTitle,
   incomingSessionTitleWins,
@@ -17,18 +16,13 @@ import {
 
 import {
   adoptCloudProfileIdentity,
-  appendCanonicalMessage,
   buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   markCanonicalSessionRead,
-  openOrCreateCanonicalSession,
   openOrCreateCanonicalSessionFast,
-  removeCanonicalSessionParticipant,
   startDesktopChatMessage,
-  upsertCanonicalIdentity,
   upsertCanonicalIdentityFast,
-  upsertCanonicalMessage,
   upsertCanonicalMessageFast,
   updateCanonicalMessageDelivery,
   type DesktopChatContextMessage,
@@ -111,32 +105,21 @@ import {
   cloudGroupAttachmentReferences,
   cloudGroupControlWithAttachmentReferences,
   cloudGroupAgentConversationId,
-  cloudGroupAdminAccountIds,
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentRequestingNoticeMessage,
   cloudGroupAgentRequestingNoticeRequest,
   cloudGroupForkPayloadFromSessionMetadata,
-  cloudGroupAgentResponseTargetAccountIds,
   cloudGroupIdFromAgentConversationId,
-  cloudGroupIdentityRequest,
-  cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupManualSessionTitleSnapshot,
-  cloudGroupMemberJoinNoticeRequests,
   cloudGroupMessageReadTargets,
   cloudGroupOutgoingParticipantSnapshot,
   cloudGroupParticipantsForCollaborationSession,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
-  cloudGroupParticipantsWithProfiles,
   cloudGroupSelfParticipant,
-  cloudGroupSessionTitleSnapshotForControl,
   cloudGroupTitleForOutgoingControl,
-  cloudGroupTitleUpdateNoticeRequest,
   cloudGroupUnreadCountsBySessionId,
   type CloudGroupReadCursor,
-  cloudSessionTitleUpdateNoticeRequest,
-  cloudSessionTitleUpdateTitle,
-  cloudGroupUniqueParticipants,
   cloudGroupRelatedControlsForSend,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
@@ -144,13 +127,10 @@ import {
   fulfilledCloudGroupSends,
   parseCloudGroupControl,
   requiredCloudGroupControlTargetAccountIds,
-  shouldApplyCloudGroupTitleUpdate,
-  shouldCountCloudGroupMessageUnread,
   type CloudGroupControlEnvelope,
   type CloudGroupMemberJoin,
   type CloudGroupMemberLeave,
   type CloudGroupParticipant,
-  type CloudGroupSessionTitleSnapshot,
 } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
@@ -169,7 +149,6 @@ import {
 import { cloudMessageActionAllowsAgentContext, cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import {
   uploadComposerAttachments,
-  cloudMessageAttachmentToMessageAttachment,
   resolveForwardAttachmentItems,
   resolveCloudMessageAttachments,
   resetCloudAttachmentPreviewLoader,
@@ -210,6 +189,18 @@ import {
 } from './cloudSessionActivity';
 import { loadSession } from './session';
 import { CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
+import {
+  applyCloudGroupSessionControl,
+  resolveAuthorizedCloudGroupSessionTitleSnapshot,
+  resolveCloudGroupAdminSnapshot,
+} from './cloudGroupSessionControl';
+import { applyCloudGroupMessageControl } from './cloudGroupMessageControl';
+import { applyCloudGroupAgentControl } from './cloudGroupAgentControl';
+
+export {
+  resolveAuthorizedCloudGroupSessionTitleSnapshot,
+  resolveCloudGroupAdminSnapshot,
+} from './cloudGroupSessionControl';
 
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
@@ -333,50 +324,15 @@ function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
 
-export function resolveCloudGroupAdminSnapshot(input: {
-  envelope: Pick<CloudGroupControlEnvelope, 'kind' | 'actor' | 'participants' | 'createdByAccountId'>;
-  identityIdByAccount: ReadonlyMap<string, string>;
-  createdByIdentityId: string;
-  existingAdminIdentityIds: string[];
-  hasExistingSession: boolean;
-  controlCreatedAtMs: number;
-  storedAdminUpdatedAtMs: number;
-}) {
-  const actorIdentityId = input.identityIdByAccount.get(input.envelope.actor.accountId) ?? '';
-  const actorCanChangeAdmins = !input.hasExistingSession
-    ? input.envelope.kind === 'group-invite'
-      && actorIdentityId === input.createdByIdentityId
-    : actorIdentityId === input.createdByIdentityId;
-  const applies = ['group-invite', 'group-update'].includes(input.envelope.kind)
-    && actorCanChangeAdmins
-    && input.controlCreatedAtMs >= input.storedAdminUpdatedAtMs;
-  const advertisedAdminIdentityIds = cloudGroupAdminAccountIds(input.envelope)
-    .map((accountId) => input.identityIdByAccount.get(accountId) ?? '')
-    .filter(Boolean);
-  return {
-    applies,
-    adminIdentityIds: [...new Set([
-      input.createdByIdentityId,
-      ...(applies ? advertisedAdminIdentityIds : input.existingAdminIdentityIds),
-    ].filter(Boolean))],
-  };
-}
-
-export function resolveAuthorizedCloudGroupSessionTitleSnapshot(input: {
-  envelope: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle' | 'actor' | 'sessionTitle'>;
-  controlCreatedAtMs: number;
-  identityIdByAccount: ReadonlyMap<string, string>;
-  adminIdentityIds: readonly string[];
-}): CloudGroupSessionTitleSnapshot | null {
-  const snapshot = cloudGroupSessionTitleSnapshotForControl(
-    input.envelope,
-    input.controlCreatedAtMs,
-  );
-  if (!snapshot) return null;
-  const updatedByIdentityId = input.identityIdByAccount.get(snapshot.updatedByAccountId)?.trim() ?? '';
-  if (!updatedByIdentityId) return null;
-  const adminIdentityIds = new Set(input.adminIdentityIds.map((identityId) => identityId.trim()).filter(Boolean));
-  return adminIdentityIds.has(updatedByIdentityId) ? snapshot : null;
+function reportCloudGroupAgentFailure(
+  kind: 'local-response' | 'no-provider-notice',
+  error: unknown,
+) {
+  if (kind === 'no-provider-notice') {
+    console.warn('[cloud-group-agent-mention] no-provider notice failed', error);
+    return;
+  }
+  console.warn('[cloud-group-agent-mention] local agent response failed', error);
 }
 
 async function publishDerivedCloudSessionActivity({
@@ -619,32 +575,6 @@ export function cloudGroupAgentCancelRoleForRequest({
     : null;
   if (agentOwnerAccountId && agentOwnerAccountId === trimmedCancelledByAccountId) return 'agent owner';
   return 'participant';
-}
-
-function cloudGroupParticipantSnapshotForSession(
-  state: CanonicalSessionState,
-  sessionId: string,
-  account: CloudAccount,
-): CloudGroupParticipant[] {
-  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
-  const participants = state.participants
-    .filter((participant) => participant.sessionId === sessionId && participant.state !== 'left')
-    .flatMap((participant): CloudGroupParticipant[] => {
-      const identity = identityById.get(participant.identityId);
-      if (!identity || identity.kind !== 'human') return [];
-      const accountId = cleanText(identity.humanId) || cleanText(identity.sourceIdentityId);
-      if (!accountId) return [];
-      return [{
-        accountId,
-        displayName: cleanText(identity.displayName) || accountId,
-        avatarUrl: identity.profileImageUrl ?? null,
-        role: participant.role || 'person',
-      }];
-    });
-  return cloudGroupUniqueParticipants([
-    cloudGroupSelfParticipant(account, 'person'),
-    ...participants,
-  ]);
 }
 
 type CloudAgentMentionCandidateOptions = {
@@ -3606,857 +3536,90 @@ export function useCloudCollaborationState({
       });
   }, [account, canonicalSessionState, client, mergeMessage, syncCloudCollaborationDiff]);
 
-  const applyCloudGroupControl = useCallback(async (cloudMessage: CloudMessage, envelope: CloudGroupControlEnvelope) => {
-    // Read state from refs, not closure, so this useCallback's identity stays
-    // stable across canonical updates. Earlier the function was rebuilt on
-    // every canonicalSessionState change, which made the replay useEffect
-    // (deps include applyCloudGroupControl) re-fire on every setState. The
-    // ~11 internal setCanonicalSessionState calls per envelope then compounded
-    // and React tripped "Maximum update depth exceeded" — visible on the
-    // user1 window and via the WS reconnect loop on all three.
-    const canonicalState = canonicalSessionStateRef.current;
-    if (!account || !canonicalState || !setCanonicalSessionState) return;
-    const localHumanIdentityId = canonicalState.profile.humanIdentityId?.trim();
-    if (!localHumanIdentityId) return;
-
-    const rawParticipants = [envelope.actor, ...envelope.participants, cloudGroupSelfParticipant(account, 'self')];
-    const profileAccountIds = [...new Set(rawParticipants.map((participant) => participant.accountId.trim()).filter(Boolean))];
-    const missingProfileAccountIds = profileAccountIds.filter((accountId) => !cloudProfileCacheRef.current.has(accountId));
-    if (missingProfileAccountIds.length > 0) {
-      const session = await loadSession();
-      if (session?.token) {
-        await Promise.all(missingProfileAccountIds.map(async (accountId) => {
-          try {
-            const profile = accountId === account.accountId
-              ? {
-                  accountId: account.accountId,
-                  displayName: account.displayName,
-                  avatarUrl: account.avatarUrl,
-                  nodeId: account.nodeId,
-                  isContact: false,
-                  isSelf: true,
-                }
-              : await client.getProfile(session.token, accountId);
-            cloudProfileCacheRef.current.set(accountId, profile);
-          } catch {
-            // Group sync must still work if a profile lookup races account/session refresh.
-          }
-        }));
-      }
-    }
-    const hydratedParticipants = cloudGroupParticipantsWithProfiles(
-      rawParticipants,
-      profileAccountIds
-        .map((accountId) => cloudProfileCacheRef.current.get(accountId))
-        .filter((profile): profile is CloudPublicProfile => Boolean(profile)),
-    );
-
-    const participantByAccount = new Map<string, CloudGroupParticipant>();
-    for (const participant of hydratedParticipants) {
-      const normalized = participant.accountId.trim() ? participant : null;
-      if (!normalized || participantByAccount.has(normalized.accountId)) continue;
-      participantByAccount.set(normalized.accountId, normalized);
-    }
-
-    const identityIdByAccount = new Map<string, string>();
-    let nextState: CanonicalSessionState | null = canonicalState;
-    for (const participant of participantByAccount.values()) {
-      const request = cloudGroupIdentityRequest(participant, account, localHumanIdentityId);
-      identityIdByAccount.set(participant.accountId, request.id ?? '');
-      const identity = await upsertCanonicalIdentityFast(request);
-      nextState = upsertCanonicalIdentityIntoLocalState(nextState, identity);
-    }
-
-    const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
-    const envelopeSession = canonicalState.sessions.find((session) => session.id === envelope.groupId) ?? null;
-    const groupRootSession = canonicalState.sessions.find((session) => session.id === groupSpaceId) ?? null;
-    const envelopeSessionMetadata = objectContent(envelopeSession?.metadata);
-    const groupRootMetadata = objectContent(groupRootSession?.metadata);
-    const storedCreatorIdentityId = cleanText(
-      typeof envelopeSessionMetadata.groupCreatorIdentityId === 'string'
-        ? envelopeSessionMetadata.groupCreatorIdentityId
-        : typeof groupRootMetadata.groupCreatorIdentityId === 'string'
-          ? groupRootMetadata.groupCreatorIdentityId
-          : groupRootSession?.createdByIdentityId || envelopeSession?.createdByIdentityId || null,
-    );
-    const createdByIdentityId = storedCreatorIdentityId
-      || identityIdByAccount.get(envelope.createdByAccountId)
-      || identityIdByAccount.get(envelope.actor.accountId)
-      || localHumanIdentityId;
-    const participantIdentityIds = [...identityIdByAccount.entries()]
-      .filter(([, identityId]) => identityId !== createdByIdentityId)
-      .map(([, identityId]) => identityId);
-    const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
-    const incomingGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? envelope.groupTitle : null;
-    const isSelfAuthoredControl = envelope.actor.accountId === account.accountId;
-    const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
-    const forkMetadata = envelope.fork ? {
-      forkedFromSessionId: envelope.fork.parentSessionId,
-      forkedFromMessageId: envelope.fork.parentMessageId ?? null,
-      forkMode: 'cloud-group',
-      contextPolicy: 'prefix-through-message',
-      boundary: 'inherited-history-reference-only',
-      createdAtMs: envelope.fork.createdAtMs ?? null,
-    } : null;
-    const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
-    const controlCreatedAtMs = Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now();
-    const storedGroupTitleCandidates = [
-      { sessionId: groupSpaceId, metadata: groupRootMetadata },
-      { sessionId: envelope.groupId, metadata: envelopeSessionMetadata },
-    ];
-    const groupTitleResolution = resolveReplicatedGroupTitle({
-      candidates: storedGroupTitleCandidates.map(({ sessionId, metadata }) => ({
-        sessionId,
-        groupSpaceId,
-        customName: typeof metadata.customName === 'string' ? metadata.customName : null,
-        groupNameUpdatedAtMs: typeof metadata.groupNameUpdatedAtMs === 'number' ? metadata.groupNameUpdatedAtMs : null,
-      })),
-      groupSpaceId,
-      incomingTitle: incomingGroupTitle,
-      incomingUpdatedAtMs: controlCreatedAtMs,
-    });
-    const envelopeAdminUpdatedAtMs = typeof envelopeSessionMetadata.groupAdminUpdatedAtMs === 'number'
-      && Number.isFinite(envelopeSessionMetadata.groupAdminUpdatedAtMs)
-      ? envelopeSessionMetadata.groupAdminUpdatedAtMs
-      : 0;
-    const rootAdminUpdatedAtMs = typeof groupRootMetadata.groupAdminUpdatedAtMs === 'number'
-      && Number.isFinite(groupRootMetadata.groupAdminUpdatedAtMs)
-      ? groupRootMetadata.groupAdminUpdatedAtMs
-      : 0;
-    const storedAdminMetadata = rootAdminUpdatedAtMs >= envelopeAdminUpdatedAtMs
-      ? groupRootMetadata
-      : envelopeSessionMetadata;
-    const storedAdminValue = Array.isArray(storedAdminMetadata.adminIdentityIds)
-      ? storedAdminMetadata.adminIdentityIds
-      : Array.isArray(envelopeSessionMetadata.adminIdentityIds)
-        ? envelopeSessionMetadata.adminIdentityIds
-        : groupRootMetadata.adminIdentityIds;
-    const storedAdminIdentityIds = Array.isArray(storedAdminValue)
-      ? storedAdminValue
-          .filter((identityId): identityId is string => typeof identityId === 'string')
-          .map((identityId) => identityId.trim())
-          .filter(Boolean)
-      : [];
-    const storedAdminUpdatedAtMs = Math.max(envelopeAdminUpdatedAtMs, rootAdminUpdatedAtMs);
-    const adminSnapshot = resolveCloudGroupAdminSnapshot({
+  const applyCloudGroupControl = useCallback(async (
+    cloudMessage: CloudMessage,
+    envelope: CloudGroupControlEnvelope,
+  ) => {
+    // Keep canonical state behind a ref so replay does not rebuild this callback
+    // after each canonical write and re-enter the replay effect.
+    const sessionContext = await applyCloudGroupSessionControl({
+      cloudMessage,
       envelope,
-      identityIdByAccount,
-      createdByIdentityId,
-      existingAdminIdentityIds: storedAdminIdentityIds,
-      hasExistingSession: Boolean(envelopeSession),
-      controlCreatedAtMs,
-      storedAdminUpdatedAtMs,
+      runtime: {
+        account,
+        client,
+        profileCache: cloudProfileCacheRef.current,
+      },
+      canonical: {
+        getState: () => canonicalSessionStateRef.current,
+        setState: setCanonicalSessionState,
+      },
+      stateOps: {
+        objectContent,
+        cleanText,
+        resolveAdminSnapshot: resolveCloudGroupAdminSnapshot,
+        resolveSessionTitle: resolveAuthorizedCloudGroupSessionTitleSnapshot,
+        upsertIdentity: upsertCanonicalIdentityIntoLocalState,
+        mergeOpenSession: mergeOpenCanonicalSessionFastResultIntoLocalState,
+      },
     });
-    const appliesAdminSnapshot = adminSnapshot.applies;
-    const adminIdentityIds = adminSnapshot.adminIdentityIds;
-    const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
-    const authorizedSessionTitle = resolveAuthorizedCloudGroupSessionTitleSnapshot({
-      envelope,
-      controlCreatedAtMs,
-      identityIdByAccount,
-      adminIdentityIds,
+    if (!sessionContext || !setCanonicalSessionState) return;
+
+    const messageContext = await applyCloudGroupMessageControl({
+      context: sessionContext,
+      setCanonicalState: setCanonicalSessionState,
+      stateOps: {
+        objectContent,
+        cleanText,
+        upsertIdentity: upsertCanonicalIdentityIntoLocalState,
+        processingSlot: cloudGroupAgentProcessingSlotForResponse,
+        incomingAlreadyApplied: cloudGroupIncomingMessageAlreadyApplied,
+        removeOfflinePlaceholder: removeCloudGroupOfflinePlaceholder,
+        removeTimeoutPlaceholder: removeCloudGroupTimeoutPlaceholderForTerminalResponse,
+        removePendingRows: removeCloudGroupPendingRowsForTerminalResponse,
+        removeMessage: removeCanonicalMessageById,
+        isProcessingPlaceholder: isCloudAgentProcessingPlaceholderText,
+      },
     });
-    const groupMetadata = {
-      ...groupRootMetadata,
-      ...envelopeSessionMetadata,
-      schemaVersion: 1,
-      kind: 'chat-group',
-      customName: groupTitleResolution.title || null,
-      ...(groupTitleResolution.updatedAtMs > 0 ? { groupNameUpdatedAtMs: groupTitleResolution.updatedAtMs } : {}),
-      groupId: groupSpaceId,
-      groupSpaceId,
-      groupCreatorIdentityId: createdByIdentityId,
-      adminIdentityIds,
-      ...(appliesAdminSnapshot ? { groupAdminUpdatedAtMs: controlCreatedAtMs } : {}),
-      initialContactIds: [...participantByAccount.keys()].map((accountId) => `cloud:${accountId}`),
-      initialParticipantNames: participantNames,
-      memberApprovalPolicy: 'under-50-open',
-      createdFrom: envelope.kind === 'session-fork' || forkMetadata ? 'cloud-group-fork-sync' : 'cloud-group-sync',
-      ...(authorizedSessionTitle
-        ? {
-            sessionTitleSource: authorizedSessionTitle.titleSource,
-            sessionTitleRevision: authorizedSessionTitle.titleRevision,
-            sessionTitlePolicyVersion: authorizedSessionTitle.titlePolicyVersion,
-            sessionTitleUpdatedAtMs: authorizedSessionTitle.updatedAtMs,
-            sessionTitleUpdatedByAccountId: authorizedSessionTitle.updatedByAccountId,
-          }
-        : {}),
-      ...(forkMetadata ? { fork: forkMetadata } : {}),
-    };
-    const openResult = await openOrCreateCanonicalSessionFast({
-      id: envelope.groupId,
-      kind: 'group',
-      title: authorizedSessionTitle?.title ?? 'New chat',
-      status: 'active',
-      createdByIdentityId,
-      primaryIdentityId: null,
-      relationshipIdentityId: null,
-      participantIdentityIds,
-      metadata: groupMetadata,
+    if (!messageContext) return;
+
+    applyCloudGroupAgentControl({
+      context: messageContext,
+      setCanonicalState: setCanonicalSessionState,
+      runtime: {
+        client,
+        messageIndex: () => cloudMessageIndexRef.current,
+        sessionActivity: () => cloudSessionActivityRef.current,
+        setSessionActivity: setCloudSessionActivity,
+        setLocalTurns: setLocalAgentTurnsByRequestId,
+        processedMentionIds: processedCloudAgentMentionIdsRef.current,
+        turnIdsByRequestId: cloudAgentTurnIdsByRequestIdRef.current,
+        agentDefinitionsById: cloudAgentDefinitionsById,
+        routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
+        defaultRoute: defaultCloudAgentRuntimeRoute,
+        mergeMessage,
+        syncDiff: syncCloudCollaborationDiff,
+        reportFailure: reportCloudGroupAgentFailure,
+      },
+      stateOps: {
+        cleanText,
+        upsertRequest: upsertCanonicalRequestIntoLocalState,
+        upsertIdentity: upsertCanonicalIdentityIntoLocalState,
+        removePendingRows: removeCloudGroupPendingRowsForTerminalResponse,
+        removeTimeoutPlaceholder: removeCloudGroupTimeoutPlaceholderForTerminalResponse,
+      },
+      policy: {
+        isRecentMention: isRecentCloudAgentMention,
+        messageTargetsLocalAgent: cloudGroupMessageTargetsLocalAgent,
+        responseExists: cloudGroupAgentResponseExistsForRequest,
+        fallbackRunOwnsRequest: cloudFallbackRunAlreadyOwnsRequest,
+        nativeContext: cloudGroupNativeContextMessages,
+        waitForTurn: waitForCloudAgentTurn,
+        publishActivity: publishDerivedCloudSessionActivity,
+      },
     });
-    nextState = mergeOpenCanonicalSessionFastResultIntoLocalState(nextState, openResult);
-    if (!nextState) return;
-
-    const appliedSessionTitle = Boolean(
-      sessionTitleUpdateTitle
-      && authorizedSessionTitle
-      && openResult.session.title === authorizedSessionTitle.title
-      && envelopeSession?.title !== openResult.session.title,
-    );
-    const sessionTitleIsSelfAuthored = authorizedSessionTitle?.updatedByAccountId === account.accountId;
-    if (appliedSessionTitle && authorizedSessionTitle && !sessionTitleIsSelfAuthored) {
-      const titleAuthorAccountId = authorizedSessionTitle.updatedByAccountId;
-      const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
-        envelope,
-        actorIdentityId: identityIdByAccount.get(titleAuthorAccountId) ?? actorIdentityId,
-        actorDisplayName: participantByAccount.get(titleAuthorAccountId)?.displayName ?? 'Someone',
-        createdAtMs: controlCreatedAtMs,
-        cloudMessageId: cloudMessage.messageId,
-      });
-      if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
-        nextState = await appendCanonicalMessage(noticeRequest);
-      }
-    }
-
-    if (groupTitleResolution.appliesIncoming) {
-      // openOrCreateCanonicalSession above already applied the replicated Cloud
-      // group metadata. Do not route incoming Cloud sync through the local UI
-      // admin guard; otherwise valid remote updates warn/fail on peers whose
-      // local admin identity ids differ from the sender's local identity id.
-      if (!isSelfAuthoredControl) {
-        const noticeRequest = cloudGroupTitleUpdateNoticeRequest({
-          envelope,
-          actorIdentityId,
-          createdAtMs: controlCreatedAtMs,
-          cloudMessageId: cloudMessage.messageId,
-        });
-        if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
-          nextState = await appendCanonicalMessage(noticeRequest);
-        }
-      }
-    }
-
-    const memberJoinNoticeRequests = cloudGroupMemberJoinNoticeRequests({
-      envelope,
-      actorIdentityId,
-      identityIdByAccount,
-    });
-    for (const noticeRequest of memberJoinNoticeRequests) {
-      const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
-      nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
-    }
-
-    for (const memberLeave of envelope.memberLeaves ?? []) {
-      const removedIdentityId = identityIdByAccount.get(memberLeave.accountId)
-        ?? `human:${memberLeave.accountId}`;
-      const isStillActive = nextState.participants.some((participant) => (
-        participant.sessionId === envelope.groupId
-        && participant.identityId === removedIdentityId
-        && participant.state === 'active'
-      ));
-      if (!isStillActive) continue;
-      nextState = await removeCanonicalSessionParticipant({
-        sessionId: envelope.groupId,
-        identityId: removedIdentityId,
-        removedByIdentityId: actorIdentityId,
-      });
-    }
-
-    if (envelope.kind !== 'group-message' || !envelope.message) {
-      setCanonicalSessionState(nextState);
-      return;
-    }
-    const senderHumanIdentityId = identityIdByAccount.get(envelope.message.senderAccountId);
-    if (!senderHumanIdentityId) {
-      setCanonicalSessionState(nextState);
-      return;
-    }
-    // When the local agent owner broadcasts a response, the fresh Cloud
-    // envelope id differs from the stable processing-slot id. Match that slot
-    // here so a processing replay remains idempotent and a terminal replay can
-    // replace it in place instead of creating a duplicate row.
-    const isOwnAgentResponseRoundTrip = envelope.message
-      && envelope.message.senderKind === 'agent'
-      && envelope.message.senderAccountId === account.accountId
-      && Boolean((envelope.message.replyToMessageId || envelope.message.requestId)?.trim());
-    const senderIsAgent = envelope.message.senderKind === 'agent';
-    const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
-    const messageReplyToId = envelope.message.replyToMessageId?.trim()
-      || envelope.message.requestId?.trim()
-      || null;
-    const agentDeliveryState = senderIsAgent
-      ? (envelope.message.deliveryState?.trim() || (isCloudAgentProcessingPlaceholderText(envelope.message.text) ? 'processing' : 'complete'))
-      : null;
-    const ownAgentProcessingId = isOwnAgentResponseRoundTrip
-      ? `msg:cloud-agent-processing:${(envelope.message!.replyToMessageId || envelope.message!.requestId || '').trim()}:${account.accountId}`
-      : null;
-    const incomingSourceTransport = envelope.message.forkSnapshot
-      ? 'cloud-group-fork-snapshot'
-      : senderIsAgent ? 'cloud-group-agent' : 'cloud-group';
-    const incomingSourceEventId = `${incomingSourceTransport}:${cloudMessage.messageId}`;
-    const existingCloudGroupMessages = [canonicalState, nextState]
-      .filter((state): state is CanonicalSessionState => Boolean(state))
-      .flatMap((state) => state.messages);
-    const existingCloudGroupMessage = existingCloudGroupMessages.find((candidate) => (
-      candidate.sourceTransport === incomingSourceTransport
-        && candidate.sourceEventId === incomingSourceEventId
-    )) ?? existingCloudGroupMessages.find((candidate) => (
-        candidate.id === envelope.message?.id
-        || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
-    )) ?? null;
-    // A stable processing slot is the row that a terminal agent envelope must
-    // replace. Treating that placeholder as an already-applied terminal event
-    // drops the reply during cold sync and leaves only the disappearing spinner.
-    const messageAlreadyExists = cloudGroupIncomingMessageAlreadyApplied(
-      existingCloudGroupMessage,
-      agentDeliveryState,
-    );
-    if (senderIsAgent) {
-      const owner = participantByAccount.get(envelope.message.senderAccountId);
-      const senderIdentity = await upsertCanonicalIdentityFast({
-        id: senderIdentityId,
-        kind: 'agent',
-        displayName: envelope.message.senderDisplayName?.trim() || `${owner?.displayName || 'Cloud user'}'s Kordi`,
-        ownerIdentityId: senderHumanIdentityId,
-        source: 'cloud',
-        sourceHostId: 'cloud',
-        sourceIdentityId: `cloud-agent:${envelope.message.senderAccountId}`,
-        humanId: envelope.message.senderAccountId,
-        agentId: `cloud-agent:${envelope.message.senderAccountId}`,
-        avatarKey: `cloud-agent:${envelope.message.senderAccountId}`,
-        profileImageUrl: null,
-        metadata: { accountId: envelope.message.senderAccountId, cloudGroupAgent: true },
-      });
-      nextState = upsertCanonicalIdentityIntoLocalState(nextState, senderIdentity);
-    }
-    const cloudAttachments = cloudMessage.attachments?.length ? cloudMessage.attachments : envelope.message.attachments ?? [];
-    const mappedAttachments = cloudAttachments.map(cloudMessageAttachmentToMessageAttachment);
-
-    if (messageAlreadyExists && existingCloudGroupMessage && mappedAttachments.some((attachment) => attachment.localPath)) {
-      const content = objectContent(existingCloudGroupMessage.content);
-      const existingAttachments = Array.isArray(content.attachments) ? content.attachments : [];
-      const shouldUpdateCachedAttachments = existingAttachments.some((attachment) => {
-        const record = objectContent(attachment);
-        return typeof record.attachmentId === 'string'
-          && !record.localPath
-          && mappedAttachments.some((mapped) => mapped.attachmentId === record.attachmentId && mapped.localPath);
-      });
-      if (shouldUpdateCachedAttachments) {
-        const mergedAttachments = existingAttachments.map((attachment) => {
-          const record = objectContent(attachment);
-          const attachmentId = typeof record.attachmentId === 'string' ? record.attachmentId : null;
-          const cached = attachmentId ? mappedAttachments.find((mapped) => mapped.attachmentId === attachmentId && mapped.localPath) : null;
-          return cached ? { ...record, localPath: cached.localPath } : attachment;
-        });
-        const attachmentUpdateRequest = {
-          id: existingCloudGroupMessage.id,
-          sessionId: existingCloudGroupMessage.sessionId,
-          senderIdentityId: existingCloudGroupMessage.senderIdentityId,
-          senderRole: existingCloudGroupMessage.senderRole,
-          messageKind: existingCloudGroupMessage.messageKind,
-          contentText: existingCloudGroupMessage.contentText,
-          content: { ...content, attachments: mergedAttachments },
-          createdAtMs: existingCloudGroupMessage.createdAtMs,
-          parentMessageId: existingCloudGroupMessage.parentMessageId ?? null,
-          status: existingCloudGroupMessage.status,
-          sourceTransport: existingCloudGroupMessage.sourceTransport,
-          sourceEventId: existingCloudGroupMessage.sourceEventId,
-        } satisfies AppendCanonicalMessageRequest;
-        const persistedMessage = await upsertCanonicalMessageFast(attachmentUpdateRequest);
-        nextState = mergeCanonicalMessageRow(nextState, persistedMessage);
-        setCanonicalSessionState(nextState);
-      }
-    }
-
-    const responseProcessingSlot = senderIsAgent && messageReplyToId && agentDeliveryState !== 'processing'
-      ? [canonicalState, nextState]
-          .map((state) => state ? cloudGroupAgentProcessingSlotForResponse(
-            state.messages,
-            envelope.groupId,
-            messageReplyToId,
-            envelope.message!.senderAccountId,
-          ) : null)
-          .find((message): message is CanonicalSessionMessage => Boolean(message)) ?? null
-      : null;
-
-    if (messageAlreadyExists && responseProcessingSlot && responseProcessingSlot.id !== existingCloudGroupMessage?.id) {
-      nextState = removeCanonicalMessageById(nextState, responseProcessingSlot.id) ?? nextState;
-      setCanonicalSessionState(nextState);
-    }
-
-    if (!messageAlreadyExists) {
-      const stableAgentNoticeId = senderIsAgent && messageReplyToId
-        ? `msg:cloud-agent-processing:${messageReplyToId}:${envelope.message.senderAccountId}`
-        : null;
-      const terminalStableAgentNoticeId = stableAgentNoticeId && agentDeliveryState !== 'processing'
-        ? stableAgentNoticeId
-        : null;
-      // If the slot already holds a CANCELLED or COMPLETED row, do not let
-      // a late-arriving processing envelope demote it back to "Processing…".
-      // This handles the owner-cancel race (cancel envelope reaches the
-      // sender before the owner's initial processing envelope) and protects
-      // a real completed reply from being clobbered. The 'failed' state is
-      // intentionally NOT blocked here — it's used for the asker's offline
-      // timeout marker, which should be replaceable when the target turns
-      // out to be slow rather than offline and a real processing/response
-      // envelope finally arrives.
-      const existingStableRow = stableAgentNoticeId
-        ? [canonicalState, nextState]
-            .map((state) => state?.messages.find((message) => message.id === stableAgentNoticeId) ?? null)
-            .find((message): message is CanonicalSessionMessage => Boolean(message)) ?? null
-        : null;
-      const existingStableRowContent = existingStableRow ? objectContent(existingStableRow.content) : null;
-      const existingStableRowDeliveryState = cleanText(
-        typeof existingStableRowContent?.deliveryState === 'string'
-          ? existingStableRowContent.deliveryState
-          : null,
-      ).toLowerCase();
-      const existingStableRowStatus = (existingStableRow?.status || '').trim().toLowerCase();
-      const existingStableRowTerminalLocked = existingStableRow
-        ? ['cancelled', 'complete'].includes(existingStableRowStatus)
-          || ['cancelled', 'complete'].includes(existingStableRowDeliveryState)
-          || (existingStableRow.sourceTransport === 'cloud-group-agent' && existingStableRowDeliveryState === 'failed')
-        : false;
-      if (existingStableRowTerminalLocked && agentDeliveryState === 'processing') {
-        setCanonicalSessionState(nextState);
-        return;
-      }
-      const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
-      const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
-        ? 'processing'
-        : senderIsAgent && agentDeliveryState === 'failed'
-          ? 'failed'
-          : senderIsAgent && agentDeliveryState === 'cancelled'
-            ? 'cancelled'
-            : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
-      const messageRequest = {
-        id: replacementAgentSlot?.id ?? terminalStableAgentNoticeId ?? envelope.message.id,
-        sessionId: envelope.groupId,
-        senderIdentityId,
-        senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
-        messageKind: senderIsAgent ? 'agent-turn' : 'text',
-        contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : envelope.message.text,
-        content: senderIsAgent ? {
-          sender: envelope.message.senderDisplayName?.trim() || 'Kordi',
-          timestampMs: envelope.message.createdAtMs,
-          deliveryState: agentDeliveryState,
-          sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-          requestId: messageReplyToId,
-          replyToMessageId: messageReplyToId,
-          ...(agentDeliveryState === 'failed' ? { error: envelope.message.text || 'Message failed' } : {}),
-        } : (mappedAttachments.length > 0 || envelope.message.messageAction) ? {
-          ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
-          ...(envelope.message.messageAction ? {
-            messageAction: envelope.message.messageAction,
-            replyToMessageId: envelope.message.messageAction.kind === 'quote'
-              ? envelope.message.messageAction.source.sourceMessageId
-              : undefined,
-          } : {}),
-        } : undefined,
-        createdAtMs: envelope.message.createdAtMs,
-        parentMessageId: senderIsAgent ? messageReplyToId : (envelope.message.messageAction?.kind === 'quote' ? envelope.message.messageAction.source.sourceMessageId : null),
-        status: agentStatus,
-        sourceTransport: incomingSourceTransport,
-        sourceEventId: incomingSourceEventId,
-      };
-      // Replay can overlap with the local owner writing the same stable agent
-      // slot. Always use the compact idempotent path so a stale renderer
-      // snapshot cannot turn that overlap into a duplicate primary-key insert.
-      const persistedMessage = await upsertCanonicalMessageFast(messageRequest);
-      nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
-      // Race guard: if the local offline-timer effect added the offline-tier
-      // placeholder AFTER we captured canonicalSessionState above (which can
-      // happen when the response arrives in the same cloud-poll batch as the
-      // mention), replacementAgentSlot was absent and we just wrote a
-      // separate row under envelope.message.id. Strip any orphan offline-tier
-      // placeholder for this request from `nextState` before applying it so
-      // the agent reply slot ends up with a single row instead of two
-      // ("Processing…" + the real response).
-      if (senderIsAgent && messageReplyToId) {
-        const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`;
-        if (agentDeliveryState === 'processing') {
-          nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
-        } else {
-          nextState = removeCloudGroupPendingRowsForTerminalResponse(nextState, messageReplyToId, envelope.message.senderAccountId) ?? nextState;
-        }
-      }
-      setCanonicalSessionState(nextState);
-    }
-
-    if (messageAlreadyExists && senderIsAgent && messageReplyToId && agentDeliveryState !== 'processing') {
-      const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`;
-      const cleanedState = removeCloudGroupPendingRowsForTerminalResponse(nextState, messageReplyToId, envelope.message.senderAccountId)
-        ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(nextState, offlinePlaceholderId)
-        ?? nextState;
-      if (cleanedState !== nextState) {
-        nextState = cleanedState;
-        setCanonicalSessionState(nextState);
-      }
-    }
-
-    const groupMessageMentionsLocalAgent = cloudGroupMessageTargetsLocalAgent(envelope.message, account);
-    if (
-      !senderIsAgent
-      && groupMessageMentionsLocalAgent
-      && isRecentCloudAgentMention(cloudMessage.createdAt)
-      && !processedCloudAgentMentionIdsRef.current.has(envelope.message.id)
-    ) {
-      const currentCloudMessageIndex = cloudMessageIndexRef.current;
-      if (cloudGroupLocalAgentRequestAlreadyHandled({
-        localAccountId: account.accountId,
-        requestMessageId: envelope.message.id,
-        groupRows: currentCloudMessageIndex.groupRows,
-      }) || cloudGroupAgentResponseExistsForRequest({
-        localAccountId: account.accountId,
-        requestMessageId: envelope.message.id,
-        groupRows: currentCloudMessageIndex.groupRows,
-      })) {
-        processedCloudAgentMentionIdsRef.current.add(envelope.message.id);
-        return;
-      }
-      processedCloudAgentMentionIdsRef.current.add(envelope.message.id);
-      void (async () => {
-        const session = await loadSession();
-        if (!session?.token) throw new Error('Not signed in.');
-        const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
-          localAccountId: account.accountId,
-          envelope,
-          requestCloudMessage: cloudMessage,
-        });
-        const latestTargetMessages = (await Promise.all(
-          targetAccountIds.map((targetAccountId) => client.listMessages(session.token, targetAccountId, 100).catch(() => [])),
-        )).flat();
-        if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: envelope.message!.id })
-          || cloudGroupAgentResponseExistsForRequest({
-            localAccountId: account.accountId,
-            requestMessageId: envelope.message!.id,
-            messages: latestTargetMessages,
-            groupRows: currentCloudMessageIndex.groupRows,
-          })) {
-          void syncCloudCollaborationDiff();
-          return;
-        }
-        const hostedAgentName = cleanText(envelope.message!.targetCloudAgentName);
-        const hostedAgentOwnerName = cleanText(envelope.message!.targetCloudAgentOwnerName)
-          || cleanText(account.displayName)
-          || cleanText(account.primaryEmail)
-          || 'Cloud user';
-        const agentIdentityId = `agent:cloud:${account.accountId}`;
-        const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
-        const agentIdentity = await upsertCanonicalIdentityFast({
-          id: agentIdentityId,
-          kind: 'agent',
-          displayName: agentDisplayName,
-          ownerIdentityId: localHumanIdentityId,
-          source: 'local',
-          sourceHostId: 'cloud',
-          sourceIdentityId: `cloud-agent:${account.accountId}`,
-          humanId: account.accountId,
-          agentId: `cloud-agent:${account.accountId}`,
-          avatarKey: `cloud-agent:${account.accountId}`,
-          profileImageUrl: null,
-          metadata: { accountId: account.accountId, cloudGroupAgent: true },
-        });
-        setCanonicalSessionState((current) => upsertCanonicalIdentityIntoLocalState(current, agentIdentity));
-        const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;
-        const processingCreatedAtMs = Date.now();
-        const processingRequest = {
-          id: processingMessageId,
-          sessionId: envelope.groupId,
-          senderIdentityId: agentIdentityId,
-          senderRole: 'owned-agent',
-          messageKind: 'agent-turn',
-          contentText: 'processing...',
-          content: {
-            sender: agentDisplayName,
-            timestampMs: processingCreatedAtMs,
-            deliveryState: 'processing',
-            sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-            requestId: envelope.message!.id,
-            replyToMessageId: envelope.message!.id,
-          },
-          createdAtMs: processingCreatedAtMs,
-          parentMessageId: envelope.message!.id,
-          status: 'processing',
-          sourceTransport: 'cloud-group-agent',
-          sourceEventId: `cloud-group-agent:${processingMessageId}`,
-        } satisfies AppendCanonicalMessageRequest;
-        await upsertCanonicalMessageFast(processingRequest);
-        setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, processingRequest));
-        const processingBody = encodeCloudGroupControl({
-          kind: 'group-message',
-          groupId: envelope.groupId,
-          groupSpaceId,
-          groupTitle: null,
-          createdByAccountId: envelope.createdByAccountId,
-          actor: cloudGroupSelfParticipant(account, 'person'),
-          participants: [...participantByAccount.values()],
-          message: {
-            id: processingMessageId,
-            senderAccountId: account.accountId,
-            text: 'processing...',
-            createdAtMs: processingCreatedAtMs,
-            senderKind: 'agent',
-            senderDisplayName: agentDisplayName,
-            deliveryState: 'processing',
-            replyToMessageId: envelope.message!.id,
-            requestId: envelope.message!.id,
-          },
-        });
-        const processingSent = await Promise.allSettled(
-          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, processingBody, {
-            sessionId: envelope.groupId,
-            clientCreatedAt: new Date(processingCreatedAtMs).toISOString(),
-          })),
-        );
-        processingSent.forEach((result) => {
-          if (result.status === 'fulfilled') mergeMessage(result.value);
-        });
-        const prompt = promptTextForCloudAgentMention(envelope.message!.text);
-        const contextMessages = [
-          ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[envelope.message!.targetCloudAgentId ?? ''] ?? null),
-          ...cloudGroupNativeContextMessages({
-            groupRows: currentCloudMessageIndex.groupRows,
-            groupId: envelope.groupId,
-            requestMessageId: envelope.message!.id,
-            requestCreatedAtMs: envelope.message!.createdAtMs,
-          }),
-        ];
-        const visibleTaskRecords = cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, envelope.groupId);
-        const agentAttachmentPaths = mappedAttachments
-          .map((attachment) => attachment.localPath?.trim() || '')
-          .filter(Boolean);
-        const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
-          setLocalAgentTurnsByRequestId((current) => ({ ...current, [envelope.message!.id]: turn }));
-        };
-        const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${envelope.groupId}`;
-        const runtimeRoute = cloudAgentRuntimeRouteForTargetCloudAgent({
-          targetCloudAgentId: envelope.message!.targetCloudAgentId,
-          cloudAgentDefinitionsById,
-          routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
-          runtimeSessionId,
-          fallbackRoute: defaultCloudAgentRuntimeRoute,
-        });
-        const startedTurn = await startDesktopChatMessage(
-          runtimeSessionId,
-          prompt,
-          agentAttachmentPaths,
-          runtimeRoute,
-          contextMessages,
-          visibleTaskRecords,
-          envelope.groupId,
-        );
-        rememberLocalTurn(startedTurn);
-        cloudAgentTurnIdsByRequestIdRef.current.set(envelope.message!.id, startedTurn.id);
-        const finalTurn = startedTurn.completed ? startedTurn : await waitForCloudAgentTurn(startedTurn.id, rememberLocalTurn);
-        rememberLocalTurn(finalTurn);
-        cloudAgentTurnIdsByRequestIdRef.current.delete(envelope.message!.id);
-        if (finalTurn.status === 'cancelled') return;
-        await publishDerivedCloudSessionActivity({
-          client,
-          token: session.token,
-          accountId: account.accountId,
-          sessionId: envelope.groupId,
-          participantAccountIds: [...participantByAccount.keys()],
-          participantProfiles: [...participantByAccount.values()].map((participant) => ({
-            accountId: participant.accountId,
-            displayName: participant.displayName,
-            avatarUrl: participant.avatarUrl,
-            role: participant.role,
-          })),
-          turn: finalTurn,
-          mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
-        });
-        // When the local agent turn fails (e.g. provider overload after retries),
-        // surface the failure as a structured `failed` agent-turn instead of
-        // wrapping the error as `Failed: <error>` plain text. The receive-side
-        // handler at line 1030 already understands `deliveryState: 'failed'` —
-        // it writes `contentText: ''` + `content.error` so the read model
-        // renders only the red error block. Mirror that here so the agent
-        // owner's view matches the peers' view.
-        const succeeded = finalTurn.succeeded && finalTurn.assistantText.trim().length > 0;
-        const failureMessage = succeeded
-          ? null
-          : isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message)
-            ? cloudAgentNoProviderNoticeText()
-            : (finalTurn.error?.trim()
-                || finalTurn.message?.trim()
-                || 'Cloud agent returned no text response');
-        const responseDeliveryState: 'complete' | 'failed' = succeeded ? 'complete' : 'failed';
-        const responseContentText = succeeded ? finalTurn.assistantText.trim() : '';
-        const responseEnvelopeText = succeeded ? finalTurn.assistantText.trim() : (failureMessage ?? '');
-        const finalLatestTargetMessages = (await Promise.all(
-          targetAccountIds.map((targetAccountId) => client.listMessages(session.token, targetAccountId, 100).catch(() => [])),
-        )).flat();
-        if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: envelope.message!.id })
-          || cloudGroupAgentResponseExistsForRequest({
-            localAccountId: account.accountId,
-            requestMessageId: envelope.message!.id,
-            messages: finalLatestTargetMessages,
-            groupRows: currentCloudMessageIndex.groupRows,
-          })) {
-          void syncCloudCollaborationDiff();
-          return;
-        }
-        const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
-        const responseCreatedAtMs = Date.now();
-        // Overwrite the local "Processing…" row in place rather than appending
-        // a new row at responseMessageId. The previous behavior left a stale
-        // processing row that stayed visible as "Processing…" forever — user1's
-        // DB had accumulated 10+ of these. Reusing processingMessageId via
-        // upsert keeps the agent-owner side as exactly one row per request.
-        // The broadcast envelope still carries responseMessageId so peers can
-        // dedup separately from the intermediate processing envelope; the
-        // own-round-trip guard in the receive-side handler suppresses
-        // duplicate writes when this envelope comes back via cloud polling.
-        const responseRequest = {
-          id: processingMessageId,
-          sessionId: envelope.groupId,
-          senderIdentityId: agentIdentityId,
-          senderRole: 'owned-agent',
-          messageKind: 'agent-turn',
-          contentText: responseContentText,
-          content: {
-            sender: agentDisplayName,
-            timestampMs: responseCreatedAtMs,
-            deliveryState: responseDeliveryState,
-            sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-            requestId: envelope.message!.id,
-            replyToMessageId: envelope.message!.id,
-            ...(failureMessage ? { error: failureMessage } : {}),
-          },
-          createdAtMs: responseCreatedAtMs,
-          parentMessageId: envelope.message!.id,
-          status: responseDeliveryState,
-          sourceTransport: 'cloud-group-agent',
-          sourceEventId: `cloud-group-agent:${responseMessageId}`,
-        } satisfies AppendCanonicalMessageRequest;
-        await upsertCanonicalMessageFast(responseRequest);
-        const offlinePlaceholderId = `msg:cloud-agent-offline:${envelope.message!.id}:${account.accountId}`;
-        setCanonicalSessionState((current) => {
-          const responseStateBeforeCleanup = upsertCanonicalRequestIntoLocalState(current, responseRequest);
-          if (!responseStateBeforeCleanup) return responseStateBeforeCleanup;
-          return removeCloudGroupPendingRowsForTerminalResponse(responseStateBeforeCleanup, envelope.message!.id, account.accountId)
-            ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(responseStateBeforeCleanup, offlinePlaceholderId)
-            ?? responseStateBeforeCleanup;
-        });
-        const responseBody = encodeCloudGroupControl({
-          kind: 'group-message',
-          groupId: envelope.groupId,
-          groupSpaceId,
-          groupTitle: null,
-          createdByAccountId: envelope.createdByAccountId,
-          actor: cloudGroupSelfParticipant(account, 'person'),
-          participants: [...participantByAccount.values()],
-          message: {
-            id: responseMessageId,
-            senderAccountId: account.accountId,
-            text: responseEnvelopeText,
-            createdAtMs: responseCreatedAtMs,
-            senderKind: 'agent',
-            senderDisplayName: agentDisplayName,
-            deliveryState: responseDeliveryState,
-            replyToMessageId: envelope.message!.id,
-            requestId: envelope.message!.id,
-          },
-        });
-        const sent = await Promise.allSettled(
-          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody, {
-            sessionId: envelope.groupId,
-            clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
-          })),
-        );
-        sent.forEach((result) => {
-          if (result.status === 'fulfilled') mergeMessage(result.value);
-        });
-        void syncCloudCollaborationDiff();
-      })().catch((error) => {
-        cloudAgentTurnIdsByRequestIdRef.current.delete(envelope.message!.id);
-        if (isCloudAgentNoProviderConfiguredError(error)) {
-          const responseCreatedAtMs = Date.now();
-          const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;
-          const responseMessageId = `msg:cloud-agent-no-provider:${envelope.message!.id}:${account.accountId}`;
-          const hostedAgentName = cleanText(envelope.message!.targetCloudAgentName);
-          const hostedAgentOwnerName = cleanText(envelope.message!.targetCloudAgentOwnerName)
-            || cleanText(account.displayName)
-            || cleanText(account.primaryEmail)
-            || 'Cloud user';
-          const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
-          void (async () => {
-            const failedResponseRequest = {
-              id: processingMessageId,
-              sessionId: envelope.groupId,
-              senderIdentityId: `agent:cloud:${account.accountId}`,
-              senderRole: 'owned-agent',
-              messageKind: 'agent-turn',
-              contentText: '',
-              content: {
-                sender: agentDisplayName,
-                timestampMs: responseCreatedAtMs,
-                deliveryState: 'failed',
-                sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-                requestId: envelope.message!.id,
-                replyToMessageId: envelope.message!.id,
-                error: cloudAgentNoProviderNoticeText(),
-              },
-              createdAtMs: responseCreatedAtMs,
-              parentMessageId: envelope.message!.id,
-              status: 'failed',
-              sourceTransport: 'cloud-group-agent',
-              sourceEventId: `cloud-group-agent-no-provider:${envelope.message!.id}:${account.accountId}`,
-            } satisfies AppendCanonicalMessageRequest;
-            await upsertCanonicalMessageFast(failedResponseRequest);
-            setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedResponseRequest));
-            const session = await loadSession();
-            if (!session?.token) return;
-            const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
-              localAccountId: account.accountId,
-              envelope,
-              requestCloudMessage: cloudMessage,
-            });
-            const responseBody = encodeCloudGroupControl({
-              kind: 'group-message',
-              groupId: envelope.groupId,
-              groupSpaceId,
-              groupTitle: null,
-              createdByAccountId: envelope.createdByAccountId,
-              actor: cloudGroupSelfParticipant(account, 'person'),
-              participants: [...participantByAccount.values()],
-              message: {
-                id: responseMessageId,
-                senderAccountId: account.accountId,
-                text: cloudAgentNoProviderNoticeText(),
-                createdAtMs: responseCreatedAtMs,
-                senderKind: 'agent',
-                senderDisplayName: agentDisplayName,
-                deliveryState: 'failed',
-                replyToMessageId: envelope.message!.id,
-                requestId: envelope.message!.id,
-              },
-            });
-            const sent = await Promise.allSettled(
-              targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody, {
-                sessionId: envelope.groupId,
-                clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
-              })),
-            );
-            sent.forEach((result) => {
-              if (result.status === 'fulfilled') mergeMessage(result.value);
-            });
-            void syncCloudCollaborationDiff();
-          })().catch((saveError) => {
-            processedCloudAgentMentionIdsRef.current.delete(envelope.message!.id);
-            console.warn('[cloud-group-agent-mention] no-provider notice failed', saveError);
-          });
-          return;
-        }
-        processedCloudAgentMentionIdsRef.current.delete(envelope.message!.id);
-        console.warn('[cloud-group-agent-mention] local agent response failed', error);
-      });
-    }
   }, [
     account,
-    activeConversationId,
     client,
     cloudAgentDefinitionsById,
     cloudAgentRuntimeRoutesBySessionId,
