@@ -176,7 +176,7 @@ pub async fn desktop_lm_studio_catalog_models() -> Result<Vec<DesktopLmStudioCat
     .collect::<Vec<_>>()
     .await;
 
-    models.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    models.sort_by_key(|model| model.name.to_lowercase());
 
     if models.is_empty() {
         Err("LM Studio catalog did not include any models.".to_string())

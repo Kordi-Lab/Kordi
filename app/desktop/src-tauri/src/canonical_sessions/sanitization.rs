@@ -42,10 +42,7 @@ fn strip_leading_address_mentions(text: &str, labels: &[String]) -> String {
     labels.sort_by_key(|label| std::cmp::Reverse(label.chars().count()));
     labels.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
 
-    loop {
-        let Some(after_at) = current.strip_prefix('@') else {
-            break;
-        };
+    while let Some(after_at) = current.strip_prefix('@') {
         let Some(rest) = labels
             .iter()
             .find_map(|label| leading_address_match(after_at, label))

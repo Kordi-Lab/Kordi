@@ -1426,12 +1426,20 @@ fn replace_identity_in_json_value(
             *current = new_identity_id.to_string();
             true
         }
-        Value::Array(items) => items.iter_mut().fold(false, |changed, item| {
-            replace_identity_in_json_value(item, old_identity_id, new_identity_id) || changed
-        }),
-        Value::Object(entries) => entries.values_mut().fold(false, |changed, entry| {
-            replace_identity_in_json_value(entry, old_identity_id, new_identity_id) || changed
-        }),
+        Value::Array(items) => {
+            let mut changed = false;
+            for item in items {
+                changed |= replace_identity_in_json_value(item, old_identity_id, new_identity_id);
+            }
+            changed
+        }
+        Value::Object(entries) => {
+            let mut changed = false;
+            for entry in entries.values_mut() {
+                changed |= replace_identity_in_json_value(entry, old_identity_id, new_identity_id);
+            }
+            changed
+        }
         _ => false,
     }
 }
