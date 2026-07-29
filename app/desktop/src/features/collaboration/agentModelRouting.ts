@@ -1,12 +1,74 @@
-import type { DesktopCollaborationAgent, DesktopCollaborationHost, DesktopCollaborationState, DesktopChatState } from '@/kordi-app/types';
+import type {
+  DesktopCollaborationAgent,
+  DesktopCollaborationAgentRouting,
+  DesktopCollaborationHost,
+  DesktopCollaborationState,
+  DesktopChatState,
+} from '@/kordi-app/types';
 
 export type LocalCollaborationAgentRoutingOption = DesktopCollaborationAgent & {
   hostId: string;
   hostLabel: string;
 };
 
+export type ResolvedCollaborationAgentRouting = {
+  defaultModel: string | null;
+  defaultAuthProvider: string | null;
+  defaultAuthChoice: string | null;
+  fallbackModel: string | null;
+  fallbackAuthProvider: string | null;
+  fallbackAuthChoice: string | null;
+  thinking: string | null;
+};
+
+export type CollaborationAgentRoutingUpdate = {
+  routing: ResolvedCollaborationAgentRouting;
+  defaultAuthChanged: boolean;
+  fallbackAuthChanged: boolean;
+};
+
 function compactModelValue(value?: string | null) {
   return value?.trim() || null;
+}
+
+function explicitRoutingValue(
+  nextValue: string | null | undefined,
+  currentValue: string | null | undefined,
+) {
+  return nextValue !== undefined ? nextValue : currentValue ?? null;
+}
+
+export function resolveCollaborationAgentRoutingUpdate(
+  current: DesktopCollaborationAgentRouting,
+  patch: DesktopCollaborationAgentRouting,
+): CollaborationAgentRoutingUpdate {
+  const routing = {
+    defaultModel: explicitRoutingValue(patch.defaultModel, current.defaultModel),
+    defaultAuthProvider: explicitRoutingValue(patch.defaultAuthProvider, current.defaultAuthProvider),
+    defaultAuthChoice: explicitRoutingValue(patch.defaultAuthChoice, current.defaultAuthChoice),
+    fallbackModel: explicitRoutingValue(patch.fallbackModel, current.fallbackModel),
+    fallbackAuthProvider: explicitRoutingValue(patch.fallbackAuthProvider, current.fallbackAuthProvider),
+    fallbackAuthChoice: explicitRoutingValue(patch.fallbackAuthChoice, current.fallbackAuthChoice),
+    thinking: explicitRoutingValue(patch.thinking, current.thinking),
+  };
+
+  return {
+    routing,
+    defaultAuthChanged: (
+      patch.defaultAuthProvider !== undefined
+      && routing.defaultAuthProvider !== (current.defaultAuthProvider ?? null)
+    ) || (
+      patch.defaultAuthChoice !== undefined
+      && routing.defaultAuthChoice !== (current.defaultAuthChoice ?? null)
+    ),
+    fallbackAuthChanged: (
+      patch.fallbackAuthProvider !== undefined
+      && routing.fallbackAuthProvider !== (current.fallbackAuthProvider ?? null)
+    ) || (
+      patch.fallbackAuthChoice !== undefined
+      && routing.fallbackAuthChoice !== (current.fallbackAuthChoice ?? null)
+    ),
+  };
 }
 
 function defaultRuntimeModelValue(desktopChatState?: DesktopChatState | null) {
