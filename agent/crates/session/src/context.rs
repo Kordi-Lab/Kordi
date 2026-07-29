@@ -10,6 +10,60 @@ mod formatting;
 #[cfg(test)]
 mod tests;
 
+/// Context information derived from one active session path.
+///
+/// This keeps desktop and terminal presentation layers aligned on when
+/// persisted usage is trustworthy after compaction.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ActivePathContextState {
+    pub estimated_tokens: Option<u64>,
+    pub has_contextful_entries: bool,
+    pub latest_entry_is_compaction: bool,
+}
+
+/// Derive context state from a pre-computed active path.
+///
+/// Assistant usage recorded before the latest compaction must not be reused.
+/// Until a successful assistant response records fresh usage after that
+/// boundary, token usage remains unknown.
+pub fn active_path_context_state(path: &[EntryRow]) -> ActivePathContextState {
+    let latest_compaction_index = path.iter().rposition(|row| row.entry_type == "compaction");
+    let has_fresh_post_compaction_usage = latest_compaction_index.is_none_or(|compaction_index| {
+        path.iter().skip(compaction_index + 1).rev().any(|row| {
+            let Ok(entry) = store::parse_entry(row) else {
+                return false;
+            };
+            match entry {
+                SessionEntry::Message {
+                    message: kordi_core::types::AgentMessage::Assistant(assistant),
+                    ..
+                } => {
+                    assistant.stop_reason != kordi_core::types::StopReason::Aborted
+                        && assistant.stop_reason != kordi_core::types::StopReason::Error
+                        && crate::compaction::calculate_context_tokens(&assistant.usage) > 0
+                }
+                _ => false,
+            }
+        })
+    });
+
+    let estimated_tokens = if has_fresh_post_compaction_usage {
+        build_context_from_path(path)
+            .ok()
+            .map(|context| crate::compaction::estimate_context_tokens(&context.messages).tokens)
+    } else {
+        None
+    };
+
+    ActivePathContextState {
+        estimated_tokens,
+        has_contextful_entries: path.iter().any(|row| row.entry_type == "message"),
+        latest_entry_is_compaction: path
+            .last()
+            .is_some_and(|row| row.entry_type == "compaction"),
+    }
+}
+
 /// Build the session context (what gets sent to the LLM).
 ///
 /// Walks root → leaf, applies compaction boundary, returns messages.

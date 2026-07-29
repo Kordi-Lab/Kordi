@@ -6,7 +6,7 @@ use kordi_monitor::{
     SessionCacheMetricsSource, UsageTotals, latest_request_metrics_for_session,
     render_cache_monitor_text, render_footer_usage_text, resolve_context_window_status,
 };
-use kordi_session::store;
+use kordi_session::{context::active_path_context_state, store};
 use kordi_tui::footer::detect_git_branch;
 use kordi_tui::tui::{TuiCommand, TuiFooterData};
 
@@ -267,13 +267,13 @@ impl TuiController {
             &self.session_setup.session_id,
         )
         .ok();
-        let latest_entry_is_compaction = active_path
-            .as_ref()
-            .and_then(|rows| rows.last())
-            .is_some_and(|row| row.entry_type == "compaction");
+        let active_path_context = active_path
+            .as_deref()
+            .map(active_path_context_state)
+            .unwrap_or_default();
         let suppress_runtime_usage = self.manual_compaction_in_progress
             || self.auto_compaction_in_progress
-            || latest_entry_is_compaction;
+            || active_path_context.latest_entry_is_compaction;
         let runtime_usage = if suppress_runtime_usage {
             None
         } else {
@@ -291,9 +291,7 @@ impl TuiController {
         let active_path_tokens = if suppress_runtime_usage {
             None
         } else {
-            active_path
-                .as_deref()
-                .and_then(estimate_active_path_context_tokens)
+            active_path_context.estimated_tokens
         };
 
         resolve_context_window_status(&ContextResolutionInput {
@@ -302,9 +300,7 @@ impl TuiController {
                 percent: usage.percent,
             }),
             active_path_tokens,
-            has_contextful_active_path: active_path
-                .as_deref()
-                .is_some_and(active_path_has_contextful_entries),
+            has_contextful_active_path: active_path_context.has_contextful_entries,
             context_window,
             auto_compaction: compaction_enabled,
             suppress_runtime_usage,
@@ -436,50 +432,12 @@ fn footer_line1(cwd: &str, conn: &rusqlite::Connection, session_id: &str) -> Str
     line1
 }
 
-fn active_path_has_contextful_entries(path: &[kordi_session::store::EntryRow]) -> bool {
-    path.iter().any(|row| row.entry_type == "message")
-}
-
-// Keep footer context reporting aligned with compaction/runtime estimation.
-// In particular, do not reuse stale pre-compaction assistant usage after the
-// latest compaction boundary; treat context usage as unknown until a fresh
-// post-compaction assistant usage record exists.
-fn estimate_active_path_context_tokens(path: &[kordi_session::store::EntryRow]) -> Option<u64> {
-    let latest_compaction_index = path.iter().rposition(|row| row.entry_type == "compaction");
-    if let Some(compaction_index) = latest_compaction_index {
-        let has_post_compaction_usage = path.iter().skip(compaction_index + 1).rev().any(|row| {
-            let Ok(entry) = kordi_session::store::parse_entry(row) else {
-                return false;
-            };
-            match entry {
-                kordi_core::types::SessionEntry::Message {
-                    message: kordi_core::types::AgentMessage::Assistant(assistant),
-                    ..
-                } => {
-                    assistant.stop_reason != kordi_core::types::StopReason::Aborted
-                        && assistant.stop_reason != kordi_core::types::StopReason::Error
-                        && kordi_session::compaction::calculate_context_tokens(&assistant.usage) > 0
-                }
-                _ => false,
-            }
-        });
-        if !has_post_compaction_usage {
-            return None;
-        }
-    }
-
-    kordi_session::context::build_context_from_path(path)
-        .ok()
-        .map(|ctx| kordi_session::compaction::estimate_context_tokens(&ctx.messages).tokens)
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
 
     use super::{
-        QueuedPrompt, active_path_has_contextful_entries, build_status_line,
-        current_auth_cache_metrics_source, estimate_active_path_context_tokens,
+        QueuedPrompt, build_status_line, current_auth_cache_metrics_source,
         permission_posture_badge, request_matches_cache_domain,
     };
     use chrono::Utc;
@@ -492,7 +450,7 @@ mod tests {
         SessionCacheMetricsSource, format_context_from_tokens, format_context_percent,
         format_unknown_context, render_context_window_status, resolve_context_window_status,
     };
-    use kordi_session::{store, tree};
+    use kordi_session::{context::active_path_context_state, store, tree};
     use kordi_tools::ExecutionPolicy;
 
     #[test]
@@ -558,7 +516,9 @@ mod tests {
         store::append_entry(&conn, &session_id, &assistant).expect("append assistant");
 
         let path = tree::active_path(&conn, &session_id).expect("active path");
-        let estimated = estimate_active_path_context_tokens(&path).expect("estimated tokens");
+        let estimated = active_path_context_state(&path)
+            .estimated_tokens
+            .expect("estimated tokens");
 
         assert_eq!(estimated, 120_000);
     }
@@ -601,13 +561,14 @@ mod tests {
         store::append_entry(&conn, &session_id, &assistant).expect("append assistant");
 
         let path = tree::active_path(&conn, &session_id).expect("active path");
+        let active_path_context = active_path_context_state(&path);
         let status = resolve_context_window_status(&ContextResolutionInput {
             runtime_usage: Some(RuntimeContextUsage {
                 tokens: Some(0),
                 percent: Some(0),
             }),
-            active_path_tokens: estimate_active_path_context_tokens(&path),
-            has_contextful_active_path: active_path_has_contextful_entries(&path),
+            active_path_tokens: active_path_context.estimated_tokens,
+            has_contextful_active_path: active_path_context.has_contextful_entries,
             context_window: 272_000,
             auto_compaction: true,
             suppress_runtime_usage: false,
@@ -674,13 +635,14 @@ mod tests {
         store::append_entry(&conn, &session_id, &user).expect("append user");
 
         let path = tree::active_path(&conn, &session_id).expect("active path");
+        let active_path_context = active_path_context_state(&path);
         let status = resolve_context_window_status(&ContextResolutionInput {
             runtime_usage: Some(RuntimeContextUsage {
                 tokens: Some(0),
                 percent: Some(0),
             }),
-            active_path_tokens: estimate_active_path_context_tokens(&path),
-            has_contextful_active_path: active_path_has_contextful_entries(&path),
+            active_path_tokens: active_path_context.estimated_tokens,
+            has_contextful_active_path: active_path_context.has_contextful_entries,
             context_window: 272_000,
             auto_compaction: true,
             suppress_runtime_usage: false,
@@ -901,7 +863,7 @@ mod tests {
         store::append_entry(&conn, &session_id, &user).expect("append user");
 
         let path = tree::active_path(&conn, &session_id).expect("active path");
-        let estimated = estimate_active_path_context_tokens(&path);
+        let estimated = active_path_context_state(&path).estimated_tokens;
 
         assert!(
             estimated.is_none(),
