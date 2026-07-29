@@ -99,21 +99,6 @@ impl Provider for OpenAiProvider {
         "openai"
     }
 
-    async fn complete(
-        &self,
-        request: CompletionRequest,
-        options: RequestOptions,
-    ) -> KordiResult<Vec<StreamEvent>> {
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        self.stream(request, options, tx).await?;
-
-        let mut events = Vec::new();
-        while let Some(event) = rx.recv().await {
-            events.push(event);
-        }
-        Ok(events)
-    }
-
     async fn stream(
         &self,
         request: CompletionRequest,
