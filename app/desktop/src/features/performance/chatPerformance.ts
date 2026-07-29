@@ -36,7 +36,6 @@ export type ChatPerformanceSpan = {
 
 declare global {
   // Native QA can opt a production build into the same privacy-safe spans.
-  // eslint-disable-next-line no-var
   var __KORDI_PERF_DIAGNOSTICS__: boolean | undefined;
 }
 

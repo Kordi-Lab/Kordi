@@ -130,6 +130,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Check whitespace in changed files
         shell: bash
         run: |
@@ -141,3 +146,17 @@ jobs:
           else
             bash scripts/check-hygiene.sh HEAD
           fi
+
+      - name: Prevent quality debt growth
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            comparison="${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            comparison="${{ github.event.before }}...${{ github.sha }}"
+          else
+            comparison="HEAD"
+          fi
+          node scripts/check-maintainability-ratchet.mjs "$comparison"
+          node scripts/check-eslint-suppressions-ratchet.mjs "$comparison"

@@ -14,7 +14,6 @@ import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex'
 
 declare global {
   // Test the same explicit runtime switch available to native diagnostics.
-  // eslint-disable-next-line no-var
   var __KORDI_PERF_DIAGNOSTICS__: boolean | undefined;
 }
 
