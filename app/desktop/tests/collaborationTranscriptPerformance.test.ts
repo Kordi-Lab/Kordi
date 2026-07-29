@@ -10,7 +10,7 @@ import {
   scaleMessageCount,
   scaleSessionId,
 } from './fixtures/chatScale';
-import { measureCpuMs } from './helpers/cpuBudget';
+import { createPropertyReadCounter } from './helpers/propertyReadCounter';
 
 test('scale canonical fixture has stable catalog and transcript cardinality', () => {
   const state = buildScaleCanonicalState();
@@ -36,12 +36,13 @@ test('scale Bridge fixture suppresses completed processing placeholders', () => 
 
 test('Bridge processing placeholder classification stays linear at 5,000 rows', () => {
   const conversation = buildScaleCollaborationConversation();
+  const readCounter = createPropertyReadCounter();
   const messages: DesktopCollaborationConversationMessage[] = Array.from(
     { length: 2_500 },
     (_, index) => {
       const requestId = `scale-request:${index}`;
       return [
-        {
+        readCounter.track({
           id: requestId,
           direction: 'outbound' as const,
           sender: 'Me',
@@ -50,8 +51,8 @@ test('Bridge processing placeholder classification stays linear at 5,000 rows', 
           timestampMs: index * 2,
           requestId,
           deliveryState: 'delivered',
-        },
-        {
+        }),
+        readCounter.track({
           id: `scale-processing:${index}`,
           direction: 'inbound-response' as const,
           sender: 'Scale agent',
@@ -60,15 +61,17 @@ test('Bridge processing placeholder classification stays linear at 5,000 rows', 
           timestampMs: index * 2 + 1,
           requestId,
           deliveryState: 'processing',
-        },
+        }),
       ];
     },
   ).flat();
 
-  const { result: view, cpuMs } = measureCpuMs(
-    () => mapCollaborationConversationToViewModel({ ...conversation, messages }, undefined, 'My Kordi'),
-  );
+  const view = mapCollaborationConversationToViewModel({ ...conversation, messages }, undefined, 'My Kordi');
+  const propertyReads = readCounter.count();
 
   assert.equal(view.messages.length, messages.length);
-  assert.ok(cpuMs < 100, `Expected 5,000 Bridge rows below 100 CPU ms, received ${cpuMs.toFixed(1)}ms`);
+  assert.ok(
+    propertyReads <= messages.length * 40,
+    `Expected at most 40 indexed property reads per Bridge row, received ${(propertyReads / messages.length).toFixed(1)}`,
+  );
 });
