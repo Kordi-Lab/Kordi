@@ -46,7 +46,7 @@ Closes #<!-- issue number -->
 - [ ] `pnpm --dir app/desktop lint`
 - [ ] `pnpm --dir app/desktop build`
 - [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --workspace --all-targets -- -A clippy::never_loop`
+- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
 - [ ] `cargo test -p kordi-session`
 - [ ] `cargo test -p kordi-cli --lib`
 - [ ] `cargo test -p kordi-cli desktop_runtime --no-default-features`

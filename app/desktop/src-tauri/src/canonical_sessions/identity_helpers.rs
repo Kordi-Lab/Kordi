@@ -80,7 +80,7 @@ pub(crate) fn default_session_title(
         return Ok(project_name.to_string());
     }
 
-    for identity_id in receiver_identity_ids(request) {
+    if let Some(identity_id) = receiver_identity_ids(request).into_iter().next() {
         if let Some(display_name) = identity_display_name(conn, &identity_id)?
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())

@@ -103,7 +103,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -A clippy::never_loop
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test session crate
         run: cargo test -p kordi-session

@@ -62,20 +62,22 @@ impl TuiController {
 
         tokio::spawn(async move {
             let result = crate::compaction_exec::execute_session_compaction(
-                entries,
-                parent_id,
-                db_path,
-                &session_id,
-                provider,
-                &model_id,
-                &api_key,
-                auth_mode,
-                auth_account_id,
-                &base_url,
-                &headers,
-                &settings,
-                instructions.as_deref(),
-                cancel,
+                crate::compaction_exec::ExecuteSessionCompactionRequest {
+                    entries,
+                    parent_id,
+                    db_path,
+                    session_id: &session_id,
+                    provider,
+                    model_id: &model_id,
+                    api_key: &api_key,
+                    auth_mode,
+                    auth_account_id,
+                    base_url: &base_url,
+                    headers: &headers,
+                    settings: &settings,
+                    custom_instructions: instructions.as_deref(),
+                    cancel,
+                },
             )
             .await;
             let _ =

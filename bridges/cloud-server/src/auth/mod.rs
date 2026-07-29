@@ -8,5 +8,6 @@ mod oauth;
 pub mod password;
 pub mod rate_limit;
 pub mod routes;
+mod rows;
 pub mod session;
 pub mod session_activity;

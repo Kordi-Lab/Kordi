@@ -1023,8 +1023,8 @@ pub async fn desktop_chat_send_message(
 
     build_chat_state(&manager, &cwd, target_session_id).await
 }
-
 #[tauri::command]
+#[allow(clippy::too_many_arguments, reason = "stable top-level Tauri IPC keys")]
 pub async fn desktop_chat_start_message(
     manager: State<'_, DesktopChatManager>,
     session_id: String,

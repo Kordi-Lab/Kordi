@@ -262,32 +262,33 @@ pub enum ContactRequestEventKind {
     Rejected,
 }
 
+pub struct MessageArrived<'a> {
+    pub message_id: &'a str,
+    pub from_account_id: &'a str,
+    pub to_account_id: &'a str,
+    pub body: &'a str,
+    pub created_at: &'a str,
+    pub session_id: Option<&'a str>,
+    pub attachments: serde_json::Value,
+}
+
 impl EventBus {
     /// Fire `kordi.events.message.arrived.<recipient_account_id>` with
     /// the minimum payload needed for a chat client to render the new
     /// message without a follow-up HTTP fetch.
-    pub async fn publish_message_arrived(
-        &self,
-        message_id: &str,
-        from_account_id: &str,
-        to_account_id: &str,
-        body: &str,
-        created_at: &str,
-        session_id: Option<&str>,
-        attachments: serde_json::Value,
-    ) {
+    pub async fn publish_message_arrived(&self, message: MessageArrived<'_>) {
         if self.inner.is_none() {
             return;
         }
         let payload = MessageArrivedEvent {
             event_type: "message.arrived",
-            message_id,
-            from_account_id,
-            to_account_id,
-            body,
-            created_at,
-            session_id,
-            attachments,
+            message_id: message.message_id,
+            from_account_id: message.from_account_id,
+            to_account_id: message.to_account_id,
+            body: message.body,
+            created_at: message.created_at,
+            session_id: message.session_id,
+            attachments: message.attachments,
         };
         let body = match serde_json::to_vec(&payload) {
             Ok(value) => Bytes::from(value),
@@ -296,7 +297,7 @@ impl EventBus {
                 return;
             }
         };
-        let subject = format!("kordi.events.message.arrived.{to_account_id}");
+        let subject = format!("kordi.events.message.arrived.{}", message.to_account_id);
         self.publish_raw(subject, body).await;
     }
 
