@@ -4,6 +4,13 @@ import test from 'node:test';
 
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudGroupControlSenderSource = () => readFileSync(
+  new URL(
+    '../src/features/cloud/useCloudGroupControlSender.ts',
+    import.meta.url,
+  ),
+  'utf8',
+);
 const cloudGroupOutboxSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupOutbox.ts', import.meta.url), 'utf8');
 const cloudOutboxDeliverySource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupOutboxDelivery.ts', import.meta.url), 'utf8');
 
@@ -92,23 +99,26 @@ test('outbox delivery persistence mutates the exact canonical message without lo
 });
 
 test('cloud group image sends persist local sources before starting upload', () => {
-  const source = cloudBridgeSource();
+  const source = cloudGroupControlSenderSource();
   const start = source.indexOf('const sendCloudGroupControl = useCallback');
   const end = source.indexOf(
-    '\n\n  const cancelCloudAgentRequest',
+    '\n\n  useCloudGroupSessionTitleSync({',
     start,
   );
   assert.notEqual(start, -1, 'expected the cloud group send closure');
   assert.notEqual(
     end,
     -1,
-    'expected the cancellation closure after cloud group sending',
+    'expected title synchronization after cloud group sending',
   );
   const groupSend = source.slice(start, end);
 
-  const enqueue = groupSend.indexOf('await cloudGroupOutbox.enqueue(outboxEntry)');
+  const enqueue = groupSend.indexOf('await outbox.enqueue(outboxEntry)');
   const firstUpload = groupSend.indexOf('uploadComposerAttachments');
-  assert.match(groupSend, /pendingAttachments:\s*cloudGroupOutboxAttachmentSources\(input\.attachments \?\? \[\]\)/);
+  assert.match(
+    groupSend,
+    /pendingAttachments:\s*cloudGroupOutboxAttachmentSources\(\s*input\.attachments \?\? \[\],?\s*\)/,
+  );
   assert.ok(enqueue >= 0 && firstUpload > enqueue, 'attachment upload must not begin before the local source is durable');
   assert.match(groupSend, /prepareCloudGroupOutboxEntryAttachments\(/);
   assert.match(groupSend, /clientMessageId,/);

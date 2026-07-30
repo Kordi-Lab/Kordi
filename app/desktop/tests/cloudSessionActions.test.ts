@@ -17,6 +17,7 @@ const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features
 const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
+const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
 
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
@@ -320,13 +321,13 @@ test('cloud group requesting placeholder times out to unavailable notice instead
 });
 
 test('fresh group sends claim fallback before waiting for a background Cloud sync', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+  const source = cloudGroupControlSenderSource();
   const outboxBlockStart = source.indexOf('const sentMessages: CloudMessage[] = [];');
   const outboxBlock = source.slice(outboxBlockStart, outboxBlockStart + 3200);
-  assert.match(outboxBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sentMessages, canonicalMessageId, session\.token\),[\s\S]*syncCloudCollaborationDiff/);
+  assert.match(outboxBlock, /await Promise\.all\(\[[\s\S]*claimFreshFallback\(\s*sentMessages,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
   const directSendBlockStart = source.indexOf('const sent = fulfilledCloudGroupSends(results);', outboxBlockStart);
   const directSendBlock = source.slice(directSendBlockStart, directSendBlockStart + 900);
-  assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sent, canonicalMessageId, session\.token\),[\s\S]*syncCloudCollaborationDiff/);
+  assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshFallback\(\s*sent,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
 });
 
 test('adding existing group members publishes Cloud authorization before the local batch commit', () => {
