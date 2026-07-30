@@ -350,7 +350,7 @@
   },
   "src/features/cloud/useCloudCollaborationState.ts": {
     "@typescript-eslint/no-base-to-string": {
-      "count": 2
+      "count": 1
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
@@ -362,7 +362,7 @@
       "count": 12
     },
     "no-console": {
-      "count": 23
+      "count": 20
     },
     "react-hooks/exhaustive-deps": {
       "count": 4
