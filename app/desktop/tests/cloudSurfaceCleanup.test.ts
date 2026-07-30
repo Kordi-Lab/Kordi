@@ -21,14 +21,23 @@ test('settings data keeps only final Cloud settings sections', () => {
 });
 
 test('app model uses Cloud-only surface selectors', () => {
-  const source = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const appModelSource = readFileSync(
+    new URL('../src/app/useKordiAppModel.ts', import.meta.url),
+    'utf8',
+  );
+  const authNavigationSource = readFileSync(
+    new URL('../src/app/useKordiAuthNavigationState.ts', import.meta.url),
+    'utf8',
+  );
+  const source = `${appModelSource}\n${authNavigationSource}`;
 
   assert.doesNotMatch(source, /settingsSectionsForEdition/);
   assert.doesNotMatch(source, /normalizeNavIdForEdition/);
   assert.doesNotMatch(source, /normalizeSettingsSectionIdForEdition/);
-  assert.match(source, /settingsSections/);
-  assert.match(source, /normalizeNavIdForCloud/);
-  assert.match(source, /normalizeSettingsSectionIdForCloud/);
+  assert.match(appModelSource, /useKordiAuthNavigationState/);
+  assert.match(authNavigationSource, /settingsSections/);
+  assert.match(authNavigationSource, /normalizeNavIdForCloud/);
+  assert.match(authNavigationSource, /normalizeSettingsSectionIdForCloud/);
 });
 
 test('final Cloud app does not route to hidden legacy product pages', () => {

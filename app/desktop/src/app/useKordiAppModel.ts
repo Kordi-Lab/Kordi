@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
+import { authStateHasChatReadyProvider } from '@/kordi-app/auth/model';
 import {
   contactRequests as demoContactRequests,
-  normalizeNavIdForCloud,
-  normalizeSettingsSectionIdForCloud,
   projects,
-  settingsSections,
 } from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useKordiDesktopActivity } from '@/app/useKordiDesktopActivity';
 import { useKordiDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
+import { useKordiAuthNavigationState } from '@/app/useKordiAuthNavigationState';
 import { useKordiLocalUiState } from '@/app/useKordiLocalUiState';
 import { useKordiShellArgs } from '@/app/useKordiShellArgs';
 import { useKordiShellViewModel } from '@/app/useKordiShellViewModel';
@@ -20,7 +18,6 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
-import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
@@ -199,49 +196,27 @@ export function useKordiAppModel({
     isNativeShell,
   });
 
-  const visibleSettingsSections = settingsSections;
-  const visibleActiveSettingsSectionId = normalizeSettingsSectionIdForCloud(settingsUi.activeSettingsSectionId);
-
-  useEffect(() => {
-    const nextActiveNav = normalizeNavIdForCloud(activeNav);
-    if (nextActiveNav !== activeNav) setActiveNav(nextActiveNav);
-  }, [activeNav, setActiveNav]);
-
-  useEffect(() => {
-    if (visibleActiveSettingsSectionId !== settingsUi.activeSettingsSectionId) {
-      settingsUi.setActiveSettingsSectionId(visibleActiveSettingsSectionId);
-    }
-  }, [settingsUi.activeSettingsSectionId, settingsUi.setActiveSettingsSectionId, visibleActiveSettingsSectionId]);
-
-  const startupGateSatisfied = useMemo(
-    () => authStateSatisfiesStartupGate(desktopAuthState),
-    [desktopAuthState],
-  );
-
-  const openCloudAccountAuthentication = useCallback(() => {
-    setCloudAccountDialogTab('auth');
-    clearDesktopAuthError();
-  }, [clearDesktopAuthError]);
-
   const {
+    visibleSettingsSections,
+    visibleActiveSettingsSectionId,
+    openCloudAccountAuthentication,
     inlineAuthDialog,
     openAuthSettings,
     openLoginFlow,
     handleCloseInlineAuthDialog,
     dismissAuthGate,
     showAuthGate,
-  } = useDesktopAuthUiState({
+  } = useKordiAuthNavigationState({
     isNativeShell,
     activeNav,
-    activeSettingsSectionId: visibleActiveSettingsSectionId,
+    activeSettingsSectionId: settingsUi.activeSettingsSectionId,
     desktopAuthState,
     isDesktopAuthLoading,
-    startupGateSatisfied,
     setActiveNav,
     setActiveSettingsSectionId: settingsUi.setActiveSettingsSectionId,
     setActiveLoginProviderId,
     clearDesktopAuthError,
-    openAuthSurface: openCloudAccountAuthentication,
+    setCloudAccountDialogTab,
   });
 
   // The chat draft key must match the value passed as `activeConvId` to
