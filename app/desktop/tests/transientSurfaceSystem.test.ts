@@ -62,7 +62,7 @@ test('representative popup families opt into the shared transient contract', () 
     ['kordi-app/components/composer.tsx', /app-transient-surface app-transient-scroll app-compact-model-menu/],
     ['kordi-app/components/transcript.tsx', /app-transient-surface overflow-hidden rounded-\[14px\]/],
     ['pages/MessageForwardDialog.tsx', /app-transient-surface app-message-forward-dialog/],
-    ['pages/WorkspaceSidebar.tsx', /app-transient-surface app-popover app-update-popover/],
+    ['pages/workspaceSidebar.updatePopover.tsx', /app-transient-surface app-popover app-update-popover/],
     ['pages/GroupDetailsDialog.tsx', /app-transient-surface app-frosted-popover app-group-management-popover/],
     ['pages/CloudAccountSettingsDialog.tsx', /app-transient-surface app-modal-panel app-cloud-account-settings-dialog/],
     ['AuthPopup.tsx', /app-transient-surface app-auth-popup-panel app-modal-panel/],

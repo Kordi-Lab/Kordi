@@ -112,7 +112,10 @@ test('WorkspaceSidebar centers and visually unifies the Chats header actions', (
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
     onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
   }) as never));
-  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const source = [
+    readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
+  ].join('\n');
   const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
 
   assert.match(markup, /class="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2\.5"/);
@@ -156,7 +159,11 @@ test('desktop update button presents pending and available states', () => {
 });
 
 test('WorkspaceSidebar update affordance uses a refresh logo and confirmation popover', () => {
-  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const source = [
+    readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/pages/workspaceSidebar.updatePopover.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/pages/workspaceSidebar.updatePresentation.ts', import.meta.url), 'utf8'),
+  ].join('\n');
 
   assert.match(source, /RefreshCw/);
   assert.match(source, /app-update-logo-button/);
@@ -164,16 +171,16 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /animate-spin/);
   assert.match(source, /w-\[14\.5rem\]/);
   assert.match(source, /app-update-popover/);
-  assert.match(source, /data-update-state=\{updateState\.status\}/);
+  assert.match(source, /data-update-state=\{state\.status\}/);
   assert.doesNotMatch(source, /app-update-popover overflow-hidden border/);
   assert.match(source, /w-\[18rem\]/);
-  assert.match(source, /title=\{isUpdateConfirmOpen \? undefined : updateButtonPresentation\.title\}/);
+  assert.match(source, /title=\{isUpdateConfirmOpen \? undefined : buttonPresentation\.title\}/);
   assert.doesNotMatch(source, /min-h-16 items-center justify-center/);
   assert.doesNotMatch(source, />\s*Done\s*</);
   assert.match(source, /status === 'up-to-date'/);
   assert.match(source, /Kordi is up to date/);
   assert.match(source, /Couldn’t check for updates/);
-  assert.match(source, /updateState\.status === 'available'/);
+  assert.match(source, /state\.status === 'available'/);
   assert.match(source, /Update available/);
   assert.match(source, /Update now/);
   assert.match(source, /Not now/);
@@ -194,7 +201,7 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /app-update-popover-action-secondary/);
   assert.match(source, /updateConfirmAnchor/);
   assert.match(source, /position: 'fixed'/);
-  assert.match(source, /isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' \? createPortal/);
+  assert.match(source, /if \(!anchor \|\| typeof document === 'undefined'\) return null/);
   assert.doesNotMatch(source, /src="\/favicon\.svg"/);
 });
 
