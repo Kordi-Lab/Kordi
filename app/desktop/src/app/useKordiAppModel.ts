@@ -26,7 +26,6 @@ import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cl
 import {
   type CloudGroupParticipant,
   cloudGroupIdentityRequest,
-  cloudGroupParticipantFromContact,
   cloudGroupParticipantsForCollaborationSession,
   cloudGroupParticipantsForContacts,
   cloudGroupSelfParticipant,
@@ -42,7 +41,6 @@ import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import {
   buildProjectRoutingGroups,
 } from '@/features/canonical/sessionResolver';
-import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
@@ -71,10 +69,9 @@ import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscrip
 import { buildCollaborationMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '@/app/useKordiAppModelCollaborationMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalGroupMembershipDelta, CanonicalIdentity, CanonicalSessionParticipant, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import {
-  addCanonicalGroupMembersFast,
   addCanonicalSessionParticipants,
   createDesktopChatSession,
   openOrCreateCanonicalSessionFast,
@@ -87,7 +84,6 @@ import {
 import {
   activeGroupAdminIds,
   canonicalAvatarSeed,
-  canonicalGroupInviteContextForSession,
   canonicalGroupInviteTitleForSession,
   canonicalGroupParticipantsForSession,
   canonicalGroupCreatorIdentityId,
@@ -122,6 +118,8 @@ import {
   mergeCanonicalIdentity,
   mergeOpenCanonicalSessionResult,
 } from '@/app/canonicalSessionStateMutations';
+import { canonicalGroupParticipantsForSessions } from '@/app/groupMembershipState';
+import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 
 type ParticipantSpaceDraft = {
   createKey: string;
@@ -129,89 +127,6 @@ type ParticipantSpaceDraft = {
   participantIdentityIds: string[];
   conversation: Conversation;
 };
-
-function canonicalGroupParticipantsForSessions(
-  state: CanonicalSessionState,
-  sessionIds: string[],
-) {
-  const participantByIdentityId = new Map<string, ReturnType<typeof canonicalGroupParticipantsForSession>[number]>();
-  for (const sessionId of sessionIds) {
-    for (const participant of canonicalGroupParticipantsForSession(state, sessionId)) {
-      const existing = participantByIdentityId.get(participant.id);
-      participantByIdentityId.set(participant.id, existing ? {
-        ...existing,
-        role: existing.role === 'self' || participant.role !== 'admin' ? existing.role : 'admin',
-        humanId: existing.humanId || participant.humanId,
-        sourceIdentityId: existing.sourceIdentityId || participant.sourceIdentityId,
-        sourceHostId: existing.sourceHostId || participant.sourceHostId,
-        avatarKey: existing.avatarKey || participant.avatarKey,
-        profileImageUrl: existing.profileImageUrl ?? participant.profileImageUrl,
-      } : participant);
-    }
-  }
-  return [...participantByIdentityId.values()];
-}
-
-function mergeCanonicalGroupMembershipDelta(
-  state: CanonicalSessionState,
-  delta: CanonicalGroupMembershipDelta,
-): CanonicalSessionState {
-  const changedSessionIds = new Set(delta.sessions.map((session) => session.id));
-  const changedSessionById = new Map(delta.sessions.map((session) => [session.id, session]));
-  const existingSessionIds = new Set(state.sessions.map((session) => session.id));
-  let nextState: CanonicalSessionState = {
-    ...state,
-    sessions: [
-      ...state.sessions.map((session) => changedSessionById.get(session.id) ?? session),
-      ...delta.sessions.filter((session) => !existingSessionIds.has(session.id)),
-    ],
-    participants: [
-      ...state.participants.filter((participant) => !changedSessionIds.has(participant.sessionId)),
-      ...delta.participants,
-    ],
-  };
-  delta.messages.forEach((message) => {
-    nextState = mergeCanonicalMessageRow(nextState, message) ?? nextState;
-  });
-  return nextState;
-}
-
-function stageCanonicalGroupMembership(
-  state: CanonicalSessionState,
-  sessions: Array<{ sessionId: string; metadata: unknown }>,
-  identityIds: string[],
-  addedByIdentityId: string,
-): CanonicalSessionState {
-  const sessionMetadata = new Map(sessions.map((session) => [session.sessionId, session.metadata]));
-  const now = Date.now();
-  const stagedParticipants: CanonicalSessionParticipant[] = sessions.flatMap(({ sessionId }) => (
-    identityIds.map((identityId) => ({
-      sessionId,
-      identityId,
-      role: 'person',
-      state: 'active',
-      addedByIdentityId,
-      addedAtMs: now,
-      lastSeenAtMs: null,
-      lastReadMessageId: null,
-      lastReadSequenceNum: null,
-      metadata: null,
-    }))
-  ));
-  const stagedParticipantKeys = new Set(stagedParticipants.map((participant) => `${participant.sessionId}\u0000${participant.identityId}`));
-  return {
-    ...state,
-    sessions: state.sessions.map((session) => (
-      sessionMetadata.has(session.id)
-        ? { ...session, metadata: sessionMetadata.get(session.id) }
-        : session
-    )),
-    participants: [
-      ...state.participants.filter((participant) => !stagedParticipantKeys.has(`${participant.sessionId}\u0000${participant.identityId}`)),
-      ...stagedParticipants,
-    ],
-  };
-}
 
 export function useKordiAppModel({
   cloudSessionOverride,
@@ -1719,168 +1634,15 @@ export function useKordiAppModel({
     setDesktopChatError,
   ]);
 
-  const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
-    if (!isNativeShell) return;
-    const groupSessionIds = uniqueStrings(sessionIds);
-    if (groupSessionIds.length === 0) return;
-    setDesktopChatError(null);
-    const currentCanonicalState = canonicalSessionState;
-    const creatorIdentityId = currentCanonicalState?.profile.humanIdentityId?.trim();
-    if (!creatorIdentityId || !currentCanonicalState) {
-      throw new Error('Local profile identity is not ready yet.');
-    }
-    const contacts = uniqueStrings(contactIds)
-      .map((contactId) => peopleContactById.get(contactId))
-      .filter((contact): contact is Contact => Boolean(contact));
-    const blockedCollaborationContacts = contacts.filter((contact) => contact.sourceParticipantId && !isApprovedCollaborationContact(contact));
-    if (blockedCollaborationContacts.length > 0) {
-      throw new Error('Approve people as contacts before adding them to a group.');
-    }
-    const identityIds: string[] = [];
-    const invitedMemberByIdentityId = new Map<string, { contact: Contact; displayName: string }>();
-    const upsertedIdentities: CanonicalIdentity[] = [];
-    let nextState = currentCanonicalState;
-    for (const contact of contacts) {
-      const identityRequest = contactCanonicalIdentityRequest(contact);
-      const identityId = identityRequest.id?.trim();
-      if (!identityId) continue;
-      const identity = await upsertCanonicalIdentityFast(identityRequest);
-      upsertedIdentities.push(identity);
-      nextState = mergeCanonicalIdentity(nextState, identity);
-      identityIds.push(identityId);
-      invitedMemberByIdentityId.set(identityId, {
-        contact,
-        displayName: identity.displayName.trim() || contact.name.trim() || 'Someone',
-      });
-    }
-    const participantIdentityIds = uniqueStrings(identityIds);
-    if (participantIdentityIds.length === 0) return;
-    const joinEventStartedAtMs = Date.now();
-    const joinEvents = participantIdentityIds.map((memberIdentityId, index) => {
-      const invitedMember = invitedMemberByIdentityId.get(memberIdentityId);
-      const cloudParticipant = invitedMember ? cloudGroupParticipantFromContact(invitedMember.contact) : null;
-      return {
-        eventId: crypto.randomUUID(),
-        memberIdentityId,
-        displayName: invitedMember?.displayName ?? 'Someone',
-        cloudParticipant,
-        createdAtMs: joinEventStartedAtMs + index,
-      };
-    });
-    const cloudMemberJoins = joinEvents.flatMap((event) => (
-      event.cloudParticipant
-        ? [{
-            eventId: event.eventId,
-            accountId: event.cloudParticipant.accountId,
-            displayName: event.displayName,
-            createdAtMs: event.createdAtMs,
-          }]
-        : []
-    ));
-
-    const fallbackGroupSpaceId = groupSessionIds[0];
-    const addedContactIds = contacts.map((contact) => contact.id);
-    const addedNames = contacts.map((contact) => contact.name);
-    const membershipUpdates = groupSessionIds.map((sessionId) => {
-      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
-      return {
-        sessionId,
-        groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
-        addedContactIds,
-        addedParticipantNames: addedNames,
-      };
-    });
-    const membershipSessions = membershipUpdates.map((update) => {
-      const currentMetadata = sessionMetadataRecord(nextState, update.sessionId);
-      return {
-        sessionId: update.sessionId,
-        metadata: {
-          ...currentMetadata,
-          groupId: update.groupSpaceId,
-          groupSpaceId: update.groupSpaceId,
-          initialContactIds: uniqueStrings([...metadataStringArray(currentMetadata, 'initialContactIds'), ...update.addedContactIds]),
-          initialParticipantNames: uniqueStrings([...metadataStringArray(currentMetadata, 'initialParticipantNames'), ...update.addedParticipantNames]),
-        },
-      };
-    });
-    const stagedState = stageCanonicalGroupMembership(
-      nextState,
-      membershipSessions,
-      participantIdentityIds,
-      creatorIdentityId,
-    );
-
-    const inviteTargets = buildChatCreateGroupCollaborationInviteTargets(contacts);
-    const cloudInviteTargetAccountIds = cloudGroupTargetAccountIds(inviteTargets);
-    const cloudAccount = cloudSession.account;
-    if (cloudInviteTargetAccountIds.length > 0 && !cloudAccount) {
-      const message = 'Could not add Cloud group members while signed out.';
-      setDesktopChatError(message);
-      throw new Error(message);
-    }
-    if (cloudInviteTargetAccountIds.length > 0 && cloudAccount) {
-      try {
-        const groupCreatorIdentityId = canonicalGroupCreatorIdentityId(stagedState, groupSessionIds[0])
-          || creatorIdentityId;
-        const groupCreatorIdentity = stagedState.identities.find((identity) => identity.id === groupCreatorIdentityId);
-        const groupCreatorAccountId = groupCreatorIdentity?.humanId?.trim()
-          || groupCreatorIdentity?.sourceIdentityId?.trim()
-          || (groupCreatorIdentityId === stagedState.profile.humanIdentityId ? cloudAccount.accountId : '');
-        await Promise.all(groupSessionIds.map(async (sessionId) => {
-          const inviteContext = canonicalGroupInviteContextForSession(
-            stagedState,
-            sessionId,
-            fallbackGroupSpaceId,
-          );
-          await sendCloudGroupControl({
-            targetAccountIds: cloudInviteTargetAccountIds,
-            kind: 'group-invite',
-            groupId: sessionId,
-            groupSpaceId: inviteContext.parentGroupSpaceId || sessionId,
-            groupTitle: inviteContext.parentSessionTitle,
-            createdByAccountId: groupCreatorAccountId || null,
-            participants: cloudGroupParticipantsForCollaborationSession(cloudAccount, inviteContext.parentSessionParticipants),
-            memberJoins: cloudMemberJoins,
-          });
-        }));
-      } catch (error) {
-        const message = `Could not add group members because the Cloud invite failed: ${error instanceof Error ? error.message : String(error)}`;
-        setDesktopChatError(message);
-        throw new Error(message);
-      }
-    }
-    let membershipDelta: CanonicalGroupMembershipDelta;
-    try {
-      membershipDelta = await addCanonicalGroupMembersFast({
-        sessions: membershipUpdates,
-        identityIds: participantIdentityIds,
-        addedByIdentityId: creatorIdentityId,
-        joinEvents: joinEvents.map(({ eventId, memberIdentityId, createdAtMs }) => ({
-          eventId,
-          memberIdentityId,
-          createdAtMs,
-        })),
-      });
-    } catch (error) {
-      const message = `Kordi could not save the group members locally: ${error instanceof Error ? error.message : String(error)}`;
-      setDesktopChatError(message);
-      throw new Error(message);
-    }
-    setCanonicalSessionState((current) => {
-      let mergedState = current ?? nextState;
-      for (const identity of upsertedIdentities) {
-        mergedState = mergeCanonicalIdentity(mergedState, identity);
-      }
-      return mergeCanonicalGroupMembershipDelta(mergedState, membershipDelta);
-    });
-  }, [
-    canonicalSessionState,
-    cloudSession.account,
+  const handleAddChatGroupMembers = useKordiGroupMemberInvites({
+    account: cloudSession.account,
+    canonicalState: canonicalSessionState,
+    contactById: peopleContactById,
     isNativeShell,
-    peopleContactById,
     sendCloudGroupControl,
-    setDesktopChatError,
-  ]);
+    setCanonicalState: setCanonicalSessionState,
+    setDesktopError: setDesktopChatError,
+  });
 
   const handleRemoveChatGroupMember = useCallback(async (sessionIds: string[], identityId: string) => {
     if (!isNativeShell) return;

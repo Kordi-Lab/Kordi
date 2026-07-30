@@ -331,14 +331,15 @@ test('fresh group sends claim fallback before waiting for a background Cloud syn
 });
 
 test('adding existing group members publishes Cloud authorization before the local batch commit', () => {
-  const source = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
-  const handlerStart = source.indexOf('const handleAddChatGroupMembers = useCallback');
-  const handlerEnd = source.indexOf('const handleRemoveChatGroupMember', handlerStart);
-  const handler = source.slice(handlerStart, handlerEnd);
-  const inviteIndex = handler.indexOf('await Promise.all(groupSessionIds.map');
+  const handler = readFileSync(
+    new URL('../src/app/useKordiGroupMemberInvites.ts', import.meta.url),
+    'utf8',
+  );
+  const inviteIndex = handler.indexOf('await publishCloudGroupInvites');
   const commitIndex = handler.indexOf('await addCanonicalGroupMembersFast');
-  assert.ok(inviteIndex >= 0, 'expected parallel Cloud invite publication');
+  assert.ok(inviteIndex >= 0, 'expected Cloud invite publication');
   assert.ok(commitIndex > inviteIndex, 'expected local membership commit after Cloud invite acknowledgement');
+  assert.match(handler, /await Promise\.all\(groupSessionIds\.map/);
   assert.match(handler, /memberJoins: cloudMemberJoins/);
   assert.match(handler, /joinEvents: joinEvents\.map/);
   assert.doesNotMatch(handler, /await addCanonicalSessionParticipants/);
