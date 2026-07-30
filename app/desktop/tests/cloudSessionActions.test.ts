@@ -11,13 +11,13 @@ import {
 } from '../src/features/chat/messageActions/chatMessages';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
-const cloudCollaborationStateSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
 const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
 const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
+const cloudGroupControlApplicationSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlApplication.ts', import.meta.url), 'utf8');
 
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
@@ -382,12 +382,12 @@ test('cloud group terminal hosted-agent responses clear timeout placeholders and
 });
 
 test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {
-  const stateSource = cloudCollaborationStateSource();
+  const stateSource = cloudGroupControlApplicationSource();
   const agentSource = cloudGroupAgentControlSource();
   assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
   assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
-  assert.match(stateSource, /message\.targetCloudAgentOwnerAccountId\) === account\.accountId/);
-  assert.match(stateSource, /message\.targetCloudAgentId\)\.startsWith\('cloud_agent_'\)/);
+  assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentOwnerAccountId\)[\s\S]*?=== account\.accountId/);
+  assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentId\)[\s\S]*?\.startsWith\('cloud_agent_'\)/);
   assert.match(stateSource, /targetsOwnedHostedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
   assert.match(agentSource, /policy\.messageTargetsLocalAgent\(message, account\)/);
   assert.match(agentSource, /targetCloudAgentId: message\.targetCloudAgentId/);

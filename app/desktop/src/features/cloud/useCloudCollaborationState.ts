@@ -4,17 +4,10 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
   cancelDesktopChatTurn,
   upsertCanonicalMessageFast,
-  type DesktopChatContextMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
-  AppendCanonicalMessageRequest,
-  CanonicalIdentity,
-  CanonicalSessionMessage,
   CanonicalSessionState,
-  OpenCanonicalSessionFastResult,
-  OpenCanonicalSessionRequest,
-  UpsertCanonicalIdentityRequest,
   Contact,
   DesktopCollaborationState,
   DesktopChatTurnSnapshot,
@@ -41,8 +34,6 @@ import {
 } from './cloudCollaborationState';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-  compactCloudAgentNativeContextMessages,
-  cloudMessageMentionsLocalAgent,
   encodeCloudAgentCancel,
 } from './cloudAgentMessages';
 import {
@@ -52,17 +43,12 @@ import {
 import {
   cloudGroupIdFromAgentConversationId,
   type CloudGroupReadCursor,
-  type CloudGroupControlEnvelope,
 } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
   type CloudMessageIndex,
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
-import {
-  cloudMessageActionAllowsAgentContext,
-  cloudMessageActionAllowsAgentTrigger,
-} from './cloudAgentTriggerPolicy';
 import {
   uploadComposerAttachments,
   resolveForwardAttachmentItems,
@@ -86,13 +72,6 @@ import {
 import { loadSession } from './session';
 import { useCloudContacts } from './useCloudContacts';
 import {
-  applyCloudGroupSessionControl,
-  resolveAuthorizedCloudGroupSessionTitleSnapshot,
-  resolveCloudGroupAdminSnapshot,
-} from './cloudGroupSessionControl';
-import { applyCloudGroupMessageControl } from './cloudGroupMessageControl';
-import { applyCloudGroupAgentControl } from './cloudGroupAgentControl';
-import {
   cloudBootstrapPeerIds,
   cloudAccountGenerationKey,
   cloudMessagesAuthoritativeForContext,
@@ -104,16 +83,8 @@ import {
 } from './cloudMessageSyncState';
 import { useCloudMessageSync } from './useCloudMessageSync';
 import { cloudFallbackRunClaimsForMessages } from './cloudAgentFallbackClaims';
-import { isRecentCloudAgentMention } from './cloudAgentMentionPolicy';
 import {
-  cloudFallbackRunAlreadyOwnsRequest,
-  cloudGroupAgentResponseExistsForRequest,
   collapseCloudAgentOfflinePlaceholderForRequest,
-  isCloudAgentProcessingPlaceholderText,
-  removeCanonicalMessageById,
-  removeCloudGroupOfflinePlaceholder,
-  removeCloudGroupPendingRowsForTerminalResponse,
-  removeCloudGroupTimeoutPlaceholderForTerminalResponse,
   upsertCanonicalRequestIntoLocalState,
 } from './cloudAgentRequestState';
 import { useCloudAgentAvailability } from './useCloudAgentAvailability';
@@ -124,10 +95,6 @@ import {
   optimisticCloudAgentCancelMessage,
 } from './cloudAgentCancellation';
 import { useCloudAgentCancellation } from './useCloudAgentCancellation';
-import {
-  publishDerivedCloudSessionActivity,
-  waitForCloudAgentTurn,
-} from './cloudAgentLocalExecution';
 import { useCloudDirectAgentExecution } from './useCloudDirectAgentExecution';
 import {
   cloudSelfAgentDerivedSyncedStatusBySessionId,
@@ -139,10 +106,6 @@ import { useCloudSelfAgentCanonicalSync } from './useCloudSelfAgentCanonicalSync
 import {
   cloudGroupReadCursorsBySessionId,
 } from './cloudSelfAgentCanonicalSync';
-import {
-  mergeOpenCanonicalSessionFastResultIntoLocalState,
-  upsertCanonicalIdentityIntoLocalState,
-} from './cloudCanonicalStateMerge';
 import {
   useCloudGroupOutboxDelivery,
 } from './useCloudGroupOutboxDelivery';
@@ -188,9 +151,8 @@ import {
   type SendCloudGroupControlInput,
 } from './useCloudGroupControlSender';
 import {
-  cleanCloudText as cleanText,
-  cloudObjectContent as objectContent,
-} from './cloudValue';
+  useCloudGroupControlApplication,
+} from './useCloudGroupControlApplication';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -262,19 +224,14 @@ export {
 export type {
   SendCloudGroupControlInput,
 } from './useCloudGroupControlSender';
+export {
+  cloudGroupAgentProcessingSlotForResponse,
+  cloudGroupIncomingMessageAlreadyApplied,
+  cloudGroupMessageTargetsLocalAgent,
+  cloudGroupNativeContextMessages,
+} from './useCloudGroupControlApplication';
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
-
-function reportCloudGroupAgentFailure(
-  kind: 'local-response' | 'no-provider-notice',
-  error: unknown,
-) {
-  if (kind === 'no-provider-notice') {
-    console.warn('[cloud-group-agent-mention] no-provider notice failed', error);
-    return;
-  }
-  console.warn('[cloud-group-agent-mention] local agent response failed', error);
-}
 
 function reportCloudAgentAvailabilityWarning(message: string, error: unknown) {
   console.warn(message, error);
@@ -282,103 +239,6 @@ function reportCloudAgentAvailabilityWarning(message: string, error: unknown) {
 
 function reportCloudAgentExecutionWarning(message: string, error: unknown) {
   console.warn(message, error);
-}
-
-export function cloudGroupAgentProcessingSlotForResponse(
-  messages: CanonicalSessionMessage[],
-  groupId: string,
-  requestId: string,
-  senderAccountId: string,
-): CanonicalSessionMessage | null {
-  const trimmedGroupId = groupId.trim();
-  const trimmedRequestId = requestId.trim();
-  const trimmedSenderAccountId = senderAccountId.trim();
-  if (!trimmedGroupId || !trimmedRequestId || !trimmedSenderAccountId) return null;
-  const senderIdentityId = `agent:cloud:${trimmedSenderAccountId}`;
-  return messages.find((message) => {
-    if (message.sessionId !== trimmedGroupId || message.senderIdentityId !== senderIdentityId) return false;
-    if (!message.sourceTransport?.startsWith('cloud-group-agent')) return false;
-    const content = objectContent(message.content);
-    const linkedRequestId = cleanText(message.parentMessageId)
-      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
-      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
-    if (linkedRequestId !== trimmedRequestId) return false;
-    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
-    return message.status === 'processing' || deliveryState === 'processing';
-  }) ?? null;
-}
-
-export function cloudGroupIncomingMessageAlreadyApplied(
-  existingMessage: CanonicalSessionMessage | null,
-  incomingDeliveryState?: string | null,
-): boolean {
-  if (!existingMessage) return false;
-  const incomingState = cleanText(incomingDeliveryState).toLowerCase();
-  const incomingIsTerminal = Boolean(incomingState)
-    && !['sending', 'processing'].includes(incomingState);
-  if (!incomingIsTerminal) return true;
-
-  const content = objectContent(existingMessage.content);
-  const existingDeliveryState = cleanText(
-    typeof content.deliveryState === 'string' ? content.deliveryState : null,
-  ).toLowerCase();
-  const existingStatus = existingMessage.status.trim().toLowerCase();
-  const existingIsPending = ['sending', 'processing'].includes(existingStatus)
-    || ['sending', 'processing'].includes(existingDeliveryState);
-  if (existingIsPending) return false;
-
-  // The offline tier is a local timeout hint, not a terminal Cloud response.
-  // A later owner response must still replace it.
-  if (existingMessage.sourceTransport === 'cloud-group-agent-offline') return false;
-  return true;
-}
-
-export function cloudGroupMessageTargetsLocalAgent(
-  message: NonNullable<CloudGroupControlEnvelope['message']>,
-  account: CloudAccount,
-): boolean {
-  if (message.forkSnapshot === true || !cloudMessageActionAllowsAgentTrigger(message.messageAction)) return false;
-  const targetsOwnedHostedCloudAgent = Boolean(
-    cleanText(message.targetCloudAgentId).startsWith('cloud_agent_')
-    && cleanText(message.targetCloudAgentOwnerAccountId) === account.accountId,
-  );
-  return targetsOwnedHostedCloudAgent || cloudMessageMentionsLocalAgent(
-    message.text,
-    account,
-    { allowFirstPerson: message.senderAccountId === account.accountId },
-  );
-}
-
-export function cloudGroupNativeContextMessages({
-  groupRows,
-  groupId,
-  requestMessageId,
-  requestCreatedAtMs,
-}: {
-  groupRows: readonly IndexedCloudGroupRow[];
-  groupId: string;
-  requestMessageId: string;
-  requestCreatedAtMs: number;
-}): DesktopChatContextMessage[] {
-  return compactCloudAgentNativeContextMessages(groupRows.flatMap(({ envelope }) => {
-    if (envelope?.kind !== 'group-message' || envelope.groupId !== groupId || !envelope.message) return [];
-    const message = envelope.message;
-    if (message.id === requestMessageId) return [];
-    if (message.createdAtMs > requestCreatedAtMs) return [];
-    if (message.forkSnapshot === true) return [];
-    if (!cloudMessageActionAllowsAgentContext(message.messageAction)) return [];
-    if (message.deliveryState === 'processing' || isCloudAgentProcessingPlaceholderText(message.text)) return [];
-    const text = message.text.trim();
-    if (!text) return [];
-    const participantName = envelope.participants.find((participant) => participant.accountId === message.senderAccountId)?.displayName?.trim();
-    return [{
-      id: message.id,
-      authorName: message.senderDisplayName?.trim() || participantName || 'Cloud participant',
-      authorKind: message.senderKind === 'agent' ? 'agent' : 'human',
-      text,
-      createdAtMs: message.createdAtMs,
-    }];
-  }));
 }
 
 export type SendCloudCollaborationMessageOptions = {
@@ -855,108 +715,25 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  const applyCloudGroupControl = useCallback(async (
-    cloudMessage: CloudMessage,
-    envelope: CloudGroupControlEnvelope,
-  ) => {
-    // Keep canonical state behind a ref so replay does not rebuild this callback
-    // after each canonical write and re-enter the replay effect.
-    const sessionContext = await applyCloudGroupSessionControl({
-      cloudMessage,
-      envelope,
-      runtime: {
-        account,
-        client,
-        profileCache: cloudProfileCacheRef.current,
-      },
-      canonical: {
-        getState: () => canonicalSessionStateRef.current,
-        setState: setCanonicalSessionState,
-      },
-      stateOps: {
-        objectContent,
-        cleanText,
-        resolveAdminSnapshot: resolveCloudGroupAdminSnapshot,
-        resolveSessionTitle: resolveAuthorizedCloudGroupSessionTitleSnapshot,
-        upsertIdentity: upsertCanonicalIdentityIntoLocalState,
-        mergeOpenSession: mergeOpenCanonicalSessionFastResultIntoLocalState,
-      },
-    });
-    if (!sessionContext || !setCanonicalSessionState) return;
-
-    const messageContext = await applyCloudGroupMessageControl({
-      context: sessionContext,
-      setCanonicalState: setCanonicalSessionState,
-      stateOps: {
-        objectContent,
-        cleanText,
-        upsertIdentity: upsertCanonicalIdentityIntoLocalState,
-        processingSlot: cloudGroupAgentProcessingSlotForResponse,
-        incomingAlreadyApplied: cloudGroupIncomingMessageAlreadyApplied,
-        removeOfflinePlaceholder: removeCloudGroupOfflinePlaceholder,
-        removeTimeoutPlaceholder: removeCloudGroupTimeoutPlaceholderForTerminalResponse,
-        removePendingRows: removeCloudGroupPendingRowsForTerminalResponse,
-        removeMessage: removeCanonicalMessageById,
-        isProcessingPlaceholder: isCloudAgentProcessingPlaceholderText,
-      },
-    });
-    if (!messageContext) return;
-
-    applyCloudGroupAgentControl({
-      context: messageContext,
-      setCanonicalState: setCanonicalSessionState,
-      runtime: {
-        client,
-        messageIndex: () => cloudMessageIndexRef.current,
-        sessionActivity: () => cloudSessionActivityRef.current,
-        setSessionActivity: setCloudSessionActivity,
-        setLocalTurns: setLocalAgentTurnsByRequestId,
-        processedMentionIds: processedCloudAgentMentionIdsRef.current,
-        turnIdsByRequestId: cloudAgentTurnIdsByRequestIdRef.current,
-        agentDefinitionsById: cloudAgentDefinitionsById,
-        routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
-        defaultRoute: defaultCloudAgentRuntimeRoute,
-        mergeMessage,
-        syncDiff: syncCloudCollaborationDiff,
-        reportFailure: reportCloudGroupAgentFailure,
-      },
-      stateOps: {
-        cleanText,
-        upsertRequest: upsertCanonicalRequestIntoLocalState,
-        upsertIdentity: upsertCanonicalIdentityIntoLocalState,
-        removePendingRows: removeCloudGroupPendingRowsForTerminalResponse,
-        removeTimeoutPlaceholder: removeCloudGroupTimeoutPlaceholderForTerminalResponse,
-      },
-      policy: {
-        isRecentMention: isRecentCloudAgentMention,
-        messageTargetsLocalAgent: cloudGroupMessageTargetsLocalAgent,
-        responseExists: cloudGroupAgentResponseExistsForRequest,
-        fallbackRunOwnsRequest: cloudFallbackRunAlreadyOwnsRequest,
-        nativeContext: cloudGroupNativeContextMessages,
-        waitForTurn: waitForCloudAgentTurn,
-        publishActivity: (input) => publishDerivedCloudSessionActivity({
-          ...input,
-          reportWarning: reportCloudAgentExecutionWarning,
-        }),
-      },
-    });
-  }, [
+  const applyCloudGroupControl = useCloudGroupControlApplication({
     account,
     client,
-    cloudAgentTurnIdsByRequestIdRef,
-    cloudAgentDefinitionsById,
-    cloudAgentRuntimeRoutesBySessionId,
-    cloudMessageIndexRef,
-    cloudProfileCacheRef,
-    cloudSessionActivityRef,
-    defaultCloudAgentRuntimeRoute,
+    canonicalStateRef: canonicalSessionStateRef,
+    setCanonicalState: setCanonicalSessionState,
+    profileCacheRef: cloudProfileCacheRef,
+    messageIndexRef: cloudMessageIndexRef,
     mergeMessage,
-    processedCloudAgentMentionIdsRef,
-    setCloudSessionActivity,
-    setLocalAgentTurnsByRequestId,
-    syncCloudCollaborationDiff,
-    setCanonicalSessionState,
-  ]);
+    syncDiff: syncCloudCollaborationDiff,
+    sessionActivityRef: cloudSessionActivityRef,
+    setSessionActivity: setCloudSessionActivity,
+    setLocalTurns: setLocalAgentTurnsByRequestId,
+    processedRequestIdsRef: processedCloudAgentMentionIdsRef,
+    turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
+    agentDefinitionsById: cloudAgentDefinitionsById,
+    routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
+    defaultRoute: defaultCloudAgentRuntimeRoute,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
   const persistCloudGroupOutboxDelivery =
     useCloudGroupOutboxDelivery({
