@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
+
 const chatsPageSource = () => [
   '../src/pages/ChatsPage.tsx',
   '../src/pages/chatsPage.destinations.tsx',
@@ -34,7 +36,7 @@ const chatSessionPaneSource = () => readFileSync(new URL('../src/pages/chatsPage
 const queuedMessageSource = () => readFileSync(new URL('../src/pages/chatsPage.queuedMessage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
-const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+const appModelSource = readKordiAppModelImplementationSource;
 const collaborationNavigationActionsSource = () => readFileSync(new URL('../src/app/useKordiCollaborationNavigationActions.ts', import.meta.url), 'utf8');
 const queuedMessageActionsSource = () => readFileSync(new URL('../src/app/useKordiQueuedMessageActions.ts', import.meta.url), 'utf8');
 const virtualTranscriptSource = () => readFileSync(new URL('../src/features/chat/VirtualTranscript.tsx', import.meta.url), 'utf8');

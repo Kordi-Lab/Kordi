@@ -10,6 +10,7 @@ import {
   shouldUseNoProviderSelfAgentShortcut,
 } from '../src/features/chat/messageActions/chatMessages';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
 const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
@@ -403,7 +404,7 @@ test('cloud group no-provider catch broadcasts a failed agent response to reques
 });
 
 test('cloud removed sessions are included in workspace hidden ids for restored canonical self-agent forks', () => {
-  const source = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const source = readKordiAppModelImplementationSource();
   assert.match(source, /const combinedHiddenSessionIds = useMemo\([\s\S]*cloudDeletedSessionIds/);
   assert.match(source, /hiddenSessionIds: combinedHiddenSessionIds,/);
 });

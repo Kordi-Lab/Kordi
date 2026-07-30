@@ -10,6 +10,7 @@ import {
   isCloudHostId,
   rejectNonCloudCollaborationTargets,
 } from '../src/features/cloud/cloudTransportGuards';
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
@@ -71,7 +72,7 @@ test('active Cloud collaboration models use neutral fields and target kinds', ()
 });
 
 test('cloud app model removes old bridge state hook from main-cloud', () => {
-  const source = readSource('src/app/useKordiAppModel.ts');
+  const source = readKordiAppModelImplementationSource();
   assert.doesNotMatch(source, /useBridgeState/);
   assert.doesNotMatch(source, /useBridgeOrchestration/);
   assert.doesNotMatch(source, /baseBridgeState:\s*baseDesktopCollaborationState/);

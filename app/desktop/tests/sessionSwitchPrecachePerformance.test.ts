@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
+
 const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
-const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+const appModelSource = readKordiAppModelImplementationSource;
 const canonicalStoreSource = () => readFileSync(new URL('../src/app/useKordiCanonicalSessionStore.ts', import.meta.url), 'utf8');
 const uiEffectsSource = () => readFileSync(new URL('../src/app/useKordiUiEffects.ts', import.meta.url), 'utf8');
 
@@ -73,5 +75,8 @@ test('older canonical transcript pages use the oldest loaded sequence cursor', (
 
   assert.match(loader, /message\.sequenceNum < oldest/);
   assert.match(loader, /beforeSequenceNum: oldestSequenceNum/);
-  assert.match(appModelSource(), /canonicalHasOlderBySessionId: canonicalStore\.hasOlderBySessionId/);
+  assert.match(
+    appModelSource(),
+    /canonicalHasOlderBySessionId:\s*(?:canonical\.)?canonicalStore\.hasOlderBySessionId/,
+  );
 });

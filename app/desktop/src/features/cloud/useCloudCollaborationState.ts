@@ -6,29 +6,23 @@ import {
 } from 'react';
 import type {
   Dispatch,
-  MutableRefObject,
   SetStateAction,
+  MutableRefObject,
 } from 'react';
-import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type {
   DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
   CanonicalSessionState,
-  Contact,
   DesktopCollaborationState,
   MessageActionMetadata,
-  MessageAttachment,
 } from '@/kordi-app/types';
 import {
   CloudAuthClient,
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
-  type CloudSessionPin,
   type CloudSessionTitle,
-  type UpsertCloudArtifactActivityInput,
-  type UpsertCloudTaskActivityInput,
 } from './authClient';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
@@ -41,8 +35,7 @@ import {
   type CloudMessageIndex,
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
-import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
-import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgents';
+import { defaultCloudAgentsClient } from './cloudAgentsClient';
 import { defaultCloudMessageCache } from './cloudMessageCache';
 import {
   CloudGroupOutbox,
@@ -51,20 +44,13 @@ import {
 import { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import { CloudProfileIdentityAdoptionCoordinator, CloudSyncCoordinator } from './cloudSyncCoordinator';
 import {
-  type CloudSessionPinsById,
-} from './cloudDiffSync';
-import {
   type CloudSessionActivityStore,
 } from './cloudSessionActivity';
-import type { CloudUnreadReadinessStatus } from './cloudMessageSyncState';
 import {
   useCloudAgentCancellation,
   useCloudAgentRequestCancellation,
 } from './useCloudAgentCancellation';
 import { useCloudDirectAgentExecution } from './useCloudDirectAgentExecution';
-import {
-  type CloudSelfAgentSyncStatus,
-} from './cloudSelfAgentForwardSync';
 import { useCloudSelfAgentForwardSync } from './useCloudSelfAgentForwardSync';
 import { useCloudSelfAgentMetadataSync } from './useCloudSelfAgentMetadataSync';
 import { useCloudSelfAgentCanonicalSync } from './useCloudSelfAgentCanonicalSync';
@@ -94,14 +80,10 @@ import {
 } from './useCloudSessionActions';
 import {
   useCloudGroupControlSender,
-  type SendCloudGroupControlInput,
 } from './useCloudGroupControlSender';
 import {
   useCloudGroupControlApplication,
 } from './useCloudGroupControlApplication';
-import {
-  type SendCloudCollaborationMessageOptions,
-} from './useCloudDirectMessaging';
 import {
   cloudCollaborationPreviousStateForContext,
   useCloudCollaborationReadModel,
@@ -119,6 +101,13 @@ import {
 import {
   useCloudActiveSessionLifecycle,
 } from './useCloudActiveSessionLifecycle';
+import type {
+  UseCloudCollaborationStateResult,
+} from './cloudCollaborationState.types';
+
+export type {
+  UseCloudCollaborationStateResult,
+} from './cloudCollaborationState.types';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -279,48 +268,6 @@ function reportCloudAgentAvailabilityWarning(message: string, error: unknown) {
 function reportCloudAgentExecutionWarning(message: string, error: unknown) {
   console.warn(message, error);
 }
-
-export type UseCloudCollaborationStateResult = {
-  cloudCollaborationState: DesktopCollaborationState | null;
-  setCloudCollaborationState: Dispatch<SetStateAction<DesktopCollaborationState | null>>;
-  mergedCollaborationState: DesktopCollaborationState | null;
-  prepareCloudForwardAttachments(attachments: MessageAttachment[]): Promise<AttachmentItem[]>;
-  sendCloudCollaborationMessage(
-    conversationId: string,
-    text: string,
-    attachments?: AttachmentItem[],
-    options?: SendCloudCollaborationMessageOptions,
-  ): Promise<void>;
-  sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
-  recordCloudSessionFork(input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }): Promise<void>;
-  updateCloudSessionPin(input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }): Promise<CloudSessionPin>;
-  hideCloudSession(sessionId: string): Promise<void>;
-  unhideCloudSession(sessionId: string): Promise<void>;
-  deleteCloudSession(sessionId: string): Promise<void>;
-  cancelCloudAgentRequest(conversationId: string, requestId: string): Promise<void>;
-  refreshCloudMessages(): Promise<void>;
-  refreshCloudAgents(): Promise<void>;
-  createCloudAgentDefinition(input: CreateCloudAgentInput): Promise<CloudAgentDefinition>;
-  updateCloudAgentDefinition(agentId: string, input: UpdateCloudAgentInput): Promise<CloudAgentDefinition>;
-  archiveCloudAgentDefinition(agentId: string): Promise<CloudAgentDefinition>;
-  refreshSharedCloudAgents(ownerAccountIds: string[]): Promise<SharedCloudAgentSummary[]>;
-  cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
-  sharedCloudAgents: SharedCloudAgentSummary[];
-  cloudSessionActivity: CloudSessionActivityStore;
-  refreshCloudSessionActivity(sessionId: string): Promise<void>;
-  publishCloudTaskActivity(input: UpsertCloudTaskActivityInput): Promise<void>;
-  publishCloudArtifactActivity(input: UpsertCloudArtifactActivityInput): Promise<void>;
-  refreshCloudContacts(): Promise<void>;
-  cloudContacts: Contact[];
-  initialContactsSettled: boolean;
-  initialMessagesSettled: boolean;
-  cloudUnreadReadinessStatus: CloudUnreadReadinessStatus;
-  cachedMessagesReady: boolean;
-  cloudHiddenSessionIds: Set<string>;
-  cloudDeletedSessionIds: Set<string>;
-  cloudSessionPinsById: CloudSessionPinsById;
-  cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
-};
 
 export function useCloudCollaborationState({
   account,

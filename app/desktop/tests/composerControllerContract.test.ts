@@ -2,14 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
+
 const contractSource = readFileSync(
   new URL('../src/features/chat/composerController.types.ts', import.meta.url),
   'utf8',
 );
-const appModelSource = readFileSync(
-  new URL('../src/app/useKordiAppModel.ts', import.meta.url),
-  'utf8',
-);
+const appModelSource = readKordiAppModelImplementationSource();
 
 const expectedContexts = [
   ['environment', 'ComposerEnvironmentContext'],
