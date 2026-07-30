@@ -35,7 +35,6 @@ import {
   existingBlankSessionIdForParticipantSpace,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
-import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
@@ -43,7 +42,6 @@ import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { CanonicalSessionState, ComposerScope, DesktopChatState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
-import { createDesktopChatSession } from '@/lib/desktop';
 
 import {
   canonicalAvatarSeed,
@@ -75,6 +73,7 @@ import { useKordiGroupRename } from '@/app/useKordiGroupRename';
 import { useKordiParticipantDraftSend } from '@/app/useKordiParticipantDraftSend';
 import { useKordiProviderAutoSwitch } from '@/app/useKordiProviderAutoSwitch';
 import { useKordiQueuedMessageActions } from '@/app/useKordiQueuedMessageActions';
+import { useKordiSideAgentSessionActions } from '@/app/useKordiSideAgentSessionActions';
 import {
   type ParticipantSpaceDraft,
   useKordiParticipantSpaceContinuation,
@@ -1078,29 +1077,16 @@ export function useKordiAppModel({
     handleSendChatMessage: handleSendChatMessageWithQuoteClear,
     handleRetryChatMessage,
   });
-  const setChatComposerTextForSession = useCallback((sessionId: string, value: string) => {
-    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, value));
-  }, [composerUi.setComposerDrafts]);
-
-  const handleCreateSideAgentSession = useCallback(async () => {
-    if (!isNativeShell) return null;
-    try {
-      setDesktopChatError(null);
-      const previousActiveSessionId = desktopChatState?.activeSessionId ?? null;
-      const nextState = await createDesktopChatSession();
-      const sessionId = nextState.activeSessionId?.trim() || null;
-      setDesktopChatState(previousActiveSessionId
-        ? { ...nextState, activeSessionId: previousActiveSessionId }
-        : nextState);
-      if (sessionId) {
-        composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
-      }
-      return sessionId;
-    } catch (error) {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to create agent session');
-      return null;
-    }
-  }, [composerUi.setComposerDrafts, desktopChatState?.activeSessionId, isNativeShell, setDesktopChatError, setDesktopChatState]);
+  const {
+    createSideAgentSession: handleCreateSideAgentSession,
+    setComposerTextForSession: setChatComposerTextForSession,
+  } = useKordiSideAgentSessionActions({
+    activeDesktopSessionId: desktopChatState?.activeSessionId ?? null,
+    isNativeShell,
+    setComposerDrafts: composerUi.setComposerDrafts,
+    setDesktopChatError,
+    setDesktopChatState,
+  });
 
   const shellArgs = useKordiShellArgs({
     isNativeShell,
