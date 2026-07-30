@@ -21,7 +21,10 @@ pub struct TreeNavigateOutcome {
     pub summary_entry_id: Option<String>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the public navigation boundary keeps provider credentials and branch coordinates explicit; follow-up #235"
+)]
 pub async fn navigate_tree(
     conn: &Connection,
     session_id: &str,
@@ -73,7 +76,10 @@ pub async fn navigate_tree(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the private navigation phase mirrors the validated public request while adding summary policy; follow-up #235"
+)]
 async fn navigate_tree_with_summary_impl(
     conn: &Connection,
     session_id: &str,

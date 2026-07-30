@@ -377,4 +377,3 @@ test('cloud outgoing messages render as delivered once accepted by the cloud ser
 
   assert.equal(state.conversations[0].messages[0].deliveryState, 'delivered');
 });
-

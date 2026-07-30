@@ -7,7 +7,10 @@ pub(crate) fn build_citation_markdown(title: Option<&str>, final_url: &str) -> S
     format!("- [{label}]({final_url})")
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the formatter accepts already-validated response metadata without owning fetch policy; follow-up #235"
+)]
 pub(crate) fn build_web_fetch_output(
     source_label: &str,
     final_url: &str,

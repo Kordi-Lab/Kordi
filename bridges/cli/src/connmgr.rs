@@ -28,7 +28,10 @@ pub enum ConnState {
 }
 
 /// Noise session state for a peer.
-#[allow(clippy::large_enum_variant)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the connection state owns its Noise session directly to avoid an allocation on every packet; follow-up #235"
+)]
 pub enum SessionState {
     /// No session established yet.
     None,

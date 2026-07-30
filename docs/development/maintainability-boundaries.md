@@ -1,14 +1,17 @@
 # Maintainability boundaries
 
-Issue #235 tracks long-term refactors for overlong modules and mixed-responsibility files. Treat it as a sequence of small, behavior-preserving PRs. Do not attempt to split every hotspot in one change.
+Issues #235 and #693 track long-term refactors for overlong modules and mixed-responsibility files. Treat them as a sequence of small, behavior-preserving PRs. Do not attempt to split every hotspot in one change.
+
+The completed #693 acceptance matrix and reproducible end-state measurements are
+recorded in [issue-693-maintainability-closure.md](issue-693-maintainability-closure.md).
 
 ## Soft limits
 
 These limits are planning signals, not automatic failures:
 
 - Production source above **1,000 LOC** needs an owner plan or an explicit defer reason.
-- Test files above **1,500 LOC** should be split by domain/scenario, with shared builders moved into test-support modules.
-- CSS above **1,000 LOC** should be split by responsibility before adding large new rule groups.
+- Test files above **1,000 LOC** should be split by domain/scenario, with shared builders moved into test-support modules.
+- CSS above **500 LOC** should be split by responsibility before adding large new rule groups.
 - Generated, vendor, build, and lock files are excluded from manual refactor work.
 
 Use the scan script to refresh the list:
@@ -87,38 +90,40 @@ Keep tokens and theme overrides separate from component-specific rules.
 
 ## Current hotspot disposition
 
-This table documents why the high-priority files from #235 are deferred from a single broad refactor and what the next small PR should target.
+This table records the current disposition of the high-priority #235/#693 areas.
 
 | Area | File | Disposition |
 | --- | --- | --- |
 | Desktop Rust runtime | `agent/crates/cli/src/desktop_runtime.rs` | Attachment helpers, model option/thinking helpers, historical transcript projection, session catalog helpers, session detail/profile projection, and the remaining root tests have been extracted. The root file is now below the 1,000-line scan threshold. |
 | Desktop Rust chat | `app/desktop/src-tauri/src/chat.rs` | Attachment/artifact helpers, live-turn state helpers, Bridge-agent runner logic, Bridge outreach helpers, canonical sync projection, message route helpers, local model-option/readiness helpers, session action helpers, and remaining root tests have been extracted. The root file is now below the 1,000-line scan threshold. |
 | Desktop LM Studio auth | `app/desktop/src-tauri/src/auth/lm_studio.rs` | Catalog/model parsing, JSON traversal, HTML normalization, model-id validation, environment assembly, and CLI/app path discovery have been extracted. The root file is now under the 1,000-line scan threshold; future slices can focus on load-context orchestration only when behavior changes require touching it. |
-| Canonical sessions | `app/desktop/src-tauri/src/canonical_sessions.rs` | Canonical session tests are partitioned by scenario, and identity/session request helpers, group participant/admin mutations, and message lookup/dedup helpers have been extracted. The root file is now below the 1,000-line scan threshold. |
+| Canonical sessions | `app/desktop/src-tauri/src/canonical_sessions.rs` | Canonical session tests are partitioned by scenario, and identity/session request helpers, group participant/admin mutations, and message lookup/dedup helpers have been extracted. The 2,104-line production root remains a tracked #235 hotspot; the #693 test-organization work did not conceal or grow it. |
 | Bridge config/state | `app/desktop/src-tauri/src/bridge/mod.rs` | Defer broad split. Extract config/state summary helpers before moving command handlers. |
 | Bridge network | `app/desktop/src-tauri/src/bridge/network.rs` | Defer until relay/realtime tests are stable. Split client construction from request policy. |
 | Bridge mailbox | `app/desktop/src-tauri/src/bridge/mailbox.rs` | Mailbox event/thread helpers and parser implementation have been extracted, and inline tests moved to a file module. The mailbox root is now below the 1,000-line scan threshold. |
-| Frontend app model | `app/desktop/src/app/useKordiAppModel.ts` | Pure mention, avatar, metadata, session-pruning, participant-space helpers, and Bridge mention-target projection have been extracted. Continue extracting feature selectors/effects as adjacent work touches them. |
+| Cloud collaboration state | `app/desktop/src/features/cloud/useCloudCollaborationState.ts` | Availability, execution, self-agent sync, transport, reconciliation, account, catalog, session action, group control, message sync, and read-model lifecycles are owned by focused modules. The remaining composition hook is 498 lines. |
+| Frontend app model | `app/desktop/src/app/useKordiAppModel.ts` | Domain callbacks and state owners are composed through focused controllers. The exported composition hook is 25 lines. |
 | Kordi app type barrel | `app/desktop/src/kordi-app/types.ts` | Message, transcript artifact, queued message, and live-turn snapshot types have been moved to a focused child module; the root type barrel is now below the 1,000-line scan threshold. |
 | Transcript UI | `app/desktop/src/kordi-app/components/transcript.tsx` | Attachment previews and live-turn/tool-timeline rendering have been isolated. Next safe slice: separate remaining message chrome/contact rows only when behavior changes require it. |
-| Workspace sidebar | `app/desktop/src/pages/WorkspaceSidebar.tsx` | Defer broad split. Extract participant-space row groups and menu actions separately. |
+| Workspace sidebar | `app/desktop/src/pages/WorkspaceSidebar.tsx` | Navigation, chat, profile, updater, and support-panel surfaces are split into focused modules. The remaining component is 385 lines and consumes cohesive contracts. |
 | Desktop Ollama auth | `app/desktop/src-tauri/src/auth/ollama.rs` | Model/catalog parsing, model-id normalization, embedding filtering, and parser tests have been extracted. The root file is now below the 1,000-line scan threshold; future slices can focus on environment/path helpers only when behavior changes require touching them. |
 | Model control centers | `app/desktop/src/kordi-app/auth/LmStudioModelControlCenter.tsx`, `app/desktop/src/kordi-app/auth/OllamaModelControlCenter.tsx` | Defer broad split. Split provider API/state-machine helpers before presentational components. |
-| Chats page | `app/desktop/src/pages/ChatsPage.tsx` | Defer broad split. Extract composer footer/routing controls when behavior changes require touching them. |
+| Chats page | `app/desktop/src/pages/ChatsPage.tsx` | Main/companion workspaces, pane primitives, controllers, routing, and composer behavior are split by interaction surface. The remaining component is 298 lines and consumes cohesive contracts. |
 | Desktop chat state | `app/desktop/src/features/chat/useDesktopChatState.ts` | Queue persistence, live-turn snapshot helpers, and refresh/cache reducers have been extracted to focused modules. Next safe slice: split live-turn polling/completion orchestration or notification side effects. |
 | Desktop API client | `app/desktop/src/lib/desktop.ts` | Defer broad split. Group exports by resource only when consumers can move in the same PR. |
 | Bridges CLI commands | `bridges/cli/src/commands.rs` | Setup/runtime-selection, project lifecycle, identity lifecycle, and doctor diagnostics command logic have been extracted. Continue one command family per PR with command-level tests; next safe slice: move session or outbound ask/debate command helpers. |
 | Bridges local API | `bridges/cli/src/local_api.rs` | Pending request state, delivery-stage tracking, poll response DTOs, daemon-facing response/delivery event storage, and send/ask/broadcast/debate/publish route handlers have been extracted. The root local API file is now below the 1,000-line scan threshold; continue splitting peer/status or transport helpers only when behavior changes require touching them. |
-| Bridges daemon/server | `bridges/cli/src/daemon.rs`, `bridges/cli/src/serve/auth.rs`, `bridges/cli/src/main.rs`, `bridges/cli/src/sync_engine.rs` | Defer until command/local API splits reduce shared coupling. |
-| Large tests | `app/desktop/src-tauri/src/bridge/storage/tests.rs` | Canonical session, turn-runner, and extension tests are split into child modules, and chat-start plus bridge canonical read-model coverage has been split out of `chatRouting.test.tsx`. Continue partitioning large tests by domain before production moves in the same area. |
-| CSS | `app/desktop/src/styles/shell.css`, `app/desktop/src/styles/theme-overrides.css` | Shell CSS is split into popover, bubble, transcript, sidebar, and page layers. Next safe slice: split remaining layout/control shell rules or `theme-overrides.css` with screenshot/manual smoke checks. |
+| Bridges daemon/server | `bridges/cli/src/daemon.rs`, `bridges/cli/src/serve/auth.rs`, `bridges/cli/src/main.rs`, `bridges/cli/src/sync_engine.rs` | Daemon startup, mailbox, inbound, and shutdown phases are split into named lifecycle modules; the remaining `run` orchestration is about 160 lines. Other production hotspots remain tracked by #235. |
+| Cloud HTTP auth/routes | `bridges/cloud-server/src/auth/routes.rs` | The root is a 215-line router-composition boundary. Resource handlers, persistence, and policy live in focused modules under `auth/routes/`. |
+| Large tests | repository-wide | All tracked test files are below 1,000 lines. Desktop, canonical-session, Cloud collaboration, Cloud server E2E, and release-publisher scenarios are partitioned without dropping test statements or scenario names. |
+| CSS | `app/desktop/src/styles/` | Shell and theme styles are split by feature ownership. Every stylesheet is at most 480 lines, with normalized selector/declaration parity tests protecting the behavior-preserving split. |
 
 ## Completed slices
 
 - `app/desktop/src/features/chat/useDesktopChatState.ts`: queued-message localStorage persistence moved to `app/desktop/src/features/chat/queuedDesktopMessages.ts` with focused tests in `app/desktop/tests/queuedDesktopMessages.test.tsx`.
 - `app/desktop/src/features/chat/useDesktopChatState.ts`: live-turn snapshot/echo/completed-message helpers moved to `app/desktop/src/features/chat/desktopLiveTurns.ts` with focused tests in `app/desktop/tests/desktopLiveTurns.test.tsx`.
 - `app/desktop/src/features/chat/useDesktopChatState.ts`: refresh-state merge, store pruning, and mapped-message cache reducers moved to `app/desktop/src/features/chat/desktopChatStateReducers.ts` with focused tests in `app/desktop/tests/desktopChatStateReducers.test.tsx`.
-- `app/desktop/tests/chatRouting.test.tsx`: chat-start/sidebar routing tests moved to `app/desktop/tests/chatStartRouting.test.tsx`, and bridge runtime/visibility read-model coverage moved to `app/desktop/tests/canonicalBridgeRuntimeReadModel.test.tsx` and `app/desktop/tests/canonicalBridgeVisibilityReadModel.test.tsx`, while preserving test names.
+- Desktop routing/read-model coverage is partitioned into scenario-owned suites and shared fixtures; the original 321 statements from the seven final oversized suites were preserved exactly while each replacement file remains below 500 lines.
 - `app/desktop/src/styles/shell.css`: popover, bubble, transcript, sidebar, and page selectors moved to `app/desktop/src/styles/shell-popovers.css`, `app/desktop/src/styles/shell-bubbles.css`, `app/desktop/src/styles/shell-transcript.css`, `app/desktop/src/styles/shell-sidebar.css`, and `app/desktop/src/styles/shell-pages.css`; CSS tests now read the split shell bundle through `app/desktop/tests/helpers/readDesktopStyles.ts`.
 - `agent/crates/cli/src/desktop_runtime.rs`: attachment metadata, prompt attachment expansion, and image-loading helpers moved to `agent/crates/cli/src/desktop_runtime/attachments.rs` with focused Rust tests.
 - `app/desktop/src-tauri/src/chat.rs`: attachment storage/download and artifact preview/directory helpers moved to `app/desktop/src-tauri/src/chat/attachments.rs` and `app/desktop/src-tauri/src/chat/artifacts.rs` with focused Rust tests.

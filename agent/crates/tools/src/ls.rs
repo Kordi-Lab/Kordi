@@ -106,7 +106,10 @@ impl Tool for LsTool {
 
 /// Recursively list directory contents with tree-like indentation.
 /// Returns true if the limit was reached.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "recursive traversal keeps immutable limits and mutable accumulation state explicit; follow-up #235"
+)]
 fn list_dir_recursive(
     _root: &Path,
     dir: &Path,

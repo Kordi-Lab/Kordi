@@ -35,7 +35,10 @@ fn resolve_runtime_project_dir(project_id: &str, fallback: &str) -> String {
     fallback.to_string()
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the daemon boundary keeps authenticated transport fields explicit; follow-up #235"
+)]
 pub(super) async fn dispatch_inbound_message(
     coord: &CoordClient,
     runtime_type: &str,
@@ -159,7 +162,10 @@ pub(super) async fn encode_mailbox_blob(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "delivery events preserve explicit wire-envelope fields; follow-up #235"
+)]
 pub(super) async fn send_delivery_event(
     transport: &Transport,
     coord: &CoordClient,

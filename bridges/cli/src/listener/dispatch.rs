@@ -16,7 +16,10 @@ pub struct SandboxContext {
 }
 
 /// Create a sandbox context from an inbound message.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the inbound wire boundary keeps authenticated sender and session fields explicit; follow-up #235"
+)]
 pub fn create_sandbox(
     _project_dir: &str,
     from_node_id: &str,

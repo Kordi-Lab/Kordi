@@ -331,4 +331,3 @@ test('cloud local owner agent treats active Cloud fallback run as already owned 
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('failed'), false);
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('cancelled'), false);
 });
-

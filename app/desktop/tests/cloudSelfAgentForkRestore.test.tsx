@@ -256,4 +256,3 @@ test('cloud self-agent canonical sync patches existing restored fork prefix mess
   assert.equal((forkSessionRequest?.metadata as Record<string, unknown>)?.sessionTitleSource, 'placeholder');
   assert.equal('sessionTitleGeneratedFromMessageId' in ((forkSessionRequest?.metadata as Record<string, unknown>) ?? {}), false);
 });
-
