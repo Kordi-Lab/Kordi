@@ -217,7 +217,7 @@ test('cloud profile adoption returns a bounded identity delta without loading ca
   const cloudSource = cloudBridgeSource();
   assert.match(
     cloudSource,
-    /\.then\(\(delta\) => \{[\s\S]*?setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/,
+    /cloudProfileIdentityAdoptionCoordinator\.request\([\s\S]*?\(delta\) => \{[\s\S]*?setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/,
     'cloud adoption should merge the delta with a functional React state update',
   );
 });

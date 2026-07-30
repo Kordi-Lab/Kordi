@@ -32,6 +32,14 @@ const cloudMessageSyncSource = () => readFileSync(
   new URL('../src/features/cloud/useCloudMessageSync.ts', import.meta.url),
   'utf8',
 );
+const cloudFocusRefreshSource = () => readFileSync(
+  new URL('../src/features/cloud/useCloudFocusRefresh.ts', import.meta.url),
+  'utf8',
+);
+const cloudReadReceiptsSource = () => readFileSync(
+  new URL('../src/features/cloud/useCloudMessageReadReceipts.ts', import.meta.url),
+  'utf8',
+);
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -80,6 +88,8 @@ test('cloud startup snapshots latest messages before catch-up and publishes afte
 
 test('normal Cloud events request diff sync instead of full snapshots', () => {
   const source = cloudCollaborationSource();
+  const focusSource = cloudFocusRefreshSource();
+  const readSource = cloudReadReceiptsSource();
   const fullRefreshCalls = source.match(/void refreshCloudMessages\(\)/g) ?? [];
 
   assert.equal(
@@ -88,12 +98,12 @@ test('normal Cloud events request diff sync instead of full snapshots', () => {
     'normal events and startup should use their coordinated sync entry points',
   );
   assert.match(
-    source,
-    /lastCloudFocusRefreshAtRef\.current = now;\s*void syncCloudCollaborationDiff\(\)/,
+    focusSource,
+    /lastRefreshAtRef\.current = now;\s*void syncCloudCollaborationDiff\(\)/,
   );
   assert.match(
-    source,
-    /markSessionMessagesRead[\s\S]*void syncCloudCollaborationDiff\(\)/,
+    readSource,
+    /markSessionMessagesRead[\s\S]*void sync\(\)/,
   );
 });
 
@@ -118,7 +128,7 @@ test('Cloud focus refresh is throttled across focus, visibility, and pageshow bu
 });
 
 test('Cloud reactivation keeps hot cache interactive before running background refresh', () => {
-  const source = cloudCollaborationSource();
+  const source = cloudFocusRefreshSource();
   assert.match(
     source,
     /CLOUD_FOCUS_REFRESH_DELAY_MS/,
@@ -126,17 +136,17 @@ test('Cloud reactivation keeps hot cache interactive before running background r
   );
   assert.match(
     source,
-    /cloudFocusRefreshTimerRef/,
+    /refreshTimerRef/,
     'expected Cloud focus refreshes to coalesce into one delayed timer',
   );
   assert.match(
     source,
-    /window\.setTimeout\(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS\)/,
+    /window\.setTimeout\([\s\S]*runRefresh,[\s\S]*CLOUD_FOCUS_REFRESH_DELAY_MS/,
     'focus refresh should be scheduled after the hot-cache frame',
   );
   assert.match(
     source,
-    /window\.clearTimeout\(cloudFocusRefreshTimerRef\.current\)/,
+    /window\.clearTimeout\(refreshTimerRef\.current\)/,
     'bursts should cancel the previous delayed refresh timer',
   );
 });

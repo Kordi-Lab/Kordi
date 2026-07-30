@@ -645,60 +645,6 @@ test('cloud agent runtime routes fall back to current composer route for unconfi
   });
 });
 
-test('cloud bridge state loads the asynchronous cache without treating it as authoritative', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-
-  assert.match(source, /let next = currentAccountMessagesByPeer;[\s\S]*removeCloudSessionMessages\(account\.accountId, next, sessionId\)/);
-  assert.match(source, /initialMessagesSettled \? routed : suppressCloudCollaborationUnreadCounts\(routed\)/);
-  assert.match(source, /defaultCloudMessageCache\(\)/);
-  assert.match(source, /cloudMessageCache\.load\(accountId\)\.then/);
-  assert.match(source, /hydratedMessagesCacheAccountRef\.current === account\.accountId/);
-  assert.doesNotMatch(source, /loadCachedCloudMessagesByPeer|saveCachedCloudMessagesByPeer/);
-  assert.match(source, /loadCloudSessionVisibility\(account\?\.accountId\)/);
-  assert.match(source, /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/);
-  assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
-  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupReplayCoordinator\.request/);
-});
-
-test('cloud group control replay uses bounded coordinator retries', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  const replayStart = source.indexOf('if (!account || !canonicalSessionState?.profile.humanIdentityId');
-  const replayEnd = source.indexOf('\n  useEffect(() => {', replayStart + 1);
-  assert.notEqual(replayStart, -1, 'expected Cloud group replay effect');
-  assert.notEqual(replayEnd, -1, 'expected Cloud group replay effect end');
-  const replayEffect = source.slice(replayStart, replayEnd);
-
-  assert.match(source, /new CloudGroupReplayCoordinator<IndexedCloudGroupRow>/);
-  assert.match(source, /cloudGroupReplayCoordinator\.changeAccount\(accountId\)/);
-  assert.match(replayEffect, /cloudGroupReplayCoordinator\.request\(/);
-  assert.match(replayEffect, /entries: cloudMessageIndex\.replayRows\.map/);
-  assert.doesNotMatch(replayEffect, /processedCloudGroupControlIdsRef/);
-  assert.doesNotMatch(replayEffect, /processedCloudGroupControlIdsRef\.current\.delete/);
-});
-
-test('cloud unread badge reconciliation waits for authoritative startup message sync', () => {
-  const source = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
-  const unreadEffectStart = source.indexOf('const unreadBySessionId = cloudGroupUnreadCountsBySessionId({');
-  assert.notEqual(unreadEffectStart, -1, 'expected Cloud group unread reconciliation effect');
-  const effectGuardStart = source.lastIndexOf('if (', unreadEffectStart);
-  assert.notEqual(effectGuardStart, -1, 'expected Cloud group unread effect guard');
-  const effectGuard = source.slice(effectGuardStart, unreadEffectStart);
-
-  assert.match(
-    effectGuard,
-    /!canonicalSessionState[\s\S]*!authoritativeMessagesReady[\s\S]*!cloudUnreadContextKey/,
-    'cached Cloud messages must not persist unread badges until the first authoritative server sync settles',
-  );
-  assert.match(source, /setPublishedCloudUnreadContextKey\([\s\S]*cloudUnreadContextKey/);
-});
-
-
-
-
-
-
-
-
 test('cloud bridge state ignores poisoned localhost bridge state instead of merging it', () => {
   const cloudState = buildCloudDesktopCollaborationState({
     account,

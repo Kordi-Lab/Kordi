@@ -3,9 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
   adoptCloudProfileIdentity,
-  buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
-  markCanonicalSessionRead,
   upsertCanonicalIdentityFast,
   upsertCanonicalMessageFast,
   type DesktopChatContextMessage,
@@ -28,7 +26,6 @@ import type {
 } from '@/kordi-app/types';
 import {
   applyCanonicalProfileIdentityDelta,
-  mergeCanonicalReadCursorDelta,
 } from '@/features/canonical/canonicalStateReducers';
 import {
   beginChatPerformanceSpan,
@@ -54,7 +51,6 @@ import {
   cloudGroupParticipantContacts,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForCollaborationSend,
-  cloudSessionIdFromConversationId,
   isCloudCollaborationHostId,
 } from './cloudCollaborationState';
 import {
@@ -67,18 +63,15 @@ import {
   cloudAgentRuntimeRouteForSession,
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
-import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
 import {
   cloudGroupAttachmentReferences,
   cloudGroupForkPayloadFromSessionMetadata,
   cloudGroupIdFromAgentConversationId,
   cloudGroupManualSessionTitleSnapshot,
-  cloudGroupMessageReadTargets,
   cloudGroupOutgoingParticipantSnapshot,
   cloudGroupParticipantsForCollaborationSession,
   cloudGroupSelfParticipant,
   cloudGroupTitleForOutgoingControl,
-  cloudGroupUnreadCountsBySessionId,
   type CloudGroupReadCursor,
   cloudGroupRelatedControlsForSend,
   encodeCloudGroupControl,
@@ -93,8 +86,6 @@ import {
 } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
-  cloudGroupReplayKeyForRow,
-  patchCanonicalDeliverySummaries,
   type CloudMessageIndex,
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
@@ -143,17 +134,13 @@ import {
 import { applyCloudGroupMessageControl } from './cloudGroupMessageControl';
 import { applyCloudGroupAgentControl } from './cloudGroupAgentControl';
 import {
-  CLOUD_FOCUS_REFRESH_DELAY_MS,
   cloudBootstrapPeerIds,
   cloudAccountGenerationKey,
   cloudMessagesAuthoritativeForContext,
   cloudMessagesByPeerEqual,
   cloudUnreadReadinessContextKey,
   cloudUnreadStatusForContext,
-  markCloudMessagesReadLocally,
   mergeCloudMessagesByPeerSnapshot,
-  shouldRefreshCloudForVisibility,
-  shouldRunCloudFocusRefresh,
   type CloudUnreadReadinessSnapshot,
   type CloudUnreadReadinessStatus,
 } from './cloudMessageSyncState';
@@ -193,7 +180,6 @@ import { useCloudSelfAgentMetadataSync } from './useCloudSelfAgentMetadataSync';
 import { useCloudSelfAgentCanonicalSync } from './useCloudSelfAgentCanonicalSync';
 import {
   cloudGroupReadCursorsBySessionId,
-  isSharedCloudSessionId,
 } from './cloudSelfAgentCanonicalSync';
 import {
   mergeOpenCanonicalSessionFastResultIntoLocalState,
@@ -209,6 +195,27 @@ import {
 import {
   useCloudRealtimeMessages,
 } from './useCloudRealtimeMessages';
+import {
+  useCanonicalActiveSessionRead,
+} from './useCanonicalActiveSessionRead';
+import {
+  useCloudActiveSessionPin,
+} from './useCloudActiveSessionPin';
+import {
+  useCloudCanonicalReconciliation,
+} from './useCloudCanonicalReconciliation';
+import {
+  useCloudGroupReplay,
+} from './useCloudGroupReplay';
+import {
+  useCloudProviderAuthSnapshotSync,
+} from './useCloudProviderAuthSnapshotSync';
+import {
+  useCloudMessageReadReceipts,
+} from './useCloudMessageReadReceipts';
+import {
+  useCloudFocusRefresh,
+} from './useCloudFocusRefresh';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -592,13 +599,8 @@ export function useCloudCollaborationState({
   const cloudCollaborationStateRef = useRef<DesktopCollaborationState | null>(null);
   const cloudCollaborationStateContextKeyRef = useRef<string | null>(null);
   const cloudCollaborationOverrideContextKeyRef = useRef<string | null>(null);
-  const readReceiptRequestRef = useRef<string | null>(null);
-  const persistedActiveReadSignatureRef = useRef<string | null>(null);
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
-  const syncedProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
-  const lastCloudFocusRefreshAtRef = useRef(0);
-  const cloudFocusRefreshTimerRef = useRef<number | null>(null);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
 
@@ -758,62 +760,19 @@ export function useCloudCollaborationState({
     canonicalSessionStateRef.current = canonicalSessionState ?? null;
   }, [canonicalSessionState]);
 
-  useEffect(() => {
-    const sessionId = activeConversationId?.trim() ?? '';
-    if (!account || !sessionId || !isSharedCloudSessionId(sessionId) || !canonicalSessionState) return;
-    const latestMessages = canonicalSessionState.messages
-      .filter((message) => (
-        message.sessionId === sessionId
-        && !['canonical-fork-snapshot', 'cloud-group-fork-snapshot'].includes(message.sourceTransport ?? '')
-        && !['sending', 'processing'].includes(message.status.trim().toLowerCase())
-      ))
-      .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs);
-    const latestMessage = latestMessages[latestMessages.length - 1];
-    if (!latestMessage) return;
-    const selfParticipant = canonicalSessionState.participants.find((participant) => (
-      participant.sessionId === sessionId
-      && participant.role === 'self'
-      && (!canonicalSessionState.profile.humanIdentityId || participant.identityId === canonicalSessionState.profile.humanIdentityId)
-    )) ?? canonicalSessionState.participants.find((participant) => participant.sessionId === sessionId && participant.role === 'self');
-    if (selfParticipant?.lastReadMessageId === latestMessage.id) return;
+  useCanonicalActiveSessionRead({
+    account,
+    activeConversationId,
+    canonicalState: canonicalSessionState,
+    setCanonicalState: setCanonicalSessionState,
+  });
 
-    const signature = `${account.accountId}:${sessionId}:${latestMessage.id}`;
-    if (persistedActiveReadSignatureRef.current === signature) return;
-    persistedActiveReadSignatureRef.current = signature;
-    void markCanonicalSessionRead({ sessionId, messageId: latestMessage.id })
-      .then((delta) => {
-        setCanonicalSessionState?.((current) => mergeCanonicalReadCursorDelta(current, delta));
-      })
-      .catch(() => {
-        persistedActiveReadSignatureRef.current = null;
-      });
-  }, [account, activeConversationId, canonicalSessionState, setCanonicalSessionState]);
-
-  const activeCloudPinSessionId = useMemo(() => {
-    const fromConversation = activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null;
-    const trimmedActive = activeConversationId?.trim() ?? '';
-    return fromConversation || (trimmedActive.startsWith('session:') ? trimmedActive : null);
-  }, [activeConversationId]);
-
-  useEffect(() => {
-    if (!account || !activeCloudPinSessionId) return;
-    let cancelled = false;
-    void loadSession()
-      .then(async (session) => {
-        if (!session?.token) return null;
-        return client.getCloudSessionPin(session.token, activeCloudPinSessionId);
-      })
-      .then((pin) => {
-        if (cancelled || !pin) return;
-        setCloudSessionPinsById((current) => ({ ...current, [pin.sessionId]: pin }));
-      })
-      .catch(() => {
-        // Best-effort. The cursor sync loop also applies pin updates.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [account, activeCloudPinSessionId, client]);
+  useCloudActiveSessionPin({
+    account,
+    activeConversationId,
+    client,
+    setPinsBySessionId: setCloudSessionPinsById,
+  });
 
   const acceptedContactPeerIds = useMemo(
     () => contacts.contacts
@@ -1215,124 +1174,49 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useEffect(() => {
-    if (!account || !setCanonicalSessionState) return;
-    if (cloudMessageIndex.deliveryByMessageId.size === 0) return;
-    setCanonicalSessionState((current) => patchCanonicalDeliverySummaries(
-      current,
-      cloudMessageIndex.deliveryByMessageId,
-    ));
-  }, [account, cloudMessageIndex, setCanonicalSessionState]);
-
-  useEffect(() => {
-    if (
-      !account
-      || !canonicalSessionState
-      || !setCanonicalSessionState
-      || !authoritativeMessagesReady
-      || !cloudUnreadContextKey
-    ) return;
-    const activeConversationIds = [
-      activeConversationId,
-      activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
-    ];
-    const unreadBySessionId = cloudGroupUnreadCountsBySessionId({
-      accountId: account.accountId,
-      activeConversationIds,
-      readCursorsBySessionId: cloudGroupReadCursorsBySessionId(canonicalSessionState),
-      groupRows: cloudMessageIndex.groupRows,
-    });
-    setCanonicalSessionState((current) => {
-      if (!current) return current;
-      let changed = false;
-      const sessions = current.sessions.map((session) => {
-        const metadata = objectContent(session.metadata);
-        const existingUnread = typeof metadata.cloudUnreadCount === 'number' && Number.isFinite(metadata.cloudUnreadCount)
-          ? Math.max(0, Math.floor(metadata.cloudUnreadCount))
-          : 0;
-        const nextUnread = unreadBySessionId[session.id] ?? 0;
-        if (existingUnread === nextUnread) return session;
-        changed = true;
-        if (nextUnread > 0) {
-          return {
-            ...session,
-            metadata: {
-              ...metadata,
-              cloudUnreadCount: nextUnread,
-            },
-          };
-        }
-        const restMetadata = { ...metadata };
-        delete restMetadata.cloudUnreadCount;
-        return {
-          ...session,
-          metadata: restMetadata,
-        };
-      });
-      return changed ? { ...current, sessions } : current;
-    });
-    setPublishedCloudUnreadContextKey((current) => (
-      current === cloudUnreadContextKey ? current : cloudUnreadContextKey
-    ));
-  }, [
+  useCloudCanonicalReconciliation({
     account,
     activeConversationId,
-    authoritativeMessagesReady,
-    canonicalSessionState,
-    cloudMessageIndex,
-    cloudUnreadContextKey,
-    setCanonicalSessionState,
-  ]);
+    canonical: {
+      state: canonicalSessionState,
+      setState: setCanonicalSessionState,
+    },
+    messages: {
+      index: cloudMessageIndex,
+      authoritative: authoritativeMessagesReady,
+    },
+    unread: {
+      contextKey: cloudUnreadContextKey,
+      setPublishedContextKey:
+        setPublishedCloudUnreadContextKey,
+    },
+  });
 
-  useEffect(() => {
-    if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
-    void cloudGroupReplayCoordinator.request({
-      entries: cloudMessageIndex.replayRows.map((row) => ({
-        key: cloudGroupReplayKeyForRow(row),
-        row,
-      })),
-      apply: async (row) => {
-        await applyCloudGroupControl(row.wire, row.envelope);
-      },
-      onFailure: ({ attempt, retryDelayMs, error }) => {
-        const failure = error instanceof Error ? error.message : String(error);
-        console.warn('[cloud-group] sync failed; retry scheduled', { attempt, retryDelayMs, failure }, error);
-      },
-    });
-  }, [
+  useCloudGroupReplay({
+    enabled: Boolean(
+      account
+      && canonicalSessionState?.profile.humanIdentityId
+      && setCanonicalSessionState
+      && initialMessagesSettled
+    ),
+    contextKey:
+      account
+      && canonicalSessionState?.profile.humanIdentityId
+        ? `${account.accountId}:${canonicalSessionState.profile.humanIdentityId}`
+        : null,
+    coordinator: cloudGroupReplayCoordinator,
+    messageIndex: cloudMessageIndex,
+    applyControl: applyCloudGroupControl,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
+
+  useCloudProviderAuthSnapshotSync({
     account,
-    applyCloudGroupControl,
-    canonicalSessionState?.profile.humanIdentityId,
-    cloudGroupReplayCoordinator,
-    cloudMessageIndex,
+    client,
+    route: defaultCloudAgentRuntimeRoute,
     initialMessagesSettled,
-    setCanonicalSessionState,
-  ]);
-
-  useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
-    const syncKey = cloudProviderAuthSnapshotRouteSignature(account.accountId, defaultCloudAgentRuntimeRoute);
-    if (!syncKey || syncedProviderAuthSnapshotKeysRef.current.has(syncKey)) return;
-    syncedProviderAuthSnapshotKeysRef.current.add(syncKey);
-    let cancelled = false;
-    void (async () => {
-      const session = await loadSession();
-      if (!session?.token || cancelled) return;
-      const input = await buildDesktopCloudProviderAuthSnapshotPayload({
-        provider: defaultCloudAgentRuntimeRoute?.authProvider ?? null,
-        authChoice: defaultCloudAgentRuntimeRoute?.authChoice ?? null,
-        model: defaultCloudAgentRuntimeRoute?.model ?? null,
-      });
-      if (!input || cancelled) return;
-      await client.publishProviderAuthSnapshot(session.token, input);
-    })().catch((error) => {
-      syncedProviderAuthSnapshotKeysRef.current.delete(syncKey);
-      console.warn('[cloud-provider-auth-sync] publish failed', error);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [account, client, defaultCloudAgentRuntimeRoute, initialMessagesSettled]);
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
   useCloudAgentCancellation({
     account,
@@ -1364,84 +1248,21 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useEffect(() => {
-    if (!account || !activeConversationId) return;
-    const activeConversationIds = [
-      activeConversationId,
-      activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
-    ];
-    const cloudGroupReadTargets = cloudGroupMessageReadTargets({
-      accountId: account.accountId,
-      activeConversationId,
-      activeConversationIds,
-      groupRows: cloudMessageIndex.groupRows,
-    });
-    if (cloudGroupReadTargets.peerIds.length > 0 || cloudGroupReadTargets.sessionIds.length > 0) {
-      setMessagesByPeer((current) => markCloudMessagesReadLocally(current, account.accountId, {
-        ...cloudGroupReadTargets,
-        groupRowByWireMessageId: cloudMessageIndex.groupRowByWireMessageId,
-      }));
-
-      const canonicalReadSessionIds = [...new Set(activeConversationIds.filter((sessionId): sessionId is string => (
-        typeof sessionId === 'string' && isSharedCloudSessionId(sessionId)
-      )))];
-      if (canonicalReadSessionIds.length > 0) {
-        void Promise.all(canonicalReadSessionIds.map((sessionId) => markCanonicalSessionRead({ sessionId })))
-          .then((deltas) => {
-            setCanonicalSessionState?.((current) => deltas.reduce(
-              (next, delta) => mergeCanonicalReadCursorDelta(next, delta),
-              current,
-            ));
-          })
-          .catch(() => {});
-      }
-
-      void loadSession()
-        .then((session) => {
-          if (!session?.token) return null;
-          const readRequests = cloudGroupReadTargets.sessionIds.length > 0
-            ? cloudGroupReadTargets.sessionIds.map((sessionId) => client.markSessionMessagesRead(session.token, sessionId))
-            : cloudGroupReadTargets.peerIds.map((peerId) => client.markMessagesRead(session.token, peerId));
-          return Promise.all(readRequests);
-        })
-        .then((result) => {
-          if (result === null) return;
-          void syncCloudCollaborationDiff();
-        })
-        .catch(() => {});
-    }
-
-    const peerId = cloudPeerAccountIdFromConversationId(activeConversationId);
-    if (!peerId) return;
-    const inboundIds = (messagesByPeer[peerId] ?? [])
-      .filter((message) => message.toAccountId === account.accountId)
-      .map((message) => message.messageId)
-      .filter(Boolean);
-    if (inboundIds.length === 0) return;
-    setReadInboundMessageIdsByPeer((current) => {
-      const existing = current[peerId] ?? new Set<string>();
-      const next = new Set(existing);
-      for (const id of inboundIds) next.add(id);
-      if (next.size === existing.size) return current;
-      return { ...current, [peerId]: next };
-    });
-    const readSignature = `${peerId}:${inboundIds.slice().sort().join(',')}`;
-    if (readReceiptRequestRef.current === readSignature) return;
-    readReceiptRequestRef.current = readSignature;
-    void loadSession()
-      .then((session) => {
-        if (!session?.token) return null;
-        return client.markMessagesRead(session.token, peerId);
-      })
-      .then((result) => {
-        if (result === null) return;
-        setMessagesByPeer((current) => markCloudMessagesReadLocally(current, account.accountId, { peerIds: [peerId] }));
-        void syncCloudCollaborationDiff();
-      })
-      .catch(() => {
-        readReceiptRequestRef.current = null;
-      });
-  }, [account, activeConversationId, client, cloudMessageIndex, messagesByPeer, setCanonicalSessionState, syncCloudCollaborationDiff]);
+  useCloudMessageReadReceipts({
+    account,
+    activeConversationId,
+    client,
+    canonical: {
+      setState: setCanonicalSessionState,
+    },
+    messages: {
+      byPeer: messagesByPeer,
+      setByPeer: setMessagesByPeer,
+      index: cloudMessageIndex,
+      sync: syncCloudCollaborationDiff,
+    },
+    setReadInboundMessageIdsByPeer,
+  });
 
   useCloudSelfAgentMetadataSync({
     account,
@@ -1467,35 +1288,10 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useEffect(() => {
-    if (!account) return;
-    const runRefresh = () => {
-      cloudFocusRefreshTimerRef.current = null;
-      const now = Date.now();
-      if (!shouldRunCloudFocusRefresh(now, lastCloudFocusRefreshAtRef.current)) return;
-      lastCloudFocusRefreshAtRef.current = now;
-      void syncCloudCollaborationDiff();
-    };
-    const refresh = () => {
-      if (cloudFocusRefreshTimerRef.current !== null) window.clearTimeout(cloudFocusRefreshTimerRef.current);
-      cloudFocusRefreshTimerRef.current = window.setTimeout(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS);
-    };
-    const refreshWhenVisible = () => {
-      if (typeof document === 'undefined' || shouldRefreshCloudForVisibility(document.visibilityState)) refresh();
-    };
-    window.addEventListener('focus', refresh);
-    window.addEventListener('pageshow', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    return () => {
-      if (cloudFocusRefreshTimerRef.current !== null) {
-        window.clearTimeout(cloudFocusRefreshTimerRef.current);
-        cloudFocusRefreshTimerRef.current = null;
-      }
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('pageshow', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, [account, syncCloudCollaborationDiff]);
+  useCloudFocusRefresh({
+    account,
+    syncCloudCollaborationDiff,
+  });
 
   const cloudCollaborationState = useMemo(() => {
     if (!account) return null;
