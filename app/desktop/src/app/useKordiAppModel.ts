@@ -27,7 +27,6 @@ import {
   type CloudGroupParticipant,
   cloudGroupSelfParticipant,
 } from '@/features/cloud/cloudGroupMessages';
-import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
@@ -81,6 +80,7 @@ import {
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
+import { useKordiCloudInitialSyncState } from '@/app/useKordiCloudInitialSyncState';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
 import { useKordiGroupRename } from '@/app/useKordiGroupRename';
@@ -125,15 +125,6 @@ export function useKordiAppModel({
     accountId: cloudSession.account?.accountId ?? null,
     isNativeShell,
   });
-  const [cloudInitialSyncStartedAt, setCloudInitialSyncStartedAt] = useState(() => Date.now());
-  const [cloudInitialSyncNow, setCloudInitialSyncNow] = useState(() => Date.now());
-  const completedCloudInitialSyncAccountRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const now = Date.now();
-    setCloudInitialSyncStartedAt(now);
-    setCloudInitialSyncNow(now);
-  }, [cloudSession.account?.accountId]);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const localAvatarSeedsRef = useRef<{ human?: string | null; humanDisplayName?: string | null; humanProfileImageUrl?: string | null; agent?: string | null; agentDisplayName?: string | null }>({});
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
@@ -487,28 +478,6 @@ export function useKordiAppModel({
     isNativeShell,
     store: canonicalStore,
   });
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setCloudInitialSyncNow(Date.now());
-    }, CLOUD_INITIAL_SYNC_TIMEOUT_MS + 25);
-    return () => window.clearTimeout(timeoutId);
-  }, [cloudInitialSyncStartedAt]);
-
-  const retryCloudInitialSync = useCallback(() => {
-    resetCanonicalInitialRefresh();
-    const now = Date.now();
-    setCloudInitialSyncStartedAt(now);
-    setCloudInitialSyncNow(now);
-    void refreshCanonicalState();
-    void refreshCloudContacts();
-    void refreshCloudMessages();
-  }, [
-    refreshCanonicalState,
-    refreshCloudMessages,
-    refreshCloudContacts,
-    resetCanonicalInitialRefresh,
-  ]);
 
   const handleCreateCloudAgent = useCallback(async (input: CreateCloudAgentInput) => {
     const definition = await createCloudAgentDefinition(input);
@@ -1648,36 +1617,20 @@ export function useKordiAppModel({
   });
 
   const shellSlots = assembleKordiShellSlots(shellArgs);
-  const cloudInitialSync = useMemo(() => {
-    const accountKey = cloudSession.account?.accountId ?? '__pending__';
-    const rawStatus = cloudInitialSyncStatus({
-      isCloudEdition: true,
-      accountReady: Boolean(cloudSession.account),
-      canonicalSettled: canonicalInitialRefreshSettled,
-      canonicalReady: !canonicalInitialRefreshError,
-      contactsSettled: initialContactsSettled,
-      messagesSettled: initialMessagesSettled,
-      desktopChatSettled: !isDesktopChatLoading,
-      localBackupReady: cachedMessagesReady || canonicalStateHasCloudLocalBackup(canonicalSessionState, cloudSession.account?.accountId),
-      startedAtMs: cloudInitialSyncStartedAt,
-      nowMs: cloudInitialSyncNow,
-    });
-    if (rawStatus === 'ready') completedCloudInitialSyncAccountRef.current = accountKey;
-    const status = completedCloudInitialSyncAccountRef.current === accountKey ? 'ready' : rawStatus;
-    return { status, onRetry: retryCloudInitialSync };
-  }, [
-    canonicalInitialRefreshError,
-    canonicalInitialRefreshSettled,
-    cloudInitialSyncNow,
-    cloudInitialSyncStartedAt,
-    canonicalSessionState,
-    cloudSession.account,
+  const cloudInitialSync = useKordiCloudInitialSyncState({
+    accountId: cloudSession.account?.accountId ?? null,
     cachedMessagesReady,
-    initialContactsSettled,
-    initialMessagesSettled,
-    isDesktopChatLoading,
-    retryCloudInitialSync,
-  ]);
+    canonicalError: canonicalInitialRefreshError,
+    canonicalSettled: canonicalInitialRefreshSettled,
+    canonicalState: canonicalSessionState,
+    contactsSettled: initialContactsSettled,
+    desktopChatSettled: !isDesktopChatLoading,
+    messagesSettled: initialMessagesSettled,
+    refreshCanonicalState,
+    refreshCloudContacts,
+    refreshCloudMessages,
+    resetCanonicalRefresh: resetCanonicalInitialRefresh,
+  });
 
   return {
     rootThemeClass,

@@ -65,10 +65,7 @@
       "count": 5
     },
     "react-hooks/refs": {
-      "count": 7
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
+      "count": 5
     }
   },
   "src/app/useKordiDesktopActivity.ts": {
