@@ -20,6 +20,10 @@ function readChatsPageImplementationSource(): string {
     '../src/pages/ChatsPage.tsx',
     '../src/pages/chatsPage.destinations.tsx',
     '../src/pages/chatsPage.destinationModel.ts',
+    '../src/pages/chatsPage.companionComposer.tsx',
+    '../src/pages/chatsPage.companionDestination.tsx',
+    '../src/pages/chatsPage.companionHeader.tsx',
+    '../src/pages/chatsPage.companionPane.tsx',
     '../src/pages/chatsPage.model.ts',
     '../src/pages/chatsPage.sessionPane.tsx',
   ]
@@ -304,9 +308,11 @@ test('chat companion split controls live on the divider instead of floating over
 });
 
 test('ask agent opens an explicit side session with neutral copy and clean header', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
-  const sidePanelStart = source.indexOf('data-chat-side-agent-panel="true"');
-  const sidePanelHeader = source.slice(sidePanelStart, source.indexOf('<ChatSessionPane', sidePanelStart));
+  const source = readChatsPageImplementationSource();
+  const sidePanelHeader = readFileSync(
+    new URL('../src/pages/chatsPage.companionHeader.tsx', import.meta.url),
+    'utf8',
+  );
 
   assert.doesNotMatch(sidePanelHeader, /<GripVertical/);
   assert.match(source, /Ask Agent/);
@@ -326,7 +332,7 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.match(source, /z-50/);
   assert.match(source, /scope="main"/);
   assert.match(source, /scope="companion"/);
-  assert.match(source, /data-chat-destination-page=\{companionDestination\}/);
+  assert.match(source, /data-chat-destination-page=\{destination\}/);
   assert.doesNotMatch(source, /data-chat-inline-detail-rail="true"/);
   assert.doesNotMatch(source, /ownInlineDetailRail|companionInlineDetailRail/);
   assert.match(source, /data-companion-composer-footer="true"/);
@@ -395,12 +401,12 @@ test('chat companion pane does not expose focus handoff controls', () => {
 });
 
 test('chat companion composer sends with Enter and keeps modified Enter for line breaks', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readChatsPageImplementationSource();
 
   assert.match(source, /onSendChatMessage\(draft, conversation\.id, contextMessages\)/);
   assert.doesNotMatch(source, /User request:\\n\$\{draft\}/);
   assert.match(source, /event\.key === 'Enter' && !event\.metaKey && !event\.ctrlKey && !event\.shiftKey/);
-  assert.match(source, /title=\{`Send to \$\{companionConversation\.name\}`\}/);
+  assert.match(source, /title=\{`Send to \$\{conversation\.name\}`\}/);
 });
 
 test('ask agent side transcript renders the same live turn and tool UI as My agent chat', () => {
@@ -411,19 +417,19 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
   assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
   assert.match(source, /buildReplyAttribution\(\s*messages,\s*shouldRenderLiveTurn \? liveTurn : null/s);
   assert.match(source, /attributedCompanionTranscriptLiveTurn/);
-  assert.match(source, /<ChatSessionPane[\s\S]*liveTurn: attributedCompanionTranscriptLiveTurn/);
+  assert.match(source, /sessionPane=\{\{[\s\S]*liveTurn: attributedCompanionTranscriptLiveTurn/);
 });
 
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readChatsPageImplementationSource();
 
   assert.match(source, /activePaneKind === 'agent' && !activeConversationUsesCollaboration/);
-  assert.match(source, /companionPaneKind === 'agent' \? 'Ask the agent…'/);
+  assert.match(source, /paneKind === 'agent' \? 'Ask the agent…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
   assert.match(source, /companionConversationIsCollaborationAgent/);
   assert.match(source, /companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent/);
   assert.match(source, /data-companion-collaboration-model-controls="true"/);
-  assert.match(source, /contextStatus=\{companionRuntimeContextStatus\}/);
+  assert.match(source, /contextStatus=\{localRouting\.runtimeContextStatus\}/);
 });
 
 test('ask agent reference context includes session metadata and recent messages only', () => {

@@ -21,8 +21,6 @@ import {
 } from 'lucide-react';
 
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
-import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
-import { RightDetailRail } from '@/pages/RightDetailRail';
 import {
   collaborationAgentRoutingChangeNotice,
   collaborationChatRoutingControlVisibility,
@@ -37,7 +35,7 @@ import type { CloudSessionPin } from '@/features/cloud/authClient';
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
+import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -69,7 +67,6 @@ import {
   focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
-import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
@@ -82,6 +79,14 @@ import type {
   ChatAttachment as Attachment,
   ChatsPageProps,
 } from '@/pages/chatsPage.types';
+import { CompanionComposer } from '@/pages/chatsPage.companionComposer';
+import { CompanionDestinationPage } from '@/pages/chatsPage.companionDestination';
+import {
+  COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS,
+  COLLABORATION_ROUTING_NOTICE_EXIT_MS,
+} from '@/pages/chatsPage.constants';
+import { CompanionHeader } from '@/pages/chatsPage.companionHeader';
+import { CompanionPane } from '@/pages/chatsPage.companionPane';
 import {
   SessionDestinationTabs,
 } from '@/pages/chatsPage.destinations';
@@ -133,7 +138,6 @@ import {
   clampChatSplitFraction,
   collaborationRouteDisplayName,
   collaborationThinkingDisplayName,
-  companionLabel,
   conversationPaneKind,
   firstModelForProvider,
   forkSnapshotBoundaryIndexForMessages,
@@ -174,8 +178,10 @@ export {
   transcriptHumanParticipant,
 } from '@/pages/chatsPage.model';
 
-export const COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
-export const COLLABORATION_ROUTING_NOTICE_EXIT_MS = 180;
+export {
+  COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS,
+  COLLABORATION_ROUTING_NOTICE_EXIT_MS,
+} from '@/pages/chatsPage.constants';
 
 export function ChatsPage({
   layout,
@@ -1005,213 +1011,86 @@ export function ChatsPage({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
-  const companionArtifacts = useMemo(() => (
-    companionConversation
-      ? extractSessionArtifacts(companionConversation.messages, attributedCompanionTranscriptLiveTurn, companionConversation.reflectionLessonArtifacts)
-      : []
-  ), [attributedCompanionTranscriptLiveTurn, companionConversation]);
   const companionDestinationPage = companionConversation && companionDestination !== 'messages' ? (
-    <div
-      id={`chat-companion-${companionDestination}-panel`}
-      className="min-h-0 min-w-0 flex-1 overflow-hidden"
-      role="tabpanel"
-      aria-labelledby={`chat-companion-${companionDestination}-tab`}
-      data-chat-destination-page={companionDestination}
-      data-chat-destination-scope="companion"
-    >
-      <RightDetailRail
-        variant="page"
-        detailTabs={CHAT_DETAIL_TABS}
-        activeDetailTab={companionActiveDetailTab}
-        onSelectDetailTab={(tab) => {
-          setCompanionActiveSourcePreview(null);
-          setCompanionDestination(detailDestinationFromTab(tab));
-        }}
-        activeSourcePreview={companionActiveSourcePreview}
-        onCloseSourcePreview={() => setCompanionActiveSourcePreview(null)}
-      >
-        <ChatDetailPanel
-          isNativeShell={isNativeShell}
-          activeDetailTab={companionActiveDetailTab}
-          activeConv={companionConversation}
-          activeConvHasSubtitle={Boolean(formatSessionIdSubtitle(companionConversation.subtitle))}
-          activeLastMessage={companionConversation.messages[companionConversation.messages.length - 1]}
-          activeLiveTurn={attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.id || attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.canonicalSessionId ? attributedCompanionTranscriptLiveTurn : null}
-          activeConversationUsesCollaboration={false}
-          activeCollaborationConversationHostNodeId={null}
-          activeCollaborationConversationHostUrl={null}
-          activeCollaborationConversation={null}
-          activeCollaborationAwaitingReply={false}
-          isCollaborationSyncing={false}
-          lastCollaborationSyncAtLabel={null}
-          activeSessionProject={null}
-          artifacts={companionArtifacts}
-          activeArtifactId={companionActiveArtifactId}
-          onSelectArtifact={setCompanionActiveArtifactId}
-          onOpenArtifact={(artifactId) => {
-            setCompanionActiveSourcePreview(null);
-            setCompanionActiveArtifactId(artifactId);
-            setCompanionDestination('artifacts');
-          }}
-          onNavigateToResponse={handleNavigateToCompanionTranscriptMessage}
-          onOpenOutreachThread={onSelectSession}
-        />
-      </RightDetailRail>
-    </div>
+    <CompanionDestinationPage
+      conversation={companionConversation}
+      destination={companionActiveDetailTab}
+      isNativeShell={isNativeShell}
+      liveTurn={attributedCompanionTranscriptLiveTurn}
+      activeArtifactId={companionActiveArtifactId}
+      activeSourcePreview={companionActiveSourcePreview}
+      actions={{
+        setDestination: setCompanionDestination,
+        setActiveArtifactId: setCompanionActiveArtifactId,
+        setActiveSourcePreview: setCompanionActiveSourcePreview,
+        onNavigateToResponse: handleNavigateToCompanionTranscriptMessage,
+        onOpenOutreachThread: onSelectSession,
+      }}
+    />
   ) : null;
   const companionPane = companionConversation ? (
-    <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-side={companionSide} data-chat-side-agent-panel="true">
-      <div
-        className="app-page-header relative z-40 flex min-h-[84px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 pb-8 pt-2.5 active:cursor-grabbing"
-        draggable
-        onDragStart={handleCompanionDragStart}
-        onDragEnd={handleCompanionDragEnd}
-        title={`Drag to move ${companionLabel(companionConversation)} left or right`}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5 text-white">
-              <span className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6">Ask Agent · {companionConversation.name}</span>
-              <span data-chat-session-subtitle-pill="true" className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.045] px-2 text-[10.5px] font-medium leading-none text-slate-300">Agent session</span>
-            </div>
-          </div>
-        </div>
-        <div
-          className="relative flex shrink-0 items-center gap-0.5"
-          draggable={false}
-          onDragStart={(event) => event.preventDefault()}
-          onPointerDown={(event) => event.stopPropagation()}
-          aria-label="Side chat controls"
-          data-side-chat-controls="true"
-        >
-          <button
-            type="button"
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 text-[color:var(--utility-muted-text)] opacity-70 transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
-            title="Side chat options"
-            aria-label="Side chat options"
-            onClick={() => {
+    <CompanionPane
+      conversation={companionConversation}
+      side={companionSide}
+      destination={companionDestination}
+      header={(
+        <CompanionHeader
+          conversation={companionConversation}
+          candidates={companionCandidates}
+          side={companionSide}
+          destination={companionDestination}
+          menu={{
+            actionsOpen: isSideAgentActionsOpen,
+            sessionListOpen: isSideAgentSessionListOpen,
+            canCreateSession: Boolean(onCreateAgentSession),
+          }}
+          actions={{
+            onDragStart: handleCompanionDragStart,
+            onDragEnd: handleCompanionDragEnd,
+            onToggleActions: () => {
               setIsSideAgentActionsOpen((open) => !open);
               setIsSideAgentSessionListOpen(false);
-            }}
-          >
-            <Ellipsis className="h-3.5 w-3.5" />
-          </button>
-          {isSideAgentActionsOpen ? (
-            <div
-              data-side-chat-options-menu="true"
-              data-side-chat-root-menu="true"
-              className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-44 rounded-[18px] border p-1.5 text-[13px] font-medium"
-            >
-              {isSideAgentSessionListOpen ? (
-                <div data-side-chat-session-list="true">
-                  <button
-                    type="button"
-                    className="app-transient-row mb-1 flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition"
-                    onClick={() => setIsSideAgentSessionListOpen(false)}
-                  >
-                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                    <span>Back</span>
-                  </button>
-                  <div className="mb-1 h-px bg-[color:var(--app-divider)]" aria-hidden="true" />
-                  {companionCandidates.map((conversation) => (
-                    <button
-                      key={conversation.id}
-                      type="button"
-                      className={cn(
-                        'app-transient-row flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition',
-                        conversation.id === companionConversation.id && 'app-transient-row-selected',
-                      )}
-                      title={`Switch to ${conversation.name}`}
-                      onClick={() => {
-                        setSelectedCompanionConversationId(conversation.id);
-                        setOpenSideAgentConversationId(conversation.id);
-                        setIsSideAgentActionsOpen(false);
-                        setIsSideAgentSessionListOpen(false);
-                        setCompanionOpenComposerSelector(null);
-                      }}
-                    >
-                      <span className="truncate">{conversation.name}</span>
-                      {conversation.id === companionConversation.id ? (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-pink-300" aria-hidden="true" />
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {onCreateAgentSession ? (
-                    <button
-                      type="button"
-                      className="app-transient-row flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition"
-                      title="New chat"
-                      aria-label="New chat"
-                      onClick={() => {
-                        setIsSideAgentActionsOpen(false);
-                        setIsSideAgentSessionListOpen(false);
-                        void createSideAgentSession();
-                      }}
-                    >
-                      <SquarePen className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      <span className="truncate">New chat</span>
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="app-transient-row flex w-full items-center justify-between gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition"
-                    onClick={() => setIsSideAgentSessionListOpen(true)}
-                  >
-                    <span>Switch Chat</span>
-                    <ChevronDown className="h-4 w-4 -rotate-90" aria-hidden="true" />
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
+            },
+            onCloseSessionList: () => setIsSideAgentSessionListOpen(false),
+            onOpenSessionList: () => setIsSideAgentSessionListOpen(true),
+            onSwitchConversation: (conversationId) => {
+              setSelectedCompanionConversationId(conversationId);
+              setOpenSideAgentConversationId(conversationId);
+              setIsSideAgentActionsOpen(false);
+              setIsSideAgentSessionListOpen(false);
+              setCompanionOpenComposerSelector(null);
+            },
+            onCreateSession: () => {
+              setIsSideAgentActionsOpen(false);
+              setIsSideAgentSessionListOpen(false);
+              void createSideAgentSession();
+            },
+            onClose: () => {
               setOpenSideAgentConversationId(null);
               setSelectedCompanionConversationId(null);
               setSideAgentReferenceContext(null);
               setIsSideAgentActionsOpen(false);
               setIsSideAgentSessionListOpen(false);
               setCompanionOpenComposerSelector(null);
-            }}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 text-[color:var(--utility-muted-text)] opacity-70 transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
-            title="Close side chat"
-            aria-label="Close side chat"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <SessionDestinationTabs
-          scope="companion"
-          activeDestination={companionDestination}
-          onSelect={(destination) => {
-            setCompanionActiveSourcePreview(null);
-            setCompanionDestination(destination);
+            },
+            onSelectDestination: (destination) => {
+              setCompanionActiveSourcePreview(null);
+              setCompanionDestination(destination);
+            },
           }}
         />
-      </div>
-      {companionDestination === 'messages' ? (
-      <div
-        id="chat-companion-messages-panel"
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-        role="tabpanel"
-        aria-labelledby="chat-companion-messages-tab"
-        data-chat-destination-page="messages"
-        data-chat-destination-scope="companion"
-      >
-      <ChatSessionPane
-        presentation={{
+      )}
+      detailPage={companionDestinationPage}
+      sessionPane={{
+        presentation: {
           liveTurn: attributedCompanionTranscriptLiveTurn,
           liveTurnSender: companionLiveTurnSender,
           shouldRenderLiveTurn: shouldRenderCompanionLiveTurn,
           densityMode: chatTranscriptDensityMode(companionConversation),
           inferLatestHumanReplyTarget: shouldInferLatestHumanReplyTarget(companionConversation),
           plainAgentResponse: companionSuppressAgentReplyAttribution,
-        }}
-        actions={{
+        },
+        actions: {
           onOpenSource: (file) => {
             setCompanionActiveSourcePreview(file);
             setCompanionDestination('artifacts');
@@ -1228,15 +1107,15 @@ export function ChatsPage({
           onStopActiveTurn: onStopDesktopChatTurn,
           onRequestCollaborationContact,
           onOpenSenderProfile: openCompanionTranscriptSenderProfile,
-          onForkMessage: onForkChatMessage ? (entryId) => {
-            void onForkChatMessage(companionConversation.id, entryId);
-          } : undefined,
+          onForkMessage: onForkChatMessage
+            ? (entryId) => void onForkChatMessage(companionConversation.id, entryId)
+            : undefined,
           onOpenForkSession: onSelectSession,
           onForwardMessage,
           onSelectMessage,
-        }}
-        selection={{}}
-        viewport={{
+        },
+        selection: {},
+        viewport: {
           sessionKey: companionConversation.id,
           messages: companionTranscriptMessages,
           scrollRef: companionTranscriptScrollRef,
@@ -1258,290 +1137,63 @@ export function ChatsPage({
               No messages in this side chat yet.
             </div>
           ),
-          composer: (
-          <ChatComposerShell
-            className="pt-3"
-            chatComposerAttachments={chatComposerAttachments}
-            saveDesktopAttachments={saveDesktopAttachments}
-            saveDesktopAttachmentPaths={saveDesktopAttachmentPaths}
-            removeChatComposerAttachment={removeChatComposerAttachment}
-            activeChatQuote={activeChatQuote}
-            onForwardMessage={onForwardMessage}
-            rightDetailRail={rightDetailRail}
-            setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
-          >
-            <div data-companion-composer-frame="true" className="shrink-0 px-5 pb-4 pt-3">
-              <div className="app-composer-shell rounded-[26px] p-3" data-companion-composer-footer="true">
-              <div className="relative">
-                <div
-                  className={cn(
-                    'app-composer-input rounded-[18px] transition',
-                    chatComposerAttachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
-                  )}
-                >
-                  <input
-                    ref={companionAttachmentInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(event) => {
-                      const files = Array.from(event.target.files ?? []);
-                      if (files.length > 0) {
-                        void saveDesktopAttachments(files);
-                      }
-                      event.currentTarget.value = '';
-                    }}
-                  />
-                  {chatComposerAttachments.length > 0 ? (
-                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      {chatComposerAttachments.map((attachment) => (
-                        <div
-                          key={attachment.id}
-                          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-2.5 text-[11px] text-[color:var(--utility-foreground)]"
-                        >
-                          {attachment.kind === 'image' ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-300" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-slate-300" />}
-                          <span className="max-w-[220px] truncate leading-none">{attachment.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeChatComposerAttachment(attachment.id)}
-                            className="text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
-                            aria-label={`Remove ${attachment.name}`}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  <textarea
-                    rows={1}
-                    value={companionDraftText}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onChange={(event) => updateCompanionDraft(companionConversation.id, event.target.value, event.target)}
-                    onPaste={(event) => {
-                      const files = extractClipboardFiles(event.clipboardData);
-                      if (files.length > 0) {
-                        event.preventDefault();
-                        void saveDesktopAttachments(files);
-                        return;
-                      }
-
-                      const pastedPaths = extractPastedLocalFilePaths(
-                        event.clipboardData.getData('text/plain'),
-                        event.clipboardData.getData('text/uri-list'),
-                      );
-                      if (pastedPaths.length > 0) {
-                        event.preventDefault();
-                        void saveDesktopAttachmentPaths(pastedPaths);
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
-                        event.preventDefault();
-                        sendCompanionDraft(companionConversation);
-                      }
-                    }}
-                    className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                    placeholder={companionPaneKind === 'agent' ? 'Ask the agent…' : `Message ${companionConversation.name}`}
-                    data-composer-scope="chat"
-                  />
-                </div>
-              </div>
-              <AnimatePresence initial={false}>
-                {companionConversationIsCollaborationAgent && companionCollaborationRoutingNotice ? (
-                  <motion.div
-                    key={companionCollaborationRoutingNotice}
-                    className="mb-2 flex justify-center"
-                    role="status"
-                    aria-live="polite"
-                    initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
-                    transition={{ duration: prefersReducedMotion ? 0.01 : COLLABORATION_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
-                  >
-                    <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
-                      Private · {companionCollaborationRoutingNotice}
-                    </div>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-              <div data-companion-send-row="true" className="app-composer-meta mt-2 flex flex-nowrap items-center justify-between gap-3 pt-2.5">
-                <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-                  <Button
-                    size="icon"
-                    variant="secondary"
-                    className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
-                    onClick={() => companionAttachmentInputRef.current?.click()}
-                    title="Add attachment"
-                    aria-label="Add attachment"
-                    data-companion-attachment-control="true"
-                  >
-                    <Paperclip className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
-                  {companionShowsLocalAgentControls && companionComposerSelection && companionComposerConfigTarget ? (
-                    <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true">
-                      {isNativeShell || companionRuntimeContextStatus ? (
-                        <ComposerRuntimeStatus
-                          contextStatus={companionRuntimeContextStatus}
-                          cacheText={companionRuntimeCacheText}
-                        />
-                      ) : null}
-                      <div className="min-w-0 max-w-full overflow-visible">
-                        <ComposerModelControls
-                          scope="chat"
-                          selection={companionComposerSelection}
-                          openSelector={companionOpenComposerSelector}
-                          onToggleSelector={toggleCompanionComposerSelector}
-                          onSelectValue={(scope, type, value) => {
-                            setCompanionOpenComposerSelector(null);
-                            void selectComposerValue(scope, type, value, companionComposerConfigTarget);
-                          }}
-                          authLabel={companionComposerRuntime.authLabel}
-                          authOptions={companionComposerRuntime.authOptions}
-                          onSelectAuthChoice={(scope, providerId, choice) => {
-                            setCompanionOpenComposerSelector(null);
-                            void selectComposerAuthChoice(scope, providerId, choice, companionComposerConfigTarget);
-                          }}
-                          onSelectProviderChoice={(scope, option) => {
-                            setCompanionOpenComposerSelector(null);
-                            void selectComposerProviderChoice(scope, option, companionComposerConfigTarget);
-                          }}
-                          providerOptions={composerProviderOptions}
-                          modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                          compact={true}
-                        />
-                      </div>
-                    </div>
-                  ) : companionShowsLocalAgentControls && companionComposerRuntime.isLoading ? (
-                    <span className="text-[12px] text-[color:var(--utility-muted-text)]" data-companion-model-loading="true">
-                      Loading model…
-                    </span>
-                  ) : companionShowsLocalAgentControls && companionComposerRuntime.loadError ? (
-                    <button
-                      type="button"
-                      onClick={companionComposerRuntime.retry}
-                      className="text-[12px] text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
-                      title={companionComposerRuntime.loadError}
-                      data-companion-model-retry="true"
-                    >
-                      Retry model
-                    </button>
-                  ) : companionConversationIsCollaborationAgent && selectedCompanionCollaborationRoutingAgent ? (
-                    <div className="relative flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true" data-companion-collaboration-model-controls="true">
-                      {companionCollaborationRoutingControlVisibility.showAgentSelector ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleCompanionComposerSelector('chat', 'mode')}
-                          className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
-                          title="Choose which owned agent these session settings apply to"
-                        >
-                          <span className="truncate">{selectedCompanionCollaborationRoutingAgent.label}</span>
-                          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', companionCollaborationAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
-                        </button>
-                      ) : null}
-                      {companionCollaborationAgentSelectorOpen ? (
-                        <div className="app-transient-surface app-transient-scroll absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]">
-                          <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
-                          <div className="space-y-1">
-                            {companionCollaborationRoutingAgents.map((agent) => (
-                              <button
-                                key={`${agent.hostId}:${agent.id}`}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedCompanionCollaborationAgentId(agent.id);
-                                  setCompanionOpenComposerSelector(null);
-                                }}
-                                className={cn(
-                                  'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                                  selectedCompanionCollaborationRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
-                                )}
-                              >
-                                <span className="truncate">{agent.label}</span>
-                                <span className="shrink-0 text-[11px] text-[color:var(--utility-muted-text)]">{agent.isDefault ? 'Default' : 'Owned'}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                      <ComposerModelControls
-                        scope="chat"
-                        selection={companionCollaborationRoutingSelection}
-                        openSelector={companionOpenComposerSelector}
-                        onToggleSelector={toggleCompanionComposerSelector}
-                        onSelectValue={(_scope, type, value) => {
-                          if (type === 'model') {
-                            updateCompanionCollaborationAgentRouting({
-                              defaultModel: value,
-                              defaultAuthProvider: selectedCompanionCollaborationRoutingAgent.defaultAuthProvider ?? null,
-                              defaultAuthChoice: selectedCompanionCollaborationRoutingAgent.defaultAuthChoice ?? null,
-                              fallbackModel: selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null,
-                              fallbackAuthProvider: selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null,
-                              fallbackAuthChoice: selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null,
-                              thinking: companionDefaultThinkingForCollaborationModel(value, selectedCompanionCollaborationRoutingAgent.thinking),
-                              selectorType: 'model',
-                            });
-                          } else if (type === 'thinking') {
-                            updateCompanionCollaborationAgentRouting({
-                              defaultModel: selectedCompanionCollaborationRoutingAgent.defaultModel ?? null,
-                              defaultAuthProvider: selectedCompanionCollaborationRoutingAgent.defaultAuthProvider ?? null,
-                              defaultAuthChoice: selectedCompanionCollaborationRoutingAgent.defaultAuthChoice ?? null,
-                              fallbackModel: selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null,
-                              fallbackAuthProvider: selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null,
-                              fallbackAuthChoice: selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null,
-                              thinking: value,
-                              selectorType: 'thinking',
-                            });
-                          }
-                        }}
-                        authLabel={composerAuthLabel}
-                        authOptions={composerAuthOptions}
-                        onSelectAuthChoice={() => {}}
-                        onSelectProviderChoice={(_scope, option) => {
-                          const nextModel = firstModelForProvider(option.providerId, chatModelOptions);
-                          if (!nextModel) return;
-                          updateCompanionCollaborationAgentRouting({
-                            defaultModel: nextModel,
-                            defaultAuthProvider: option.providerId,
-                            defaultAuthChoice: authChoiceFromProviderOption(option),
-                            fallbackModel: selectedCompanionCollaborationRoutingAgent.fallbackModel ?? null,
-                            fallbackAuthProvider: selectedCompanionCollaborationRoutingAgent.fallbackAuthProvider ?? null,
-                            fallbackAuthChoice: selectedCompanionCollaborationRoutingAgent.fallbackAuthChoice ?? null,
-                            thinking: companionDefaultThinkingForCollaborationModel(nextModel, selectedCompanionCollaborationRoutingAgent.thinking),
-                            selectorType: 'provider',
-                          });
-                        }}
-                        providerOptions={composerProviderOptions}
-                        modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                        compact={true}
-                      />
-                    </div>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    onClick={() => sendCompanionDraft(companionConversation)}
-                    className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-                    title={`Send to ${companionConversation.name}`}
-                    aria-label={`Send to ${companionConversation.name}`}
-                    disabled={!companionDraftText.trim() && chatComposerAttachments.length === 0}
-                    data-companion-send-control="true"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-          </ChatComposerShell>
-          ),
-        }}
-      />
-      </div>
-      ) : companionDestinationPage}
-    </aside>
+        },
+      }}
+      composerShell={{
+        className: 'pt-3',
+        chatComposerAttachments,
+        saveDesktopAttachments,
+        saveDesktopAttachmentPaths,
+        removeChatComposerAttachment,
+        activeChatQuote,
+        onForwardMessage,
+        rightDetailRail,
+        setIsDetailPanelCollapsed,
+      }}
+      composer={(
+        <CompanionComposer
+          conversation={companionConversation}
+          paneKind={companionPaneKind ?? 'agent'}
+          draftText={companionDraftText}
+          isNativeShell={isNativeShell}
+          attachmentInputRef={companionAttachmentInputRef}
+          composer={composer}
+          runtime={runtime}
+          localRouting={{
+            enabled: companionShowsLocalAgentControls,
+            selection: companionComposerSelection,
+            configTarget: companionComposerConfigTarget,
+            authLabel: companionComposerRuntime.authLabel,
+            authOptions: companionComposerRuntime.authOptions,
+            isLoading: companionComposerRuntime.isLoading,
+            loadError: companionComposerRuntime.loadError,
+            retry: companionComposerRuntime.retry,
+            runtimeContextStatus: companionRuntimeContextStatus,
+            runtimeCacheText: companionRuntimeCacheText,
+          }}
+          collaborationRouting={{
+            enabled: companionConversationIsCollaborationAgent,
+            notice: companionCollaborationRoutingNotice,
+            agents: companionCollaborationRoutingAgents,
+            selectedAgent: selectedCompanionCollaborationRoutingAgent,
+            selection: companionCollaborationRoutingSelection,
+            visibility: companionCollaborationRoutingControlVisibility,
+            selectorOpen: companionCollaborationAgentSelectorOpen,
+            setSelectedAgentId: setSelectedCompanionCollaborationAgentId,
+            update: updateCompanionCollaborationAgentRouting,
+            defaultThinkingForModel: companionDefaultThinkingForCollaborationModel,
+          }}
+          ui={{
+            openSelector: companionOpenComposerSelector,
+            setOpenSelector: setCompanionOpenComposerSelector,
+            toggleSelector: toggleCompanionComposerSelector,
+            prefersReducedMotion,
+          }}
+          onDraftChange={updateCompanionDraft}
+          onSend={sendCompanionDraft}
+        />
+      )}
+    />
   ) : null;
   const splitDivider = showCompanionPane && companionConversation ? (
     <div
