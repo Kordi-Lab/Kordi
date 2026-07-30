@@ -26,6 +26,7 @@
     "release:publish-desktop": "node scripts/publish-desktop-release.mjs",
     "release:clear-desktop-acceptance": "node scripts/clear-desktop-release-channel.mjs --channel acceptance",
     "release:rollback-desktop-beta": "node scripts/rollback-desktop-beta-channel.mjs",
+    "maintainability:audit": "node scripts/report-maintainability-audit.mjs",
     "maintainability:scan": "node scripts/report-overlong-files.mjs",
     "maintainability:check": "node scripts/check-maintainability-ratchet.mjs",
     "lint:suppressions:check": "node scripts/check-eslint-suppressions-ratchet.mjs",

@@ -158,5 +158,6 @@ jobs:
           else
             comparison="HEAD"
           fi
+          node scripts/report-maintainability-audit.mjs --limit 20
           node scripts/check-maintainability-ratchet.mjs "$comparison"
           node scripts/check-eslint-suppressions-ratchet.mjs "$comparison"
