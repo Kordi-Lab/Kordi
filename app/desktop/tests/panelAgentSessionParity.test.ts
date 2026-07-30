@@ -7,6 +7,7 @@ const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/mess
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
 const collaborationNavigationActionsSource = () => readFileSync(new URL('../src/app/useKordiCollaborationNavigationActions.ts', import.meta.url), 'utf8');
+const queuedMessageActionsSource = () => readFileSync(new URL('../src/app/useKordiQueuedMessageActions.ts', import.meta.url), 'utf8');
 const virtualTranscriptSource = () => readFileSync(new URL('../src/features/chat/VirtualTranscript.tsx', import.meta.url), 'utf8');
 
 function blockBetween(source: string, startNeedle: string, endNeedle: string): string {
@@ -286,14 +287,15 @@ test('queued Ask Agent bubbles expose icon-only edit and cancel actions before q
   const chatsSource = chatsPageSource();
   const queueSource = readFileSync(new URL('../src/features/chat/queuedDesktopMessages.ts', import.meta.url), 'utf8');
   const appModel = appModelSource();
+  const queuedActions = queuedMessageActionsSource();
   const shellTypes = readFileSync(new URL('../src/app/kordiShellSlots.types.ts', import.meta.url), 'utf8');
   const shellBuilder = readFileSync(new URL('../src/app/mainContentShellBuilders.ts', import.meta.url), 'utf8');
 
   assert.match(queueSource, /removeQueuedDesktopMessageById/);
   assert.match(appModel, /handleCancelQueuedMessage/);
   assert.match(appModel, /handleEditQueuedMessage/);
-  assert.match(appModel, /updateScopeDraft\(current, 'chat', queuedMessage\.sessionId, queuedMessage\.text\)/);
-  assert.match(appModel, /removeQueuedDesktopMessageById\(current, sessionId, queuedMessageId\)/);
+  assert.match(queuedActions, /updateScopeDraft\([\s\S]*current,[\s\S]*'chat',[\s\S]*queuedMessage\.sessionId,[\s\S]*queuedMessage\.text/);
+  assert.match(queuedActions, /removeQueuedDesktopMessageById\([\s\S]*current,[\s\S]*sessionId,[\s\S]*queuedMessageId/);
   const queuedBubble = blockBetween(chatsSource, 'function QueuedMessageBubble', 'function chatMessageActionId');
   assert.match(chatsSource, /onCancelQueuedMessage/);
   assert.match(chatsSource, /onEditQueuedMessage/);
