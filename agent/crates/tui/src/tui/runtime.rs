@@ -1,5 +1,8 @@
 mod commands;
 mod driver;
+mod shell_commands;
+mod tool_commands;
+mod turn_commands;
 
 use std::collections::VecDeque;
 
