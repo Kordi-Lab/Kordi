@@ -11,6 +11,7 @@ import {
   mergeCanonicalMessagePage,
   mergeCanonicalStateIntoStore,
 } from '../src/features/canonical/canonicalStore';
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 import type {
   CanonicalMessagePage,
   CanonicalSessionCatalog,
@@ -199,7 +200,7 @@ test('canonical session state adapter preserves the store for functional no-op u
 });
 
 test('product startup and Cloud replay no longer invoke the full canonical snapshot command', () => {
-  const appSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const appSource = readKordiAppModelImplementationSource();
   const canonicalStoreSource = readFileSync(new URL('../src/app/useKordiCanonicalSessionStore.ts', import.meta.url), 'utf8');
   const cloudSource = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 

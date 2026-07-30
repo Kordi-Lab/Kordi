@@ -1,0 +1,432 @@
+import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
+import type { KordiAppActions } from '@/app/useKordiAppActions';
+import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
+import { useKordiCloudInitialSyncState } from '@/app/useKordiCloudInitialSyncState';
+import { useKordiShellArgs } from '@/app/useKordiShellArgs';
+import { useKordiShellViewModel } from '@/app/useKordiShellViewModel';
+import { useKordiSideAgentSessionActions } from '@/app/useKordiSideAgentSessionActions';
+import type { KordiWorkspaceState } from '@/app/useKordiWorkspaceState';
+
+export function useKordiAppShellComposition({
+  foundation,
+  workspace,
+  actions,
+}: {
+  foundation: KordiAppFoundation;
+  workspace: KordiWorkspaceState;
+  actions: KordiAppActions;
+}) {
+  const {
+    environment,
+    refs,
+    canonical,
+    ui,
+    auth,
+    chat,
+    navigation,
+    authNavigation,
+    composer,
+    layout,
+    cloud,
+    profile,
+    cloudAgentActions,
+  } = foundation;
+  const {
+    conversations,
+    directory,
+    projects,
+    messages,
+    mentions,
+    activity,
+    presentation,
+  } = workspace;
+  const {
+    collaboration,
+    sessions,
+    composer: composerActions,
+    queue,
+    chatSession,
+    project: projectActions,
+    starts,
+    groups,
+  } = actions;
+
+  const {
+    rootThemeClass,
+    lastCollaborationSyncAtLabel,
+    onProjectTranscriptScroll,
+    onChatTranscriptScroll,
+    activeRuntimeSessionId,
+    activeRuntimeContextStatus,
+    activeRuntimeCacheText,
+    activeSessionProject,
+    chatModelOptionsForShell,
+    wrappedSelectComposerValue,
+    wrappedSelectComposerAuthChoice,
+    wrappedSelectComposerProviderChoice,
+    wrappedStopDesktopChatTurn,
+    wrappedSendProjectMessage,
+    wrappedSendChatMessage,
+    wrappedRetryChatMessage,
+  } = useKordiShellViewModel({
+    themeMode: ui.settingsUi.resolvedThemeMode,
+    lastCollaborationSyncAt: cloud.lastCollaborationSyncAt,
+    chatTranscriptScrollRef: refs.chatTranscriptScrollRef,
+    shouldAutoFollowChatRef: refs.shouldAutoFollowChatRef,
+    desktopChatState: chat.desktopChatState,
+    activeConv: conversations.activeConv,
+    activeConversationUsesCollaboration:
+      conversations.activeConversationUsesCollaboration,
+    chatModelOptions: composer.chatModelOptions,
+    selectComposerValue: composerActions.selectComposerValue,
+    selectComposerAuthChoice: composerActions.selectComposerAuthChoice,
+    selectComposerProviderChoice: composerActions.selectComposerProviderChoice,
+    handleStopDesktopChatTurn: composerActions.handleStopDesktopChatTurn,
+    handleSendProjectMessage: composerActions.handleSendProjectMessage,
+    handleSendChatMessage: composerActions.handleSendChatMessageWithQuoteClear,
+    handleRetryChatMessage: composerActions.handleRetryChatMessage,
+  });
+
+  const {
+    createSideAgentSession: handleCreateSideAgentSession,
+    setComposerTextForSession: setChatComposerTextForSession,
+  } = useKordiSideAgentSessionActions({
+    activeDesktopSessionId: chat.desktopChatState?.activeSessionId ?? null,
+    isNativeShell: environment.isNativeShell,
+    setComposerDrafts: ui.composerUi.setComposerDrafts,
+    setDesktopChatError: chat.setDesktopChatError,
+    setDesktopChatState: chat.setDesktopChatState,
+  });
+
+  const shellArgs = useKordiShellArgs({
+    environment: {
+      isNativeShell: environment.isNativeShell,
+      desktopChatState: chat.desktopChatState,
+      refreshDesktopChat: chat.refreshDesktopChat,
+      cloudSelfAgentSyncStatusBySessionId:
+        cloud.cloudSelfAgentSyncStatusBySessionId,
+      cloudSessionPinsById: cloud.cloudSessionPinsById,
+      onUpdateCloudSessionPin: cloud.updateCloudSessionPin,
+      windowWidth: layout.windowSize.width,
+      activeNav: navigation.activeNav,
+      cloudSession: environment.cloudSession,
+      activeConvId: navigation.activeConvId,
+      setActiveConvId: navigation.setActiveConvId,
+      activeProjectId: navigation.activeProjectId,
+      activeProjectSessionId: navigation.activeProjectSessionId,
+      activeSettingsSectionId:
+        authNavigation.visibleActiveSettingsSectionId,
+      cloudAccountDialogTab: environment.cloudAccountDialogTab,
+      setCloudAccountDialogTab: environment.setCloudAccountDialogTab,
+      openCloudAccountAuthentication:
+        authNavigation.openCloudAccountAuthentication,
+      isSingleWorkspacePage: layout.isSingleWorkspacePage,
+      collapseChatSessions: layout.collapseChatSessions,
+      showSessionRail: layout.showSessionRail,
+      sessionRailWidth: layout.sessionRailWidth,
+    },
+    conversationIndex: {
+      chatConversations: conversations.chatConversations,
+      participantSpaces: conversations.participantSpaces,
+      contactParticipantSpaces: conversations.contactParticipantSpaces,
+      agentParticipantSpaces: conversations.agentParticipantSpaces,
+      isDesktopChatLoading: chat.isDesktopChatLoading,
+      desktopChatError: chat.desktopChatError,
+      filteredConversations: conversations.filteredConversations,
+      setActiveNav: navigation.setActiveNav,
+      handleCreateChatSession: sessions.handleCreateChatSession,
+      handleCreateSideAgentSession,
+      chatSearch: ui.chatsUi.chatSearch,
+      setChatSearch: ui.chatsUi.setChatSearch,
+    },
+    workspaceDirectory: {
+      runtimeProjects: projects.runtimeProjects,
+      projectSearch: ui.projectsUi.projectSearch,
+      setProjectSearch: ui.projectsUi.setProjectSearch,
+      filteredProjects: projects.filteredProjects,
+      projectSelectedSessionIds: navigation.projectSelectedSessionIds,
+      selectProject: navigation.selectProject,
+      expandedProjectIds: ui.projectsUi.expandedProjectIds,
+      setExpandedProjectIds: ui.projectsUi.setExpandedProjectIds,
+      groupedContacts: directory.groupedContacts,
+      displayedContacts: directory.displayedContacts,
+      addableContacts: directory.addableContacts,
+      setActiveContactGroup: ui.contactsUi.setActiveContactGroup,
+      setActiveContactId: ui.contactsUi.setActiveContactId,
+      displayedAgents: directory.displayedAgents,
+      handleCreateCloudAgent: cloudAgentActions.handleCreateCloudAgent,
+      handleUpdateCloudAgent: cloudAgentActions.handleUpdateCloudAgent,
+      handleArchiveCloudAgent: cloudAgentActions.handleArchiveCloudAgent,
+      activeCollaborationHost: conversations.activeCollaborationHost,
+      localProfileAvatarSeed: profile.localProfileAvatarSeed,
+      localProfileDisplayName: profile.localProfileDisplayName,
+      localProfileImageUrl: profile.localProfileImageUrl,
+    },
+    workspaceActions: {
+      handleSelectChatSession: sessions.handleSelectChatSession,
+      handleStartChatWithPerson: starts.handleStartChatWithPerson,
+      handleStartChatWithAgent: starts.handleStartChatWithAgent,
+      handleCreateChatGroup: groups.handleCreateChatGroup,
+      handleCreateChatSessionInParticipantSpace:
+        groups.handleCreateChatSessionInParticipantSpace,
+      handleRenameChatGroup: groups.handleRenameChatGroup,
+      handleRenameChatSession: chatSession.handleRenameChatSession,
+      handleAddChatGroupMembers: groups.handleAddChatGroupMembers,
+      handleRemoveChatGroupMember: groups.handleRemoveChatGroupMember,
+      handleSetChatGroupAdmin: groups.handleSetChatGroupAdmin,
+      handleArchiveChatSession: chatSession.handleArchiveChatSession,
+      handleDeleteChatSession: chatSession.handleDeleteChatSession,
+      handleMoveChatSessionToProject:
+        projectActions.handleMoveChatSessionToProject,
+      handleCreateProjectFromFolder:
+        projectActions.handleCreateProjectFromFolder,
+      handleCreateProject: projectActions.handleCreateProject,
+      handleCreateProjectSession:
+        projectActions.handleCreateProjectSession,
+      handleSelectProjectSession: sessions.handleSelectProjectSession,
+    },
+    contactWorkspace: {
+      filteredGroupedContacts: directory.filteredGroupedContacts,
+      isContactRequestsOpen: ui.contactsUi.isContactRequestsOpen,
+      setIsContactRequestsOpen: ui.contactsUi.setIsContactRequestsOpen,
+      contactRequests: activity.contactRequests,
+      activeContactRequestId: ui.contactsUi.activeContactRequestId,
+      setActiveContactRequestId: ui.contactsUi.setActiveContactRequestId,
+      setContactOverlayMode: ui.contactsUi.setContactOverlayMode,
+      contactSearch: ui.contactsUi.contactSearch,
+      setContactSearch: ui.contactsUi.setContactSearch,
+      expandedContactGroups: ui.contactsUi.expandedContactGroups,
+      setExpandedContactGroups: ui.contactsUi.setExpandedContactGroups,
+      activeContactId: ui.contactsUi.activeContactId,
+      activeContact: directory.activeContact,
+      activeContactRequest: activity.activeContactRequest,
+      contactOverlayMode: ui.contactsUi.contactOverlayMode,
+      getStatusBadgeClass: presentation.getStatusBadgeClass,
+      handleOpenCollaborationConversation:
+        collaboration.handleOpenCollaborationConversation,
+      handleStartCollaborationPersonSession:
+        collaboration.handleStartCollaborationPersonSession,
+    },
+    agentWorkspace: {
+      activeAgentId: ui.agentsUi.activeAgentId,
+      setActiveAgentId: ui.agentsUi.setActiveAgentId,
+      activeAgent: directory.activeAgent,
+      isAgentOverlayOpen: ui.agentsUi.isAgentOverlayOpen,
+      setIsAgentOverlayOpen: ui.agentsUi.setIsAgentOverlayOpen,
+      desktopCollaborationState: cloud.desktopCollaborationState,
+      handleAddCollaborationContact:
+        collaboration.handleAddCollaborationContact,
+      handleApproveCollaborationContactRequest:
+        collaboration.handleApproveCollaborationContactRequest,
+      handleRejectCollaborationContactRequest:
+        collaboration.handleRejectCollaborationContactRequest,
+      handleUpdateCollaborationAgentModelRouting:
+        collaboration.handleUpdateCollaborationAgentModelRoutingForActiveSession,
+      handleUpdateLocalAgentModelRouting:
+        collaboration.handleUpdateLocalAgentModelRouting,
+      handleRemoveCollaborationContact:
+        collaboration.handleRemoveCollaborationContact,
+    },
+    settings: {
+      settingsRailWidth: layout.settingsRailWidth,
+      settingsContentRef: layout.settingsContentRef,
+      setActiveSettingsSectionId: ui.settingsUi.setActiveSettingsSectionId,
+      settingsSections: authNavigation.visibleSettingsSections,
+      activeSettingsSection: activity.activeSettingsSection,
+      authSettingsLayoutWidth: layout.authSettingsLayoutWidth,
+      desktopAuthState: auth.desktopAuthState,
+      isDesktopAuthLoading: auth.isDesktopAuthLoading,
+      desktopAuthError: auth.desktopAuthError,
+      activeLoginProviderId: auth.activeLoginProviderId,
+      selectAuthProvider: auth.selectAuthProvider,
+      openAuthSettings: authNavigation.openAuthSettings,
+      openLoginFlow: authNavigation.openLoginFlow,
+      refreshDesktopAuth: auth.refreshDesktopAuth,
+      handleSelectAuthChoice: auth.handleSelectAuthChoice,
+      handleRemoveAuthProfile: auth.handleRemoveAuthProfile,
+      handleLogoutProvider: auth.handleLogoutProvider,
+      themeMode: ui.settingsUi.themeMode,
+      setThemeMode: ui.settingsUi.setThemeMode,
+    },
+    workspacePanels: {
+      showRightDetailRail: layout.showRightDetailRail,
+      isDetailPanelCollapsed: layout.isDetailPanelCollapsed,
+      setIsDetailPanelCollapsed: layout.setIsDetailPanelCollapsed,
+      setIsSessionPanelCollapsed: layout.setIsSessionPanelCollapsed,
+      detailRailWidth: layout.detailRailWidth,
+      onDetailResizeMouseDown: layout.startPanelResize('detail'),
+      activeProject: projects.activeProject,
+      activeProjectSession: projects.activeProjectSession,
+      desktopSessionRenameDraft: ui.sessionUi.desktopSessionRenameDraft,
+      setDesktopSessionRenameDraft:
+        ui.sessionUi.setDesktopSessionRenameDraft,
+      isEditingDesktopSessionTitle:
+        ui.sessionUi.isEditingDesktopSessionTitle,
+      setIsEditingDesktopSessionTitle:
+        ui.sessionUi.setIsEditingDesktopSessionTitle,
+      handleRenameDesktopSession: sessions.handleRenameDesktopSession,
+      chatTranscriptScrollRef: refs.chatTranscriptScrollRef,
+      canonicalHasOlderBySessionId:
+        canonical.canonicalStore.hasOlderBySessionId,
+      loadOlderCanonicalSessionMessages:
+        canonical.loadOlderCanonicalSessionMessages,
+      onProjectTranscriptScroll,
+      onChatTranscriptScroll,
+      activeSourcePreview: ui.settingsUi.activeSourcePreview,
+      setActiveSourcePreview: ui.settingsUi.setActiveSourcePreview,
+      activeArtifactId: ui.settingsUi.activeArtifactId,
+      setActiveArtifactId: ui.settingsUi.setActiveArtifactId,
+      activeChatArtifacts: activity.activeChatArtifacts,
+      activeProjectArtifacts: activity.activeProjectArtifacts,
+      desktopLiveTurn: activity.activeDesktopLiveTurn,
+    },
+    composerMenus: {
+      filteredProjectSlashCommands: composer.filteredProjectSlashCommands,
+      filteredChatSlashCommands: composer.filteredChatSlashCommands,
+      filteredProjectMentionTargets: mentions.filteredProjectMentionTargets,
+      filteredChatMentionTargets: mentions.filteredChatMentionTargets,
+      chatSlashMenuIndex: ui.composerUi.chatSlashMenuIndex,
+      setChatSlashMenuIndex: ui.composerUi.setChatSlashMenuIndex,
+      acceptProjectSlashCommand: composerActions.acceptProjectSlashCommand,
+      acceptChatSlashCommand: composerActions.acceptChatSlashCommand,
+      acceptProjectMentionTarget: composerActions.acceptProjectMentionTarget,
+      acceptChatMentionTarget: composerActions.acceptChatMentionTarget,
+      chatAttachmentInputRef: refs.chatAttachmentInputRef,
+      chatComposerAttachments: ui.composerUi.chatComposerAttachments,
+      saveDesktopAttachments: composerActions.saveDesktopAttachments,
+      saveDesktopAttachmentPaths: composerActions.saveDesktopAttachmentPaths,
+      removeChatComposerAttachment:
+        composerActions.removeChatComposerAttachment,
+    },
+    composerDrafts: {
+      projectComposerText: composer.composerDraftsView.project,
+      chatComposerText: composer.composerDraftsView.chat,
+      updateProjectComposerDraft: (value, target) =>
+        composerActions.updateComposerDraft('project', value, target),
+      updateChatComposerDraft: (value, target) =>
+        composerActions.updateComposerDraft('chat', value, target),
+      setProjectComposerText: composerActions.setProjectComposerText,
+      setChatComposerText: composerActions.setChatComposerText,
+      setChatComposerTextForSession,
+      activeChatQuote: composer.activeChatQuote,
+      onClearChatQuote: composer.onClearChatQuote,
+      onReplyMessage: messages.onReplyMessage,
+      onForwardMessage: messages.onForwardMessage,
+      onSelectMessage: messages.onSelectMessage,
+      messageSelectionMode: Boolean(messages.activeMessageSelection),
+      selectedMessageCount: messages.selectedMessageCount,
+      selectedMessageIds: messages.selectedMessageIds,
+      isMessageSelectable: messages.isMessageSelectable,
+      onToggleSelectedMessage: messages.onToggleSelectedMessage,
+      onSelectionDragStart: messages.onSelectionDragStart,
+      onSelectionDragEnter: messages.onSelectionDragEnter,
+      onSelectionDragEnd: messages.onSelectionDragEnd,
+      onCancelMessageSelection: messages.onCancelMessageSelection,
+      onCopySelectedMessages: messages.onCopySelectedMessages,
+      onForwardSelectedMessages: messages.onForwardSelectedMessages,
+    },
+    composerRuntime: {
+      composerControlsRef: refs.composerControlsRef,
+      activeRuntimeSessionId,
+      activeRuntimeContextStatus,
+      activeRuntimeCacheText,
+      composerSelectionProject: ui.composerUi.composerSelections.project,
+      composerSelectionChat: ui.composerUi.composerSelections.chat,
+      openComposerSelector: ui.composerUi.openComposerSelector,
+      toggleComposerSelector: composerActions.toggleComposerSelector,
+      selectComposerValue: wrappedSelectComposerValue,
+      composerAuthLabelProject:
+        composer.composerAuthByScope.labelByScope.project,
+      composerAuthLabelChat: composer.composerAuthByScope.labelByScope.chat,
+      composerAuthOptionsProject:
+        composer.composerAuthByScope.optionsByScope.project,
+      composerAuthOptionsChat:
+        composer.composerAuthByScope.optionsByScope.chat,
+      selectComposerAuthChoice: wrappedSelectComposerAuthChoice,
+      selectComposerProviderChoice: wrappedSelectComposerProviderChoice,
+      composerProviderOptions: composer.composerProviderOptions,
+      chatModelOptions: chatModelOptionsForShell,
+      isDesktopChatSending: activity.isDesktopChatSending,
+      handleStopDesktopChatTurn: wrappedStopDesktopChatTurn,
+      handleStopCollaborationAgentRequest:
+        composerActions.handleStopCollaborationAgentRequest,
+      handleSendProjectMessage: wrappedSendProjectMessage,
+      handleSendChatMessage: wrappedSendChatMessage,
+      handleRetryChatMessage: wrappedRetryChatMessage,
+      handleForkChatMessage: sessions.handleForkChatMessage,
+    },
+    conversationDetail: {
+      showChatDetailRail: layout.showChatDetailRail,
+      activeDetailTab: navigation.activeDetailTab,
+      setActiveDetailTab: navigation.setActiveDetailTab,
+      activeProjectLastMessage: projects.activeProjectLastMessage,
+      activeConv: conversations.activeConv,
+      activeConvHasSubtitle: conversations.activeConvHasSubtitle,
+      activeLastMessage: conversations.activeLastMessage,
+      activeConversationUsesCollaboration:
+        conversations.activeConversationUsesCollaboration,
+      activeCollaborationConversationHost:
+        conversations.activeCollaborationConversationHost,
+      activeCollaborationConversation:
+        conversations.activeCollaborationConversation,
+      activeCollaborationAwaitingReply:
+        conversations.activeCollaborationAwaitingReply,
+      isCollaborationSyncing: cloud.isCollaborationSyncing,
+      lastCollaborationSyncAtLabel,
+      activeSessionProject,
+      activeQueuedDesktopMessages: queue.activeQueuedDesktopMessages,
+      queuedDesktopMessagesBySession: chat.queuedDesktopMessagesBySession,
+      handleEditQueuedMessage: queue.handleEditQueuedMessage,
+      handleCancelQueuedMessage: queue.handleCancelQueuedMessage,
+    },
+    overlays: {
+      showAuthGate: authNavigation.showAuthGate,
+      dismissAuthGate: authNavigation.dismissAuthGate,
+      inlineAuthDialog: authNavigation.inlineAuthDialog,
+      handleCloseInlineAuthDialog:
+        authNavigation.handleCloseInlineAuthDialog,
+      startWindowResize: layout.startWindowResize,
+    },
+  });
+
+  const shellSlots = assembleKordiShellSlots(shellArgs);
+  const cloudInitialSync = useKordiCloudInitialSyncState({
+    accountId: environment.cloudSession.account?.accountId ?? null,
+    cachedMessagesReady: cloud.cachedMessagesReady,
+    canonicalError: canonical.canonicalInitialRefreshError,
+    canonicalSettled: canonical.canonicalInitialRefreshSettled,
+    canonicalState: canonical.canonicalSessionState,
+    contactsSettled: cloud.initialContactsSettled,
+    desktopChatSettled: !chat.isDesktopChatLoading,
+    messagesSettled: cloud.initialMessagesSettled,
+    refreshCanonicalState: canonical.refreshCanonicalState,
+    refreshCloudContacts: cloud.refreshCloudContacts,
+    refreshCloudMessages: cloud.refreshCloudMessages,
+    resetCanonicalRefresh: canonical.resetCanonicalInitialRefresh,
+  });
+
+  return {
+    rootThemeClass,
+    isNativeShell: environment.isNativeShell,
+    isLayoutResizing: layout.isLayoutResizing,
+    windowSize: layout.windowSize,
+    leftWorkspaceWidth: layout.leftWorkspaceWidth,
+    isSingleWorkspacePage: layout.isSingleWorkspacePage,
+    showSessionRail: layout.showSessionRail,
+    collapseChatSessions: layout.collapseChatSessions,
+    showRightDetailRail:
+      navigation.activeNav === 'chats' ? false : layout.showRightDetailRail,
+    isDetailPanelCollapsed: layout.isDetailPanelCollapsed,
+    detailRailWidth: layout.detailRailWidth,
+    onSessionResizeMouseDown: layout.startPanelResize('session'),
+    onDetailResizeMouseDown: layout.startPanelResize('detail'),
+    sidebar: shellSlots.sidebar,
+    mainContent: shellSlots.mainContent,
+    rightDetailRail: shellSlots.rightDetailRail,
+    authGate: shellSlots.authGate,
+    inlineAuthDialog: shellSlots.inlineAuthDialog,
+    messageForwardDialog: messages.messageForwardDialog,
+    windowResizeHandles: shellSlots.windowResizeHandles,
+    cloudInitialSync,
+  };
+}

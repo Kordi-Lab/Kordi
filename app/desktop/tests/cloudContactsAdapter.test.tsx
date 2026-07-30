@@ -8,6 +8,7 @@ import { CloudContactsAdapter, resolveCloudActiveContact } from '../src/features
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { Contact } from '../src/kordi-app/types';
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -117,7 +118,7 @@ test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail co
 });
 
 test('Cloud contact selection validation uses the rendered Cloud contact rows', () => {
-  const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const appModelSource = readKordiAppModelImplementationSource();
   const cloudCollaborationTopologySource = readFileSync(new URL('../src/features/cloud/useCloudCollaborationTopology.ts', import.meta.url), 'utf8');
 
   assert.match(

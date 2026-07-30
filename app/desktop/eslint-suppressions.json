@@ -51,20 +51,6 @@
       "count": 1
     }
   },
-  "src/app/useKordiAppModel.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
-    "@typescript-eslint/unbound-method": {
-      "count": 15
-    },
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    },
-    "react-hooks/refs": {
-      "count": 5
-    }
-  },
   "src/app/useKordiDesktopActivity.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1

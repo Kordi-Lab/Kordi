@@ -14,6 +14,7 @@ import {
   parseAskAgentTriggerCommand,
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 function readChatsPageImplementationSource(): string {
   return [
@@ -388,12 +389,15 @@ test('ask agent from an active agent chat creates a fresh side session instead o
     new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
     'utf8',
   );
-  const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const appModelSource = readKordiAppModelImplementationSource();
   const sideAgentActionsSource = readFileSync(new URL('../src/app/useKordiSideAgentSessionActions.ts', import.meta.url), 'utf8');
 
   assert.match(pageSource, /activePaneKind === 'agent' && onCreateAgentSession/);
   assert.match(pageSource, /return create\(initialPrompt\)/);
-  assert.match(appModelSource, /activeDesktopSessionId: desktopChatState\?\.activeSessionId \?\? null/);
+  assert.match(
+    appModelSource,
+    /activeDesktopSessionId:\s*(?:chat\.)?desktopChatState\?\.activeSessionId \?\? null/,
+  );
   assert.match(sideAgentActionsSource, /activeDesktopSessionId[\s\S]*\? \{ \.\.\.nextState, activeSessionId: activeDesktopSessionId \}/);
 });
 

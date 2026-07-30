@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import { navItems, normalizeNavIdForCloud } from '../src/kordi-app/data/navigation';
 import { normalizeSettingsSectionIdForCloud, settingsSections } from '../src/kordi-app/data/settings';
+import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 test('product navigation only exposes final Cloud pages', () => {
   assert.deepEqual(navItems.map((item) => item.id), ['chats', 'contacts', 'agents']);
@@ -21,10 +22,7 @@ test('settings data keeps only final Cloud settings sections', () => {
 });
 
 test('app model uses Cloud-only surface selectors', () => {
-  const appModelSource = readFileSync(
-    new URL('../src/app/useKordiAppModel.ts', import.meta.url),
-    'utf8',
-  );
+  const appModelSource = readKordiAppModelImplementationSource();
   const authNavigationSource = readFileSync(
     new URL('../src/app/useKordiAuthNavigationState.ts', import.meta.url),
     'utf8',
@@ -71,7 +69,7 @@ test('cloud chat send errors use user-facing copy', () => {
   const composerSource = readFileSync(new URL('../src/features/chat/useComposerMessageActions.ts', import.meta.url), 'utf8');
   const messageActionSource = readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
   const projectMessageSource = readFileSync(new URL('../src/features/chat/messageActions/projectMessages.ts', import.meta.url), 'utf8');
-  const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const appModelSource = readKordiAppModelImplementationSource();
   const sidebarSlotSource = readFileSync(new URL('../src/app/assembleSidebarSlot.tsx', import.meta.url), 'utf8');
   const combined = `${composerSource}\n${messageActionSource}\n${projectMessageSource}\n${appModelSource}\n${sidebarSlotSource}`;
 

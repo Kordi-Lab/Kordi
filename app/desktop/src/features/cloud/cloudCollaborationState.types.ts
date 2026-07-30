@@ -1,0 +1,91 @@
+import type { Dispatch, SetStateAction } from 'react';
+
+import type { AttachmentItem } from '@/features/chat/composerController.types';
+import type {
+  Contact,
+  DesktopCollaborationState,
+  MessageAttachment,
+} from '@/kordi-app/types';
+import type {
+  CloudSessionPin,
+  UpsertCloudArtifactActivityInput,
+  UpsertCloudTaskActivityInput,
+} from './authClient';
+import type {
+  CloudAgentDefinition,
+  SharedCloudAgentSummary,
+} from './cloudAgents';
+import type {
+  CreateCloudAgentInput,
+  UpdateCloudAgentInput,
+} from './cloudAgentsClient';
+import type { CloudSelfAgentSyncStatus } from './cloudSelfAgentForwardSync';
+import type { CloudSessionPinsById } from './cloudDiffSync';
+import type { CloudUnreadReadinessStatus } from './cloudMessageSyncState';
+import type { CloudSessionActivityStore } from './cloudSessionActivity';
+import type { SendCloudGroupControlInput } from './useCloudGroupControlSender';
+import type {
+  SendCloudCollaborationMessageOptions,
+} from './useCloudDirectMessaging';
+
+export type UseCloudCollaborationStateResult = {
+  cloudCollaborationState: DesktopCollaborationState | null;
+  setCloudCollaborationState:
+    Dispatch<SetStateAction<DesktopCollaborationState | null>>;
+  mergedCollaborationState: DesktopCollaborationState | null;
+  prepareCloudForwardAttachments:
+    (attachments: MessageAttachment[]) => Promise<AttachmentItem[]>;
+  sendCloudCollaborationMessage: (
+    conversationId: string,
+    text: string,
+    attachments?: AttachmentItem[],
+    options?: SendCloudCollaborationMessageOptions,
+  ) => Promise<void>;
+  sendCloudGroupControl: (input: SendCloudGroupControlInput) => Promise<void>;
+  recordCloudSessionFork: (input: {
+    sourceSessionId: string;
+    forkSessionId: string;
+    parentMessageId?: string | null;
+  }) => Promise<void>;
+  updateCloudSessionPin: (input: {
+    sessionId: string;
+    messageId: string | null;
+    scope: 'private' | 'shared';
+  }) => Promise<CloudSessionPin>;
+  hideCloudSession: (sessionId: string) => Promise<void>;
+  unhideCloudSession: (sessionId: string) => Promise<void>;
+  deleteCloudSession: (sessionId: string) => Promise<void>;
+  cancelCloudAgentRequest:
+    (conversationId: string, requestId: string) => Promise<void>;
+  refreshCloudMessages: () => Promise<void>;
+  refreshCloudAgents: () => Promise<void>;
+  createCloudAgentDefinition:
+    (input: CreateCloudAgentInput) => Promise<CloudAgentDefinition>;
+  updateCloudAgentDefinition: (
+    agentId: string,
+    input: UpdateCloudAgentInput,
+  ) => Promise<CloudAgentDefinition>;
+  archiveCloudAgentDefinition:
+    (agentId: string) => Promise<CloudAgentDefinition>;
+  refreshSharedCloudAgents:
+    (ownerAccountIds: string[]) => Promise<SharedCloudAgentSummary[]>;
+  cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
+  sharedCloudAgents: SharedCloudAgentSummary[];
+  cloudSessionActivity: CloudSessionActivityStore;
+  refreshCloudSessionActivity: (sessionId: string) => Promise<void>;
+  publishCloudTaskActivity:
+    (input: UpsertCloudTaskActivityInput) => Promise<void>;
+  publishCloudArtifactActivity:
+    (input: UpsertCloudArtifactActivityInput) => Promise<void>;
+  refreshCloudContacts: () => Promise<void>;
+  cloudContacts: Contact[];
+  initialContactsSettled: boolean;
+  initialMessagesSettled: boolean;
+  cloudUnreadReadinessStatus: CloudUnreadReadinessStatus;
+  cachedMessagesReady: boolean;
+  cloudHiddenSessionIds: Set<string>;
+  cloudDeletedSessionIds: Set<string>;
+  cloudSessionPinsById: CloudSessionPinsById;
+  cloudSelfAgentSyncStatusBySessionId:
+    Record<string, CloudSelfAgentSyncStatus>;
+};
