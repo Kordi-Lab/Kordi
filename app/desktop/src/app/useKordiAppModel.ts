@@ -21,10 +21,6 @@ import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDial
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
-import {
-  type CloudGroupParticipant,
-  cloudGroupSelfParticipant,
-} from '@/features/cloud/cloudGroupMessages';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
@@ -53,7 +49,6 @@ import { createDesktopChatSession } from '@/lib/desktop';
 
 import {
   canonicalAvatarSeed,
-  canonicalGroupParticipantsForSession,
   canonicalIdentityDisplayName,
   canonicalLocalAgentAvatarSeed,
   canonicalProfileImageUrl,
@@ -74,6 +69,7 @@ import { useKordiCollaborationMentions } from '@/app/useKordiCollaborationMentio
 import { useKordiCollaborationNavigationActions } from '@/app/useKordiCollaborationNavigationActions';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
 import { useKordiCloudAgentActions } from '@/app/useKordiCloudAgentActions';
+import { useKordiCloudGroupFork } from '@/app/useKordiCloudGroupFork';
 import { useKordiCloudInitialSyncState } from '@/app/useKordiCloudInitialSyncState';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
@@ -745,116 +741,13 @@ export function useKordiAppModel({
     unsupportedAction: unsupportedLegacyCollaborationAction,
   });
 
-  const syncCloudGroupFork = useCallback(async (result: { forkedSessionId: string; sourceSessionId: string; sourceMessageId: string }) => {
-    if (!cloudSession.account) return;
-    await refreshCanonicalState();
-    const state = await loadCanonicalSessionHistory(result.forkedSessionId);
-    if (!state) return;
-    const forkSession = state.sessions.find((session) => session.id === result.forkedSessionId);
-    if (!forkSession) return;
-    const forkMetadata = forkSession.metadata && typeof forkSession.metadata === 'object' && !Array.isArray(forkSession.metadata)
-      ? (forkSession.metadata as Record<string, unknown>).fork
-      : null;
-    const forkRecord = forkMetadata && typeof forkMetadata === 'object' && !Array.isArray(forkMetadata)
-      ? forkMetadata as Record<string, unknown>
-      : null;
-    const parentSessionId = typeof forkRecord?.forkedFromSessionId === 'string' && forkRecord.forkedFromSessionId.trim()
-      ? forkRecord.forkedFromSessionId.trim()
-      : result.sourceSessionId;
-    const parentMessageId = typeof forkRecord?.forkedFromMessageId === 'string' && forkRecord.forkedFromMessageId.trim()
-      ? forkRecord.forkedFromMessageId.trim()
-      : result.sourceMessageId;
-
-    await recordCloudSessionFork({
-      sourceSessionId: parentSessionId,
-      forkSessionId: result.forkedSessionId,
-      parentMessageId,
-    }).catch((error) => {
-      if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 409) return;
-      // Best effort: the local fork remains usable if Cloud lineage is not yet
-      // available. Group forks still fall back to the explicit Cloud control
-      // below for peers; private self-agent forks use this row for relogin sync.
-      console.warn('[cloud-fork] failed to record cloud fork lineage', error);
-    });
-
-    if (forkSession.kind !== 'group') return;
-    const participants = canonicalGroupParticipantsForSession(state, result.forkedSessionId)
-      .filter((participant) => participant.kind === 'human');
-    const cloudParticipants: CloudGroupParticipant[] = participants.flatMap((participant) => {
-      const accountId = participant.humanId?.trim() || participant.sourceIdentityId?.trim() || '';
-      if (!accountId) return [];
-      return [{
-        accountId,
-        displayName: participant.name?.trim() || accountId,
-        avatarUrl: participant.profileImageUrl ?? null,
-        role: participant.role ?? 'person',
-      }];
-    });
-    if (!cloudParticipants.some((participant) => participant.accountId === cloudSession.account?.accountId)) {
-      cloudParticipants.push(cloudGroupSelfParticipant(cloudSession.account, 'self'));
-    }
-    const targetAccountIds = [...new Set(cloudParticipants.map((participant) => participant.accountId).filter((accountId) => accountId && accountId !== cloudSession.account?.accountId))];
-    if (targetAccountIds.length === 0) return;
-
-    const fork = {
-      forkSessionId: result.forkedSessionId,
-      parentSessionId,
-      parentMessageId,
-      createdAtMs: forkSession.createdAtMs,
-    };
-    await sendCloudGroupControl({
-      targetAccountIds,
-      kind: 'session-fork',
-      groupId: result.forkedSessionId,
-      groupSpaceId: result.forkedSessionId,
-      groupTitle: forkSession.title,
-      participants: cloudParticipants,
-      fork,
-    });
-
-    const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
-    const accountIdForIdentity = (identityId: string) => {
-      const identity = identityById.get(identityId);
-      if (!identity) return cloudSession.account?.accountId ?? '';
-      if (identity.kind === 'human') return identity.humanId?.trim() || identity.sourceIdentityId?.trim() || cloudSession.account?.accountId || '';
-      if (identity.humanId?.trim()) return identity.humanId.trim();
-      if (identity.id.startsWith('agent:cloud:')) return identity.id.slice('agent:cloud:'.length);
-      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : null;
-      return owner?.humanId?.trim() || owner?.sourceIdentityId?.trim() || cloudSession.account?.accountId || '';
-    };
-    const snapshotMessages = state.messages
-      .filter((message) => message.sessionId === result.forkedSessionId && message.sourceTransport === 'canonical-fork-snapshot')
-      .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs);
-    for (const message of snapshotMessages) {
-      const identity = identityById.get(message.senderIdentityId);
-      const senderIsAgent = message.messageKind === 'agent-turn' || identity?.kind === 'agent' || message.senderRole.includes('agent');
-      const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content) ? message.content as Record<string, unknown> : {};
-      const deliveryState = typeof content.deliveryState === 'string' && content.deliveryState.trim()
-        ? content.deliveryState.trim()
-        : message.status;
-      await sendCloudGroupControl({
-        targetAccountIds,
-        kind: 'group-message',
-        groupId: result.forkedSessionId,
-        groupSpaceId: result.forkedSessionId,
-        groupTitle: forkSession.title,
-        participants: cloudParticipants,
-        fork,
-        message: {
-          id: message.id,
-          senderAccountId: accountIdForIdentity(message.senderIdentityId),
-          text: message.contentText,
-          createdAtMs: message.createdAtMs,
-          senderKind: senderIsAgent ? 'agent' : 'human',
-          senderDisplayName: identity?.displayName ?? null,
-          deliveryState,
-          replyToMessageId: message.parentMessageId ?? null,
-          requestId: typeof content.requestId === 'string' ? content.requestId : null,
-          forkSnapshot: true,
-        },
-      });
-    }
-  }, [cloudSession.account, loadCanonicalSessionHistory, recordCloudSessionFork, refreshCanonicalState, sendCloudGroupControl]);
+  const syncCloudGroupFork = useKordiCloudGroupFork({
+    account: cloudSession.account,
+    loadCanonicalSessionHistory,
+    recordCloudSessionFork,
+    refreshCanonicalState,
+    sendCloudGroupControl,
+  });
 
   const {
     handleSelectChatSession,

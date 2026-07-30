@@ -58,9 +58,6 @@
     "@typescript-eslint/unbound-method": {
       "count": 15
     },
-    "no-console": {
-      "count": 1
-    },
     "react-hooks/exhaustive-deps": {
       "count": 5
     },
