@@ -1,5 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::future::Future;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -15,6 +14,14 @@ use crate::presence::PresenceState;
 use crate::stun;
 use crate::transport::Transport;
 
+mod inbound;
+mod mailbox;
+mod peer_identities;
+
+use inbound::InboundLoopContext;
+use mailbox::MailboxLoopContext;
+use peer_identities::sync_transport_identities_from_projects;
+
 fn resolve_runtime_project_dir(project_id: &str, fallback: &str) -> String {
     if !project_id.is_empty() {
         if let Ok(conn) = crate::db::open_db() {
@@ -29,7 +36,7 @@ fn resolve_runtime_project_dir(project_id: &str, fallback: &str) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn dispatch_inbound_message(
+pub(super) async fn dispatch_inbound_message(
     coord: &CoordClient,
     runtime_type: &str,
     runtime_endpoint: &str,
@@ -79,7 +86,7 @@ async fn dispatch_inbound_message(
     Ok(response)
 }
 
-async fn decode_mailbox_blob(
+pub(super) async fn decode_mailbox_blob(
     coord: &CoordClient,
     my_node_id: &str,
     my_x25519_priv: &[u8; 32],
@@ -122,7 +129,7 @@ async fn decode_mailbox_blob(
     }
 }
 
-async fn encode_mailbox_blob(
+pub(super) async fn encode_mailbox_blob(
     coord: &CoordClient,
     from_node_id: &str,
     my_x25519_priv: &[u8; 32],
@@ -153,7 +160,7 @@ async fn encode_mailbox_blob(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn send_delivery_event(
+pub(super) async fn send_delivery_event(
     transport: &Transport,
     coord: &CoordClient,
     from_node_id: &str,
@@ -216,123 +223,6 @@ async fn send_delivery_event(
             ),
         }
     }
-}
-
-async fn seed_transport_identities_from_projects<F, Fut>(
-    transport: &Transport,
-    my_node_id: &str,
-    project_ids: &[String],
-    mut fetch_keys: F,
-) -> usize
-where
-    F: FnMut(&str) -> Fut,
-    Fut: Future<Output = Result<Vec<PeerKeys>, String>>,
-{
-    let mut seeded = HashSet::new();
-    for project_id in project_ids {
-        let keys = match fetch_keys(project_id).await {
-            Ok(keys) => keys,
-            Err(err) => {
-                eprintln!(
-                    "  identity prewarm failed for project {}: {}",
-                    project_id, err
-                );
-                continue;
-            }
-        };
-
-        for key in keys {
-            if key.node_id == my_node_id || seeded.contains(&key.node_id) {
-                continue;
-            }
-            let decoded = match hex::decode(&key.x25519_pub) {
-                Ok(decoded) if decoded.len() == 32 => decoded,
-                Ok(decoded) => {
-                    eprintln!(
-                        "  identity prewarm skipped {}: invalid x25519 key length {}",
-                        key.node_id,
-                        decoded.len()
-                    );
-                    continue;
-                }
-                Err(err) => {
-                    eprintln!(
-                        "  identity prewarm skipped {}: bad x25519 key: {}",
-                        key.node_id, err
-                    );
-                    continue;
-                }
-            };
-            let mut x_pub = [0u8; 32];
-            x_pub.copy_from_slice(&decoded);
-            transport.remember_peer_identity(&key.node_id, x_pub).await;
-            seeded.insert(key.node_id);
-        }
-    }
-
-    seeded.len()
-}
-
-fn load_local_project_ids() -> Result<Vec<String>, String> {
-    let conn = crate::db::open_db().map_err(|err| format!("open local db: {}", err))?;
-    crate::db::init_db(&conn).map_err(|err| format!("init local db: {}", err))?;
-    Ok(crate::queries::list_projects(&conn)
-        .into_iter()
-        .map(|project| project.project_id)
-        .collect())
-}
-
-async fn sync_transport_identities_from_projects(
-    transport: &Transport,
-    coord: &CoordClient,
-    my_node_id: &str,
-) -> (usize, usize) {
-    let project_ids = match load_local_project_ids() {
-        Ok(project_ids) => project_ids,
-        Err(err) => {
-            eprintln!("  identity sync skipped: local db unavailable: {}", err);
-            return (0, 0);
-        }
-    };
-
-    if project_ids.is_empty() {
-        let retain = std::collections::HashSet::new();
-        let pruned = transport.retain_peer_identities(&retain).await;
-        return (0, pruned);
-    }
-
-    let seeded = seed_transport_identities_from_projects(
-        transport,
-        my_node_id,
-        &project_ids,
-        |project_id| {
-            let coord = coord.clone();
-            let project_id = project_id.to_string();
-            async move { coord.get_project_keys(&project_id).await }
-        },
-    )
-    .await;
-
-    let mut retain = HashSet::new();
-    for project_id in &project_ids {
-        match coord.get_project_keys(project_id).await {
-            Ok(keys) => {
-                for key in keys {
-                    if key.node_id != my_node_id {
-                        retain.insert(key.node_id);
-                    }
-                }
-            }
-            Err(err) => {
-                eprintln!(
-                    "  identity prune skipped for project {}: {}",
-                    project_id, err
-                );
-            }
-        }
-    }
-    let pruned = transport.retain_peer_identities(&retain).await;
-    (seeded, pruned)
 }
 
 /// Run the Bridges daemon. Blocks until interrupted.
@@ -460,430 +350,27 @@ pub async fn run(_foreground: bool) -> Result<(), String> {
         }
     });
 
-    // Clone config values needed by both loops
-    let project_dir_for_poll = cfg.project_dir.clone();
-    let runtime_type = cfg.runtime.clone();
-    let runtime_endpoint = cfg.runtime_endpoint.clone();
-
-    // Inbound message loop
-    let recv_transport = transport.clone();
-    let recv_node_id = node_id.clone();
-    let recv_responses = responses.clone();
-    let recv_runtime_type = runtime_type.clone();
-    let recv_runtime_endpoint = runtime_endpoint.clone();
-    let recv_project_dir = cfg.project_dir.clone();
-    let recv_coord = coord.clone();
-    let recv_x_priv = x_priv;
-    let recv_presence = presence.clone();
-    let recv_handle = tokio::spawn(async move {
-        loop {
-            match recv_transport.recv().await {
-                Ok((source, plaintext)) => {
-                    let peer_id = source.node_id().to_string();
-                    let msg: serde_json::Value = match serde_json::from_slice(&plaintext) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("invalid message from {}: {}", peer_id, e);
-                            continue;
-                        }
-                    };
-
-                    let from = msg["from"].as_str().unwrap_or(&peer_id);
-                    let project_id = msg["projectId"].as_str().unwrap_or("");
-                    let kind = msg["messageType"].as_str().unwrap_or("ask");
-                    let request_id = msg["requestId"].as_str().unwrap_or("");
-                    let session_id = msg["sessionId"].as_str();
-                    let payload = &msg["payload"];
-
-                    // Shared-workspace sync is handled out of band, not through relay messages.
-                    if kind == "sync" {
-                        println!(
-                            "  sync message from {} (handled out of band, skipping)",
-                            from
-                        );
-                        continue;
-                    }
-
-                    // Handle delivery events — update staged local outcomes for the CLI.
-                    if kind == "delivery_event" {
-                        let stage = payload["stage"].as_str().unwrap_or("");
-                        let error = payload["error"].as_str();
-                        if !request_id.is_empty() {
-                            local_api::store_delivery_event(
-                                &recv_responses,
-                                request_id,
-                                from,
-                                stage,
-                                error,
-                            )
-                            .await;
-                            println!(
-                                "  delivery event from {} for {} → {}",
-                                from, request_id, stage
-                            );
-                        }
-                        continue;
-                    }
-
-                    // Handle response messages — store them for the CLI to poll
-                    if kind == "response" {
-                        let response_text = payload["message"].as_str().unwrap_or("");
-                        if !request_id.is_empty() {
-                            local_api::store_response(
-                                &recv_responses,
-                                request_id,
-                                from,
-                                response_text,
-                            )
-                            .await;
-                            println!(
-                                "  response from {} for {} ({} chars)",
-                                from,
-                                request_id,
-                                response_text.len()
-                            );
-                        } else {
-                            println!(
-                                "  response from {} (no request_id, {} chars)",
-                                from,
-                                response_text.len()
-                            );
-                        }
-                        continue;
-                    }
-
-                    send_delivery_event(
-                        recv_transport.as_ref(),
-                        &recv_coord,
-                        &recv_node_id,
-                        &recv_x_priv,
-                        from,
-                        project_id,
-                        request_id,
-                        "received_by_peer_daemon",
-                        None,
-                    )
-                    .await;
-
-                    match dispatch_inbound_message(
-                        &recv_coord,
-                        &recv_runtime_type,
-                        &recv_runtime_endpoint,
-                        &recv_project_dir,
-                        from,
-                        project_id,
-                        kind,
-                        session_id,
-                        payload,
-                    )
-                    .await
-                    {
-                        Ok(response) => {
-                            recv_presence
-                                .lock()
-                                .await
-                                .note_runtime_ok(format!("handled {} from {}", kind, from));
-                            println!(
-                                "  {} from {} → responded ({} chars)",
-                                kind,
-                                from,
-                                response.len()
-                            );
-                            // Send encrypted response back, include requestId so sender can match it
-                            let reply = serde_json::json!({
-                                "from": recv_node_id,
-                                "projectId": project_id,
-                                "messageType": "response",
-                                "requestId": request_id,
-                                "payload": { "message": response },
-                            });
-                            let reply_bytes = serde_json::to_vec(&reply).unwrap_or_default();
-                            if let Err(e) = recv_transport.send(from, &reply_bytes).await {
-                                eprintln!("  failed to send reply to {}: {}", from, e);
-                                match encode_mailbox_blob(
-                                    &recv_coord,
-                                    &recv_node_id,
-                                    &recv_x_priv,
-                                    from,
-                                    Some(project_id),
-                                    &reply_bytes,
-                                )
-                                .await
-                                {
-                                    Ok(reply_blob) => {
-                                        if let Err(relay_err) = recv_coord
-                                            .relay_message(from, &reply_blob, Some(project_id))
-                                            .await
-                                        {
-                                            eprintln!(
-                                                "  failed to relay reply to {}: {}",
-                                                from, relay_err
-                                            );
-                                        }
-                                    }
-                                    Err(encode_err) => eprintln!(
-                                        "  failed to encrypt relay reply to {}: {}",
-                                        from, encode_err
-                                    ),
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            recv_presence.lock().await.note_runtime_error(format!(
-                                "dispatch error for {} from {}: {}",
-                                kind, from, e
-                            ));
-                            send_delivery_event(
-                                recv_transport.as_ref(),
-                                &recv_coord,
-                                &recv_node_id,
-                                &recv_x_priv,
-                                from,
-                                project_id,
-                                request_id,
-                                "processing_failed",
-                                Some(&e),
-                            )
-                            .await;
-                            eprintln!("  dispatch error for {} from {}: {}", kind, from, e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("recv error: {}", e);
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-            }
-        }
+    let recv_handle = inbound::spawn(InboundLoopContext {
+        transport: transport.clone(),
+        node_id: node_id.clone(),
+        responses: responses.clone(),
+        runtime_type: cfg.runtime.clone(),
+        runtime_endpoint: cfg.runtime_endpoint.clone(),
+        project_dir: cfg.project_dir.clone(),
+        coord: coord.clone(),
+        x25519_private_key: x_priv,
+        presence: presence.clone(),
     });
-
-    // Mailbox polling loop — fetch messages from coordination server every 5s
-    let poll_coord = coord.clone();
-    let poll_responses = responses.clone();
-    let poll_node_id = node_id.clone();
-    let poll_project_dir = project_dir_for_poll;
-    let poll_runtime_type = runtime_type.clone();
-    let poll_runtime_endpoint = runtime_endpoint.clone();
-    let poll_x_priv = x_priv;
-    let poll_presence = presence.clone();
-    let poll_transport = transport.clone();
-    let poll_handle = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let (_seeded, pruned) = sync_transport_identities_from_projects(
-                poll_transport.as_ref(),
-                &poll_coord,
-                &poll_node_id,
-            )
-            .await;
-            if pruned > 0 {
-                poll_presence.lock().await.note_coord_ok(format!(
-                    "pruned {} stale transport peer identities after coordination refresh",
-                    pruned
-                ));
-            }
-            let messages = match poll_coord.fetch_mailbox().await {
-                Ok(m) => {
-                    let detail = if m.is_empty() {
-                        "mailbox poll succeeded (empty)".to_string()
-                    } else {
-                        format!("mailbox poll succeeded ({} messages)", m.len())
-                    };
-                    poll_presence.lock().await.note_coord_ok(detail);
-                    if m.is_empty() {
-                        continue;
-                    }
-                    m
-                }
-                Err(e) => {
-                    poll_presence
-                        .lock()
-                        .await
-                        .note_coord_error(format!("mailbox poll failed: {}", e));
-                    continue;
-                }
-            };
-
-            println!("  mailbox: {} pending messages", messages.len());
-            for msg in &messages {
-                let from = msg["from"].as_str().unwrap_or("");
-                let blob = msg["blob"].as_str().unwrap_or("");
-                let mailbox_project_id = msg["projectId"].as_str();
-                if blob.is_empty() {
-                    continue;
-                }
-
-                let plaintext = match decode_mailbox_blob(
-                    &poll_coord,
-                    &poll_node_id,
-                    &poll_x_priv,
-                    from,
-                    mailbox_project_id,
-                    blob,
-                )
-                .await
-                {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("  mailbox decode failed from {}: {}", from, e);
-                        continue;
-                    }
-                };
-
-                let parsed: serde_json::Value = match serde_json::from_slice(&plaintext) {
-                    Ok(v) => v,
-                    Err(_) => {
-                        eprintln!("  mailbox: bad json from {}", from);
-                        continue;
-                    }
-                };
-
-                let msg_from = parsed["from"].as_str().unwrap_or(from);
-                let _project_id = parsed["projectId"].as_str().unwrap_or("");
-                let kind = parsed["messageType"].as_str().unwrap_or("ask");
-                let request_id = parsed["requestId"].as_str().unwrap_or("");
-                let session_id = parsed["sessionId"].as_str();
-                let payload = &parsed["payload"];
-
-                // Shared-workspace sync is handled out of band, not through mailbox.
-                if kind == "sync" {
-                    continue;
-                }
-
-                // Handle delivery events.
-                if kind == "delivery_event" {
-                    let stage = payload["stage"].as_str().unwrap_or("");
-                    let error = payload["error"].as_str();
-                    if !request_id.is_empty() {
-                        local_api::store_delivery_event(
-                            &poll_responses,
-                            request_id,
-                            msg_from,
-                            stage,
-                            error,
-                        )
-                        .await;
-                        println!(
-                            "  mailbox delivery event from {} for {} → {}",
-                            msg_from, request_id, stage
-                        );
-                    }
-                    continue;
-                }
-
-                // Handle response
-                if kind == "response" {
-                    let response_text = payload["message"].as_str().unwrap_or("");
-                    if !request_id.is_empty() {
-                        local_api::store_response(
-                            &poll_responses,
-                            request_id,
-                            msg_from,
-                            response_text,
-                        )
-                        .await;
-                        println!(
-                            "  mailbox response from {} ({} chars)",
-                            msg_from,
-                            response_text.len()
-                        );
-                    }
-                    continue;
-                }
-
-                send_delivery_event(
-                    poll_transport.as_ref(),
-                    &poll_coord,
-                    &poll_node_id,
-                    &poll_x_priv,
-                    msg_from,
-                    _project_id,
-                    request_id,
-                    "received_by_peer_daemon",
-                    None,
-                )
-                .await;
-
-                match dispatch_inbound_message(
-                    &poll_coord,
-                    &poll_runtime_type,
-                    &poll_runtime_endpoint,
-                    &poll_project_dir,
-                    msg_from,
-                    _project_id,
-                    kind,
-                    session_id,
-                    payload,
-                )
-                .await
-                {
-                    Ok(response) => {
-                        poll_presence
-                            .lock()
-                            .await
-                            .note_runtime_ok(format!("handled mailbox {} from {}", kind, msg_from));
-                        println!(
-                            "  mailbox {} from {} → responded ({} chars)",
-                            kind,
-                            msg_from,
-                            response.len()
-                        );
-                        // Send response back via relay
-                        let reply = serde_json::json!({
-                            "from": poll_node_id,
-                            "messageType": "response",
-                            "requestId": request_id,
-                            "payload": { "message": response },
-                        });
-                        match encode_mailbox_blob(
-                            &poll_coord,
-                            &poll_node_id,
-                            &poll_x_priv,
-                            msg_from,
-                            Some(_project_id),
-                            &serde_json::to_vec(&reply).unwrap_or_default(),
-                        )
-                        .await
-                        {
-                            Ok(reply_blob) => {
-                                if let Err(e) = poll_coord
-                                    .relay_message(msg_from, &reply_blob, Some(_project_id))
-                                    .await
-                                {
-                                    eprintln!("  failed to relay response to {}: {}", msg_from, e);
-                                }
-                            }
-                            Err(e) => eprintln!(
-                                "  failed to encrypt relay response to {}: {}",
-                                msg_from, e
-                            ),
-                        }
-                    }
-                    Err(e) => {
-                        poll_presence.lock().await.note_runtime_error(format!(
-                            "mailbox dispatch error for {} from {}: {}",
-                            kind, msg_from, e
-                        ));
-                        send_delivery_event(
-                            poll_transport.as_ref(),
-                            &poll_coord,
-                            &poll_node_id,
-                            &poll_x_priv,
-                            msg_from,
-                            _project_id,
-                            request_id,
-                            "processing_failed",
-                            Some(&e),
-                        )
-                        .await;
-                        eprintln!(
-                            "  mailbox dispatch error for {} from {}: {}",
-                            kind, msg_from, e
-                        )
-                    }
-                }
-            }
-        }
+    let poll_handle = mailbox::spawn(MailboxLoopContext {
+        coord: coord.clone(),
+        responses,
+        node_id: node_id.clone(),
+        project_dir: cfg.project_dir.clone(),
+        runtime_type: cfg.runtime.clone(),
+        runtime_endpoint: cfg.runtime_endpoint.clone(),
+        x25519_private_key: x_priv,
+        presence,
+        transport,
     });
 
     println!("Bridges daemon running. Press Ctrl+C to stop.");
@@ -900,66 +387,4 @@ pub async fn run(_foreground: bool) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::coord_client::PeerKeys;
-    use ed25519_dalek::SigningKey;
-    use rand::rngs::OsRng;
-
-    fn test_transport(node_id: &str) -> Transport {
-        let signing = SigningKey::generate(&mut OsRng);
-        let x_priv = crate::crypto::ed25519_to_x25519_private(&signing.to_bytes());
-        Transport::new_for_tests(ConnManager::new(None), None, node_id.to_string(), x_priv)
-    }
-
-    #[tokio::test]
-    async fn sync_transport_identities_prunes_stale_peers() {
-        let transport = test_transport("kd_self");
-        transport
-            .remember_peer_identity("kd_peer_old", [7u8; 32])
-            .await;
-        transport
-            .remember_peer_identity("kd_peer_new", [8u8; 32])
-            .await;
-
-        let retain = std::collections::HashSet::from(["kd_peer_new".to_string()]);
-        let pruned = transport.retain_peer_identities(&retain).await;
-
-        assert_eq!(pruned, 1);
-        let conn = transport.conn.lock().await;
-        assert!(conn.expected_peer_key("kd_peer_old").is_none());
-        assert_eq!(conn.expected_peer_key("kd_peer_new"), Some([8u8; 32]));
-    }
-
-    #[tokio::test]
-    async fn seed_transport_identities_from_projects_primes_first_contact_cache() {
-        let transport = test_transport("kd_self");
-        let peer_signing = SigningKey::generate(&mut OsRng);
-        let peer_x25519 =
-            crate::crypto::ed25519_to_x25519_public(peer_signing.verifying_key().as_bytes())
-                .unwrap();
-        let project_ids = vec!["proj_1".to_string()];
-
-        let seeded = seed_transport_identities_from_projects(
-            &transport,
-            "kd_self",
-            &project_ids,
-            |_project_id| async {
-                Ok(vec![PeerKeys {
-                    node_id: "kd_peer".to_string(),
-                    ed25519_pub: "unused".to_string(),
-                    x25519_pub: hex::encode(peer_x25519),
-                }])
-            },
-        )
-        .await;
-
-        assert_eq!(seeded, 1);
-        let conn = transport.conn.lock().await;
-        assert_eq!(
-            conn.resolve_peer_id(&crate::crypto::node_id_wire_id("kd_peer")),
-            Some("kd_peer".to_string())
-        );
-        assert_eq!(conn.expected_peer_key("kd_peer"), Some(peer_x25519));
-    }
-}
+mod tests;
