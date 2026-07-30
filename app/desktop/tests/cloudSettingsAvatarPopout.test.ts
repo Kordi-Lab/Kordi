@@ -20,7 +20,7 @@ test('cloud avatar opens a small account menu before the centered settings modal
   assert.match(sidebar, /CloudProfileRowCopyButton label="Account ID" value=\{cloudAccount\.accountId\}/);
   assert.match(sidebar, /cloudAccountDialogTab !== null/);
   assert.doesNotMatch(sidebar, /isOpen=\{isProfileCardOpen\}/);
-  assert.match(slot, /cloudSettings=\{\{/);
+  assert.match(slot, /cloudSettings:\s*\{/);
   assert.match(modal, /role="dialog"/);
   assert.match(modal, /aria-label="Account settings"/);
   assert.match(modal, /fixed inset-0/);

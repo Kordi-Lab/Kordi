@@ -28,7 +28,7 @@ function conversation(): Conversation {
 function sidebarProps(overrides: Record<string, unknown> = {}) {
   const chatConversations = [conversation()];
   const participantSpaces = buildParticipantSpaces(chatConversations);
-  return {
+  const props = {
     isNativeShell: true,
     isSingleWorkspacePage: false,
     collapseChatSessions: false,
@@ -86,6 +86,13 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
     onCopyBridgeHostUrl: () => {},
     onCreateBridgeDraft: () => {},
     ...overrides,
+  };
+  return {
+    layout: props,
+    chats: props,
+    projects: props,
+    directory: props,
+    account: props,
   };
 }
 

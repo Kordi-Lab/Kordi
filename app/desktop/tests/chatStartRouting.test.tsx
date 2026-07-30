@@ -211,15 +211,19 @@ test('sidebar shell forwards chat create and group management handlers', () => {
     handleAddChatGroupMembers: addMembers,
     handleRemoveChatGroupMember: removeMember,
     handleSetChatGroupAdmin: setAdmin,
-  }) as never) as never as { props: Record<string, unknown> };
+  }) as never) as never as {
+    props: {
+      chatActions: Record<string, unknown>;
+    };
+  };
 
-  assert.equal(element.props.onStartChatWithPerson, startPerson);
-  assert.equal(typeof element.props.onStartChatWithAgent, 'function');
-  assert.equal(element.props.onCreateChatGroup, createGroup);
-  assert.equal(element.props.onRenameChatGroup, renameGroup);
-  assert.equal(element.props.onAddChatGroupMembers, addMembers);
-  assert.equal(element.props.onRemoveChatGroupMember, removeMember);
-  assert.equal(element.props.onSetChatGroupAdmin, setAdmin);
+  assert.equal(element.props.chatActions.onStartChatWithPerson, startPerson);
+  assert.equal(typeof element.props.chatActions.onStartChatWithAgent, 'function');
+  assert.equal(element.props.chatActions.onCreateChatGroup, createGroup);
+  assert.equal(element.props.chatActions.onRenameChatGroup, renameGroup);
+  assert.equal(element.props.chatActions.onAddChatGroupMembers, addMembers);
+  assert.equal(element.props.chatActions.onRemoveChatGroupMember, removeMember);
+  assert.equal(element.props.chatActions.onSetChatGroupAdmin, setAdmin);
 });
 
 test('sidebar chat-create agent option opens owned agents with local My chats creation', async () => {
@@ -227,10 +231,16 @@ test('sidebar chat-create agent option opens owned agents with local My chats cr
   const element = assembleSidebarSlot(baseSidebarArgs({
     handleCreateChatSession: async () => { calls.push('createLocal'); },
     handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startAgent:${agent.id}`); },
-  }) as never) as never as { props: { onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void> } };
+  }) as never) as never as {
+    props: {
+      chatActions: {
+        onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void>;
+      };
+    };
+  };
 
-  await element.props.onStartChatWithAgent({ id: 'agent:local', isOwned: true });
-  await element.props.onStartChatWithAgent({ id: 'agent:remote', isOwned: false });
+  await element.props.chatActions.onStartChatWithAgent({ id: 'agent:local', isOwned: true });
+  await element.props.chatActions.onStartChatWithAgent({ id: 'agent:remote', isOwned: false });
 
   assert.deepEqual(calls, ['createLocal', 'startAgent:agent:remote']);
 });
@@ -240,9 +250,15 @@ test('sidebar chat-create private cloud agent option routes to the selected clou
   const element = assembleSidebarSlot(baseSidebarArgs({
     handleCreateChatSession: async () => { calls.push('createLocal'); },
     handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startCloudAgent:${agent.cloudAgentId}`); },
-  }) as never) as never as { props: { onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void> } };
+  }) as never) as never as {
+    props: {
+      chatActions: {
+        onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void>;
+      };
+    };
+  };
 
-  await element.props.onStartChatWithAgent({
+  await element.props.chatActions.onStartChatWithAgent({
     id: 'cloud-agent:cloud_agent_abc',
     isOwned: true,
     cloudAgentId: 'cloud_agent_abc',

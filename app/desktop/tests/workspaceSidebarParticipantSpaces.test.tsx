@@ -152,7 +152,7 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
   ];
   const participantSpaces = buildParticipantSpaces(chatConversations);
 
-  return {
+  const props = {
     isNativeShell: false,
     isSingleWorkspacePage: false,
     collapseChatSessions: false,
@@ -210,8 +210,8 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onCreateBridgeDraft: () => {},
     ...overrides,
   };
+  return { layout: props, chats: props, projects: props, directory: props, account: props };
 }
-
 test('WorkspaceSidebar cloud profile uses the provider image avatar instead of a generated pixel fallback', () => {
   const cloudAccount: CloudAccount = {
     accountId: 'acct_provider',
@@ -333,7 +333,7 @@ test('WorkspaceSidebar hides presence lights on group row avatar stacks', () => 
 });
 
 test('WorkspaceSidebar renders direct human participant spaces as one flat chat row without session actions', () => {
-  const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
+  const participantSpaces = buildParticipantSpaces(baseSidebarProps().chats.chatConversations);
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     participantSpaces,
     contactParticipantSpaces: participantSpaces,
