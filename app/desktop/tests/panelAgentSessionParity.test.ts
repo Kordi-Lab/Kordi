@@ -10,6 +10,10 @@ const chatsPageSource = () => [
   '../src/pages/chatsPage.navigation.ts',
   '../src/pages/chatsPage.queuedMessage.tsx',
   '../src/pages/chatsPage.sessionPane.tsx',
+  '../src/pages/chatsPage.companionComposer.tsx',
+  '../src/pages/chatsPage.companionDestination.tsx',
+  '../src/pages/chatsPage.companionHeader.tsx',
+  '../src/pages/chatsPage.companionPane.tsx',
 ]
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n');
@@ -31,7 +35,22 @@ function blockBetween(source: string, startNeedle: string, endNeedle: string): s
 }
 
 function sidePanelBlock(source: string): string {
-  return blockBetween(source, 'data-chat-side-agent-panel="true"', 'const splitDivider = showCompanionPane');
+  const composition = blockBetween(
+    source,
+    'const companionPane = companionConversation',
+    'const splitDivider = showCompanionPane',
+  );
+  return [
+    composition,
+    '../src/pages/chatsPage.companionComposer.tsx',
+    '../src/pages/chatsPage.companionDestination.tsx',
+    '../src/pages/chatsPage.companionHeader.tsx',
+    '../src/pages/chatsPage.companionPane.tsx',
+  ]
+    .map((entry, index) => (
+      index === 0 ? entry : readFileSync(new URL(entry, import.meta.url), 'utf8')
+    ))
+    .join('\n');
 }
 
 function chatSessionPaneBlock(): string {
@@ -98,8 +117,9 @@ test('side-panel Agent composer exposes the same visible attachment trigger and 
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
 
-  assert.match(side, /ref=\{companionAttachmentInputRef\}/, 'side-panel file input should have its own ref, not a hidden unreachable input');
-  assert.match(side, /onClick=\{\(\) => companionAttachmentInputRef\.current\?\.click\(\)\}/, 'side-panel composer should expose a visible attachment button');
+  assert.match(source, /attachmentInputRef=\{companionAttachmentInputRef\}/, 'side-panel composer should receive its own attachment input ref');
+  assert.match(side, /ref=\{attachmentInputRef\}/, 'side-panel file input should use the supplied side-panel ref, not a hidden unreachable input');
+  assert.match(side, /onClick=\{\(\) => attachmentInputRef\.current\?\.click\(\)\}/, 'side-panel composer should expose a visible attachment button');
   assert.match(side, /aria-label="Add attachment"/, 'side-panel attachment control should use the same accessible label as main composer');
   assert.match(side, /data-companion-attachment-control="true"/, 'side-panel attachment control should be identifiable for parity regression coverage');
   assert.match(side, /data-companion-composer-frame="true"[\s\S]*shrink-0 px-5 pb-4 pt-3/, 'side-panel composer should use the same outer frame spacing as the main composer so input blocks align');
@@ -117,14 +137,17 @@ test('side-panel Agent model controls use independent menu state and target the 
   assert.match(source, /useCompanionComposerRuntime\(\{[\s\S]*sessionId: companionLocalAgentConfigTargetSessionId/, 'side-panel model controls should hydrate the exact canonical runtime');
   assert.doesNotMatch(source, /companionComposerSelections\[[^\]]+\] \?\? composerSelection/, 'side-panel selection must not initialize from the main composer runtime');
   assert.match(source, /const companionComposerConfigTarget = companionComposerRuntime\.configTarget/, 'side-panel updates should use an isolated hydrated config target');
-  assert.match(side, /selection=\{companionComposerSelection\}/, 'side-panel model controls should render their own selection');
-  assert.match(side, /authLabel=\{companionComposerRuntime\.authLabel\}/, 'side-panel auth label should derive from the hydrated runtime provider');
-  assert.match(side, /authOptions=\{companionComposerRuntime\.authOptions\}/, 'side-panel auth options should prioritize the hydrated runtime provider');
-  assert.match(side, /openSelector=\{companionOpenComposerSelector\}/, 'side-panel model controls should read side-panel selector state');
-  assert.match(side, /onToggleSelector=\{toggleCompanionComposerSelector\}/, 'side-panel model controls should toggle side-panel selector state');
-  assert.match(side, /selectComposerValue\(scope, type, value, companionComposerConfigTarget\)/, 'side-panel model changes should target isolated side-panel state');
-  assert.match(side, /selectComposerAuthChoice\(scope, providerId, choice, companionComposerConfigTarget\)/, 'side-panel auth changes should target isolated side-panel state');
-  assert.match(side, /selectComposerProviderChoice\(scope, option, companionComposerConfigTarget\)/, 'side-panel provider changes should target isolated side-panel state');
+  assert.match(source, /selection: companionComposerSelection/, 'side-panel model controls should receive their own selection');
+  assert.match(side, /selection=\{localRouting\.selection\}/, 'side-panel model controls should render the supplied isolated selection');
+  assert.match(source, /authLabel: companionComposerRuntime\.authLabel/, 'side-panel auth label should derive from the hydrated runtime provider');
+  assert.match(source, /authOptions: companionComposerRuntime\.authOptions/, 'side-panel auth options should prioritize the hydrated runtime provider');
+  assert.match(source, /openSelector: companionOpenComposerSelector/, 'side-panel model controls should receive side-panel selector state');
+  assert.match(source, /toggleSelector: toggleCompanionComposerSelector/, 'side-panel model controls should receive the side-panel toggle handler');
+  assert.match(side, /openSelector=\{openSelector\}/, 'side-panel model controls should read the isolated selector prop');
+  assert.match(side, /onToggleSelector=\{toggleSelector\}/, 'side-panel model controls should toggle the isolated selector prop');
+  assert.match(side, /selectComposerValue\(scope, type, value, localRouting\.configTarget\)/, 'side-panel model changes should target isolated side-panel state');
+  assert.match(side, /selectComposerAuthChoice\(scope, providerId, choice, localRouting\.configTarget\)/, 'side-panel auth changes should target isolated side-panel state');
+  assert.match(side, /selectComposerProviderChoice\(scope, option, localRouting\.configTarget\)/, 'side-panel provider changes should target isolated side-panel state');
   assert.doesNotMatch(side, /openSelector=\{openComposerSelector\}/, 'side-panel model controls must not share the main composer popover state');
 });
 
@@ -135,10 +158,11 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
 
   assert.match(source, /const \[selectedCompanionCollaborationAgentId, setSelectedCompanionCollaborationAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
   assert.match(source, /const companionCollaborationRoutingAgents = useMemo/, 'side-panel bridge agent menu should derive routing agents for the companion session');
-  assert.match(side, /companionConversationIsCollaborationAgent[\s\S]*selectedCompanionCollaborationRoutingAgent/, 'side-panel cloud agents should render a bridge-routing model branch');
-  assert.match(side, /selection=\{companionCollaborationRoutingSelection\}/, 'side-panel cloud agent model controls should use bridge routing selection');
-  assert.match(side, /updateCompanionCollaborationAgentRouting\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing');
-  assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*updateCompanionCollaborationAgentRouting/, 'side-panel cloud agent provider changes should update bridge routing');
+  assert.match(source, /enabled: companionConversationIsCollaborationAgent[\s\S]*selectedAgent: selectedCompanionCollaborationRoutingAgent/, 'side-panel cloud agents should receive the bridge-routing model branch');
+  assert.match(source, /selection: companionCollaborationRoutingSelection/, 'side-panel cloud agent model controls should receive bridge routing selection');
+  assert.match(side, /selection=\{collaborationRouting\.selection\}/, 'side-panel cloud agent model controls should use the supplied bridge routing selection');
+  assert.match(side, /collaborationRouting\.update\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing');
+  assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*collaborationRouting\.update/, 'side-panel cloud agent provider changes should update bridge routing');
   assert.match(source, /const companionCollaborationRoutingTargetSessionId = companionConversation\?\.canonicalSessionId \?\? companionConversation\?\.id \?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
   assert.match(source, /applyCollaborationAgentRoutingUpdate\(\{[\s\S]*targetSessionId: companionCollaborationRoutingTargetSessionId/, 'side-panel cloud route changes should pass the companion session id through the shared bridge routing updater');
   assert.match(source, /onUpdateCollaborationAgentModelRouting\([\s\S]*routing\.fallbackAuthChoice,\s*targetSessionId,\s*\)/, 'the shared bridge routing updater should pass its target session through the bridge callback');
@@ -258,12 +282,13 @@ test('side-panel Agent session uses independent full-pane destination subtitles'
   assert.doesNotMatch(side, /isCompanionDetailPanelCollapsed \? 'Details' : 'Hide details'/, 'side-panel header should not render Details/Hide details text');
   assert.match(source, /const \[companionDestination, setCompanionDestination\] = useState<ChatDestination>\('messages'\)/, 'side-panel destinations should not share the main active destination state');
   assert.match(source, /const \[companionActiveArtifactId, setCompanionActiveArtifactId\] = useState<string \| null>\(null\)/, 'side-panel artifacts should not share the main activeArtifactId state');
-  assert.match(source, /activeDetailTab=\{companionActiveDetailTab\}/, 'side-panel detail rail should render using the side-panel detail tab');
-  assert.match(source, /activeArtifactId=\{companionActiveArtifactId\}/, 'side-panel detail rail should render using the side-panel artifact selection');
+  assert.match(source, /destination=\{companionActiveDetailTab\}/, 'side-panel destination page should receive the side-panel detail tab');
+  assert.match(source, /activeArtifactId=\{companionActiveArtifactId\}/, 'side-panel detail page should receive the side-panel artifact selection');
+  assert.match(source, /activeDetailTab=\{destination\}/, 'side-panel detail rail should render using that isolated destination');
   assert.match(source, /scope="companion"/, 'side-panel header should expose the same destination subtitles');
   assert.match(source, /data-chat-destination-scope="companion"/, 'side-panel detail content should replace only its own pane');
   assert.match(source, /variant="page"/, 'side-panel detail content should use the whole-pane detail surface');
-  assert.match(source, /companionDestination === 'messages' \? \(/, 'side-panel transcript and detail destinations should be mutually exclusive');
+  assert.match(source, /destination === 'messages' \? \(/, 'side-panel transcript and detail destinations should be mutually exclusive inside the companion pane');
   assert.doesNotMatch(source, /companionInlineDetailRail|data-chat-companion-detail-rail/, 'side-panel details should no longer add another split column');
 });
 

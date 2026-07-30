@@ -352,4 +352,3 @@ export function collaborationRouteDisplayName(
   const auth = collaborationAuthDisplayName(authProvider, authChoice, providerOptions);
   return auth ? `${auth} · ${model}` : model;
 }
-

@@ -92,13 +92,28 @@ test('both transcript panes supply every ChatSessionPane context explicitly', ()
     new URL('../src/pages/ChatsPage.tsx', import.meta.url),
     'utf8',
   );
+  const companionPaneSource = readFileSync(
+    new URL('../src/pages/chatsPage.companionPane.tsx', import.meta.url),
+    'utf8',
+  );
 
-  assert.equal(pageSource.match(/<ChatSessionPane/g)?.length, 2);
+  assert.equal(
+    (pageSource.match(/<ChatSessionPane/g)?.length ?? 0)
+      + (companionPaneSource.match(/<ChatSessionPane/g)?.length ?? 0),
+    2,
+  );
   for (const [field] of expectedSessionPaneContexts) {
     assert.equal(
       pageSource.match(new RegExp(`\\n {8}${field}=\\{\\{`, 'g'))?.length,
-      2,
-      `both ChatSessionPane instances must explicitly supply ${field}`,
+      1,
+      `main ChatSessionPane must explicitly supply ${field}`,
+    );
+    assert.match(
+      companionPaneSource,
+      field === 'viewport'
+        ? /viewport=\{\{\s*\.\.\.sessionPane\.viewport,[\s\S]*composer:/
+        : new RegExp(`${field}=\\{sessionPane\\.${field}\\}`),
+      `companion ChatSessionPane must explicitly forward ${field}`,
     );
   }
 });
