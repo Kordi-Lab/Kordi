@@ -9,6 +9,14 @@ const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import
 const modelsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/models.rs', import.meta.url), 'utf8');
 const typesSource = () => readFileSync(new URL('../src/kordi-app/types.ts', import.meta.url), 'utf8');
 const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudAccountLifecycleSource = () => readFileSync(
+  new URL('../src/features/cloud/useCloudAccountLifecycleState.ts', import.meta.url),
+  'utf8',
+);
+const cloudIdentitySyncSource = () => readFileSync(
+  new URL('../src/features/cloud/useCloudCanonicalIdentitySync.ts', import.meta.url),
+  'utf8',
+);
 
 test('canonical state loading maps session_messages in one query instead of N+1 select_message calls', () => {
   const source = commandsSource();
@@ -214,60 +222,83 @@ test('cloud profile adoption returns a bounded identity delta without loading ca
   assert.match(rendererClient, /invokeDesktop<CanonicalProfileIdentityDelta>/);
   assert.doesNotMatch(rendererClient, /CanonicalSessionState/);
 
-  const cloudSource = cloudBridgeSource();
+  const cloudSource = cloudIdentitySyncSource();
   assert.match(
     cloudSource,
-    /cloudProfileIdentityAdoptionCoordinator\.request\([\s\S]*?\(delta\) => \{[\s\S]*?setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/,
+    /profileIdentityAdoptionCoordinator\.request\([\s\S]*?\(delta\) => \{[\s\S]*?setCanonicalState\(\(current\) =>[\s\S]*?applyCanonicalProfileIdentityDelta\(current, delta\)/,
     'cloud adoption should merge the delta with a functional React state update',
   );
 });
 
 test('cloud profile adoption waits for the canonical state readiness transition', () => {
-  const source = cloudBridgeSource();
-  const signatureStart = source.indexOf('const cloudProfileAdoptionSignature');
+  const source = cloudIdentitySyncSource();
+  const signatureStart = source.indexOf('const profileAdoptionSignature');
   const effectStart = source.indexOf('useEffect(() => {', signatureStart);
   const effectEnd = source.indexOf('const contactIdentitySignature', effectStart);
   assert.notEqual(signatureStart, -1, 'expected cloud profile adoption signature');
   assert.notEqual(effectStart, -1, 'expected cloud profile adoption effect');
   assert.notEqual(effectEnd, -1, 'expected contact signature after adoption effect');
-  const readinessSetup = source.slice(Math.max(0, signatureStart - 200), signatureStart);
+  const readinessSetup = source.slice(
+    Math.max(0, signatureStart - 400),
+    signatureStart,
+  );
   assert.match(
     readinessSetup,
-    /const canonicalStateReady = Boolean\(canonicalSessionState\);/,
+    /const canonicalStateReady = Boolean\(canonicalState\);/,
     'readiness must be a primitive that changes when a null catalog becomes loaded',
   );
   const effect = source.slice(effectStart, effectEnd);
 
-  assert.match(effect, /if \(!account \|\| !canonicalStateReady \|\| !setCanonicalSessionState\) return;/);
+  assert.match(
+    effect,
+    /!account[\s\S]*!canonicalStateReady[\s\S]*!setCanonicalState/,
+  );
   assert.match(
     effect,
     /\}, \[[^\]]*canonicalStateReady[^\]]*\]\);/,
     'null-to-loaded readiness must rerun adoption even when the human identity remains null',
   );
-  assert.match(effect, /setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/);
+  assert.match(
+    effect,
+    /setCanonicalState\(\(current\) =>[\s\S]*applyCanonicalProfileIdentityDelta\(current, delta\)/,
+  );
 });
 
 test('cloud profile adoption serializes same-account updates without per-render cancellation', () => {
   const source = cloudBridgeSource();
+  const identitySource = cloudIdentitySyncSource();
+  const lifecycleSource = cloudAccountLifecycleSource();
   assert.match(
     source,
     /const cloudProfileIdentityAdoptionCoordinator = useMemo\(\(\) => new CloudProfileIdentityAdoptionCoordinator\(\), \[\]\);/,
   );
   assert.match(
-    source,
-    /useEffect\(\(\) => \(\) => \{\s*cloudProfileIdentityAdoptionCoordinator\.changeAccount\(\);\s*\}, \[account\?\.accountId, cloudProfileIdentityAdoptionCoordinator\]\);/,
+    lifecycleSource,
+    /useEffect\(\(\) => \(\) => \{\s*profileIdentityAdoptionCoordinator\.changeAccount\(\);\s*\}, \[account\?\.accountId, profileIdentityAdoptionCoordinator\]\);/,
     'account switch and unmount should invalidate the old generation',
   );
 
-  const signatureStart = source.indexOf('const cloudProfileAdoptionSignature');
-  const effectStart = source.indexOf('useEffect(() => {', signatureStart);
-  const effectEnd = source.indexOf('const contactIdentitySignature', effectStart);
-  const effect = source.slice(effectStart, effectEnd);
-  assert.match(effect, /if \(!account \|\| !canonicalStateReady \|\| !setCanonicalSessionState\) return;/);
-  assert.match(effect, /cloudProfileIdentityAdoptionCoordinator\.request\(/);
+  const signatureStart = identitySource.indexOf('const profileAdoptionSignature');
+  const effectStart = identitySource.indexOf('useEffect(() => {', signatureStart);
+  const effectEnd = identitySource.indexOf('const contactIdentitySignature', effectStart);
+  const effect = identitySource.slice(effectStart, effectEnd);
+  assert.match(
+    effect,
+    /!account[\s\S]*!canonicalStateReady[\s\S]*!setCanonicalState/,
+  );
+  assert.match(effect, /profileIdentityAdoptionCoordinator\.request\(/);
   assert.match(effect, /adoptCloudProfileIdentity,/);
-  assert.match(effect, /setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/);
-  assert.match(effect, /console\.warn\('\[cloud-profile-identity\] failed to adopt stable cloud profile identity', error\)/);
+  assert.match(
+    effect,
+    /setCanonicalState\(\(current\) =>[\s\S]*applyCanonicalProfileIdentityDelta\(current, delta\)/,
+  );
+  assert.match(
+    effect,
+    /reportWarning\([\s\S]*'\[cloud-profile-identity\] failed to adopt stable cloud profile identity'/,
+  );
   assert.doesNotMatch(effect, /\bcancelled\b/, 'same-account profile rerenders must not drop an in-flight migration delta');
-  assert.match(effect, /\[[^\]]*canonicalStateReady[^\]]*cloudProfileAdoptionSignature[^\]]*\]/);
+  assert.match(
+    effect,
+    /\[[^\]]*canonicalStateReady[^\]]*profileAdoptionSignature[^\]]*\]/,
+  );
 });

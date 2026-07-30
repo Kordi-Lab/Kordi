@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
-  adoptCloudProfileIdentity,
   cancelDesktopChatTurn,
-  upsertCanonicalIdentityFast,
   upsertCanonicalMessageFast,
   type DesktopChatContextMessage,
   type DesktopChatMessageRoute,
@@ -25,9 +23,6 @@ import type {
   MessageAttachment,
 } from '@/kordi-app/types';
 import {
-  applyCanonicalProfileIdentityDelta,
-} from '@/features/canonical/canonicalStateReducers';
-import {
   beginChatPerformanceSpan,
   chatPerformancePayloadBytes,
   finishChatPerformanceSpan,
@@ -47,7 +42,6 @@ import {
 } from './authClient';
 import {
   buildCloudDesktopCollaborationState,
-  cloudContactsToCanonicalIdentityRequests,
   cloudGroupParticipantContacts,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForCollaborationSend,
@@ -96,7 +90,6 @@ import {
 import {
   uploadComposerAttachments,
   resolveForwardAttachmentItems,
-  resetCloudAttachmentPreviewLoader,
 } from './cloudAttachments';
 import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
 import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgents';
@@ -109,19 +102,13 @@ import {
 import { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import { CloudProfileIdentityAdoptionCoordinator, CloudSyncCoordinator } from './cloudSyncCoordinator';
 import {
-  loadCloudSessionVisibility,
   removeCloudSessionMessages,
-  saveCloudSessionVisibility,
   type CloudSessionPinsById,
-  type CloudSessionTitlesById,
 } from './cloudDiffSync';
 import {
-  EMPTY_CLOUD_SESSION_ACTIVITY,
   cloneCloudSessionActivityForFork,
-  loadCachedCloudSessionActivity,
   mergeCloudSessionActivity,
   normalizeCloudSessionActivitySnapshot,
-  saveCachedCloudSessionActivity,
   type CloudSessionActivityStore,
 } from './cloudSessionActivity';
 import { loadSession } from './session';
@@ -137,7 +124,6 @@ import {
   cloudBootstrapPeerIds,
   cloudAccountGenerationKey,
   cloudMessagesAuthoritativeForContext,
-  cloudMessagesByPeerEqual,
   cloudUnreadReadinessContextKey,
   cloudUnreadStatusForContext,
   mergeCloudMessagesByPeerSnapshot,
@@ -216,6 +202,13 @@ import {
 import {
   useCloudFocusRefresh,
 } from './useCloudFocusRefresh';
+import {
+  useCloudAccountLifecycleState,
+  useCloudSessionVisibilityRefresh,
+} from './useCloudAccountLifecycleState';
+import {
+  useCloudCanonicalIdentitySync,
+} from './useCloudCanonicalIdentitySync';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -552,209 +545,150 @@ export function useCloudCollaborationState({
     ? new CloudGroupOutbox(account.accountId, defaultCloudGroupOutboxPersistence(account.accountId))
     : null, [account?.accountId]);
   const contacts = useCloudContacts(account);
-  const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
+  const [messagesByPeer, setMessagesByPeer] =
+    useState<Record<string, CloudMessage[]>>({});
   const messagesCacheAccountRef = useRef<string | null>(null);
   const hydratedMessagesCacheAccountRef = useRef<string | null>(null);
   const messagesBelongToCurrentAccount = Boolean(
-    account?.accountId && messagesCacheAccountRef.current === account.accountId,
+    account?.accountId
+      && messagesCacheAccountRef.current === account.accountId,
   );
   const currentAccountMessagesByPeer = messagesBelongToCurrentAccount
     ? messagesByPeer
     : EMPTY_CLOUD_MESSAGES_BY_PEER;
   const cloudMessageIndexRef = useRef<CloudMessageIndex>(null!);
   const cloudMessageIndex = useMemo(
-    () => buildCloudMessageIndex(account?.accountId ?? null, currentAccountMessagesByPeer, {
-      previousIndex: cloudMessageIndexRef.current,
-    }),
+    () => buildCloudMessageIndex(
+      account?.accountId ?? null,
+      currentAccountMessagesByPeer,
+      { previousIndex: cloudMessageIndexRef.current },
+    ),
     [account?.accountId, currentAccountMessagesByPeer],
   );
-  const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
-  const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
-  const [cloudSessionPinsById, setCloudSessionPinsById] = useState<CloudSessionPinsById>({});
-  const [cloudSessionTitlesById, setCloudSessionTitlesById] = useState<CloudSessionTitlesById>({});
-  const [cloudAgentDefinitionsById, setCloudAgentDefinitionsById] = useState<Record<string, CloudAgentDefinition>>({});
-  const [sharedCloudAgentsByOwner, setSharedCloudAgentsByOwner] = useState<Record<string, SharedCloudAgentSummary[]>>({});
-  const [cloudHiddenSessionIds, setCloudHiddenSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).hiddenSessionIds);
-  const [cloudDeletedSessionIds, setCloudDeletedSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).deletedSessionIds);
-  const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
-  const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
-  const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
-  const cloudSessionPinsByIdRef = useRef<CloudSessionPinsById>(cloudSessionPinsById);
-  const cloudSessionTitlesByIdRef = useRef<CloudSessionTitlesById>(cloudSessionTitlesById);
-  const cloudGroupSessionTitleBackfillsRef = useRef<Set<string>>(new Set());
-  const cloudAgentDefinitionsByIdRef = useRef<Record<string, CloudAgentDefinition>>(cloudAgentDefinitionsById);
-  const cloudHiddenSessionIdsRef = useRef<Set<string>>(cloudHiddenSessionIds);
-  const cloudDeletedSessionIdsRef = useRef<Set<string>>(cloudDeletedSessionIds);
-  const [cloudUnreadReadiness, setCloudUnreadReadiness] = useState<CloudUnreadReadinessSnapshot>(() => ({
-    status: account ? 'pending' : 'ready',
-    contextKey: null,
-  }));
-  const [publishedCloudUnreadContextKey, setPublishedCloudUnreadContextKey] = useState<string | null>(null);
-  const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
-  const cloudProfileCacheRef = useRef<Map<string, CloudPublicProfile>>(new Map());
-  const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
-  const [localAgentTurnsByRequestId, setLocalAgentTurnsByRequestId] = useState<Record<string, DesktopChatTurnSnapshot>>({});
-  const [cloudCollaborationOverride, setCloudCollaborationOverride] = useState<DesktopCollaborationState | null>(null);
-  const [cloudSelfAgentSyncStatusBySessionId, setCloudSelfAgentSyncStatusBySessionId] = useState<Record<string, CloudSelfAgentSyncStatus>>({});
-  const cloudCollaborationStateRef = useRef<DesktopCollaborationState | null>(null);
-  const cloudCollaborationStateContextKeyRef = useRef<string | null>(null);
-  const cloudCollaborationOverrideContextKeyRef = useRef<string | null>(null);
-  const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
-  const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
-  const syncedContactIdentitySignatureRef = useRef<string | null>(null);
-  const cancelledRef = useRef(false);
+  const messagesByPeerRef =
+    useRef<Record<string, CloudMessage[]>>({});
+  const [cloudUnreadReadiness, setCloudUnreadReadiness] =
+    useState<CloudUnreadReadinessSnapshot>(() => ({
+      status: account ? 'pending' : 'ready',
+      contextKey: null,
+    }));
+  const [
+    publishedCloudUnreadContextKey,
+    setPublishedCloudUnreadContextKey,
+  ] = useState<string | null>(null);
+  const canonicalSessionStateRef =
+    useRef<CanonicalSessionState | null>(
+      canonicalSessionState ?? null,
+    );
+  const cloudProfileCacheRef =
+    useRef<Map<string, CloudPublicProfile>>(new Map());
+  const [
+    readInboundMessageIdsByPeer,
+    setReadInboundMessageIdsByPeer,
+  ] = useState<Record<string, Set<string>>>({});
+  const [
+    localAgentTurnsByRequestId,
+    setLocalAgentTurnsByRequestId,
+  ] = useState<Record<string, DesktopChatTurnSnapshot>>({});
+  const [
+    cloudCollaborationOverride,
+    setCloudCollaborationOverride,
+  ] = useState<DesktopCollaborationState | null>(null);
+  const [
+    cloudSelfAgentSyncStatusBySessionId,
+    setCloudSelfAgentSyncStatusBySessionId,
+  ] = useState<Record<string, CloudSelfAgentSyncStatus>>({});
+  const cloudCollaborationStateRef =
+    useRef<DesktopCollaborationState | null>(null);
+  const cloudCollaborationStateContextKeyRef =
+    useRef<string | null>(null);
+  const cloudCollaborationOverrideContextKeyRef =
+    useRef<string | null>(null);
+  const processedCloudAgentMentionIdsRef =
+    useRef<Set<string>>(new Set());
+  const cloudAgentTurnIdsByRequestIdRef =
+    useRef<Map<string, string>>(new Map());
 
-  useEffect(() => {
-    cancelledRef.current = false;
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, []);
-
-  useEffect(() => () => {
-    cloudGroupReplayCoordinator.dispose();
-  }, [cloudGroupReplayCoordinator]);
-
-  useEffect(() => {
-    messagesByPeerRef.current = messagesByPeer;
-    if (
-      account
-      && messagesCacheAccountRef.current === account.accountId
-      && hydratedMessagesCacheAccountRef.current === account.accountId
-    ) {
-      void cloudMessageCache.save(account.accountId, messagesByPeer).catch(() => {});
-    }
-  }, [account, cloudMessageCache, messagesByPeer]);
-
-  useEffect(() => {
-    cloudMessageIndexRef.current = cloudMessageIndex;
-  }, [cloudMessageIndex]);
-
-  useEffect(() => {
-    cloudSessionActivityRef.current = cloudSessionActivity;
-    if (account && messagesCacheAccountRef.current === account.accountId) saveCachedCloudSessionActivity(account.accountId, cloudSessionActivity);
-  }, [account, cloudSessionActivity]);
-
-  useEffect(() => {
-    cloudSessionForksByIdRef.current = cloudSessionForksById;
-  }, [cloudSessionForksById]);
-
-  useEffect(() => {
-    cloudSessionPinsByIdRef.current = cloudSessionPinsById;
-  }, [cloudSessionPinsById]);
-
-  useEffect(() => {
-    cloudSessionTitlesByIdRef.current = cloudSessionTitlesById;
-  }, [cloudSessionTitlesById]);
-
-  useEffect(() => {
-    cloudAgentDefinitionsByIdRef.current = cloudAgentDefinitionsById;
-  }, [cloudAgentDefinitionsById]);
-
-  useEffect(() => {
-    cloudHiddenSessionIdsRef.current = cloudHiddenSessionIds;
-  }, [cloudHiddenSessionIds]);
-
-  useEffect(() => {
-    cloudDeletedSessionIdsRef.current = cloudDeletedSessionIds;
-  }, [cloudDeletedSessionIds]);
-
-  useEffect(() => {
-    if (!account || messagesCacheAccountRef.current !== account.accountId) return;
-    saveCloudSessionVisibility(account.accountId, {
+  const {
+    activity: {
+      value: cloudSessionActivity,
+      setValue: setCloudSessionActivity,
+      valueRef: cloudSessionActivityRef,
+    },
+    forks: {
+      byId: cloudSessionForksById,
+      setById: setCloudSessionForksById,
+      byIdRef: cloudSessionForksByIdRef,
+    },
+    pins: {
+      byId: cloudSessionPinsById,
+      setById: setCloudSessionPinsById,
+      byIdRef: cloudSessionPinsByIdRef,
+    },
+    titles: {
+      byId: cloudSessionTitlesById,
+      setById: setCloudSessionTitlesById,
+      byIdRef: cloudSessionTitlesByIdRef,
+      backfillsRef: cloudGroupSessionTitleBackfillsRef,
+    },
+    agents: {
+      definitionsById: cloudAgentDefinitionsById,
+      setDefinitionsById: setCloudAgentDefinitionsById,
+      definitionsByIdRef: cloudAgentDefinitionsByIdRef,
+      sharedByOwner: sharedCloudAgentsByOwner,
+      setSharedByOwner: setSharedCloudAgentsByOwner,
+    },
+    visibility: {
       hiddenSessionIds: cloudHiddenSessionIds,
+      setHiddenSessionIds: setCloudHiddenSessionIds,
+      hiddenSessionIdsRef: cloudHiddenSessionIdsRef,
       deletedSessionIds: cloudDeletedSessionIds,
-    });
-  }, [account, cloudDeletedSessionIds, cloudHiddenSessionIds]);
-
-  useEffect(() => () => {
-    cloudProfileIdentityAdoptionCoordinator.changeAccount();
-  }, [account?.accountId, cloudProfileIdentityAdoptionCoordinator]);
-
-  useEffect(() => {
-    cloudSyncCoordinator.changeAccount();
-    const generation = cloudSyncCoordinator.currentGeneration();
-    resetCloudAttachmentPreviewLoader();
-    const accountId = account?.accountId ?? null;
-    cloudGroupReplayCoordinator.changeAccount(accountId);
-    messagesCacheAccountRef.current = accountId;
-    hydratedMessagesCacheAccountRef.current = null;
-    messagesByPeerRef.current = {};
-    setMessagesByPeer({});
-    setCloudUnreadReadiness({
-      status: accountId ? 'pending' : 'ready',
-      contextKey: accountId
-        ? cloudUnreadReadinessContextKey(accountId, generation, '')
-        : null,
-    });
-    setPublishedCloudUnreadContextKey(null);
-    cloudCollaborationStateRef.current = null;
-    cloudCollaborationStateContextKeyRef.current = null;
-    cloudCollaborationOverrideContextKeyRef.current = null;
-    setCloudCollaborationOverride(null);
-    setReadInboundMessageIdsByPeer({});
-    setLocalAgentTurnsByRequestId({});
-    let cancelled = false;
-    if (accountId) {
-      void cloudMessageCache.load(accountId).then((cached) => {
-        if (cancelled || messagesCacheAccountRef.current !== accountId) return;
-        setMessagesByPeer((current) => {
-          const merged = mergeCloudMessagesByPeerSnapshot(cached, current);
-          return cloudMessagesByPeerEqual(current, merged) ? current : merged;
-        });
-        hydratedMessagesCacheAccountRef.current = accountId;
-      }).catch(() => {});
-    }
-    const nextSessionActivity = account
-      ? loadCachedCloudSessionActivity(account.accountId)
-      : EMPTY_CLOUD_SESSION_ACTIVITY;
-    cloudSessionActivityRef.current = nextSessionActivity;
-    cloudSessionForksByIdRef.current = {};
-    cloudSessionPinsByIdRef.current = {};
-    cloudSessionTitlesByIdRef.current = {};
-    cloudGroupSessionTitleBackfillsRef.current.clear();
-    cloudAgentDefinitionsByIdRef.current = {};
-    setCloudSessionActivity(nextSessionActivity);
-    setCloudSessionForksById({});
-    setCloudSessionPinsById({});
-    setCloudSessionTitlesById({});
-    setCloudAgentDefinitionsById({});
-    const visibility = loadCloudSessionVisibility(account?.accountId);
-    cloudHiddenSessionIdsRef.current = visibility.hiddenSessionIds;
-    cloudDeletedSessionIdsRef.current = visibility.deletedSessionIds;
-    setCloudHiddenSessionIds(visibility.hiddenSessionIds);
-    setCloudDeletedSessionIds(visibility.deletedSessionIds);
-    return () => {
-      cancelled = true;
-    };
-  }, [account?.accountId, cloudGroupReplayCoordinator, cloudMessageCache, cloudSyncCoordinator]);
+      setDeletedSessionIds: setCloudDeletedSessionIds,
+      deletedSessionIdsRef: cloudDeletedSessionIdsRef,
+    },
+    cancelledRef,
+    resetAccountState: resetCloudAccountState,
+  } = useCloudAccountLifecycleState({
+    account,
+    messages: {
+      cache: cloudMessageCache,
+      value: messagesByPeer,
+      setValue: setMessagesByPeer,
+      valueRef: messagesByPeerRef,
+      index: cloudMessageIndex,
+      indexRef: cloudMessageIndexRef,
+      cacheAccountRef: messagesCacheAccountRef,
+      hydratedCacheAccountRef: hydratedMessagesCacheAccountRef,
+    },
+    unread: {
+      setReadiness: setCloudUnreadReadiness,
+      setPublishedContextKey: setPublishedCloudUnreadContextKey,
+    },
+    collaboration: {
+      stateRef: cloudCollaborationStateRef,
+      stateContextKeyRef: cloudCollaborationStateContextKeyRef,
+      overrideContextKeyRef:
+        cloudCollaborationOverrideContextKeyRef,
+      setOverride: setCloudCollaborationOverride,
+      setReadInboundMessageIdsByPeer,
+      setLocalAgentTurnsByRequestId,
+    },
+    syncCoordinator: cloudSyncCoordinator,
+    profileIdentityAdoptionCoordinator:
+      cloudProfileIdentityAdoptionCoordinator,
+    groupReplayCoordinator: cloudGroupReplayCoordinator,
+  });
 
   useEffect(() => {
-    if (!account) return;
-    let cancelled = false;
-    void loadSession()
-      .then(async (session) => {
-        if (!session?.token) return null;
-        return client.listSessionVisibility(session.token);
-      })
-      .then((visibility) => {
-        if (cancelled || !visibility) return;
-        const nextVisibility = {
-          hiddenSessionIds: new Set(visibility.hiddenSessionIds.map(cleanText).filter(Boolean)),
-          deletedSessionIds: new Set(visibility.deletedSessionIds.map(cleanText).filter(Boolean)),
-        };
-        saveCloudSessionVisibility(account.accountId, nextVisibility);
-        setCloudHiddenSessionIds(nextVisibility.hiddenSessionIds);
-        setCloudDeletedSessionIds(nextVisibility.deletedSessionIds);
-      })
-      .catch(() => {
-        // A visibility refresh failure should not block the existing message
-        // bootstrap; the next diff/full refresh can recover.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [account, client]);
+    return resetCloudAccountState();
+  }, [resetCloudAccountState]);
+
+  useCloudSessionVisibilityRefresh({
+    account,
+    client,
+    setHiddenSessionIds: setCloudHiddenSessionIds,
+    setDeletedSessionIds: setCloudDeletedSessionIds,
+  });
 
   useEffect(() => {
     canonicalSessionStateRef.current = canonicalSessionState ?? null;
@@ -813,8 +747,6 @@ export function useCloudCollaborationState({
     groupParticipantPeerIds,
     contacts.requests,
   ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
-  const cloudProfileIdentityId = account?.accountId ? `human:${account.accountId}` : '';
-  const localHumanIdentityId = cloudProfileIdentityId || canonicalSessionState?.profile.humanIdentityId?.trim() || '';
   const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
   const cloudSyncGeneration = cloudSyncCoordinator.currentGeneration();
   const cloudUnreadContextKey = account
@@ -840,73 +772,15 @@ export function useCloudCollaborationState({
   });
   const initialMessagesSettled = cloudUnreadReadinessStatus === 'ready';
   const canonicalStateReady = Boolean(canonicalSessionState);
-  const cloudProfileAdoptionSignature = useMemo(() => JSON.stringify({
-    accountId: account?.accountId ?? null,
-    displayName: account?.displayName ?? account?.primaryEmail ?? null,
-    avatarUrl: account?.avatarUrl ?? null,
-    profileHumanIdentityId: canonicalSessionState?.profile.humanIdentityId ?? null,
-  }), [account?.accountId, account?.avatarUrl, account?.displayName, account?.primaryEmail, canonicalSessionState?.profile.humanIdentityId]);
-
-  useEffect(() => {
-    if (!account || !canonicalStateReady || !setCanonicalSessionState) return;
-    void cloudProfileIdentityAdoptionCoordinator.request(
-      {
-        accountId: account.accountId,
-        displayName: account.displayName || account.primaryEmail || account.accountId,
-        avatarKey: account.accountId,
-        profileImageUrl: account.avatarUrl ?? null,
-      },
-      adoptCloudProfileIdentity,
-      (delta) => {
-        setCanonicalSessionState?.((current) => applyCanonicalProfileIdentityDelta(current, delta));
-      },
-    )
-      .catch((error) => {
-        console.warn('[cloud-profile-identity] failed to adopt stable cloud profile identity', error);
-      });
-  }, [account, canonicalSessionState?.profile.humanIdentityId, canonicalStateReady, cloudProfileAdoptionSignature, cloudProfileIdentityAdoptionCoordinator, setCanonicalSessionState]);
-
-  const contactIdentitySignature = useMemo(() => JSON.stringify({
-    accountId: account?.accountId ?? null,
-    localHumanIdentityId,
-    contacts: contacts.contacts
-      .map((contact) => ({
-        id: contact.id,
-        name: contact.name,
-        sourceParticipantId: contact.sourceParticipantId ?? null,
-        sourceHumanId: contact.sourceHumanId ?? null,
-        profileImageUrl: contact.profileImageUrl ?? null,
-        avatarSeed: contact.avatarSeed ?? null,
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-  }), [account?.accountId, contacts.contacts, localHumanIdentityId]);
-
-
-  useEffect(() => {
-    if (!account || !localHumanIdentityId || !setCanonicalSessionState) {
-      syncedContactIdentitySignatureRef.current = null;
-      return;
-    }
-    if (syncedContactIdentitySignatureRef.current === contactIdentitySignature) return;
-    syncedContactIdentitySignatureRef.current = contactIdentitySignature;
-    let cancelled = false;
-    void (async () => {
-      for (const request of cloudContactsToCanonicalIdentityRequests({
-        account,
-        contacts: contacts.contacts,
-        localHumanIdentityId,
-      })) {
-        if (cancelled) return;
-        const identity = await upsertCanonicalIdentityFast(request);
-        if (!cancelled) setCanonicalSessionState((current) => upsertCanonicalIdentityIntoLocalState(current, identity));
-      }
-    })().catch(() => {
-      syncedContactIdentitySignatureRef.current = null;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [account, contactIdentitySignature, contacts.contacts, localHumanIdentityId, setCanonicalSessionState]);
+  useCloudCanonicalIdentitySync({
+    account,
+    contacts: contacts.contacts,
+    canonicalState: canonicalSessionState,
+    setCanonicalState: setCanonicalSessionState,
+    profileIdentityAdoptionCoordinator:
+      cloudProfileIdentityAdoptionCoordinator,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
   const refreshCloudAgents = useCallback(async (generation?: number) => {
     if (!account) {
@@ -919,7 +793,13 @@ export function useCloudCollaborationState({
     if (cancelledRef.current || (generation !== undefined && !cloudSyncCoordinator.isCurrentGeneration(generation))) return;
     const next = Object.fromEntries(agents.map((agent) => [agent.agentId, agent]));
     setCloudAgentDefinitionsById((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
-  }, [account, cloudAgentsClient, cloudSyncCoordinator]);
+  }, [
+    account,
+    cancelledRef,
+    cloudAgentsClient,
+    cloudSyncCoordinator,
+    setCloudAgentDefinitionsById,
+  ]);
 
   const sharedCloudAgents = useMemo(() => Object.values(sharedCloudAgentsByOwner).flat(), [sharedCloudAgentsByOwner]);
 
@@ -938,7 +818,7 @@ export function useCloudCollaborationState({
     }
     setSharedCloudAgentsByOwner((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
     return agents;
-  }, [account, cloudAgentsClient]);
+  }, [account, cloudAgentsClient, setSharedCloudAgentsByOwner]);
 
   const createCloudAgentDefinition = useCallback(async (input: CreateCloudAgentInput) => {
     const session = await loadSession();
@@ -946,7 +826,7 @@ export function useCloudCollaborationState({
     const agent = await cloudAgentsClient.createCloudAgent(session.token, input);
     setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
     return agent;
-  }, [cloudAgentsClient]);
+  }, [cloudAgentsClient, setCloudAgentDefinitionsById]);
 
   const updateCloudAgentDefinition = useCallback(async (agentId: string, input: UpdateCloudAgentInput) => {
     const session = await loadSession();
@@ -954,7 +834,7 @@ export function useCloudCollaborationState({
     const agent = await cloudAgentsClient.updateCloudAgent(session.token, agentId, input);
     setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
     return agent;
-  }, [cloudAgentsClient]);
+  }, [cloudAgentsClient, setCloudAgentDefinitionsById]);
 
   const archiveCloudAgentDefinition = useCallback(async (agentId: string) => {
     const session = await loadSession();
@@ -965,7 +845,7 @@ export function useCloudCollaborationState({
       return rest;
     });
     return agent;
-  }, [cloudAgentsClient]);
+  }, [cloudAgentsClient, setCloudAgentDefinitionsById]);
 
   const { refreshCloudMessages, syncCloudCollaborationDiff } = useCloudMessageSync({
     account,
@@ -1014,7 +894,7 @@ export function useCloudCollaborationState({
       const next = [...previous, metadataMessage].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
       return { ...current, [peerId]: next };
     });
-  }, [account?.accountId]);
+  }, [account?.accountId, setMessagesByPeer]);
 
   const claimFreshCloudGroupFallback = useCallback(async (
     sentMessages: readonly CloudMessage[],
@@ -1042,7 +922,12 @@ export function useCloudCollaborationState({
       messagesByPeer: latestMessagesByPeer,
     }).filter((claim) => claim.requestMessageId === requestMessageId);
     await Promise.all(exactClaims.map((claim) => claimCloudFallbackRun(claim, token)));
-  }, [account, claimCloudFallbackRun, contacts.contacts]);
+  }, [
+    account,
+    claimCloudFallbackRun,
+    contacts.contacts,
+    messagesByPeerRef,
+  ]);
 
   useCloudSelfAgentForwardSync({
     account,
@@ -1146,10 +1031,17 @@ export function useCloudCollaborationState({
   }, [
     account,
     client,
+    cloudAgentTurnIdsByRequestIdRef,
     cloudAgentDefinitionsById,
     cloudAgentRuntimeRoutesBySessionId,
+    cloudMessageIndexRef,
+    cloudProfileCacheRef,
+    cloudSessionActivityRef,
     defaultCloudAgentRuntimeRoute,
     mergeMessage,
+    processedCloudAgentMentionIdsRef,
+    setCloudSessionActivity,
+    setLocalAgentTurnsByRequestId,
     syncCloudCollaborationDiff,
     setCanonicalSessionState,
   ]);
@@ -1357,6 +1249,9 @@ export function useCloudCollaborationState({
     cloudDeletedSessionIds,
     cloudHiddenSessionIds,
     cloudCollaborationAccountContextKey,
+    cloudCollaborationOverrideContextKeyRef,
+    cloudCollaborationStateContextKeyRef,
+    cloudCollaborationStateRef,
     localAgentTurnsByRequestId,
     initialMessagesSettled,
     cloudMessageIndex,
@@ -1367,7 +1262,12 @@ export function useCloudCollaborationState({
   useEffect(() => {
     cloudCollaborationStateRef.current = cloudCollaborationState;
     cloudCollaborationStateContextKeyRef.current = cloudCollaborationAccountContextKey;
-  }, [cloudCollaborationAccountContextKey, cloudCollaborationState]);
+  }, [
+    cloudCollaborationAccountContextKey,
+    cloudCollaborationState,
+    cloudCollaborationStateContextKeyRef,
+    cloudCollaborationStateRef,
+  ]);
 
   const setCloudCollaborationState = useCallback<Dispatch<SetStateAction<DesktopCollaborationState | null>>>((action) => {
     const current = cloudCollaborationPreviousStateForContext(
@@ -1380,7 +1280,13 @@ export function useCloudCollaborationState({
       : action;
     cloudCollaborationOverrideContextKeyRef.current = cloudCollaborationAccountContextKey;
     setCloudCollaborationOverride(next);
-  }, [cloudCollaborationAccountContextKey]);
+  }, [
+    cloudCollaborationAccountContextKey,
+    cloudCollaborationOverrideContextKeyRef,
+    cloudCollaborationStateContextKeyRef,
+    cloudCollaborationStateRef,
+    setCloudCollaborationOverride,
+  ]);
 
   const mergedCollaborationState = cloudCollaborationState;
   const visibleCloudSelfAgentSyncStatusBySessionId = useMemo(() => ({
@@ -1689,7 +1595,14 @@ export function useCloudCollaborationState({
         console.warn('[cloud-group-session-title] failed to backfill title', error);
       });
     }
-  }, [account, canonicalSessionState, cloudMessageIndex, initialMessagesSettled, sendCloudGroupControl]);
+  }, [
+    account,
+    canonicalSessionState,
+    cloudGroupSessionTitleBackfillsRef,
+    cloudMessageIndex,
+    initialMessagesSettled,
+    sendCloudGroupControl,
+  ]);
 
   const refreshCloudSessionActivity = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -1699,7 +1612,7 @@ export function useCloudCollaborationState({
     const snapshot = await client.listSessionActivity(session.token, trimmedSessionId);
     const normalized = normalizeCloudSessionActivitySnapshot(snapshot);
     setCloudSessionActivity((current) => mergeCloudSessionActivity(current, normalized));
-  }, [account, client]);
+  }, [account, client, setCloudSessionActivity]);
 
   const publishCloudTaskActivity = useCallback(async (input: UpsertCloudTaskActivityInput) => {
     if (!account) throw new Error('Not signed in.');
@@ -1710,7 +1623,7 @@ export function useCloudCollaborationState({
       current,
       normalizeCloudSessionActivitySnapshot({ tasks: [task], artifacts: [] }),
     ));
-  }, [account, client]);
+  }, [account, client, setCloudSessionActivity]);
 
   const publishCloudArtifactActivity = useCallback(async (input: UpsertCloudArtifactActivityInput) => {
     if (!account) throw new Error('Not signed in.');
@@ -1721,7 +1634,7 @@ export function useCloudCollaborationState({
       current,
       normalizeCloudSessionActivitySnapshot({ tasks: [], artifacts: [artifact] }),
     ));
-  }, [account, client]);
+  }, [account, client, setCloudSessionActivity]);
 
   const recordCloudSessionFork = useCallback(async (input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }) => {
     if (!account) throw new Error('Not signed in.');
@@ -1743,7 +1656,14 @@ export function useCloudCollaborationState({
     );
     setCloudSessionActivity((current) => mergeCloudSessionActivity(current, cloned));
     void refreshCloudSessionActivity(forkSessionId);
-  }, [account, client, refreshCloudSessionActivity]);
+  }, [
+    account,
+    client,
+    cloudSessionActivityRef,
+    refreshCloudSessionActivity,
+    setCloudSessionActivity,
+    setCloudSessionForksById,
+  ]);
 
   const updateCloudSessionPin = useCallback(async (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => {
     if (!account) throw new Error('Cloud account is not signed in.');
@@ -1758,7 +1678,12 @@ export function useCloudCollaborationState({
     setCloudSessionPinsById((current) => ({ ...current, [pin.sessionId]: pin }));
     void syncCloudCollaborationDiff();
     return pin;
-  }, [account, client, syncCloudCollaborationDiff]);
+  }, [
+    account,
+    client,
+    setCloudSessionPinsById,
+    syncCloudCollaborationDiff,
+  ]);
 
   const hideCloudSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -1767,7 +1692,7 @@ export function useCloudCollaborationState({
     if (!session?.token) throw new Error('Not signed in.');
     await client.hideCloudSession(session.token, trimmedSessionId);
     setCloudHiddenSessionIds((current) => new Set(current).add(trimmedSessionId));
-  }, [client]);
+  }, [client, setCloudHiddenSessionIds]);
 
   const unhideCloudSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -1781,7 +1706,7 @@ export function useCloudCollaborationState({
       next.delete(trimmedSessionId);
       return next;
     });
-  }, [client]);
+  }, [client, setCloudHiddenSessionIds]);
 
   const deleteCloudSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -1799,7 +1724,13 @@ export function useCloudCollaborationState({
     if (account) {
       setMessagesByPeer((current) => removeCloudSessionMessages(account.accountId, current, trimmedSessionId));
     }
-  }, [account, client]);
+  }, [
+    account,
+    client,
+    setCloudDeletedSessionIds,
+    setCloudHiddenSessionIds,
+    setMessagesByPeer,
+  ]);
 
   const cancelCloudAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
@@ -1880,7 +1811,18 @@ export function useCloudCollaborationState({
     mergeMessage(message);
     await syncCloudCollaborationDiff();
     setCloudCollaborationOverride(null);
-  }, [account, canonicalSessionState?.messages, client, cloudMessageIndex, mergeMessage, setCanonicalSessionState, syncCloudCollaborationDiff]);
+  }, [
+    account,
+    canonicalSessionState,
+    client,
+    cloudAgentTurnIdsByRequestIdRef,
+    cloudMessageIndex,
+    mergeMessage,
+    processedCloudAgentMentionIdsRef,
+    setCanonicalSessionState,
+    setCloudCollaborationOverride,
+    syncCloudCollaborationDiff,
+  ]);
 
   return {
     cloudCollaborationState,

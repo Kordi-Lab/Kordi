@@ -10,8 +10,17 @@ const collaborationSource = () => readFileSync(
   'utf8',
 );
 
+const accountLifecycleSource = () => readFileSync(
+  new URL(
+    '../src/features/cloud/useCloudAccountLifecycleState.ts',
+    import.meta.url,
+  ),
+  'utf8',
+);
+
 test('Cloud cache stays interactive without becoming authoritative', () => {
   const source = collaborationSource();
+  const lifecycleSource = accountLifecycleSource();
 
   assert.match(
     source,
@@ -22,22 +31,25 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
     /initialMessagesSettled \? routed : suppressCloudCollaborationUnreadCounts\(routed\)/,
   );
   assert.match(source, /defaultCloudMessageCache\(\)/);
-  assert.match(source, /cloudMessageCache\.load\(accountId\)\.then/);
   assert.match(
-    source,
-    /hydratedMessagesCacheAccountRef\.current === account\.accountId/,
+    lifecycleSource,
+    /messageCache\.load\(accountId\)[\s\S]*?\.then/,
+  );
+  assert.match(
+    lifecycleSource,
+    /hydratedCacheAccountRef\.current === account\.accountId/,
   );
   assert.doesNotMatch(
     source,
     /loadCachedCloudMessagesByPeer|saveCachedCloudMessagesByPeer/,
   );
   assert.match(
-    source,
+    lifecycleSource,
     /loadCloudSessionVisibility\(account\?\.accountId\)/,
   );
   assert.match(
-    source,
-    /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/,
+    lifecycleSource,
+    /!account[\s\S]*messagesCacheAccountRef\.current !== account\.accountId[\s\S]*saveCloudSessionVisibility/,
   );
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
   assert.match(
@@ -48,6 +60,7 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
 
 test('Cloud group control replay uses bounded coordinator retries', () => {
   const source = collaborationSource();
+  const lifecycleSource = accountLifecycleSource();
   const replayEffect = readFileSync(
     new URL(
       '../src/features/cloud/useCloudGroupReplay.ts',
@@ -61,8 +74,8 @@ test('Cloud group control replay uses bounded coordinator retries', () => {
     /new CloudGroupReplayCoordinator<IndexedCloudGroupRow>/,
   );
   assert.match(
-    source,
-    /cloudGroupReplayCoordinator\.changeAccount\(accountId\)/,
+    lifecycleSource,
+    /groupReplayCoordinator\.changeAccount\(accountId\)/,
   );
   assert.match(replayEffect, /coordinator\.request\(/);
   assert.match(
