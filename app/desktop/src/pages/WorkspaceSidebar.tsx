@@ -7,17 +7,13 @@ import {
   Search,
 } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { isBlankParticipantSpaceSession, primaryAgentForConversation } from '@/features/chat/participantSpaces';
-import type { ChatChannel, Conversation, SessionStatusIndicator } from '@/kordi-app/types';
+import type { ChatChannel, Conversation } from '@/kordi-app/types';
 import { buildForkLineage, isGroupForkSession } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -48,6 +44,16 @@ import type {
 } from '@/pages/workspaceSidebar.types';
 import { SidebarUpdater } from '@/pages/workspaceSidebar.update';
 import { SidebarProfileControl } from '@/pages/workspaceSidebar.profile';
+import {
+  SidebarAgentsPanel,
+  SidebarContactsPanel,
+  SidebarProjectsPanel,
+  SidebarSettingsPanel,
+} from '@/pages/workspaceSidebar.panels';
+import {
+  SidebarSessionMetaColumn,
+  SidebarUnreadBadge,
+} from '@/pages/workspaceSidebar.shared';
 
 export type { WorkspaceSidebarProps } from '@/pages/workspaceSidebar.types';
 export { desktopUpdateButtonPresentation } from '@/pages/workspaceSidebar.updatePresentation';
@@ -56,6 +62,7 @@ export {
   CloudProfileRowCopyButton,
 } from '@/pages/workspaceSidebar.profile';
 export { buildCloudProfileRows } from '@/pages/workspaceSidebar.profileModel';
+export { SidebarSessionStatusIndicator } from '@/pages/workspaceSidebar.shared';
 
 function filterGroupForkSessionsFromSpaces(spaces: ParticipantSpaceItem[]): ParticipantSpaceItem[] {
   return spaces
@@ -162,74 +169,6 @@ export function participantSpaceCanRenameSessions(space: ParticipantSpaceItem) {
     .map((identityId) => identityId.trim())
     .filter(Boolean));
   return [...selfIdentityIds].some((identityId) => adminIdentityIds.has(identityId));
-}
-
-const SIDEBAR_STATUS_DOT_TONE: Record<SessionStatusIndicator['tone'], string> = {
-  running: 'app-session-status-light-running',
-  ready: 'app-session-status-light-ready',
-  draft: 'app-session-status-light-draft',
-  error: 'app-session-status-light-error',
-  stopped: 'app-session-status-light-stopped',
-};
-
-export function SidebarSessionStatusIndicator({
-  indicator,
-}: {
-  indicator?: SessionStatusIndicator;
-}) {
-  if (!indicator) return null;
-  return (
-    <span
-      className={cn('app-session-status-light', SIDEBAR_STATUS_DOT_TONE[indicator.tone])}
-      title={indicator.label}
-      aria-label={indicator.label}
-    />
-  );
-}
-
-function SidebarUnreadBadge({ count, scope }: { count?: number; scope?: string }) {
-  if (!count || count <= 0) return null;
-
-  return (
-    <span
-      className="app-sidebar-unread-badge inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none"
-      data-unread-scope={scope}
-      data-unread-count={count > 99 ? '99+' : count}
-    >
-      {count > 99 ? '99+' : count}
-    </span>
-  );
-}
-
-function SidebarSessionMetaColumn({
-  timeLabel,
-  unreadCount,
-  unreadScope,
-  indicator,
-  active = false,
-  reserveStatusSpace = true,
-}: {
-  timeLabel: string;
-  unreadCount?: number;
-  unreadScope?: string;
-  indicator?: SessionStatusIndicator;
-  active?: boolean;
-  reserveStatusSpace?: boolean;
-}) {
-  const hasStatusLine = Boolean((unreadCount && unreadCount > 0) || indicator);
-  return (
-    <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
-      <span className={cn('app-session-meta-time whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums', active && 'app-session-meta-time-active')}>
-        {timeLabel}
-      </span>
-      {reserveStatusSpace || hasStatusLine ? (
-        <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-          <SidebarUnreadBadge count={unreadCount} scope={unreadScope} />
-          <SidebarSessionStatusIndicator indicator={indicator} />
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
@@ -359,24 +298,11 @@ export function WorkspaceSidebar({
     onCreateProjectFromFolder,
     onCreateProject,
     runtimeProjects,
-    projectSearch,
-    setProjectSearch,
-    filteredProjects,
-    activeProjectId,
-    activeProjectSessionId,
-    projectSelectedSessionIds,
-    selectProject,
-    expandedProjectIds,
-    setExpandedProjectIds,
-    onSelectProjectSession,
   } = projects;
   const {
-    groupedContacts,
     displayedContacts,
     addableContacts,
     contactRequestCount,
-    setActiveContactGroup,
-    setActiveContactId,
     displayedAgents,
   } = directory;
   const { cloudAccount } = account;
@@ -1289,220 +1215,22 @@ export function WorkspaceSidebar({
               )}
 
               {activeNav === 'projects' && (
-                <div className="flex h-full flex-col p-2.5 text-white">
-                  <div className="mb-2 flex items-start justify-between gap-2.5">
-                    <div>
-                      <div className="text-[15px] font-semibold text-white">Projects</div>
-                      <div className="mt-0.5 text-[11px] text-slate-400">{runtimeProjects.length} workspaces with shared context and sessions</div>
-                    </div>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="secondary"
-                      className="app-icon-button h-8 w-8 rounded-lg border-0"
-                      title="Create project"
-                      aria-label="Create project"
-                      onClick={() => setIsCreateProjectDialogOpen(true)}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-
-                  <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
-                    <Search className="h-3.5 w-3.5 text-slate-400" />
-                    <input
-                      value={projectSearch}
-                      onChange={(event) => setProjectSearch(event.target.value)}
-                      placeholder="Search projects"
-                      className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1">
-                    <div className="w-full space-y-1.5">
-                      {filteredProjects.map((project) => {
-                        const isExpanded = expandedProjectIds[project.id] ?? false;
-
-                        return (
-                          <div key={project.id} className="app-project-group rounded-[18px] px-1 py-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const rememberedSessionId = projectSelectedSessionIds[project.id];
-                                const currentProjectSessionId =
-                                  activeProjectId === project.id
-                                    ? activeProjectSessionId
-                                    : (project.sessions.find((session) => session.id === rememberedSessionId)?.id
-                                        ?? project.sessions[0]?.id
-                                        ?? '');
-
-                                selectProject(project.id, currentProjectSessionId || undefined);
-                                setExpandedProjectIds((current) => ({
-                                  ...current,
-                                  [project.id]: current[project.id] === undefined ? true : !current[project.id],
-                                }));
-                              }}
-                              className="app-project-group-toggle flex w-full items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition"
-                            >
-                              <div className="min-w-0">
-                                <div className="truncate text-[13px] font-medium text-white">{project.name}</div>
-                                <div className="mt-0.5 text-[11px] text-slate-400">{project.sessions.length} sessions</div>
-                              </div>
-                              <ChevronDown className={cn('h-4 w-4 text-slate-400 transition', isExpanded ? 'rotate-180' : '')} />
-                            </button>
-
-                            {isExpanded && (
-                              <div className="app-project-session-list ml-3 mt-1 pl-3">
-                                <div className="space-y-0.5">
-                                  {project.sessions.map((session) => {
-                                    const isActiveSession =
-                                      activeProjectId === project.id && activeProjectSessionId === session.id;
-
-                                    return (
-                                      <button
-                                        key={session.id}
-                                        type="button"
-                                        onClick={() => onSelectProjectSession(project.id, session.id)}
-                                        className={cn(
-                                          'app-project-session-row block w-full min-w-0 rounded-[12px] border border-transparent px-2.5 py-[0.3125rem] text-left transition',
-                                          isActiveSession
-                                            ? 'border-white/10 bg-white/[0.055] text-white'
-                                            : 'text-slate-300 hover:bg-white/[0.025] hover:text-white',
-                                        )}
-                                      >
-                                        <div className="min-w-0">
-                                          <div className="flex items-start gap-2.5">
-                                            <div className="min-w-0 flex-1">
-                                              <div className="truncate text-[12px] font-medium">{session.name}</div>
-                                            </div>
-                                            <SidebarSessionMetaColumn
-                                              timeLabel={session.lastActive}
-                                              unreadCount={session.unread}
-                                              indicator={session.statusIndicator}
-                                              active={isActiveSession}
-                                            />
-                                          </div>
-                                          {session.summary?.trim().length ? (
-                                            <div className={cn('mt-px truncate text-[11px] leading-[1.05rem]', isActiveSession ? 'text-slate-300' : 'text-slate-500')}>
-                                              {session.summary}
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
-                </div>
+                <SidebarProjectsPanel
+                  projects={projects}
+                  onOpenCreate={() => setIsCreateProjectDialogOpen(true)}
+                />
               )}
 
               {activeNav === 'contacts' && (
-                <div className="h-full p-3">
-                  <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-300">
-                    <Search className="h-4 w-4" />
-                    <span className="text-sm">Search people and agents</span>
-                  </div>
-                  <div className="mb-2 grid gap-1.5">
-                    {groupedContacts.map((group) => (
-                      <button
-                        key={group.id}
-                        onClick={() => {
-                          setActiveContactGroup(group.id);
-                          const first = displayedContacts.find((contact) => contact.classType === group.id);
-                          if (first) setActiveContactId(first.id);
-                        }}
-                        className={`flex items-center justify-between rounded-xl px-3 py-2 text-left transition ${
-                          activeNav === 'contacts'
-                            ? 'bg-white/12 text-white ring-1 ring-white/15'
-                            : 'bg-white/5 text-white hover:bg-white/10'
-                        }`}
-                      >
-                        <span className="text-sm font-medium">{group.label}</span>
-                        <Badge
-                          variant={activeNav === 'contacts' ? 'secondary' : 'outline'}
-                          className={`rounded-full ${activeNav === 'contacts' ? 'text-slate-950' : 'text-slate-200 border-white/15'}`}
-                        >
-                          A-Z
-                        </Badge>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-slate-400">
-                    Compact messenger-style contacts. Select a row to view details.
-                  </div>
-                </div>
+                <SidebarContactsPanel directory={directory} />
               )}
 
               {activeNav === 'agents' && (
-                <div className="flex h-full flex-col p-3">
-                  <ScrollArea className="min-h-0 flex-1 pr-2">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div>
-                        <div className="text-sm text-slate-400">Agents</div>
-                        <div className="text-xl font-semibold text-white">{displayedAgents.length} visible identities</div>
-                      </div>
-                      <Button className="rounded-xl">
-                        <Plus className="mr-2 h-4 w-4" />New
-                      </Button>
-                    </div>
-                    <div className="space-y-3">
-                      {displayedAgents.map((agent) => (
-                        <Card key={agent.id} className="rounded-3xl border-white/10 bg-white/5 text-white shadow-none">
-                          <CardContent className="p-4">
-                            <div className="mb-3 flex items-start justify-between gap-3">
-                              <div className="flex min-w-0 items-start gap-3">
-                                <IdentityAvatar
-                                  kind="agent"
-                                  seed={agent.avatarSeed ?? agent.id}
-                                  name={agent.name}
-                                  imageUrl={agent.profileImageUrl}
-                                  className="h-10 w-10 border border-white/10"
-                                />
-                                <div className="min-w-0">
-                                  <div className="truncate font-medium">{agent.name}</div>
-                                  <div className="truncate text-xs text-slate-400">{agent.id}</div>
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="shrink-0 border-white/20 text-slate-200">
-                                {agent.status}
-                              </Badge>
-                            </div>
-                            <div className="mb-2 text-sm text-slate-300">{agent.role}</div>
-                            <div className="mb-3 text-xs text-slate-400">Messaging: {agent.messaging}</div>
-                            <div className="flex items-center justify-between text-xs text-slate-400">
-                              <span>{agent.tasks} active tasks</span>
-                              <Button size="sm" variant="secondary" className="rounded-xl">
-                                Open
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
+                <SidebarAgentsPanel directory={directory} />
               )}
 
               {activeNav === 'settings' && (
-                <div className="h-full p-3">
-                  <div className="app-sidebar-panel space-y-1.5 text-white">
-                    {['Profile', 'Notifications', 'Appearance', 'Privacy', 'Developer'].map((section) => (
-                      <button key={section} type="button" className="app-sidebar-nav-row flex w-full items-center justify-between rounded-[14px] px-3 py-2.5 text-left transition">
-                        <div>
-                          <div className="text-[13px] font-medium">{section}</div>
-                          <div className="text-[11px] text-slate-400">Open {section.toLowerCase()} settings</div>
-                        </div>
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <SidebarSettingsPanel />
               )}
             </div>
           </div>
