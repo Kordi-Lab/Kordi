@@ -254,4 +254,3 @@ test('Cloud collaboration ids are neutral while legacy Bridge ids remain readabl
   assert.equal(isCloudCollaborationConversationId('bridge:cloud:acct_peer:person'), true);
   assert.equal(isCloudCollaborationConversationId('bridge:local:node:person'), false);
 });
-

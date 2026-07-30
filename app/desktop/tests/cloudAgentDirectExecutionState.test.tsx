@@ -293,4 +293,3 @@ test('cloud first-person self-agent requests hide accidental duplicate peer resp
   assert.equal(responses.length, 1);
   assert.equal(responses[0].id, validResponse.messageId);
 });
-

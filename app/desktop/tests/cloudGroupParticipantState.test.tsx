@@ -185,4 +185,3 @@ test('cloud contact identity requests preserve account ids, display names, and u
     },
   ]);
 });
-

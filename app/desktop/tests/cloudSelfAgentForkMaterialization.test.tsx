@@ -336,4 +336,3 @@ test('cloud self-agent title restore applies manual-over-auto precedence in both
   });
   assert.equal(localManualPlan.sessionRequests.length, 0);
 });
-

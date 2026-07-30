@@ -128,7 +128,7 @@ fn ollama_model_selection_resolves_to_ollama_provider() -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::await_holding_lock)]
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd_default()
 -> Result<()> {
@@ -216,7 +216,7 @@ fn test_model(provider: &str, id: &str, reasoning: bool) -> Model {
     }
 }
 
-#[allow(clippy::await_holding_lock)]
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn desktop_runtime_attaches_cloud_scheduled_task_runtime() -> Result<()> {
     let _lock = env_lock().lock().unwrap();
@@ -243,7 +243,7 @@ async fn desktop_runtime_attaches_cloud_scheduled_task_runtime() -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::await_holding_lock)]
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result<()> {
     let _lock = env_lock().lock().unwrap();
@@ -293,7 +293,7 @@ async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result
     Ok(())
 }
 
-#[allow(clippy::await_holding_lock)]
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn explicit_config_on_new_canonical_runtime_survives_restart() -> Result<()> {
     let _lock = env_lock().lock().unwrap();
@@ -322,7 +322,7 @@ async fn explicit_config_on_new_canonical_runtime_survives_restart() -> Result<(
     Ok(())
 }
 
-#[allow(clippy::await_holding_lock)]
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn sync_visible_task_records_makes_active_cloud_tasks_closable_by_title() -> Result<()> {
     let _lock = env_lock().lock().unwrap();
@@ -378,7 +378,7 @@ async fn sync_visible_task_records_makes_active_cloud_tasks_closable_by_title() 
     Ok(())
 }
 
-#[allow(clippy::await_holding_lock)]
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
 async fn sync_context_messages_imports_cloud_history_once_as_native_session_context() -> Result<()>
 {

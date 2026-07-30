@@ -413,4 +413,3 @@ test('cloud outgoing messages render as read when the peer read timestamp is pre
 
   assert.equal(state.conversations[0].messages[0].deliveryState, 'read');
 });
-

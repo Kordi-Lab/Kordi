@@ -94,4 +94,3 @@ test('session title snapshots may be relayed by a member but only an administrat
     adminIdentityIds: ['human:admin'],
   }), null);
 });
-
