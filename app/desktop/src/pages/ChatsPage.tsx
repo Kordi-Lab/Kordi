@@ -107,6 +107,7 @@ import { cn } from '@/lib/utils';
 import { MemberContactProfilePopover } from '@/pages/MemberContactProfilePopover';
 import type {
   ChatAttachment as Attachment,
+  ChatSessionPaneProps,
   ChatsPageProps,
 } from '@/pages/chatsPage.types';
 
@@ -523,125 +524,76 @@ function sameTranscriptNavigationRequest(
     && current.id.trim() === handled.id.trim();
 }
 
-type ChatSessionPaneProps = {
-  sessionKey: string;
-  messages: readonly Message[];
-  liveTurn?: DesktopChatTurnSnapshot | null;
-  liveTurnSender: string;
-  shouldRenderLiveTurn: boolean;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  scrollClassName: string;
-  onTranscriptScroll?: () => void;
-  hasOlderMessages?: boolean;
-  onLoadOlderMessages?: () => Promise<void> | void;
-  navigationRequest?: TranscriptNavigationRequest | null;
-  onNavigationHandled?: (request: TranscriptNavigationRequest) => void;
-  emptyState?: ReactNode;
-  composer: ReactNode;
-  queuedMessages?: QueuedDesktopChatMessage[];
-  onEditQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
-  onCancelQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
-  isCompressionActive?: boolean;
-  plainAgentResponse?: boolean;
-  inferLatestHumanReplyTarget?: boolean;
-  forkSnapshotBoundaryIndex?: number;
-  activeForkSourceSessionId?: string | null;
-  activeForkSourceTitle?: string | null;
-  onSelectSession?: (sessionId: string) => void;
-  onOpenSource: (file: EditFilePreview) => void;
-  onOpenArtifact: (artifactId: string) => void;
-  onOpenAuthSettings: () => void;
-  onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
-  onOpenMessageDetail?: (message: Message) => void;
-  onStopCollaborationAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']>;
-  onStopActiveTurn?: () => void;
-  onRequestCollaborationContact?: ComponentProps<typeof MessageBubble>['onRequestCollaborationContact'];
-  onOpenSenderProfile?: ComponentProps<typeof MessageBubble>['onOpenSenderProfile'];
-  onForkMessage?: (entryId: string) => void;
-  messageForksByEntryId?: Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>;
-  onOpenForkSession?: (sessionId: string) => void;
-  onReplyMessage?: (message: Message) => void;
-  onForwardMessage?: (message: Message) => void;
-  onRetryMessage?: (message: Message) => void;
-  onSelectMessage?: (message: Message) => void;
-  onRequestPinMessage?: (message: Message) => void;
-  onRequestUnpinMessage?: (message: Message) => void;
-  pinnedMessageId?: string | null;
-  selectionMode?: boolean;
-  selectedMessageIds?: ReadonlySet<string>;
-  isMessageSelectable?: (message: Message) => boolean;
-  onToggleSelectedMessage?: (message: Message) => void;
-  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
-  onSelectionDragEnter?: (message: Message) => void;
-  onSelectionDragEnd?: () => void;
-  selectedMessageCount?: number;
-  onCancelMessageSelection?: () => void;
-  onCopySelectedMessages?: () => void;
-  onForwardSelectedMessages?: () => void;
-  messageSelectionMode?: boolean;
-  densityMode?: TranscriptDensityMode;
-  rightDetailRail?: ReactNode;
-  setIsDetailPanelCollapsed?: Dispatch<SetStateAction<boolean>>;
-};
-
 function ChatSessionPane({
-  sessionKey,
-  messages,
-  liveTurn,
-  liveTurnSender,
-  shouldRenderLiveTurn,
-  scrollRef,
-  scrollClassName,
-  onTranscriptScroll,
-  hasOlderMessages = false,
-  onLoadOlderMessages,
-  navigationRequest,
-  onNavigationHandled,
-  emptyState,
-  composer,
-  queuedMessages = [],
-  onEditQueuedMessage,
-  onCancelQueuedMessage,
-  isCompressionActive = false,
-  plainAgentResponse = false,
-  inferLatestHumanReplyTarget = false,
-  forkSnapshotBoundaryIndex = -1,
-  activeForkSourceSessionId = null,
-  activeForkSourceTitle = null,
-  onSelectSession,
-  onOpenSource,
-  onOpenArtifact,
-  onOpenAuthSettings,
-  onNavigateToMessage,
-  onOpenMessageDetail,
-  onStopCollaborationAgentRequest,
-  onStopActiveTurn,
-  onRequestCollaborationContact,
-  onOpenSenderProfile,
-  onForkMessage,
-  messageForksByEntryId,
-  onOpenForkSession,
-  onReplyMessage,
-  onForwardMessage,
-  onRetryMessage,
-  onSelectMessage,
-  onRequestPinMessage,
-  onRequestUnpinMessage,
-  pinnedMessageId,
-  selectionMode = false,
-  selectedMessageIds,
-  isMessageSelectable,
-  onToggleSelectedMessage,
-  onSelectionDragStart,
-  onSelectionDragEnter,
-  onSelectionDragEnd,
-  selectedMessageCount = 0,
-  onCancelMessageSelection,
-  onCopySelectedMessages,
-  onForwardSelectedMessages,
-  messageSelectionMode = false,
-  densityMode = 'default',
+  viewport,
+  presentation,
+  actions,
+  selection,
 }: ChatSessionPaneProps) {
+  const {
+    sessionKey,
+    messages,
+    scrollRef,
+    scrollClassName,
+    onTranscriptScroll,
+    hasOlderMessages = false,
+    onLoadOlderMessages,
+    navigationRequest,
+    onNavigationHandled,
+    emptyState,
+    composer,
+    queuedMessages = [],
+    onEditQueuedMessage,
+    onCancelQueuedMessage,
+  } = viewport;
+  const {
+    liveTurn,
+    liveTurnSender,
+    shouldRenderLiveTurn,
+    isCompressionActive = false,
+    plainAgentResponse = false,
+    inferLatestHumanReplyTarget = false,
+    forkSnapshotBoundaryIndex = -1,
+    activeForkSourceSessionId = null,
+    activeForkSourceTitle = null,
+    messageForksByEntryId,
+    pinnedMessageId,
+    densityMode = 'default',
+  } = presentation;
+  const {
+    onSelectSession,
+    onOpenSource,
+    onOpenArtifact,
+    onOpenAuthSettings,
+    onNavigateToMessage,
+    onOpenMessageDetail,
+    onStopCollaborationAgentRequest,
+    onStopActiveTurn,
+    onRequestCollaborationContact,
+    onOpenSenderProfile,
+    onForkMessage,
+    onOpenForkSession,
+    onReplyMessage,
+    onForwardMessage,
+    onRetryMessage,
+    onSelectMessage,
+    onRequestPinMessage,
+    onRequestUnpinMessage,
+  } = actions;
+  const {
+    selectionMode = false,
+    selectedMessageIds,
+    isMessageSelectable,
+    onToggleSelectedMessage,
+    onSelectionDragStart,
+    onSelectionDragEnter,
+    onSelectionDragEnd,
+    selectedMessageCount = 0,
+    onCancelMessageSelection,
+    onCopySelectedMessages,
+    onForwardSelectedMessages,
+    messageSelectionMode = false,
+  } = selection;
   const attributedTranscript = useMemo(
     () => buildReplyAttribution(messages, shouldRenderLiveTurn ? liveTurn : null, {
       inferLatestHumanRequest: inferLatestHumanReplyTarget,
@@ -2204,55 +2156,62 @@ export function ChatsPage({
         data-chat-destination-scope="companion"
       >
       <ChatSessionPane
-        sessionKey={companionConversation.id}
-        messages={companionTranscriptMessages}
-        liveTurn={attributedCompanionTranscriptLiveTurn}
-        liveTurnSender={companionLiveTurnSender}
-        shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
-        scrollRef={companionTranscriptScrollRef}
-        scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"
-        hasOlderMessages={Boolean(companionCanonicalHistorySessionId && canonicalHasOlderBySessionId[companionCanonicalHistorySessionId])}
-        onLoadOlderMessages={companionCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
-          ? () => onLoadOlderCanonicalSessionMessages(companionCanonicalHistorySessionId)
-          : undefined}
-        navigationRequest={companionTranscriptNavigationRequest}
-        onNavigationHandled={handleCompanionTranscriptNavigationHandled}
-        densityMode={chatTranscriptDensityMode(companionConversation)}
-        queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
-        onEditQueuedMessage={onEditQueuedMessage}
-        onCancelQueuedMessage={onCancelQueuedMessage}
-        inferLatestHumanReplyTarget={shouldInferLatestHumanReplyTarget(companionConversation)}
-        emptyState={(
-          <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
-            No messages in this side chat yet.
-          </div>
-        )}
-        plainAgentResponse={companionSuppressAgentReplyAttribution}
-        onOpenSource={(file) => {
-          setCompanionActiveSourcePreview(file);
-          setCompanionDestination('artifacts');
+        presentation={{
+          liveTurn: attributedCompanionTranscriptLiveTurn,
+          liveTurnSender: companionLiveTurnSender,
+          shouldRenderLiveTurn: shouldRenderCompanionLiveTurn,
+          densityMode: chatTranscriptDensityMode(companionConversation),
+          inferLatestHumanReplyTarget: shouldInferLatestHumanReplyTarget(companionConversation),
+          plainAgentResponse: companionSuppressAgentReplyAttribution,
         }}
-        onOpenArtifact={(artifactId) => {
-          setCompanionActiveSourcePreview(null);
-          setCompanionActiveArtifactId(artifactId);
-          setCompanionDestination('artifacts');
+        actions={{
+          onOpenSource: (file) => {
+            setCompanionActiveSourcePreview(file);
+            setCompanionDestination('artifacts');
+          },
+          onOpenArtifact: (artifactId) => {
+            setCompanionActiveSourcePreview(null);
+            setCompanionActiveArtifactId(artifactId);
+            setCompanionDestination('artifacts');
+          },
+          onOpenAuthSettings: openAuthentication,
+          onNavigateToMessage: handleNavigateToCompanionTranscriptMessage,
+          onOpenMessageDetail: onSelectMessage,
+          onStopCollaborationAgentRequest,
+          onStopActiveTurn: onStopDesktopChatTurn,
+          onRequestCollaborationContact,
+          onOpenSenderProfile: openCompanionTranscriptSenderProfile,
+          onForkMessage: onForkChatMessage ? (entryId) => {
+            void onForkChatMessage(companionConversation.id, entryId);
+          } : undefined,
+          onOpenForkSession: onSelectSession,
+          onForwardMessage,
+          onSelectMessage,
         }}
-        onOpenAuthSettings={openAuthentication}
-        onNavigateToMessage={handleNavigateToCompanionTranscriptMessage}
-        onOpenMessageDetail={onSelectMessage}
-        onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-        onStopActiveTurn={onStopDesktopChatTurn}
-        onRequestCollaborationContact={onRequestCollaborationContact}
-        onOpenSenderProfile={openCompanionTranscriptSenderProfile}
-        onForkMessage={onForkChatMessage ? (entryId) => {
-          void onForkChatMessage(companionConversation.id, entryId);
-        } : undefined}
-        onOpenForkSession={onSelectSession}
-        onForwardMessage={onForwardMessage}
-        onSelectMessage={onSelectMessage}
-        rightDetailRail={rightDetailRail}
-        setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
-        composer={(
+        selection={{}}
+        viewport={{
+          sessionKey: companionConversation.id,
+          messages: companionTranscriptMessages,
+          scrollRef: companionTranscriptScrollRef,
+          scrollClassName: 'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5',
+          hasOlderMessages: Boolean(
+            companionCanonicalHistorySessionId
+              && canonicalHasOlderBySessionId[companionCanonicalHistorySessionId]
+          ),
+          onLoadOlderMessages: companionCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
+            ? () => onLoadOlderCanonicalSessionMessages(companionCanonicalHistorySessionId)
+            : undefined,
+          navigationRequest: companionTranscriptNavigationRequest,
+          onNavigationHandled: handleCompanionTranscriptNavigationHandled,
+          queuedMessages: queuedDesktopMessagesBySession[companionConversation.id] ?? [],
+          onEditQueuedMessage,
+          onCancelQueuedMessage,
+          emptyState: (
+            <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
+              No messages in this side chat yet.
+            </div>
+          ),
+          composer: (
           <ChatComposerShell
             className="pt-3"
             chatComposerAttachments={chatComposerAttachments}
@@ -2530,7 +2489,8 @@ export function ChatsPage({
             </div>
           </div>
           </ChatComposerShell>
-        )}
+          ),
+        }}
       />
       </div>
       ) : companionDestinationPage}
@@ -2857,61 +2817,69 @@ export function ChatsPage({
       ) : null}
 
       <ChatSessionPane
-        sessionKey={activeConv.id}
-        messages={attributedTranscriptMessages}
-        liveTurn={attributedActiveTranscriptLiveTurn}
-        liveTurnSender={liveTurnSender}
-        shouldRenderLiveTurn={shouldRenderLiveTurn}
-        scrollRef={chatTranscriptScrollRef}
-        scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4"
-        hasOlderMessages={Boolean(activeCanonicalHistorySessionId && canonicalHasOlderBySessionId[activeCanonicalHistorySessionId])}
-        onLoadOlderMessages={activeCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
-          ? () => onLoadOlderCanonicalSessionMessages(activeCanonicalHistorySessionId)
-          : undefined}
-        emptyState={activeSelfAgentSessionIsStarting ? <SessionStartingState /> : null}
-        navigationRequest={mainTranscriptNavigationRequest}
-        onNavigationHandled={handleMainTranscriptNavigationHandled}
-        densityMode={chatTranscriptDensityMode(activeConv)}
-        onTranscriptScroll={onTranscriptScroll}
-        queuedMessages={queuedDesktopMessages}
-        onEditQueuedMessage={onEditQueuedMessage}
-        onCancelQueuedMessage={onCancelQueuedMessage}
-        isCompressionActive={isCompressionActive}
-        plainAgentResponse={suppressAgentReplyAttribution}
-        inferLatestHumanReplyTarget={inferLatestHumanReplyTarget}
-        forkSnapshotBoundaryIndex={forkSnapshotBoundaryIndex}
-        activeForkSourceSessionId={activeForkSourceSessionId}
-        activeForkSourceTitle={activeForkSourceTitle}
-        onSelectSession={onSelectSession}
-        onOpenSource={onOpenSource}
-        onOpenArtifact={onOpenArtifact}
-        onOpenAuthSettings={openAuthentication}
-        onNavigateToMessage={handleNavigateToTranscriptMessage}
-        onOpenMessageDetail={onSelectMessage}
-        onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-        onStopActiveTurn={onStopDesktopChatTurn}
-        onRequestCollaborationContact={onRequestCollaborationContact}
-        onOpenSenderProfile={openActiveTranscriptSenderProfile}
-        onForkMessage={handleForkMessage}
-        messageForksByEntryId={messageForksByEntryId}
-        onOpenForkSession={onSelectSession}
-        onReplyMessage={onReplyMessage}
-        onForwardMessage={onForwardMessage}
-        onRetryMessage={onRetryChatMessage}
-        onSelectMessage={onSelectMessage}
-        onRequestPinMessage={requestPinMessage}
-        onRequestUnpinMessage={requestUnpinMessage}
-        pinnedMessageId={pinnedMessageId}
-        selectionMode={messageSelectionMode}
-        selectedMessageIds={selectedMessageIds}
-        isMessageSelectable={isMessageSelectable}
-        onToggleSelectedMessage={onToggleSelectedMessage}
-        onSelectionDragStart={onSelectionDragStart}
-        onSelectionDragEnter={onSelectionDragEnter}
-        onSelectionDragEnd={onSelectionDragEnd}
-        rightDetailRail={rightDetailRail}
-        setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
-        composer={(
+        presentation={{
+          liveTurn: attributedActiveTranscriptLiveTurn,
+          liveTurnSender,
+          shouldRenderLiveTurn,
+          densityMode: chatTranscriptDensityMode(activeConv),
+          isCompressionActive,
+          plainAgentResponse: suppressAgentReplyAttribution,
+          inferLatestHumanReplyTarget,
+          forkSnapshotBoundaryIndex,
+          activeForkSourceSessionId,
+          activeForkSourceTitle,
+          messageForksByEntryId,
+          pinnedMessageId,
+        }}
+        actions={{
+          onSelectSession,
+          onOpenSource,
+          onOpenArtifact,
+          onOpenAuthSettings: openAuthentication,
+          onNavigateToMessage: handleNavigateToTranscriptMessage,
+          onOpenMessageDetail: onSelectMessage,
+          onStopCollaborationAgentRequest,
+          onStopActiveTurn: onStopDesktopChatTurn,
+          onRequestCollaborationContact,
+          onOpenSenderProfile: openActiveTranscriptSenderProfile,
+          onForkMessage: handleForkMessage,
+          onOpenForkSession: onSelectSession,
+          onReplyMessage,
+          onForwardMessage,
+          onRetryMessage: onRetryChatMessage,
+          onSelectMessage,
+          onRequestPinMessage: requestPinMessage,
+          onRequestUnpinMessage: requestUnpinMessage,
+        }}
+        selection={{
+          selectionMode: messageSelectionMode,
+          selectedMessageIds,
+          isMessageSelectable,
+          onToggleSelectedMessage,
+          onSelectionDragStart,
+          onSelectionDragEnter,
+          onSelectionDragEnd,
+        }}
+        viewport={{
+          sessionKey: activeConv.id,
+          messages: attributedTranscriptMessages,
+          scrollRef: chatTranscriptScrollRef,
+          scrollClassName: 'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4',
+          hasOlderMessages: Boolean(
+            activeCanonicalHistorySessionId
+              && canonicalHasOlderBySessionId[activeCanonicalHistorySessionId]
+          ),
+          onLoadOlderMessages: activeCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
+            ? () => onLoadOlderCanonicalSessionMessages(activeCanonicalHistorySessionId)
+            : undefined,
+          emptyState: activeSelfAgentSessionIsStarting ? <SessionStartingState /> : null,
+          navigationRequest: mainTranscriptNavigationRequest,
+          onNavigationHandled: handleMainTranscriptNavigationHandled,
+          onTranscriptScroll,
+          queuedMessages: queuedDesktopMessages,
+          onEditQueuedMessage,
+          onCancelQueuedMessage,
+          composer: (
           <ChatComposerShell
             chatComposerAttachments={chatComposerAttachments}
             saveDesktopAttachments={saveDesktopAttachments}
@@ -3295,7 +3263,8 @@ export function ChatsPage({
         </div>
       </div>
           </ChatComposerShell>
-        )}
+          ),
+        }}
       />
       </div>
       ) : (

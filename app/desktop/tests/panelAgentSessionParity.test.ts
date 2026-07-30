@@ -135,11 +135,15 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
 test('split-pane Agent bottom controls stay compact without changing composer height during resize', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
-  const main = blockBetween(source, '<ChatSessionPane\n        sessionKey={activeConv.id}\n        messages={attributedTranscriptMessages}', '{showCompanionPane && companionSide === \'right\' ? splitDivider : null}');
+  const main = blockBetween(
+    source,
+    '<ChatSessionPane\n        presentation={{\n          liveTurn: attributedActiveTranscriptLiveTurn,',
+    '{showCompanionPane && companionSide === \'right\' ? splitDivider : null}',
+  );
   const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
 
   assert.match(composerSource, /compact\?: boolean/, 'ComposerModelControls should expose a compact density for narrow panes');
-  assert.match(side, /scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"/, 'side-panel transcript should flex like the main pane while preserving overflow containment so composer bottoms stay aligned during resize');
+  assert.match(side, /scrollClassName: 'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5'/, 'side-panel transcript should flex like the main pane while preserving overflow containment so composer bottoms stay aligned during resize');
   assert.match(side, /data-companion-send-row="true"[\s\S]*flex-nowrap/, 'side-panel send row should stay single-line so resizing does not change composer height');
   assert.match(side, /data-companion-model-controls="true"[\s\S]*flex-nowrap/, 'side-panel model controls should stay single-line instead of wrapping under the input');
   assert.match(side, /<ComposerModelControls[\s\S]*compact=\{true\}/, 'side-panel model controls should use compact button widths');
@@ -197,8 +201,8 @@ test('virtualized chat transcripts reset by session identity even for equal-leng
   const pane = chatSessionPaneBlock(source);
   const virtual = virtualTranscriptSource();
 
-  assert.match(source, /sessionKey=\{activeConv\.id\}/, 'the main transcript should key resets by selected session');
-  assert.match(source, /sessionKey=\{companionConversation\.id\}/, 'the side transcript should key resets by selected session');
+  assert.match(source, /sessionKey: activeConv\.id/, 'the main transcript should key resets by selected session');
+  assert.match(source, /sessionKey: companionConversation\.id/, 'the side transcript should key resets by selected session');
   assert.match(pane, /sessionKey=\{sessionKey\}/, 'the shared pane should forward session identity');
   assert.match(virtual, /useLayoutEffect\([\s\S]*aligned\?\.sessionKey !== sessionKey/, 'tail alignment should happen in a layout effect keyed by session');
 });
@@ -225,8 +229,8 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
   assert.match(virtual, /virtualizer\.scrollToIndex\(navigationTargetIndex/, 'found targets should move into the mounted range');
   assert.match(source, /setMainTranscriptNavigationRequest\(\{ id: resolvedMessageId, nonce: transcriptNavigationNonceRef\.current, sessionKey: activeConv\.id \}\)/, 'main navigation requests should retain their source session');
   assert.match(source, /setCompanionTranscriptNavigationRequest\(\{ id: resolvedMessageId, nonce: transcriptNavigationNonceRef\.current, sessionKey: companionConversation\.id \}\)/, 'companion navigation requests should retain their source session');
-  assert.match(source, /onNavigationHandled=\{handleMainTranscriptNavigationHandled\}/, 'main navigation should acknowledge the exact handled request');
-  assert.match(source, /onNavigationHandled=\{handleCompanionTranscriptNavigationHandled\}/, 'companion navigation should acknowledge the exact handled request');
+  assert.match(source, /onNavigationHandled: handleMainTranscriptNavigationHandled/, 'main navigation should acknowledge the exact handled request');
+  assert.match(source, /onNavigationHandled: handleCompanionTranscriptNavigationHandled/, 'companion navigation should acknowledge the exact handled request');
 });
 
 test('side-panel Agent session uses independent full-pane destination subtitles', () => {
@@ -320,7 +324,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   const typesSource = messageTypesSource();
 
   const side = sidePanelBlock(chatsSource);
-  assert.match(side, /queuedMessages=\{queuedDesktopMessagesBySession\[companionConversation\.id\] \?\? \[\]\}/, 'side-panel transcript should render queued drafts for its own session');
+  assert.match(side, /queuedMessages: queuedDesktopMessagesBySession\[companionConversation\.id\] \?\? \[\]/, 'side-panel transcript should render queued drafts for its own session');
 
   assert.match(typesSource, /contextMessages\?: DesktopChatContextMessage\[\]/, 'queued local messages should preserve optional side Agent reference context');
 
@@ -343,7 +347,7 @@ test('new local sessions expose centered progress and coalesce duplicate first s
   const activeSendBlock = actionsSource.slice(activeSendStart);
 
   assert.match(chatsSource, /const activeSelfAgentSessionIsStarting = activeSelfAgentSessionIsDraft && isDesktopChatSending;/, 'the pending visual should be scoped to the local draft session');
-  assert.match(chatsSource, /emptyState=\{activeSelfAgentSessionIsStarting \? <SessionStartingState \/> : null\}/, 'the pending visual should occupy the empty transcript rather than the global error banner');
+  assert.match(chatsSource, /emptyState: activeSelfAgentSessionIsStarting \? <SessionStartingState \/> : null/, 'the pending visual should occupy the empty transcript rather than the global error banner');
   assert.match(activeSendBlock, /if \(localSendDelayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'duplicate first sends should be coalesced while materialization is in flight');
   assert.doesNotMatch(actionsSource, /Kordi is still preparing this session/, 'session-starting should never use failure copy');
 

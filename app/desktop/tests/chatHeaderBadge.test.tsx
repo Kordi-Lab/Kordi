@@ -44,8 +44,8 @@ test('compact transcript density applies to human and agent sessions', () => {
 
   assert.match(source, /function chatTranscriptDensityMode\(conversation: Conversation\)/);
   assert.match(source, /conversationUsesCompactHumanTranscriptDensity\(conversation\)/);
-  assert.match(source, /densityMode=\{chatTranscriptDensityMode\(activeConv\)\}/);
-  assert.match(source, /densityMode=\{chatTranscriptDensityMode\(companionConversation\)\}/);
+  assert.match(source, /densityMode: chatTranscriptDensityMode\(activeConv\)/);
+  assert.match(source, /densityMode: chatTranscriptDensityMode\(companionConversation\)/);
   assert.match(source, /if \(conversationIsAgentChat\(conversation\)\) return 'agent-compact';/);
   assert.match(source, /if \(conversationIsGroupChat\(conversation\)\) return 'group-compact';/);
   assert.match(source, /return 'contact-compact'/);
@@ -399,7 +399,7 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
   assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
   assert.match(source, /buildReplyAttribution\(messages, shouldRenderLiveTurn \? liveTurn : null/);
   assert.match(source, /attributedCompanionTranscriptLiveTurn/);
-  assert.match(source, /<ChatSessionPane[\s\S]*liveTurn=\{attributedCompanionTranscriptLiveTurn\}/);
+  assert.match(source, /<ChatSessionPane[\s\S]*liveTurn: attributedCompanionTranscriptLiveTurn/);
 });
 
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {
