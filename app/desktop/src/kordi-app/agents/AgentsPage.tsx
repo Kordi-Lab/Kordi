@@ -16,7 +16,7 @@ import { AgentDeleteConfirmDialog, archiveAgentFromMenu } from './AgentDetailPan
 import { AgentStudioConversation } from './AgentStudioConversation';
 import { AgentStudioRail } from './AgentStudioRail';
 import { AgentStudioWorkspace } from './AgentStudioWorkspace';
-import { SkillLibraryView } from './SkillLibraryView';
+import { SkillLibraryView, type SkillLibraryMode } from './SkillLibraryView';
 import { agentBuilderTargetKey, cloudAgentAccessLabel, getAgentConfigPath, isRepoFilePath, type AgentSaveFeedback, type AgentStudioCapabilityKind, type FactoryArtifactKind, type FactorySection } from './model';
 import type { AgentsPageProps } from './model';
 import { type ShapeAgentDraft } from './shapeAgentDraft';
@@ -153,6 +153,7 @@ export function AgentsPage({
 }: AgentsPageProps) {
   const [creatingKind, setCreatingKind] = useState<FactoryArtifactKind | null>(null);
   const [factorySection, setFactorySection] = useState<FactorySection>('builds');
+  const [skillLibraryMode, setSkillLibraryMode] = useState<SkillLibraryMode>('installed');
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [creationDraft, setCreationDraft] = useState<ShapeAgentDraft | null>(null);
   const [builderGeneration, setBuilderGeneration] = useState(0);
@@ -629,6 +630,12 @@ export function AgentsPage({
     }
   };
 
+  const openLibrarySkill = (skillId: string) => {
+    setSkillLibraryMode('installed');
+    setSelectedSkillId(skillId);
+    setFactorySection('skills');
+  };
+
   const addLibrarySkillToAgent = async (targetAgentId: string, skill: DesktopSkillLibraryEntry, skillMd: string) => {
     const targetAgent = agents.find((agent) => agent.id === targetAgentId);
     if (!targetAgent || !skillAgentTargets.some((candidate) => candidate.id === targetAgentId)) {
@@ -726,17 +733,19 @@ export function AgentsPage({
           canCreateAgent={Boolean(onCreateCloudAgent)}
           onSectionChange={openFactorySection}
           onOpenAgent={(agentId) => { setCreatingKind(null); setFactorySection('builds'); onOpenAgent(agentId); }}
-          onOpenSkill={(skillId) => { setSelectedSkillId(skillId); setFactorySection('skills'); }}
+          onOpenSkill={openLibrarySkill}
           onCreateArtifact={startFactoryBuild}
         />
         {factorySection === 'skills' ? (
           <SkillLibraryView
+            mode={skillLibraryMode}
             skills={skillLibrary.skills}
             selectedSkillId={selectedSkillId}
             loading={skillLibrary.loading}
             error={skillLibrary.error}
             mutatingSkillId={skillLibrary.mutatingSkillId}
             agentTargets={skillAgentTargets}
+            onModeChange={setSkillLibraryMode}
             onSelectSkill={setSelectedSkillId}
             onRefresh={skillLibrary.refresh}
             onSetEnabled={skillLibrary.setEnabled}

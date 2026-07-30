@@ -285,12 +285,14 @@ test('Skill Library keeps install state and explicit add-to-agent action visible
   ];
   const html = renderToStaticMarkup(
     <SkillLibraryView
+      mode="installed"
       skills={[externalUiSkill]}
       selectedSkillId={externalUiSkill.id}
       loading={false}
       error={null}
       mutatingSkillId={null}
       agentTargets={agentTargets}
+      onModeChange={() => undefined}
       onSelectSkill={() => undefined}
       onRefresh={async () => [externalUiSkill]}
       onSetEnabled={async () => externalUiSkill}
@@ -320,6 +322,38 @@ test('Skill Library keeps install state and explicit add-to-agent action visible
   assert.match(html, /Added/);
   assert.doesNotMatch(html, /Add to current build/);
   assert.match(html, /Remove/);
+});
+
+test('selecting a skill from the Factory rail returns the library to My skills', () => {
+  const renderLibrary = (mode: 'installed' | 'community') => renderToStaticMarkup(
+    <SkillLibraryView
+      mode={mode}
+      skills={[externalUiSkill]}
+      selectedSkillId={externalUiSkill.id}
+      loading={false}
+      error={null}
+      mutatingSkillId={null}
+      agentTargets={[]}
+      onModeChange={() => undefined}
+      onSelectSkill={() => undefined}
+      onRefresh={async () => [externalUiSkill]}
+      onSetEnabled={async () => externalUiSkill}
+      onRemove={async () => true}
+      onInstalled={() => undefined}
+      onAddToAgent={() => undefined}
+    />,
+  );
+  const communityMarkup = renderLibrary('community');
+  const installedMarkup = renderLibrary('installed');
+  const agentsPageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(communityMarkup, /aria-selected="true" class="is-active">Community<\/button>/);
+  assert.match(communityMarkup, /Search ClawHub/);
+  assert.match(installedMarkup, /aria-selected="true" class="is-active">My skills/);
+  assert.match(installedMarkup, /adapt/);
+  assert.doesNotMatch(installedMarkup, /Search ClawHub/);
+  assert.match(agentsPageSource, /const openLibrarySkill = \(skillId: string\) => \{[\s\S]*?setSkillLibraryMode\('installed'\);[\s\S]*?setSelectedSkillId\(skillId\);[\s\S]*?setFactorySection\('skills'\);[\s\S]*?\};/);
+  assert.match(agentsPageSource, /onOpenSkill=\{openLibrarySkill\}/);
 });
 
 test('Add to agent exposes each target and forwards the selected agent id', async () => {
