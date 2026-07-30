@@ -57,7 +57,7 @@ test('cloud sidebar removes the global plus launcher entirely', () => {
 });
 
 test('cloud profile menu avoids Cloud and Bridge jargon in visible copy', () => {
-  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/pages/workspaceSidebar.profile.tsx', import.meta.url), 'utf8');
 
   assert.doesNotMatch(source, />Cloud<\/span>/);
   assert.doesNotMatch(source, /Cloud account/);

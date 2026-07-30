@@ -10,16 +10,16 @@ function readSource(relativePath: string): string {
 }
 
 test('cloud avatar opens a small account menu before the centered settings modal', () => {
-  const sidebar = readSource('pages/WorkspaceSidebar.tsx');
+  const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
   const slot = readSource('app/assembleSidebarSlot.tsx');
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
 
-  assert.match(sidebar, /aria-label="Account menu"/);
-  assert.doesNotMatch(sidebar, /Open profile settings/);
-  assert.match(sidebar, /Open account settings/);
-  assert.match(sidebar, /CloudProfileRowCopyButton label="Account ID" value=\{cloudAccount\.accountId\}/);
-  assert.match(sidebar, /cloudAccountDialogTab !== null/);
-  assert.doesNotMatch(sidebar, /isOpen=\{isProfileCardOpen\}/);
+  assert.match(profileControl, /aria-label="Account menu"/);
+  assert.doesNotMatch(profileControl, /Open profile settings/);
+  assert.match(profileControl, /Open account settings/);
+  assert.match(profileControl, /CloudProfileRowCopyButton[\s\S]*label="Account ID"[\s\S]*value=\{cloudAccount\.accountId\}/);
+  assert.match(profileControl, /isOpen=\{dialogTab !== null\}/);
+  assert.doesNotMatch(profileControl, /isOpen=\{isProfileCardOpen\}/);
   assert.match(slot, /cloudSettings:\s*\{/);
   assert.match(modal, /role="dialog"/);
   assert.match(modal, /aria-label="Account settings"/);
@@ -95,28 +95,28 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
 
 test('profile modal is distilled to one avatar and no cloud explanation copy', () => {
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
-  const sidebar = readSource('pages/WorkspaceSidebar.tsx');
+  const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
 
   assert.equal((modal.match(/<IdentityAvatar/g) ?? []).length, 1);
   assert.doesNotMatch(modal, /Update the name and avatar other Cloud users see/);
   assert.doesNotMatch(modal, /Cloud account/);
   assert.doesNotMatch(modal, /Cloud identity/);
-  assert.doesNotMatch(sidebar, />Cloud account</);
+  assert.doesNotMatch(profileControl, />Cloud account</);
 });
 
 test('account popover keeps account id compact and removes redundant profile row', () => {
-  const sidebar = readSource('pages/WorkspaceSidebar.tsx');
-  const accountMenuStart = sidebar.indexOf('aria-label="Account menu"');
-  const accountMenuEnd = sidebar.indexOf('{!cloudSettings && isProfileCardOpen', accountMenuStart);
+  const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
+  const accountMenuStart = profileControl.indexOf('aria-label="Account menu"');
+  const accountMenuEnd = profileControl.indexOf('{!cloudSettings', accountMenuStart);
   assert.ok(accountMenuStart >= 0 && accountMenuEnd > accountMenuStart, 'cloud account menu block should be present');
-  const accountMenu = sidebar.slice(accountMenuStart, accountMenuEnd);
+  const accountMenu = profileControl.slice(accountMenuStart, accountMenuEnd);
 
-  assert.match(accountMenu, /CloudProfileRowCopyButton label="Account ID" value=\{cloudAccount\.accountId\}/);
+  assert.match(accountMenu, /CloudProfileRowCopyButton[\s\S]*label="Account ID"[\s\S]*value=\{cloudAccount\.accountId\}/);
   assert.doesNotMatch(accountMenu, /profileRows\.map/);
   assert.doesNotMatch(accountMenu, /Open profile settings/);
   assert.doesNotMatch(accountMenu, />Profile</);
   assert.match(accountMenu, /Open account settings/);
-  assert.match(accountMenu, />Settings</);
+  assert.match(accountMenu, />\s*Settings\s*</);
 });
 
 test('profile sign out action is styled as destructive red', () => {
