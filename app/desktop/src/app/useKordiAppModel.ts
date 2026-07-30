@@ -73,6 +73,7 @@ import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
 import { useKordiGroupRename } from '@/app/useKordiGroupRename';
 import { useKordiParticipantDraftSend } from '@/app/useKordiParticipantDraftSend';
+import { useKordiProviderAutoSwitch } from '@/app/useKordiProviderAutoSwitch';
 import { useKordiQueuedMessageActions } from '@/app/useKordiQueuedMessageActions';
 import {
   type ParticipantSpaceDraft,
@@ -98,7 +99,6 @@ export function useKordiAppModel({
   const chatTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoFollowChatRef = useRef(true);
   const lastSeenArtifactByContextRef = useRef<Record<string, string | null>>({});
-  const lastAutoAuthProviderSwitchRef = useRef<string | null>(null);
   const {
     store: canonicalStore,
     state: canonicalSessionState,
@@ -874,63 +874,15 @@ export function useKordiAppModel({
     setQueuedMessagesBySession: setQueuedDesktopMessagesBySession,
   });
 
-  useEffect(() => {
-    if (!isNativeShell || !desktopAuthState || !desktopChatState?.activeSessionId) return;
-
-    const configuredProviders = buildAuthDisplayProviders(desktopAuthState)
-      .filter((provider) => provider.configured);
-
-    if (configuredProviders.length === 0) {
-      lastAutoAuthProviderSwitchRef.current = null;
-      return;
-    }
-
-    const normalizedCurrentProvider =
-      normalizeSelectedProviderId(desktopChatState.activeSession.provider) ?? desktopChatState.activeSession.provider;
-    const currentProviderIsConfigured = configuredProviders.some((provider) => provider.id === normalizedCurrentProvider);
-    const currentProviderHasRuntimeModels = desktopChatState.modelOptions.some((option) => (
-      (normalizeSelectedProviderId(option.provider) ?? option.provider) === normalizedCurrentProvider
-    ));
-
-    if (currentProviderIsConfigured || currentProviderHasRuntimeModels) {
-      lastAutoAuthProviderSwitchRef.current = null;
-      return;
-    }
-
-    const normalizedActiveLoginProviderId = normalizeSelectedProviderId(activeLoginProviderId);
-    const preferredConfiguredProvider =
-      configuredProviders.find((provider) => provider.id === normalizedActiveLoginProviderId)
-      ?? configuredProviders.find((provider) => provider.methods.some((method) => method.options.some((option) => option.active)))
-      ?? configuredProviders[0];
-
-    if (!preferredConfiguredProvider) return;
-
-    const nextModelValue = preferredModelValueForProvider(preferredConfiguredProvider.id);
-    if (!nextModelValue) return;
-
-    const signature = [
-      desktopChatState.activeSessionId,
-      normalizedCurrentProvider,
-      preferredConfiguredProvider.id,
-      nextModelValue,
-    ].join(':');
-
-    if (lastAutoAuthProviderSwitchRef.current === signature) return;
-    lastAutoAuthProviderSwitchRef.current = signature;
-
-    const scope = desktopChatState.activeSessionId === activeProjectSessionId ? 'project' : 'chat';
-    void selectComposerValue(scope, 'provider', preferredConfiguredProvider.id);
-  }, [
+  useKordiProviderAutoSwitch({
     activeLoginProviderId,
     activeProjectSessionId,
     desktopAuthState,
-    desktopChatState?.activeSession.provider,
-    desktopChatState?.activeSessionId,
-    desktopChatState?.modelOptions,
+    desktopChatState,
     isNativeShell,
     preferredModelValueForProvider,
     selectComposerValue,
-  ]);
+  });
 
   const activeQueuedDesktopMessages = queuedDesktopMessagesBySession[activeConv.id] ?? ('queuedMessages' in activeConv ? activeConv.queuedMessages : undefined) ?? [];
 
