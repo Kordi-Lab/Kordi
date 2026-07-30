@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
   deriveSessionTitle,
   incomingSessionTitleWins,
@@ -13,10 +12,8 @@ import {
   adoptCloudProfileIdentity,
   buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
-  fetchDesktopChatTurnState,
   markCanonicalSessionRead,
   openOrCreateCanonicalSessionFast,
-  startDesktopChatMessage,
   upsertCanonicalIdentityFast,
   upsertCanonicalMessageFast,
   updateCanonicalMessageDelivery,
@@ -75,27 +72,21 @@ import {
 } from './cloudCollaborationState';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-  cloudAgentNativeContextMessagesFromDirectCloudSession,
   compactCloudAgentNativeContextMessages,
   cloudMessageMentionsLocalAgent,
-  cloudAgentNoProviderNoticeText,
-  isCloudAgentNoProviderConfiguredError,
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
   parseCloudAgentCancel,
   parseCloudAgentResponse,
-  promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteForSession,
-  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
 import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
 import {
   cloudGroupAttachmentReferences,
   cloudGroupControlWithAttachmentReferences,
-  cloudGroupAgentConversationId,
   cloudGroupForkPayloadFromSessionMetadata,
   cloudGroupIdFromAgentConversationId,
   cloudGroupManualSessionTitleSnapshot,
@@ -128,7 +119,6 @@ import {
 import {
   cloudDirectMessageAction,
   cloudDirectMessageDisplayText,
-  cloudDirectMessageTargetCloudAgentId,
 } from './cloudDirectMessages';
 import {
   cloudMessageActionAllowsAgentContext,
@@ -137,7 +127,6 @@ import {
 import {
   uploadComposerAttachments,
   resolveForwardAttachmentItems,
-  resolveCloudMessageAttachments,
   resetCloudAttachmentPreviewLoader,
 } from './cloudAttachments';
 import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
@@ -163,13 +152,10 @@ import {
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
   cloneCloudSessionActivityForFork,
-  deriveCloudActivityFromTurn,
-  cloudVisibleTaskRecordsForSession,
   loadCachedCloudSessionActivity,
   mergeCloudSessionActivity,
   normalizeCloudSessionActivitySnapshot,
   saveCachedCloudSessionActivity,
-  type CloudActivityParticipantProfile,
   type CloudSessionActivityStore,
 } from './cloudSessionActivity';
 import { loadSession } from './session';
@@ -198,12 +184,8 @@ import {
 } from './cloudMessageSyncState';
 import { useCloudMessageSync } from './useCloudMessageSync';
 import { cloudFallbackRunClaimsForMessages } from './cloudAgentFallbackClaims';
+import { isRecentCloudAgentMention } from './cloudAgentMentionPolicy';
 import {
-  isRecentCloudAgentMention,
-  shouldRunLocalCloudAgentForCloudMessage,
-} from './cloudAgentMentionPolicy';
-import {
-  cloudAgentResponseExistsForRequest,
   cloudFallbackRunAlreadyOwnsRequest,
   cloudGroupAgentResponseExistsForRequest,
   collapseCloudAgentOfflinePlaceholderForRequest,
@@ -215,6 +197,18 @@ import {
   upsertCanonicalRequestIntoLocalState,
 } from './cloudAgentRequestState';
 import { useCloudAgentAvailability } from './useCloudAgentAvailability';
+import {
+  cloudGroupAgentCancelledNoticeRequest,
+  cloudGroupAgentCancelRoleForRequest,
+  cloudGroupAgentProcessingMessageForRequest,
+  optimisticCloudAgentCancelMessage,
+} from './cloudAgentCancellation';
+import { useCloudAgentCancellation } from './useCloudAgentCancellation';
+import {
+  publishDerivedCloudSessionActivity,
+  waitForCloudAgentTurn,
+} from './cloudAgentLocalExecution';
+import { useCloudDirectAgentExecution } from './useCloudDirectAgentExecution';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -260,50 +254,20 @@ export {
   CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS,
   CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,
 } from './useCloudAgentAvailability';
-
-export const CLOUD_AGENT_TURN_POLL_MS = 500;
-export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
+export {
+  CLOUD_AGENT_TURN_POLL_MS,
+  CLOUD_AGENT_TURN_TIMEOUT_MS,
+  cloudAgentFailedTurnSnapshot,
+} from './cloudAgentLocalExecution';
+export {
+  cloudGroupAgentCancelledNoticeRequest,
+  cloudGroupAgentCancelRoleForRequest,
+  cloudGroupAgentProcessingMessageForRequest,
+  optimisticCloudAgentCancelMessage,
+  type CloudGroupAgentCancelRole,
+} from './cloudAgentCancellation';
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
-
-function cloudAgentLocalFailureMessage(error: unknown): string {
-  if (isCloudAgentNoProviderConfiguredError(error)) return cloudAgentNoProviderNoticeText();
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
-  if (typeof error === 'string' && error.trim()) return error.trim();
-  return 'Kordi could not finish this reply. Try again.';
-}
-
-export function cloudAgentFailedTurnSnapshot({
-  requestId,
-  sessionId,
-  prompt,
-  error,
-  now = Date.now(),
-}: {
-  requestId: string;
-  sessionId: string;
-  prompt: string;
-  error: unknown;
-  now?: number;
-}): DesktopChatTurnSnapshot {
-  const message = cloudAgentLocalFailureMessage(error);
-  return {
-    id: `cloud-agent-local-failure:${requestId}`,
-    sessionId,
-    prompt,
-    status: 'failed',
-    message,
-    assistantText: '',
-    thinkingText: '',
-    tools: [],
-    completed: true,
-    succeeded: false,
-    startedAtMs: now,
-    completedAtMs: now,
-    error: message,
-    transcriptRefreshRequired: false,
-  };
-}
 
 export function cloudGroupOutboxAttachmentSources(
   attachments: readonly AttachmentItem[],
@@ -363,91 +327,8 @@ function reportCloudAgentAvailabilityWarning(message: string, error: unknown) {
   console.warn(message, error);
 }
 
-async function publishDerivedCloudSessionActivity({
-  client,
-  token,
-  accountId,
-  sessionId,
-  participantAccountIds,
-  participantProfiles = [],
-  turn,
-  mergeActivity,
-}: {
-  client: CloudAuthClient;
-  token: string;
-  accountId: string;
-  sessionId: string;
-  participantAccountIds: string[];
-  participantProfiles?: CloudActivityParticipantProfile[];
-  turn: DesktopChatTurnSnapshot;
-  mergeActivity: (snapshot: CloudSessionActivityStore) => void;
-}) {
-  const activity = deriveCloudActivityFromTurn({
-    sessionId,
-    localAccountId: accountId,
-    participantAccountIds: [...new Set([accountId, ...participantAccountIds].map((value) => value.trim()).filter(Boolean))],
-    participantProfiles,
-    turn,
-  });
-  if (activity.tasks.length === 0 && activity.artifacts.length === 0) return;
-  const [taskResults, artifactResults] = await Promise.all([
-    Promise.allSettled(activity.tasks.map((task) => client.upsertTaskActivity(token, task))),
-    Promise.allSettled(activity.artifacts.map((artifact) => client.upsertArtifactActivity(token, artifact))),
-  ]);
-  const tasks = taskResults.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<CloudAuthClient['upsertTaskActivity']>>> => result.status === 'fulfilled').map((result) => result.value);
-  const artifacts = artifactResults.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<CloudAuthClient['upsertArtifactActivity']>>> => result.status === 'fulfilled').map((result) => result.value);
-  if (tasks.length > 0 || artifacts.length > 0) {
-    mergeActivity(normalizeCloudSessionActivitySnapshot({ tasks, artifacts }));
-  }
-  const firstFailure = [...taskResults, ...artifactResults].find((result) => result.status === 'rejected') as PromiseRejectedResult | undefined;
-  if (firstFailure) {
-    console.warn('[cloud-session-activity] publish failed', firstFailure.reason);
-  }
-}
-
-export function optimisticCloudAgentCancelMessage({
-  account,
-  peerAccountId,
-  requestId,
-  now = Date.now(),
-}: {
-  account: CloudAccount;
-  peerAccountId: string;
-  requestId: string;
-  now?: number;
-}): CloudMessage {
-  const trimmedRequestId = requestId.trim();
-  const trimmedPeerAccountId = peerAccountId.trim();
-  return {
-    messageId: `local-cloud-agent-cancel:${trimmedRequestId}:${trimmedPeerAccountId}`,
-    fromAccountId: account.accountId,
-    toAccountId: trimmedPeerAccountId,
-    body: encodeCloudAgentCancel({ requestId: trimmedRequestId }),
-    createdAt: new Date(now).toISOString(),
-    deliveredAt: null,
-    readAt: null,
-    direction: 'outgoing',
-  };
-}
-
-export function cloudGroupAgentProcessingMessageForRequest(
-  messages: CanonicalSessionMessage[],
-  groupId: string,
-  requestId: string,
-): CanonicalSessionMessage | null {
-  const trimmedGroupId = groupId.trim();
-  const trimmedRequestId = requestId.trim();
-  if (!trimmedGroupId || !trimmedRequestId) return null;
-  return messages.find((message) => {
-    if (message.sessionId !== trimmedGroupId || !message.sourceTransport?.startsWith('cloud-group-agent')) return false;
-    const content = objectContent(message.content);
-    const linkedRequestId = cleanText(message.parentMessageId)
-      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
-      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
-    if (linkedRequestId !== trimmedRequestId) return false;
-    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
-    return message.status === 'processing' || deliveryState === 'processing';
-  }) ?? null;
+function reportCloudAgentExecutionWarning(message: string, error: unknown) {
+  console.warn(message, error);
 }
 
 export function cloudGroupAgentProcessingSlotForResponse(
@@ -499,102 +380,6 @@ export function cloudGroupIncomingMessageAlreadyApplied(
   return true;
 }
 
-export type CloudGroupAgentCancelRole = 'sender' | 'agent owner' | 'participant';
-
-export function cloudGroupAgentCancelledNoticeRequest({
-  processingMessage,
-  requestId,
-  conversationId,
-  cancelledByAccountId,
-  cancelledByRole,
-  now,
-}: {
-  processingMessage: CanonicalSessionMessage;
-  requestId: string;
-  conversationId: string;
-  cancelledByAccountId: string;
-  cancelledByRole: CloudGroupAgentCancelRole;
-  now?: number;
-}): AppendCanonicalMessageRequest {
-  const content = objectContent(processingMessage.content);
-  const stableTimestampMs = typeof content.timestampMs === 'number' && Number.isFinite(content.timestampMs)
-    ? content.timestampMs
-    : processingMessage.createdAtMs;
-  const noticeTimestampMs = typeof now === 'number' && Number.isFinite(now) ? now : stableTimestampMs;
-  const trimmedRequestId = requestId.trim();
-  const trimmedCancelledByAccountId = cancelledByAccountId.trim() || 'local';
-  const role = cancelledByRole || 'participant';
-  const text = `Request canceled by ${role}.`;
-  // Always overwrite the processing row in place. processingMessage is the
-  // current slot holding the "Processing…"/"Requesting…" state for this
-  // request — whether that's the offline-tier placeholder (sourceTransport
-  // 'cloud-group-agent-offline') or the live processing envelope from the
-  // owner instance (sourceTransport 'cloud-group-agent'). Using a separate
-  // cancel-notice id in the latter case leaves two rows for one slot, and
-  // the offline-timer effect's setCloudGroupRequestPlaceholderProcessing
-  // deletes the cancel row via cloudGroupAgentResponseMatches on each render
-  // — producing visible oscillation between "Processing…" and the cancel
-  // notice. cloudGroupAgentProcessingMessageForRequest only returns rows in
-  // a processing state, so reusing this id can never clobber a completed
-  // agent reply.
-  const noticeId = processingMessage.id;
-  return {
-    id: noticeId,
-    sessionId: processingMessage.sessionId,
-    senderIdentityId: processingMessage.senderIdentityId,
-    senderRole: processingMessage.senderRole,
-    messageKind: 'agent-turn',
-    contentText: text,
-    content: {
-      sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
-      timestampMs: noticeTimestampMs,
-      deliveryState: 'cancelled',
-      sourceConversationId: conversationId,
-      requestId: trimmedRequestId,
-      replyToMessageId: trimmedRequestId,
-      cancelledByAccountId: trimmedCancelledByAccountId,
-      cancelledByRole: role,
-    },
-    createdAtMs: noticeTimestampMs,
-    parentMessageId: trimmedRequestId,
-    status: 'cancelled',
-    sourceTransport: 'cloud-group-agent',
-    sourceEventId: `cloud-group-agent-cancel:${trimmedRequestId}:${trimmedCancelledByAccountId}`,
-  };
-}
-
-function accountIdForHumanIdentity(state: CanonicalSessionState, identityId?: string | null): string | null {
-  const identity = identityId ? state.identities.find((candidate) => candidate.id === identityId) : null;
-  if (!identity || identity.kind !== 'human') return null;
-  const metadata = objectContent(identity.metadata);
-  return cleanText(identity.humanId)
-    || cleanText(identity.sourceIdentityId)
-    || cleanText(typeof metadata.accountId === 'string' ? metadata.accountId : null)
-    || null;
-}
-
-export function cloudGroupAgentCancelRoleForRequest({
-  state,
-  requestId,
-  processingMessage,
-  cancelledByAccountId,
-}: {
-  state: CanonicalSessionState;
-  requestId: string;
-  processingMessage: CanonicalSessionMessage;
-  cancelledByAccountId: string;
-}): CloudGroupAgentCancelRole {
-  const trimmedCancelledByAccountId = cancelledByAccountId.trim();
-  const requestMessage = state.messages.find((message) => message.id === requestId.trim()) ?? null;
-  const requestSenderAccountId = accountIdForHumanIdentity(state, requestMessage?.senderIdentityId);
-  if (requestSenderAccountId && requestSenderAccountId === trimmedCancelledByAccountId) return 'sender';
-  const agentOwnerAccountId = processingMessage.senderIdentityId.startsWith('agent:cloud:')
-    ? processingMessage.senderIdentityId.slice('agent:cloud:'.length)
-    : null;
-  if (agentOwnerAccountId && agentOwnerAccountId === trimmedCancelledByAccountId) return 'agent owner';
-  return 'participant';
-}
-
 function upsertCanonicalIdentityIntoLocalState(
   current: CanonicalSessionState | null,
   identity: CanonicalIdentity,
@@ -625,35 +410,6 @@ function mergeOpenCanonicalSessionFastResultIntoLocalState(
       ...result.participants,
     ],
   };
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-async function cloudAgentResponsePublicationIsBlocked({
-  client,
-  token,
-  peerId,
-  fallbackMessages,
-  account,
-  requestMessageId,
-}: {
-  client: CloudAuthClient;
-  token: string;
-  peerId: string;
-  fallbackMessages: readonly CloudMessage[];
-  account: CloudAccount;
-  requestMessageId: string;
-}): Promise<boolean> {
-  const [latestMessages, fallbackRunOwnsRequest] = await Promise.all([
-    client.listMessages(token, peerId, 100).catch(() => fallbackMessages),
-    cloudFallbackRunAlreadyOwnsRequest({ client, token, requestMessageId }),
-  ] as const);
-  return fallbackRunOwnsRequest
-    || cloudAgentResponseExistsForRequest({ account, requestMessageId, peerMessages: latestMessages });
 }
 
 export function cloudGroupMessageTargetsLocalAgent(
@@ -1350,21 +1106,6 @@ export function planCloudSelfAgentSync(
     if (left.sessionId !== right.sessionId) return left.sessionId.localeCompare(right.sessionId);
     return 0;
   });
-}
-
-async function waitForCloudAgentTurn(
-  turnId: string,
-  onSnapshot?: (snapshot: DesktopChatTurnSnapshot) => void,
-) {
-  const deadline = Date.now() + CLOUD_AGENT_TURN_TIMEOUT_MS;
-  let latest = await fetchDesktopChatTurnState(turnId);
-  onSnapshot?.(latest);
-  while (!latest.completed && Date.now() < deadline) {
-    await wait(CLOUD_AGENT_TURN_POLL_MS);
-    latest = await fetchDesktopChatTurnState(turnId);
-    onSnapshot?.(latest);
-  }
-  return latest;
 }
 
 export type SendCloudGroupControlInput = {
@@ -2223,7 +1964,10 @@ export function useCloudCollaborationState({
         fallbackRunOwnsRequest: cloudFallbackRunAlreadyOwnsRequest,
         nativeContext: cloudGroupNativeContextMessages,
         waitForTurn: waitForCloudAgentTurn,
-        publishActivity: publishDerivedCloudSessionActivity,
+        publishActivity: (input) => publishDerivedCloudSessionActivity({
+          ...input,
+          reportWarning: reportCloudAgentExecutionWarning,
+        }),
       },
     });
   }, [
@@ -2545,262 +2289,35 @@ export function useCloudCollaborationState({
     };
   }, [account, client, defaultCloudAgentRuntimeRoute, initialMessagesSettled]);
 
-  useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
-    for (const message of cloudMessageIndex.allMessages) {
-      if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
-      const cancel = parseCloudAgentCancel(message.body);
-      if (!cancel) continue;
-      processedCloudAgentMentionIdsRef.current.add(cancel.requestId);
-      const turnId = cloudAgentTurnIdsByRequestIdRef.current.get(cancel.requestId);
-      if (turnId) {
-        void cancelDesktopChatTurn(turnId)
-          .catch((error) => {
-            console.warn('[cloud-agent-mention] local agent cancel failed', error);
-          })
-          .finally(() => {
-            cloudAgentTurnIdsByRequestIdRef.current.delete(cancel.requestId);
-          });
-      }
-      const currentCanonicalState = canonicalSessionStateRef.current;
-      if (!currentCanonicalState || !setCanonicalSessionState) continue;
-      const processingMessage = currentCanonicalState.messages
-        .map((candidate) => cloudGroupAgentProcessingMessageForRequest([candidate], candidate.sessionId, cancel.requestId))
-        .find((candidate): candidate is CanonicalSessionMessage => Boolean(candidate));
-      if (!processingMessage) continue;
-      if (currentCanonicalState.messages.some((candidate) => {
-        const content = objectContent(candidate.content);
-        return candidate.status === 'cancelled'
-          && candidate.sourceTransport === 'cloud-group-agent'
-          && cleanText(typeof content.requestId === 'string' ? content.requestId : null) === cancel.requestId;
-      })) continue;
-      const cancelCreatedAtMs = Date.parse(message.createdAt);
-      const cancelDeliveredAtMs = Date.parse(message.deliveredAt ?? '');
-      const cancelNoticeRequest = cloudGroupAgentCancelledNoticeRequest({
-        processingMessage,
-        requestId: cancel.requestId,
-        conversationId: cloudGroupAgentConversationId(processingMessage.sessionId),
-        cancelledByAccountId: message.fromAccountId,
-        cancelledByRole: cloudGroupAgentCancelRoleForRequest({
-          state: currentCanonicalState,
-          requestId: cancel.requestId,
-          processingMessage,
-          cancelledByAccountId: message.fromAccountId,
-        }),
-        now: Number.isFinite(cancelCreatedAtMs)
-          ? cancelCreatedAtMs
-          : Number.isFinite(cancelDeliveredAtMs)
-            ? cancelDeliveredAtMs
-            : undefined,
-      });
-      setCanonicalSessionState((current) => {
-        const nextState = upsertCanonicalRequestIntoLocalState(current, cancelNoticeRequest);
-        if (!nextState) return nextState;
-        const collapsedState = collapseCloudAgentOfflinePlaceholderForRequest(
-          nextState,
-          processingMessage,
-          cancel.requestId,
-        );
-        canonicalSessionStateRef.current = collapsedState;
-        return collapsedState;
-      });
-      void upsertCanonicalMessageFast(cancelNoticeRequest)
-        .catch((error) => {
-          console.warn('[cloud-agent-mention] group cancel notice failed', error);
-        });
-    }
+  useCloudAgentCancellation({
+    account,
+    canonicalStateRef: canonicalSessionStateRef,
+    setCanonicalState: setCanonicalSessionState,
+    messageIndex: cloudMessageIndex,
+    initialMessagesSettled,
+    processedRequestIdsRef: processedCloudAgentMentionIdsRef,
+    turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
-    for (const [peerId, messages] of cloudMessageIndex.byPeerId) {
-      for (const message of messages) {
-        if (!shouldRunLocalCloudAgentForCloudMessage({
-          account,
-          isGroupControl: cloudMessageIndex.groupRowByWireMessageId.has(message.messageId),
-          peerId,
-          message,
-          peerMessages: messages,
-        })) continue;
-        if (processedCloudAgentMentionIdsRef.current.has(message.messageId)) continue;
-
-        processedCloudAgentMentionIdsRef.current.add(message.messageId);
-        const contact = cloudLookupContacts.find((candidate) => (
-          candidate.sourceParticipantId || candidate.id.replace(/^cloud:/, '')
-        ) === peerId);
-        const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
-        const activitySessionId = message.sessionId ?? cloudSessionIdForCollaborationSend(account.accountId, peerId, `cloud:${peerId}`);
-        const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
-        const directDisplayMessage = { ...message, body: cloudDirectMessageDisplayText(message.body) };
-        const prompt = promptTextForCloudAgentMention(directDisplayMessage.body);
-        const contextMessages = [
-          ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null),
-          ...cloudAgentNativeContextMessagesFromDirectCloudSession({
-            messages,
-            requestMessage: message,
-            localAccountId: account.accountId,
-            localHumanName: account.displayName || account.primaryEmail || 'Me',
-            peerHumanName,
-            localAgentName: 'My Kordi',
-            peerAgentName: `${peerHumanName}'s Kordi`,
-          }),
-        ];
-        const visibleTaskRecords = activitySessionId
-          ? cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, activitySessionId)
-          : [];
-        const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${peerId}`;
-        const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
-          setLocalAgentTurnsByRequestId((current) => ({ ...current, [message.messageId]: turn }));
-        };
-        void (async () => {
-          let session: Awaited<ReturnType<typeof loadSession>>;
-          try {
-            session = await loadSession();
-          } catch (error) {
-            rememberLocalTurn(cloudAgentFailedTurnSnapshot({
-              requestId: message.messageId,
-              sessionId: runtimeSessionId,
-              prompt,
-              error,
-            }));
-            console.warn('[cloud-agent-mention] local session unavailable', error);
-            return;
-          }
-          if (!session?.token) {
-            rememberLocalTurn(cloudAgentFailedTurnSnapshot({
-              requestId: message.messageId,
-              sessionId: runtimeSessionId,
-              prompt,
-              error: new Error('Not signed in.'),
-            }));
-            return;
-          }
-
-          // Start these remote guards without awaiting them. Local provider
-          // readiness and execution must not sit behind Cloud latency; the
-          // guards only decide whether the completed response still needs to
-          // be published.
-          const responseGuardPromise = cloudAgentResponsePublicationIsBlocked({
-            client,
-            token: session.token,
-            peerId,
-            fallbackMessages: messages,
-            account,
-            requestMessageId: message.messageId,
-          });
-
-          let finalTurn: DesktopChatTurnSnapshot;
-          try {
-            const agentAttachments = message.attachments?.length
-              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
-              : message.attachments ?? [];
-            const agentAttachmentPaths = agentAttachments
-              .map((attachment) => attachment.localPath?.trim() || '')
-              .filter(Boolean);
-            const startedTurn = await startDesktopChatMessage(
-              runtimeSessionId,
-              prompt,
-              agentAttachmentPaths,
-              cloudAgentRuntimeRouteForTargetCloudAgent({
-                targetCloudAgentId,
-                cloudAgentDefinitionsById,
-                routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
-                runtimeSessionId,
-                fallbackRoute: defaultCloudAgentRuntimeRoute,
-              }),
-              contextMessages,
-              visibleTaskRecords,
-              activitySessionId,
-            );
-            rememberLocalTurn(startedTurn);
-            cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
-            finalTurn = startedTurn.completed
-              ? startedTurn
-              : await waitForCloudAgentTurn(startedTurn.id, rememberLocalTurn);
-            rememberLocalTurn(finalTurn);
-          } catch (error) {
-            finalTurn = cloudAgentFailedTurnSnapshot({
-              requestId: message.messageId,
-              sessionId: runtimeSessionId,
-              prompt,
-              error,
-            });
-            rememberLocalTurn(finalTurn);
-            console.warn('[cloud-agent-mention] local agent response failed', error);
-          } finally {
-            cloudAgentTurnIdsByRequestIdRef.current.delete(message.messageId);
-          }
-
-          if (finalTurn.status === 'cancelled') {
-            void syncCloudCollaborationDiff();
-            return;
-          }
-
-          try {
-            const [initialResponseBlocked, finalResponseBlocked] = await Promise.all([
-              responseGuardPromise,
-              cloudAgentResponsePublicationIsBlocked({
-                client,
-                token: session.token,
-                peerId,
-                fallbackMessages: messages,
-                account,
-                requestMessageId: message.messageId,
-              }),
-            ] as const);
-            if (initialResponseBlocked || finalResponseBlocked) {
-              void syncCloudCollaborationDiff();
-              return;
-            }
-            if (activitySessionId) {
-              await publishDerivedCloudSessionActivity({
-                client,
-                token: session.token,
-                accountId: account.accountId,
-                sessionId: activitySessionId,
-                participantAccountIds: [peerId],
-                participantProfiles: [
-                  {
-                    accountId: account.accountId,
-                    displayName: account.displayName || account.primaryEmail || account.accountId,
-                    avatarUrl: account.avatarUrl,
-                    role: 'self',
-                  },
-                  {
-                    accountId: peerId,
-                    displayName: peerHumanName,
-                    avatarUrl: contact?.profileImageUrl ?? null,
-                    role: 'person',
-                  },
-                ],
-                turn: finalTurn,
-                mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
-              });
-            }
-            const responseSucceeded = finalTurn.succeeded && finalTurn.assistantText.trim().length > 0;
-            const responseText = responseSucceeded
-              ? finalTurn.assistantText.trim()
-              : isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message)
-                ? cloudAgentNoProviderNoticeText()
-                : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
-            const response = await client.sendMessage(
-              session.token,
-              peerId,
-              encodeCloudAgentResponse({
-                requestId: message.messageId,
-                text: responseText,
-                deliveryState: responseSucceeded ? 'complete' : 'failed',
-              }),
-              { sessionId: message.sessionId ?? null },
-            );
-            mergeMessage(response);
-            void syncCloudCollaborationDiff();
-          } catch (error) {
-            // The local turn is already terminal and visible. A Cloud publish
-            // failure must not rerun the model or return the UI to Processing.
-            console.warn('[cloud-agent-mention] response publish failed', error);
-          }
-        })();
-      }
-    }
-  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, cloudMessageIndex, defaultCloudAgentRuntimeRoute, initialMessagesSettled, mergeMessage, setCanonicalSessionState, syncCloudCollaborationDiff]);
+  useCloudDirectAgentExecution({
+    account,
+    client,
+    cloudAgentDefinitionsById,
+    cloudAgentRuntimeRoutesBySessionId,
+    cloudLookupContacts,
+    cloudMessageIndex,
+    defaultCloudAgentRuntimeRoute,
+    initialMessagesSettled,
+    processedRequestIdsRef: processedCloudAgentMentionIdsRef,
+    turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
+    activityRef: cloudSessionActivityRef,
+    setLocalTurns: setLocalAgentTurnsByRequestId,
+    setActivity: setCloudSessionActivity,
+    mergeMessage,
+    syncMessages: syncCloudCollaborationDiff,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
