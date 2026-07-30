@@ -5,7 +5,10 @@ import test from 'node:test';
 const cloudCanonicalStateMergeSource = () => readFileSync(new URL('../src/features/cloud/cloudCanonicalStateMerge.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupSessionControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupSessionControl.ts', import.meta.url), 'utf8');
-const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+const groupMemberRolesSource = () => readFileSync(
+  new URL('../src/app/useKordiGroupMemberRoles.ts', import.meta.url),
+  'utf8',
+);
 
 test('cloud group replay persists messages with compact canonical writes instead of full state reloads', () => {
   const replayBlock = cloudGroupMessageControlSource();
@@ -29,9 +32,9 @@ test('cloud group replay prepares identities and sessions with compact canonical
 });
 
 test('group member removal publishes the current membership and a durable leave event', () => {
-  const source = appModelSource();
-  const removalStart = source.indexOf('const handleRemoveChatGroupMember = useCallback');
-  const removalEnd = source.indexOf('const handleSetChatGroupAdmin = useCallback', removalStart);
+  const source = groupMemberRolesSource();
+  const removalStart = source.indexOf('const removeGroupMember = useCallback');
+  const removalEnd = source.indexOf('const setGroupAdmin = useCallback', removalStart);
   assert.notEqual(removalStart, -1, 'expected group member removal handler');
   assert.notEqual(removalEnd, -1, 'expected group admin handler after group removal');
   const removalBlock = source.slice(removalStart, removalEnd);

@@ -72,11 +72,8 @@ import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/he
 import type { Agent, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import {
-  addCanonicalSessionParticipants,
   createDesktopChatSession,
   openOrCreateCanonicalSessionFast,
-  removeCanonicalSessionParticipant,
-  setCanonicalSessionParticipantRole,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentityFast,
 } from '@/lib/desktop';
@@ -84,7 +81,6 @@ import {
 import {
   activeGroupAdminIds,
   canonicalAvatarSeed,
-  canonicalGroupInviteTitleForSession,
   canonicalGroupParticipantsForSession,
   canonicalGroupCreatorIdentityId,
   canonicalIdentityDisplayName,
@@ -118,8 +114,8 @@ import {
   mergeCanonicalIdentity,
   mergeOpenCanonicalSessionResult,
 } from '@/app/canonicalSessionStateMutations';
-import { canonicalGroupParticipantsForSessions } from '@/app/groupMembershipState';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
+import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
 
 type ParticipantSpaceDraft = {
   createKey: string;
@@ -1644,177 +1640,17 @@ export function useKordiAppModel({
     setDesktopError: setDesktopChatError,
   });
 
-  const handleRemoveChatGroupMember = useCallback(async (sessionIds: string[], identityId: string) => {
-    if (!isNativeShell) return;
-    const currentState = canonicalSessionState;
-    if (!currentState) throw new Error('Local profile identity is not ready yet.');
-    const groupContextSessionIds = uniqueStrings(sessionIds).filter((sessionId) => (
-      currentState.sessions.some((session) => session.id === sessionId && session.kind === 'group')
-    ));
-    if (groupContextSessionIds.length === 0) return;
-    const activeSessionIdsForIdentity = new Set(currentState.participants
-      .filter((participant) => participant.identityId === identityId && participant.state === 'active')
-      .map((participant) => participant.sessionId));
-    const groupSessionIds = groupContextSessionIds.filter((sessionId) => activeSessionIdsForIdentity.has(sessionId));
-    if (groupSessionIds.length === 0) return;
-    setDesktopChatError(null);
-    const actorIdentityId = currentState.profile.humanIdentityId?.trim();
-    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
-    const fallbackGroupSpaceId = metadataGroupSpaceId(sessionMetadataRecord(currentState, groupContextSessionIds[0]))
-      || groupContextSessionIds[0];
-    const rootSessionId = currentState.sessions.some((session) => session.id === fallbackGroupSpaceId)
-      ? fallbackGroupSpaceId
-      : groupContextSessionIds[0];
-    const previousParticipants = canonicalGroupParticipantsForSessions(currentState, groupContextSessionIds);
-    const previousTargets = buildChatGroupCollaborationUpdateTargets({ actorIdentityId, participants: previousParticipants });
-    const targetAccountIds = cloudGroupTargetAccountIds(previousTargets);
-    const removedIdentity = currentState.identities.find((identity) => identity.id === identityId);
-    const removedAccountId = removedIdentity?.humanId?.trim() || removedIdentity?.sourceIdentityId?.trim() || '';
-    const groupCreatorIdentityId = canonicalGroupCreatorIdentityId(currentState, rootSessionId)
-      || currentState.sessions.find((session) => session.id === rootSessionId)?.createdByIdentityId?.trim()
-      || actorIdentityId;
-    let nextState = currentState;
-    for (const sessionId of groupSessionIds) {
-      nextState = await removeCanonicalSessionParticipant({ sessionId, identityId, removedByIdentityId: actorIdentityId });
-    }
-    setCanonicalSessionState(nextState);
-
-    const cloudAccount = cloudSession.account;
-    if (!cloudAccount || !removedAccountId || targetAccountIds.length === 0) return;
-    const participants = canonicalGroupParticipantsForSessions(nextState, groupContextSessionIds);
-    const adminIdentityIds = activeGroupAdminIds(nextState, rootSessionId);
-    const updateParticipants = buildChatGroupCollaborationUpdateParticipants({ participants, adminIdentityIds });
-    const creatorIdentity = nextState.identities.find((identity) => identity.id === groupCreatorIdentityId);
-    const createdByAccountId = creatorIdentity?.humanId?.trim()
-      || creatorIdentity?.sourceIdentityId?.trim()
-      || (groupCreatorIdentityId === nextState.profile.humanIdentityId ? cloudAccount.accountId : '');
-    const removalEvent = {
-      eventId: crypto.randomUUID(),
-      accountId: removedAccountId,
-      createdAtMs: Date.now(),
-    };
-    const actor = cloudGroupSelfParticipant(
-      cloudAccount,
-      adminIdentityIds.includes(actorIdentityId) ? 'admin' : 'person',
-    );
-    try {
-      await Promise.all(groupContextSessionIds.map((sessionId) => {
-        const metadata = sessionMetadataRecord(nextState, sessionId);
-        const groupSpaceId = metadataGroupSpaceId(metadata) || fallbackGroupSpaceId;
-        return sendCloudGroupControl({
-          targetAccountIds,
-          kind: 'group-update',
-          groupId: sessionId,
-          groupSpaceId,
-          groupTitle: canonicalGroupInviteTitleForSession(nextState, sessionId),
-          createdByAccountId: createdByAccountId || null,
-          actor,
-          participants: cloudGroupParticipantsForCollaborationSession(cloudAccount, updateParticipants),
-          memberLeaves: [removalEvent],
-        });
-      }));
-    } catch (error) {
-      const message = `Group member removed locally, but Cloud sync failed: ${error instanceof Error ? error.message : String(error)}`;
-      setDesktopChatError(message);
-      throw new Error(message);
-    }
-  }, [canonicalSessionState, cloudSession.account, isNativeShell, sendCloudGroupControl, setDesktopChatError]);
-
-  const handleSetChatGroupAdmin = useCallback(async (sessionIds: string[], identityId: string, isAdmin: boolean) => {
-    if (!isNativeShell) return;
-    if (!canonicalSessionState) throw new Error('Local profile identity is not ready yet.');
-    const groupSessionIds = uniqueStrings(sessionIds).filter((sessionId) => (
-      canonicalSessionState.sessions.some((session) => session.id === sessionId && session.kind === 'group')
-    ));
-    if (groupSessionIds.length === 0) return;
-    setDesktopChatError(null);
-    const actorIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
-    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
-    const firstSessionId = groupSessionIds[0];
-    const fallbackGroupSpaceId = metadataGroupSpaceId(sessionMetadataRecord(canonicalSessionState, firstSessionId))
-      || firstSessionId;
-    const rootSessionId = groupSessionIds.includes(fallbackGroupSpaceId)
-      ? fallbackGroupSpaceId
-      : firstSessionId;
-    const groupCreatorIdentityId = canonicalGroupCreatorIdentityId(canonicalSessionState, rootSessionId)
-      || canonicalSessionState.sessions.find((session) => session.id === rootSessionId)?.createdByIdentityId?.trim()
-      || actorIdentityId;
-    if (actorIdentityId !== groupCreatorIdentityId) {
-      throw new Error('Only the group creator can change group admins.');
-    }
-    if (!isAdmin && identityId === groupCreatorIdentityId) {
-      throw new Error('The group creator must remain an admin.');
-    }
-    const currentAdminIds = uniqueStrings(activeGroupAdminIds(canonicalSessionState, rootSessionId));
-    const nextAdminIds = isAdmin
-      ? uniqueStrings([...currentAdminIds, identityId])
-      : currentAdminIds.filter((adminId) => adminId !== identityId);
-    const groupAdminUpdatedAtMs = Date.now();
-    let nextState = canonicalSessionState;
-    for (const sessionId of groupSessionIds) {
-      const targetIsActive = nextState.participants.some((participant) => (
-        participant.sessionId === sessionId
-        && participant.identityId === identityId
-        && participant.state === 'active'
-      ));
-      if (!targetIsActive) {
-        nextState = await addCanonicalSessionParticipants({
-          sessionId,
-          identityIds: [identityId],
-          addedByIdentityId: actorIdentityId,
-        });
-      }
-      nextState = await setCanonicalSessionParticipantRole({
-        sessionId,
-        identityId,
-        role: isAdmin ? 'admin' : 'person',
-        requestedByIdentityId: actorIdentityId,
-      });
-      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
-      nextState = await updateCanonicalSessionMetadata({
-        sessionId,
-        requestedByIdentityId: actorIdentityId,
-        metadata: {
-          ...currentMetadata,
-          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
-          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
-          groupCreatorIdentityId,
-          adminIdentityIds: nextAdminIds,
-          groupAdminUpdatedAtMs,
-        },
-      });
-    }
-    setCanonicalSessionState(nextState);
-
-    if (!cloudSession.account) return;
-    const participants = canonicalGroupParticipantsForSessions(nextState, groupSessionIds);
-    const targets = buildChatGroupCollaborationUpdateTargets({ actorIdentityId, participants });
-    const targetAccountIds = cloudGroupTargetAccountIds(targets);
-    if (targetAccountIds.length === 0) return;
-    const updateParticipants = buildChatGroupCollaborationUpdateParticipants({
-      participants,
-      adminIdentityIds: nextAdminIds,
-    });
-    const creatorIdentity = nextState.identities.find((identity) => identity.id === groupCreatorIdentityId);
-    const createdByAccountId = creatorIdentity?.humanId?.trim()
-      || creatorIdentity?.sourceIdentityId?.trim()
-      || (groupCreatorIdentityId === nextState.profile.humanIdentityId ? cloudSession.account.accountId : '');
-    try {
-      await sendCloudGroupControl({
-        targetAccountIds,
-        kind: 'group-update',
-        groupId: rootSessionId,
-        groupSpaceId: fallbackGroupSpaceId,
-        groupTitle: canonicalGroupInviteTitleForSession(nextState, rootSessionId),
-        createdByAccountId: createdByAccountId || null,
-        participants: cloudGroupParticipantsForCollaborationSession(cloudSession.account, updateParticipants),
-      });
-    } catch (error) {
-      const message = `Group admin changed locally, but Cloud sync failed: ${error instanceof Error ? error.message : String(error)}`;
-      setDesktopChatError(message);
-      throw new Error(message);
-    }
-  }, [canonicalSessionState, cloudSession.account, isNativeShell, sendCloudGroupControl, setDesktopChatError]);
+  const {
+    removeGroupMember: handleRemoveChatGroupMember,
+    setGroupAdmin: handleSetChatGroupAdmin,
+  } = useKordiGroupMemberRoles({
+    account: cloudSession.account,
+    canonicalState: canonicalSessionState,
+    isNativeShell,
+    sendCloudGroupControl,
+    setCanonicalState: setCanonicalSessionState,
+    setDesktopError: setDesktopChatError,
+  });
 
   const materializeParticipantSpaceDraft = useCallback(async (sessionId: string) => {
     const draft = participantSpaceDraftBySessionIdRef.current.get(sessionId);
