@@ -209,6 +209,9 @@ import {
 import {
   useCloudCanonicalIdentitySync,
 } from './useCloudCanonicalIdentitySync';
+import {
+  useCloudAgentCatalog,
+} from './useCloudAgentCatalog';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -782,70 +785,24 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  const refreshCloudAgents = useCallback(async (generation?: number) => {
-    if (!account) {
-      setCloudAgentDefinitionsById({});
-      return;
-    }
-    const session = await loadSession();
-    if (!session?.token) return;
-    const agents = await cloudAgentsClient.listCloudAgents(session.token);
-    if (cancelledRef.current || (generation !== undefined && !cloudSyncCoordinator.isCurrentGeneration(generation))) return;
-    const next = Object.fromEntries(agents.map((agent) => [agent.agentId, agent]));
-    setCloudAgentDefinitionsById((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
-  }, [
+  const {
+    refreshDefinitions: refreshCloudAgents,
+    sharedAgents: sharedCloudAgents,
+    refreshShared: refreshSharedCloudAgents,
+    createDefinition: createCloudAgentDefinition,
+    updateDefinition: updateCloudAgentDefinition,
+    archiveDefinition: archiveCloudAgentDefinition,
+  } = useCloudAgentCatalog({
     account,
+    client: cloudAgentsClient,
+    syncCoordinator: cloudSyncCoordinator,
     cancelledRef,
-    cloudAgentsClient,
-    cloudSyncCoordinator,
-    setCloudAgentDefinitionsById,
-  ]);
-
-  const sharedCloudAgents = useMemo(() => Object.values(sharedCloudAgentsByOwner).flat(), [sharedCloudAgentsByOwner]);
-
-  const refreshSharedCloudAgents = useCallback(async (ownerAccountIds: string[]) => {
-    const owners = [...new Set(ownerAccountIds.map((value) => value.trim()).filter(Boolean))];
-    if (!account || owners.length === 0) {
-      setSharedCloudAgentsByOwner((current) => (Object.keys(current).length === 0 ? current : {}));
-      return [];
-    }
-    const session = await loadSession();
-    if (!session?.token) return [];
-    const agents = await cloudAgentsClient.listSharedCloudAgents(session.token, owners);
-    const next: Record<string, SharedCloudAgentSummary[]> = {};
-    for (const agent of agents) {
-      next[agent.ownerAccountId] = [...(next[agent.ownerAccountId] ?? []), agent];
-    }
-    setSharedCloudAgentsByOwner((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
-    return agents;
-  }, [account, cloudAgentsClient, setSharedCloudAgentsByOwner]);
-
-  const createCloudAgentDefinition = useCallback(async (input: CreateCloudAgentInput) => {
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Sign in to Cloud before creating an agent.');
-    const agent = await cloudAgentsClient.createCloudAgent(session.token, input);
-    setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
-    return agent;
-  }, [cloudAgentsClient, setCloudAgentDefinitionsById]);
-
-  const updateCloudAgentDefinition = useCallback(async (agentId: string, input: UpdateCloudAgentInput) => {
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Sign in to Cloud before updating an agent.');
-    const agent = await cloudAgentsClient.updateCloudAgent(session.token, agentId, input);
-    setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
-    return agent;
-  }, [cloudAgentsClient, setCloudAgentDefinitionsById]);
-
-  const archiveCloudAgentDefinition = useCallback(async (agentId: string) => {
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Sign in to Cloud before deleting an agent.');
-    const agent = await cloudAgentsClient.archiveCloudAgent(session.token, agentId);
-    setCloudAgentDefinitionsById((current) => {
-      const { [agent.agentId]: _removed, ...rest } = current;
-      return rest;
-    });
-    return agent;
-  }, [cloudAgentsClient, setCloudAgentDefinitionsById]);
+    stores: {
+      setDefinitionsById: setCloudAgentDefinitionsById,
+      sharedByOwner: sharedCloudAgentsByOwner,
+      setSharedByOwner: setSharedCloudAgentsByOwner,
+    },
+  });
 
   const { refreshCloudMessages, syncCloudCollaborationDiff } = useCloudMessageSync({
     account,
