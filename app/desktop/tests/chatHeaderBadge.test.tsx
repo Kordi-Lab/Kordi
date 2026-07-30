@@ -24,6 +24,8 @@ function readChatsPageImplementationSource(): string {
     '../src/pages/chatsPage.companionDestination.tsx',
     '../src/pages/chatsPage.companionHeader.tsx',
     '../src/pages/chatsPage.companionPane.tsx',
+    '../src/pages/chatsPage.mainComposer.tsx',
+    '../src/pages/chatsPage.mainHeader.tsx',
     '../src/pages/chatsPage.model.ts',
     '../src/pages/chatsPage.sessionPane.tsx',
   ]
@@ -69,7 +71,7 @@ test('compact transcript density applies to human and agent sessions', () => {
 });
 
 test('chat header title text does not flex-grow away from fork or action pills', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
 
   assert.doesNotMatch(source, /min-w-\[12rem\] max-w-full flex-1 break-words/);
   assert.doesNotMatch(source, /min-w-\[10rem\] flex-1 break-words/);
@@ -94,7 +96,7 @@ test('chat headers reserve a compact second row for icon destination subtitles',
 });
 
 test('Ask Agent remains a flat utility action while chat details move into destination subtitles', () => {
-  const chatSource = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const chatSource = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
   const projectSource = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
   const askAgentButton = chatSource.slice(chatSource.indexOf('aria-label="Ask Agent"') - 360, chatSource.indexOf('aria-label="Ask Agent"') + 180);
   const projectDetailsButton = projectSource.slice(projectSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, projectSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
@@ -122,12 +124,12 @@ test('message selection control is smaller than the old oversized blue circle', 
 });
 
 test('chat header cloud self-agent sync indicator is icon-only', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
   const indicatorStart = source.indexOf('data-cloud-self-agent-sync-status');
-  const indicatorMarkup = source.slice(indicatorStart, source.indexOf('{activeForkSourceSessionId', indicatorStart));
+  const indicatorMarkup = source.slice(indicatorStart, source.indexOf('{metadata.forkSourceSessionId', indicatorStart));
 
   assert.match(indicatorMarkup, /<Cloud/);
-  assert.doesNotMatch(indicatorMarkup, /\{activeCloudSelfAgentSyncLabel\}/);
+  assert.doesNotMatch(indicatorMarkup, /\{metadata\.cloudSyncLabel\}/);
 });
 
 test('chat header cloud self-agent sync label is concise and stable', () => {
@@ -423,7 +425,7 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {
   const source = readChatsPageImplementationSource();
 
-  assert.match(source, /activePaneKind === 'agent' && !activeConversationUsesCollaboration/);
+  assert.match(source, /localRouting\.paneKind === 'agent'[\s\S]*&& !collaborationRouting\.enabled/);
   assert.match(source, /paneKind === 'agent' \? 'Ask the agent…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
   assert.match(source, /companionConversationIsCollaborationAgent/);

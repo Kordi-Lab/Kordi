@@ -14,6 +14,8 @@ const chatsPageSource = () => [
   '../src/pages/chatsPage.companionDestination.tsx',
   '../src/pages/chatsPage.companionHeader.tsx',
   '../src/pages/chatsPage.companionPane.tsx',
+  '../src/pages/chatsPage.collaborationRoutingControls.tsx',
+  '../src/pages/chatsPage.mainComposer.tsx',
 ]
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n');
@@ -46,6 +48,7 @@ function sidePanelBlock(source: string): string {
     '../src/pages/chatsPage.companionDestination.tsx',
     '../src/pages/chatsPage.companionHeader.tsx',
     '../src/pages/chatsPage.companionPane.tsx',
+    '../src/pages/chatsPage.collaborationRoutingControls.tsx',
   ]
     .map((entry, index) => (
       index === 0 ? entry : readFileSync(new URL(entry, import.meta.url), 'utf8')
@@ -160,9 +163,10 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
   assert.match(source, /const companionCollaborationRoutingAgents = useMemo/, 'side-panel bridge agent menu should derive routing agents for the companion session');
   assert.match(source, /enabled: companionConversationIsCollaborationAgent[\s\S]*selectedAgent: selectedCompanionCollaborationRoutingAgent/, 'side-panel cloud agents should receive the bridge-routing model branch');
   assert.match(source, /selection: companionCollaborationRoutingSelection/, 'side-panel cloud agent model controls should receive bridge routing selection');
-  assert.match(side, /selection=\{collaborationRouting\.selection\}/, 'side-panel cloud agent model controls should use the supplied bridge routing selection');
-  assert.match(side, /collaborationRouting\.update\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing');
-  assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*collaborationRouting\.update/, 'side-panel cloud agent provider changes should update bridge routing');
+  assert.match(side, /selection: collaborationRouting\.selection/, 'side-panel cloud agent model controls should pass the supplied bridge routing selection to the shared controls');
+  assert.match(side, /selection=\{selection\}/, 'shared cloud agent model controls should render the supplied bridge routing selection');
+  assert.match(side, /actions\.onUpdate\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing through the shared action');
+  assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*actions\.onUpdate/, 'side-panel cloud agent provider changes should update bridge routing through the shared action');
   assert.match(source, /const companionCollaborationRoutingTargetSessionId = companionConversation\?\.canonicalSessionId \?\? companionConversation\?\.id \?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
   assert.match(source, /applyCollaborationAgentRoutingUpdate\(\{[\s\S]*targetSessionId: companionCollaborationRoutingTargetSessionId/, 'side-panel cloud route changes should pass the companion session id through the shared bridge routing updater');
   assert.match(source, /onUpdateCollaborationAgentModelRouting\([\s\S]*routing\.fallbackAuthChoice,\s*targetSessionId,\s*\)/, 'the shared bridge routing updater should pass its target session through the bridge callback');
@@ -174,11 +178,15 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
 test('split-pane Agent bottom controls stay compact without changing composer height during resize', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
-  const main = blockBetween(
+  const mainComposition = blockBetween(
     source,
     '<ChatSessionPane\n        presentation={{\n          liveTurn: attributedActiveTranscriptLiveTurn,',
     '{showCompanionPane && companionSide === \'right\' ? splitDivider : null}',
   );
+  const main = `${mainComposition}\n${readFileSync(
+    new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
+    'utf8',
+  )}`;
   const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
 
   assert.match(composerSource, /compact\?: boolean/, 'ComposerModelControls should expose a compact density for narrow panes');
@@ -186,8 +194,8 @@ test('split-pane Agent bottom controls stay compact without changing composer he
   assert.match(side, /data-companion-send-row="true"[\s\S]*flex-nowrap/, 'side-panel send row should stay single-line so resizing does not change composer height');
   assert.match(side, /data-companion-model-controls="true"[\s\S]*flex-nowrap/, 'side-panel model controls should stay single-line instead of wrapping under the input');
   assert.match(side, /<ComposerModelControls[\s\S]*compact=\{true\}/, 'side-panel model controls should use compact button widths');
-  assert.match(main, /className=\{cn\('flex min-w-0 items-center overflow-visible'[\s\S]*showCompanionPane \? 'shrink gap-2' : 'shrink-0 gap-3'\)\}/, 'main split-pane composer controls should be allowed to shrink when a companion pane is open');
-  assert.match(main, /<ComposerModelControls[\s\S]*compact=\{showCompanionPane\}/, 'main split-pane model controls should also use compact widths');
+  assert.match(main, /className=\{cn\([\s\S]*display\.showCompanionPane \? 'shrink gap-2' : 'shrink-0 gap-3'/, 'main split-pane composer controls should be allowed to shrink when a companion pane is open');
+  assert.match(main, /<ComposerModelControls[\s\S]*compact=\{display\.showCompanionPane\}/, 'main split-pane model controls should also use compact widths');
   assert.match(composerSource, /compact \? 'w-\[5\.75rem\]' : 'w-\[8\.75rem\]'/, 'compact provider button width should be narrow enough for split panes');
 });
 

@@ -1,23 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, DragEvent, PointerEvent as ReactPointerEvent, SetStateAction } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useReducedMotion } from 'framer-motion';
 import {
-  ChevronDown,
-  ChevronLeft,
   Cloud,
   Columns2,
-  Copy,
-  Ellipsis,
-  FileText,
   GripVertical,
-  Image as ImageIcon,
-  Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
-  Send,
   Split,
-  SquarePen,
-  X,
 } from 'lucide-react';
 
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
@@ -37,11 +27,6 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import {
-  CompactComposerModelMenu,
-  ComposerMentionMenu,
-  ComposerModelControls,
-  ComposerRuntimeStatus,
-  ComposerSlashMenu,
   fallbackComposerThinkingValue,
   type ComposerModelOption,
   type ComposerProviderOption,
@@ -57,14 +42,11 @@ import type {
   Message,
   MessageSourceReference,
 } from '@/kordi-app/types';
-import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
-import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
-  focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
@@ -87,6 +69,8 @@ import {
 } from '@/pages/chatsPage.constants';
 import { CompanionHeader } from '@/pages/chatsPage.companionHeader';
 import { CompanionPane } from '@/pages/chatsPage.companionPane';
+import { MainComposer } from '@/pages/chatsPage.mainComposer';
+import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
 import {
   SessionDestinationTabs,
 } from '@/pages/chatsPage.destinations';
@@ -104,7 +88,6 @@ import {
   localAgentComposerConfigTargetSessionId,
   scheduleTranscriptScrollToBottom,
   selfAgentSessionIdForTitleRename,
-  shouldUseCompactModelRouteMenu,
 } from '@/pages/chatsPage.header';
 import {
   PinMessageDialog,
@@ -139,7 +122,6 @@ import {
   collaborationRouteDisplayName,
   collaborationThinkingDisplayName,
   conversationPaneKind,
-  firstModelForProvider,
   forkSnapshotBoundaryIndexForMessages,
   forkSourceMessageIds,
   humanSideForCompanionSide,
@@ -236,49 +218,33 @@ export function ChatsPage({
     onCancelQueuedMessage,
   } = transcript;
   const {
-    filteredChatSlashCommands,
-    filteredChatMentionTargets,
-    chatSlashMenuIndex,
-    setChatSlashMenuIndex,
-    acceptChatSlashCommand,
-    acceptChatMentionTarget,
-    chatAttachmentInputRef,
     chatComposerAttachments,
     saveDesktopAttachments,
     saveDesktopAttachmentPaths,
     removeChatComposerAttachment,
     chatComposerText,
-    updateChatComposerDraft,
     setChatComposerText,
     setChatComposerTextForSession,
     activeChatQuote,
-    onClearChatQuote,
     onReplyMessage,
     onForwardMessage,
     onSelectMessage,
     messageSelectionMode = false,
-    selectedMessageCount = 0,
     selectedMessageIds,
     isMessageSelectable,
     onToggleSelectedMessage,
     onSelectionDragStart,
     onSelectionDragEnter,
     onSelectionDragEnd,
-    onCancelMessageSelection,
-    onCopySelectedMessages,
-    onForwardSelectedMessages,
   } = composer;
   const {
-    composerControlsRef,
     activeRuntimeContextStatus,
     activeRuntimeCacheText,
     composerSelection,
     openComposerSelector,
     toggleComposerSelector,
     selectComposerValue,
-    composerAuthLabel,
     composerAuthOptions,
-    selectComposerAuthChoice,
     selectComposerProviderChoice,
     composerProviderOptions,
     chatModelOptions,
@@ -405,7 +371,6 @@ export function ChatsPage({
     setIsDetailPanelCollapsed(false);
   }, [onClearSourcePreview, setActiveDetailTab, setIsDetailPanelCollapsed]);
   const prefersReducedMotion = useReducedMotion();
-  const chatImeCompositionGuard = useImeCompositionGuard();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
   const activeCanonicalHistorySessionId = canonicalHistorySessionIdForConversation(activeConv);
   const activeLocalAgentConfigTargetSessionId = localAgentComposerConfigTargetSessionId(activeConv);
@@ -1361,133 +1326,50 @@ export function ChatsPage({
         {showCompanionPane && companionSide === 'left' ? companionPane : null}
         {showCompanionPane && companionSide === 'left' ? splitDivider : null}
         <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-active-side={companionSide === 'left' ? 'right' : 'left'}>
-      <div className="app-page-header relative flex min-h-[84px] shrink-0 items-start justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 pb-8 pt-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
-        <div className="flex min-w-0 items-center gap-2">
-          {showChatDetailRail && (
-            <button
-              type="button"
-              onClick={() => setIsSessionPanelCollapsed((collapsed) => !collapsed)}
-              className="app-icon-button app-utility-button grid h-7.5 w-7.5 shrink-0 place-items-center rounded-[12px] transition"
-              aria-label={collapseChatSessions ? 'Open sessions' : 'Close sessions'}
-              title={collapseChatSessions ? 'Open sessions' : 'Close sessions'}
-            >
-              {collapseChatSessions ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
-            </button>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="app-page-header-title-row mb-1 flex min-w-0 items-center gap-1.5 text-white">
-              {canRenameActiveSelfAgentSession ? (
-                isEditingDesktopSessionTitle ? (
-                  <input
-                    value={desktopSessionRenameDraft}
-                    onChange={(event) => setDesktopSessionRenameDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        event.currentTarget.blur();
-                      }
-                      if (event.key === 'Escape') {
-                        event.preventDefault();
-                        setDesktopSessionRenameDraft(activeConv.name);
-                        setIsEditingDesktopSessionTitle(false);
-                      }
-                    }}
-                    onBlur={() => {
-                      void commitActiveSelfAgentSessionTitle();
-                    }}
-                    autoFocus
-                    data-kordi-window-drag="false"
-                    className="min-w-[220px] max-w-full rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
-                    placeholder="Session name"
-                  />
-                ) : (
-                  <h2 className="min-w-0 max-w-[18rem] text-[17px] font-semibold leading-6">
-                    <button
-                      type="button"
-                      onDoubleClick={beginActiveSelfAgentSessionTitleRename}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'Enter' && event.key !== ' ') return;
-                        event.preventDefault();
-                        beginActiveSelfAgentSessionTitleRename();
-                      }}
-                      className="block w-full truncate rounded-lg px-1 py-0.5 text-left text-white transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
-                      data-chat-session-title-rename="true"
-                      data-session-title-rename-trigger="double-click"
-                      data-session-id={activeSelfAgentSessionId ?? activeConv.id}
-                      data-kordi-window-drag="false"
-                      aria-label={`Rename session ${activeConv.name}`}
-                      title="Double-click to rename session"
-                    >
-                      {activeConv.name}
-                    </button>
-                  </h2>
-                )
-              ) : (
-                <h2 className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6" data-kordi-window-drag="false">{activeConv.name}</h2>
-              )}
-              {activeCloudSelfAgentSyncLabel ? (
-                <span
-                  className={cn(
-                    'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
-                    cloudSelfAgentSyncStatus?.state === 'error'
-                      ? 'text-rose-300'
-                      : cloudSelfAgentSyncStatus?.state === 'syncing'
-                        ? 'text-sky-200'
-                        : 'text-emerald-200',
-                  )}
-                  title={cloudSelfAgentSyncStatus?.state === 'error'
-                    ? cloudSelfAgentSyncStatus.message || 'Cloud sync needs attention'
-                    : activeCloudSelfAgentSyncLabel}
-                  aria-label={cloudSelfAgentSyncStatus?.state === 'error'
-                    ? 'Cloud sync issue'
-                    : activeCloudSelfAgentSyncLabel}
-                  data-cloud-self-agent-sync-status={cloudSelfAgentSyncStatus?.state ?? 'idle'}
-                >
-                  <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-              ) : null}
-              {activeSessionSubtitle ? (
-                <span data-chat-session-subtitle-pill="true" className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.045] px-2 text-[10.5px] font-medium leading-none text-slate-300" title={activeSessionSubtitle}>{activeSessionSubtitle}</span>
-              ) : null}
-              {activeForkSourceSessionId ? (
-                <button
-                  type="button"
-                  onClick={() => onSelectSession?.(activeForkSourceSessionId)}
-                  disabled={!onSelectSession}
-                  className="app-fork-source-pill inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 text-[10.5px] font-medium text-slate-300 transition hover:bg-white/[0.08] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  title={`Forked from "${activeForkSourceTitle}" — open the source session`}
-                  data-kordi-window-drag="false"
-                >
-                  <Split className="h-2.5 w-2.5" />
-                  <span className="max-w-[12rem] truncate">Forked from {activeForkSourceTitle}</span>
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 self-start">
-          {canOpenSideAgentPanel && !showCompanionPane ? (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => { void openSideAgentPanel(); }}
-              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
-              aria-label="Ask Agent"
-              title={suggestedSideAgentConversation ? `Ask Agent with ${suggestedSideAgentConversation.name}` : 'Ask Agent in a new session'}
-            >
-              <Columns2 className="mr-1.5 h-3.5 w-3.5" />
-              Ask Agent
-            </Button>
-          ) : null}
-        </div>
-        {showRightDetailRail ? (
-          <SessionDestinationTabs
-            scope="main"
-            activeDestination={mainDestination}
-            onSelect={selectMainDestination}
+          <MainChatHeader
+            conversation={activeConv}
+            layout={{
+              showSessionToggle: showChatDetailRail,
+              sessionsCollapsed: collapseChatSessions,
+              onToggleSessions: () => {
+                setIsSessionPanelCollapsed((collapsed) => !collapsed);
+              },
+              showDestinations: showRightDetailRail,
+              destination: mainDestination,
+              onSelectDestination: selectMainDestination,
+            }}
+            metadata={{
+              subtitle: activeSessionSubtitle,
+              cloudSyncLabel: activeCloudSelfAgentSyncLabel,
+              cloudSyncStatus: cloudSelfAgentSyncStatus,
+              forkSourceSessionId: activeForkSourceSessionId,
+              forkSourceTitle: activeForkSourceTitle ?? 'source session',
+              onOpenForkSource: onSelectSession,
+            }}
+            rename={{
+              enabled: canRenameActiveSelfAgentSession,
+              editing: isEditingDesktopSessionTitle,
+              draft: desktopSessionRenameDraft,
+              sessionId: activeSelfAgentSessionId ?? activeConv.id,
+              setDraft: setDesktopSessionRenameDraft,
+              begin: beginActiveSelfAgentSessionTitleRename,
+              cancel: () => {
+                setDesktopSessionRenameDraft(activeConv.name);
+                setIsEditingDesktopSessionTitle(false);
+              },
+              commit: () => {
+                void commitActiveSelfAgentSessionTitle();
+              },
+            }}
+            companion={{
+              canOpen: canOpenSideAgentPanel,
+              isOpen: showCompanionPane,
+              suggestedName: suggestedSideAgentConversation?.name,
+              onOpen: () => {
+                void openSideAgentPanel();
+              },
+            }}
           />
-        ) : null}
-      </div>
 
       {mainDestination === 'messages' ? (
       <div
@@ -1590,377 +1472,43 @@ export function ChatsPage({
             rightDetailRail={rightDetailRail}
             setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
           >
-      <div className="shrink-0 px-5 pb-4 pt-3">
-        {messageSelectionMode && selectedMessageCount > 0 ? (
-          <div
-            data-message-selection-bar="true"
-            className="app-message-selection-bar mb-2 flex items-center justify-between gap-3 rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] px-3.5 py-2.5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
-          >
-            <div className="text-[12px] font-semibold tabular-nums">
-              {selectedMessageCount} selected
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
-                onClick={onCancelMessageSelection}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={onCopySelectedMessages}
-                disabled={!onCopySelectedMessages || selectedMessageCount <= 0}
-              >
-                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                Copy
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--app-sidebar-accent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--app-sidebar-accent-text)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={onForwardSelectedMessages}
-                disabled={!onForwardSelectedMessages || selectedMessageCount <= 0}
-              >
-                <Send className="h-3.5 w-3.5" aria-hidden="true" />
-                Forward
-              </button>
-            </div>
-          </div>
-        ) : null}
-        <AnimatePresence initial={false}>
-          {activeConversationUsesCollaboration && collaborationRoutingNotice ? (
-            <motion.div
-              key={collaborationRoutingNotice}
-              className="mb-2 flex justify-center"
-              role="status"
-              aria-live="polite"
-              initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
-              transition={{ duration: prefersReducedMotion ? 0.01 : COLLABORATION_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
-                Private · {collaborationRoutingNotice}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-        <div className="app-composer-shell rounded-[26px] p-3">
-          <div className="relative">
-            {filteredChatSlashCommands.length > 0 ? (
-              <ComposerSlashMenu
-                items={filteredChatSlashCommands}
-                selectedIndex={Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)}
-                onSelect={acceptChatSlashCommand}
-              />
-            ) : filteredChatMentionTargets.length > 0 ? (
-              <ComposerMentionMenu
-                items={filteredChatMentionTargets}
-                selectedIndex={Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}
-                onSelect={acceptChatMentionTarget}
-              />
-            ) : null}
-            <div
-              className={cn(
-                'app-composer-input rounded-[18px] transition',
-                chatComposerAttachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
-              )}
-            >
-              <input
-                ref={chatAttachmentInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(event) => {
-                  const files = Array.from(event.target.files ?? []);
-                  if (files.length > 0) {
-                    void saveDesktopAttachments(files);
-                  }
-                  event.currentTarget.value = '';
-                }}
-              />
-              {activeChatQuote ? (
-                <div
-                  data-composer-quote-preview="true"
-                  className="mb-1.5 flex items-start gap-2 rounded-[14px] border border-sky-300/20 bg-sky-400/10 px-2.5 py-2 text-left"
-                >
-                  <span className="mt-0.5 h-8 w-0.5 shrink-0 rounded-full bg-sky-300" aria-hidden="true" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11px] font-semibold text-sky-200">{activeChatQuote.source.senderLabel}</div>
-                    <div className="truncate text-[11px] text-slate-300">
-                      {activeChatQuote.source.textPreview || `${activeChatQuote.source.attachmentCount} attachment${activeChatQuote.source.attachmentCount === 1 ? '' : 's'}`}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Remove quoted message"
-                    onClick={onClearChatQuote}
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : null}
-              {chatComposerAttachments.length > 0 ? (
-                <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                  {chatComposerAttachments.map((attachment) => (
-                    <div
-                      key={attachment.id}
-                      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-2.5 text-[11px] text-[color:var(--utility-foreground)]"
-                    >
-                      {attachment.kind === 'image' ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-300" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-slate-300" />}
-                      <span className="max-w-[220px] truncate leading-none">{attachment.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeChatComposerAttachment(attachment.id)}
-                        className="text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
-                        aria-label={`Remove ${attachment.name}`}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <textarea
-                rows={1}
-                value={chatComposerText}
-                onPointerDownCapture={() => focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell)}
-                onFocus={() => focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell)}
-                onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
-                onPaste={(event) => {
-                  const files = extractClipboardFiles(event.clipboardData);
-                  if (files.length > 0) {
-                    event.preventDefault();
-                    void saveDesktopAttachments(files);
-                    return;
-                  }
-
-                  const pastedPaths = extractPastedLocalFilePaths(
-                    event.clipboardData.getData('text/plain'),
-                    event.clipboardData.getData('text/uri-list'),
-                  );
-                  if (pastedPaths.length > 0) {
-                    event.preventDefault();
-                    void saveDesktopAttachmentPaths(pastedPaths);
-                  }
-                }}
-                onCompositionStart={chatImeCompositionGuard.onCompositionStart}
-                onCompositionEnd={chatImeCompositionGuard.onCompositionEnd}
-                onKeyDown={(event) => {
-                  if (chatImeCompositionGuard.isComposingKeyDown(event)) return;
-                  if (filteredChatSlashCommands.length > 0) {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredChatSlashCommands.length);
-                      return;
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredChatSlashCommands.length) % filteredChatSlashCommands.length);
-                      return;
-                    }
-                    if ((event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) || event.key === 'Tab') {
-                      event.preventDefault();
-                      acceptChatSlashCommand(filteredChatSlashCommands[Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)]?.value ?? filteredChatSlashCommands[0].value);
-                      return;
-                    }
-                  }
-                  if (filteredChatMentionTargets.length > 0) {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredChatMentionTargets.length);
-                      return;
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredChatMentionTargets.length) % filteredChatMentionTargets.length);
-                      return;
-                    }
-                    if (((event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      acceptChatMentionTarget(filteredChatMentionTargets[Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)]?.value ?? filteredChatMentionTargets[0].value);
-                      return;
-                    }
-                  }
-                  if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
-                    event.preventDefault();
-                    setChatComposerText('/');
-                    return;
-                  }
-                  if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
-                    event.preventDefault();
-                    setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
-                    return;
-                  }
-                  if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
-                    event.preventDefault();
-                    handleSendChatMessage(event.currentTarget.value);
-                  }
-                }}
-                className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                data-composer-scope="chat"
-                placeholder={chatComposerPlaceholderText}
-              />
-            </div>
-          </div>
-          <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
-            <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-              {shouldUseCompactModelRouteMenu(activeConv) ? (
-                <CompactComposerModelMenu
-                  scope="chat"
-                  selection={activeConversationUsesCollaboration && selectedCollaborationRoutingAgent ? collaborationRoutingSelection : composerSelection}
-                  providerOptions={composerProviderOptions}
-                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                  onSave={saveCompactModelRoute}
-                />
-              ) : null}
-              <Button
-                size="icon"
-                variant="secondary"
-                className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
-                onClick={() => chatAttachmentInputRef.current?.click()}
-                title="Add attachment"
-                aria-label="Add attachment"
-              >
-                <Paperclip className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className={cn('flex min-w-0 items-center overflow-visible', showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3')}>
-              {activePaneKind === 'agent' && !activeConversationUsesCollaboration && (isNativeShell || activeRuntimeContextStatus) ? (
-                <ComposerRuntimeStatus
-                  contextStatus={activeRuntimeContextStatus}
-                  cacheText={activeRuntimeCacheText}
-                />
-              ) : null}
-              {activePaneKind === 'agent' && !activeConversationUsesCollaboration && !shouldUseCompactModelRouteMenu(activeConv) ? (
-                <ComposerModelControls
-                  scope="chat"
-                  selection={composerSelection}
-                  openSelector={openComposerSelector}
-                  onToggleSelector={toggleComposerSelector}
-                  onSelectValue={(scope, type, value) => {
-                    void selectComposerValue(scope, type, value, activeLocalAgentConfigTargetSessionId);
-                  }}
-                  authLabel={composerAuthLabel}
-                  authOptions={composerAuthOptions}
-                  onSelectAuthChoice={(scope, providerId, choice) => {
-                    void selectComposerAuthChoice(scope, providerId, choice, activeLocalAgentConfigTargetSessionId);
-                  }}
-                  onSelectProviderChoice={(scope, option) => {
-                    void selectComposerProviderChoice(scope, option, activeLocalAgentConfigTargetSessionId);
-                  }}
-                  providerOptions={composerProviderOptions}
-                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                  compact={showCompanionPane}
-                />
-              ) : activePaneKind === 'agent' && activeConversationUsesCollaboration && !shouldUseCompactModelRouteMenu(activeConv) && selectedCollaborationRoutingAgent ? (
-                <div className="relative flex min-w-0 items-center gap-2 overflow-visible">
-                  {collaborationRoutingControlVisibility.showAgentSelector ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleComposerSelector('chat', 'mode')}
-                      className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
-                      title="Choose which owned agent these session settings apply to"
-                    >
-                      <span className="truncate">{selectedCollaborationRoutingAgent.label}</span>
-                      <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', collaborationAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
-                    </button>
-                  ) : null}
-                  {collaborationAgentSelectorOpen ? (
-                    <div className="app-transient-surface app-transient-scroll absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]">
-                      <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
-                      <div className="space-y-1">
-                        {collaborationRoutingAgents.map((agent) => (
-                          <button
-                            key={`${agent.hostId}:${agent.id}`}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCollaborationAgentId(agent.id);
-                              toggleComposerSelector('chat', 'mode');
-                            }}
-                            className={cn(
-                              'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                              selectedCollaborationRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
-                            )}
-                          >
-                            <span className="truncate">{agent.label}</span>
-                            <span className="shrink-0 text-[11px] text-[color:var(--utility-muted-text)]">{agent.isDefault ? 'Default' : 'Owned'}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <ComposerModelControls
-                    scope="chat"
-                    selection={collaborationRoutingSelection}
-                    openSelector={openComposerSelector}
-                    onToggleSelector={toggleComposerSelector}
-                    onSelectValue={(_scope, type, value) => {
-                      if (type === 'model') {
-                        updateCollaborationAgentRouting({
-                          defaultModel: value,
-                          defaultAuthProvider: selectedCollaborationRoutingAgent.defaultAuthProvider ?? null,
-                          defaultAuthChoice: selectedCollaborationRoutingAgent.defaultAuthChoice ?? null,
-                          fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
-                          fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
-                          fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
-                          thinking: defaultThinkingForCollaborationModel(value, selectedCollaborationRoutingAgent.thinking),
-                          selectorType: 'model',
-                        });
-                      } else if (type === 'thinking') {
-                        updateCollaborationAgentRouting({
-                          defaultModel: selectedCollaborationRoutingAgent.defaultModel ?? null,
-                          defaultAuthProvider: selectedCollaborationRoutingAgent.defaultAuthProvider ?? null,
-                          defaultAuthChoice: selectedCollaborationRoutingAgent.defaultAuthChoice ?? null,
-                          fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
-                          fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
-                          fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
-                          thinking: value,
-                          selectorType: 'thinking',
-                        });
-                      }
-                    }}
-                    authLabel={composerAuthLabel}
-                    authOptions={composerAuthOptions}
-                    onSelectAuthChoice={() => {}}
-                    onSelectProviderChoice={(_scope, option) => {
-                      const nextModel = firstModelForProvider(option.providerId, chatModelOptions);
-                      if (!nextModel) return;
-                      updateCollaborationAgentRouting({
-                        defaultModel: nextModel,
-                        defaultAuthProvider: option.providerId,
-                        defaultAuthChoice: authChoiceFromProviderOption(option),
-                        fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
-                        fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
-                        fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
-                        thinking: defaultThinkingForCollaborationModel(nextModel, selectedCollaborationRoutingAgent.thinking),
-                        selectorType: 'provider',
-                      });
-                    }}
-                    providerOptions={composerProviderOptions}
-                    modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                    compact={showCompanionPane}
-                  />
-                </div>
-              ) : null}
-              <Button
-                className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-                onClick={() => handleSendChatMessage()}
-                disabled={false}
-                title={activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
-                aria-label="Send message"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+            <MainComposer
+              conversation={activeConv}
+              composer={composer}
+              runtime={runtime}
+              localRouting={{
+                paneKind: activePaneKind,
+                configTarget: activeLocalAgentConfigTargetSessionId,
+                contextStatus: activeRuntimeContextStatus,
+                cacheText: activeRuntimeCacheText,
+              }}
+              collaborationRouting={{
+                enabled: activeConversationUsesCollaboration,
+                notice: collaborationRoutingNotice,
+                model: selectedCollaborationRoutingAgent ? {
+                  agents: collaborationRoutingAgents,
+                  selectedAgent: selectedCollaborationRoutingAgent,
+                  selection: collaborationRoutingSelection,
+                  visibility: collaborationRoutingControlVisibility,
+                } : null,
+                agentSelectorOpen: collaborationAgentSelectorOpen,
+                onSelectAgent: (agentId) => {
+                  setSelectedCollaborationAgentId(agentId);
+                  toggleComposerSelector('chat', 'mode');
+                },
+                onUpdate: updateCollaborationAgentRouting,
+                onSaveCompact: saveCompactModelRoute,
+                defaultThinkingForModel: defaultThinkingForCollaborationModel,
+              }}
+              display={{
+                isNativeShell,
+                showCompanionPane,
+                activeLiveTurnIsRunning,
+                prefersReducedMotion,
+                placeholder: chatComposerPlaceholderText,
+              }}
+              onSend={handleSendChatMessage}
+            />
           </ChatComposerShell>
           ),
         }}
