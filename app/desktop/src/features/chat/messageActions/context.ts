@@ -18,7 +18,9 @@ export function renderProjectContext(state: DesktopChatState | null) {
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
-export function renderRecentMessageContext(messages: UseComposerControllerArgs['activeConvMessages']) {
+export function renderRecentMessageContext(
+  messages: UseComposerControllerArgs['conversation']['activeConvMessages'],
+) {
   const lines = messages
     .filter((message) => message.text?.trim())
     .slice(-8)
@@ -26,7 +28,9 @@ export function renderRecentMessageContext(messages: UseComposerControllerArgs['
   return lines.length > 0 ? `Recent session messages:\n${lines.join('\n')}` : null;
 }
 
-export function parentSessionMessagesForOutreach(messages: UseComposerControllerArgs['activeConvMessages']) {
+export function parentSessionMessagesForOutreach(
+  messages: UseComposerControllerArgs['conversation']['activeConvMessages'],
+) {
   return messages.flatMap((message, index) => {
     const text = (message.turn?.assistantText || message.text || '').trim();
     if (!text) return [];

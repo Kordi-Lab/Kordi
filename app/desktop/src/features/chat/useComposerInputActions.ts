@@ -25,36 +25,14 @@ import type {
   AttachmentItem,
   ComposerConfigTargetOverride,
   ComposerDraftState,
+  ComposerRuntimeContext,
   ComposerSelection,
   ComposerSelectionState,
   ComposerSelectorState,
   MinimalModelOption,
   MinimalProviderOption,
-  UseComposerControllerArgs,
+  UseComposerInputActionsArgs,
 } from './composerController.types';
-
-type UseComposerInputActionsArgs = Pick<
-  UseComposerControllerArgs,
-  | 'isNativeShell'
-  | 'activeConvId'
-  | 'activeConvCanonicalSessionId'
-  | 'activeProjectSessionId'
-  | 'desktopChatState'
-  | 'composerSelections'
-  | 'setComposerSelections'
-  | 'setComposerDrafts'
-  | 'setOpenComposerSelector'
-  | 'chatComposerAttachments'
-  | 'setChatComposerAttachments'
-  | 'chatModelOptions'
-  | 'preferredModelValueForProvider'
-  | 'resolveComposerProviderId'
-  | 'handleSelectAuthChoice'
-  | 'refreshDesktopChat'
-  | 'setDesktopChatState'
-  | 'setDesktopChatError'
-  | 'shouldAutoFollowChatRef'
->;
 
 export function desktopChatStateAfterConfigUpdate<T>(current: T, next: T, isolated: boolean): T {
   return isolated ? current : next;
@@ -91,7 +69,7 @@ function appendOptimisticSessionConfigMessage({
   nextThinkingValue,
   chatModelOptions,
 }: {
-  current: NonNullable<UseComposerControllerArgs['desktopChatState']>;
+  current: NonNullable<ComposerRuntimeContext['desktopChatState']>;
   targetSessionId: string;
   nextModelValue?: string;
   nextThinkingValue?: string;
@@ -255,26 +233,35 @@ function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[])
 }
 
 export function useComposerInputActions({
-  isNativeShell,
-  activeConvId,
-  activeConvCanonicalSessionId,
-  activeProjectSessionId,
-  desktopChatState,
-  composerSelections,
-  setComposerSelections,
-  setComposerDrafts,
-  setOpenComposerSelector,
-  chatComposerAttachments,
-  setChatComposerAttachments,
-  chatModelOptions,
-  preferredModelValueForProvider,
-  resolveComposerProviderId,
-  handleSelectAuthChoice,
-  refreshDesktopChat,
-  setDesktopChatState,
-  setDesktopChatError,
-  shouldAutoFollowChatRef,
+  environment,
+  conversation,
+  project,
+  runtime,
+  draft,
+  authNavigation,
+  messageRuntime,
 }: UseComposerInputActionsArgs) {
+  const { isNativeShell } = environment;
+  const { activeConvId, activeConvCanonicalSessionId } = conversation;
+  const { activeProjectSessionId } = project;
+  const { desktopChatState } = runtime;
+  const {
+    composerSelections,
+    setComposerSelections,
+    setComposerDrafts,
+    setOpenComposerSelector,
+    chatComposerAttachments,
+    setChatComposerAttachments,
+    chatModelOptions,
+    preferredModelValueForProvider,
+    resolveComposerProviderId,
+  } = draft;
+  const { handleSelectAuthChoice, refreshDesktopChat } = authNavigation;
+  const {
+    setDesktopChatState,
+    setDesktopChatError,
+    shouldAutoFollowChatRef,
+  } = messageRuntime;
   const toggleComposerSelector = useCallback((scope: ComposerScope, type: ComposerSelectorType) => {
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   }, [setOpenComposerSelector]);

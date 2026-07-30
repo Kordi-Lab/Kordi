@@ -46,8 +46,12 @@ export type MinimalModelOption = {
 export type MinimalProviderOption = { providerId: string; value: string };
 export type PendingUserMessage = { text: string; time: string } | null;
 
-export type UseComposerControllerArgs = {
+export type ComposerEnvironmentContext = {
   isNativeShell: boolean;
+  hasAnyDesktopAuth: boolean;
+};
+
+export type ComposerConversationContext = {
   activeConversationUsesCollaboration: boolean;
   chatConversations: Conversation[];
   activeConvId: string;
@@ -57,29 +61,40 @@ export type UseComposerControllerArgs = {
   activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>> | null;
   sharedCloudAgents?: SharedCloudAgentSummary[];
   resolveSharedCloudAgentsForMention?: () => Promise<SharedCloudAgentSummary[]>;
+};
+
+export type ComposerProjectContext = {
   activeProjectId: string;
   activeProjectSessionId: string;
   activeProjectRoot?: string | null;
   selectProjectSession: (projectId: string, sessionId: string) => void;
+  setProjectWorkspaces: Dispatch<SetStateAction<Project[]>>;
+};
+
+export type ComposerRuntimeContext = {
   desktopChatState: DesktopChatState | null;
   desktopCollaborationState: DesktopCollaborationState | null;
   canonicalSessionState: CanonicalSessionState | null;
-  hasAnyDesktopAuth: boolean;
   canonicalHumanIdentityId?: string | null;
   setCanonicalSessionState: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
+};
+
+export type ComposerDraftContext = {
   composerSelections: ComposerSelectionState;
   setComposerSelections: Dispatch<SetStateAction<ComposerSelectionState>>;
   composerDrafts: Record<ComposerScope, string>;
   setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
   activeChatQuote?: ComposerQuoteState | null;
-  setProjectWorkspaces: Dispatch<SetStateAction<Project[]>>;
   setOpenComposerSelector: Dispatch<SetStateAction<ComposerSelectorState>>;
   chatComposerAttachments: AttachmentItem[];
   setChatComposerAttachments: Dispatch<SetStateAction<AttachmentItem[]>>;
   chatModelOptions: MinimalModelOption[];
   preferredModelValueForProvider: (providerId: string) => string | null;
   resolveComposerProviderId: (scope: ComposerScope, modelLabel: string) => string;
+};
+
+export type ComposerAuthNavigationContext = {
   handleSelectAuthChoice: (providerId: string, choice: string) => Promise<void>;
   refreshDesktopAuth: () => Promise<unknown>;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
@@ -91,6 +106,9 @@ export type UseComposerControllerArgs = {
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
+};
+
+export type ComposerMessageRuntimeContext = {
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   isDesktopChatSending: boolean;
@@ -99,7 +117,6 @@ export type UseComposerControllerArgs = {
   queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
   setQueuedDesktopMessagesBySession: Dispatch<SetStateAction<Record<string, QueuedDesktopChatMessage[]>>>;
   setDesktopLiveTurnsBySession: Dispatch<SetStateAction<Record<string, DesktopChatTurnSnapshot>>>;
-  setDesktopCollaborationState: Dispatch<SetStateAction<DesktopCollaborationState | null>>;
   setCloudCollaborationState?: Dispatch<SetStateAction<DesktopCollaborationState | null>>;
   sendCloudCollaborationMessage?: (
     conversationId: string,
@@ -112,4 +129,44 @@ export type UseComposerControllerArgs = {
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
   setActiveConvId: Dispatch<SetStateAction<string>>;
+};
+
+export type UseComposerControllerArgs = {
+  environment: ComposerEnvironmentContext;
+  conversation: ComposerConversationContext;
+  project: ComposerProjectContext;
+  runtime: ComposerRuntimeContext;
+  draft: ComposerDraftContext;
+  authNavigation: ComposerAuthNavigationContext;
+  messageRuntime: ComposerMessageRuntimeContext;
+};
+
+export type UseComposerInputActionsArgs = {
+  environment: Pick<ComposerEnvironmentContext, 'isNativeShell'>;
+  conversation: Pick<
+    ComposerConversationContext,
+    'activeConvId' | 'activeConvCanonicalSessionId'
+  >;
+  project: Pick<ComposerProjectContext, 'activeProjectSessionId'>;
+  runtime: Pick<ComposerRuntimeContext, 'desktopChatState'>;
+  draft: Pick<
+    ComposerDraftContext,
+    | 'composerSelections'
+    | 'setComposerSelections'
+    | 'setComposerDrafts'
+    | 'setOpenComposerSelector'
+    | 'chatComposerAttachments'
+    | 'setChatComposerAttachments'
+    | 'chatModelOptions'
+    | 'preferredModelValueForProvider'
+    | 'resolveComposerProviderId'
+  >;
+  authNavigation: Pick<
+    ComposerAuthNavigationContext,
+    'handleSelectAuthChoice' | 'refreshDesktopChat'
+  >;
+  messageRuntime: Pick<
+    ComposerMessageRuntimeContext,
+    'setDesktopChatState' | 'setDesktopChatError' | 'shouldAutoFollowChatRef'
+  >;
 };

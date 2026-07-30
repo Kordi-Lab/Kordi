@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
@@ -39,7 +38,6 @@ import {
 } from '@/lib/desktop';
 
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
-import type { UseComposerControllerArgs } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
 import { NO_PROVIDER_PENDING_LIVE_TURN_PREFIX } from '../desktopLiveTurns';
@@ -68,13 +66,13 @@ import {
   retryAttachmentItemsFromMessage,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
-import type { PendingCollaborationOutreach } from './types';
+import type {
+  LocalChatSendInFlight,
+  PendingCollaborationOutreach,
+  UseChatMessageActionsArgs,
+} from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
-
-export type LocalChatSendInFlight = {
-  sessionId: string | null;
-};
 
 export function collaborationSendFailureDetail(error: unknown, fallback = 'Unable to send collaboration message') {
   return error instanceof Error ? error.message : fallback;
@@ -788,56 +786,6 @@ function initiatorIdentityForCollaborationHost(
     runtime: 'person',
   };
 }
-
-type UseChatMessageActionsArgs = Pick<
-  UseComposerControllerArgs,
-  | 'activeConversationUsesCollaboration'
-  | 'activeConvCollaborationTarget'
-  | 'activeConvCanonicalSessionId'
-  | 'activeConvId'
-  | 'activeConvMessages'
-  | 'activeConvMentionScope'
-  | 'sharedCloudAgents'
-  | 'resolveSharedCloudAgentsForMention'
-  | 'chatConversations'
-  | 'canonicalHumanIdentityId'
-  | 'chatComposerAttachments'
-  | 'composerSelections'
-  | 'composerDrafts'
-  | 'activeChatQuote'
-  | 'desktopCollaborationState'
-  | 'desktopChatState'
-  | 'canonicalSessionState'
-  | 'hasAnyDesktopAuth'
-  | 'desktopLiveTurn'
-  | 'isNativeShell'
-  | 'isDesktopChatSending'
-  | 'queuedDesktopMessagesBySession'
-  | 'refreshDesktopChat'
-  | 'setActiveConvId'
-  | 'setCanonicalSessionState'
-  | 'setChatComposerAttachments'
-  | 'setComposerDrafts'
-  | 'setCloudCollaborationState'
-  | 'sendCloudCollaborationMessage'
-  | 'sendCloudGroupControl'
-  | 'setDesktopChatError'
-  | 'setDesktopChatState'
-  | 'setDesktopLiveTurnsBySession'
-  | 'setIsDesktopChatSending'
-  | 'setOpenComposerSelector'
-  | 'setPendingUserChatMessage'
-  | 'setQueuedDesktopMessagesBySession'
-  | 'shouldAutoFollowChatRef'
-  | 'watchDesktopLiveTurn'
-> & {
-  attachmentSummaryText: (text: string) => string;
-  handleLocalSlashCommand: (rawText: string, scope?: ComposerScope) => Promise<boolean>;
-  pendingCollaborationCancelRequestedRef: MutableRefObject<boolean>;
-  localChatSendInFlightRef: MutableRefObject<LocalChatSendInFlight | null>;
-  userCancelledTurnIdsRef: MutableRefObject<Set<string>>;
-  setPendingCollaborationOutreach: Dispatch<SetStateAction<PendingCollaborationOutreach | null>>;
-};
 
 export function useChatMessageActions({
   activeConversationUsesCollaboration,

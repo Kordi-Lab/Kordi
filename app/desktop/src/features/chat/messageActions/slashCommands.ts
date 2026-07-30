@@ -7,17 +7,33 @@ import {
   formatDesktopEventTime,
   isSharedLocalSlashCommand,
 } from '../composerController.shared';
-import type { UseComposerControllerArgs } from '../composerController.types';
+import type {
+  ComposerAuthNavigationContext,
+  ComposerConversationContext,
+  ComposerDraftContext,
+  ComposerMessageRuntimeContext,
+  ComposerRuntimeContext,
+} from '../composerController.types';
 import { isLocalDraftChatConversationId } from '../draftSessions';
 
-type AppendDesktopSystemMessageArgs = Pick<UseComposerControllerArgs, 'setDesktopChatState'>;
+type AppendDesktopSystemMessageArgs = Pick<
+  ComposerMessageRuntimeContext,
+  'setDesktopChatState'
+>;
 
 type RunLocalSlashCommandArgs = Pick<
-  UseComposerControllerArgs,
+  ComposerConversationContext,
   | 'activeConvId'
   | 'activeConvMessages'
+> & Pick<
+  ComposerDraftContext,
   | 'chatModelOptions'
+  | 'setOpenComposerSelector'
+> & Pick<
+  ComposerRuntimeContext,
   | 'desktopChatState'
+> & Pick<
+  ComposerAuthNavigationContext,
   | 'handleCreateChatSession'
   | 'handleRenameDesktopSession'
   | 'refreshDesktopAuth'
@@ -28,7 +44,6 @@ type RunLocalSlashCommandArgs = Pick<
   | 'setDesktopSessionRenameDraft'
   | 'setIsDetailPanelCollapsed'
   | 'setIsEditingDesktopSessionTitle'
-  | 'setOpenComposerSelector'
 > & {
   rawText: string;
   scope: ComposerScope;

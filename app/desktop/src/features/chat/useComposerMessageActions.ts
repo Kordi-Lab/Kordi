@@ -19,131 +19,101 @@ import {
 } from './messageActions';
 
 
-type UseComposerMessageActionsArgs = Pick<
-  UseComposerControllerArgs,
-  | 'isNativeShell'
-  | 'activeConversationUsesCollaboration'
-  | 'chatConversations'
-  | 'activeConvId'
-  | 'activeConvCanonicalSessionId'
-  | 'activeConvMessages'
-  | 'activeConvCollaborationTarget'
-  | 'activeConvMentionScope'
-  | 'sharedCloudAgents'
-  | 'resolveSharedCloudAgentsForMention'
-  | 'activeProjectId'
-  | 'activeProjectSessionId'
-  | 'activeProjectRoot'
-  | 'selectProjectSession'
-  | 'desktopChatState'
-  | 'desktopCollaborationState'
-  | 'canonicalSessionState'
-  | 'hasAnyDesktopAuth'
-  | 'canonicalHumanIdentityId'
-  | 'setCanonicalSessionState'
-  | 'desktopLiveTurn'
-  | 'composerSelections'
-  | 'composerDrafts'
-  | 'setComposerDrafts'
-  | 'activeChatQuote'
-  | 'setProjectWorkspaces'
-  | 'setOpenComposerSelector'
-  | 'chatComposerAttachments'
-  | 'setChatComposerAttachments'
-  | 'chatModelOptions'
-  | 'refreshDesktopAuth'
-  | 'refreshDesktopChat'
-  | 'handleCreateChatSession'
-  | 'handleRenameDesktopSession'
-  | 'setActiveNav'
-  | 'setActiveSettingsSectionId'
-  | 'setActiveDetailTab'
-  | 'setIsDetailPanelCollapsed'
-  | 'setDesktopSessionRenameDraft'
-  | 'setIsEditingDesktopSessionTitle'
-  | 'setDesktopChatState'
-  | 'setDesktopChatError'
-  | 'isDesktopChatSending'
-  | 'setIsDesktopChatSending'
-  | 'setPendingUserChatMessage'
-  | 'queuedDesktopMessagesBySession'
-  | 'setQueuedDesktopMessagesBySession'
-  | 'setDesktopLiveTurnsBySession'
-  | 'setCloudCollaborationState'
-  | 'sendCloudCollaborationMessage'
-  | 'sendCloudGroupControl'
-  | 'cancelCloudAgentRequest'
-  | 'watchDesktopLiveTurn'
-  | 'shouldAutoFollowChatRef'
-  | 'setActiveConvId'
-> & {
-  attachmentSummaryText: (text: string) => string;
-  selectComposerValue: (scope: ComposerScope, type: 'model', value: string) => Promise<void>;
-  appendProjectDraft: (value: string) => void;
-  appendChatDraft: (value: string) => void;
+type UseComposerMessageActionsArgs = UseComposerControllerArgs & {
+  derived: {
+    attachmentSummaryText: (text: string) => string;
+    selectComposerValue: (
+      scope: ComposerScope,
+      type: 'model',
+      value: string,
+    ) => Promise<void>;
+    appendProjectDraft: (value: string) => void;
+    appendChatDraft: (value: string) => void;
+  };
 };
 
 export function useComposerMessageActions({
-  isNativeShell,
-  activeConversationUsesCollaboration,
-  chatConversations,
-  activeConvId,
-  activeConvCanonicalSessionId,
-  activeConvMessages,
-  activeConvCollaborationTarget,
-  activeConvMentionScope,
-  sharedCloudAgents,
-  resolveSharedCloudAgentsForMention,
-  activeProjectId,
-  activeProjectSessionId,
-  activeProjectRoot,
-  selectProjectSession,
-  desktopChatState,
-  desktopCollaborationState,
-  canonicalSessionState,
-  hasAnyDesktopAuth,
-  canonicalHumanIdentityId,
-  setCanonicalSessionState,
-  desktopLiveTurn,
-  composerSelections,
-  composerDrafts,
-  setComposerDrafts,
-  activeChatQuote,
-  setProjectWorkspaces,
-  setOpenComposerSelector,
-  chatComposerAttachments,
-  setChatComposerAttachments,
-  chatModelOptions,
-  refreshDesktopAuth,
-  refreshDesktopChat,
-  handleCreateChatSession,
-  handleRenameDesktopSession,
-  setActiveNav,
-  setActiveSettingsSectionId,
-  setActiveDetailTab,
-  setIsDetailPanelCollapsed,
-  setDesktopSessionRenameDraft,
-  setIsEditingDesktopSessionTitle,
-  setDesktopChatState,
-  setDesktopChatError,
-  isDesktopChatSending,
-  setIsDesktopChatSending,
-  setPendingUserChatMessage,
-  queuedDesktopMessagesBySession,
-  setQueuedDesktopMessagesBySession,
-  setDesktopLiveTurnsBySession,
-  setCloudCollaborationState,
-  sendCloudCollaborationMessage,
-  sendCloudGroupControl,
-  cancelCloudAgentRequest,
-  watchDesktopLiveTurn,
-  shouldAutoFollowChatRef,
-  setActiveConvId,
-  attachmentSummaryText,
-  selectComposerValue,
-  appendProjectDraft,
-  appendChatDraft,
+  environment,
+  conversation,
+  project,
+  runtime,
+  draft,
+  authNavigation,
+  messageRuntime,
+  derived,
 }: UseComposerMessageActionsArgs) {
+  const { isNativeShell, hasAnyDesktopAuth } = environment;
+  const {
+    activeConversationUsesCollaboration,
+    chatConversations,
+    activeConvId,
+    activeConvCanonicalSessionId,
+    activeConvMessages,
+    activeConvCollaborationTarget,
+    activeConvMentionScope,
+    sharedCloudAgents,
+    resolveSharedCloudAgentsForMention,
+  } = conversation;
+  const {
+    activeProjectId,
+    activeProjectSessionId,
+    activeProjectRoot,
+    selectProjectSession,
+    setProjectWorkspaces,
+  } = project;
+  const {
+    desktopChatState,
+    desktopCollaborationState,
+    canonicalSessionState,
+    canonicalHumanIdentityId,
+    setCanonicalSessionState,
+    desktopLiveTurn,
+  } = runtime;
+  const {
+    composerSelections,
+    composerDrafts,
+    setComposerDrafts,
+    activeChatQuote,
+    setOpenComposerSelector,
+    chatComposerAttachments,
+    setChatComposerAttachments,
+    chatModelOptions,
+  } = draft;
+  const {
+    refreshDesktopAuth,
+    refreshDesktopChat,
+    handleCreateChatSession,
+    handleRenameDesktopSession,
+    setActiveNav,
+    setActiveSettingsSectionId,
+    setActiveDetailTab,
+    setIsDetailPanelCollapsed,
+    setDesktopSessionRenameDraft,
+    setIsEditingDesktopSessionTitle,
+  } = authNavigation;
+  const {
+    setDesktopChatState,
+    setDesktopChatError,
+    isDesktopChatSending,
+    setIsDesktopChatSending,
+    setPendingUserChatMessage,
+    queuedDesktopMessagesBySession,
+    setQueuedDesktopMessagesBySession,
+    setDesktopLiveTurnsBySession,
+    setCloudCollaborationState,
+    sendCloudCollaborationMessage,
+    sendCloudGroupControl,
+    cancelCloudAgentRequest,
+    watchDesktopLiveTurn,
+    shouldAutoFollowChatRef,
+    setActiveConvId,
+  } = messageRuntime;
+  const {
+    attachmentSummaryText,
+    selectComposerValue,
+    appendProjectDraft,
+    appendChatDraft,
+  } = derived;
   const [pendingCollaborationOutreach, setPendingCollaborationOutreach] = useState<PendingCollaborationOutreach | null>(null);
   const pendingCollaborationOutreachRef = useRef<PendingCollaborationOutreach | null>(null);
   const pendingCollaborationCancelRequestedRef = useRef(false);
