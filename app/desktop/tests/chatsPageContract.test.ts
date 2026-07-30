@@ -89,7 +89,7 @@ test('ChatSessionPane exposes cohesive contexts below the 50-field boundary', ()
 
 test('both transcript panes supply every ChatSessionPane context explicitly', () => {
   const pageSource = readFileSync(
-    new URL('../src/pages/ChatsPage.tsx', import.meta.url),
+    new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url),
     'utf8',
   );
   const companionPaneSource = readFileSync(
@@ -104,7 +104,7 @@ test('both transcript panes supply every ChatSessionPane context explicitly', ()
   );
   for (const [field] of expectedSessionPaneContexts) {
     assert.equal(
-      pageSource.match(new RegExp(`\\n {8}${field}=\\{\\{`, 'g'))?.length,
+      pageSource.match(new RegExp(`\\n\\s+${field}=\\{\\{`, 'g'))?.length,
       1,
       `main ChatSessionPane must explicitly supply ${field}`,
     );

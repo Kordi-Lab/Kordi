@@ -24,10 +24,16 @@ function readChatsPageImplementationSource(): string {
     '../src/pages/chatsPage.companionDestination.tsx',
     '../src/pages/chatsPage.companionHeader.tsx',
     '../src/pages/chatsPage.companionPane.tsx',
+    '../src/pages/chatsPage.companionWorkspace.tsx',
     '../src/pages/chatsPage.mainComposer.tsx',
     '../src/pages/chatsPage.mainHeader.tsx',
+    '../src/pages/chatsPage.mainWorkspace.tsx',
     '../src/pages/chatsPage.model.ts',
     '../src/pages/chatsPage.sessionPane.tsx',
+    '../src/pages/useChatCompanionLayout.ts',
+    '../src/pages/useChatCompanionSession.ts',
+    '../src/pages/useChatDestinations.ts',
+    '../src/pages/useChatHeaderModel.ts',
   ]
     .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
     .join('\n');
@@ -63,7 +69,7 @@ test('compact transcript density applies to human and agent sessions', () => {
   assert.match(source, /function chatTranscriptDensityMode\(conversation: Conversation\)/);
   assert.match(source, /conversationUsesCompactHumanTranscriptDensity\(conversation\)/);
   assert.match(source, /densityMode: chatTranscriptDensityMode\(activeConv\)/);
-  assert.match(source, /densityMode: chatTranscriptDensityMode\(companionConversation\)/);
+  assert.match(source, /densityMode: chatTranscriptDensityMode\(conversation\)/);
   assert.match(source, /if \(conversationIsAgentChat\(conversation\)\) return 'agent-compact';/);
   assert.match(source, /if \(conversationIsGroupChat\(conversation\)\) return 'group-compact';/);
   assert.match(source, /return 'contact-compact'/);
@@ -294,7 +300,7 @@ test('ask agent candidates exclude canonical group chats even with agent-ish typ
 });
 
 test('chat companion split controls live on the divider instead of floating over headers', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readChatsPageImplementationSource();
 
   assert.match(source, /data-split-layout-divider="true"/);
   assert.match(source, /data-split-layout-grip="true"/);
@@ -366,32 +372,40 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
 });
 
 test('ask agent slash trigger opens the side session instead of sending slash text to main chat', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(
+    new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
 
-  assert.match(source, /const handleSendChatMessage = \(draftOverride\?: string\) =>/);
+  assert.match(source, /const handleSend = \(draftOverride\?: string\) =>/);
   assert.match(source, /parseAskAgentTriggerCommand\(draft\)/);
-  assert.match(source, /openSideAgentPanel\(trigger\.prompt\)/);
-  assert.match(source, /void openSideAgentPanel\(trigger\.prompt\)\.then/);
-  assert.match(source, /onSendChatMessage\(draftOverride\)/);
+  assert.match(source, /void companion\.open\(trigger\.prompt\)\.then/);
+  assert.match(source, /runtime\.onSendChatMessage\(draftOverride\)/);
 });
 
 test('ask agent from an active agent chat creates a fresh side session instead of switching the main agent session', () => {
-  const pageSource = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const pageSource = readFileSync(
+    new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
+    'utf8',
+  );
   const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
   const sideAgentActionsSource = readFileSync(new URL('../src/app/useKordiSideAgentSessionActions.ts', import.meta.url), 'utf8');
 
   assert.match(pageSource, /activePaneKind === 'agent' && onCreateAgentSession/);
-  assert.match(pageSource, /createSideAgentSession\(initialPrompt\)/);
+  assert.match(pageSource, /return create\(initialPrompt\)/);
   assert.match(appModelSource, /activeDesktopSessionId: desktopChatState\?\.activeSessionId \?\? null/);
   assert.match(sideAgentActionsSource, /activeDesktopSessionId[\s\S]*\? \{ \.\.\.nextState, activeSessionId: activeDesktopSessionId \}/);
 });
 
 test('ask agent new session action switches the side panel to the created agent session', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(
+    new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
+    'utf8',
+  );
 
-  assert.match(source, /const createdConversationId = await onCreateAgentSession\(\)/);
-  assert.match(source, /setOpenSideAgentConversationId\(createdConversationId\)/);
-  assert.match(source, /setSelectedCompanionConversationId\(createdConversationId\)/);
+  assert.match(source, /const conversationId = await onCreateAgentSession\(\)/);
+  assert.match(source, /activate\(conversationId, initialPrompt\)/);
+  assert.match(source, /selectedConversationId: conversationId,[\s\S]*openConversationId: conversationId/);
 });
 
 test('chat companion pane does not expose focus handoff controls', () => {
@@ -405,7 +419,7 @@ test('chat companion pane does not expose focus handoff controls', () => {
 test('chat companion composer sends with Enter and keeps modified Enter for line breaks', () => {
   const source = readChatsPageImplementationSource();
 
-  assert.match(source, /onSendChatMessage\(draft, conversation\.id, contextMessages\)/);
+  assert.match(source, /onSendChatMessage\(\s*draft,\s*targetConversation\.id,\s*referenceMessage \? \[referenceMessage\] : \[\],\s*\)/);
   assert.doesNotMatch(source, /User request:\\n\$\{draft\}/);
   assert.match(source, /event\.key === 'Enter' && !event\.metaKey && !event\.ctrlKey && !event\.shiftKey/);
   assert.match(source, /title=\{`Send to \$\{conversation\.name\}`\}/);
@@ -418,8 +432,8 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
   assert.match(source, /const companionTranscriptLiveTurn = rawCompanionTranscriptLiveTurn && companionConversation/);
   assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
   assert.match(source, /buildReplyAttribution\(\s*messages,\s*shouldRenderLiveTurn \? liveTurn : null/s);
-  assert.match(source, /attributedCompanionTranscriptLiveTurn/);
-  assert.match(source, /sessionPane=\{\{[\s\S]*liveTurn: attributedCompanionTranscriptLiveTurn/);
+  assert.match(source, /sessionPane=\{\{[\s\S]*liveTurn: presentation\.liveTurn/);
+  assert.match(source, /shouldRenderLiveTurn: Boolean\(\s*presentation\.liveTurn && !presentation\.liveTurn\.completed/s);
 });
 
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {

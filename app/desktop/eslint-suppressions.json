@@ -719,12 +719,6 @@
     }
   },
   "src/pages/ChatsPage.tsx": {
-    "@typescript-eslint/unbound-method": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 6
-    },
     "react-refresh/only-export-components": {
       "count": 20
     }

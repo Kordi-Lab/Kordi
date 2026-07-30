@@ -1,0 +1,309 @@
+import { GripVertical } from 'lucide-react';
+
+import { localOwnedAgentSenderLabel } from '@/app/viewModels/helpers';
+import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
+import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
+import type {
+  DesktopChatTurnSnapshot,
+  Message,
+} from '@/kordi-app/types';
+import { CompanionComposer } from '@/pages/chatsPage.companionComposer';
+import { CompanionDestinationPage } from '@/pages/chatsPage.companionDestination';
+import { CompanionHeader } from '@/pages/chatsPage.companionHeader';
+import { CompanionPane } from '@/pages/chatsPage.companionPane';
+import {
+  canonicalHistorySessionIdForConversation,
+  chatTranscriptDensityMode,
+  conversationPaneKind,
+} from '@/pages/chatsPage.model';
+import { localAgentComposerConfigTargetSessionId } from '@/pages/chatsPage.header';
+import type {
+  ChatsPageComposer,
+  ChatsPageLayout,
+  ChatsPageRuntime,
+  ChatsPageTranscript,
+} from '@/pages/chatsPage.types';
+import type { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
+import type { useChatCompanionLayout } from '@/pages/useChatCompanionLayout';
+import type { useChatCompanionSession } from '@/pages/useChatCompanionSession';
+import type { useChatDestinations } from '@/pages/useChatDestinations';
+import type { useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
+import type { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
+
+type ChatCompanionWorkspaceProps = {
+  session: ReturnType<typeof useChatCompanionSession>;
+  layoutModel: ReturnType<typeof useChatCompanionLayout>;
+  destinations: ReturnType<typeof useChatDestinations>['companion'];
+  routing: ReturnType<typeof useChatCollaborationRouting>['companion'];
+  navigation: ReturnType<typeof useChatTranscriptNavigation>['companion'];
+  senderProfiles: ReturnType<typeof useChatSenderProfiles>;
+  presentation: {
+    messages: readonly Message[];
+    liveTurn?: DesktopChatTurnSnapshot | null;
+    isCollaborationAgent: boolean;
+    showsLocalAgentControls: boolean;
+    prefersReducedMotion: boolean | null;
+  };
+  shell: {
+    isNativeShell: boolean;
+    openAuthentication: () => void;
+    onCreateSession: () => void;
+  };
+  layout: Pick<
+    ChatsPageLayout,
+    'rightDetailRail' | 'setIsDetailPanelCollapsed'
+  >;
+  transcript: Pick<
+    ChatsPageTranscript,
+    | 'canonicalHasOlderBySessionId'
+    | 'onLoadOlderCanonicalSessionMessages'
+    | 'queuedDesktopMessagesBySession'
+    | 'onEditQueuedMessage'
+    | 'onCancelQueuedMessage'
+  >;
+  composer: ChatsPageComposer;
+  runtime: ChatsPageRuntime;
+};
+
+export function ChatCompanionWorkspace({
+  session,
+  layoutModel,
+  destinations,
+  routing,
+  navigation,
+  senderProfiles,
+  presentation,
+  shell,
+  layout,
+  transcript,
+  composer,
+  runtime,
+}: ChatCompanionWorkspaceProps) {
+  const conversation = session.conversation;
+  const paneKind = conversation ? conversationPaneKind(conversation) : null;
+  const localConfigTargetSessionId = conversation
+    ? localAgentComposerConfigTargetSessionId(conversation)
+    : null;
+  const localRuntime = useCompanionComposerRuntime({
+    enabled: presentation.showsLocalAgentControls,
+    isNativeShell: shell.isNativeShell,
+    sessionId: localConfigTargetSessionId,
+    fallbackMode: runtime.composerSelection.mode,
+    modelOptions: runtime.chatModelOptions ?? [],
+    authOptions: runtime.composerAuthOptions,
+  });
+  if (!conversation) return null;
+
+  const canonicalHistorySessionId =
+    canonicalHistorySessionIdForConversation(conversation);
+  const destinationPage = destinations.value !== 'messages' ? (
+    <CompanionDestinationPage
+      conversation={conversation}
+      destination={destinations.activeDetailTab}
+      isNativeShell={shell.isNativeShell}
+      liveTurn={presentation.liveTurn}
+      activeArtifactId={destinations.activeArtifactId}
+      activeSourcePreview={destinations.activeSourcePreview}
+      actions={{
+        setDestination: destinations.setValue,
+        setActiveArtifactId: destinations.setActiveArtifactId,
+        setActiveSourcePreview: destinations.setActiveSourcePreview,
+        onNavigateToResponse: navigation.navigate,
+        onOpenOutreachThread: runtime.onSelectSession,
+      }}
+    />
+  ) : null;
+
+  return (
+    <CompanionPane
+      conversation={conversation}
+      side={layoutModel.side}
+      destination={destinations.value}
+      header={(
+        <CompanionHeader
+          conversation={conversation}
+          candidates={session.candidates}
+          side={layoutModel.side}
+          destination={destinations.value}
+          menu={{
+            actionsOpen: session.menu.actionsOpen,
+            sessionListOpen: session.menu.sessionListOpen,
+            canCreateSession: session.menu.canCreateSession,
+          }}
+          actions={{
+            onDragStart: layoutModel.onDragStart,
+            onDragEnd: layoutModel.onDragEnd,
+            onToggleActions: session.menu.toggleActions,
+            onCloseSessionList: session.menu.closeSessionList,
+            onOpenSessionList: session.menu.openSessionList,
+            onSwitchConversation: session.actions.switchConversation,
+            onCreateSession: shell.onCreateSession,
+            onClose: session.actions.close,
+            onSelectDestination: (destination) => {
+              destinations.setActiveSourcePreview(null);
+              destinations.setValue(destination);
+            },
+          }}
+        />
+      )}
+      detailPage={destinationPage}
+      sessionPane={{
+        presentation: {
+          liveTurn: presentation.liveTurn,
+          liveTurnSender: localOwnedAgentSenderLabel(conversation),
+          shouldRenderLiveTurn: Boolean(
+            presentation.liveTurn && !presentation.liveTurn.completed,
+          ),
+          densityMode: chatTranscriptDensityMode(conversation),
+          inferLatestHumanReplyTarget:
+            shouldInferLatestHumanReplyTarget(conversation),
+          plainAgentResponse: shouldSuppressAgentReplyAttribution(conversation),
+        },
+        actions: {
+          onOpenSource: (file) => {
+            destinations.setActiveSourcePreview(file);
+            destinations.setValue('artifacts');
+          },
+          onOpenArtifact: (artifactId) => {
+            destinations.setActiveSourcePreview(null);
+            destinations.setActiveArtifactId(artifactId);
+            destinations.setValue('artifacts');
+          },
+          onOpenAuthSettings: shell.openAuthentication,
+          onNavigateToMessage: navigation.navigate,
+          onOpenMessageDetail: composer.onSelectMessage,
+          onStopCollaborationAgentRequest:
+            runtime.onStopCollaborationAgentRequest,
+          onStopActiveTurn: runtime.onStopDesktopChatTurn,
+          onRequestCollaborationContact:
+            runtime.onRequestCollaborationContact,
+          onOpenSenderProfile: senderProfiles.openCompanion,
+          onForkMessage: runtime.onForkChatMessage
+            ? (entryId) => {
+                void runtime.onForkChatMessage?.(conversation.id, entryId);
+              }
+            : undefined,
+          onOpenForkSession: runtime.onSelectSession,
+          onForwardMessage: composer.onForwardMessage,
+          onSelectMessage: composer.onSelectMessage,
+        },
+        selection: {},
+        viewport: {
+          sessionKey: conversation.id,
+          messages: presentation.messages,
+          scrollRef: session.refs.transcriptScroll,
+          scrollClassName:
+            'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5',
+          hasOlderMessages: Boolean(
+            canonicalHistorySessionId
+              && transcript.canonicalHasOlderBySessionId?.[
+                canonicalHistorySessionId
+              ],
+          ),
+          onLoadOlderMessages:
+            canonicalHistorySessionId
+              && transcript.onLoadOlderCanonicalSessionMessages
+              ? () => transcript.onLoadOlderCanonicalSessionMessages?.(
+                  canonicalHistorySessionId,
+                )
+              : undefined,
+          navigationRequest: navigation.request,
+          onNavigationHandled: navigation.acknowledge,
+          queuedMessages:
+            transcript.queuedDesktopMessagesBySession[conversation.id] ?? [],
+          onEditQueuedMessage: transcript.onEditQueuedMessage,
+          onCancelQueuedMessage: transcript.onCancelQueuedMessage,
+          emptyState: (
+            <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
+              No messages in this side chat yet.
+            </div>
+          ),
+        },
+      }}
+      composerShell={{
+        className: 'pt-3',
+        chatComposerAttachments: composer.chatComposerAttachments,
+        saveDesktopAttachments: composer.saveDesktopAttachments,
+        saveDesktopAttachmentPaths: composer.saveDesktopAttachmentPaths,
+        removeChatComposerAttachment: composer.removeChatComposerAttachment,
+        activeChatQuote: composer.activeChatQuote,
+        onForwardMessage: composer.onForwardMessage,
+        rightDetailRail: layout.rightDetailRail,
+        setIsDetailPanelCollapsed: layout.setIsDetailPanelCollapsed,
+      }}
+      composer={(
+        <CompanionComposer
+          conversation={conversation}
+          paneKind={paneKind ?? 'agent'}
+          draftText={session.draftText}
+          isNativeShell={shell.isNativeShell}
+          attachmentInputRef={session.refs.attachmentInput}
+          composer={composer}
+          runtime={runtime}
+          localRouting={{
+            enabled: presentation.showsLocalAgentControls,
+            selection: localRuntime.selection,
+            configTarget: localRuntime.configTarget,
+            authLabel: localRuntime.authLabel,
+            authOptions: localRuntime.authOptions,
+            isLoading: localRuntime.isLoading,
+            loadError: localRuntime.loadError,
+            retry: localRuntime.retry,
+            runtimeContextStatus: conversation.contextWindowStatus ?? null,
+            runtimeCacheText: conversation.cacheMonitorText ?? null,
+          }}
+          collaborationRouting={{
+            enabled: presentation.isCollaborationAgent,
+            notice: routing.notice,
+            agents: routing.agents,
+            selectedAgent: routing.selectedAgent,
+            selection: routing.selection,
+            visibility: routing.visibility,
+            selectorOpen: routing.selectorOpen,
+            setSelectedAgentId: routing.setSelectedAgentId,
+            update: routing.update,
+            defaultThinkingForModel: routing.defaultThinkingForModel,
+          }}
+          ui={{
+            openSelector: session.selector.value,
+            setOpenSelector: session.selector.set,
+            toggleSelector: session.selector.toggle,
+            prefersReducedMotion: presentation.prefersReducedMotion,
+          }}
+          onDraftChange={session.actions.updateDraft}
+          onSend={session.actions.sendDraft}
+        />
+      )}
+    />
+  );
+}
+
+export function ChatCompanionSplitDivider({
+  layoutModel,
+}: {
+  layoutModel: ReturnType<typeof useChatCompanionLayout>;
+}) {
+  if (!layoutModel.isVisible) return null;
+  return (
+    <div
+      className="app-chat-split-divider group relative z-10 flex h-full w-2.5 cursor-col-resize touch-none items-center justify-center bg-transparent transition hover:bg-white/[0.035]"
+      data-split-layout-divider="true"
+      onPointerDown={layoutModel.onDividerPointerDown}
+      onPointerMove={layoutModel.onDividerPointerMove}
+      onPointerUp={layoutModel.onDividerPointerUp}
+      onPointerCancel={layoutModel.onDividerPointerUp}
+      title="Drag to resize chats"
+      aria-label="Resize side-by-side chats"
+      role="separator"
+      aria-orientation="vertical"
+    >
+      <span
+        className="pointer-events-none flex h-9 w-full items-center justify-center text-[color:var(--utility-muted-text)] opacity-45 transition group-hover:opacity-80"
+        data-split-layout-grip="true"
+        aria-hidden="true"
+      >
+        <GripVertical className="h-4 w-4" />
+      </span>
+    </div>
+  );
+}

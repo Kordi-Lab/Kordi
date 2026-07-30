@@ -20,7 +20,11 @@ test('native shell locks page scrolling at the document root', () => {
 test('main app shell and chat transcript contain scroll to the intended axis', () => {
   const appShellFrame = readSource('../src/app/AppShellFrame.tsx');
   const scrollArea = readSource('../src/components/ui/scroll-area.jsx');
-  const chatsPage = readSource('../src/pages/ChatsPage.tsx');
+  const chatsPage = [
+    '../src/pages/ChatsPage.tsx',
+    '../src/pages/chatsPage.mainWorkspace.tsx',
+    '../src/pages/chatsPage.companionWorkspace.tsx',
+  ].map(readSource).join('\n');
   const projectsPage = readSource('../src/pages/ProjectsPage.tsx');
 
   assert.match(appShellFrame, /kordi-app app-page-bg w-full min-w-0 max-w-full/);
@@ -33,8 +37,8 @@ test('main app shell and chat transcript contain scroll to the intended axis', (
   assert.match(scrollArea, /overflow-x-hidden/);
   assert.match(scrollArea, /overscroll-contain/);
 
-  assert.match(chatsPage, /scrollClassName: 'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3\.5 py-5 sm:px-4'/);
-  assert.match(chatsPage, /scrollClassName: 'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5'/);
+  assert.match(chatsPage, /scrollClassName:\s*'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3\.5 py-5 sm:px-4'/);
+  assert.match(chatsPage, /scrollClassName:\s*'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5'/);
   assert.match(projectsPage, /h-full min-h-0 overflow-x-hidden overscroll-contain px-3\.5 py-3/);
 });
 
