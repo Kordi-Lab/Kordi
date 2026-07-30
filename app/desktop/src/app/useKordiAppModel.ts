@@ -25,9 +25,7 @@ import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
 import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import {
   type CloudGroupParticipant,
-  cloudGroupParticipantsForCollaborationSession,
   cloudGroupSelfParticipant,
-  cloudGroupTargetAccountIds,
 } from '@/features/cloud/cloudGroupMessages';
 import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
@@ -45,8 +43,6 @@ import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { mentionScopeConversationForActiveConversation } from '@/features/chat/messageActions/mentions';
 import {
   buildChatCreatePeopleContactLookup,
-  buildChatGroupCollaborationUpdateParticipants,
-  buildChatGroupCollaborationUpdateTargets,
   existingBlankSessionIdForParticipantSpace,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
@@ -61,13 +57,9 @@ import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { Agent, CanonicalSessionState, ComposerScope, DesktopCollaborationProject, DesktopChatState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
-import {
-  createDesktopChatSession,
-  updateCanonicalSessionMetadata,
-} from '@/lib/desktop';
+import { createDesktopChatSession } from '@/lib/desktop';
 
 import {
-  activeGroupAdminIds,
   canonicalAvatarSeed,
   canonicalGroupParticipantsForSession,
   canonicalIdentityDisplayName,
@@ -75,12 +67,8 @@ import {
   canonicalProfileImageUrl,
   currentMentionQuery,
   filterMentionTargets,
-  groupRenameMetadata,
   isNativeDesktopShell,
-  metadataGroupSpaceId,
   participantSpaceCreateKey,
-  sessionMetadataRecord,
-  uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
 import { useKordiMessageActions } from '@/app/useKordiMessageActions';
 import {
@@ -88,7 +76,6 @@ import {
   useKordiCanonicalSessionStore,
 } from '@/app/useKordiCanonicalSessionStore';
 import {
-  appendCanonicalRenameNotice,
   useKordiChatSessionActions,
 } from '@/app/useKordiChatSessionActions';
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
@@ -96,6 +83,7 @@ import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
+import { useKordiGroupRename } from '@/app/useKordiGroupRename';
 import { useKordiParticipantDraftSend } from '@/app/useKordiParticipantDraftSend';
 import {
   type ParticipantSpaceDraft,
@@ -1307,73 +1295,14 @@ export function useKordiAppModel({
       setDrafts: setParticipantSpaceDrafts,
     });
 
-  const handleRenameChatGroup = useCallback(async (sessionIds: string[], name: string) => {
-    if (!isNativeShell) return;
-    const groupSessionIds = uniqueStrings(sessionIds);
-    if (groupSessionIds.length === 0) return;
-    const title = name.trim();
-    if (!title) throw new Error('Group name is required.');
-    setDesktopChatError(null);
-
-    if (!canonicalSessionState) throw new Error('Local profile identity is not ready yet.');
-    const actorIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
-    if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
-
-    const fallbackGroupSpaceId = groupSessionIds[0];
-    let nextState = canonicalSessionState;
-    const renamedGroupIds = new Map<string, string>();
-    for (const sessionId of groupSessionIds) {
-      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
-      const groupId = metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId;
-      nextState = await updateCanonicalSessionMetadata({
-        sessionId,
-        requestedByIdentityId: actorIdentityId,
-        metadata: groupRenameMetadata(currentMetadata, title, groupId),
-      });
-      renamedGroupIds.set(groupId, sessionId);
-    }
-    for (const sessionId of groupSessionIds) {
-      nextState = await appendCanonicalRenameNotice(
-        nextState,
-        sessionId,
-        title,
-        'group',
-        actorIdentityId,
-      );
-    }
-    setCanonicalSessionState(nextState);
-
-    try {
-      for (const [groupId, sourceSessionId] of renamedGroupIds) {
-        const participants = canonicalGroupParticipantsForSession(nextState, sourceSessionId);
-        const targets = buildChatGroupCollaborationUpdateTargets({ actorIdentityId, participants });
-        if (targets.length === 0) continue;
-        const updateParticipants = buildChatGroupCollaborationUpdateParticipants({
-          participants,
-          adminIdentityIds: activeGroupAdminIds(nextState, sourceSessionId),
-        });
-        const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
-        if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
-          await sendCloudGroupControl({
-            targetAccountIds: cloudTargetAccountIds,
-            kind: 'group-title-update',
-            groupId,
-            groupSpaceId: groupId,
-            groupTitle: title,
-            participants: cloudGroupParticipantsForCollaborationSession(cloudSession.account, updateParticipants),
-          });
-        }
-      }
-    } catch (error) {
-      setDesktopChatError(`Group renamed, but hosted sync failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }, [
-    canonicalSessionState,
-    cloudSession.account,
+  const handleRenameChatGroup = useKordiGroupRename({
+    account: cloudSession.account,
+    canonicalState: canonicalSessionState,
     isNativeShell,
     sendCloudGroupControl,
-    setDesktopChatError,
-  ]);
+    setCanonicalState: setCanonicalSessionState,
+    setDesktopError: setDesktopChatError,
+  });
 
   const handleAddChatGroupMembers = useKordiGroupMemberInvites({
     account: cloudSession.account,
