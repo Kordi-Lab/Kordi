@@ -61,7 +61,10 @@ test('direct cloud first sends and retries share the same idempotency key', () =
 
   const bridgeSource = cloudBridgeSource();
   const start = bridgeSource.indexOf('const sendCloudCollaborationMessage = useCallback');
-  const end = bridgeSource.indexOf('\n\n  const sendCloudGroupControl', start);
+  const end = bridgeSource.indexOf(
+    '\n\n  const sendCloudGroupControl = useCloudGroupControlSender',
+    start,
+  );
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   assert.match(
