@@ -25,9 +25,7 @@ import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
 import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import {
   type CloudGroupParticipant,
-  cloudGroupIdentityRequest,
   cloudGroupParticipantsForCollaborationSession,
-  cloudGroupParticipantsForContacts,
   cloudGroupSelfParticipant,
   cloudGroupTargetAccountIds,
 } from '@/features/cloud/cloudGroupMessages';
@@ -46,17 +44,12 @@ import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { mentionScopeConversationForActiveConversation } from '@/features/chat/messageActions/mentions';
 import {
-  buildChatCreateGroupCollaborationInviteTargets,
-  buildChatCreateGroupMetadata,
   buildChatCreatePeopleContactLookup,
   buildChatGroupCollaborationUpdateParticipants,
   buildChatGroupCollaborationUpdateTargets,
   buildParticipantSpaceContinuationMetadata,
   chatSessionIdForParticipantSpaceContinuation,
-  contactCanonicalIdentityRequest,
   existingBlankSessionIdForParticipantSpace,
-  groupDefaultName,
-  isApprovedCollaborationContact,
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
@@ -69,13 +62,12 @@ import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscrip
 import { buildCollaborationMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '@/app/useKordiAppModelCollaborationMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, ComposerScope, Conversation, DesktopCollaborationProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import {
   createDesktopChatSession,
   openOrCreateCanonicalSessionFast,
   updateCanonicalSessionMetadata,
-  upsertCanonicalIdentityFast,
 } from '@/lib/desktop';
 
 import {
@@ -111,9 +103,9 @@ import {
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
 import {
-  mergeCanonicalIdentity,
   mergeOpenCanonicalSessionResult,
 } from '@/app/canonicalSessionStateMutations';
+import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
 
@@ -1302,101 +1294,16 @@ export function useKordiAppModel({
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
   });
 
-  const handleCreateChatGroup = useCallback(async (request: { name?: string | null; contactIds: string[] }) => {
-    if (!isNativeShell) return;
-    setDesktopChatError(null);
-    const currentCanonicalState = canonicalSessionState;
-    const creatorIdentityId = currentCanonicalState?.profile.humanIdentityId?.trim();
-    if (!creatorIdentityId || !currentCanonicalState) {
-      throw new Error('Local profile identity is not ready yet.');
-    }
-    let nextCanonicalState = currentCanonicalState;
-    if (cloudSession.account) {
-      const identity = await upsertCanonicalIdentityFast(cloudGroupIdentityRequest(
-        cloudGroupSelfParticipant(cloudSession.account, 'admin'),
-        cloudSession.account,
-        creatorIdentityId,
-      ));
-      nextCanonicalState = mergeCanonicalIdentity(nextCanonicalState, identity);
-      setCanonicalSessionState(nextCanonicalState);
-    }
-    const contacts = uniqueStrings(request.contactIds)
-      .map((contactId) => peopleContactById.get(contactId))
-      .filter((contact): contact is Contact => Boolean(contact));
-    if (contacts.length < 2) {
-      throw new Error('Select at least 2 people to start a group.');
-    }
-    const blockedCollaborationContacts = contacts.filter((contact) => contact.sourceParticipantId && !isApprovedCollaborationContact(contact));
-    if (blockedCollaborationContacts.length > 0) {
-      throw new Error('Approve people as contacts before adding them to a group.');
-    }
-
-    const identityIds: string[] = [];
-    for (const contact of contacts) {
-      const identityRequest = contactCanonicalIdentityRequest(contact);
-      const identityId = identityRequest.id?.trim();
-      if (!identityId) continue;
-      const identity = await upsertCanonicalIdentityFast(identityRequest);
-      nextCanonicalState = mergeCanonicalIdentity(nextCanonicalState, identity);
-      setCanonicalSessionState(nextCanonicalState);
-      identityIds.push(identityId);
-    }
-
-    const participantIdentityIds = uniqueStrings(identityIds);
-    if (participantIdentityIds.length < 2) {
-      throw new Error('Select at least 2 people to start a group.');
-    }
-    const selectedNames = contacts.map((contact) => contact.name);
-    const groupDisplayName = request.name?.trim() || groupDefaultName(selectedNames);
-    const sessionId = `session:group:${crypto.randomUUID()}`;
-    const openResult = await openOrCreateCanonicalSessionFast({
-      id: sessionId,
-      kind: 'group',
-      title: 'New session',
-      status: 'active',
-      createdByIdentityId: creatorIdentityId,
-      primaryIdentityId: null,
-      relationshipIdentityId: null,
-      participantIdentityIds,
-      metadata: buildChatCreateGroupMetadata({
-        creatorIdentityId,
-        selectedContactIds: contacts.map((contact) => contact.id),
-        selectedNames,
-        customName: groupDisplayName,
-        groupSpaceId: sessionId,
-      }),
-    });
-    nextCanonicalState = mergeOpenCanonicalSessionResult(nextCanonicalState, openResult);
-    setCanonicalSessionState(nextCanonicalState);
-
-    const inviteTargets = buildChatCreateGroupCollaborationInviteTargets(contacts);
-    const cloudInviteTargetAccountIds = cloudGroupTargetAccountIds(inviteTargets);
-    if (cloudInviteTargetAccountIds.length > 0 && cloudSession.account) {
-      try {
-        await sendCloudGroupControl({
-          targetAccountIds: cloudInviteTargetAccountIds,
-          kind: 'group-invite',
-          groupId: sessionId,
-          groupSpaceId: sessionId,
-          groupTitle: groupDisplayName,
-          createdByAccountId: cloudSession.account.accountId,
-          participants: cloudGroupParticipantsForContacts(cloudSession.account, contacts),
-        });
-      } catch (error) {
-        setDesktopChatError(`Group created, but Cloud invites failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    selectNewChatSession(sessionId);
-  }, [
-    canonicalSessionState,
-    cloudSession.account,
+  const handleCreateChatGroup = useKordiGroupCreation({
+    account: cloudSession.account,
+    canonicalState: canonicalSessionState,
+    contactById: peopleContactById,
     isNativeShell,
-    peopleContactById,
-    selectNewChatSession,
     sendCloudGroupControl,
-    setDesktopChatError,
-  ]);
+    selectNewSession: selectNewChatSession,
+    setCanonicalState: setCanonicalSessionState,
+    setDesktopError: setDesktopChatError,
+  });
 
   const handleCreateChatSessionInParticipantSpace = useCallback(async (space: ParticipantSpaceViewModel) => {
     if (space.kind === 'self') {
