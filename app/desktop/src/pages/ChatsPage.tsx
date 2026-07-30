@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Dispatch, DragEvent, PointerEvent as ReactPointerEvent, SetStateAction } from 'react';
+import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import {
   Cloud,
@@ -11,48 +11,24 @@ import {
 } from 'lucide-react';
 
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
-import {
-  collaborationAgentRoutingChangeNotice,
-  collaborationChatRoutingControlVisibility,
-  localOwnedCollaborationAgentsForModelRouting,
-  resolveCollaborationAgentRoutingUpdate,
-  routingSelectionForCollaborationAgent,
-  type LocalCollaborationAgentRoutingOption,
-} from '@/features/collaboration/agentModelRouting';
-import { isCloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
-import type { CloudSessionPin } from '@/features/cloud/authClient';
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
-import {
-  fallbackComposerThinkingValue,
-  type ComposerModelOption,
-  type ComposerProviderOption,
-  type CompactComposerModelMenuSaveInput,
-} from '@/kordi-app/components';
 import type {
   Contact,
   Conversation,
   ConversationParticipant,
-  DesktopCollaborationAgentRouting,
-  DesktopCollaborationHost,
   EditFilePreview,
   Message,
-  MessageSourceReference,
 } from '@/kordi-app/types';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
-import {
-  CHAT_COMPOSER_TEXTAREA_SELECTOR,
-  focusComposerTextarea,
-} from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
-import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
-import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
+import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -63,14 +39,14 @@ import type {
 } from '@/pages/chatsPage.types';
 import { CompanionComposer } from '@/pages/chatsPage.companionComposer';
 import { CompanionDestinationPage } from '@/pages/chatsPage.companionDestination';
-import {
-  COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS,
-  COLLABORATION_ROUTING_NOTICE_EXIT_MS,
-} from '@/pages/chatsPage.constants';
 import { CompanionHeader } from '@/pages/chatsPage.companionHeader';
 import { CompanionPane } from '@/pages/chatsPage.companionPane';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
+import { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
+import { useChatForkModel } from '@/pages/useChatForkModel';
+import { useChatPins } from '@/pages/useChatPins';
+import { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
 import {
   SessionDestinationTabs,
 } from '@/pages/chatsPage.destinations';
@@ -94,22 +70,12 @@ import {
   PinnedMessageBar,
 } from '@/pages/chatsPage.pins';
 import {
-  chatMessageActionId,
-  pinnedMessageCandidateIds,
-  stableCloudPinMessageId,
-} from '@/pages/chatsPage.pinModel';
-import {
   ChatComposerShell,
   ChatSessionPane,
   SessionStartingState,
 } from '@/pages/chatsPage.sessionPane';
 import {
-  sameTranscriptNavigationRequest,
-} from '@/pages/chatsPage.navigation';
-import type { TranscriptNavigationRequest } from '@/pages/chatsPage.navigation';
-import {
   CHAT_COMPANION_DRAG_TYPE,
-  authChoiceFromProviderOption,
   buildAskAgentSessionReferenceContext,
   buildAskAgentSessionReferenceContextMessage,
   canonicalHistorySessionIdForConversation,
@@ -119,11 +85,7 @@ import {
   chatSideAgentConversationForOpenRequest,
   chatTranscriptDensityMode,
   clampChatSplitFraction,
-  collaborationRouteDisplayName,
-  collaborationThinkingDisplayName,
   conversationPaneKind,
-  forkSnapshotBoundaryIndexForMessages,
-  forkSourceMessageIds,
   humanSideForCompanionSide,
   pairedCompanionConversation,
   parseAskAgentTriggerCommand,
@@ -292,13 +254,6 @@ export function ChatsPage({
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
-  const [selectedCollaborationAgentId, setSelectedCollaborationAgentId] = useState<string | null>(null);
-  const [selectedCompanionCollaborationAgentId, setSelectedCompanionCollaborationAgentId] = useState<string | null>(null);
-  const [collaborationRoutingNotice, setCollaborationRoutingNotice] = useState<string | null>(null);
-  const [companionCollaborationRoutingNotice, setCompanionCollaborationRoutingNotice] = useState<string | null>(null);
-  const [optimisticCollaborationAgentRouting, setOptimisticCollaborationAgentRouting] = useState<
-    Record<string, DesktopCollaborationAgentRouting>
-  >({});
   const [humanPaneSide, setHumanPaneSide] = useState<CompanionSide>('left');
   const [selectedCompanionConversationId, setSelectedCompanionConversationId] = useState<string | null>(null);
   const [openSideAgentConversationId, setOpenSideAgentConversationId] = useState<string | null>(null);
@@ -332,23 +287,6 @@ export function ChatsPage({
   }, [activeConv.id]);
   const [isCompanionFolded, setIsCompanionFolded] = useState(false);
   const [splitLeftFraction, setSplitLeftFraction] = useState(0.5);
-  const [pinnedMessageIdsByConversationId, setPinnedMessageIdsByConversationId] = useState<Record<string, string | null>>({});
-  const [optimisticCloudPinBySessionId, setOptimisticCloudPinBySessionId] = useState<Record<string, CloudSessionPin>>({});
-  const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
-  const [pinForEveryone, setPinForEveryone] = useState(false);
-  const [mainTranscriptNavigationRequest, setMainTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
-  const [companionTranscriptNavigationRequest, setCompanionTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
-  const transcriptNavigationNonceRef = useRef(0);
-  const handleMainTranscriptNavigationHandled = useCallback((handled: TranscriptNavigationRequest) => {
-    setMainTranscriptNavigationRequest((current) => (
-      current && sameTranscriptNavigationRequest(current, handled) ? null : current
-    ));
-  }, []);
-  const handleCompanionTranscriptNavigationHandled = useCallback((handled: TranscriptNavigationRequest) => {
-    setCompanionTranscriptNavigationRequest((current) => (
-      current && sameTranscriptNavigationRequest(current, handled) ? null : current
-    ));
-  }, []);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const companionTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const companionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -376,54 +314,6 @@ export function ChatsPage({
   const activeLocalAgentConfigTargetSessionId = localAgentComposerConfigTargetSessionId(activeConv);
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
   const activeConversationIsGroupFork = isGroupForkSession(activeConv);
-  const activeConversationUsesCloudPins = Boolean(
-    activeSessionId
-      && onUpdateCloudSessionPin
-      && (
-        activeConv.collaborationSources.some((sourceId) => isCloudCollaborationHostId(sourceId))
-        || isCloudCollaborationHostId(activeConv.collaborationTarget?.hostId)
-        || isCloudCollaborationHostId(activeConv.identity?.sourceHostId)
-        || isCloudCollaborationConversationId(activeConv.id)
-        || activeConversationIsGroupSession
-      ),
-  );
-  useEffect(() => {
-    if (!activeConversationUsesCloudPins || !activeSessionId || cloudSessionPin?.sessionId !== activeSessionId) return;
-    setOptimisticCloudPinBySessionId((current) => {
-      if (!current[activeSessionId]) return current;
-      const next = { ...current };
-      delete next[activeSessionId];
-      return next;
-    });
-  }, [
-    activeConversationUsesCloudPins,
-    activeSessionId,
-    cloudSessionPin?.effectiveMessageId,
-    cloudSessionPin?.privateMessageId,
-    cloudSessionPin?.sessionId,
-    cloudSessionPin?.sharedMessageId,
-    cloudSessionPin?.updatedAt,
-  ]);
-  const activeCloudSessionPin = activeConversationUsesCloudPins
-    ? optimisticCloudPinBySessionId[activeSessionId] ?? cloudSessionPin ?? null
-    : null;
-  // Forking is hidden for group chats and historical group-derived forks because
-  // the resulting private continuation/visibility semantics are confusing in a
-  // shared chat. Local drafts and legacy ephemeral collaboration transports remain excluded
-  // because they have no persistent backing to read from.
-  const activeConversationIsForkable = Boolean(
-    onForkChatMessage
-      && activeConv.id
-      && activeConv.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID
-      && !activeConv.id.startsWith('bridge:')
-      && !activeConversationIsGroupSession
-      && !activeConversationIsGroupFork,
-  );
-  const handleForkMessage = activeConversationIsForkable && onForkChatMessage
-    ? (entryId: string) => {
-        void onForkChatMessage(activeConv.id, entryId);
-      }
-    : undefined;
   const companionCandidates = useMemo(
     () => chatCompanionCandidates(activeConv, chatConversations),
     [activeConv, chatConversations],
@@ -497,30 +387,58 @@ export function ChatsPage({
     if (!companionHostId && activeCollaborationModelHost) return activeCollaborationModelHost;
     return activeCollaborationModelHost;
   }, [activeCollaborationModelHost, companionConversation?.collaborationTarget?.hostId, companionConversationIsCollaborationAgent]);
-  const companionCollaborationRoutingAgents = useMemo(
-    () => localOwnedCollaborationAgentsForModelRouting(companionCollaborationModelHost ? [companionCollaborationModelHost] : [], desktopChatState),
-    [companionCollaborationModelHost, desktopChatState],
-  );
-  const selectedCompanionCollaborationRoutingAgentBase = companionCollaborationRoutingAgents.find((agent) => agent.id === selectedCompanionCollaborationAgentId)
-    ?? companionCollaborationRoutingAgents.find((agent) => agent.isActive)
-    ?? companionCollaborationRoutingAgents.find((agent) => agent.isDefault)
-    ?? companionCollaborationRoutingAgents[0]
-    ?? null;
-  const selectedCompanionCollaborationRoutingKey = selectedCompanionCollaborationRoutingAgentBase && companionConversation
-    ? isCloudCollaborationHostId(selectedCompanionCollaborationRoutingAgentBase.hostId)
-      ? `${selectedCompanionCollaborationRoutingAgentBase.hostId}:${companionConversation.canonicalSessionId ?? companionConversation.id}:${selectedCompanionCollaborationRoutingAgentBase.id}`
-      : `${selectedCompanionCollaborationRoutingAgentBase.hostId}:${selectedCompanionCollaborationRoutingAgentBase.id}`
-    : null;
-  const selectedCompanionCollaborationRoutingAgent = selectedCompanionCollaborationRoutingAgentBase
-    ? {
-      ...selectedCompanionCollaborationRoutingAgentBase,
-      ...(selectedCompanionCollaborationRoutingKey ? optimisticCollaborationAgentRouting[selectedCompanionCollaborationRoutingKey] : null),
-    }
-    : null;
-  const companionCollaborationRoutingSelection = routingSelectionForCollaborationAgent(selectedCompanionCollaborationRoutingAgent);
-  const companionCollaborationRoutingControlVisibility = collaborationChatRoutingControlVisibility(companionCollaborationRoutingAgents.length);
-  const companionCollaborationAgentSelectorOpen = companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === 'mode';
-  const companionCollaborationRoutingTargetSessionId = companionConversation?.canonicalSessionId ?? companionConversation?.id ?? null;
+  const collaborationRouting = useChatCollaborationRouting({
+    shared: {
+      desktopChatState,
+      modelOptions: chatModelOptions,
+      providerOptions: composerProviderOptions,
+      updateRouting: onUpdateCollaborationAgentModelRouting,
+    },
+    main: {
+      conversation: activeConv,
+      host: activeCollaborationModelHost,
+      enabled: activeConversationUsesCollaboration,
+      isBusy: isDesktopChatSending || activeLiveTurnIsRunning,
+      openSelector: openComposerSelector,
+      toggleSelector: toggleComposerSelector,
+      composerSelection,
+      selectComposerProviderChoice,
+      selectComposerValue,
+    },
+    companion: {
+      conversation: companionConversation,
+      host: companionCollaborationModelHost,
+      enabled: companionConversationIsCollaborationAgent,
+      isBusy: isDesktopChatSending || Boolean(
+        companionTranscriptLiveTurn && !companionTranscriptLiveTurn.completed,
+      ),
+      openSelector: companionOpenComposerSelector,
+      setOpenSelector: setCompanionOpenComposerSelector,
+    },
+  });
+  const {
+    notice: collaborationRoutingNotice,
+    agents: collaborationRoutingAgents,
+    selectedAgent: selectedCollaborationRoutingAgent,
+    selection: collaborationRoutingSelection,
+    visibility: collaborationRoutingControlVisibility,
+    selectorOpen: collaborationAgentSelectorOpen,
+    setSelectedAgentId: setSelectedCollaborationAgentId,
+    update: updateCollaborationAgentRouting,
+    saveCompactRoute: saveCompactModelRoute,
+    defaultThinkingForModel: defaultThinkingForCollaborationModel,
+  } = collaborationRouting.main;
+  const {
+    notice: companionCollaborationRoutingNotice,
+    agents: companionCollaborationRoutingAgents,
+    selectedAgent: selectedCompanionCollaborationRoutingAgent,
+    selection: companionCollaborationRoutingSelection,
+    visibility: companionCollaborationRoutingControlVisibility,
+    selectorOpen: companionCollaborationAgentSelectorOpen,
+    setSelectedAgentId: setSelectedCompanionCollaborationAgentId,
+    update: updateCompanionCollaborationAgentRouting,
+    defaultThinkingForModel: companionDefaultThinkingForCollaborationModel,
+  } = collaborationRouting.companion;
 
   useEffect(() => {
     setOpenSideAgentConversationId(null);
@@ -553,191 +471,67 @@ export function ChatsPage({
     }
   }, [companionCandidates, openSideAgentConversationId]);
 
-  // If the active session is itself a fork, show a backlink at the top
-  // of the transcript so the user can navigate to the source session.
-  const activeForkSourceSessionId = activeConversationIsGroupFork ? null : activeConv.forkedFromSessionId?.trim() || null;
-  const activeForkSourceMessageIds = useMemo(
-    () => activeConversationIsGroupFork ? new Set<string>() : forkSourceMessageIds(activeConv),
-    [activeConv.forkedFromMessageId, activeConv.metadata, activeConversationIsGroupFork],
-  );
-  const activeForkSourceTitle = useMemo(() => {
-    if (!activeForkSourceSessionId) return null;
-    const summary = desktopChatState?.sessions.find((session) => session.id === activeForkSourceSessionId);
-    return summary?.title || 'previous session';
-  }, [activeForkSourceSessionId, desktopChatState?.sessions]);
-
-  // Build a per-message lookup of forks anchored at each entry id of
-  // the active session, so the transcript can render a "N forks" chip
-  // and a popover listing them next to the message they branched from.
-  const messageForksByEntryId = useMemo(() => {
-    if (activeConversationIsGroupSession) return new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
-    const summaries = (desktopChatState?.sessions ?? []).filter((summary) => !isGroupForkSession(summary));
-    const lineage = buildForkLineage(
-      summaries.map((summary) => ({
-        id: summary.id,
-        forkedFromSessionId: summary.forkedFromSessionId ?? null,
-        forkedFromMessageId: summary.forkedFromMessageId ?? null,
-      })),
-    );
-    const forksAtMessage = lineage.forksByParentMessageIdBySession.get(activeConv.id);
-    if (!forksAtMessage) return new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
-    const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
-    const result = new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
-    for (const [messageId, forks] of forksAtMessage) {
-      const entries = forks
-        .map((fork) => summaryById.get(fork.id))
-        .filter((summary): summary is NonNullable<typeof summary> => Boolean(summary))
-        .map((summary) => ({
-          sessionId: summary.id,
-          title: summary.title || 'Untitled fork',
-          updatedAtLabel: summary.updatedAtLabel,
-        }));
-      if (entries.length > 0) result.set(messageId, entries);
-    }
-    return result;
-  }, [activeConv.id, activeConversationIsGroupSession, desktopChatState?.sessions]);
-  const collaborationRoutingAgents = useMemo(
-    () => localOwnedCollaborationAgentsForModelRouting(activeCollaborationModelHost ? [activeCollaborationModelHost] : [], desktopChatState),
-    [activeCollaborationModelHost, desktopChatState],
-  );
-  const selectedCollaborationRoutingAgentBase = collaborationRoutingAgents.find((agent) => agent.id === selectedCollaborationAgentId)
-    ?? collaborationRoutingAgents.find((agent) => agent.isActive)
-    ?? collaborationRoutingAgents.find((agent) => agent.isDefault)
-    ?? collaborationRoutingAgents[0]
-    ?? null;
-  const selectedCollaborationRoutingKey = selectedCollaborationRoutingAgentBase
-    ? isCloudCollaborationHostId(selectedCollaborationRoutingAgentBase.hostId)
-      ? `${selectedCollaborationRoutingAgentBase.hostId}:${activeConv.canonicalSessionId ?? activeConv.id}:${selectedCollaborationRoutingAgentBase.id}`
-      : `${selectedCollaborationRoutingAgentBase.hostId}:${selectedCollaborationRoutingAgentBase.id}`
-    : null;
-  const selectedCollaborationRoutingAgent = selectedCollaborationRoutingAgentBase
-    ? {
-      ...selectedCollaborationRoutingAgentBase,
-      ...(selectedCollaborationRoutingKey ? optimisticCollaborationAgentRouting[selectedCollaborationRoutingKey] : null),
-    }
-    : null;
-  const collaborationRoutingSelection = routingSelectionForCollaborationAgent(selectedCollaborationRoutingAgent);
-  const collaborationRoutingControlVisibility = collaborationChatRoutingControlVisibility(collaborationRoutingAgents.length);
-  const collaborationAgentSelectorOpen = openComposerSelector?.scope === 'chat' && openComposerSelector.type === 'mode';
   const transcriptMessages = collapseAdjacentSessionConfigNotices(
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
   const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
   const suppressAgentReplyAttribution = shouldSuppressAgentReplyAttribution(activeConv);
   const attributedTranscriptMessages = transcriptMessages;
-  const pinnedMessageId = activeConversationUsesCloudPins
-    ? activeCloudSessionPin?.effectiveMessageId ?? null
-    : pinnedMessageIdsByConversationId[activeConv.id] ?? null;
-  const pinnedMessage = useMemo(() => {
-    if (!pinnedMessageId) return null;
-    return attributedTranscriptMessages.find((message) => (
-      activeConversationUsesCloudPins
-        ? pinnedMessageCandidateIds(message, activeConv.id).includes(pinnedMessageId)
-        : chatMessageActionId(message) === pinnedMessageId
-    )) ?? null;
-  }, [activeConv.id, activeConversationUsesCloudPins, attributedTranscriptMessages, pinnedMessageId]);
-  useEffect(() => {
-    if (!pinnedMessageId || pinnedMessage || activeConversationUsesCloudPins) return;
-    setPinnedMessageIdsByConversationId((current) => ({ ...current, [activeConv.id]: null }));
-  }, [activeConv.id, activeConversationUsesCloudPins, pinnedMessage, pinnedMessageId]);
-  const requestPinMessage = useCallback((message: Message) => {
-    setPinForEveryone(false);
-    setPinDialog({ mode: 'pin', message });
-  }, []);
-  const requestUnpinMessage = useCallback((message: Message) => {
-    setPinDialog({ mode: 'unpin', message });
-  }, []);
-  const handleNavigateToTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
-    const targetMessageId = sourceMessage
-      ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
-      : messageId;
-    const resolvedMessageId = targetMessageId || messageId;
-    transcriptNavigationNonceRef.current += 1;
-    setMainTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current, sessionKey: activeConv.id });
-  }, [activeConv.id, attributedTranscriptMessages]);
-  const handleOpenPinnedMessage = useCallback(() => {
-    if (!pinnedMessageId) return;
-    handleNavigateToTranscriptMessage(pinnedMessage ? chatMessageActionId(pinnedMessage) : pinnedMessageId);
-  }, [handleNavigateToTranscriptMessage, pinnedMessage, pinnedMessageId]);
-  const handleConfirmPinDialog = useCallback(() => {
-    if (!pinDialog) return;
-    const messageId = activeConversationUsesCloudPins
-      ? stableCloudPinMessageId(pinDialog.message, activeConv.id)
-      : chatMessageActionId(pinDialog.message);
-    const messageCandidateIds = pinnedMessageCandidateIds(pinDialog.message, activeConv.id);
-    setPinDialog(null);
-    if (!messageId) return;
-
-    if (activeConversationUsesCloudPins && onUpdateCloudSessionPin && activeSessionId) {
-      const sharedPinnedMessageId = activeCloudSessionPin?.sharedMessageId?.trim() ?? '';
-      const scope = pinDialog.mode === 'pin'
-        ? (pinForEveryone ? 'shared' : 'private')
-        : sharedPinnedMessageId && messageCandidateIds.includes(sharedPinnedMessageId) ? 'shared' : 'private';
-      const nextMessageId = pinDialog.mode === 'pin' ? messageId : null;
-      const now = new Date().toISOString();
-      const base: CloudSessionPin = activeCloudSessionPin ?? {
-        sessionId: activeSessionId,
-        sharedMessageId: null,
-        privateMessageId: null,
-        effectiveMessageId: null,
-        updatedAt: null,
-      };
-      const optimistic: CloudSessionPin = scope === 'shared'
-        ? { ...base, sharedMessageId: nextMessageId, effectiveMessageId: base.privateMessageId || nextMessageId, updatedAt: now }
-        : { ...base, privateMessageId: nextMessageId, effectiveMessageId: nextMessageId || base.sharedMessageId, updatedAt: now };
-      setOptimisticCloudPinBySessionId((current) => ({ ...current, [activeSessionId]: optimistic }));
-      void onUpdateCloudSessionPin({ sessionId: activeSessionId, messageId: nextMessageId, scope })
-        .then((pin) => {
-          setOptimisticCloudPinBySessionId((current) => ({ ...current, [pin.sessionId]: pin }));
-        })
-        .catch(() => {
-          setOptimisticCloudPinBySessionId((current) => {
-            const next = { ...current };
-            delete next[activeSessionId];
-            return next;
-          });
-        });
-      return;
-    }
-
-    setPinnedMessageIdsByConversationId((current) => ({
-      ...current,
-      [activeConv.id]: pinDialog.mode === 'pin' ? messageId : null,
-    }));
-  }, [activeCloudSessionPin, activeConv.id, activeConversationUsesCloudPins, activeSessionId, onUpdateCloudSessionPin, pinDialog, pinForEveryone]);
-  // Index of the last message that came from the fork's snapshot
-  // (everything inherited from the source up through the anchor). The
-  // divider goes after this message so any continuation the user
-  // sends in the fork shows up below it.
-  const forkSnapshotBoundaryIndex = useMemo(() => {
-    if (!activeForkSourceSessionId) return -1;
-    return forkSnapshotBoundaryIndexForMessages(
-      attributedTranscriptMessages,
-      activeForkSourceMessageIds,
-    );
-  }, [activeForkSourceSessionId, activeForkSourceMessageIds, attributedTranscriptMessages]);
-  const attributedActiveTranscriptLiveTurn = activeTranscriptLiveTurn;
-  const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
+  const chatForkModel = useChatForkModel({
+    conversation: activeConv,
+    messages: attributedTranscriptMessages,
+    desktopChatState,
+    isGroupSession: activeConversationIsGroupSession,
+    isGroupFork: activeConversationIsGroupFork,
+    onForkMessage: onForkChatMessage,
+  });
+  const {
+    sourceSessionId: activeForkSourceSessionId,
+    sourceTitle: activeForkSourceTitle,
+    forksByEntryId: messageForksByEntryId,
+    snapshotBoundaryIndex: forkSnapshotBoundaryIndex,
+    forkMessage: handleForkMessage,
+  } = chatForkModel;
   const companionTranscriptMessages = useMemo(() => {
     if (!companionConversation) return [] as Message[];
     return collapseAdjacentSessionConfigNotices(
       suppressLiveTurnEchoMessages(companionConversation.messages, companionTranscriptLiveTurn),
     );
   }, [companionConversation, companionTranscriptLiveTurn]);
-  const handleNavigateToCompanionTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
-    if (!companionConversation) return;
-    const targetMessageId = sourceMessage
-      ? resolveTranscriptMessageIdForSource(sourceMessage, companionTranscriptMessages)
-      : messageId;
-    const resolvedMessageId = targetMessageId || messageId;
-    transcriptNavigationNonceRef.current += 1;
-    setCompanionActiveSourcePreview(null);
-    setCompanionDestination('messages');
-    setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current, sessionKey: companionConversation.id });
-  }, [companionConversation, companionTranscriptMessages]);
+  const transcriptNavigation = useChatTranscriptNavigation({
+    main: {
+      conversation: activeConv,
+      messages: attributedTranscriptMessages,
+    },
+    companion: {
+      conversation: companionConversation,
+      messages: companionTranscriptMessages,
+      onShowMessages: () => {
+        setCompanionActiveSourcePreview(null);
+        setCompanionDestination('messages');
+      },
+    },
+  });
+  const chatPins = useChatPins({
+    conversation: activeConv,
+    messages: attributedTranscriptMessages,
+    sessionId: activeSessionId,
+    isGroupSession: activeConversationIsGroupSession,
+    cloudPin: cloudSessionPin,
+    onUpdateCloudPin: onUpdateCloudSessionPin,
+    onNavigateToMessage: transcriptNavigation.main.navigate,
+  });
+  const {
+    pinnedMessageId,
+    pinnedMessage,
+    requestPin: requestPinMessage,
+    requestUnpin: requestUnpinMessage,
+    openPinnedMessage: handleOpenPinnedMessage,
+  } = chatPins;
+  const attributedActiveTranscriptLiveTurn = activeTranscriptLiveTurn;
+  const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
   const attributedCompanionTranscriptLiveTurn = companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
-  const companionLiveTurnIsRunning = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const updateCompanionDropPreview = (event: DragEvent<HTMLElement>) => {
     if (!companionConversation || isCompanionFolded) return null;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -793,119 +587,6 @@ export function ChatsPage({
       const next = { ...current };
       delete next[conversation.id];
       return next;
-    });
-  };
-  const closeCompanionCollaborationRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
-    if (companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === type) {
-      setCompanionOpenComposerSelector(null);
-    }
-  };
-  const companionDefaultThinkingForCollaborationModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
-    const thinkingLevels = chatModelOptions?.find((option) => option.value === modelValue)?.thinkingLevels ?? [];
-    return fallbackComposerThinkingValue(thinkingLevels, currentThinking ?? 'default');
-  };
-  const applyCollaborationAgentRoutingUpdate = ({
-    agent,
-    routingKey,
-    patch,
-    isBusy,
-    setNotice,
-    targetSessionId,
-  }: {
-    agent: LocalCollaborationAgentRoutingOption | null;
-    routingKey: string | null;
-    patch: DesktopCollaborationAgentRouting;
-    isBusy: boolean;
-    setNotice: Dispatch<SetStateAction<string | null>>;
-    targetSessionId?: string | null;
-  }) => {
-    if (!agent || !routingKey) return;
-    if (isBusy) {
-      setNotice("Stop the running task before changing this session's model or thinking level.");
-      return;
-    }
-
-    const { routing, defaultAuthChanged, fallbackAuthChanged } = resolveCollaborationAgentRoutingUpdate(agent, patch);
-    const noticeText = collaborationAgentRoutingChangeNotice({
-      agentLabel: agent.label,
-      currentModel: agent.defaultModel,
-      nextModel: patch.defaultModel,
-      currentThinking: agent.thinking,
-      nextThinking: patch.thinking,
-      modelLabel: collaborationRouteDisplayName(
-        routing.defaultModel,
-        routing.defaultAuthProvider,
-        routing.defaultAuthChoice,
-        chatModelOptions,
-        composerProviderOptions,
-      ),
-      thinkingLabel: collaborationThinkingDisplayName(routing.thinking),
-    }) ?? ((defaultAuthChanged || fallbackAuthChanged)
-      ? `${agent.label} model route changed to ${collaborationRouteDisplayName(
-        routing.defaultModel,
-        routing.defaultAuthProvider,
-        routing.defaultAuthChoice,
-        chatModelOptions,
-        composerProviderOptions,
-      )}. Only you can see this.`
-      : null);
-    if (!noticeText) return;
-
-    setOptimisticCollaborationAgentRouting((current) => ({
-      ...current,
-      [routingKey]: routing,
-    }));
-    setNotice(noticeText);
-    void onUpdateCollaborationAgentModelRouting(
-      agent.hostId,
-      agent.id,
-      routing.defaultModel,
-      routing.fallbackModel,
-      routing.thinking,
-      routing.defaultAuthProvider,
-      routing.defaultAuthChoice,
-      routing.fallbackAuthProvider,
-      routing.fallbackAuthChoice,
-      targetSessionId,
-    ).catch((error) => {
-      setNotice(error instanceof Error ? error.message : 'Unable to update collaboration agent model routing');
-    });
-  };
-  const updateCompanionCollaborationAgentRouting = ({
-    defaultModel,
-    defaultAuthProvider,
-    defaultAuthChoice,
-    fallbackModel,
-    fallbackAuthProvider,
-    fallbackAuthChoice,
-    thinking,
-    selectorType,
-  }: {
-    defaultModel?: string | null;
-    defaultAuthProvider?: string | null;
-    defaultAuthChoice?: string | null;
-    fallbackModel?: string | null;
-    fallbackAuthProvider?: string | null;
-    fallbackAuthChoice?: string | null;
-    thinking?: string | null;
-    selectorType?: 'provider' | 'model' | 'thinking';
-  }) => {
-    if (selectorType) closeCompanionCollaborationRoutingSelector(selectorType);
-    applyCollaborationAgentRoutingUpdate({
-      agent: selectedCompanionCollaborationRoutingAgent,
-      routingKey: selectedCompanionCollaborationRoutingKey,
-      patch: {
-        defaultModel,
-        defaultAuthProvider,
-        defaultAuthChoice,
-        fallbackModel,
-        fallbackAuthProvider,
-        fallbackAuthChoice,
-        thinking,
-      },
-      isBusy: isDesktopChatSending || companionLiveTurnIsRunning,
-      setNotice: setCompanionCollaborationRoutingNotice,
-      targetSessionId: companionCollaborationRoutingTargetSessionId,
     });
   };
   const createSideAgentSession = async (initialPrompt = '') => {
@@ -988,7 +669,7 @@ export function ChatsPage({
         setDestination: setCompanionDestination,
         setActiveArtifactId: setCompanionActiveArtifactId,
         setActiveSourcePreview: setCompanionActiveSourcePreview,
-        onNavigateToResponse: handleNavigateToCompanionTranscriptMessage,
+        onNavigateToResponse: transcriptNavigation.companion.navigate,
         onOpenOutreachThread: onSelectSession,
       }}
     />
@@ -1066,7 +747,7 @@ export function ChatsPage({
             setCompanionDestination('artifacts');
           },
           onOpenAuthSettings: openAuthentication,
-          onNavigateToMessage: handleNavigateToCompanionTranscriptMessage,
+          onNavigateToMessage: transcriptNavigation.companion.navigate,
           onOpenMessageDetail: onSelectMessage,
           onStopCollaborationAgentRequest,
           onStopActiveTurn: onStopDesktopChatTurn,
@@ -1092,8 +773,8 @@ export function ChatsPage({
           onLoadOlderMessages: companionCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
             ? () => onLoadOlderCanonicalSessionMessages(companionCanonicalHistorySessionId)
             : undefined,
-          navigationRequest: companionTranscriptNavigationRequest,
-          onNavigationHandled: handleCompanionTranscriptNavigationHandled,
+          navigationRequest: transcriptNavigation.companion.request,
+          onNavigationHandled: transcriptNavigation.companion.acknowledge,
           queuedMessages: queuedDesktopMessagesBySession[companionConversation.id] ?? [],
           onEditQueuedMessage,
           onCancelQueuedMessage,
@@ -1182,90 +863,6 @@ export function ChatsPage({
       </span>
     </div>
   ) : null;
-  useEffect(() => {
-    if (!collaborationRoutingNotice) return;
-    const timeoutId = window.setTimeout(() => {
-      setCollaborationRoutingNotice(null);
-    }, COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [collaborationRoutingNotice]);
-
-  const closeCollaborationRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
-    if (openComposerSelector?.scope === 'chat' && openComposerSelector.type === type) {
-      toggleComposerSelector('chat', type);
-    }
-  };
-
-  const defaultThinkingForCollaborationModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
-    const thinkingLevels = chatModelOptions?.find((option) => option.value === modelValue)?.thinkingLevels ?? [];
-    return fallbackComposerThinkingValue(thinkingLevels, currentThinking ?? 'default');
-  };
-
-  const updateCollaborationAgentRouting = ({
-    defaultModel,
-    defaultAuthProvider,
-    defaultAuthChoice,
-    fallbackModel,
-    fallbackAuthProvider,
-    fallbackAuthChoice,
-    thinking,
-    selectorType,
-  }: {
-    defaultModel?: string | null;
-    defaultAuthProvider?: string | null;
-    defaultAuthChoice?: string | null;
-    fallbackModel?: string | null;
-    fallbackAuthProvider?: string | null;
-    fallbackAuthChoice?: string | null;
-    thinking?: string | null;
-    selectorType?: 'provider' | 'model' | 'thinking';
-  }) => {
-    if (selectorType) closeCollaborationRoutingSelector(selectorType);
-    focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-    applyCollaborationAgentRoutingUpdate({
-      agent: selectedCollaborationRoutingAgent,
-      routingKey: selectedCollaborationRoutingKey,
-      patch: {
-        defaultModel,
-        defaultAuthProvider,
-        defaultAuthChoice,
-        fallbackModel,
-        fallbackAuthProvider,
-        fallbackAuthChoice,
-        thinking,
-      },
-      isBusy: isDesktopChatSending || activeLiveTurnIsRunning,
-      setNotice: setCollaborationRoutingNotice,
-    });
-  };
-
-  const saveCompactModelRoute = (input: CompactComposerModelMenuSaveInput) => {
-    if (activeConversationUsesCollaboration && selectedCollaborationRoutingAgent) {
-      updateCollaborationAgentRouting({
-        defaultModel: input.model,
-        defaultAuthProvider: input.providerOption?.providerId ?? selectedCollaborationRoutingAgent.defaultAuthProvider ?? null,
-        defaultAuthChoice: input.providerOption ? authChoiceFromProviderOption(input.providerOption) : selectedCollaborationRoutingAgent.defaultAuthChoice ?? null,
-        fallbackModel: selectedCollaborationRoutingAgent.fallbackModel ?? null,
-        fallbackAuthProvider: selectedCollaborationRoutingAgent.fallbackAuthProvider ?? null,
-        fallbackAuthChoice: selectedCollaborationRoutingAgent.fallbackAuthChoice ?? null,
-        thinking: input.thinking,
-      });
-      return;
-    }
-
-    void (async () => {
-      if (input.providerOption) {
-        await selectComposerProviderChoice('chat', input.providerOption);
-      }
-      if (input.model !== composerSelection.model) {
-        await selectComposerValue('chat', 'model', input.model);
-      }
-      if (input.thinking !== composerSelection.thinking) {
-        await selectComposerValue('chat', 'thinking', input.thinking);
-      }
-    })();
-  };
-
   const chatSplitGridColumns = (() => {
     if (!showCompanionPane) return undefined;
     if (companionSide === 'left') {
@@ -1417,7 +1014,7 @@ export function ChatsPage({
           onOpenSource,
           onOpenArtifact,
           onOpenAuthSettings: openAuthentication,
-          onNavigateToMessage: handleNavigateToTranscriptMessage,
+          onNavigateToMessage: transcriptNavigation.main.navigate,
           onOpenMessageDetail: onSelectMessage,
           onStopCollaborationAgentRequest,
           onStopActiveTurn: onStopDesktopChatTurn,
@@ -1454,8 +1051,8 @@ export function ChatsPage({
             ? () => onLoadOlderCanonicalSessionMessages(activeCanonicalHistorySessionId)
             : undefined,
           emptyState: activeSelfAgentSessionIsStarting ? <SessionStartingState /> : null,
-          navigationRequest: mainTranscriptNavigationRequest,
-          onNavigationHandled: handleMainTranscriptNavigationHandled,
+          navigationRequest: transcriptNavigation.main.request,
+          onNavigationHandled: transcriptNavigation.main.acknowledge,
           onTranscriptScroll,
           queuedMessages: queuedDesktopMessages,
           onEditQueuedMessage,
@@ -1539,14 +1136,14 @@ export function ChatsPage({
             onClose={() => setSenderProfileTarget(null)}
           />
         ) : null}
-        {pinDialog ? (
+        {chatPins.dialog.value ? (
           <PinMessageDialog
-            mode={pinDialog.mode}
-            message={pinDialog.message}
-            pinForEveryone={pinForEveryone}
-            onTogglePinForEveryone={setPinForEveryone}
-            onCancel={() => setPinDialog(null)}
-            onConfirm={handleConfirmPinDialog}
+            mode={chatPins.dialog.value.mode}
+            message={chatPins.dialog.value.message}
+            pinForEveryone={chatPins.dialog.pinForEveryone}
+            onTogglePinForEveryone={chatPins.dialog.setPinForEveryone}
+            onCancel={chatPins.dialog.cancel}
+            onConfirm={chatPins.dialog.confirm}
           />
         ) : null}
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}
