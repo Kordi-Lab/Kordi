@@ -5,30 +5,47 @@ import { createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desk
 import { isProjectDraftSessionId } from '../draftSessions';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
-import type { UseComposerControllerArgs } from '../composerController.types';
+import type {
+  ComposerConversationContext,
+  ComposerDraftContext,
+  ComposerEnvironmentContext,
+  ComposerMessageRuntimeContext,
+  ComposerProjectContext,
+  ComposerRuntimeContext,
+} from '../composerController.types';
 import { resolveMentionedCollaborationTarget } from './mentions';
 import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
 type UseProjectMessageActionsArgs = Pick<
-  UseComposerControllerArgs,
+  ComposerConversationContext,
   | 'activeConvMessages'
+> & Pick<
+  ComposerProjectContext,
   | 'activeProjectId'
   | 'activeProjectSessionId'
   | 'activeProjectRoot'
   | 'selectProjectSession'
+  | 'setProjectWorkspaces'
+> & Pick<
+  ComposerRuntimeContext,
   | 'canonicalHumanIdentityId'
-  | 'chatComposerAttachments'
-  | 'composerDrafts'
   | 'desktopCollaborationState'
   | 'desktopChatState'
   | 'desktopLiveTurn'
-  | 'isNativeShell'
   | 'setCanonicalSessionState'
+> & Pick<
+  ComposerDraftContext,
+  | 'chatComposerAttachments'
+  | 'composerDrafts'
   | 'setChatComposerAttachments'
+> & Pick<
+  ComposerEnvironmentContext,
+  | 'isNativeShell'
+> & Pick<
+  ComposerMessageRuntimeContext,
   | 'setDesktopChatError'
   | 'setDesktopChatState'
   | 'setIsDesktopChatSending'
-  | 'setProjectWorkspaces'
   | 'shouldAutoFollowChatRef'
   | 'watchDesktopLiveTurn'
 > & {
