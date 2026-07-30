@@ -28,9 +28,6 @@ import {
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
-import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
-import { cloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
-import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import {
   buildProjectRoutingGroups,
 } from '@/features/canonical/sessionResolver';
@@ -50,7 +47,7 @@ import { useDesktopSessionController } from '@/features/chat/useDesktopSessionCo
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { CanonicalSessionState, ComposerScope, DesktopCollaborationProject, DesktopChatState } from '@/kordi-app/types';
+import type { CanonicalSessionState, ComposerScope, DesktopChatState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import { createDesktopChatSession } from '@/lib/desktop';
 
@@ -74,6 +71,7 @@ import {
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
 import { useKordiCollaborationMentions } from '@/app/useKordiCollaborationMentions';
+import { useKordiCollaborationNavigationActions } from '@/app/useKordiCollaborationNavigationActions';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
 import { useKordiCloudAgentActions } from '@/app/useKordiCloudAgentActions';
 import { useKordiCloudInitialSyncState } from '@/app/useKordiCloudInitialSyncState';
@@ -726,101 +724,26 @@ export function useKordiAppModel({
     return 'app-badge-neutral';
   };
 
-  const handleOpenCollaborationConversation = useCallback(async (
-    hostId: string,
-    peerNodeId: string,
-    _peerDisplayName?: string | null,
-    _peerOwnerName?: string | null,
-    peerRuntime?: string | null,
-    _project?: DesktopCollaborationProject | null,
-  ) => {
-    if (hostId !== CLOUD_HOST_SENTINEL) {
-      await unsupportedLegacyCollaborationAction();
-      return;
-    }
-    setActiveNav('chats');
-    setActiveConvId(cloudCollaborationConversationId(peerNodeId, peerRuntime ?? 'person'));
-    setDesktopChatError(null);
-  }, [unsupportedLegacyCollaborationAction, setActiveConvId, setActiveNav, setDesktopChatError]);
-
-  const handleStartCollaborationPersonSession = useCallback(async (target: {
-    hostId: string;
-    nodeId: string;
-    displayName?: string | null;
-    ownerName?: string | null;
-    humanId?: string | null;
-  }) => {
-    if (target.hostId !== CLOUD_HOST_SENTINEL) {
-      await unsupportedLegacyCollaborationAction();
-      return;
-    }
-    setActiveNav('chats');
-    setActiveConvId(cloudCollaborationConversationId(target.nodeId, 'person'));
-    setDesktopChatError(null);
-  }, [unsupportedLegacyCollaborationAction, setActiveConvId, setActiveNav, setDesktopChatError]);
-
-  const handleAddCollaborationContact = unsupportedLegacyCollaborationAction;
-  const handleRemoveCollaborationContact = unsupportedLegacyCollaborationAction;
-  const handleApproveCollaborationContactRequest = unsupportedLegacyCollaborationAction;
-  const handleRejectCollaborationContactRequest = unsupportedLegacyCollaborationAction;
-  const handleUpdateCollaborationAgentModelRouting = unsupportedLegacyCollaborationAction;
-  const handleUpdateLocalAgentModelRouting = unsupportedLegacyCollaborationAction;
-
-
-  const handleUpdateCollaborationAgentModelRoutingForActiveSession = useCallback(async (
-    hostId: string,
-    agentId: string,
-    defaultModel?: string | null,
-    fallbackModel?: string | null,
-    thinking?: string | null,
-    defaultAuthProvider?: string | null,
-    defaultAuthChoice?: string | null,
-    fallbackAuthProvider?: string | null,
-    fallbackAuthChoice?: string | null,
-    targetSessionIdOverride?: string | null,
-  ) => {
-    if (isCloudCollaborationHostId(hostId)) {
-      const routeTargetSessionId = targetSessionIdOverride?.trim() || activeConv.canonicalSessionId || activeConv.id || activeConvId;
-      const runtimeSessionId = cloudAgentRuntimeSessionId(
-        cloudSession.account?.accountId,
-        routeTargetSessionId,
-      );
-      if (!runtimeSessionId) {
-        setDesktopChatError('Account is still loading. Try again in a moment.');
-        return;
-      }
-      setCloudAgentRuntimeRoutesBySessionId((current) => ({
-        ...current,
-        [runtimeSessionId]: {
-          model: defaultModel ?? null,
-          authProvider: defaultAuthProvider ?? null,
-          authChoice: defaultAuthChoice ?? null,
-          thinking: thinking ?? null,
-        },
-      }));
-      setDesktopChatError(null);
-      return;
-    }
-
-    await handleUpdateCollaborationAgentModelRouting(
-      hostId,
-      agentId,
-      defaultModel,
-      fallbackModel,
-      thinking,
-      defaultAuthProvider,
-      defaultAuthChoice,
-      fallbackAuthProvider,
-      fallbackAuthChoice,
-    );
-  }, [
-    activeConv.canonicalSessionId,
-    activeConv.id,
-    activeConvId,
-    cloudSession.account?.accountId,
-    handleUpdateCollaborationAgentModelRouting,
+  const {
+    addContact: handleAddCollaborationContact,
+    approveContactRequest: handleApproveCollaborationContactRequest,
+    openConversation: handleOpenCollaborationConversation,
+    rejectContactRequest: handleRejectCollaborationContactRequest,
+    removeContact: handleRemoveCollaborationContact,
+    startPersonSession: handleStartCollaborationPersonSession,
+    updateAgentModelRoutingForActiveSession:
+      handleUpdateCollaborationAgentModelRoutingForActiveSession,
+    updateLocalAgentModelRouting: handleUpdateLocalAgentModelRouting,
+  } = useKordiCollaborationNavigationActions({
+    accountId: cloudSession.account?.accountId ?? null,
+    activeConversation: activeConv,
+    activeConversationId: activeConvId,
+    setActiveConversationId: setActiveConvId,
+    setActiveNav,
     setDesktopChatError,
-  ]);
+    setRuntimeRoutesBySessionId: setCloudAgentRuntimeRoutesBySessionId,
+    unsupportedAction: unsupportedLegacyCollaborationAction,
+  });
 
   const syncCloudGroupFork = useCallback(async (result: { forkedSessionId: string; sourceSessionId: string; sourceMessageId: string }) => {
     if (!cloudSession.account) return;
