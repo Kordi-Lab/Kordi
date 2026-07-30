@@ -95,16 +95,16 @@ test('hosted chat destination contract includes icon tabs and renders one full p
 
   const infoMarkup = renderToStaticMarkup(createElement(() => assembleRightDetailSlot(baseArgs())));
   const tasksMarkup = renderToStaticMarkup(createElement(() => assembleRightDetailSlot(baseArgs({ activeDetailTab: 'tasks' }))));
-  const chatsPage = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const destinations = readFileSync(new URL('../src/pages/chatsPage.destinationModel.ts', import.meta.url), 'utf8');
 
   assert.match(infoMarkup, /app-right-detail-page/);
   assert.match(infoMarkup, /Info/);
   assert.doesNotMatch(infoMarkup, /app-detail-tab-list/);
   assert.match(tasksMarkup, /Tasks/);
-  assert.match(chatsPage, /\{ id: 'messages', label: 'Messages', icon: MessageSquare \}/);
-  assert.match(chatsPage, /\{ id: 'info', label: 'Info', icon: Info \}/);
-  assert.match(chatsPage, /\{ id: 'artifacts', label: 'Artifacts', icon: FolderOpen \}/);
-  assert.match(chatsPage, /\{ id: 'tasks', label: 'Tasks', icon: CheckCircle2 \}/);
+  assert.match(destinations, /\{ id: 'messages', label: 'Messages', icon: MessageSquare \}/);
+  assert.match(destinations, /\{ id: 'info', label: 'Info', icon: Info \}/);
+  assert.match(destinations, /\{ id: 'artifacts', label: 'Artifacts', icon: FolderOpen \}/);
+  assert.match(destinations, /\{ id: 'tasks', label: 'Tasks', icon: CheckCircle2 \}/);
 });
 
 test('inspector lists do not draw a trailing row divider under panel list content', () => {

@@ -2,7 +2,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-const chatsPageSource = () => readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+const chatsPageSource = () => [
+  '../src/pages/ChatsPage.tsx',
+  '../src/pages/chatsPage.destinations.tsx',
+  '../src/pages/chatsPage.destinationModel.ts',
+  '../src/pages/chatsPage.header.ts',
+  '../src/pages/chatsPage.navigation.ts',
+  '../src/pages/chatsPage.queuedMessage.tsx',
+  '../src/pages/chatsPage.sessionPane.tsx',
+]
+  .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+  .join('\n');
+const chatSessionPaneSource = () => readFileSync(new URL('../src/pages/chatsPage.sessionPane.tsx', import.meta.url), 'utf8');
+const queuedMessageSource = () => readFileSync(new URL('../src/pages/chatsPage.queuedMessage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
@@ -22,8 +34,11 @@ function sidePanelBlock(source: string): string {
   return blockBetween(source, 'data-chat-side-agent-panel="true"', 'const splitDivider = showCompanionPane');
 }
 
-function chatSessionPaneBlock(source: string): string {
-  return blockBetween(source, 'function ChatSessionPane', '\ntype CompanionSide');
+function chatSessionPaneBlock(): string {
+  const source = chatSessionPaneSource();
+  const start = source.indexOf('function ChatSessionPane');
+  assert.notEqual(start, -1, 'missing shared ChatSessionPane implementation');
+  return source.slice(start);
 }
 
 test('side-panel Agent chat renders the same reusable session pane as the main Agent chat', () => {
@@ -52,7 +67,7 @@ test('side-panel destinations do not repeat Ask Agent or destination headings in
 
 test('shared Agent session pane and composer include transcript, attachments, forwarding, details, and right expansion hooks', () => {
   const source = chatsPageSource();
-  const pane = chatSessionPaneBlock(source);
+  const pane = chatSessionPaneBlock();
 
   for (const required of [
     'MessageBubble',
@@ -176,8 +191,7 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
 });
 
 test('chat transcripts use measured virtualization instead of manual spacer windows', () => {
-  const source = chatsPageSource();
-  const pane = chatSessionPaneBlock(source);
+  const pane = chatSessionPaneBlock();
   const virtual = virtualTranscriptSource();
 
   assert.match(pane, /<VirtualTranscript/, 'main and side transcripts should render through the measured virtualizer');
@@ -198,7 +212,7 @@ test('virtualized chat transcripts update their measured range while scrolling',
 
 test('virtualized chat transcripts reset by session identity even for equal-length sessions', () => {
   const source = chatsPageSource();
-  const pane = chatSessionPaneBlock(source);
+  const pane = chatSessionPaneBlock();
   const virtual = virtualTranscriptSource();
 
   assert.match(source, /sessionKey: activeConv\.id/, 'the main transcript should key resets by selected session');
@@ -209,14 +223,14 @@ test('virtualized chat transcripts reset by session identity even for equal-leng
 
 test('virtualized chat transcripts load and mount off-page jump targets', () => {
   const source = chatsPageSource();
-  const pane = chatSessionPaneBlock(source);
+  const pane = chatSessionPaneBlock();
   const virtual = virtualTranscriptSource();
 
   assert.match(source, /type TranscriptNavigationRequest/, 'jumps into windowed transcripts should use an explicit navigation request');
   assert.match(pane, /findNavigationIndex=\{\(entry, messageId\)/, 'ChatSessionPane should resolve jump targets against loaded messages');
   assert.match(
     pane,
-    /const handleNavigationReady = useCallback\([\s\S]*navigateToTranscriptMessage\(messageId, scrollRef\)[\s\S]*\[scrollRef\]\);/,
+    /const handleNavigationReady = useCallback\([\s\S]*navigateToTranscriptMessage\(messageId, scrollRef\)[\s\S]*\[scrollRef\],?\s*\);/,
     'the shared pane should expose a stable mounted-target navigation callback',
   );
   assert.match(
@@ -235,7 +249,7 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
 
 test('side-panel Agent session uses independent full-pane destination subtitles', () => {
   const source = chatsPageSource();
-  const pane = chatSessionPaneBlock(source);
+  const pane = chatSessionPaneBlock();
   const side = sidePanelBlock(source);
 
   assert.match(pane, /onOpenMessageDetail,/, 'ChatSessionPane should destructure onOpenMessageDetail');
@@ -300,7 +314,7 @@ test('queued Ask Agent bubbles expose icon-only edit and cancel actions before q
   assert.match(appModel, /handleEditQueuedMessage/);
   assert.match(queuedActions, /updateScopeDraft\([\s\S]*current,[\s\S]*'chat',[\s\S]*queuedMessage\.sessionId,[\s\S]*queuedMessage\.text/);
   assert.match(queuedActions, /removeQueuedDesktopMessageById\([\s\S]*current,[\s\S]*sessionId,[\s\S]*queuedMessageId/);
-  const queuedBubble = blockBetween(chatsSource, 'function QueuedMessageBubble', 'function chatMessageActionId');
+  const queuedBubble = queuedMessageSource();
   assert.match(chatsSource, /onCancelQueuedMessage/);
   assert.match(chatsSource, /onEditQueuedMessage/);
   assert.match(queuedBubble, /className="mt-0\.5 flex items-center gap-2"/);

@@ -1,26 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, ComponentType, Dispatch, DragEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
+import type { Dispatch, DragEvent, PointerEvent as ReactPointerEvent, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
   ChevronLeft,
-  CheckCircle2,
-  Clock3,
   Cloud,
   Columns2,
   Copy,
   Ellipsis,
   FileText,
-  FolderOpen,
   GripVertical,
   Image as ImageIcon,
-  Info,
-  LoaderCircle,
-  MessageSquare,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
-  Pin,
   Send,
   Split,
   SquarePen,
@@ -45,1086 +38,144 @@ import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
-import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
-  LiveChatTurnMessage,
-  MessageBubble,
   fallbackComposerThinkingValue,
   type ComposerModelOption,
   type ComposerProviderOption,
   type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
 import type {
-  ComposerQuoteState,
   Contact,
   Conversation,
   ConversationParticipant,
   DesktopCollaborationAgentRouting,
   DesktopCollaborationHost,
-  DesktopChatTurnSnapshot,
-  DetailTab,
   EditFilePreview,
   Message,
   MessageSourceReference,
-  QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
-import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
-import { buildReplyAttribution, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
+import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
   focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
-import {
-  transcriptWindowMessageIdentity,
-  transcriptWindowMessageMatchesId,
-} from '@/features/chat/transcriptWindowing';
-import { collaborationMessageSourceId } from '@/features/collaboration/legacyBridgeCompatibility';
-import {
-  VirtualTranscript,
-  type VirtualTranscriptNavigationRequest,
-} from '@/features/chat/VirtualTranscript';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
-import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
-import { navigateToTranscriptMessage, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
-import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { MemberContactProfilePopover } from '@/pages/MemberContactProfilePopover';
 import type {
   ChatAttachment as Attachment,
-  ChatSessionPaneProps,
   ChatsPageProps,
 } from '@/pages/chatsPage.types';
+import {
+  SessionDestinationTabs,
+} from '@/pages/chatsPage.destinations';
+import {
+  CHAT_DETAIL_TABS,
+  detailDestinationFromTab,
+} from '@/pages/chatsPage.destinationModel';
+import type {
+  ChatDestination,
+  ChatDetailDestination,
+} from '@/pages/chatsPage.destinationModel';
+import {
+  chatHeaderSubtitle,
+  cloudSelfAgentSyncStatusLabel,
+  localAgentComposerConfigTargetSessionId,
+  scheduleTranscriptScrollToBottom,
+  selfAgentSessionIdForTitleRename,
+  shouldUseCompactModelRouteMenu,
+} from '@/pages/chatsPage.header';
+import {
+  PinMessageDialog,
+  PinnedMessageBar,
+} from '@/pages/chatsPage.pins';
+import {
+  chatMessageActionId,
+  pinnedMessageCandidateIds,
+  stableCloudPinMessageId,
+} from '@/pages/chatsPage.pinModel';
+import {
+  ChatComposerShell,
+  ChatSessionPane,
+  SessionStartingState,
+} from '@/pages/chatsPage.sessionPane';
+import {
+  sameTranscriptNavigationRequest,
+} from '@/pages/chatsPage.navigation';
+import type { TranscriptNavigationRequest } from '@/pages/chatsPage.navigation';
+import {
+  CHAT_COMPANION_DRAG_TYPE,
+  authChoiceFromProviderOption,
+  buildAskAgentSessionReferenceContext,
+  buildAskAgentSessionReferenceContextMessage,
+  canonicalHistorySessionIdForConversation,
+  chatCompanionCandidates,
+  chatCompanionSideForPaneKinds,
+  chatCompanionSideFromDropPosition,
+  chatSideAgentConversationForOpenRequest,
+  chatTranscriptDensityMode,
+  clampChatSplitFraction,
+  collaborationRouteDisplayName,
+  collaborationThinkingDisplayName,
+  companionLabel,
+  conversationPaneKind,
+  firstModelForProvider,
+  forkSnapshotBoundaryIndexForMessages,
+  forkSourceMessageIds,
+  humanSideForCompanionSide,
+  pairedCompanionConversation,
+  parseAskAgentTriggerCommand,
+  transcriptHumanParticipant,
+} from '@/pages/chatsPage.model';
+import type { CompanionSide } from '@/pages/chatsPage.model';
+
+export {
+  chatHeaderSubtitle,
+  cloudSelfAgentSyncStatusLabel,
+  isGenericChatHeaderSubtitle,
+  localAgentComposerConfigTargetSessionId,
+  selfAgentSessionIdForTitleRename,
+  shouldUseCompactModelRouteMenu,
+} from '@/pages/chatsPage.header';
+export {
+  PinMessageDialog,
+  PinnedMessageBar,
+} from '@/pages/chatsPage.pins';
+export {
+  buildAskAgentSessionReferenceContext,
+  buildAskAgentSessionReferenceContextMessage,
+  canonicalHistorySessionIdForConversation,
+  chatCompanionCandidates,
+  chatCompanionSideForPaneKinds,
+  chatCompanionSideFromDropPosition,
+  chatComposerSubmitMode,
+  chatSideAgentConversationForOpenRequest,
+  forkSnapshotBoundaryIndexForMessages,
+  forkSourceMessageIds,
+  humanSideForCompanionSide,
+  pairedCompanionConversation,
+  parseAskAgentTriggerCommand,
+  transcriptHumanParticipant,
+} from '@/pages/chatsPage.model';
 
 export const COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const COLLABORATION_ROUTING_NOTICE_EXIT_MS = 180;
-
-type ChatDestination = 'messages' | 'info' | 'artifacts' | 'tasks';
-type ChatDetailDestination = Exclude<ChatDestination, 'messages'>;
-
-const CHAT_DESTINATIONS: ReadonlyArray<{
-  id: ChatDestination;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-}> = [
-  { id: 'messages', label: 'Messages', icon: MessageSquare },
-  { id: 'info', label: 'Info', icon: Info },
-  { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
-  { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
-];
-
-const CHAT_DETAIL_TABS: ReadonlyArray<{
-  id: DetailTab;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-}> = CHAT_DESTINATIONS
-  .filter((destination): destination is (typeof CHAT_DESTINATIONS)[number] & { id: ChatDetailDestination } => destination.id !== 'messages')
-  .map(({ id, label, icon }) => ({ id, label, icon }));
-
-function detailDestinationFromTab(tab: DetailTab): ChatDetailDestination {
-  return tab === 'artifacts' || tab === 'tasks' ? tab : 'info';
-}
-
-function SessionDestinationTabs({
-  scope,
-  activeDestination,
-  onSelect,
-}: {
-  scope: 'main' | 'companion';
-  activeDestination: ChatDestination;
-  onSelect: (destination: ChatDestination) => void;
-}) {
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  const focusTab = (index: number) => {
-    const destinationCount = CHAT_DESTINATIONS.length;
-    const normalizedIndex = (index + destinationCount) % destinationCount;
-    onSelect(CHAT_DESTINATIONS[normalizedIndex].id);
-    tabRefs.current[normalizedIndex]?.focus();
-  };
-
-  return (
-    <nav
-      className="app-chat-destination-tabs"
-      aria-label={scope === 'main' ? 'Session destinations' : 'Ask Agent destinations'}
-      data-chat-destination-tabs={scope}
-      data-kordi-window-drag="false"
-      draggable={false}
-      onDragStart={(event) => event.preventDefault()}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <div className="app-chat-destination-tab-list" role="tablist">
-        {CHAT_DESTINATIONS.map((destination, index) => {
-          const Icon = destination.icon;
-          const active = destination.id === activeDestination;
-          return (
-            <button
-              key={destination.id}
-              ref={(node) => { tabRefs.current[index] = node; }}
-              type="button"
-              role="tab"
-              id={`chat-${scope}-${destination.id}-tab`}
-              aria-controls={`chat-${scope}-${destination.id}-panel`}
-              aria-selected={active}
-              tabIndex={active ? 0 : -1}
-              className={cn('app-chat-destination-tab', active && 'app-chat-destination-tab-active')}
-              data-chat-destination-tab={destination.id}
-              onClick={() => onSelect(destination.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowRight') {
-                  event.preventDefault();
-                  focusTab(index + 1);
-                } else if (event.key === 'ArrowLeft') {
-                  event.preventDefault();
-                  focusTab(index - 1);
-                } else if (event.key === 'Home') {
-                  event.preventDefault();
-                  focusTab(0);
-                } else if (event.key === 'End') {
-                  event.preventDefault();
-                  focusTab(CHAT_DESTINATIONS.length - 1);
-                }
-              }}
-            >
-              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{destination.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
-
-function scheduleTranscriptScrollToBottom<T extends HTMLElement>(scrollRef: RefObject<T | null>) {
-  if (typeof window === 'undefined') return;
-  const scheduleFrame = typeof window.requestAnimationFrame === 'function'
-    ? window.requestAnimationFrame.bind(window)
-    : (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
-  scheduleFrame(() => {
-    scheduleFrame(() => scrollTranscriptToBottom(scrollRef as RefObject<HTMLElement | null>));
-  });
-}
-
-const GENERIC_CHAT_HEADER_SUBTITLES = new Set([
-  'agent chat',
-  'bridge',
-  'chat',
-  'cloud',
-  'direct chat',
-  'direct person chat',
-  'person chat',
-  'draft',
-  'draft session',
-  'external agent',
-  'group',
-  'group chat',
-  'forked chat',
-  'human',
-  'local',
-  'my agent',
-  'owned',
-  'person',
-]);
-
-export function isGenericChatHeaderSubtitle(value: string): boolean {
-  const normalized = value.trim().replace(/\s+/g, ' ').toLowerCase();
-  return normalized.length === 0 || GENERIC_CHAT_HEADER_SUBTITLES.has(normalized);
-}
-
-export function chatHeaderSubtitle(conversation: Pick<Conversation, 'subtitle'>): string | null {
-  const formatted = formatSessionIdSubtitle(conversation.subtitle).trim();
-  if (!formatted || isGenericChatHeaderSubtitle(formatted)) return null;
-  return formatted;
-}
-
-export function shouldUseCompactModelRouteMenu(conversation: Pick<Conversation, 'type' | 'directness'>): boolean {
-  const type = String(conversation.type ?? '').trim().toLowerCase();
-  const directness = String(conversation.directness ?? '').trim().toLowerCase();
-  return type === 'person' || type === 'group' || directness.includes('group');
-}
-
-export function localAgentComposerConfigTargetSessionId(
-  conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>,
-): string | null {
-  return conversation.canonicalSessionId?.trim() || conversation.id.trim() || null;
-}
-
-export function selfAgentSessionIdForTitleRename(
-  conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'type'>,
-): string | null {
-  if (conversation.type !== 'owned-agent') return null;
-  const sessionId = conversation.canonicalSessionId?.trim() || conversation.id.trim();
-  if (
-    !sessionId
-    || sessionId === LOCAL_DRAFT_CHAT_CONVERSATION_ID
-    || sessionId.startsWith('draft:')
-    || isCloudAgentRuntimeSessionId(sessionId)
-  ) {
-    return null;
-  }
-  return sessionId;
-}
-
-export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
-  if (!status) return null;
-  if (status.state === 'syncing') {
-    const pendingCount = typeof status.pendingCount === 'number' && Number.isFinite(status.pendingCount)
-      ? Math.max(0, Math.floor(status.pendingCount))
-      : 0;
-    return pendingCount > 1 ? `Syncing ${pendingCount}` : 'Syncing';
-  }
-  if (status.state === 'synced') return 'Synced';
-  return 'Sync issue';
-}
-
-function humanTranscriptGroupKey(message?: Message) {
-  if (!message || message.role === 'system' || message.role === 'action' || message.role === 'edit' || message.turn) return null;
-  const senderType = message.senderType ?? (message.role === 'user' || message.role === 'person' ? 'human' : 'agent');
-  const isOwnHuman = (message.isOwnMessage ?? message.role === 'user') && senderType === 'human';
-  const isPeerHuman = !isOwnHuman && (senderType === 'human' || message.role === 'person');
-  if (!isOwnHuman && !isPeerHuman) return null;
-
-  const side = isOwnHuman ? 'own' : 'peer';
-  const senderKey = message.senderAvatarSeed?.trim()
-    || message.senderProfileImageUrl?.trim()
-    || message.sender?.trim()
-    || side;
-  return `${side}:${senderKey}`;
-}
-
-function isGroupedWithAdjacentHumanMessage(messages: readonly Message[], index: number, offset: -1 | 1) {
-  const currentKey = humanTranscriptGroupKey(messages[index]);
-  return Boolean(currentKey && currentKey === humanTranscriptGroupKey(messages[index + offset]));
-}
-
-type QueuedMessageBubbleProps = {
-  message: QueuedDesktopChatMessage;
-  isCompressionActive: boolean;
-  onEdit?: (sessionId: string, queuedMessageId: string) => void;
-  onCancel?: (sessionId: string, queuedMessageId: string) => void;
-};
-
-function QueuedMessageBubble({ message, isCompressionActive, onEdit, onCancel }: QueuedMessageBubbleProps) {
-  return (
-    <div className="flex justify-end py-0.5">
-      <div className={cn('app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right', queuedMessageBubbleShapeClass)}>
-        <MessageBubbleShapeBackdrop side="own" />
-        <div className="min-w-0 text-left">
-          <div className="mb-0.5 flex items-center justify-between gap-3">
-            <div className="app-queued-message-label inline-flex min-w-0 items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
-              <Clock3 className="h-2.5 w-2.5 shrink-0" />
-              <span className="truncate">{isCompressionActive ? 'Queued during compression' : 'Queued next'}</span>
-            </div>
-            <div className="app-queued-message-meta shrink-0 text-[10px] leading-none">{message.time}</div>
-          </div>
-          <div className="mt-0.5 flex items-center gap-2">
-            <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
-            <div className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center" aria-label="Queued message actions">
-              <button
-                type="button"
-                className="app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70"
-                aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
-                title="Edit queued message"
-                onClick={() => onEdit?.(message.sessionId, message.id)}
-              >
-                <SquarePen className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70"
-                aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
-                title="Cancel queued message"
-                onClick={() => onCancel?.(message.sessionId, message.id)}
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        </div>
-        {message.attachments.length > 0 ? (
-          <div className="app-queued-message-meta mt-1 text-[10px] leading-none">
-            {message.attachments.length} attachment{message.attachments.length === 1 ? '' : 's'} waiting
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function chatMessageActionId(message: Message) {
-  return message.id?.trim() || message.entryId?.trim() || message.turn?.id?.trim() || '';
-}
-
-function stableCloudPinMessageId(message: Message, conversationId: string) {
-  const actionId = chatMessageActionId(message);
-  return collaborationMessageSourceId(actionId, conversationId) ?? actionId;
-}
-
-function pinnedMessageCandidateIds(message: Message, conversationId: string) {
-  return [...new Set([chatMessageActionId(message), stableCloudPinMessageId(message, conversationId)].map((value) => value.trim()).filter(Boolean))];
-}
-
-function pinnedMessagePreview(message: Message) {
-  const text = message.turn?.assistantText?.trim() || message.text.trim() || message.detail?.trim();
-  if (text) return text.replace(/\s+/g, ' ');
-  const attachments = message.attachments ?? [];
-  if (attachments.length === 1) return attachments[0]?.kind === 'image' ? 'Photo' : attachments[0]?.name || 'Attachment';
-  if (attachments.length > 1) return `${attachments.length} attachments`;
-  return 'Message';
-}
-
-function pinnedMessageSenderLabel(message: Message) {
-  const sourceLabel = message.sourceSenderLabel?.trim();
-  if (sourceLabel && sourceLabel.toLowerCase() !== 'me') return sourceLabel;
-  const sender = message.sender?.trim();
-  if (sender && sender.toLowerCase() !== 'me') return sender;
-  return sourceLabel || sender || '';
-}
-
-export function PinnedMessageBar({
-  message,
-  onOpenMessage,
-  onRequestUnpin,
-}: {
-  message: Message;
-  onOpenMessage?: () => void;
-  onRequestUnpin: () => void;
-}) {
-  const sender = pinnedMessageSenderLabel(message);
-  const preview = pinnedMessagePreview(message);
-  return (
-    <div
-      data-pinned-message-bar="true"
-      className="app-pinned-message-bar shrink-0 border-b border-[color:var(--app-divider)] px-4 py-2"
-      style={{ background: 'color-mix(in srgb, var(--app-panel-bg) 94%, var(--app-text) 6%)' }}
-    >
-      <div className="flex min-h-9 items-center gap-2.5">
-        <Pin className="h-3.5 w-3.5 shrink-0 text-[color:var(--utility-muted-text)]" aria-hidden="true" />
-        <button type="button" onClick={onOpenMessage} className="min-w-0 flex-1 text-left" aria-label="Open pinned message">
-          <div className="text-[12px] font-medium leading-4 text-[color:var(--utility-muted-text)]">pinged</div>
-          <div className="truncate text-[13px] leading-4 text-[color:var(--app-text)]">
-            {sender ? `${sender}: ${preview}` : preview}
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={onRequestUnpin}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-hover-bg)] hover:text-[color:var(--app-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--app-focus)]"
-          aria-label="Unpin pinned message"
-          title="Unpin pinned message"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function PinMessageDialog({
-  mode,
-  message: _message,
-  pinForEveryone,
-  onTogglePinForEveryone,
-  onCancel,
-  onConfirm,
-}: {
-  mode: 'pin' | 'unpin';
-  message: Message;
-  pinForEveryone: boolean;
-  onTogglePinForEveryone: (value: boolean) => void;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const isPin = mode === 'pin';
-  return (
-    <div className="app-transient-overlay fixed inset-0 z-[300] grid place-items-center px-4" data-pin-message-dialog={mode}>
-      <div className="app-transient-surface w-full max-w-[28rem] rounded-[18px] border px-6 py-5">
-        <div className="text-[15px] font-medium leading-6">
-          {isPin ? 'Pin this message?' : 'Unpin this message?'}
-        </div>
-        {isPin ? (
-          <label className="mt-5 flex items-center gap-3 text-[14px] font-medium leading-5">
-            <input
-              type="checkbox"
-              checked={pinForEveryone}
-              onChange={(event) => onTogglePinForEveryone(event.currentTarget.checked)}
-              className="h-5.5 w-5.5 rounded border-2 border-[color:var(--app-transient-border)]"
-            />
-            <span>Pin for everyone</span>
-          </label>
-        ) : null}
-        <div className="mt-6 flex justify-end gap-2 text-[14px] font-semibold">
-          <button type="button" onClick={onCancel} className="app-transient-row rounded-[10px] px-3 py-1.5 transition">Cancel</button>
-          <button type="button" onClick={onConfirm} className="app-transient-row app-transient-row-selected rounded-[10px] px-3 py-1.5 transition">{isPin ? 'Pin' : 'Unpin'}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type ChatComposerShellProps = {
-  children: ReactNode;
-  chatComposerAttachments?: Attachment[];
-  saveDesktopAttachments?: (files: File[]) => Promise<Attachment[]>;
-  saveDesktopAttachmentPaths?: (paths: string[]) => Promise<Attachment[]>;
-  removeChatComposerAttachment?: (id: string) => void;
-  activeChatQuote?: ComposerQuoteState | null;
-  onForwardMessage?: (message: Message) => void;
-  onOpenMessageDetail?: (message: Message) => void;
-  rightDetailRail?: ReactNode;
-  setIsDetailPanelCollapsed?: Dispatch<SetStateAction<boolean>>;
-  className?: string;
-};
-
-function ChatComposerShell({ children }: ChatComposerShellProps) {
-  return <>{children}</>;
-}
-
-function SessionStartingState() {
-  return (
-    <div
-      className="flex h-full min-h-48 items-center justify-center"
-      data-session-starting-state="true"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <div className="inline-flex items-center gap-2 text-[13px] font-medium text-[color:var(--utility-muted-text)]">
-        <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-        <span>Starting session…</span>
-      </div>
-    </div>
-  );
-}
-
-type TranscriptNavigationRequest = VirtualTranscriptNavigationRequest;
-
-function sameTranscriptNavigationRequest(
-  current: TranscriptNavigationRequest,
-  handled: TranscriptNavigationRequest,
-) {
-  return current.sessionKey === handled.sessionKey
-    && current.nonce === handled.nonce
-    && current.id.trim() === handled.id.trim();
-}
-
-function ChatSessionPane({
-  viewport,
-  presentation,
-  actions,
-  selection,
-}: ChatSessionPaneProps) {
-  const {
-    sessionKey,
-    messages,
-    scrollRef,
-    scrollClassName,
-    onTranscriptScroll,
-    hasOlderMessages = false,
-    onLoadOlderMessages,
-    navigationRequest,
-    onNavigationHandled,
-    emptyState,
-    composer,
-    queuedMessages = [],
-    onEditQueuedMessage,
-    onCancelQueuedMessage,
-  } = viewport;
-  const {
-    liveTurn,
-    liveTurnSender,
-    shouldRenderLiveTurn,
-    isCompressionActive = false,
-    plainAgentResponse = false,
-    inferLatestHumanReplyTarget = false,
-    forkSnapshotBoundaryIndex = -1,
-    activeForkSourceSessionId = null,
-    activeForkSourceTitle = null,
-    messageForksByEntryId,
-    pinnedMessageId,
-    densityMode = 'default',
-  } = presentation;
-  const {
-    onSelectSession,
-    onOpenSource,
-    onOpenArtifact,
-    onOpenAuthSettings,
-    onNavigateToMessage,
-    onOpenMessageDetail,
-    onStopCollaborationAgentRequest,
-    onStopActiveTurn,
-    onRequestCollaborationContact,
-    onOpenSenderProfile,
-    onForkMessage,
-    onOpenForkSession,
-    onReplyMessage,
-    onForwardMessage,
-    onRetryMessage,
-    onSelectMessage,
-    onRequestPinMessage,
-    onRequestUnpinMessage,
-  } = actions;
-  const {
-    selectionMode = false,
-    selectedMessageIds,
-    isMessageSelectable,
-    onToggleSelectedMessage,
-    onSelectionDragStart,
-    onSelectionDragEnter,
-    onSelectionDragEnd,
-    selectedMessageCount = 0,
-    onCancelMessageSelection,
-    onCopySelectedMessages,
-    onForwardSelectedMessages,
-    messageSelectionMode = false,
-  } = selection;
-  const attributedTranscript = useMemo(
-    () => buildReplyAttribution(messages, shouldRenderLiveTurn ? liveTurn : null, {
-      inferLatestHumanRequest: inferLatestHumanReplyTarget,
-      suppressAgentReplyAttribution: plainAgentResponse,
-    }),
-    [inferLatestHumanReplyTarget, liveTurn, messages, plainAgentResponse, shouldRenderLiveTurn],
-  );
-  const originalIndexByMessageKey = useMemo(() => new Map(messages.map((message, index) => [
-    transcriptWindowMessageIdentity(message, index),
-    index,
-  ])), [messages]);
-  const transcriptEntries = useMemo(() => attributedTranscript.messages.map((message, index) => ({
-    message,
-    originalIndex: originalIndexByMessageKey.get(transcriptWindowMessageIdentity(message, index)) ?? index,
-  })), [attributedTranscript.messages, originalIndexByMessageKey]);
-  const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
-  const liveTurnTailKey = shouldRenderLiveTurn && attributedLiveTurn ? [
-    attributedLiveTurn.id,
-    attributedLiveTurn.status,
-    attributedLiveTurn.completed ? 'complete' : 'active',
-    attributedLiveTurn.prompt.length,
-    attributedLiveTurn.message.length,
-    attributedLiveTurn.assistantText.length,
-    attributedLiveTurn.thinkingText.length,
-    attributedLiveTurn.tools.map((tool) => [
-      tool.id,
-      tool.status,
-      tool.arguments.length,
-      tool.liveOutput.length,
-      tool.resultText?.length ?? 0,
-      tool.detail?.length ?? 0,
-    ].join(':')).join(','),
-  ].join(':') : 'no-live-turn';
-  const transcriptTailKey = `${liveTurnTailKey}|${queuedMessages.map((message) => (
-    `${message.id}:${message.text.length}:${message.attachments.length}`
-  )).join(',')}`;
-  const handleNavigationReady = useCallback((messageId: string) => {
-    navigateToTranscriptMessage(messageId, scrollRef);
-  }, [scrollRef]);
-
-  return (
-    <>
-      <VirtualTranscript
-        items={transcriptEntries}
-        sessionKey={sessionKey}
-        scrollRef={scrollRef}
-        scrollClassName={scrollClassName}
-        onScroll={() => onTranscriptScroll?.()}
-        navigationRequest={navigationRequest}
-        onNavigationHandled={onNavigationHandled}
-        findNavigationIndex={(entry, messageId) => transcriptWindowMessageMatchesId(
-          entry.message,
-          messageId,
-          entry.originalIndex,
-        )}
-        onNavigationReady={handleNavigationReady}
-        hasOlder={hasOlderMessages}
-        onLoadOlder={onLoadOlderMessages}
-        getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
-        renderItem={({ message: msg, originalIndex: idx }) => (
-          <div>
-            <MessageBubble
-              msg={msg}
-              onOpenSource={onOpenSource}
-              onOpenArtifact={onOpenArtifact}
-              onOpenAuthSettings={onOpenAuthSettings}
-              onNavigateToMessage={onNavigateToMessage}
-              onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-              onRequestCollaborationContact={onRequestCollaborationContact}
-              onOpenSenderProfile={onOpenSenderProfile}
-              onForkMessage={onForkMessage}
-              messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
-              onOpenForkSession={onOpenForkSession}
-              onReplyMessage={onReplyMessage}
-              onForwardMessage={onForwardMessage}
-              onRetryMessage={onRetryMessage}
-              onOpenMessageDetail={onOpenMessageDetail}
-              onSelectMessage={onSelectMessage}
-              onRequestPinMessage={onRequestPinMessage}
-              onRequestUnpinMessage={onRequestUnpinMessage}
-              pinnedMessageId={pinnedMessageId}
-              selectionMode={selectionMode}
-              selectedMessageIds={selectedMessageIds}
-              isMessageSelectable={isMessageSelectable}
-              densityMode={densityMode}
-              onToggleSelectedMessage={onToggleSelectedMessage}
-              onSelectionDragStart={onSelectionDragStart}
-              onSelectionDragEnter={onSelectionDragEnter}
-              onSelectionDragEnd={onSelectionDragEnd}
-              plainAgentResponse={plainAgentResponse}
-              isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
-              isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
-            />
-            {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
-              <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
-                <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                <button
-                  type="button"
-                  onClick={() => onSelectSession?.(activeForkSourceSessionId)}
-                  disabled={!onSelectSession}
-                  className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
-                  title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
-                >
-                  <Split className="h-3 w-3" />
-                  <span>Forked from conversation</span>
-                </button>
-                <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-              </div>
-            ) : null}
-          </div>
-        )}
-        emptyState={!shouldRenderLiveTurn ? emptyState : null}
-        tailKey={transcriptTailKey}
-        tail={(
-          <div className="space-y-1">
-            {shouldRenderLiveTurn && attributedLiveTurn ? (
-              <LiveChatTurnMessage
-                turn={attributedLiveTurn}
-                sender={liveTurnSender}
-                onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-                onStopActiveTurn={onStopActiveTurn}
-                plainAgentResponse={plainAgentResponse}
-                onNavigateToMessage={onNavigateToMessage}
-                onOpenArtifact={onOpenArtifact}
-                onOpenAuthSettings={onOpenAuthSettings}
-              />
-            ) : null}
-            {queuedMessages.map((message) => (
-              <QueuedMessageBubble
-                key={message.id}
-                message={message}
-                isCompressionActive={isCompressionActive}
-                onEdit={onEditQueuedMessage}
-                onCancel={onCancelQueuedMessage}
-              />
-            ))}
-          </div>
-        )}
-      />
-      {messageSelectionMode && selectedMessageCount > 0 ? (
-        <div className="px-5 pt-3">
-          <div
-            data-message-selection-bar="true"
-            className="app-message-selection-bar flex items-center justify-between gap-3 rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] px-3.5 py-2.5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
-          >
-            <div className="text-[12px] font-semibold tabular-nums">
-              {selectedMessageCount} selected
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
-                onClick={onCancelMessageSelection}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={onCopySelectedMessages}
-                disabled={!onCopySelectedMessages || selectedMessageCount <= 0}
-              >
-                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                Copy
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--app-sidebar-accent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--app-sidebar-accent-text)] transition disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={onForwardSelectedMessages}
-                disabled={!onForwardSelectedMessages || selectedMessageCount <= 0}
-              >
-                <Send className="h-3.5 w-3.5" aria-hidden="true" />
-                Forward
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-      {composer}
-    </>
-  );
-}
-
-type CompanionSide = 'left' | 'right';
-
-const CHAT_COMPANION_DRAG_TYPE = 'application/x-kordi-chat-companion';
-
-function cleanKey(value?: string | null) {
-  return value?.trim().toLowerCase() ?? '';
-}
-
-function participantIsSelf(participant: ConversationParticipant) {
-  return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
-}
-
-function conversationIsGroupChat(conversation: Conversation) {
-  return conversation.canonicalSessionId?.startsWith('session:group:') === true
-    || conversation.participantSpaceId?.startsWith('group:') === true
-    || /\bgroup\b/i.test(conversation.directness ?? '');
-}
-
-function conversationIsHumanChat(conversation: Conversation) {
-  return conversationIsGroupChat(conversation) || (!conversationIsAgentChat(conversation) && (
-    conversation.type === 'person'
-    || conversation.canonicalParticipants?.some((participant) => !participantIsSelf(participant) && participant.kind === 'human') === true
-  ));
-}
-
-function conversationIsAgentChat(conversation: Conversation) {
-  return !conversationIsGroupChat(conversation)
-    && (conversation.type === 'owned-agent' || conversation.type === 'external-agent');
-}
-
-function conversationUsesCompactHumanTranscriptDensity(conversation: Conversation) {
-  if (conversationIsAgentChat(conversation)) return false;
-  if (conversationIsGroupChat(conversation)) return true;
-  if (conversation.type === 'person') return true;
-  const directness = conversation.directness?.trim().toLowerCase() ?? '';
-  if (/\b(?:direct|person|contact)\b/.test(directness)) return true;
-  const nonSelfHumanCount = (conversation.canonicalParticipants ?? [])
-    .filter((participant) => !participantIsSelf(participant) && participant.kind === 'human')
-    .length;
-  return nonSelfHumanCount === 1;
-}
-
-function chatTranscriptDensityMode(conversation: Conversation): TranscriptDensityMode {
-  if (conversationIsAgentChat(conversation)) return 'agent-compact';
-  if (conversationIsGroupChat(conversation)) return 'group-compact';
-  if (conversationUsesCompactHumanTranscriptDensity(conversation)) return 'contact-compact';
-  return 'default';
-}
-
-export function transcriptHumanParticipant(
-  conversation: Conversation,
-  message: Message,
-): ConversationParticipant | null {
-  if (message.isOwnMessage || message.senderType === 'agent') return null;
-  const humanParticipants = (conversation.canonicalParticipants ?? [])
-    .filter((participant) => participant.kind === 'human');
-  const senderIdentityId = message.senderIdentityId?.trim();
-  if (senderIdentityId) {
-    const exact = humanParticipants.find((participant) => (
-      participant.id === senderIdentityId
-      || participant.humanId?.trim() === senderIdentityId
-      || participant.sourceIdentityId?.trim() === senderIdentityId
-    ));
-    if (exact) return exact;
-  }
-  const senderName = message.sender?.trim().toLocaleLowerCase();
-  if (!senderName) return null;
-  const nameMatches = humanParticipants.filter((participant) => (
-    participant.name.trim().toLocaleLowerCase() === senderName
-  ));
-  return nameMatches.length === 1 ? nameMatches[0] : null;
-}
-
-function addScopedKey(keys: Set<string>, scope: string, value?: string | null) {
-  const normalized = cleanKey(value);
-  if (normalized) keys.add(`${scope}:${normalized}`);
-}
-
-function addPersonRelationshipKey(keys: Set<string>, hostScope: string, value?: string | null) {
-  addScopedKey(keys, `${hostScope}:human`, value);
-  addScopedKey(keys, `${hostScope}:owner`, value);
-}
-
-function conversationRelationshipKeys(conversation: Conversation) {
-  const keys = new Set<string>();
-  const hostScope = cleanKey(conversation.collaborationTarget?.hostId) || cleanKey(conversation.identity?.sourceHostId) || 'local';
-
-  addPersonRelationshipKey(keys, hostScope, conversation.collaborationTarget?.humanId);
-  addScopedKey(keys, `${hostScope}:node`, conversation.collaborationTarget?.nodeId);
-  addScopedKey(keys, `${hostScope}:owner`, conversation.collaborationTarget?.ownerName);
-  addPersonRelationshipKey(keys, hostScope, conversation.identity?.remoteHumanId);
-  addScopedKey(keys, `${hostScope}:node`, conversation.identity?.remoteHumanNodeId);
-
-  for (const participant of conversation.canonicalParticipants ?? []) {
-    if (participantIsSelf(participant)) continue;
-    addPersonRelationshipKey(keys, hostScope, participant.id);
-    addPersonRelationshipKey(keys, hostScope, participant.humanId);
-    addPersonRelationshipKey(keys, hostScope, participant.ownerIdentityId);
-    addScopedKey(keys, `${hostScope}:node`, participant.sourceIdentityId);
-
-    if (participant.kind === 'human') {
-      addScopedKey(keys, `${hostScope}:owner`, participant.name);
-      continue;
-    }
-
-    addScopedKey(keys, `${hostScope}:owner`, participant.ownerName);
-  }
-
-  return keys;
-}
-
-function relationshipKeyOverlap(left: Conversation, right: Conversation) {
-  const leftKeys = conversationRelationshipKeys(left);
-  if (leftKeys.size === 0) return false;
-  for (const key of conversationRelationshipKeys(right)) {
-    if (leftKeys.has(key)) return true;
-  }
-  return false;
-}
-
-export function pairedCompanionConversation(activeConv: Conversation, conversations: Conversation[]) {
-  const wantsAgent = conversationIsHumanChat(activeConv);
-  const wantsHuman = conversationIsAgentChat(activeConv);
-  if (!wantsAgent && !wantsHuman) return null;
-
-  return conversations.find((conversation) => (
-    conversation.id !== activeConv.id
-    && (wantsAgent ? conversationIsAgentChat(conversation) : conversationIsHumanChat(conversation))
-    && relationshipKeyOverlap(activeConv, conversation)
-  )) ?? null;
-}
-
-export function chatCompanionCandidates(activeConv: Conversation, conversations: Conversation[] = []) {
-  return conversations.filter((conversation) => (
-    conversation.id !== activeConv.id
-    && conversationIsAgentChat(conversation)
-  ));
-}
-
-export function chatSideAgentConversationForOpenRequest(
-  requestedConversationId: string | null,
-  candidates: Conversation[],
-) {
-  if (!requestedConversationId) return null;
-  return candidates.find((conversation) => conversation.id === requestedConversationId) ?? null;
-}
-
-export function canonicalHistorySessionIdForConversation(
-  conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'desktopRuntimeBacked'>,
-) {
-  if (conversation.desktopRuntimeBacked) return null;
-  return conversation.canonicalSessionId ?? conversation.id;
-}
-
-export function parseAskAgentTriggerCommand(text: string) {
-  const trimmed = text.trimStart();
-  const match = trimmed.match(/^\/ask(?:\s+([\s\S]*))?$/i);
-  if (!match) return null;
-  return { prompt: match[1]?.trim() ?? '' };
-}
-
-function messageTextForReference(message: Message) {
-  const text = message.text?.trim() || message.turn?.assistantText?.trim() || message.detail?.trim() || '';
-  return text.replace(/\s+/g, ' ').slice(0, 240);
-}
-
-export function buildAskAgentSessionReferenceContext(conversation: Conversation, recentLimit = 6) {
-  const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
-  const typeLabel = conversation.directness?.trim() || conversation.type || 'chat';
-  const participants = (conversation.canonicalParticipants ?? conversation.participants ?? [])
-    .map((participant) => (typeof participant === 'string' ? participant : participant.name)?.trim())
-    .filter((name): name is string => Boolean(name))
-    .slice(0, 8);
-  const recentMessages = conversation.messages
-    .filter((message) => message.role !== 'system' && message.role !== 'action')
-    .map((message) => ({
-      sender: message.sender?.trim() || (message.role === 'user' ? 'Me' : message.role),
-      text: messageTextForReference(message),
-    }))
-    .filter((message) => message.text.length > 0)
-    .slice(-Math.max(1, recentLimit));
-
-  return [
-    'Reference: Current chat',
-    `Session: ${conversation.name}`,
-    `Session id: ${sessionId}`,
-    `Type: ${typeLabel}`,
-    participants.length > 0 ? `Participants: ${participants.join(', ')}` : null,
-    recentMessages.length > 0 ? 'Recent messages:' : null,
-    ...recentMessages.map((message) => `- ${message.sender}: ${message.text}`),
-  ].filter(Boolean).join('\n');
-}
-
-export function buildAskAgentSessionReferenceContextMessage(conversation: Conversation, text: string): DesktopChatContextMessage | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
-  return {
-    id: `ask-agent-reference:${sessionId}`,
-    authorName: 'Current chat reference',
-    authorKind: 'human',
-    text: trimmed,
-    createdAtMs: Date.now(),
-  };
-}
-
-export function forkSourceMessageIds(
-  conversation: Pick<Conversation, 'forkedFromMessageId' | 'metadata'>,
-): Set<string> {
-  const ids = new Set<string>();
-  const primaryId = conversation.forkedFromMessageId?.trim();
-  if (primaryId) ids.add(primaryId);
-  const metadata = conversation.metadata && typeof conversation.metadata === 'object' && !Array.isArray(conversation.metadata)
-    ? conversation.metadata as Record<string, unknown>
-    : null;
-  const fork = metadata?.fork && typeof metadata.fork === 'object' && !Array.isArray(metadata.fork)
-    ? metadata.fork as Record<string, unknown>
-    : null;
-  const metadataPrimaryId = typeof fork?.forkedFromMessageId === 'string'
-    ? fork.forkedFromMessageId.trim()
-    : '';
-  if (metadataPrimaryId) ids.add(metadataPrimaryId);
-  if (Array.isArray(fork?.forkedFromMessageAliases)) {
-    for (const value of fork.forkedFromMessageAliases) {
-      if (typeof value !== 'string') continue;
-      const alias = value.trim();
-      if (alias) ids.add(alias);
-    }
-  }
-  return ids;
-}
-
-export function forkSnapshotBoundaryIndexForMessages(
-  messages: readonly Message[],
-  sourceMessageIds: ReadonlySet<string>,
-): number {
-  let lastSnapshotIndex = -1;
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
-    const messageIds = [
-      message.id,
-      message.entryId,
-    ].filter((value): value is string => Boolean(value?.trim()));
-    if (message.isForkSnapshot || messageIds.some((id) => sourceMessageIds.has(id))) {
-      lastSnapshotIndex = index;
-    }
-  }
-  return lastSnapshotIndex;
-}
-
-function companionLabel(conversation: Conversation) {
-  return conversationChatKindLabel(conversation);
-}
-
-function conversationPaneKind(conversation: Conversation): 'human' | 'agent' | null {
-  if (conversationIsGroupChat(conversation)) return 'human';
-  if (conversationIsAgentChat(conversation)) return 'agent';
-  if (conversationIsHumanChat(conversation)) return 'human';
-  return null;
-}
-
-function oppositeCompanionSide(side: CompanionSide): CompanionSide {
-  return side === 'left' ? 'right' : 'left';
-}
-
-export function chatCompanionSideForPaneKinds(
-  activeKind: 'human' | 'agent' | null,
-  humanSide: CompanionSide,
-): CompanionSide {
-  if (activeKind === 'human') return oppositeCompanionSide(humanSide);
-  if (activeKind === 'agent') return humanSide;
-  return oppositeCompanionSide(humanSide);
-}
-
-export function humanSideForCompanionSide(
-  activeKind: 'human' | 'agent' | null,
-  companionSide: CompanionSide,
-): CompanionSide {
-  if (activeKind === 'agent') return companionSide;
-  return oppositeCompanionSide(companionSide);
-}
-
-export function chatCompanionSideFromDropPosition(clientX: number, left: number, width: number): CompanionSide {
-  return clientX < left + (width / 2) ? 'left' : 'right';
-}
-
-function clampChatSplitFraction(value: number) {
-  return Math.min(0.68, Math.max(0.32, value));
-}
-
-function collaborationModelDisplayName(modelValue?: string | null, modelOptions?: ComposerModelOption[]) {
-  if (!modelValue?.trim()) return 'model default';
-  const option = modelOptions?.find((candidate) => candidate.value === modelValue);
-  return option?.label ?? modelValue;
-}
-
-function collaborationThinkingDisplayName(value?: string | null) {
-  if (!value?.trim() || value === 'default') return 'model default';
-  return value[0]?.toUpperCase() + value.slice(1);
-}
-
-export function chatComposerSubmitMode(_input?: {
-  isDesktopChatSending?: boolean;
-  activeLiveTurnIsRunning?: boolean;
-  hasDraft?: boolean;
-  canSendWhileBusy?: boolean;
-}) {
-  // The composer is always in Send mode. Stopping a running turn happens via the
-  // inline stop button on the agent message itself (see #267 / #273); keeping a
-  // separate stop variant on the composer was redundant and prevented users from
-  // queueing a follow-up message while a turn was in flight.
-  return 'send' as const;
-}
-
-function normalizeRoutingProviderId(providerId: string) {
-  const normalized = providerId.trim().toLowerCase();
-  return normalized === 'openai-codex' ? 'openai' : normalized;
-}
-
-function authChoiceFromProviderOption(option: ComposerProviderOption) {
-  return option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
-}
-
-function firstModelForProvider(providerId: string, modelOptions?: ComposerModelOption[]) {
-  const normalized = normalizeRoutingProviderId(providerId);
-  return modelOptions?.find((option) => normalizeRoutingProviderId(option.provider ?? '') === normalized)?.value ?? null;
-}
-
-function collaborationAuthDisplayName(authProvider?: string | null, authChoice?: string | null, providerOptions?: ComposerProviderOption[]) {
-  if (!authProvider?.trim() && !authChoice?.trim()) return null;
-  const option = providerOptions?.find((candidate) => (
-    candidate.providerId === authProvider && authChoiceFromProviderOption(candidate) === (authChoice ?? null)
-  ));
-  if (option) return [option.label, option.detail].filter(Boolean).join(' · ');
-  return authProvider ?? null;
-}
-
-function collaborationRouteDisplayName(
-  modelValue?: string | null,
-  authProvider?: string | null,
-  authChoice?: string | null,
-  modelOptions?: ComposerModelOption[],
-  providerOptions?: ComposerProviderOption[],
-) {
-  const model = collaborationModelDisplayName(modelValue, modelOptions);
-  const auth = collaborationAuthDisplayName(authProvider, authChoice, providerOptions);
-  return auth ? `${auth} · ${model}` : model;
-}
 
 export function ChatsPage({
   layout,
@@ -1145,8 +196,6 @@ export function ChatsPage({
     rightDetailRail,
     activeDetailTab,
     setActiveDetailTab,
-    activeArtifactId,
-    setActiveArtifactId,
   } = layout;
   const {
     activeConv,
@@ -1258,8 +307,6 @@ export function ChatsPage({
   const activeLiveTurnIsRunning = Boolean(
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
-  const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
-  const activeConvUsesCollaborationTransport = activeConv.collaborationSources.some((source) => source.trim().toLowerCase() !== 'local');
   const activeSessionSubtitle = chatHeaderSubtitle(activeConv);
   const activeCloudSelfAgentSyncLabel = cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus);
   const activeSelfAgentSessionId = selfAgentSessionIdForTitleRename(activeConv);

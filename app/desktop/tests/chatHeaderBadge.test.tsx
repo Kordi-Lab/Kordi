@@ -15,6 +15,18 @@ import {
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
 
+function readChatsPageImplementationSource(): string {
+  return [
+    '../src/pages/ChatsPage.tsx',
+    '../src/pages/chatsPage.destinations.tsx',
+    '../src/pages/chatsPage.destinationModel.ts',
+    '../src/pages/chatsPage.model.ts',
+    '../src/pages/chatsPage.sessionPane.tsx',
+  ]
+    .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+    .join('\n');
+}
+
 function conversation(overrides: Partial<Conversation>): Conversation {
   return {
     id: 'conversation',
@@ -40,7 +52,7 @@ test('chat headers do not render My agent or chat-kind label pills', () => {
 });
 
 test('compact transcript density applies to human and agent sessions', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readChatsPageImplementationSource();
 
   assert.match(source, /function chatTranscriptDensityMode\(conversation: Conversation\)/);
   assert.match(source, /conversationUsesCompactHumanTranscriptDensity\(conversation\)/);
@@ -60,7 +72,7 @@ test('chat header title text does not flex-grow away from fork or action pills',
 });
 
 test('chat headers reserve a compact second row for icon destination subtitles', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readChatsPageImplementationSource();
   const shell = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
 
   assert.doesNotMatch(source, /min-h-\[112px\]/);
@@ -392,12 +404,12 @@ test('chat companion composer sends with Enter and keeps modified Enter for line
 });
 
 test('ask agent side transcript renders the same live turn and tool UI as My agent chat', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readChatsPageImplementationSource();
 
   assert.match(source, /const rawCompanionTranscriptLiveTurn = companionConversation\?\.previewLiveTurn \?\? undefined/);
   assert.match(source, /const companionTranscriptLiveTurn = rawCompanionTranscriptLiveTurn && companionConversation/);
   assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
-  assert.match(source, /buildReplyAttribution\(messages, shouldRenderLiveTurn \? liveTurn : null/);
+  assert.match(source, /buildReplyAttribution\(\s*messages,\s*shouldRenderLiveTurn \? liveTurn : null/s);
   assert.match(source, /attributedCompanionTranscriptLiveTurn/);
   assert.match(source, /<ChatSessionPane[\s\S]*liveTurn: attributedCompanionTranscriptLiveTurn/);
 });
