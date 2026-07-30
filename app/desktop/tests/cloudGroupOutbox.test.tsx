@@ -12,7 +12,7 @@ import {
   type CloudGroupOutboxPersistence,
 } from '../src/features/cloud/cloudGroupOutbox';
 import { encodeCloudGroupControl, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
-import { prepareCloudGroupOutboxEntryAttachments } from '../src/features/cloud/useCloudCollaborationState';
+import { prepareCloudGroupOutboxEntryAttachments } from '../src/features/cloud/cloudGroupOutboxAttachments';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 class MemoryPersistence implements CloudGroupOutboxPersistence {

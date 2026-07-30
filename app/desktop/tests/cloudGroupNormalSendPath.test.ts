@@ -5,6 +5,7 @@ import test from 'node:test';
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 const cloudGroupOutboxSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupOutbox.ts', import.meta.url), 'utf8');
+const cloudOutboxDeliverySource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupOutboxDelivery.ts', import.meta.url), 'utf8');
 
 test('plain cloud group messages send through cloud group transport instead of falling through to unavailable', () => {
   const source = chatMessagesSource();
@@ -59,7 +60,7 @@ test('cloud group messages stay sending until the persistent recipient outbox re
 });
 
 test('outbox delivery persistence mutates the exact canonical message without loading a transcript page', () => {
-  const source = cloudBridgeSource();
+  const source = cloudOutboxDeliverySource();
   const start = source.indexOf('const persistCloudGroupOutboxDelivery = useCallback');
   const end = source.indexOf('\n\n  useEffect(() => {', start);
   assert.notEqual(start, -1, 'expected the outbox delivery persistence closure');
@@ -68,21 +69,21 @@ test('outbox delivery persistence mutates the exact canonical message without lo
 
   assert.match(
     persistence,
-    /if \(entry\.trackCanonicalDelivery === false\) \{[\s\S]*?await cloudGroupOutbox\?\.acknowledgeCanonicalDelivery\(entry\.canonicalMessageId\);[\s\S]*?return;/,
+    /if \(entry\.trackCanonicalDelivery === false\) \{[\s\S]*?await outbox\?\.acknowledgeCanonicalDelivery\([\s\S]*?entry\.canonicalMessageId,[\s\S]*?\);[\s\S]*?return;/,
     'untracked terminal sends should acknowledge without invoking native storage',
   );
   assert.match(persistence, /cloudGroupOutboxDeliveryStatus\(entry\)/);
   assert.match(persistence, /await updateCanonicalMessageDelivery\(\{[\s\S]*?messageId:\s*entry\.canonicalMessageId,[\s\S]*?sessionId:\s*entry\.sessionId,/);
   assert.match(persistence, /if \(!delta\) return;/, 'a missing native row must keep the terminal outbox entry for replay');
-  assert.match(persistence, /canonicalSessionStateRef\.current\s*=\s*mergeCanonicalMessageDeliveryDelta\(/);
-  assert.match(persistence, /setCanonicalSessionState\?\.\(\(current\) =>\s*mergeCanonicalMessageDeliveryDelta\(current, delta\)\s*\)/);
+  assert.match(persistence, /canonicalStateRef\.current\s*=\s*[\s\S]*?mergeCanonicalMessageDeliveryDelta\(/);
+  assert.match(persistence, /setCanonicalState\?\.\(\(current\) =>[\s\S]*?mergeCanonicalMessageDeliveryDelta\(current, delta\)[\s\S]*?\)/);
   assert.doesNotMatch(persistence, /fetchCanonicalSessionMessages/);
   assert.doesNotMatch(persistence, /\b200\b/);
   assert.doesNotMatch(persistence, /upsertCanonicalMessageFast/);
-  assert.equal((persistence.match(/setCanonicalSessionState\?\.\(/g) ?? []).length, 1);
+  assert.equal((persistence.match(/setCanonicalState\?\.\(/g) ?? []).length, 1);
   const nativeUpdate = persistence.indexOf('await updateCanonicalMessageDelivery');
   const missingCanonicalGuard = persistence.indexOf('if (!delta) return;');
-  const acknowledgement = persistence.lastIndexOf('await cloudGroupOutbox?.acknowledgeCanonicalDelivery');
+  const acknowledgement = persistence.lastIndexOf('await outbox?.acknowledgeCanonicalDelivery');
   assert.ok(nativeUpdate >= 0 && acknowledgement > nativeUpdate, 'native persistence must succeed before terminal acknowledgement');
   assert.ok(
     missingCanonicalGuard > nativeUpdate && acknowledgement > missingCanonicalGuard,

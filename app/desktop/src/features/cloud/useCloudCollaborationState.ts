@@ -8,7 +8,6 @@ import {
   markCanonicalSessionRead,
   upsertCanonicalIdentityFast,
   upsertCanonicalMessageFast,
-  updateCanonicalMessageDelivery,
   type DesktopChatContextMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
@@ -29,7 +28,6 @@ import type {
 } from '@/kordi-app/types';
 import {
   applyCanonicalProfileIdentityDelta,
-  mergeCanonicalMessageDeliveryDelta,
   mergeCanonicalReadCursorDelta,
 } from '@/features/canonical/canonicalStateReducers';
 import {
@@ -39,8 +37,6 @@ import {
 } from '@/features/performance/chatPerformance';
 import {
   CloudAuthClient,
-  cloudRealtimeWebSocketEnabled,
-  cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
@@ -74,7 +70,6 @@ import {
 import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
 import {
   cloudGroupAttachmentReferences,
-  cloudGroupControlWithAttachmentReferences,
   cloudGroupForkPayloadFromSessionMetadata,
   cloudGroupIdFromAgentConversationId,
   cloudGroupManualSessionTitleSnapshot,
@@ -117,10 +112,7 @@ import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgent
 import { cloudMessageMetadataOnly, defaultCloudMessageCache } from './cloudMessageCache';
 import {
   CloudGroupOutbox,
-  cloudGroupOutboxNextWakeAtMs,
-  cloudGroupOutboxDeliveryStatus,
   defaultCloudGroupOutboxPersistence,
-  type CloudGroupOutboxAttachmentSource,
   type CloudGroupOutboxEntry,
 } from './cloudGroupOutbox';
 import { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
@@ -142,7 +134,7 @@ import {
   type CloudSessionActivityStore,
 } from './cloudSessionActivity';
 import { loadSession } from './session';
-import { CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, useCloudContacts } from './useCloudContacts';
+import { useCloudContacts } from './useCloudContacts';
 import {
   applyCloudGroupSessionControl,
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -207,6 +199,16 @@ import {
   mergeOpenCanonicalSessionFastResultIntoLocalState,
   upsertCanonicalIdentityIntoLocalState,
 } from './cloudCanonicalStateMerge';
+import {
+  cloudGroupOutboxAttachmentSources,
+  prepareCloudGroupOutboxEntryAttachments,
+} from './cloudGroupOutboxAttachments';
+import {
+  useCloudGroupOutboxDelivery,
+} from './useCloudGroupOutboxDelivery';
+import {
+  useCloudRealtimeMessages,
+} from './useCloudRealtimeMessages';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -271,43 +273,12 @@ export {
   type CloudSelfAgentSyncStatus,
 } from './cloudSelfAgentForwardSync';
 export { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
+export {
+  cloudGroupOutboxAttachmentSources,
+  prepareCloudGroupOutboxEntryAttachments,
+} from './cloudGroupOutboxAttachments';
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
-
-export function cloudGroupOutboxAttachmentSources(
-  attachments: readonly AttachmentItem[],
-): CloudGroupOutboxAttachmentSource[] {
-  return attachments.map((attachment) => ({
-    id: attachment.id,
-    path: attachment.path,
-    name: attachment.name,
-    kind: attachment.kind,
-    formatLabel: attachment.formatLabel ?? null,
-    mimeType: attachment.mimeType ?? null,
-    sizeBytes: attachment.sizeBytes ?? null,
-  }));
-}
-
-export async function prepareCloudGroupOutboxEntryAttachments({
-  outbox,
-  entry,
-  upload,
-}: {
-  outbox: CloudGroupOutbox;
-  entry: CloudGroupOutboxEntry;
-  upload: (attachments: CloudGroupOutboxAttachmentSource[]) => Promise<SendCloudMessageAttachmentInput[]>;
-}): Promise<CloudGroupOutboxEntry> {
-  const pendingAttachments = entry.pendingAttachments ?? [];
-  if (pendingAttachments.length === 0) return entry;
-  const attachments = await upload(pendingAttachments);
-  const envelope = cloudGroupControlWithAttachmentReferences(entry.envelope, attachments);
-  const prepared = await outbox.completeAttachmentUpload(entry.canonicalMessageId, {
-    envelope,
-    attachments,
-  });
-  if (!prepared) throw new Error('Cloud group outbox entry disappeared during attachment upload.');
-  return prepared;
-}
 
 function objectContent(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -1224,194 +1195,25 @@ export function useCloudCollaborationState({
     setCanonicalSessionState,
   ]);
 
-  const mergeMessageRef = useRef(mergeMessage);
-  const syncCloudCollaborationDiffRef = useRef(syncCloudCollaborationDiff);
-  useEffect(() => { mergeMessageRef.current = mergeMessage; }, [mergeMessage]);
-  useEffect(() => { syncCloudCollaborationDiffRef.current = syncCloudCollaborationDiff; }, [syncCloudCollaborationDiff]);
-
-  const persistCloudGroupOutboxDelivery = useCallback(async (entry: CloudGroupOutboxEntry) => {
-    if (entry.trackCanonicalDelivery === false) {
-      await cloudGroupOutbox?.acknowledgeCanonicalDelivery(entry.canonicalMessageId);
-      return;
-    }
-    const delivery = cloudGroupOutboxDeliveryStatus(entry);
-    const delta = await updateCanonicalMessageDelivery({
-      messageId: entry.canonicalMessageId,
-      sessionId: entry.sessionId,
-      ...delivery,
+  const persistCloudGroupOutboxDelivery =
+    useCloudGroupOutboxDelivery({
+      account,
+      canonicalStateReady,
+      canonicalStateRef: canonicalSessionStateRef,
+      setCanonicalState: setCanonicalSessionState,
+      client,
+      outbox: cloudGroupOutbox,
+      mergeMessage,
+      syncCloudCollaborationDiff,
+      reportWarning: reportCloudAgentExecutionWarning,
     });
-    if (!delta) return;
-    canonicalSessionStateRef.current = mergeCanonicalMessageDeliveryDelta(
-      canonicalSessionStateRef.current,
-      delta,
-    );
-    setCanonicalSessionState?.((current) => mergeCanonicalMessageDeliveryDelta(current, delta));
-    await cloudGroupOutbox?.acknowledgeCanonicalDelivery(entry.canonicalMessageId);
-  }, [cloudGroupOutbox, setCanonicalSessionState]);
 
-  useEffect(() => {
-    if (!account || !cloudGroupOutbox || !canonicalStateReady || typeof window === 'undefined') return undefined;
-    let cancelled = false;
-    let draining = false;
-    let retryTimer: number | null = null;
-
-    const scheduleNext = () => {
-      if (cancelled) return;
-      if (retryTimer !== null) window.clearTimeout(retryTimer);
-      retryTimer = null;
-      const nowMs = Date.now();
-      const nextWakeAtMs = cloudGroupOutboxNextWakeAtMs(cloudGroupOutbox.entries(), nowMs);
-      if (nextWakeAtMs === null) return;
-      retryTimer = window.setTimeout(() => { void drain(); }, Math.max(0, nextWakeAtMs - nowMs));
-    };
-
-    const drain = async () => {
-      if (cancelled || draining) return;
-      draining = true;
-      let sentAny = false;
-      const sessionPromise = loadSession();
-      try {
-        const preparedEntries = new Map<string, Promise<CloudGroupOutboxEntry>>();
-        const outcomes = await cloudGroupOutbox.deliverDue(async ({ recipientId, clientMessageId, entry }) => {
-          const session = await sessionPromise;
-          if (!session?.token) throw new Error('Not signed in.');
-          let preparedEntry = preparedEntries.get(entry.canonicalMessageId);
-          if (!preparedEntry) {
-            preparedEntry = prepareCloudGroupOutboxEntryAttachments({
-              outbox: cloudGroupOutbox,
-              entry,
-              upload: (attachments) => uploadComposerAttachments({
-                token: session.token,
-                client,
-                attachments,
-              }),
-            });
-            preparedEntries.set(entry.canonicalMessageId, preparedEntry);
-          }
-          const ready = await preparedEntry;
-          const message = await client.sendMessage(session.token, recipientId, ready.envelope, {
-            sessionId: ready.sessionId,
-            attachments: ready.attachments,
-            clientCreatedAt: ready.clientCreatedAt,
-            clientMessageId,
-          });
-          sentAny = true;
-          mergeMessageRef.current(message);
-        });
-        for (const outcome of outcomes) {
-          if (outcome) await persistCloudGroupOutboxDelivery(outcome);
-        }
-        if (sentAny) await syncCloudCollaborationDiffRef.current?.();
-      } catch (error) {
-        // Keep the persisted recipients queued; focus/online/timer will resume.
-        console.warn('[cloud-group-outbox] retry failed', error);
-      } finally {
-        draining = false;
-        scheduleNext();
-      }
-    };
-
-    const resume = () => { void drain(); };
-    const resumeWhenVisible = () => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') resume();
-    };
-    const unsubscribe = cloudGroupOutbox.subscribe(scheduleNext);
-    void cloudGroupOutbox.restore().then(async (entries) => {
-      for (const entry of entries) {
-        await persistCloudGroupOutboxDelivery(entry).catch(() => {});
-      }
-      await drain();
-    }).catch((error) => {
-      console.warn('[cloud-group-outbox] restore failed', error);
-    });
-    window.addEventListener('online', resume);
-    window.addEventListener('focus', resume);
-    document.addEventListener('visibilitychange', resumeWhenVisible);
-    return () => {
-      cancelled = true;
-      unsubscribe();
-      if (retryTimer !== null) window.clearTimeout(retryTimer);
-      window.removeEventListener('online', resume);
-      window.removeEventListener('focus', resume);
-      document.removeEventListener('visibilitychange', resumeWhenVisible);
-    };
-  }, [account, canonicalStateReady, client, cloudGroupOutbox, persistCloudGroupOutboxDelivery]);
-
-  useEffect(() => {
-    if (!account || typeof window === 'undefined') return undefined;
-    const handleAcceptedContact = (event: Event) => {
-      const detail = event instanceof CustomEvent && event.detail && typeof event.detail === 'object'
-        ? event.detail as { message?: CloudMessage }
-        : null;
-      if (detail?.message) {
-        mergeMessageRef.current(detail.message);
-      }
-    };
-    window.addEventListener(CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, handleAcceptedContact);
-    return () => window.removeEventListener(CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, handleAcceptedContact);
-  }, [account]);
-
-  useEffect(() => {
-    if (!account) return;
-    // Pin the WS lifecycle to `account` only. Earlier the deps included
-    // `mergeMessage` and Cloud sync callbacks, whose
-    // identities flip transitively when canonicalSessionState updates
-    // (groupParticipantContacts → groupParticipantPeerIds → bootstrapPeerIds
-    // → Cloud sync). Every canonical update therefore tore
-    // down and reopened the WebSocket; when state churned faster than the
-    // handshake (~200ms), the new socket got closed before "connected" and
-    // the browser logged "WebSocket is closed before the connection is
-    // established" / "network connection was lost" in a tight loop. The
-    // loop in turn re-ran every cloud-side effect, including the canonical
-    // command replay that throws and emits "[cloud-group] sync failed".
-    if (!cloudRealtimeWebSocketEnabled()) return;
-    // Hold the WS open for the lifetime of the account; route message
-    // handling through refs so we always call the latest callbacks without
-    // re-binding the socket.
-    let ws: WebSocket | null = null;
-    let cancelled = false;
-    const accountIdAtOpen = account.accountId;
-    const open = async () => {
-      const session = await loadSession();
-      if (!session?.token || cancelled) return;
-      ws = new WebSocket(cloudWebSocketUrl(session.token));
-      ws.onmessage = (event) => {
-        try {
-          const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
-          const subject: string | undefined = frame?.subject;
-          if (subject?.startsWith('kordi.events.message.read.')) {
-            void syncCloudCollaborationDiffRef.current?.();
-            return;
-          }
-          if (!subject?.startsWith('kordi.events.message.arrived.')) return;
-          const payload = frame?.payload;
-          if (!payload || typeof payload !== 'object') return;
-          const from = payload.from_account_id as string | undefined;
-          const to = payload.to_account_id as string | undefined;
-          if (!from || !to) return;
-          mergeMessageRef.current({
-            messageId: payload.message_id,
-            fromAccountId: from,
-            toAccountId: to,
-            body: payload.body,
-            createdAt: payload.created_at,
-            deliveredAt: payload.delivered_at ?? payload.created_at ?? null,
-            readAt: payload.read_at ?? null,
-            direction: to === accountIdAtOpen ? 'incoming' : 'outgoing',
-            sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
-          });
-          void syncCloudCollaborationDiffRef.current?.();
-        } catch (error) {
-          console.warn('[cloud-collaboration-ws] frame parse failed', error);
-        }
-      };
-    };
-    void open();
-    return () => {
-      cancelled = true;
-      ws?.close();
-    };
-  }, [account]);
+  useCloudRealtimeMessages({
+    account,
+    mergeMessage,
+    syncCloudCollaborationDiff,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
   useEffect(() => {
     if (!account || !setCanonicalSessionState) return;
@@ -2158,9 +1960,9 @@ export function useCloudCollaborationState({
       scope: input.scope,
     });
     setCloudSessionPinsById((current) => ({ ...current, [pin.sessionId]: pin }));
-    void syncCloudCollaborationDiffRef.current?.();
+    void syncCloudCollaborationDiff();
     return pin;
-  }, [account, client]);
+  }, [account, client, syncCloudCollaborationDiff]);
 
   const hideCloudSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
