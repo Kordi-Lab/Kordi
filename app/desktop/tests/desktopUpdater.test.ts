@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   createDesktopUpdaterController,
+  desktopUpdaterCheckErrorMessage,
+  desktopUpdaterInstallErrorMessage,
   manualUpdateUrlForVersion,
   type DesktopUpdaterAdapter,
   type DesktopUpdaterDownloadEvent,
@@ -69,6 +71,31 @@ test('manual fallback is product-origin and version-immutable', () => {
   ]) {
     assert.equal(manualUpdateUrlForVersion(value), undefined);
   }
+});
+
+test('serialized native updater errors become actionable messages', () => {
+  assert.equal(
+    desktopUpdaterInstallErrorMessage(
+      'error sending request for url (https://coordinar.io/updates/releases/0.0.1-beta.8/Kordi.app.tar.gz)',
+    ),
+    'Download interrupted. Check your connection and try again.',
+  );
+  assert.equal(
+    desktopUpdaterInstallErrorMessage('signature verification failed'),
+    'Kordi could not verify this update. Download it manually instead.',
+  );
+  assert.equal(
+    desktopUpdaterInstallErrorMessage('permission denied while replacing Kordi.app'),
+    'Kordi needs permission to replace the app. Download it manually instead.',
+  );
+  assert.equal(
+    desktopUpdaterInstallErrorMessage('unexpected archive layout'),
+    'unexpected archive layout',
+  );
+  assert.equal(
+    desktopUpdaterCheckErrorMessage('network connection was lost'),
+    'Unable to reach the update server. Check your connection and try again.',
+  );
 });
 
 test('outside Tauri the controller stays idle without importing or checking plugins', async () => {
@@ -267,6 +294,10 @@ test('signature or install failure never relaunches and retry reuses the checked
   assert.equal(adapter.relaunchCalls, 0);
   assert.equal(controller.getState().status, 'failed');
   assert.equal(controller.getState().manualDownloadUrl, BETA6_MANUAL_UPDATE_URL);
+  assert.equal(
+    controller.getState().error,
+    'Kordi could not verify this update. Download it manually instead.',
+  );
 
   await controller.retry();
   assert.equal(attempts, 2);

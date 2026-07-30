@@ -44,7 +44,11 @@ import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud
 import { buildForkLineage, isGroupForkSession } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
-import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
+import {
+  desktopUpdaterCheckErrorMessage,
+  desktopUpdaterInstallErrorMessage,
+  type DesktopUpdaterState,
+} from '@/features/updates/desktopUpdater';
 import { cn } from '@/lib/utils';
 import {
   DeleteSessionDialog,
@@ -799,9 +803,7 @@ export function WorkspaceSidebar({
           ...updateStateRef.current,
           status: 'failed',
           failureStage: 'check',
-          error: error instanceof Error && error.message.trim()
-            ? error.message
-            : 'Unable to check for Kordi updates. Check your connection and try again.',
+          error: desktopUpdaterCheckErrorMessage(error),
         };
         applyUpdateState(failed);
         return failed;
@@ -823,7 +825,7 @@ export function WorkspaceSidebar({
     const trigger = updateButtonRef.current;
     if (!trigger || typeof window === 'undefined') return;
     const rect = trigger.getBoundingClientRect();
-    const popoverWidth = updateState.status === 'checking' ? 232 : 288;
+    const popoverWidth = updateState.status === 'checking' ? 232 : 320;
     setUpdateConfirmAnchor({
       left: Math.max(12, Math.min(rect.right - popoverWidth, window.innerWidth - popoverWidth - 12)),
       top: rect.bottom + 8,
@@ -888,13 +890,20 @@ export function WorkspaceSidebar({
     }
     const action = updateState.status === 'failed' ? (onRetryUpdate ?? onInstallUpdate) : onInstallUpdate;
     if (!action) return;
+    const stateBeforeAction = updateStateRef.current;
     try {
       const result = await action();
       if (result) applyUpdateState(result);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to install update';
+      const currentState = updateStateRef.current;
+      const message = currentState !== stateBeforeAction
+        && currentState.status === 'failed'
+        && currentState.failureStage === 'install'
+        && currentState.error?.trim()
+        ? currentState.error
+        : desktopUpdaterInstallErrorMessage(error);
       applyUpdateState({
-        ...updateStateRef.current,
+        ...currentState,
         status: 'failed',
         failureStage: 'install',
         error: message,
@@ -2145,7 +2154,7 @@ export function WorkspaceSidebar({
             'app-transient-surface app-popover app-update-popover overflow-hidden',
             updateState.status === 'checking'
               ? 'w-[14.5rem] rounded-[14px] px-3 py-2.5'
-              : 'w-[18rem] rounded-[16px] p-3.5',
+              : 'w-[20rem] rounded-[16px] p-3.5',
           )}
           data-update-state={updateState.status}
         >
@@ -2260,11 +2269,11 @@ export function WorkspaceSidebar({
             || updateState.status === 'downloading'
             || updateState.status === 'installing'
             || updateState.status === 'relaunching' ? (
-            <div className="mt-3 flex items-center justify-end gap-2">
+            <div className="app-update-popover-actions mt-3 flex flex-nowrap items-center justify-end gap-1.5">
               {updateState.status === 'failed' && updateState.manualDownloadUrl ? (
                 <button
                   type="button"
-                  className="app-update-popover-action app-update-popover-action-secondary mr-auto rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium transition"
+                  className="app-update-popover-action app-update-popover-action-secondary mr-auto rounded-[9px] px-2 py-1.5 text-[11px] font-medium transition"
                   onClick={() => { void onOpenUpdateUrl?.(updateState.manualDownloadUrl!); }}
                 >
                   Download manually
@@ -2275,7 +2284,7 @@ export function WorkspaceSidebar({
                   {updateState.status === 'available' || updateState.failureStage !== 'check' ? (
                     <button
                       type="button"
-                      className="app-update-popover-action app-update-popover-action-secondary rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium transition"
+                      className="app-update-popover-action app-update-popover-action-secondary rounded-[9px] px-2 py-1.5 text-[11px] font-medium transition"
                       onClick={() => setIsUpdateConfirmOpen(false)}
                     >
                       Not now
@@ -2283,7 +2292,7 @@ export function WorkspaceSidebar({
                   ) : null}
                   <button
                     type="button"
-                    className="app-update-popover-action app-update-popover-action-primary rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-55"
+                    className="app-update-popover-action app-update-popover-action-primary rounded-[9px] px-2 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-55"
                     disabled={updateState.status === 'available' ? !onInstallUpdate : false}
                     onClick={() => { void handleConfirmUpdate(); }}
                   >
@@ -2296,7 +2305,7 @@ export function WorkspaceSidebar({
               {updateState.status === 'downloading' || updateState.status === 'installing' || updateState.status === 'relaunching' ? (
                 <button
                   type="button"
-                  className="app-update-popover-action app-update-popover-action-primary rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold opacity-55"
+                  className="app-update-popover-action app-update-popover-action-primary rounded-[9px] px-2 py-1.5 text-[11px] font-semibold opacity-55"
                   disabled
                 >
                   {updateState.status === 'downloading'

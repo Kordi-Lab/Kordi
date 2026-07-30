@@ -159,7 +159,8 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /app-update-popover/);
   assert.match(source, /data-update-state=\{updateState\.status\}/);
   assert.doesNotMatch(source, /app-update-popover overflow-hidden border/);
-  assert.match(source, /w-\[18rem\]/);
+  assert.match(source, /w-\[20rem\]/);
+  assert.match(source, /const popoverWidth = updateState\.status === 'checking' \? 232 : 320/);
   assert.match(source, /title=\{isUpdateConfirmOpen \? undefined : updateButtonPresentation\.title\}/);
   assert.doesNotMatch(source, /min-h-16 items-center justify-center/);
   assert.doesNotMatch(source, />\s*Done\s*</);
@@ -185,6 +186,9 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /aria-valuenow/);
   assert.match(source, /app-update-popover-action-primary/);
   assert.match(source, /app-update-popover-action-secondary/);
+  assert.match(source, /app-update-popover-actions/);
+  assert.match(source, /desktopUpdaterInstallErrorMessage/);
+  assert.doesNotMatch(source, /error instanceof Error \? error\.message : 'Unable to install update'/);
   assert.match(source, /updateConfirmAnchor/);
   assert.match(source, /position: 'fixed'/);
   assert.match(source, /isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' \? createPortal/);
@@ -204,6 +208,8 @@ test('desktop update popover uses a quiet theme-aware surface in dark mode', () 
   assert.doesNotMatch(updateSurface, /inset 0 1px 0/);
   assert.match(css, /\.kordi-app\.theme-light \.app-popover\.app-update-popover/);
   assert.match(css, /\.app-update-popover-status-danger/);
+  assert.match(css, /\.app-update-popover-action \{[\s\S]*?white-space: nowrap/);
+  assert.match(css, /\.app-update-popover-action \{[\s\S]*?flex: 0 0 auto/);
   assert.match(css, /\.app-update-popover-action:focus-visible/);
 });
 

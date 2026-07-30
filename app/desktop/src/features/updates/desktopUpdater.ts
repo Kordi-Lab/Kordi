@@ -54,16 +54,37 @@ type DesktopUpdaterControllerOptions = {
   isTauriRuntime: () => boolean;
 };
 
-function errorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (typeof error === 'string' && error.trim()) return error;
-  return 'Unable to install the verified Kordi update.';
+function updaterErrorText(error: unknown) {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  return null;
 }
 
-function checkErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (typeof error === 'string' && error.trim()) return error;
-  return 'Unable to check for Kordi updates. Check your connection and try again.';
+const UPDATER_NETWORK_ERROR = /(?:error sending request|failed to (?:send|download)|network (?:connection )?(?:was )?lost|connection (?:error|reset|closed|refused)|request (?:timed out|timeout)|timed out|could not resolve|failed to lookup|dns error)/i;
+const UPDATER_VERIFICATION_ERROR = /(?:signature|verification failed|could not verify)/i;
+const UPDATER_PERMISSION_ERROR = /(?:permission denied|operation not permitted|access is denied)/i;
+
+export function desktopUpdaterInstallErrorMessage(error: unknown) {
+  const message = updaterErrorText(error);
+  if (!message) return 'Unable to install the verified Kordi update.';
+  if (UPDATER_NETWORK_ERROR.test(message)) {
+    return 'Download interrupted. Check your connection and try again.';
+  }
+  if (UPDATER_VERIFICATION_ERROR.test(message)) {
+    return 'Kordi could not verify this update. Download it manually instead.';
+  }
+  if (UPDATER_PERMISSION_ERROR.test(message)) {
+    return 'Kordi needs permission to replace the app. Download it manually instead.';
+  }
+  return message;
+}
+
+export function desktopUpdaterCheckErrorMessage(error: unknown) {
+  const message = updaterErrorText(error);
+  if (!message || UPDATER_NETWORK_ERROR.test(message)) {
+    return 'Unable to reach the update server. Check your connection and try again.';
+  }
+  return message;
 }
 
 function stateForUpdate(
@@ -145,7 +166,7 @@ export function createDesktopUpdaterController(options: DesktopUpdaterController
           ...(previousState.latestVersion ? { latestVersion: previousState.latestVersion } : {}),
           ...(previousState.manualDownloadUrl ? { manualDownloadUrl: previousState.manualDownloadUrl } : {}),
           failureStage: 'check',
-          error: checkErrorMessage(error),
+          error: desktopUpdaterCheckErrorMessage(error),
         });
         return state;
       } finally {
@@ -199,7 +220,7 @@ export function createDesktopUpdaterController(options: DesktopUpdaterController
           receivedBytes,
           totalBytes: state.totalBytes,
           failureStage: 'install',
-          error: errorMessage(error),
+          error: desktopUpdaterInstallErrorMessage(error),
         }));
         throw error;
       } finally {
