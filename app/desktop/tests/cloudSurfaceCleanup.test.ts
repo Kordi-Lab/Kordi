@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { navItems, normalizeNavIdForCloud } from '../src/kordi-app/data/navigation';
 import { normalizeSettingsSectionIdForCloud, settingsSections } from '../src/kordi-app/data/settings';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('product navigation only exposes final Cloud pages', () => {
   assert.deepEqual(navItems.map((item) => item.id), ['chats', 'contacts', 'agents']);
@@ -98,7 +99,7 @@ test('cloud contact and group fallbacks use product-facing names', () => {
 });
 
 test('detail section headers use sentence-case styling', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
   const groupDialogSource = readFileSync(new URL('../src/pages/GroupDetailsDialog.tsx', import.meta.url), 'utf8');
   const contactsPanelSource = readFileSync(new URL('../src/features/cloud/CloudContactsPanel.tsx', import.meta.url), 'utf8');
 

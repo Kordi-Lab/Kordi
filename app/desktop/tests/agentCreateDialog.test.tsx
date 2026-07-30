@@ -8,6 +8,7 @@ import { AgentCreateDialog } from '../src/kordi-app/agents/AgentCreateDialog';
 import { AgentsSidebar } from '../src/kordi-app/agents/AgentsSidebar';
 import { AgentDeleteConfirmDialog, AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
 import type { Agent } from '../src/kordi-app/types';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 const creatorAgent: Agent = {
   id: 'desktop:local-agent',
@@ -92,7 +93,7 @@ test('AgentCreateDialog keeps shape and create actions in a sticky footer', () =
 
 test('AgentCreateDialog uses calm auth-aligned surfaces without dashed callout chrome', () => {
   const source = readFileSync(new URL('../src/kordi-app/agents/AgentCreateDialog.tsx', import.meta.url), 'utf8');
-  const shellPagesCss = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const shellPagesCss = readDesktopShellCss();
 
   assert.match(source, /app-agent-create-surface/);
   assert.match(source, /app-agent-create-panel/);

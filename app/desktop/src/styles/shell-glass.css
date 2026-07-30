@@ -1,0 +1,76 @@
+/* --- Glassmorphism: backdrop-filter on framed surfaces (issue #386) ---
+ *
+ * Two tiers: frame (12px / saturate 1.06) for major panels, float (8px /
+ * saturate 1.04) for popovers and dropdown menus. The tier values come from
+ * theme-tokens.css and flip per theme via the same cascade.
+ *
+ * Wrapped in @supports so environments without backdrop-filter still render
+ * a clean (more opaque) surface from the fallback rules below.
+ */
+
+@supports (backdrop-filter: blur(12px)) {
+  .app-shell,
+  .app-side-shell,
+  .app-main-panel,
+  .app-session-panel,
+  .app-modal-panel,
+  .app-detail-sheet,
+  .app-composer-shell {
+    backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
+    -webkit-backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
+  }
+
+  .app-right-detail-rail.app-main-panel {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* Float tier — popovers and dropdown surfaces. Tighter blur so they read
+   * as a distinct layer above the framed surface beneath. */
+  .app-popover,
+  [role='listbox'].app-popover,
+  [role='menu'].app-popover {
+    backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+    -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  }
+}
+
+/* Inner top highlight on framed surfaces — pairs with the existing
+ * --app-shadow-* tokens. Theme-aware via --app-glass-highlight. */
+.app-shell,
+.app-modal-panel,
+.app-detail-sheet,
+.app-surface-card {
+  box-shadow:
+    inset 0 1px 0 var(--app-glass-highlight),
+    var(--app-shadow-soft);
+}
+
+.app-presence-light {
+  --app-presence-online: oklch(0.68 0.16 155);
+  --app-presence-offline: oklch(0.58 0.025 250);
+  --app-presence-edge: color-mix(in oklab, var(--utility-background) 74%, white 26%);
+  position: absolute;
+  right: 0.08rem;
+  bottom: 0.08rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--app-presence-edge);
+  border-radius: 999px;
+  background-color: var(--app-presence-online);
+  opacity: 0.96;
+  transition: background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    opacity var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.kordi-app.theme-light .app-presence-light {
+  --app-presence-online: oklch(0.66 0.15 155);
+  --app-presence-offline: oklch(0.56 0.018 250);
+  --app-presence-edge: oklch(1 0 0 / 0.94);
+}
+
+.app-presence-light[data-presence-status='offline'] {
+  background-color: var(--app-presence-offline);
+  opacity: 0.82;
+}

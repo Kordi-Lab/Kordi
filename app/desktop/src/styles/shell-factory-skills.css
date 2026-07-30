@@ -1,0 +1,417 @@
+.app-skill-library-main {
+  min-height: 0;
+}
+
+.app-skill-library-mode {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 20px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
+}
+
+.app-skill-library-mode button {
+  position: relative;
+  align-self: stretch;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+  font-weight: 640;
+}
+
+.app-skill-library-mode button::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: '';
+}
+
+.app-skill-library-mode button.is-active {
+  color: var(--utility-foreground);
+}
+
+.app-skill-library-mode button.is-active::after {
+  background: var(--agent-studio-accent);
+}
+
+.app-skill-library-mode button span {
+  margin-left: 4px;
+  color: color-mix(in oklab, currentColor 64%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-skill-library-detail {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-skill-library-summary {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
+}
+
+.app-skill-library-title-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+}
+
+.app-skill-library-title-row h3,
+.app-skill-library-title-row p {
+  margin: 0;
+}
+
+.app-skill-library-title-row h3 {
+  font-size: var(--agent-studio-type-subheading);
+  font-weight: 710;
+  letter-spacing: -0.02em;
+}
+
+.app-skill-library-title-row p {
+  margin-top: 3px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+  line-height: 1.45;
+}
+
+.app-skill-library-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin: 14px 0 0 53px;
+}
+
+.app-skill-library-facts div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.app-skill-library-facts dt,
+.app-skill-library-facts dd {
+  margin: 0;
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-skill-library-facts dt {
+  color: color-mix(in oklab, var(--utility-muted-text) 68%, transparent);
+}
+
+.app-skill-library-facts dd {
+  color: var(--utility-muted-text);
+  font-weight: 620;
+}
+
+.app-skill-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 14px 0 0 53px;
+}
+
+.app-skill-agent-picker {
+  position: relative;
+}
+
+.app-skill-agent-picker > summary {
+  list-style: none;
+}
+
+.app-skill-agent-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-skill-agent-picker[open] > summary {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--agent-studio-accent) 16%, transparent);
+}
+
+.app-skill-agent-picker-panel {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 7px);
+  right: 0;
+  width: min(292px, calc(100vw - 36px));
+  padding: 6px;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 82%, transparent);
+  border-radius: 13px;
+  background: color-mix(in oklab, var(--app-modal-bg) 97%, var(--utility-background));
+  box-shadow: var(--app-shadow-float);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
+.app-skill-agent-picker-heading {
+  padding: 8px 9px 7px;
+}
+
+.app-skill-agent-picker-heading strong,
+.app-skill-agent-picker-heading span {
+  display: block;
+}
+
+.app-skill-agent-picker-heading strong {
+  color: var(--utility-foreground);
+  font-size: var(--agent-studio-type-secondary);
+  font-weight: 700;
+}
+
+.app-skill-agent-picker-heading span {
+  margin-top: 2px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+  line-height: 1.4;
+}
+
+.app-skill-agent-picker-list {
+  max-height: 252px;
+  overflow-y: auto;
+}
+
+.app-skill-agent-picker-list > button {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 50px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  color: var(--utility-foreground);
+  text-align: left;
+}
+
+.app-skill-agent-picker-list > button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--app-control-hover) 70%, transparent);
+}
+
+.app-skill-agent-picker-list > button:disabled {
+  cursor: default;
+}
+
+.app-skill-agent-picker-list strong,
+.app-skill-agent-picker-list small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-skill-agent-picker-list strong {
+  font-size: var(--agent-studio-type-secondary);
+  font-weight: 680;
+}
+
+.app-skill-agent-picker-list small {
+  margin-top: 2px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-skill-agent-picker-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--agent-studio-success);
+  font-size: var(--agent-studio-type-caption);
+  font-weight: 650;
+}
+
+.app-skill-agent-picker-error {
+  margin: 5px 3px 2px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--agent-studio-danger) 9%, transparent);
+  color: var(--agent-studio-danger);
+  font-size: var(--agent-studio-type-caption);
+  line-height: 1.4;
+}
+
+.app-skill-library-confirm {
+  position: absolute;
+  z-index: 10;
+  right: 20px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 74%, transparent);
+  border-radius: 11px;
+  background: var(--app-modal-bg);
+  box-shadow: var(--app-shadow-soft);
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-skill-library-confirm span {
+  padding: 0 5px;
+}
+
+.app-skill-library-confirm button {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--app-control-bg) 68%, transparent);
+  color: var(--utility-foreground);
+  font-weight: 640;
+}
+
+.app-skill-library-confirm button.is-danger {
+  background: color-mix(in oklab, var(--agent-studio-danger) 13%, var(--app-control-bg));
+  color: var(--agent-studio-danger);
+}
+
+.app-skill-library-files {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: minmax(164px, 210px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.app-skill-library-files > nav {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 8px;
+  border-right: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
+}
+
+.app-skill-library-files-label {
+  padding: 5px 8px 8px;
+  color: color-mix(in oklab, var(--utility-muted-text) 72%, transparent);
+  font-size: var(--agent-studio-type-caption);
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.app-skill-library-files nav button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 45px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  color: var(--utility-muted-text);
+  text-align: left;
+}
+
+.app-skill-library-files nav button:hover,
+.app-skill-library-files nav button.is-active {
+  background: color-mix(in oklab, var(--app-control-hover) 62%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-skill-library-files nav strong,
+.app-skill-library-files nav small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-skill-library-files nav strong {
+  font-size: var(--agent-studio-type-secondary);
+}
+
+.app-skill-library-files nav small {
+  margin-top: 2px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-skill-library-editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--app-code-bg);
+}
+
+.app-skill-library-editor > header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 40%, transparent);
+}
+
+.app-skill-library-editor > header strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--agent-studio-type-body);
+}
+
+.app-skill-library-editor textarea,
+.app-skill-library-editor pre,
+.app-skill-community-code {
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  border: 0;
+  outline: 0;
+  resize: none;
+  padding: 15px 17px;
+  background: transparent;
+  color: color-mix(in oklab, var(--utility-foreground) 90%, var(--utility-muted-text));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--agent-studio-type-secondary);
+  line-height: 1.65;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-skill-library-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+}
+
+.app-skill-library-state {
+  display: grid;
+  flex: 1 1 0;
+  min-height: 220px;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  padding: 24px;
+  color: var(--utility-muted-text);
+  text-align: center;
+}
+
+.app-skill-library-state strong {
+  color: var(--utility-foreground);
+  font-size: var(--agent-studio-type-body);
+}
+
+.app-skill-library-state span {
+  max-width: 420px;
+  font-size: var(--agent-studio-type-secondary);
+  line-height: 1.5;
+}

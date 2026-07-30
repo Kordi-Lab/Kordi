@@ -821,7 +821,7 @@ test('participant-space parent row primary click selects a session while chevron
 
 test('participant-space row CSS separates the timestamp and actions while adding dense dividers', () => {
   const shellCss = readDesktopShellCss();
-  const themeOverrideCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const themeOverrideCss = shellCss;
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
   assert.match(shellCss, /\.app-participant-space-row-shell\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content[^}]*border:\s*0;[^}]*border-radius:\s*0;/s);

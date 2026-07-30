@@ -1563,7 +1563,7 @@ test('styles folded answer reveal as a compact inline control', () => {
 });
 
 test('light theme keeps folded assistant markdown readable against the answer surface', () => {
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readDesktopShellCss();
   const lightAnswerMarkdownBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-live-assistant-answer-markdown :where\(p, li, blockquote, td, th, strong, em\) \{[\s\S]*?\n\}/)?.[0] ?? '';
   const lightAnswerListBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-live-assistant-answer-markdown :where\(ol, ul\) \{[\s\S]*?\n\}/)?.[0] ?? '';
 

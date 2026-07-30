@@ -1,0 +1,314 @@
+.kordi-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section {
+  background: rgba(15, 23, 42, 0.035);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+.kordi-app.theme-light .app-workspace-sidebar .app-sidebar-nav-row:hover,
+.kordi-app.theme-light .app-workspace-sidebar .app-project-group-toggle:hover,
+.kordi-app.theme-light .app-workspace-sidebar .app-project-session-row:hover {
+  background: rgba(15, 23, 42, 0.05) !important;
+}
+
+.kordi-app.theme-light .app-page-header {
+  background: transparent;
+}
+
+.kordi-app.theme-light .app-input-shell,
+.kordi-app.theme-light .app-list-item:hover,
+.kordi-app.theme-light .app-composer-shell,
+.kordi-app.theme-light .app-surface-muted {
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.028),
+    0 8px 18px rgba(147, 128, 109, 0.045),
+    0 -2px 6px rgba(255, 255, 255, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+}
+
+.kordi-app.theme-light .app-icon-button,
+.kordi-app.theme-light .app-utility-button,
+.kordi-app.theme-light .app-control-chip {
+  border-color: rgba(15, 23, 42, 0.10);
+  background: rgba(15, 23, 42, 0.055);
+  color: rgb(31 41 55);
+  box-shadow: none;
+}
+
+.kordi-app.theme-light .app-icon-button:hover,
+.kordi-app.theme-light .app-utility-button:hover,
+.kordi-app.theme-light .app-control-chip:hover {
+  border-color: rgba(15, 23, 42, 0.13);
+  background: rgba(15, 23, 42, 0.08);
+  color: rgb(17 24 39);
+}
+
+.kordi-app.theme-light .app-control-chip-active {
+  border-color: rgba(15, 23, 42, 0.13);
+  background: rgba(15, 23, 42, 0.095);
+  color: rgb(17 24 39);
+  box-shadow: none;
+}
+
+.kordi-app.theme-light .app-list-item-active {
+  border-color: rgba(43, 35, 32, 0.08);
+  background: rgba(43, 35, 32, 0.075);
+  box-shadow:
+    0 0 0 1px rgba(131, 112, 93, 0.025),
+    0 8px 18px rgba(147, 128, 109, 0.04),
+    0 -2px 6px rgba(255, 255, 255, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(138, 118, 98, 0.045);
+}
+
+.kordi-app.theme-light .app-session-row-active {
+  border-color: transparent;
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
+}
+
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-row-title,
+.kordi-app.theme-light .app-workspace-sidebar .app-session-row-title,
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-session-title {
+  color: var(--app-sidebar-title-text) !important;
+}
+
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-row-preview,
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-session-preview {
+  color: var(--app-sidebar-preview-text) !important;
+}
+
+.kordi-app.theme-light .app-workspace-sidebar .app-session-meta-time,
+.kordi-app.theme-light .app-workspace-sidebar .app-participant-space-row-detail {
+  color: var(--app-sidebar-time-text) !important;
+}
+
+.kordi-app.theme-light .app-icon-button,
+.kordi-app.theme-light .app-utility-button,
+.kordi-app.theme-light .app-control-chip,
+.kordi-app.theme-light .app-input-shell,
+.kordi-app.theme-light .app-composer-shell {
+  color: rgb(31 27 25);
+}
+
+/* The Chats header actions share one quiet utility-button geometry. Update
+ * state is communicated with a restrained tint and a small availability dot,
+ * not a second button shape or a floating white surface. */
+.kordi-app .app-chat-sidebar-actions .app-icon-button:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--app-sidebar-accent) 72%, transparent);
+  outline-offset: 2px;
+}
+
+.kordi-app .app-update-logo-button {
+  --app-update-control-active: oklch(0.78 0.09 255);
+  --app-update-control-success: oklch(0.79 0.1 158);
+  --app-update-control-danger: oklch(0.78 0.12 24);
+  position: relative;
+}
+
+.kordi-app.theme-light .app-update-logo-button {
+  --app-update-control-active: oklch(0.52 0.15 255);
+  --app-update-control-success: oklch(0.48 0.12 158);
+  --app-update-control-danger: oklch(0.52 0.17 24);
+}
+
+.kordi-app .app-update-logo-button[data-update-status='available'],
+.kordi-app .app-update-logo-button[data-update-status='downloading'],
+.kordi-app .app-update-logo-button[data-update-status='installing'],
+.kordi-app .app-update-logo-button[data-update-status='relaunching'] {
+  border-color: color-mix(in oklab, var(--app-update-control-active) 24%, transparent);
+  background: color-mix(in oklab, var(--app-update-control-active) 11%, transparent);
+  color: var(--app-update-control-active);
+}
+
+.kordi-app .app-update-logo-button[data-update-status='up-to-date'] {
+  border-color: color-mix(in oklab, var(--app-update-control-success) 24%, transparent);
+  background: color-mix(in oklab, var(--app-update-control-success) 10%, transparent);
+  color: var(--app-update-control-success);
+}
+
+.kordi-app .app-update-logo-button[data-update-status='failed'] {
+  border-color: color-mix(in oklab, var(--app-update-control-danger) 24%, transparent);
+  background: color-mix(in oklab, var(--app-update-control-danger) 10%, transparent);
+  color: var(--app-update-control-danger);
+}
+
+.kordi-app .app-update-logo-button[data-update-status='available']::after {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border: 1.5px solid var(--app-session-bg);
+  border-radius: 9999px;
+  background: currentColor;
+  content: '';
+}
+
+.kordi-app.theme-light .app-input-shell {
+  border-color: rgba(73, 62, 54, 0.2);
+  background: rgba(255, 255, 255, 0.58);
+  color: rgb(31 27 25) !important;
+  box-shadow:
+    0 0 0 1px rgba(73, 62, 54, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0 rgba(73, 62, 54, 0.06);
+}
+
+.kordi-app.theme-light .app-input-shell:hover,
+.kordi-app.theme-light .app-input-shell:focus,
+.kordi-app.theme-light .app-input-shell:focus-within {
+  border-color: rgba(73, 62, 54, 0.32);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow:
+    0 0 0 2px rgba(73, 62, 54, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    inset 0 -1px 0 rgba(73, 62, 54, 0.07);
+}
+
+.kordi-app.theme-light .app-input-shell::placeholder,
+.kordi-app.theme-light .app-input-shell input::placeholder,
+.kordi-app.theme-light .app-input-shell textarea::placeholder,
+.kordi-app.theme-light input::placeholder,
+.kordi-app.theme-light textarea::placeholder {
+  color: rgba(83, 72, 64, 0.68) !important;
+}
+
+.kordi-app.theme-light .app-input-shell input,
+.kordi-app.theme-light .app-input-shell textarea,
+.kordi-app.theme-light .app-composer-input {
+  color: rgb(31 27 25) !important;
+}
+
+.kordi-app.theme-light .app-composer-shell {
+  border-color: rgba(37, 99, 235, 0.12);
+  background: var(--app-main-raised-bg);
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.025),
+    0 10px 24px rgba(37, 99, 235, 0.045),
+    0 -2px 7px rgba(255, 255, 255, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.64),
+    inset 0 -1px 0 rgba(37, 99, 235, 0.035);
+}
+
+.kordi-app.theme-light .app-composer-shell:focus-within {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: var(--app-main-raised-bg);
+  box-shadow:
+    0 0 0 2px rgba(37, 99, 235, 0.075),
+    0 12px 26px rgba(37, 99, 235, 0.06),
+    0 -2px 7px rgba(255, 255, 255, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.kordi-app.theme-light .bg-slate-800 {
+  background-color: rgb(222 216 207) !important;
+}
+
+.kordi-app.theme-light .bg-slate-900 {
+  background-color: rgb(235 230 223) !important;
+}
+
+.kordi-app.theme-light .bg-slate-950 {
+  background-color: rgb(35 31 28) !important;
+}
+
+.kordi-app.theme-dark .bg-slate-800 {
+  background-color: rgb(31 31 35) !important;
+}
+
+.kordi-app.theme-dark .bg-slate-900 {
+  background-color: rgb(18 18 21) !important;
+}
+
+.kordi-app.theme-dark .bg-slate-950 {
+  background-color: rgb(9 9 11) !important;
+}
+
+.kordi-app.theme-light .text-white,
+.kordi-app.theme-light .text-white\/95,
+.kordi-app.theme-light .text-white\/92,
+.kordi-app.theme-light .text-white\/88,
+.kordi-app.theme-light .text-slate-100 {
+  color: rgb(15 23 42) !important;
+}
+
+.kordi-app.theme-light .text-white\/75 {
+  color: rgb(51 65 85) !important;
+}
+
+.kordi-app.theme-light .text-slate-200 {
+  color: rgb(51 65 85) !important;
+}
+
+.kordi-app.theme-light .text-slate-300 {
+  color: rgb(71 85 105) !important;
+}
+
+.kordi-app.theme-light .text-slate-400 {
+  color: rgb(82 94 109) !important;
+}
+
+.kordi-app.theme-light .text-slate-500,
+.kordi-app.theme-light .text-slate-600 {
+  color: rgb(73 83 97) !important;
+}
+
+.kordi-app.theme-light .placeholder\:text-slate-400::placeholder {
+  color: rgba(83, 72, 64, 0.68) !important;
+}
+
+.kordi-app.theme-light .border-white\/6,
+.kordi-app.theme-light .border-white\/8 {
+  border-color: rgba(15, 23, 42, 0.06) !important;
+}
+
+.kordi-app.theme-light .border-white\/10,
+.kordi-app.theme-light .border-white\/12 {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+.kordi-app.theme-light .border-white\/14,
+.kordi-app.theme-light .border-white\/15,
+.kordi-app.theme-light .border-white\/16 {
+  border-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+.kordi-app.theme-light .border-white\/18,
+.kordi-app.theme-light .border-white\/20 {
+  border-color: rgba(15, 23, 42, 0.15) !important;
+}
+
+.kordi-app.theme-light .border-white\/30 {
+  border-color: rgba(15, 23, 42, 0.20) !important;
+}
+
+.kordi-app.theme-light .bg-white\/5,
+.kordi-app.theme-light .bg-white\/6,
+.kordi-app.theme-light .bg-white\/8,
+.kordi-app.theme-light .bg-white\/\[0\.02\],
+.kordi-app.theme-light .bg-white\/\[0\.025\],
+.kordi-app.theme-light .bg-white\/\[0\.03\],
+.kordi-app.theme-light .bg-white\/\[0\.035\],
+.kordi-app.theme-light .bg-white\/\[0\.04\],
+.kordi-app.theme-light .bg-white\/\[0\.045\],
+.kordi-app.theme-light .bg-white\/\[0\.05\],
+.kordi-app.theme-light .bg-white\/\[0\.055\] {
+  background-color: rgba(15, 23, 42, 0.035) !important;
+}
+
+.kordi-app.theme-light .bg-white\/10,
+.kordi-app.theme-light .bg-white\/\[0\.06\],
+.kordi-app.theme-light .bg-white\/\[0\.07\] {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+}
+
+.kordi-app.theme-light .bg-white\/12,
+.kordi-app.theme-light .bg-white\/15,
+.kordi-app.theme-light .bg-white\/16,
+.kordi-app.theme-light .bg-white\/\[0\.08\] {
+  background-color: rgba(15, 23, 42, 0.09) !important;
+}
+
+.kordi-app.theme-light .bg-white\/20 {
+  background-color: rgba(15, 23, 42, 0.12) !important;
+}
