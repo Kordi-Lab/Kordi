@@ -36,9 +36,7 @@ import {
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
-import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
-import { removeQueuedDesktopMessageById } from '@/features/chat/queuedDesktopMessages';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
@@ -75,6 +73,7 @@ import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
 import { useKordiGroupRename } from '@/app/useKordiGroupRename';
 import { useKordiParticipantDraftSend } from '@/app/useKordiParticipantDraftSend';
+import { useKordiQueuedMessageActions } from '@/app/useKordiQueuedMessageActions';
 import {
   type ParticipantSpaceDraft,
   useKordiParticipantSpaceContinuation,
@@ -865,19 +864,15 @@ export function useKordiAppModel({
     setActiveConvId,
   });
 
-  const handleEditQueuedMessage = useCallback((sessionId: string, queuedMessageId: string) => {
-    const queuedMessage = (queuedDesktopMessagesBySession[sessionId] ?? [])
-      .find((message) => message.id === queuedMessageId);
-    if (!queuedMessage) return;
-
-    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', queuedMessage.sessionId, queuedMessage.text));
-    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessageById(current, sessionId, queuedMessageId));
-    focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell);
-  }, [composerUi.setComposerDrafts, isNativeShell, queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession]);
-
-  const handleCancelQueuedMessage = useCallback((sessionId: string, queuedMessageId: string) => {
-    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessageById(current, sessionId, queuedMessageId));
-  }, [setQueuedDesktopMessagesBySession]);
+  const {
+    cancelQueuedMessage: handleCancelQueuedMessage,
+    editQueuedMessage: handleEditQueuedMessage,
+  } = useKordiQueuedMessageActions({
+    isNativeShell,
+    queuedMessagesBySession: queuedDesktopMessagesBySession,
+    setComposerDrafts: composerUi.setComposerDrafts,
+    setQueuedMessagesBySession: setQueuedDesktopMessagesBySession,
+  });
 
   useEffect(() => {
     if (!isNativeShell || !desktopAuthState || !desktopChatState?.activeSessionId) return;
