@@ -150,7 +150,12 @@ test('cloud-specific tests do not use desktop bridge transport fixtures', () => 
     'tests/cloudAgentPendingState.test.tsx',
     'tests/cloudAgentFallbackClaims.test.tsx',
     'tests/cloudAgentGroupFallback.test.tsx',
-    'tests/cloudGroupMessages.test.tsx',
+    'tests/cloudGroupMembershipAndEnvelopes.test.tsx',
+    'tests/cloudGroupParticipantsAndTitles.test.tsx',
+    'tests/cloudGroupTitleAndJoinNotices.test.tsx',
+    'tests/cloudGroupAgentResponses.test.tsx',
+    'tests/cloudGroupUnread.test.tsx',
+    'tests/cloudGroupDeliveryAndProfiles.test.tsx',
     'tests/cloudDirectContactSend.test.ts',
     'tests/cloudContactRouting.test.tsx',
   ];
