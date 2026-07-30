@@ -4,15 +4,16 @@ import test from 'node:test';
 
 const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+const canonicalStoreSource = () => readFileSync(new URL('../src/app/useKordiCanonicalSessionStore.ts', import.meta.url), 'utf8');
 const uiEffectsSource = () => readFileSync(new URL('../src/app/useKordiUiEffects.ts', import.meta.url), 'utf8');
 
 test('canonical session selection pages only the selected transcript and never refreshes full state', () => {
-  const source = appModelSource();
+  const source = canonicalStoreSource();
   assert.doesNotMatch(source, /desktopCanonicalRefreshKey|bridgeCanonicalRefreshKey/);
   assert.doesNotMatch(source, /fetchCanonicalSessionState/);
-  assert.match(source, /activeCanonicalPageSessionIds/);
-  assert.match(source, /hydrateCanonicalSessionPage\(sessionId\)/);
-  assert.match(source, /fetchCanonicalSessionMessages\(normalizedSessionId, beforeSequenceNum, 100\)/);
+  assert.match(source, /activePageSessionIds/);
+  assert.match(source, /hydrateSessionPage\(sessionId\)/);
+  assert.match(source, /fetchCanonicalSessionMessages\(\s*normalizedSessionId,\s*beforeSequenceNum,\s*100/);
 });
 
 test('canonical Cloud chat selection does not invoke native desktop chat reload', () => {
@@ -63,14 +64,14 @@ test('canonical chat hydration is cached independently from active session selec
 });
 
 test('older canonical transcript pages use the oldest loaded sequence cursor', () => {
-  const source = appModelSource();
-  const start = source.indexOf('const loadOlderCanonicalSessionMessages = useCallback');
-  const end = source.indexOf('\n\n  const refreshCanonicalState', start);
+  const source = canonicalStoreSource();
+  const start = source.indexOf('const loadOlderSessionMessages = useCallback');
+  const end = source.indexOf('\n\n  const refreshState', start);
   assert.notEqual(start, -1, 'expected an older-page loader');
   assert.notEqual(end, -1, 'expected catalog refresh after the older-page loader');
   const loader = source.slice(start, end);
 
   assert.match(loader, /message\.sequenceNum < oldest/);
   assert.match(loader, /beforeSequenceNum: oldestSequenceNum/);
-  assert.match(source, /canonicalHasOlderBySessionId: canonicalStore\.hasOlderBySessionId/);
+  assert.match(appModelSource(), /canonicalHasOlderBySessionId: canonicalStore\.hasOlderBySessionId/);
 });

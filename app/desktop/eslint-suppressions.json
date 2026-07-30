@@ -52,9 +52,6 @@
     }
   },
   "src/app/useKordiAppModel.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
     "@typescript-eslint/require-await": {
       "count": 2
     },
@@ -74,7 +71,7 @@
       "count": 7
     },
     "react-hooks/set-state-in-effect": {
-      "count": 2
+      "count": 1
     }
   },
   "src/app/useKordiDesktopActivity.ts": {
