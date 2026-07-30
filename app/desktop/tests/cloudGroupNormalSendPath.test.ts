@@ -60,9 +60,10 @@ test('cloud group messages stay sending until the persistent recipient outbox re
   assert.deepEqual([...new Set(cloudGroupPreparations)], ['sending']);
 
   const bridgeSource = cloudBridgeSource();
+  const groupSenderSource = cloudGroupControlSenderSource();
   assert.match(bridgeSource, /new CloudGroupOutbox/);
-  assert.match(bridgeSource, /clientMessageId,/);
-  assert.match(bridgeSource, /persistCloudGroupOutboxDelivery/);
+  assert.match(groupSenderSource, /clientMessageId,/);
+  assert.match(groupSenderSource, /persistOutboxDelivery/);
   assert.match(cloudGroupOutboxSource(), /clientMessageId:\s*`\$\{entry\.canonicalMessageId\}:\$\{recipientId\}`/);
 });
 

@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
-const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudDirectMessagingSource = () => readFileSync(new URL('../src/features/cloud/useCloudDirectMessaging.ts', import.meta.url), 'utf8');
 
 test('targeted sends check Cloud group routing before direct Cloud bridge routing', () => {
   const source = chatMessagesSource();
@@ -59,16 +59,16 @@ test('direct cloud first sends and retries share the same idempotency key', () =
     /sendCloudCollaborationMessage\(\s*activeConvId,\s*cloudBody,\s*chatComposerAttachments,\s*\{ clientMessageId: optimisticMessageId \},/,
   );
 
-  const bridgeSource = cloudBridgeSource();
-  const start = bridgeSource.indexOf('const sendCloudCollaborationMessage = useCallback');
-  const end = bridgeSource.indexOf(
-    '\n\n  const sendCloudGroupControl = useCloudGroupControlSender',
+  const directMessagingSource = cloudDirectMessagingSource();
+  const start = directMessagingSource.indexOf('const sendMessage = useCallback');
+  const end = directMessagingSource.indexOf(
+    '\n\n  return {',
     start,
   );
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   assert.match(
-    bridgeSource.slice(start, end),
+    directMessagingSource.slice(start, end),
     /clientMessageId:\s*options\.clientMessageId/,
     'the stable optimistic id must reach the server transport',
   );

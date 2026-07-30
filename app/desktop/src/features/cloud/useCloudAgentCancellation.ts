@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   type Dispatch,
   type MutableRefObject,
@@ -11,20 +12,38 @@ import {
 import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
+  DesktopCollaborationState,
 } from '@/kordi-app/types';
-import type { CloudAccount } from './authClient';
+import type {
+  CloudAccount,
+  CloudAuthClient,
+  CloudMessage,
+} from './authClient';
 import {
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentCancelRoleForRequest,
   cloudGroupAgentProcessingMessageForRequest,
+  optimisticCloudAgentCancelMessage,
 } from './cloudAgentCancellation';
-import { parseCloudAgentCancel } from './cloudAgentMessages';
-import { cloudGroupAgentConversationId } from './cloudGroupMessages';
+import {
+  encodeCloudAgentCancel,
+  parseCloudAgentCancel,
+} from './cloudAgentMessages';
+import {
+  cloudPeerAccountIdFromConversationId,
+} from './cloudCollaborationState';
+import {
+  cloudGroupAgentConversationId,
+  cloudGroupIdFromAgentConversationId,
+} from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
   collapseCloudAgentOfflinePlaceholderForRequest,
   upsertCanonicalRequestIntoLocalState,
 } from './cloudAgentRequestState';
+import {
+  loadSession,
+} from './session';
 
 export function useCloudAgentCancellation({
   account,
@@ -149,6 +168,167 @@ export function useCloudAgentCancellation({
     processedRequestIdsRef,
     reportWarning,
     setCanonicalState,
+    turnIdsByRequestIdRef,
+  ]);
+}
+
+export function useCloudAgentRequestCancellation({
+  account,
+  client,
+  canonicalState,
+  setCanonicalState,
+  messageIndex,
+  mergeMessage,
+  syncDiff,
+  processedRequestIdsRef,
+  turnIdsByRequestIdRef,
+  setCollaborationOverride,
+}: {
+  account: CloudAccount | null;
+  client: CloudAuthClient;
+  canonicalState?: CanonicalSessionState | null;
+  setCanonicalState?: Dispatch<
+    SetStateAction<CanonicalSessionState | null>
+  >;
+  messageIndex: CloudMessageIndex;
+  mergeMessage: (message: CloudMessage) => void;
+  syncDiff: () => Promise<void>;
+  processedRequestIdsRef: MutableRefObject<Set<string>>;
+  turnIdsByRequestIdRef: MutableRefObject<Map<string, string>>;
+  setCollaborationOverride: Dispatch<
+    SetStateAction<DesktopCollaborationState | null>
+  >;
+}) {
+  return useCallback(async (
+    conversationId: string,
+    requestId: string,
+  ) => {
+    const trimmedRequestId = requestId.trim();
+    if (!trimmedRequestId) {
+      throw new Error('Unable to resolve request.');
+    }
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+
+    const groupId =
+      cloudGroupIdFromAgentConversationId(conversationId);
+    if (groupId) {
+      processedRequestIdsRef.current.add(trimmedRequestId);
+      const turnId =
+        turnIdsByRequestIdRef.current.get(trimmedRequestId);
+      if (turnId) {
+        await cancelDesktopChatTurn(turnId).finally(() => {
+          turnIdsByRequestIdRef.current.delete(trimmedRequestId);
+        });
+      }
+      const processingMessage = canonicalState
+        ? cloudGroupAgentProcessingMessageForRequest(
+            canonicalState.messages,
+            groupId,
+            trimmedRequestId,
+          )
+        : null;
+      if (
+        processingMessage
+        && setCanonicalState
+        && account
+        && canonicalState
+      ) {
+        const cancelNoticeRequest =
+          cloudGroupAgentCancelledNoticeRequest({
+            processingMessage,
+            requestId: trimmedRequestId,
+            conversationId,
+            cancelledByAccountId: account.accountId,
+            cancelledByRole: cloudGroupAgentCancelRoleForRequest({
+              state: canonicalState,
+              requestId: trimmedRequestId,
+              processingMessage,
+              cancelledByAccountId: account.accountId,
+            }),
+            now: Date.now(),
+          });
+        await upsertCanonicalMessageFast(cancelNoticeRequest);
+        // Apply the cancel and offline-placeholder removal together so
+        // the replacement notice cannot flicker between renders.
+        setCanonicalState((current) => {
+          const cancelledState =
+            upsertCanonicalRequestIntoLocalState(
+              current,
+              cancelNoticeRequest,
+            );
+          if (!cancelledState) return cancelledState;
+          return collapseCloudAgentOfflinePlaceholderForRequest(
+            cancelledState,
+            processingMessage,
+            trimmedRequestId,
+          );
+        });
+      }
+      const cancelBody = encodeCloudAgentCancel({
+        requestId: trimmedRequestId,
+      });
+      const groupEnvelope = messageIndex.groupRows.find((row) => (
+        row.envelope.kind === 'group-message'
+        && row.envelope.groupId === groupId
+        && row.canonicalMessageId === trimmedRequestId
+      ))?.envelope;
+      const targetAccountIds = [...new Set(
+        (groupEnvelope?.participants ?? [])
+          .map((participant) => participant.accountId.trim())
+          .filter(
+            (accountId) =>
+              Boolean(accountId)
+              && accountId !== account?.accountId,
+          ),
+      )];
+      const sent = await Promise.allSettled(
+        targetAccountIds.map(
+          (targetAccountId) => client.sendMessage(
+            session.token,
+            targetAccountId,
+            cancelBody,
+          ),
+        ),
+      );
+      sent.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          mergeMessage(result.value);
+        }
+      });
+      await syncDiff();
+      setCollaborationOverride(null);
+      return;
+    }
+
+    const peerId =
+      cloudPeerAccountIdFromConversationId(conversationId);
+    if (!peerId || !account) {
+      throw new Error('Unable to resolve request.');
+    }
+    mergeMessage(optimisticCloudAgentCancelMessage({
+      account,
+      peerAccountId: peerId,
+      requestId: trimmedRequestId,
+    }));
+    const message = await client.sendMessage(
+      session.token,
+      peerId,
+      encodeCloudAgentCancel({ requestId: trimmedRequestId }),
+    );
+    mergeMessage(message);
+    await syncDiff();
+    setCollaborationOverride(null);
+  }, [
+    account,
+    canonicalState,
+    client,
+    mergeMessage,
+    messageIndex,
+    processedRequestIdsRef,
+    setCanonicalState,
+    setCollaborationOverride,
+    syncDiff,
     turnIdsByRequestIdRef,
   ]);
 }
