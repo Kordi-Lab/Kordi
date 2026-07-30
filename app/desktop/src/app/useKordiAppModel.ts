@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
@@ -19,7 +19,6 @@ import { useKordiUiEffects } from '@/app/useKordiUiEffects';
 import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
-import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
@@ -28,7 +27,6 @@ import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cl
 import {
   type CloudGroupParticipant,
   cloudGroupIdentityRequest,
-  cloudGroupMessageSessionId,
   cloudGroupParticipantFromContact,
   cloudGroupParticipantsForCollaborationSession,
   cloudGroupParticipantsForContacts,
@@ -40,13 +38,11 @@ import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/us
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
-import { cloudCollaborationConversationId, isCloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
-import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
+import { cloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
-  isLegacyCanonicalCollaborationSessionId,
 } from '@/features/canonical/sessionResolver';
 import {
   applyCanonicalSessionStateAction,
@@ -65,12 +61,6 @@ import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { mentionScopeConversationForActiveConversation } from '@/features/chat/messageActions/mentions';
 import {
-  collaborationGroupSessionParticipants,
-  collaborationGroupSessionSendTargets,
-  collaborationGroupSessionSpaceId,
-  isCollaborationGroupSession,
-} from '@/features/chat/messageActions/chatMessages';
-import {
   agentCanonicalIdentityRequest,
   buildChatAgentSessionKind,
   buildChatAgentSessionMetadata,
@@ -79,7 +69,6 @@ import {
   buildChatCreatePeopleContactLookup,
   buildChatGroupCollaborationUpdateParticipants,
   buildChatGroupCollaborationUpdateTargets,
-  buildChatCreatePersonOptions,
   buildParticipantSpaceContinuationMetadata,
   chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
@@ -97,20 +86,12 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } 
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { removeQueuedDesktopMessageById } from '@/features/chat/queuedDesktopMessages';
 import { participantSpaceCustomGroupTitle } from '@/features/chat/participantSpaces';
-import {
-  forwardMessageSourceFromMessage,
-  messageActionSourceFromMessage,
-  type ForwardMessageSource,
-} from '@/features/chat/messageActionMetadata';
-import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
-import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { buildCollaborationMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '@/app/useKordiAppModelCollaborationMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalGroupMembershipDelta, CanonicalIdentity, CanonicalMessagePage, CanonicalSessionParticipant, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, Message, OpenCanonicalSessionFastResult, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalGroupMembershipDelta, CanonicalIdentity, CanonicalMessagePage, CanonicalSessionParticipant, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, OpenCanonicalSessionFastResult, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
@@ -140,7 +121,6 @@ import {
   canonicalGroupInviteTitleForSession,
   canonicalGroupParticipantsForSession,
   canonicalGroupCreatorIdentityId,
-  canonicalGroupSessionSyncContextForSession,
   canonicalIdentityDisplayName,
   canonicalLocalAgentAvatarSeed,
   canonicalProfileImageUrl,
@@ -151,7 +131,6 @@ import {
   metadataGroupSpaceId,
   metadataString,
   metadataStringArray,
-  normalizeMentionSearch,
   normalizeStoredGroupSpaceId,
   participantSpaceCreateKey,
   participantSpaceNonSelfIdentities,
@@ -163,6 +142,7 @@ import {
   stripDerivedCloudUnreadCounts,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
+import { useKordiMessageActions } from '@/app/useKordiMessageActions';
 
 function mergeCanonicalIdentity(state: CanonicalSessionState, identity: CanonicalIdentity): CanonicalSessionState {
   return {
@@ -291,11 +271,6 @@ export function useKordiAppModel({
   const cloudSession = cloudSessionOverride ?? liveCloudSession;
   const cloudPresence = useCloudPresence(cloudSession.account);
   const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
-  const [forwardDialog, setForwardDialog] = useState<{
-    sources: ForwardMessageSource[];
-    destinations: ForwardDestination[];
-  } | null>(null);
-  const [messageSelection, setMessageSelection] = useState<MessageSelectionState | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
   // reached the user is past it, so we deliberately don't carry a duplicate
@@ -337,7 +312,6 @@ export function useKordiAppModel({
   }, [cloudSession.account?.accountId]);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const localAvatarSeedsRef = useRef<{ human?: string | null; humanDisplayName?: string | null; humanProfileImageUrl?: string | null; agent?: string | null; agentDisplayName?: string | null }>({});
-  const messageSelectionDragRef = useRef<{ conversationId: string; shouldSelect: boolean } | null>(null);
   const canonicalRefreshFlightRef = useRef(createSingleFlightState());
   const canonicalPageFlightsRef = useRef(new Map<string, Promise<CanonicalMessagePage | null>>());
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
@@ -392,7 +366,6 @@ export function useKordiAppModel({
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
     localSessionUnreadCounts,
-    incrementUnreadForSession,
     setVisibleLocalSessionId,
     refreshDesktopChat,
     watchDesktopLiveTurn,
@@ -561,7 +534,6 @@ export function useKordiAppModel({
 
   const {
     settingsContentRef,
-    isSessionPanelCollapsed,
     setIsSessionPanelCollapsed,
     isDetailPanelCollapsed,
     setIsDetailPanelCollapsed,
@@ -606,9 +578,6 @@ export function useKordiAppModel({
     refreshCloudContacts,
     cloudContacts,
     cloudSessionActivity,
-    refreshCloudSessionActivity,
-    publishCloudTaskActivity,
-    publishCloudArtifactActivity,
     initialContactsSettled,
     initialMessagesSettled,
     cachedMessagesReady,
@@ -634,14 +603,6 @@ export function useKordiAppModel({
     const message = 'This connection action is unavailable.';
     setDesktopChatError(message);
     throw new Error(message);
-  }, [setDesktopChatError]);
-
-  const copyTextToClipboard = useCallback(async (value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch (error) {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to copy details');
-    }
   }, [setDesktopChatError]);
 
   const avatarCollaborationHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
@@ -964,227 +925,41 @@ export function useKordiAppModel({
     transientChatConversations,
   });
 
-  const onReplyMessage = useCallback((message: Message) => {
-    const source = messageActionSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId);
-    if (!source) return;
-    composerUi.setChatQuoteBySessionId((current) => ({
-      ...current,
-      [chatDraftSessionId]: { action: 'quote', source },
-    }));
-    focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell);
-  }, [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId, composerUi.setChatQuoteBySessionId, isNativeShell]);
-  const onForwardMessage = useCallback((message: Message) => {
-    const source = forwardMessageSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId);
-    if (!source) return;
-    const destinations = buildForwardDestinations(chatConversations, LOCAL_DRAFT_CHAT_CONVERSATION_ID);
-    if (!destinations.length) return;
-    setForwardDialog({ sources: [source], destinations });
-  }, [activeConv.canonicalSessionId, activeConv.id, chatConversations, chatDraftSessionId]);
-
-  const sourceForSelectableMessage = useCallback((message: Message) => (
-    forwardMessageSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId)
-  ), [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId]);
-
-  const isMessageSelectable = useCallback((message: Message) => Boolean(sourceForSelectableMessage(message)), [sourceForSelectableMessage]);
-
-  const onSelectMessage = useCallback((message: Message) => {
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    setMessageSelection({
-      conversationId: activeConv.id,
-      sourcesByMessageId: new Map([[source.sourceMessageId, source]]),
-    });
-  }, [activeConv.id, sourceForSelectableMessage]);
-
-  const onToggleSelectedMessage = useCallback((message: Message) => {
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    setMessageSelection((current) => toggleMessageSelectionSource(current, activeConv.id, source));
-  }, [activeConv.id, sourceForSelectableMessage]);
-
-  const onCancelMessageSelection = useCallback(() => {
-    messageSelectionDragRef.current = null;
-    setMessageSelection(null);
-  }, []);
-
-  const onSelectionDragStart = useCallback((message: Message, shouldSelect: boolean) => {
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    messageSelectionDragRef.current = { conversationId: activeConv.id, shouldSelect };
-    setMessageSelection((current) => setMessageSelectionSource(current, activeConv.id, source, shouldSelect));
-  }, [activeConv.id, sourceForSelectableMessage]);
-
-  const onSelectionDragEnter = useCallback((message: Message) => {
-    const drag = messageSelectionDragRef.current;
-    if (!drag || drag.conversationId !== activeConv.id) return;
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    setMessageSelection((current) => setMessageSelectionSource(current, activeConv.id, source, drag.shouldSelect));
-  }, [activeConv.id, sourceForSelectableMessage]);
-
-  const onSelectionDragEnd = useCallback(() => {
-    messageSelectionDragRef.current = null;
-  }, []);
-
-  const activeMessageSelection = messageSelection?.conversationId === activeConv.id ? messageSelection : null;
-  const selectedMessageIds = useMemo(
-    () => new Set(activeMessageSelection?.sourcesByMessageId.keys() ?? []),
-    [activeMessageSelection?.sourcesByMessageId],
-  );
-  const selectedMessageCount = selectedMessageIds.size;
-
-  const orderedSelectedMessageSources = useCallback(() => {
-    if (!activeMessageSelection || activeMessageSelection.sourcesByMessageId.size === 0) return [];
-    const orderedMessageIds = activeConv.messages
-      .map((message) => message.id?.trim() || message.entryId?.trim() || '')
-      .filter(Boolean);
-    return orderedForwardSourcesForMessageIds(orderedMessageIds, activeMessageSelection.sourcesByMessageId);
-  }, [activeConv.messages, activeMessageSelection]);
-
-  const onCopySelectedMessages = useCallback(() => {
-    const sources = orderedSelectedMessageSources();
-    if (sources.length === 0) return;
-    const copyText = formatSelectedMessagesForCopy(sources);
-    void copyTextToClipboard(copyText);
-  }, [copyTextToClipboard, orderedSelectedMessageSources]);
-
-  const onForwardSelectedMessages = useCallback(() => {
-    const sources = orderedSelectedMessageSources();
-    if (sources.length === 0) return;
-    const destinations = buildForwardDestinations(chatConversations, LOCAL_DRAFT_CHAT_CONVERSATION_ID);
-    if (!destinations.length) return;
-    setForwardDialog({ sources, destinations });
-  }, [chatConversations, orderedSelectedMessageSources]);
-
-  useEffect(() => {
-    messageSelectionDragRef.current = null;
-    setMessageSelection((current) => (current && current.conversationId !== activeConv.id ? null : current));
-  }, [activeConv.id]);
-
-  const handleConfirmForwardMessage = useCallback((destination: ForwardDestination, caption: string) => {
-    const senderIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    const sources = forwardDialog?.sources ?? [];
-    if (!senderIdentityId || sources.length === 0) return;
-    const destinationConversation = chatConversations.find((conversation) => (
-      conversation.id === destination.conversationId
-      || conversation.id === destination.id
-      || conversation.canonicalSessionId === destination.id
-    )) ?? null;
-    if (!destinationConversation) {
-      setDesktopChatError('Forward destination is no longer available.');
-      return;
-    }
-    const drafts = createForwardedMessageDrafts({ sources, caption });
-    const now = Date.now();
-    setForwardDialog(null);
-    setMessageSelection(null);
-    const directCloudConversationId = isCloudCollaborationConversationId(destination.conversationId) ? destination.conversationId : null;
-    if (directCloudConversationId && sendCloudCollaborationMessage) {
-      setActiveConvId(directCloudConversationId);
-      void (async () => {
-        for (const draft of drafts) {
-          const attachments = await prepareCloudForwardAttachments(draft.attachments);
-          const body = encodeCloudDirectMessageEnvelope({
-            schemaVersion: 1,
-            kind: 'message',
-            text: draft.text,
-            messageAction: draft.messageAction,
-          });
-          await sendCloudCollaborationMessage(directCloudConversationId, body, attachments);
-        }
-        revealForwardedMessageInDestination({
-          destinationConversationId: directCloudConversationId,
-          forwardedMessageId: null,
-          setActiveConversationId: setActiveConvId,
-          revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
-          revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
-        });
-      })().catch((error: unknown) => {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward messages');
-      });
-      return;
-    }
-    void (async () => {
-      let lastForwardMessageId: string | null = null;
-      for (const [index, draft] of drafts.entries()) {
-        const source = sources[index];
-        if (!source) continue;
-        const forwardMessageId = `msg:forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`;
-        lastForwardMessageId = forwardMessageId;
-        const nextState = await appendCanonicalMessage({
-          id: forwardMessageId,
-          sessionId: destination.id,
-          senderIdentityId,
-          senderRole: 'user',
-          messageKind: 'text',
-          contentText: draft.text,
-          content: {
-            ...(draft.attachments.length > 0 ? { attachments: draft.attachments } : {}),
-            forwardedFrom: draft.forwardedFrom,
-            messageAction: draft.messageAction,
-          },
-          createdAtMs: now + index,
-          parentMessageId: null,
-          status: 'sent',
-          sourceTransport: 'desktop-forward',
-          sourceEventId: `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`,
-        });
-        setCanonicalSessionState(nextState);
-        if (sendCloudGroupControl && cloudSession.account) {
-          const groupScope = {
-            canonicalSessionId: destination.id,
-            participantSpaceId: destinationConversation.participantSpaceId,
-            directness: destinationConversation.directness,
-            canonicalParticipants: destinationConversation.canonicalParticipants,
-          };
-          if (isCollaborationGroupSession(groupScope)) {
-            const activeCollaborationHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
-              ?? desktopCollaborationState?.hosts[0]
-              ?? null;
-            const selfPublicCollaborationName = activeCollaborationHost?.ownerName?.trim()
-              || activeCollaborationHost?.displayName?.trim()
-              || null;
-            const selfCollaborationNodeIds = new Set(
-              (desktopCollaborationState?.hosts ?? [])
-                .map((host) => host.nodeId?.trim())
-                .filter((value): value is string => Boolean(value)),
-            );
-            const targets = collaborationGroupSessionSendTargets(groupScope, null, selfCollaborationNodeIds);
-            const targetAccountIds = cloudGroupTargetAccountIds(targets);
-            if (targetAccountIds.length > 0) {
-              const groupSpaceId = collaborationGroupSessionSpaceId(groupScope);
-              const attachments = await prepareCloudForwardAttachments(draft.attachments);
-              await sendCloudGroupControl({
-                targetAccountIds,
-                kind: 'group-message',
-                groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId: destination.id, activeGroupSessionSpaceId: groupSpaceId }),
-                groupSpaceId,
-                groupTitle: null,
-                collaborationParticipants: collaborationGroupSessionParticipants(groupScope, { selfPublicName: selfPublicCollaborationName }),
-                message: {
-                  id: forwardMessageId,
-                  senderAccountId: '',
-                  text: draft.text,
-                  createdAtMs: now + index,
-                  messageAction: draft.messageAction,
-                },
-                attachments,
-              });
-            }
-          }
-        }
-      }
-      revealForwardedMessageInDestination({
-        destinationConversationId: destination.conversationId,
-        forwardedMessageId: lastForwardMessageId,
-        setActiveConversationId: setActiveConvId,
-        revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
-        revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
-      });
-    })().catch((error: unknown) => {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward messages');
-    });
-  }, [canonicalSessionState?.profile.humanIdentityId, chatConversations, cloudSession.account, desktopCollaborationState?.activeHostId, desktopCollaborationState?.hosts, forwardDialog?.sources, prepareCloudForwardAttachments, sendCloudCollaborationMessage, sendCloudGroupControl, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
+  const {
+    activeMessageSelection,
+    selectedMessageIds,
+    selectedMessageCount,
+    onReplyMessage,
+    onForwardMessage,
+    onSelectMessage,
+    isMessageSelectable,
+    onToggleSelectedMessage,
+    onSelectionDragStart,
+    onSelectionDragEnter,
+    onSelectionDragEnd,
+    onCancelMessageSelection,
+    onCopySelectedMessages,
+    onForwardSelectedMessages,
+    messageForwardDialog,
+  } = useKordiMessageActions({
+    activeConversation: activeConv,
+    conversations: chatConversations,
+    draftSessionId: chatDraftSessionId,
+    isNativeShell,
+    transcriptScrollRef: chatTranscriptScrollRef,
+    setActiveConversationId: setActiveConvId,
+    setDesktopChatError,
+    setChatQuoteBySessionId: composerUi.setChatQuoteBySessionId,
+    canonicalState: canonicalSessionState,
+    setCanonicalState: setCanonicalSessionState,
+    account: cloudSession.account,
+    collaborationState: desktopCollaborationState,
+    cloudTransport: {
+      prepareCloudForwardAttachments,
+      sendCloudCollaborationMessage,
+      sendCloudGroupControl,
+    },
+  });
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
@@ -3222,13 +2997,6 @@ export function useKordiAppModel({
     isDesktopChatLoading,
     retryCloudInitialSync,
   ]);
-
-  const messageForwardDialog = forwardDialog ? createElement(MessageForwardDialog, {
-    sources: forwardDialog.sources,
-    destinations: forwardDialog.destinations,
-    onClose: () => setForwardDialog(null),
-    onForward: handleConfirmForwardMessage,
-  }) : null;
 
   return {
     rootThemeClass,

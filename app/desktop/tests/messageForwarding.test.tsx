@@ -110,21 +110,22 @@ test('revealForwardedMessageInDestination can switch and fall back to bottom for
 });
 
 test('forward confirmation requires an existing destination, appends there, and opens it without creating a session', () => {
-  const modelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
-  const start = modelSource.indexOf('const handleConfirmForwardMessage = useCallback');
-  const end = modelSource.indexOf('  const activeConvMentionScope = useMemo', start);
+  const modelSource = readFileSync(new URL('../src/app/useKordiMessageActions.ts', import.meta.url), 'utf8');
+  const start = modelSource.indexOf('const confirmForwardMessage = useCallback');
+  const end = modelSource.indexOf('  const messageForwardDialog = forwardDialog', start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const body = modelSource.slice(start, end);
 
-  assert.match(body, /const destinationConversation = chatConversations\.find/);
+  assert.match(body, /const destinationConversation = conversations\.find/);
   assert.match(body, /if \(!destinationConversation\)/);
   assert.match(body, /appendCanonicalMessage\(/);
-  assert.match(body, /sendCloudCollaborationMessage\(directCloudConversationId/);
-  assert.match(body, /prepareCloudForwardAttachments\(draft\.attachments\)/);
+  assert.match(body, /sendCloudCollaborationMessage\(\s*directCloudConversationId/);
+  assert.match(body, /prepareCloudForwardAttachments\(\s*draft\.attachments/);
   assert.match(body, /attachments: draft\.attachments/);
   assert.match(body, /attachments,/);
-  assert.match(body, /revealForwardedMessageInDestination/);
+  assert.match(body, /revealForward\(/);
+  assert.match(modelSource, /revealForwardedMessageInDestination/);
   assert.doesNotMatch(body, /openOrCreateCanonicalSession/);
   assert.doesNotMatch(body, /createDesktopChatSession/);
   assert.doesNotMatch(body, /generatedSelfAgentSessionId/);

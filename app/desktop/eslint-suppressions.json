@@ -55,29 +55,26 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
     },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 9
-    },
     "@typescript-eslint/require-await": {
       "count": 2
     },
     "@typescript-eslint/unbound-method": {
-      "count": 18
+      "count": 15
     },
     "no-console": {
       "count": 1
     },
     "react-hooks/exhaustive-deps": {
-      "count": 20
+      "count": 19
     },
     "react-hooks/preserve-manual-memoization": {
-      "count": 3
+      "count": 2
     },
     "react-hooks/refs": {
-      "count": 8
+      "count": 7
     },
     "react-hooks/set-state-in-effect": {
-      "count": 3
+      "count": 2
     }
   },
   "src/app/useKordiDesktopActivity.ts": {
