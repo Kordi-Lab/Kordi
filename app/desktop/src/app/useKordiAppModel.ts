@@ -41,7 +41,6 @@ import { cloudCollaborationConversationId, isCloudCollaborationHostId } from '@/
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import {
   buildProjectRoutingGroups,
-  canonicalProjectGroupIdFromRoot,
 } from '@/features/canonical/sessionResolver';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
@@ -68,7 +67,7 @@ import {
   groupDefaultName,
   isApprovedCollaborationContact,
 } from '@/features/chat/chatCreateFlows';
-import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
+import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
@@ -84,16 +83,9 @@ import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/d
 import {
   addCanonicalGroupMembersFast,
   addCanonicalSessionParticipants,
-  appendCanonicalMessage,
-  archiveDesktopChatSession,
   createDesktopChatSession,
-  createDesktopProject,
-  createDesktopProjectFromFolder,
-  moveDesktopChatSessionToProject,
   openOrCreateCanonicalSessionFast,
   removeCanonicalSessionParticipant,
-  renameCanonicalSession,
-  renameDesktopChatSession,
   setCanonicalSessionParticipantRole,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentityFast,
@@ -119,11 +111,7 @@ import {
   normalizeStoredGroupSpaceId,
   participantSpaceCreateKey,
   participantSpaceNonSelfIdentities,
-  removeSessionFromCanonicalState,
-  removeSessionFromDesktopState,
   sessionMetadataRecord,
-  sessionRenameNoticeText,
-  shouldUseCloudSessionAction,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
 import { useKordiMessageActions } from '@/app/useKordiMessageActions';
@@ -131,6 +119,11 @@ import {
   useKordiCanonicalPageHydration,
   useKordiCanonicalSessionStore,
 } from '@/app/useKordiCanonicalSessionStore';
+import {
+  appendCanonicalRenameNotice,
+  useKordiChatSessionActions,
+} from '@/app/useKordiChatSessionActions';
+import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 
 function mergeCanonicalIdentity(state: CanonicalSessionState, identity: CanonicalIdentity): CanonicalSessionState {
   return {
@@ -1357,259 +1350,50 @@ export function useKordiAppModel({
 
   const activeQueuedDesktopMessages = queuedDesktopMessagesBySession[activeConv.id] ?? ('queuedMessages' in activeConv ? activeConv.queuedMessages : undefined) ?? [];
 
-  const optimisticallyRemoveChatSession = useCallback((sessionId: string) => {
-    const fallbackSessionId = desktopChatState?.sessions.find((session) => session.id !== sessionId)?.id
-      ?? LOCAL_DRAFT_CHAT_CONVERSATION_ID;
-    setLocallyHiddenSessionIds((current) => new Set(current).add(sessionId));
-    setDesktopChatState((current) => removeSessionFromDesktopState(current, sessionId));
-    setCanonicalSessionState((current) => removeSessionFromCanonicalState(current, sessionId));
-    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
-    if (activeConvId === sessionId || desktopChatState?.activeSessionId === sessionId) {
-      setActiveConvId(fallbackSessionId);
-    }
-  }, [activeConvId, composerUi.setComposerDrafts, desktopChatState?.activeSessionId, desktopChatState?.sessions, setActiveConvId, setDesktopChatState]);
-
-  const appendRenameNotice = useCallback(async (
-    state: CanonicalSessionState,
-    sessionId: string,
-    title: string,
-    scope: 'group' | 'session',
-    actorIdentityId: string,
-  ) => {
-    const actorName = canonicalIdentityDisplayName(state, actorIdentityId);
-    const now = Date.now();
-    return appendCanonicalMessage({
-      sessionId,
-      senderIdentityId: actorIdentityId,
-      senderRole: 'system',
-      messageKind: 'status',
-      contentText: sessionRenameNoticeText(actorName, title, scope),
-      content: {
-        kind: 'session-title-update',
-        scope,
-        title,
-        actorDisplayName: actorName,
-      },
-      createdAtMs: now,
-      status: 'complete',
-      sourceTransport: 'desktop-local-session-update',
-      sourceEventId: `desktop-local-session-update:${sessionId}:${scope}:${now}`,
-    });
-  }, []);
-
-  const syncGroupSessionTitleRename = useCallback(async (
-    state: CanonicalSessionState,
-    sessionId: string,
-    title: string,
-    actorIdentityId: string,
-  ) => {
-    const participants = canonicalGroupParticipantsForSession(state, sessionId);
-    const targets = buildChatGroupCollaborationUpdateTargets({ actorIdentityId, participants });
-    if (targets.length === 0) return;
-    const updateParticipants = buildChatGroupCollaborationUpdateParticipants({
-      participants,
-      adminIdentityIds: activeGroupAdminIds(state, sessionId),
-    });
-    const currentMetadata = sessionMetadataRecord(state, sessionId);
-    const parentGroupSpaceId = metadataGroupSpaceId(currentMetadata) || sessionId;
-    const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
-    if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
-      await sendCloudGroupControl({
-        targetAccountIds: cloudTargetAccountIds,
-        kind: 'session-title-update',
-        groupId: sessionId,
-        groupSpaceId: parentGroupSpaceId,
-        groupTitle: title,
-        participants: cloudGroupParticipantsForCollaborationSession(cloudSession.account, updateParticipants),
-      });
-    }
-  }, [cloudSession.account, sendCloudGroupControl]);
-
-  const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
-    if (!isNativeShell || !sessionId.trim()) return;
-    const nextTitle = title.trim();
-    if (!nextTitle) return;
-    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || undefined;
-    const isDesktopRuntimeSession = (desktopChatState?.sessions ?? []).some((session) => session.id === sessionId);
-    try {
-      setDesktopChatError(null);
-      let nextCanonical = await renameCanonicalSession({
-        sessionId,
-        title: nextTitle,
-        requestedByIdentityId: actorIdentityId,
-      });
-      const renamedSession = nextCanonical.sessions.find((session) => session.id === sessionId);
-      if (actorIdentityId && renamedSession?.kind === 'group') {
-        nextCanonical = await appendRenameNotice(nextCanonical, sessionId, nextTitle, 'session', actorIdentityId);
-      }
-      setCanonicalSessionState(nextCanonical);
-      if (isDesktopRuntimeSession) {
-        const nextDesktop = await renameDesktopChatSession(sessionId, nextTitle);
-        setDesktopChatState(nextDesktop);
-      } else {
-        await refreshDesktopChat();
-      }
-      if (actorIdentityId && renamedSession?.kind === 'group') {
-        try {
-          await syncGroupSessionTitleRename(nextCanonical, sessionId, nextTitle, actorIdentityId);
-        } catch (error) {
-          setDesktopChatError(`Session renamed, but hosted sync failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    } catch (error) {
-      await refreshCanonicalState();
-      const message = error instanceof Error ? error.message : 'Unable to rename session';
-      setDesktopChatError(message);
-    }
-  }, [appendRenameNotice, canonicalSessionState?.profile.humanIdentityId, desktopChatState?.sessions, isNativeShell, refreshCanonicalState, refreshDesktopChat, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, syncGroupSessionTitleRename]);
-
-  const handleArchiveChatSession = useCallback(async (sessionId: string) => {
-    const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
-
-    try {
-      setDesktopChatError(null);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) {
-        await hideCloudSession(trimmedSessionId);
-        optimisticallyRemoveChatSession(trimmedSessionId);
-        await refreshCanonicalState();
-        return;
-      }
-
-      optimisticallyRemoveChatSession(trimmedSessionId);
-      const nextState = await archiveDesktopChatSession(trimmedSessionId, desktopChatState?.activeSessionId);
-      setDesktopChatState(nextState);
-      if (activeConvId === trimmedSessionId || desktopChatState?.activeSessionId === trimmedSessionId) {
-        setActiveConvId(nextState.activeSessionId);
-      }
-      await refreshCanonicalState();
-    } catch (error) {
-      await refreshCanonicalState();
-      const message = error instanceof Error ? error.message : 'Unable to hide session';
-      setDesktopChatError(message.startsWith('Session not found') ? null : message);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) throw error;
-    }
-  }, [activeConvId, desktopChatState?.activeSessionId, hideCloudSession, isNativeShell, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
-
-  const handleDeleteChatSession = useCallback(async (sessionId: string) => {
-    const trimmedSessionId = sessionId.trim();
-    if (!isNativeShell || !trimmedSessionId) return;
-
-    try {
-      setDesktopChatError(null);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) {
-        await deleteCloudSession(trimmedSessionId);
-        optimisticallyRemoveChatSession(trimmedSessionId);
-        try {
-          const nextState = await archiveDesktopChatSession(trimmedSessionId, desktopChatState?.activeSessionId);
-          setDesktopChatState(nextState);
-          if (activeConvId === trimmedSessionId || desktopChatState?.activeSessionId === trimmedSessionId) {
-            setActiveConvId(nextState.activeSessionId);
-          }
-        } catch (localError) {
-          const localMessage = localError instanceof Error ? localError.message : String(localError);
-          if (!localMessage.startsWith('Session not found')) throw localError;
-        }
-        await refreshCanonicalState();
-        return;
-      }
-
-      optimisticallyRemoveChatSession(trimmedSessionId);
-      const nextState = await archiveDesktopChatSession(trimmedSessionId, desktopChatState?.activeSessionId);
-      setDesktopChatState(nextState);
-      if (activeConvId === trimmedSessionId || desktopChatState?.activeSessionId === trimmedSessionId) {
-        setActiveConvId(nextState.activeSessionId);
-      }
-      await refreshCanonicalState();
-    } catch (error) {
-      await refreshCanonicalState();
-      const message = error instanceof Error ? error.message : 'Unable to remove chat';
-      setDesktopChatError(message.startsWith('Session not found') ? null : message);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) throw error;
-    }
-  }, [activeConvId, deleteCloudSession, desktopChatState?.activeSessionId, isNativeShell, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
-
-  const handleMoveChatSessionToProject = useCallback(async (sessionId: string, requestedProjectRoot: string) => {
-    if (!isNativeShell || !sessionId.trim()) return;
-
-    try {
-      setDesktopChatError(null);
-      const nextState = await moveDesktopChatSessionToProject(sessionId, requestedProjectRoot);
-      setDesktopChatState(nextState);
-
-      const resolvedProjectRoot = nextState.activeSession.project?.root ?? requestedProjectRoot;
-      const resolvedProjectId = canonicalProjectGroupIdFromRoot(resolvedProjectRoot) ?? resolvedProjectRoot;
-      if (resolvedProjectId) {
-        selectProjectSession(resolvedProjectId, nextState.activeSessionId);
-        projectsUi.setExpandedProjectIds((current) => ({ ...current, [resolvedProjectId]: true }));
-      }
-      setActiveNav('projects');
-    } catch (error) {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to move session to project');
-    }
-  }, [isNativeShell, projectsUi.setExpandedProjectIds, selectProjectSession, setActiveNav, setDesktopChatError, setDesktopChatState]);
-
-  const handleSelectCreatedProject = useCallback(async (projectRoot: string) => {
-    const projectId = canonicalProjectGroupIdFromRoot(projectRoot) ?? projectRoot;
-    setActiveNav('projects');
-    selectProject(projectId);
-    projectsUi.setExpandedProjectIds((current) => ({ ...current, [projectId]: true }));
-    await refreshDesktopChat(desktopChatState?.activeSessionId);
-    await refreshCanonicalState();
-  }, [desktopChatState?.activeSessionId, projectsUi.setExpandedProjectIds, refreshCanonicalState, refreshDesktopChat, selectProject, setActiveNav]);
-
-  const handleCreateProjectFromFolder = useCallback(async (folderPath: string, name?: string) => {
-    if (!isNativeShell) return;
-    try {
-      setDesktopChatError(null);
-      const project = await createDesktopProjectFromFolder(folderPath, name);
-      await handleSelectCreatedProject(project.root);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to create project from folder';
-      setDesktopChatError(message);
-      throw new Error(message);
-    }
-  }, [handleSelectCreatedProject, isNativeShell, setDesktopChatError]);
-
-  const handleCreateProject = useCallback(async (name: string, parentDir?: string) => {
-    if (!isNativeShell) return;
-    try {
-      setDesktopChatError(null);
-      const project = await createDesktopProject(name, parentDir);
-      await handleSelectCreatedProject(project.root);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to create project';
-      setDesktopChatError(message);
-      throw new Error(message);
-    }
-  }, [handleSelectCreatedProject, isNativeShell, setDesktopChatError]);
-
-  const handleCreateProjectSession = useCallback(async () => {
-    if (!isNativeShell) return;
-    const projectRoot = activeProject.root?.trim();
-    if (!projectRoot) return;
-
-    setDesktopChatError(null);
-    const projectId = canonicalProjectGroupIdFromRoot(projectRoot) ?? activeProject.id;
-    const draftSessionId = projectDraftSessionId(projectId);
-    selectProjectSession(projectId, draftSessionId);
-    projectsUi.setExpandedProjectIds((current) => ({ ...current, [projectId]: true }));
-    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'project', draftSessionId, ''));
-    composerUi.setChatComposerAttachments([]);
-    composerUi.setOpenComposerSelector(null);
-    setActiveNav('projects');
-  }, [
-    activeProject.id,
-    activeProject.root,
-    composerUi.setChatComposerAttachments,
-    composerUi.setComposerDrafts,
-    composerUi.setOpenComposerSelector,
+  const {
+    renameSession: handleRenameChatSession,
+    archiveSession: handleArchiveChatSession,
+    deleteSession: handleDeleteChatSession,
+  } = useKordiChatSessionActions({
+    account: cloudSession.account,
+    activeConversationId: activeConvId,
+    canonicalState: canonicalSessionState,
+    desktopState: desktopChatState,
     isNativeShell,
-    projectsUi.setExpandedProjectIds,
+    deleteCloudSession,
+    hideCloudSession,
+    refreshCanonicalState,
+    refreshDesktopChat,
+    sendCloudGroupControl,
+    setActiveConversationId: setActiveConvId,
+    setCanonicalState: setCanonicalSessionState,
+    setComposerDrafts: composerUi.setComposerDrafts,
+    setDesktopError: setDesktopChatError,
+    setDesktopState: setDesktopChatState,
+    setLocallyHiddenSessionIds,
+  });
+
+  const {
+    moveSessionToProject: handleMoveChatSessionToProject,
+    createProjectFromFolder: handleCreateProjectFromFolder,
+    createProject: handleCreateProject,
+    createProjectSession: handleCreateProjectSession,
+  } = useKordiProjectActions({
+    activeProject,
+    desktopState: desktopChatState,
+    isNativeShell,
+    refreshCanonicalState,
+    refreshDesktopChat,
+    selectProject,
     selectProjectSession,
     setActiveNav,
-    setDesktopChatError,
-  ]);
+    setComposerAttachments: composerUi.setChatComposerAttachments,
+    setComposerDrafts: composerUi.setComposerDrafts,
+    setDesktopError: setDesktopChatError,
+    setDesktopState: setDesktopChatState,
+    setExpandedProjectIds: projectsUi.setExpandedProjectIds,
+    setOpenComposerSelector: composerUi.setOpenComposerSelector,
+  });
 
   const peopleContactById = useMemo(
     () => buildChatCreatePeopleContactLookup(displayedContacts),
@@ -2056,7 +1840,13 @@ export function useKordiAppModel({
       renamedGroupIds.set(groupId, sessionId);
     }
     for (const sessionId of groupSessionIds) {
-      nextState = await appendRenameNotice(nextState, sessionId, title, 'group', actorIdentityId);
+      nextState = await appendCanonicalRenameNotice(
+        nextState,
+        sessionId,
+        title,
+        'group',
+        actorIdentityId,
+      );
     }
     setCanonicalSessionState(nextState);
 
@@ -2084,7 +1874,13 @@ export function useKordiAppModel({
     } catch (error) {
       setDesktopChatError(`Group renamed, but hosted sync failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [appendRenameNotice, canonicalSessionState, cloudSession.account, isNativeShell, sendCloudGroupControl, setDesktopChatError]);
+  }, [
+    canonicalSessionState,
+    cloudSession.account,
+    isNativeShell,
+    sendCloudGroupControl,
+    setDesktopChatError,
+  ]);
 
   const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
     if (!isNativeShell) return;

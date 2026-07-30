@@ -27,11 +27,11 @@ test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves 
 });
 
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
-  const source = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
-  const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const handleDeleteChatSession'));
+  const source = readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
+  const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
   const deleteBranchEnd = source.indexOf('} catch (error) {', deleteBranchStart);
   const cloudDeleteBranch = source.slice(deleteBranchStart, deleteBranchEnd);
-  assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(trimmedSessionId, desktopChatState\?\.activeSessionId\)/);
+  assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
 });
 
 test('local cloud self-agent no-provider errors become failed agent replies in canonical chat', () => {
