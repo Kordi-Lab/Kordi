@@ -15,10 +15,17 @@ const chatsPageSource = () => [
   '../src/pages/chatsPage.companionHeader.tsx',
   '../src/pages/chatsPage.companionPane.tsx',
   '../src/pages/chatsPage.collaborationRoutingControls.tsx',
+  '../src/pages/chatsPage.companionWorkspace.tsx',
+  '../src/pages/chatsPage.mainWorkspace.tsx',
   '../src/pages/chatsPage.mainComposer.tsx',
   '../src/pages/useChatCollaborationRouting.ts',
+  '../src/pages/useChatCompanionLayout.ts',
+  '../src/pages/useChatCompanionSession.ts',
+  '../src/pages/useChatDestinations.ts',
   '../src/pages/useChatForkModel.ts',
+  '../src/pages/useChatHeaderModel.ts',
   '../src/pages/useChatPins.ts',
+  '../src/pages/useChatSenderProfiles.ts',
   '../src/pages/useChatTranscriptNavigation.ts',
 ]
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
@@ -44,7 +51,7 @@ function sidePanelBlock(source: string): string {
   const composition = blockBetween(
     source,
     'const companionPane = companionConversation',
-    'const splitDivider = showCompanionPane',
+    'const splitDivider = <ChatCompanionSplitDivider',
   );
   return [
     composition,
@@ -53,6 +60,8 @@ function sidePanelBlock(source: string): string {
     '../src/pages/chatsPage.companionHeader.tsx',
     '../src/pages/chatsPage.companionPane.tsx',
     '../src/pages/chatsPage.collaborationRoutingControls.tsx',
+    '../src/pages/chatsPage.companionWorkspace.tsx',
+    '../src/pages/useChatCompanionSession.ts',
   ]
     .map((entry, index) => (
       index === 0 ? entry : readFileSync(new URL(entry, import.meta.url), 'utf8')
@@ -124,7 +133,7 @@ test('side-panel Agent composer exposes the same visible attachment trigger and 
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
 
-  assert.match(source, /attachmentInputRef=\{companionAttachmentInputRef\}/, 'side-panel composer should receive its own attachment input ref');
+  assert.match(source, /attachmentInputRef=\{session\.refs\.attachmentInput\}/, 'side-panel composer should receive its own attachment input ref');
   assert.match(side, /ref=\{attachmentInputRef\}/, 'side-panel file input should use the supplied side-panel ref, not a hidden unreachable input');
   assert.match(side, /onClick=\{\(\) => attachmentInputRef\.current\?\.click\(\)\}/, 'side-panel composer should expose a visible attachment button');
   assert.match(side, /aria-label="Add attachment"/, 'side-panel attachment control should use the same accessible label as main composer');
@@ -138,18 +147,18 @@ test('side-panel Agent model controls use independent menu state and target the 
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
 
-  assert.match(source, /const \[companionOpenComposerSelector, setCompanionOpenComposerSelector\]/, 'side-panel model selector should not share the main composer open state');
-  assert.match(source, /toggleCompanionComposerSelector/, 'side-panel model selector should have its own toggle handler');
-  assert.match(source, /const companionLocalAgentConfigTargetSessionId = companionConversation[\s\S]*localAgentComposerConfigTargetSessionId\(companionConversation\)/, 'side-panel model controls should resolve the canonical runtime session when available');
-  assert.match(source, /useCompanionComposerRuntime\(\{[\s\S]*sessionId: companionLocalAgentConfigTargetSessionId/, 'side-panel model controls should hydrate the exact canonical runtime');
+  assert.match(source, /openComposerSelector: ComposerSelector \| null/, 'side-panel model selector should own independent state');
+  assert.match(source, /selector:\s*\{[\s\S]*toggle:/, 'side-panel model selector should expose its own toggle handler');
+  assert.match(source, /const localConfigTargetSessionId = conversation[\s\S]*localAgentComposerConfigTargetSessionId\(conversation\)/, 'side-panel model controls should resolve the canonical runtime session when available');
+  assert.match(source, /useCompanionComposerRuntime\(\{[\s\S]*sessionId: localConfigTargetSessionId/, 'side-panel model controls should hydrate the exact canonical runtime');
   assert.doesNotMatch(source, /companionComposerSelections\[[^\]]+\] \?\? composerSelection/, 'side-panel selection must not initialize from the main composer runtime');
-  assert.match(source, /const companionComposerConfigTarget = companionComposerRuntime\.configTarget/, 'side-panel updates should use an isolated hydrated config target');
-  assert.match(source, /selection: companionComposerSelection/, 'side-panel model controls should receive their own selection');
+  assert.match(source, /configTarget: localRuntime\.configTarget/, 'side-panel updates should use an isolated hydrated config target');
+  assert.match(source, /selection: localRuntime\.selection/, 'side-panel model controls should receive their own selection');
   assert.match(side, /selection=\{localRouting\.selection\}/, 'side-panel model controls should render the supplied isolated selection');
-  assert.match(source, /authLabel: companionComposerRuntime\.authLabel/, 'side-panel auth label should derive from the hydrated runtime provider');
-  assert.match(source, /authOptions: companionComposerRuntime\.authOptions/, 'side-panel auth options should prioritize the hydrated runtime provider');
-  assert.match(source, /openSelector: companionOpenComposerSelector/, 'side-panel model controls should receive side-panel selector state');
-  assert.match(source, /toggleSelector: toggleCompanionComposerSelector/, 'side-panel model controls should receive the side-panel toggle handler');
+  assert.match(source, /authLabel: localRuntime\.authLabel/, 'side-panel auth label should derive from the hydrated runtime provider');
+  assert.match(source, /authOptions: localRuntime\.authOptions/, 'side-panel auth options should prioritize the hydrated runtime provider');
+  assert.match(source, /openSelector: session\.selector\.value/, 'side-panel model controls should receive side-panel selector state');
+  assert.match(source, /toggleSelector: session\.selector\.toggle/, 'side-panel model controls should receive the side-panel toggle handler');
   assert.match(side, /openSelector=\{openSelector\}/, 'side-panel model controls should read the isolated selector prop');
   assert.match(side, /onToggleSelector=\{toggleSelector\}/, 'side-panel model controls should toggle the isolated selector prop');
   assert.match(side, /selectComposerValue\(scope, type, value, localRouting\.configTarget\)/, 'side-panel model changes should target isolated side-panel state');
@@ -165,8 +174,8 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
 
   assert.match(source, /const \[selectedMainAgentId, setSelectedMainAgentId\][\s\S]*const \[selectedCompanionAgentId, setSelectedCompanionAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
   assert.match(source, /const companionAgents = useMemo\([\s\S]*companion\.host \? \[companion\.host\]/, 'side-panel bridge agent menu should derive routing agents for the companion session');
-  assert.match(source, /enabled: companionConversationIsCollaborationAgent[\s\S]*selectedAgent: selectedCompanionCollaborationRoutingAgent/, 'side-panel cloud agents should receive the bridge-routing model branch');
-  assert.match(source, /selection: companionCollaborationRoutingSelection/, 'side-panel cloud agent model controls should receive bridge routing selection');
+  assert.match(source, /enabled: presentation\.isCollaborationAgent[\s\S]*selectedAgent: routing\.selectedAgent/, 'side-panel cloud agents should receive the bridge-routing model branch');
+  assert.match(source, /selection: routing\.selection/, 'side-panel cloud agent model controls should receive bridge routing selection');
   assert.match(side, /selection: collaborationRouting\.selection/, 'side-panel cloud agent model controls should pass the supplied bridge routing selection to the shared controls');
   assert.match(side, /selection=\{selection\}/, 'shared cloud agent model controls should render the supplied bridge routing selection');
   assert.match(side, /actions\.onUpdate\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing through the shared action');
@@ -182,19 +191,16 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
 test('split-pane Agent bottom controls stay compact without changing composer height during resize', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
-  const mainComposition = blockBetween(
-    source,
-    '<ChatSessionPane\n        presentation={{\n          liveTurn: attributedActiveTranscriptLiveTurn,',
-    '{showCompanionPane && companionSide === \'right\' ? splitDivider : null}',
-  );
-  const main = `${mainComposition}\n${readFileSync(
-    new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
-    'utf8',
-  )}`;
+  const main = [
+    '../src/pages/chatsPage.mainWorkspace.tsx',
+    '../src/pages/chatsPage.mainComposer.tsx',
+  ]
+    .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
+    .join('\n');
   const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
 
   assert.match(composerSource, /compact\?: boolean/, 'ComposerModelControls should expose a compact density for narrow panes');
-  assert.match(side, /scrollClassName: 'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5'/, 'side-panel transcript should flex like the main pane while preserving overflow containment so composer bottoms stay aligned during resize');
+  assert.match(side, /scrollClassName:\s*'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5'/, 'side-panel transcript should flex like the main pane while preserving overflow containment so composer bottoms stay aligned during resize');
   assert.match(side, /data-companion-send-row="true"[\s\S]*flex-nowrap/, 'side-panel send row should stay single-line so resizing does not change composer height');
   assert.match(side, /data-companion-model-controls="true"[\s\S]*flex-nowrap/, 'side-panel model controls should stay single-line instead of wrapping under the input');
   assert.match(side, /<ComposerModelControls[\s\S]*compact=\{true\}/, 'side-panel model controls should use compact button widths');
@@ -252,7 +258,7 @@ test('virtualized chat transcripts reset by session identity even for equal-leng
   const virtual = virtualTranscriptSource();
 
   assert.match(source, /sessionKey: activeConv\.id/, 'the main transcript should key resets by selected session');
-  assert.match(source, /sessionKey: companionConversation\.id/, 'the side transcript should key resets by selected session');
+  assert.match(source, /sessionKey: conversation\.id/, 'the side transcript should key resets by selected session');
   assert.match(pane, /sessionKey=\{sessionKey\}/, 'the shared pane should forward session identity');
   assert.match(virtual, /useLayoutEffect\([\s\S]*aligned\?\.sessionKey !== sessionKey/, 'tail alignment should happen in a layout effect keyed by session');
 });
@@ -279,8 +285,8 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
   assert.match(virtual, /virtualizer\.scrollToIndex\(navigationTargetIndex/, 'found targets should move into the mounted range');
   assert.match(source, /setMainRequest\(\{[\s\S]*sessionKey: main\.conversation\.id,?[\s\S]*\}\)/, 'main navigation requests should retain their source session');
   assert.match(source, /setCompanionRequest\(\{[\s\S]*sessionKey: companion\.conversation\.id,?[\s\S]*\}\)/, 'companion navigation requests should retain their source session');
-  assert.match(source, /onNavigationHandled: transcriptNavigation\.main\.acknowledge/, 'main navigation should acknowledge the exact handled request');
-  assert.match(source, /onNavigationHandled: transcriptNavigation\.companion\.acknowledge/, 'companion navigation should acknowledge the exact handled request');
+  assert.match(source, /onNavigationHandled: models\.navigation\.acknowledge/, 'main navigation should acknowledge the exact handled request');
+  assert.match(source, /onNavigationHandled: navigation\.acknowledge/, 'companion navigation should acknowledge the exact handled request');
 });
 
 test('side-panel Agent session uses independent full-pane destination subtitles', () => {
@@ -292,10 +298,10 @@ test('side-panel Agent session uses independent full-pane destination subtitles'
   assert.match(pane, /onOpenMessageDetail=\{onOpenMessageDetail\}/, 'ChatSessionPane should pass message detail handling into MessageBubble');
   assert.doesNotMatch(side, /data-side-chat-session-detail-toggle="true"/, 'side-panel header should not show a session Details button');
   assert.doesNotMatch(side, /isCompanionDetailPanelCollapsed \? 'Details' : 'Hide details'/, 'side-panel header should not render Details/Hide details text');
-  assert.match(source, /const \[companionDestination, setCompanionDestination\] = useState<ChatDestination>\('messages'\)/, 'side-panel destinations should not share the main active destination state');
-  assert.match(source, /const \[companionActiveArtifactId, setCompanionActiveArtifactId\] = useState<string \| null>\(null\)/, 'side-panel artifacts should not share the main activeArtifactId state');
-  assert.match(source, /destination=\{companionActiveDetailTab\}/, 'side-panel destination page should receive the side-panel detail tab');
-  assert.match(source, /activeArtifactId=\{companionActiveArtifactId\}/, 'side-panel detail page should receive the side-panel artifact selection');
+  assert.match(source, /type CompanionDestinationState = \{[\s\S]*destination: ChatDestination;[\s\S]*activeArtifactId: string \| null;/, 'side-panel destinations should own a cohesive state separate from the main destination');
+  assert.match(source, /function initialCompanionState\([\s\S]*destination: 'messages',[\s\S]*activeArtifactId: null/, 'side-panel destination state should reset by companion identity');
+  assert.match(source, /destination=\{destinations\.activeDetailTab\}/, 'side-panel destination page should receive the side-panel detail tab');
+  assert.match(source, /activeArtifactId=\{destinations\.activeArtifactId\}/, 'side-panel detail page should receive the side-panel artifact selection');
   assert.match(source, /activeDetailTab=\{destination\}/, 'side-panel detail rail should render using that isolated destination');
   assert.match(source, /scope="companion"/, 'side-panel header should expose the same destination subtitles');
   assert.match(source, /data-chat-destination-scope="companion"/, 'side-panel detail content should replace only its own pane');
@@ -309,33 +315,41 @@ test('changing either main or Ask Agent session returns that pane to Messages be
 
   assert.match(
     source,
-    /useLayoutEffect\(\(\) => \{\s*setIsDetailPanelCollapsed\(true\);\s*}, \[activeConv\.id, setIsDetailPanelCollapsed\]\);/,
+    /useLayoutEffect\(\(\) => \{\s*setIsDetailPanelCollapsed\(true\);\s*}, \[conversationId, setIsDetailPanelCollapsed\]\);/,
     'every main session identity change should reset the main destination to Messages',
   );
   assert.match(
     source,
-    /useLayoutEffect\(\(\) => \{\s*setCompanionDestination\('messages'\);\s*setCompanionActiveArtifactId\(null\);\s*setCompanionActiveSourcePreview\(null\);\s*}, \[companionConversation\?\.id\]\);/,
-    'every Ask Agent session identity change should reset its destination and stale detail selections',
+    /const activeCompanionState = companionState\.conversationId === companionKey[\s\S]*initialCompanionState\(companionKey\);[\s\S]*setCompanionState\(activeCompanionState\);/,
+    'every Ask Agent session identity change should synchronously derive a Messages destination without stale selections',
   );
 });
 
 test('sending from main or side-panel chat schedules a jump to the sent message', () => {
   const source = chatsPageSource();
+  const mainWorkspace = readFileSync(
+    new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
+  const companionSession = readFileSync(
+    new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
+    'utf8',
+  );
 
-  assert.match(source, /scrollTranscriptToBottom/, 'ChatsPage should use the transcript bottom-scroll helper after sends');
-  const mainSendStart = source.indexOf('const handleSendChatMessage = (draftOverride?: string) => {');
-  const splitStart = source.indexOf('const updateSplitFromPointer', mainSendStart);
+  assert.match(source, /scheduleTranscriptScrollToBottom/, 'ChatsPage workspaces should use the transcript bottom-scroll helper after sends');
+  const mainSendStart = mainWorkspace.indexOf('const handleSend = (draftOverride?: string) => {');
+  const splitStart = mainWorkspace.indexOf('\n\n  return (', mainSendStart);
   assert.notEqual(mainSendStart, -1, 'main chat send handler should exist');
   assert.notEqual(splitStart, -1, 'main chat send block should have an end boundary');
-  const mainSendBlock = source.slice(mainSendStart, splitStart);
-  assert.match(mainSendBlock, /scheduleTranscriptScrollToBottom\(chatTranscriptScrollRef\)/, 'main send should jump its own transcript to the new message');
+  const mainSendBlock = mainWorkspace.slice(mainSendStart, splitStart);
+  assert.match(mainSendBlock, /scheduleTranscriptScrollToBottom\(transcript\.chatTranscriptScrollRef\)/, 'main send should jump its own transcript to the new message');
 
-  const sideSendStart = source.indexOf('const sendCompanionDraft = (conversation: Conversation) => {');
-  const createSideStart = source.indexOf('const createSideAgentSession', sideSendStart);
+  const sideSendStart = companionSession.indexOf('const sendDraft = (targetConversation: Conversation) => {');
+  const createSideStart = companionSession.indexOf('const setOpenComposerSelector', sideSendStart);
   assert.notEqual(sideSendStart, -1, 'side-panel send handler should exist');
   assert.notEqual(createSideStart, -1, 'side-panel send block should have an end boundary');
-  const sideSendBlock = source.slice(sideSendStart, createSideStart);
-  assert.match(sideSendBlock, /scheduleTranscriptScrollToBottom\(companionTranscriptScrollRef\)/, 'side-panel send should jump its own transcript to the new message');
+  const sideSendBlock = companionSession.slice(sideSendStart, createSideStart);
+  assert.match(sideSendBlock, /scheduleTranscriptScrollToBottom\(transcriptScrollRef\)/, 'side-panel send should jump its own transcript to the new message');
 });
 
 test('queued Ask Agent bubbles expose icon-only edit and cancel actions before queued drafts flush', () => {
@@ -375,7 +389,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   const typesSource = messageTypesSource();
 
   const side = sidePanelBlock(chatsSource);
-  assert.match(side, /queuedMessages: queuedDesktopMessagesBySession\[companionConversation\.id\] \?\? \[\]/, 'side-panel transcript should render queued drafts for its own session');
+  assert.match(side, /queuedDesktopMessagesBySession\[conversation\.id\] \?\? \[\]/, 'side-panel transcript should render queued drafts for its own session');
 
   assert.match(typesSource, /contextMessages\?: DesktopChatContextMessage\[\]/, 'queued local messages should preserve optional side Agent reference context');
 
@@ -397,8 +411,8 @@ test('new local sessions expose centered progress and coalesce duplicate first s
   assert.notEqual(activeSendStart, -1, 'active send handler should exist');
   const activeSendBlock = actionsSource.slice(activeSendStart);
 
-  assert.match(chatsSource, /const activeSelfAgentSessionIsStarting = activeSelfAgentSessionIsDraft && isDesktopChatSending;/, 'the pending visual should be scoped to the local draft session');
-  assert.match(chatsSource, /emptyState: activeSelfAgentSessionIsStarting \? <SessionStartingState \/> : null/, 'the pending visual should occupy the empty transcript rather than the global error banner');
+  assert.match(chatsSource, /const isStarting = isDraft && isSending;/, 'the pending visual should be scoped to the local draft session');
+  assert.match(chatsSource, /emptyState: models\.header\.isStarting[\s\S]*\? <SessionStartingState \/>[\s\S]*: null/, 'the pending visual should occupy the empty transcript rather than the global error banner');
   assert.match(activeSendBlock, /if \(localSendDelayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'duplicate first sends should be coalesced while materialization is in flight');
   assert.doesNotMatch(actionsSource, /Kordi is still preparing this session/, 'session-starting should never use failure copy');
 
