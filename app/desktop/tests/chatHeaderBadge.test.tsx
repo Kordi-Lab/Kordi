@@ -358,11 +358,12 @@ test('ask agent slash trigger opens the side session instead of sending slash te
 test('ask agent from an active agent chat creates a fresh side session instead of switching the main agent session', () => {
   const pageSource = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const sideAgentActionsSource = readFileSync(new URL('../src/app/useKordiSideAgentSessionActions.ts', import.meta.url), 'utf8');
 
   assert.match(pageSource, /activePaneKind === 'agent' && onCreateAgentSession/);
   assert.match(pageSource, /createSideAgentSession\(initialPrompt\)/);
-  assert.match(appModelSource, /const previousActiveSessionId = desktopChatState\?\.activeSessionId \?\? null/);
-  assert.match(appModelSource, /activeSessionId: previousActiveSessionId/);
+  assert.match(appModelSource, /activeDesktopSessionId: desktopChatState\?\.activeSessionId \?\? null/);
+  assert.match(sideAgentActionsSource, /activeDesktopSessionId[\s\S]*\? \{ \.\.\.nextState, activeSessionId: activeDesktopSessionId \}/);
 });
 
 test('ask agent new session action switches the side panel to the created agent session', () => {
