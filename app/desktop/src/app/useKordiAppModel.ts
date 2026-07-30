@@ -21,8 +21,6 @@ import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDial
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
-import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
-import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import {
   type CloudGroupParticipant,
   cloudGroupSelfParticipant,
@@ -54,7 +52,7 @@ import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscrip
 import { buildCollaborationMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '@/app/useKordiAppModelCollaborationMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalSessionState, ComposerScope, DesktopCollaborationProject, DesktopChatState } from '@/kordi-app/types';
+import type { CanonicalSessionState, ComposerScope, DesktopCollaborationProject, DesktopChatState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import { createDesktopChatSession } from '@/lib/desktop';
 
@@ -80,6 +78,7 @@ import {
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
+import { useKordiCloudAgentActions } from '@/app/useKordiCloudAgentActions';
 import { useKordiCloudInitialSyncState } from '@/app/useKordiCloudInitialSyncState';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
@@ -479,29 +478,17 @@ export function useKordiAppModel({
     store: canonicalStore,
   });
 
-  const handleCreateCloudAgent = useCallback(async (input: CreateCloudAgentInput) => {
-    const definition = await createCloudAgentDefinition(input);
-    await refreshCloudAgents().catch(() => undefined);
-    const agent = cloudAgentDefinitionToAgent(definition);
-    agentsUi.setActiveAgentId(agent.id);
-    return agent;
-  }, [agentsUi, createCloudAgentDefinition, refreshCloudAgents]);
-
-  const handleUpdateCloudAgent = useCallback(async (agent: Agent, input: UpdateCloudAgentInput) => {
-    if (!agent.cloudAgentId) throw new Error('Only Cloud Agents can be updated here.');
-    const definition = await updateCloudAgentDefinition(agent.cloudAgentId, input);
-    await refreshCloudAgents().catch(() => undefined);
-    const nextAgent = cloudAgentDefinitionToAgent(definition);
-    agentsUi.setActiveAgentId(nextAgent.id);
-    return nextAgent;
-  }, [agentsUi, refreshCloudAgents, updateCloudAgentDefinition]);
-
-  const handleArchiveCloudAgent = useCallback(async (agent: Agent) => {
-    if (!agent.cloudAgentId) throw new Error('Only private Cloud Agents can be deleted here.');
-    await archiveCloudAgentDefinition(agent.cloudAgentId);
-    await refreshCloudAgents().catch(() => undefined);
-    agentsUi.setActiveAgentId((current) => (current === agent.id ? 'desktop:local-agent' : current));
-  }, [agentsUi, archiveCloudAgentDefinition, refreshCloudAgents]);
+  const {
+    archiveCloudAgent: handleArchiveCloudAgent,
+    createCloudAgent: handleCreateCloudAgent,
+    updateCloudAgent: handleUpdateCloudAgent,
+  } = useKordiCloudAgentActions({
+    archiveCloudAgentDefinition,
+    createCloudAgentDefinition,
+    refreshCloudAgents,
+    setActiveAgentId: agentsUi.setActiveAgentId,
+    updateCloudAgentDefinition,
+  });
 
   const combinedHiddenSessionIds = useMemo(() => new Set([
     ...locallyHiddenSessionIds,
