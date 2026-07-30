@@ -48,21 +48,14 @@ import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { mentionScopeConversationForActiveConversation } from '@/features/chat/messageActions/mentions';
 import {
-  agentCanonicalIdentityRequest,
-  buildChatAgentSessionKind,
-  buildChatAgentSessionMetadata,
   buildChatCreateGroupCollaborationInviteTargets,
   buildChatCreateGroupMetadata,
   buildChatCreatePeopleContactLookup,
   buildChatGroupCollaborationUpdateParticipants,
   buildChatGroupCollaborationUpdateTargets,
   buildParticipantSpaceContinuationMetadata,
-  chatSessionIdForAgentStart,
   chatSessionIdForParticipantSpaceContinuation,
-  chatSessionIdForPersonStart,
   contactCanonicalIdentityRequest,
-  existingBlankSessionIdForAgentStart,
-  existingSessionIdForPersonStart,
   existingBlankSessionIdForParticipantSpace,
   groupDefaultName,
   isApprovedCollaborationContact,
@@ -78,7 +71,7 @@ import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscrip
 import { buildCollaborationMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '@/app/useKordiAppModelCollaborationMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalGroupMembershipDelta, CanonicalIdentity, CanonicalSessionParticipant, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, OpenCanonicalSessionFastResult, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalGroupMembershipDelta, CanonicalIdentity, CanonicalSessionParticipant, CanonicalSessionState, ComposerScope, Contact, Conversation, DesktopCollaborationProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import {
   addCanonicalGroupMembersFast,
@@ -124,16 +117,11 @@ import {
   useKordiChatSessionActions,
 } from '@/app/useKordiChatSessionActions';
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
-
-function mergeCanonicalIdentity(state: CanonicalSessionState, identity: CanonicalIdentity): CanonicalSessionState {
-  return {
-    ...state,
-    identities: [
-      ...state.identities.filter((current) => current.id !== identity.id),
-      identity,
-    ],
-  };
-}
+import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
+import {
+  mergeCanonicalIdentity,
+  mergeOpenCanonicalSessionResult,
+} from '@/app/canonicalSessionStateMutations';
 
 type ParticipantSpaceDraft = {
   createKey: string;
@@ -162,23 +150,6 @@ function canonicalGroupParticipantsForSessions(
     }
   }
   return [...participantByIdentityId.values()];
-}
-
-function mergeOpenCanonicalSessionResult(
-  state: CanonicalSessionState,
-  result: OpenCanonicalSessionFastResult,
-): CanonicalSessionState {
-  return {
-    ...state,
-    sessions: [
-      result.session,
-      ...state.sessions.filter((session) => session.id !== result.session.id),
-    ],
-    participants: [
-      ...state.participants.filter((participant) => participant.sessionId !== result.session.id),
-      ...result.participants,
-    ],
-  };
 }
 
 function mergeCanonicalGroupMembershipDelta(
@@ -1400,159 +1371,25 @@ export function useKordiAppModel({
     [displayedContacts],
   );
 
-  const selectNewChatSession = useCallback((sessionId: string) => {
-    setActiveNav('chats');
-    setActiveConvId(sessionId);
-    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
-    composerUi.setChatComposerAttachments([]);
-    composerUi.setOpenComposerSelector(null);
-  }, [
-    composerUi.setChatComposerAttachments,
-    composerUi.setComposerDrafts,
-    composerUi.setOpenComposerSelector,
-    setActiveConvId,
-    setActiveNav,
-  ]);
-
-  const handleStartChatWithPerson = useCallback(async (contact: Contact) => {
-    setDesktopChatError(null);
-    if (contact.sourceHostId === CLOUD_HOST_SENTINEL && contact.sourceParticipantId) {
-      selectNewChatSession(cloudCollaborationConversationId(contact.sourceParticipantId, 'person'));
-      return;
-    }
-    if (contact.sourceHostId && contact.sourceParticipantId) {
-      await handleStartCollaborationPersonSession({
-        hostId: contact.sourceHostId,
-        nodeId: contact.sourceParticipantId,
-        displayName: contact.name,
-        ownerName: contact.owner,
-        humanId: contact.sourceHumanId,
-      });
-      return;
-    }
-
-    if (!isNativeShell) return;
-    const existingSessionId = existingSessionIdForPersonStart(contact, chatConversations);
-    if (existingSessionId) {
-      selectNewChatSession(existingSessionId);
-      return;
-    }
-    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    if (!creatorIdentityId) {
-      throw new Error('Local profile identity is not ready yet.');
-    }
-    const identityRequest = contactCanonicalIdentityRequest(contact);
-    const targetIdentityId = identityRequest.id?.trim();
-    if (!targetIdentityId) {
-      throw new Error('Unable to resolve contact identity.');
-    }
-    const identity = await upsertCanonicalIdentityFast(identityRequest);
-    setCanonicalSessionState((current) => current ? mergeCanonicalIdentity(current, identity) : current);
-    const sessionId = chatSessionIdForPersonStart(crypto.randomUUID());
-    const openResult = await openOrCreateCanonicalSessionFast({
-      id: sessionId,
-      kind: 'direct-person',
-      title: 'New session',
-      status: 'active',
-      createdByIdentityId: creatorIdentityId,
-      primaryIdentityId: targetIdentityId,
-      relationshipIdentityId: targetIdentityId,
-      participantIdentityIds: [targetIdentityId],
-      metadata: { createdFrom: 'chat-create-flow', contactId: contact.id, participantSpaceKind: 'direct-human' },
-    });
-    setCanonicalSessionState((current) => current ? mergeOpenCanonicalSessionResult(current, openResult) : current);
-    selectNewChatSession(sessionId);
-  }, [
-    canonicalSessionState?.profile.humanIdentityId,
-    chatConversations,
-    handleStartCollaborationPersonSession,
+  const {
+    selectNewSession: selectNewChatSession,
+    startChatWithPerson: handleStartChatWithPerson,
+    startChatWithAgent: handleStartChatWithAgent,
+  } = useKordiChatStartActions({
+    canonicalState: canonicalSessionState,
+    conversations: chatConversations,
     isNativeShell,
-    selectNewChatSession,
-    setDesktopChatError,
-  ]);
-
-  const handleStartChatWithAgent = useCallback(async (agent: Agent) => {
-    setDesktopChatError(null);
-    setActiveNav('chats');
-
-    if (agent.isOwned) {
-      if (!isNativeShell) {
-        await handleCreateChatSession();
-        return;
-      }
-      const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-      if (!creatorIdentityId) {
-        throw new Error('Local profile identity is not ready yet.');
-      }
-      const existingBlankSessionId = existingBlankSessionIdForAgentStart(agent, chatConversations);
-      if (existingBlankSessionId) {
-        selectNewChatSession(existingBlankSessionId);
-        return;
-      }
-      const identityRequest = agentCanonicalIdentityRequest(agent);
-      const targetIdentityId = identityRequest.id?.trim();
-      if (!targetIdentityId) {
-        throw new Error('Unable to resolve agent identity.');
-      }
-      const identity = await upsertCanonicalIdentityFast(identityRequest);
-      setCanonicalSessionState((current) => current ? mergeCanonicalIdentity(current, identity) : current);
-      const sessionId = chatSessionIdForAgentStart(agent, crypto.randomUUID());
-      const openResult = await openOrCreateCanonicalSessionFast({
-        id: sessionId,
-        kind: buildChatAgentSessionKind(agent),
-        title: agent.name || 'New session',
-        status: 'active',
-        createdByIdentityId: creatorIdentityId,
-        primaryIdentityId: targetIdentityId,
-        relationshipIdentityId: null,
-        participantIdentityIds: [targetIdentityId],
-        metadata: buildChatAgentSessionMetadata(agent),
-      });
-      setCanonicalSessionState((current) => current ? mergeOpenCanonicalSessionResult(current, openResult) : current);
-      selectNewChatSession(sessionId);
-      return;
-    }
-
-    if (agent.sourceHostId === CLOUD_HOST_SENTINEL && agent.sourceParticipantId) {
-      selectNewChatSession(cloudCollaborationConversationId(agent.sourceParticipantId, agent.sourceRuntime ?? 'kordi-desktop'));
-      return;
-    }
-
-    if (!isNativeShell) return;
-    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    if (!creatorIdentityId) {
-      throw new Error('Local profile identity is not ready yet.');
-    }
-    const identityRequest = agentCanonicalIdentityRequest(agent);
-    const targetIdentityId = identityRequest.id?.trim();
-    if (!targetIdentityId) {
-      throw new Error('Unable to resolve agent identity.');
-    }
-    const identity = await upsertCanonicalIdentityFast(identityRequest);
-    setCanonicalSessionState((current) => current ? mergeCanonicalIdentity(current, identity) : current);
-    const sessionId = chatSessionIdForAgentStart(agent, crypto.randomUUID());
-    const openResult = await openOrCreateCanonicalSessionFast({
-      id: sessionId,
-      kind: buildChatAgentSessionKind(agent),
-      title: agent.name || 'New session',
-      status: 'active',
-      createdByIdentityId: creatorIdentityId,
-      primaryIdentityId: targetIdentityId,
-      relationshipIdentityId: null,
-      participantIdentityIds: [targetIdentityId],
-      metadata: buildChatAgentSessionMetadata(agent),
-    });
-    setCanonicalSessionState((current) => current ? mergeOpenCanonicalSessionResult(current, openResult) : current);
-    selectNewChatSession(sessionId);
-  }, [
-    canonicalSessionState?.profile.humanIdentityId,
-    chatConversations,
-    handleCreateChatSession,
-    isNativeShell,
-    selectNewChatSession,
+    createOwnedAgentSession: handleCreateChatSession,
+    startCollaborationPersonSession:
+      handleStartCollaborationPersonSession,
+    setActiveConversationId: setActiveConvId,
     setActiveNav,
-    setDesktopChatError,
-  ]);
+    setCanonicalState: setCanonicalSessionState,
+    setComposerAttachments: composerUi.setChatComposerAttachments,
+    setComposerDrafts: composerUi.setComposerDrafts,
+    setDesktopError: setDesktopChatError,
+    setOpenComposerSelector: composerUi.setOpenComposerSelector,
+  });
 
   const handleCreateChatGroup = useCallback(async (request: { name?: string | null; contactIds: string[] }) => {
     if (!isNativeShell) return;
