@@ -9,6 +9,7 @@ import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
 import { KORDI_THEME_MODE_STORAGE_KEY } from '../src/app/themePreference';
 import { CloudLoginPage, cloudSignupAvatarInitials } from '../src/kordi-app/cloud/CloudLoginPage';
 import { shouldShowCloudLoginGate } from '../src/features/cloud/sessionGate';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 const repoRoot = resolve(import.meta.dirname, '..');
 
 function makeStorageStub(initial: Record<string, string> = {}): Storage {
@@ -104,7 +105,7 @@ test('cloud login gate always uses Cloud product semantics', () => {
 });
 
 test('cloud login CSS hides the oversized native WebKit caps-lock indicator', () => {
-  const css = readSource('src/styles/theme-overrides.css');
+  const css = readDesktopShellCss();
 
   assert.match(css, /\.app-cloud-login-input::-webkit-caps-lock-indicator/);
   assert.match(css, /display:\s*none/);
@@ -112,7 +113,7 @@ test('cloud login CSS hides the oversized native WebKit caps-lock indicator', ()
 });
 
 test('cloud login mode switch keeps the top edge stable and smooths signup sections', () => {
-  const css = readSource('src/styles/theme-overrides.css');
+  const css = readDesktopShellCss();
   const source = readSource('src/kordi-app/cloud/CloudLoginPage.tsx');
 
   assert.match(css, /\.app-cloud-login-panel \{\n  min-height: 548px;/);
@@ -372,7 +373,7 @@ test('cloud starting timeout still has no visible retry copy', () => {
 });
 
 test('cloud starting dots are flat and non-glowy in CSS', () => {
-  const css = readSource('src/styles/theme-overrides.css');
+  const css = readDesktopShellCss();
   const dotBlock = cssBlock(css, '.app-cloud-starting-dot');
 
   assert.match(dotBlock, /width:\s*9px/);

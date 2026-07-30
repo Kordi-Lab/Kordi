@@ -1,0 +1,157 @@
+.app-agent-studio-capability-toolbar {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.app-agent-studio-segmented,
+.app-agent-studio-source-options {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 66%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--app-control-bg) 38%, transparent);
+}
+
+.app-agent-studio-segmented button,
+.app-agent-studio-source-options button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 27px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+  white-space: nowrap;
+}
+
+.app-agent-studio-segmented button.is-active,
+.app-agent-studio-source-options button.is-active {
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-agent-studio-capability-list {
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
+  border-radius: 13px;
+}
+
+.app-agent-studio-capability-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 48%, transparent);
+}
+
+.app-agent-studio-capability-row:last-child {
+  border-bottom: 0;
+}
+
+.app-agent-studio-capability-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
+  color: var(--agent-studio-accent);
+}
+
+.app-agent-studio-capability-icon.is-tool {
+  background: color-mix(in oklab, oklch(74% 0.1 74) 11%, transparent);
+  color: oklch(74% 0.1 74);
+}
+
+.kordi-app.theme-light .app-agent-studio-capability-icon.is-tool {
+  color: oklch(49% 0.105 74);
+}
+
+.app-agent-studio-capability-icon.is-plugin {
+  background: color-mix(in oklab, oklch(70% 0.1 310) 11%, transparent);
+  color: oklch(70% 0.1 310);
+}
+
+.kordi-app.theme-light .app-agent-studio-capability-icon.is-plugin {
+  color: oklch(48% 0.105 310);
+}
+
+.app-agent-studio-capability-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.app-agent-studio-capability-name strong {
+  display: block;
+  overflow: hidden;
+  font-size: var(--agent-studio-type-body);
+  font-weight: 660;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-agent-studio-capability-copy {
+  min-width: 0;
+}
+
+.app-agent-studio-capability-copy p {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-agent-studio-capability-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.app-agent-studio-switch {
+  position: relative;
+  width: 31px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--app-control-bg) 90%, var(--app-divider));
+  transition: background var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-agent-studio-switch::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--utility-muted-text);
+  content: '';
+  transition:
+    transform var(--app-motion-fast) var(--app-motion-ease),
+    background var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-agent-studio-switch.is-on {
+  background: color-mix(in oklab, var(--agent-studio-accent) 34%, var(--app-control-bg));
+}
+
+.app-agent-studio-switch.is-on::after {
+  transform: translateX(13px);
+  background: var(--agent-studio-accent);
+}
+
+.app-agent-studio-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}

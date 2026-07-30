@@ -1,0 +1,386 @@
+.app-list-item {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.app-list-item:hover {
+  background: var(--app-control-bg);
+}
+
+.app-list-item-active {
+  border: 1px solid var(--app-divider);
+  background: color-mix(in oklab, var(--app-control-active) 96%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    var(--app-shadow-soft);
+}
+
+.app-side-note {
+  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: color-mix(in oklab, var(--app-card-bg) 52%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.06);
+}
+
+.app-segment-shell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 76%, transparent);
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--app-control-bg) 68%, transparent);
+  padding: 3px;
+}
+
+.app-segment-tab {
+  border-radius: 9999px;
+  padding: 5px 9px;
+  color: var(--utility-muted-text);
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-segment-tab:hover {
+  color: var(--utility-foreground);
+  background: color-mix(in oklab, var(--app-control-bg) 84%, transparent);
+}
+
+.app-segment-tab-active {
+  background: var(--app-chip-active-bg);
+  color: var(--app-chip-active-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.app-filter-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 70%, transparent);
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--app-control-bg) 52%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.app-filter-tab {
+  border-radius: 11px;
+  padding: 6px 11px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--utility-muted-text);
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-filter-tab:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 76%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-filter-tab-active {
+  background: color-mix(in oklab, var(--app-control-active) 78%, transparent);
+  color: var(--utility-foreground);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.app-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 68%, transparent);
+  border-radius: 9999px;
+  padding: 6px 11px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--utility-muted-text);
+  background: transparent;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-filter-toggle:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 58%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-filter-toggle-active {
+  border-color: color-mix(in oklab, var(--app-divider) 82%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 68%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-inspector-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 70%, transparent);
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  padding: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.app-inspector-tab {
+  min-width: 0;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  color: var(--utility-muted-text);
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-inspector-tab:hover {
+  background: color-mix(in oklab, var(--app-control-bg) 76%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-inspector-tab-active {
+  background: color-mix(in oklab, var(--app-control-active) 58%, transparent);
+  color: var(--utility-foreground);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.app-session-meta-time {
+  color: var(--app-sidebar-time-text);
+  font-weight: 400;
+}
+
+.app-session-meta-time-active {
+  color: var(--app-sidebar-time-text);
+}
+
+.app-session-row {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-session-row:hover {
+  background: var(--app-control-hover);
+}
+
+.app-session-row-active {
+  border-color: transparent;
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
+}
+
+.app-session-row-active .app-session-row-title,
+.app-session-row-active .app-participant-space-session-title {
+  color: var(--app-sidebar-title-text);
+  font-weight: 650;
+}
+
+.app-participant-space-inline-group {
+  border-radius: 0;
+  box-shadow: none;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-participant-space-inline-group-expanded {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-participant-space-row-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 0.125rem;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    box-shadow var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-participant-space-row-shell:hover {
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
+}
+
+.app-participant-space-row-shell-expanded {
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 38%, transparent);
+  box-shadow: none;
+}
+
+.app-participant-space-row-shell-selected {
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
+}
+
+.app-participant-space-row-shell-selected:hover {
+  background: var(--app-sidebar-selected-bg);
+}
+
+.app-participant-space-row-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.625rem;
+  border: 0;
+  background: transparent;
+  padding: 0.375rem 0.25rem 0.375rem 0.625rem;
+  box-shadow: none;
+}
+
+.app-participant-space-row-button:hover,
+.app-participant-space-row-button:focus-visible {
+  background: transparent;
+}
+
+.app-participant-space-row-side {
+  display: grid;
+  grid-template-rows: max-content;
+  align-content: start;
+  justify-items: end;
+  min-height: 3.125rem;
+}
+
+.app-participant-space-row-meta {
+  align-self: start;
+  padding: 0.375rem 0.35rem 0 0;
+}
+
+.app-participant-space-row-actions {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(3, 1.5rem);
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.25rem 0.25rem 0 0;
+  opacity: 0.9;
+}
+
+.app-participant-space-action-spacer {
+  display: block;
+}
+
+.app-participant-space-inline-sessions {
+  padding: 0.125rem 0 0.35rem;
+}
+
+.app-participant-space-inline-group:not(.app-participant-space-inline-group-expanded) .app-participant-space-row-actions {
+  opacity: 0.46;
+}
+
+.app-participant-space-action {
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in oklab, var(--utility-muted-text) 82%, var(--utility-foreground));
+  opacity: 0.78;
+  box-shadow: none;
+  transition:
+    opacity var(--app-motion-fast) var(--app-motion-ease),
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease),
+    transform var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-participant-space-action:hover,
+.app-participant-space-action:focus-visible {
+  border-color: color-mix(in oklab, var(--app-divider) 42%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 42%, transparent);
+  color: var(--utility-foreground);
+  opacity: 1;
+  transform: translateX(1px);
+}
+
+.app-participant-space-enter-action {
+  right: 0.25rem;
+}
+
+.app-participant-space-menu-action {
+  border-color: color-mix(in oklab, var(--app-divider) 46%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+  opacity: 0.88;
+}
+
+.app-participant-space-context-create {
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in oklab, var(--utility-foreground) 92%, var(--utility-muted-text));
+  opacity: 0.98;
+}
+
+.app-participant-space-context-create:hover,
+.app-participant-space-context-create:focus-visible {
+  border-color: color-mix(in oklab, var(--app-divider) 38%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 38%, transparent);
+  color: var(--utility-foreground);
+  opacity: 1;
+}
+
+.app-participant-space-context-create:disabled,
+.app-participant-space-context-create:disabled:hover,
+.app-participant-space-context-create:disabled:focus-visible {
+  cursor: not-allowed;
+  border-color: transparent;
+  background: transparent;
+  color: var(--utility-muted-text);
+  opacity: 0.38;
+  transform: none;
+}
+
+.app-participant-space-session-row {
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-participant-space-session-title {
+  color: var(--app-sidebar-title-text);
+  font-weight: 600;
+}
+
+.app-participant-space-session-preview {
+  display: block;
+  max-width: 100%;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 18px), transparent 100%);
+}
+
+.app-participant-space-session-preview-live {
+  background: linear-gradient(90deg, currentColor 0%, color-mix(in oklab, currentColor 62%, transparent) 48%, currentColor 100%);
+  background-size: 180% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: app-session-preview-stream 2.2s var(--app-motion-ease) infinite;
+}
+
+@keyframes app-session-preview-stream {
+  from { background-position: 100% 0; }
+  to { background-position: -80% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-participant-space-session-preview-live {
+    animation: none;
+  }
+}

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
+
 function readAuthSource(relativePath: string): string {
   return readFileSync(new URL(`../src/kordi-app/auth/${relativePath}`, import.meta.url), 'utf8');
 }
@@ -37,7 +39,7 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.doesNotMatch(providerList, /saved of/);
   assert.doesNotMatch(providerList, /provider\.loginHint/);
 
-  const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const shellPages = readDesktopShellCss();
   const gateHoverRule = shellPages.match(/\.app-auth-provider-gate-card:hover \{[\s\S]*?\n}\n/)?.[0] ?? '';
   const gateFocusRule = shellPages.match(/\.app-auth-provider-gate-card:focus-visible \{[\s\S]*?\n}\n/)?.[0] ?? '';
   assert.match(gateHoverRule, /background:/);
@@ -54,7 +56,7 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
 test('provider gate uses the flat shared light workspace surface without modal board chrome', () => {
   const authPage = readAuthSource('AuthPage.tsx');
   const overlaySlots = readFileSync(new URL('../src/app/assembleOverlaySlots.tsx', import.meta.url), 'utf8');
-  const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const themeOverrides = readDesktopShellCss();
   const authGateOverlay = overlaySlots.slice(
     overlaySlots.indexOf('const authGate ='),
     overlaySlots.indexOf('const inlineAuthDialog ='),
@@ -75,8 +77,8 @@ test('provider gate uses the flat shared light workspace surface without modal b
 
 test('every onboarding provider detail stays in the shared light workspace surface family', () => {
   const authPage = readAuthSource('AuthPage.tsx');
-  const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
-  const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const shellPages = readDesktopShellCss();
+  const themeOverrides = shellPages;
   const detailRouteStart = authPage.indexOf('app-auth-gate-shell app-auth-provider-detail-shell');
   const pickerRouteStart = authPage.indexOf('app-auth-gate-shell flex', detailRouteStart);
   const detailRoute = authPage.slice(detailRouteStart, pickerRouteStart);
@@ -109,7 +111,7 @@ test('inline auth popup uses direct handoff copy without authentication status c
 test('inline auth popup uses cool chat-aligned light cards instead of warm gray', () => {
   const authPopup = readFileSync(new URL('../src/AuthPopup.tsx', import.meta.url), 'utf8');
   const authFlowSteps = readAuthSource('AuthFlowSteps.tsx');
-  const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const themeOverrides = readDesktopShellCss();
 
   assert.match(authPopup, /app-auth-popup-panel/);
   assert.match(authPopup, /app-auth-popup-info-card/);

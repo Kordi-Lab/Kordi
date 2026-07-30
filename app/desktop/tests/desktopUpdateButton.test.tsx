@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { desktopUpdateButtonPresentation, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import type { Conversation } from '../src/kordi-app/types';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function conversation(): Conversation {
   return {
@@ -116,7 +117,7 @@ test('WorkspaceSidebar centers and visually unifies the Chats header actions', (
     readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
   ].join('\n');
-  const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const css = readDesktopShellCss();
 
   assert.match(markup, /class="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2\.5"/);
   assert.match(markup, /class="app-chat-sidebar-actions flex shrink-0 items-center gap-2"/);
@@ -206,7 +207,7 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
 });
 
 test('desktop update popover uses a quiet theme-aware surface in dark mode', () => {
-  const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const css = readDesktopShellCss();
   const updateSurface = css.match(/\.kordi-app \.app-popover\.app-update-popover \{([\s\S]*?)\n\}/)?.[1] ?? '';
 
   assert.match(updateSurface, /--app-update-surface: var\(--app-transient-surface-bg\)/);

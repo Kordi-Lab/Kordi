@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import { shouldRefreshCloudContactsForWsSubject } from '../src/features/cloud/useCloudContacts';
 import { cloudProfileSaveInput } from '../src/pages/CloudAccountSettingsDialog';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function readSource(relativePath: string): string {
   return readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
@@ -44,8 +45,8 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const authPage = readSource('kordi-app/auth/AuthPage.tsx');
   const providerList = readSource('kordi-app/auth/AuthProviderList.tsx');
-  const shellPages = readSource('styles/shell-pages.css');
-  const themeOverrides = readSource('styles/theme-overrides.css');
+  const shellPages = readDesktopShellCss();
+  const themeOverrides = shellPages;
 
   assert.match(modal, /app-cloud-account-settings-overlay/);
   assert.match(modal, /app-cloud-account-settings-dialog/);

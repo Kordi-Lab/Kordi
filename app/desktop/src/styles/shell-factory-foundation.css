@@ -1,0 +1,438 @@
+/* Factory --------------------------------------------------------------- */
+
+.app-agent-studio-page {
+  --agent-studio-accent: oklch(72% 0.105 242);
+  --agent-studio-accent-soft: color-mix(in oklab, var(--agent-studio-accent) 14%, transparent);
+  --agent-studio-success: oklch(72% 0.12 156);
+  --agent-studio-danger: oklch(72% 0.14 25);
+  --agent-studio-type-caption: 0.75rem;
+  --agent-studio-type-secondary: 0.8125rem;
+  --agent-studio-type-body: 0.875rem;
+  --agent-studio-type-subheading: 1rem;
+  --agent-studio-type-heading: 1.25rem;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  color: var(--utility-foreground);
+  font-family: inherit;
+  font-kerning: normal;
+}
+
+.kordi-app.theme-light .app-agent-studio-page {
+  --agent-studio-accent: oklch(52% 0.115 242);
+  --agent-studio-accent-soft: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
+  --agent-studio-success: oklch(48% 0.12 156);
+  --agent-studio-danger: oklch(54% 0.18 25);
+}
+
+.app-agent-studio-shell {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: clamp(228px, 15vw, 264px) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in oklab, var(--utility-background) 92%, transparent);
+  box-shadow: none;
+}
+
+.app-agent-studio-rail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid color-mix(in oklab, var(--app-divider) 74%, transparent);
+  background: color-mix(in oklab, var(--app-card-bg) 42%, var(--utility-background));
+}
+
+.app-agent-studio-rail-head {
+  display: grid;
+  gap: 16px;
+  padding: 19px 16px 14px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
+}
+
+.app-agent-studio-rail-head h1 {
+  margin: 0;
+  font-size: var(--agent-studio-type-heading);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+
+.app-agent-studio-rail-head p {
+  margin: 4px 0 0;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+  line-height: 1.45;
+}
+
+.app-agent-studio-rail-add,
+.app-agent-studio-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 74%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--app-control-bg) 68%, transparent);
+  color: var(--utility-muted-text);
+  transition:
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    background var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-agent-studio-rail-add:hover:not(:disabled),
+.app-agent-studio-icon-button:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--agent-studio-accent) 48%, var(--app-control-border));
+  background: color-mix(in oklab, var(--agent-studio-accent) 10%, var(--app-control-bg));
+  color: var(--utility-foreground);
+}
+
+.app-agent-studio-rail-search,
+.app-agent-studio-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 74%, transparent);
+  border-radius: 11px;
+  background: color-mix(in oklab, var(--app-control-bg) 46%, transparent);
+  color: var(--utility-muted-text);
+}
+
+.app-agent-studio-rail-search input,
+.app-agent-studio-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--utility-foreground);
+  font-size: var(--agent-studio-type-body);
+}
+
+.app-agent-studio-rail-search:focus-within,
+.app-agent-studio-search:focus-within {
+  border-color: color-mix(in oklab, var(--agent-studio-accent) 62%, var(--app-control-border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--agent-studio-accent) 12%, transparent);
+}
+
+.app-agent-studio-agent-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.app-agent-studio-agent-list.is-agent-list {
+  padding-inline: 0;
+}
+
+.app-agent-studio-skill-list-shell {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-agent-studio-skill-index {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.app-agent-studio-skill-index button {
+  display: grid;
+  width: 22px;
+  min-height: 18px;
+  place-items: center;
+  border-radius: 4px;
+  color: color-mix(in oklab, var(--agent-studio-accent) 72%, var(--utility-muted-text));
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.app-agent-studio-skill-index button:hover:not(:disabled),
+.app-agent-studio-skill-index button:focus-visible {
+  background: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
+  color: var(--agent-studio-accent);
+}
+
+.app-agent-studio-skill-index button:focus-visible {
+  outline: 1px solid color-mix(in oklab, var(--agent-studio-accent) 42%, transparent);
+  outline-offset: -1px;
+}
+
+.app-agent-studio-skill-index button:disabled {
+  color: color-mix(in oklab, var(--utility-muted-text) 36%, transparent);
+  cursor: default;
+}
+
+.app-agent-studio-agent-list.is-skill-list {
+  padding-left: 2px;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+}
+
+.app-agent-studio-agent-list.is-skill-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-agent-studio-agent-list.is-skill-list:hover {
+  scrollbar-color: color-mix(in oklab, var(--utility-muted-text) 28%, transparent) transparent;
+}
+
+.app-agent-studio-agent-list.is-skill-list:hover::-webkit-scrollbar-thumb,
+.app-agent-studio-agent-list.is-skill-list:focus-within::-webkit-scrollbar-thumb,
+.app-agent-studio-agent-list.is-skill-list:active::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--utility-muted-text) 28%, transparent);
+}
+
+.app-agent-studio-agent-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 58px;
+  margin: 0 0 3px;
+  padding: 9px 8px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  text-align: left;
+  color: var(--utility-foreground);
+  transition:
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    background var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-agent-studio-agent-list.is-agent-list .app-agent-studio-agent-row {
+  padding-inline: 16px;
+  border-radius: 0;
+}
+
+.app-agent-studio-agent-row:not(.app-session-row-active):hover {
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
+}
+
+.app-agent-studio-agent-row.is-skill {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 40px;
+  margin-bottom: 2px;
+  padding: 0 12px;
+  border-radius: 10px;
+}
+
+.app-agent-studio-agent-row.is-skill strong {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.app-agent-studio-agent-row strong,
+.app-agent-studio-agent-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-agent-studio-agent-row strong {
+  font-size: var(--agent-studio-type-body);
+  font-weight: 680;
+}
+
+.app-agent-studio-agent-row small {
+  margin-top: 3px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-agent-studio-agent-state {
+  max-width: 66px;
+  overflow: hidden;
+  color: color-mix(in oklab, var(--utility-muted-text) 76%, transparent);
+  font-size: var(--agent-studio-type-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-agent-studio-agent-state.is-draft {
+  color: var(--agent-studio-accent);
+}
+
+.app-agent-studio-draft-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px dashed color-mix(in oklab, var(--agent-studio-accent) 54%, var(--app-divider));
+  border-radius: 12px;
+  color: var(--agent-studio-accent);
+}
+
+.app-agent-studio-rail-empty {
+  padding: 24px 12px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+  line-height: 1.55;
+  text-align: center;
+}
+
+.app-factory-create-menu {
+  position: relative;
+}
+
+.app-factory-create-menu > summary {
+  list-style: none;
+}
+
+.app-factory-create-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-factory-create-menu[open] > summary {
+  border-color: color-mix(in oklab, var(--agent-studio-accent) 48%, var(--app-control-border));
+  background: var(--agent-studio-accent-soft);
+  color: var(--agent-studio-accent);
+}
+
+.app-factory-create-menu-panel {
+  position: absolute;
+  z-index: 40;
+  top: 38px;
+  right: -16px;
+  width: min(224px, calc(100vw - 24px));
+  padding: 5px;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 82%, transparent);
+  border-radius: 13px;
+  background: color-mix(in oklab, var(--app-modal-bg) 97%, var(--utility-background));
+  box-shadow: var(--app-shadow-float);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
+.app-factory-create-menu-panel button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  color: var(--utility-muted-text);
+  text-align: left;
+}
+
+.app-factory-create-menu-panel button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--app-control-hover) 70%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-factory-create-menu-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.app-factory-create-menu-panel button > svg {
+  justify-self: center;
+  color: var(--agent-studio-accent);
+}
+
+.app-factory-create-menu-panel strong,
+.app-factory-create-menu-panel small {
+  display: block;
+}
+
+.app-factory-create-menu-panel strong {
+  color: var(--utility-foreground);
+  font-size: var(--agent-studio-type-secondary);
+  font-weight: 680;
+}
+
+.app-factory-create-menu-panel small {
+  margin-top: 2px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-factory-rail-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 62%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--app-control-bg) 34%, transparent);
+}
+
+.app-factory-rail-switch button {
+  min-height: 28px;
+  border-radius: 7px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+  font-weight: 640;
+}
+
+.app-factory-rail-switch button.is-active {
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-factory-rail-switch button span {
+  margin-left: 3px;
+  color: color-mix(in oklab, currentColor 68%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-agent-studio-skill-avatar {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 76%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--app-control-bg) 58%, transparent);
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, var(--utility-foreground));
+  transition:
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    background var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-agent-studio-skill-avatar.is-large {
+  width: 44px;
+  height: 44px;
+}
+
+.app-agent-studio-agent-state.is-enabled,
+.app-agent-studio-state-pill.is-enabled {
+  color: var(--agent-studio-success);
+}
+
+.app-agent-studio-button.is-danger {
+  border-color: color-mix(in oklab, var(--agent-studio-danger) 24%, var(--app-control-border));
+  background: transparent;
+  color: var(--agent-studio-danger);
+}
+
+.app-agent-studio-button.is-danger:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--agent-studio-danger) 42%, var(--app-control-border));
+  background: color-mix(in oklab, var(--agent-studio-danger) 9%, transparent);
+}

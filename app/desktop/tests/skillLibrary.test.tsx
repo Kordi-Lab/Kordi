@@ -11,6 +11,7 @@ import { AddToAgentControl, SkillLibraryView } from '../src/kordi-app/agents/Ski
 import { skillLibraryFileDisplay } from '../src/kordi-app/agents/model';
 import type { Agent } from '../src/kordi-app/types';
 import type { DesktopSkillLibraryEntry } from '../src/lib/desktop';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 const builtSkill: DesktopSkillLibraryEntry = {
   id: 'skill:review',
@@ -134,7 +135,7 @@ test('Factory plus menu offers separate real agent and skill builds', () => {
 });
 
 test('Factory plus menu stays fully inside the narrow rail', () => {
-  const css = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const css = readDesktopShellCss();
   const panelRule = css.match(/\.app-factory-create-menu-panel\s*\{([^}]*)\}/)?.[1];
 
   assert.ok(panelRule);
@@ -230,7 +231,7 @@ test('Factory agent selection spans the full rail while content stays aligned', 
       onCreateArtifact={() => undefined}
     />,
   );
-  const css = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const css = readDesktopShellCss();
 
   assert.match(html, /app-agent-studio-agent-list app-scroll-area is-agent-list/);
   assert.match(html, /app-agent-studio-agent-row app-session-row-active/);

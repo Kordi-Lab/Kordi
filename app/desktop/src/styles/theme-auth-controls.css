@@ -1,0 +1,379 @@
+/* Auth control-centers (LM Studio / Ollama) use bg-black/10 and bg-black/15
+ * as their inner-panel fills. Those darken the surface regardless of theme;
+ * flip them to a subtle slate tint so the panels read on light mode too. */
+.kordi-app.theme-light .bg-black\/10 {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+
+.kordi-app.theme-light .bg-black\/15 {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+}
+
+/* AuthDetailPrimitives buttons & badges — refined light-mode treatment.
+ *
+ * Per the Kordi design language (fast / technical / low-noise surfaces, NOT
+ * toy-like or flashy), accent buttons in light mode use a low-chroma tint of
+ * the brand colour as fill, the same hue darkened as text, and a hairline
+ * border in the matching hue. Mirrors how Linear, GitHub, and macOS settings
+ * treat colour: dense, restrained, immediately readable.
+ *
+ * Dark mode keeps the existing translucent gradient look (defined inline
+ * via Tailwind classes), so this override is scoped to .theme-light only. */
+.kordi-app.theme-light .app-auth-button-neutral {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(15, 23, 42, 0.10) !important;
+  color: rgb(15, 23, 42) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.02),
+    0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+.kordi-app.theme-light .app-auth-button-neutral:hover {
+  background: rgb(248, 250, 252) !important;
+  border-color: rgba(15, 23, 42, 0.18) !important;
+}
+
+.kordi-app.theme-light .app-auth-button-primary {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border-color: rgba(5, 150, 105, 0.28) !important;
+  color: rgb(6, 95, 70) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(5, 150, 105, 0.05),
+    0 1px 2px rgba(5, 150, 105, 0.04) !important;
+}
+
+.kordi-app.theme-light .app-auth-button-primary:hover {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(5, 150, 105, 0.40) !important;
+}
+
+.kordi-app.theme-light .app-auth-button-danger {
+  background: rgba(244, 63, 94, 0.08) !important;
+  border-color: rgba(225, 29, 72, 0.24) !important;
+  color: rgb(159, 18, 57) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(225, 29, 72, 0.04),
+    0 1px 2px rgba(225, 29, 72, 0.04) !important;
+}
+
+.kordi-app.theme-light .app-auth-button-danger:hover {
+  background: rgba(244, 63, 94, 0.14) !important;
+  border-color: rgba(225, 29, 72, 0.36) !important;
+}
+
+.kordi-app.theme-light .app-auth-badge-active {
+  background: rgba(139, 92, 246, 0.10) !important;
+  border-color: rgba(124, 58, 237, 0.24) !important;
+  color: rgb(91, 33, 182) !important;
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.04) !important;
+}
+
+/* Provider glyph avatars carry per-provider dark gradient fills that are
+ * tuned for dark mode. In light mode we replace the neutral gray disc with
+ * a quiet blue-tinted surface so the auth panel aligns with the chat shell. */
+.kordi-app.theme-light .app-auth-provider-glyph {
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(219, 234, 254, 0.72) 100%) !important;
+  border-color: rgba(37, 99, 235, 0.14) !important;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.04) !important;
+}
+
+.kordi-app.theme-light .bg-slate-800 {
+  background-color: rgba(226, 232, 240, 0.92) !important;
+}
+
+.kordi-app.theme-light .bg-slate-800.text-slate-100 {
+  color: rgb(30 41 59) !important;
+}
+
+.kordi-app.theme-light .bg-slate-900,
+.kordi-app.theme-light .bg-slate-900\/80,
+.kordi-app.theme-light .bg-slate-950,
+.kordi-app.theme-light .bg-slate-950\/70 {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.kordi-app.theme-light .ring-white\/15 {
+  --tw-ring-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+.kordi-app.theme-light .border-emerald-400\/20,
+.kordi-app.theme-light .border-emerald-400\/25 {
+  border-color: rgba(5, 150, 105, 0.26) !important;
+}
+
+.kordi-app.theme-light .bg-emerald-400\/10 {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+}
+
+.kordi-app.theme-light .text-emerald-50,
+.kordi-app.theme-light .text-emerald-50\/75,
+.kordi-app.theme-light .text-emerald-50\/80,
+.kordi-app.theme-light .text-emerald-100,
+.kordi-app.theme-light .text-emerald-200,
+.kordi-app.theme-light .text-emerald-200\/80 {
+  color: rgb(6 95 70) !important;
+}
+
+.kordi-app.theme-light .text-emerald-300,
+.kordi-app.theme-light .text-emerald-400 {
+  color: rgb(4 120 87) !important;
+}
+
+.kordi-app.theme-light .text-amber-50,
+.kordi-app.theme-light .text-amber-50\/90,
+.kordi-app.theme-light .text-amber-100,
+.kordi-app.theme-light .text-amber-100\/90,
+.kordi-app.theme-light .text-amber-200 {
+  color: rgb(120 53 15) !important;
+}
+
+.kordi-app.theme-light .text-yellow-100,
+.kordi-app.theme-light .text-yellow-200 {
+  color: rgb(120 53 15) !important;
+}
+
+.kordi-app.theme-light .text-indigo-100,
+.kordi-app.theme-light .text-indigo-200 {
+  color: rgb(55 48 163) !important;
+}
+
+.kordi-app.theme-light .text-fuchsia-100,
+.kordi-app.theme-light .text-fuchsia-200 {
+  color: rgb(134 25 143) !important;
+}
+
+.kordi-app.theme-light .text-blue-100,
+.kordi-app.theme-light .text-blue-200 {
+  color: rgb(30 58 138) !important;
+}
+
+.kordi-app.theme-light .border-violet-400\/30 {
+  border-color: rgba(124, 58, 237, 0.28) !important;
+}
+
+.kordi-app.theme-light .bg-violet-400\/20 {
+  background-color: rgba(139, 92, 246, 0.18) !important;
+}
+
+.kordi-app.theme-light .text-violet-50 {
+  color: rgb(91 33 182) !important;
+}
+
+.kordi-app.theme-light .border-cyan-400\/35,
+.kordi-app.theme-light .border-cyan-500\/20,
+.kordi-app.theme-light .border-sky-300\/25,
+.kordi-app.theme-light .border-sky-400\/30 {
+  border-color: rgba(8, 145, 178, 0.3) !important;
+}
+
+.kordi-app.theme-light .bg-cyan-400\/15,
+.kordi-app.theme-light .bg-cyan-500\/10,
+.kordi-app.theme-light .bg-sky-300\/12,
+.kordi-app.theme-light .bg-sky-400\/10 {
+  background-color: rgba(8, 145, 178, 0.12) !important;
+}
+
+.kordi-app.theme-light .text-cyan-50,
+.kordi-app.theme-light .text-cyan-100,
+.kordi-app.theme-light .text-cyan-200,
+.kordi-app.theme-light .text-cyan-300,
+.kordi-app.theme-light .text-sky-100,
+.kordi-app.theme-light .text-sky-200,
+.kordi-app.theme-light .text-sky-300,
+.kordi-app.theme-light .text-sky-400,
+.kordi-app.theme-light .text-blue-300,
+.kordi-app.theme-light .text-blue-400 {
+  color: rgb(14 116 144) !important;
+}
+
+.kordi-app.theme-light .text-rose-50,
+.kordi-app.theme-light .text-rose-100 {
+  color: rgb(159 18 57) !important;
+}
+
+.kordi-app.theme-light .text-rose-300 {
+  color: rgb(190 24 93) !important;
+}
+
+.kordi-app.theme-light a {
+  color: rgb(14 116 144);
+}
+
+.kordi-app.theme-light .bg-rose-400\/12 {
+  background-color: rgba(251, 113, 133, 0.14) !important;
+}
+
+.kordi-app.theme-light .bg-emerald-400\/12 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+.kordi-app.theme-light .bg-emerald-400\/8 {
+  background-color: rgba(16, 185, 129, 0.09) !important;
+}
+
+.kordi-app.theme-light .bg-amber-400\/10 {
+  background-color: rgba(180, 83, 9, 0.13) !important;
+}
+
+.kordi-app.theme-light .app-auth-notice,
+.kordi-app.theme-light .app-compression-card-active {
+  border-color: rgba(180, 83, 9, 0.34);
+  background: rgba(245, 158, 11, 0.18);
+  color: rgb(85 47 12) !important;
+}
+
+.kordi-app.theme-light .app-queued-message {
+  --app-message-bubble-fill: rgba(245, 158, 11, 0.18);
+  --app-message-bubble-stroke: rgba(180, 83, 9, 0.34);
+  background: transparent;
+  color: rgb(85 47 12) !important;
+}
+
+.kordi-app.theme-light .app-auth-notice-title {
+  color: rgb(63 42 13) !important;
+}
+
+.kordi-app.theme-light .app-auth-notice-icon {
+  color: rgb(180 83 9) !important;
+}
+
+.kordi-app.theme-light .app-auth-notice-description {
+  color: rgb(103 63 18) !important;
+}
+
+.kordi-app.theme-light .app-auth-notice-action {
+  border-color: rgba(73, 62, 54, 0.24);
+  background: rgba(255, 255, 255, 0.62);
+  color: rgb(31 27 25) !important;
+}
+
+.kordi-app.theme-light .app-compression-card-success {
+  border-color: rgba(5, 150, 105, 0.28);
+  background: rgba(16, 185, 129, 0.14);
+  color: rgb(6 95 70) !important;
+}
+
+.kordi-app.theme-light .app-compression-card-error {
+  border-color: rgba(225, 29, 72, 0.26);
+  background: rgba(225, 29, 72, 0.12);
+  color: rgb(159 18 57) !important;
+}
+
+.kordi-app.theme-light .app-compression-title,
+.kordi-app.theme-light .app-compression-detail,
+.kordi-app.theme-light .app-queued-message-label,
+.kordi-app.theme-light .app-queued-message-text,
+.kordi-app.theme-light .app-queued-message-meta {
+  color: inherit !important;
+}
+
+.kordi-app.theme-light .app-compression-detail,
+.kordi-app.theme-light .app-queued-message-label,
+.kordi-app.theme-light .app-queued-message-meta {
+  opacity: 0.82;
+}
+
+.kordi-app.theme-light .app-transcript-live-status {
+  color: rgb(88 102 119) !important;
+}
+
+.kordi-app.theme-light .app-transcript-live-status span {
+  color: rgb(71 85 105) !important;
+}
+
+.kordi-app.theme-light .app-transcript-block-label,
+.kordi-app.theme-light .app-transcript-section-meta {
+  color: rgb(100 116 139) !important;
+}
+
+.kordi-app.theme-light .app-transcript-section-title {
+  color: rgb(30 41 59) !important;
+}
+
+.kordi-app.theme-light .app-transcript-section-toggle {
+  color: rgb(88 102 119) !important;
+}
+
+.kordi-app.theme-light .app-transcript-wrap-toggle {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.05) !important;
+  color: rgb(71 85 105) !important;
+}
+
+.kordi-app.theme-light .app-transcript-wrap-toggle:hover {
+  background: rgba(15, 23, 42, 0.08) !important;
+  color: rgb(30 41 59) !important;
+}
+
+.kordi-app.theme-light .app-transcript-utility-chip {
+  background: rgba(15, 23, 42, 0.06) !important;
+  color: rgb(88 102 119) !important;
+}
+
+.kordi-app.theme-light .app-transcript-tool-badge {
+  box-shadow: none;
+}
+
+.kordi-app.theme-light .app-transcript-tool-badge-neutral {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(15, 23, 42, 0.05) !important;
+  color: rgb(100 116 139) !important;
+}
+
+.kordi-app.theme-light .app-transcript-tool-badge-done {
+  border-color: rgba(5, 150, 105, 0.16) !important;
+  background: rgba(16, 185, 129, 0.1) !important;
+  color: rgb(6 95 70) !important;
+}
+
+.kordi-app.theme-light .app-transcript-tool-badge-error {
+  border-color: rgba(225, 29, 72, 0.16) !important;
+  background: rgba(244, 63, 94, 0.08) !important;
+  color: rgb(159 18 57) !important;
+}
+
+.kordi-app.theme-light .app-transcript-sheen-title-char {
+  color: rgb(30 41 59);
+}
+
+.kordi-app.theme-light .app-transcript-tool-pin-running,
+.kordi-app.theme-light .app-transcript-status-text-running {
+  color: var(--app-tool-running-fg) !important;
+}
+
+.kordi-app.theme-light .app-transcript-tool-pin-error,
+.kordi-app.theme-light .app-transcript-status-text-error {
+  color: rgb(159 18 57) !important;
+}
+
+.kordi-app.theme-light .app-transcript-status-text-done {
+  color: rgb(6 95 70) !important;
+}
+
+.kordi-app.theme-light .app-transcript-tool-activity-line strong,
+.kordi-app.theme-light .app-transcript-tool-activity-latest strong,
+.kordi-app.theme-light .app-transcript-tool-row-name,
+.kordi-app.theme-light .app-transcript-tool-pin strong {
+  color: rgb(30 41 59) !important;
+}
+
+.kordi-app.theme-light .app-live-assistant-answer-markdown :where(p, li, blockquote, td, th, strong, em) {
+  color: var(--utility-foreground) !important;
+}
+
+.kordi-app.theme-light .app-live-assistant-answer-markdown :where(ol, ul) {
+  color: var(--utility-foreground) !important;
+}
+
+.kordi-app.theme-light .app-markdown-muted-heading {
+  color: rgb(71 85 105) !important;
+}
+
+.kordi-app.theme-light .app-markdown-muted-copy {
+  color: rgb(88 102 119) !important;
+}
+
+.kordi-app.theme-light .app-markdown-muted-quote {
+  border-color: rgba(100, 116, 139, 0.18) !important;
+  color: rgb(100 116 139) !important;
+}

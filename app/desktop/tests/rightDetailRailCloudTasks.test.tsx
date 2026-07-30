@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { assembleRightDetailSlot } from '../src/app/assembleRightDetailSlot';
 import type { RightDetailShellArgs } from '../src/app/kordiShellSlots.types';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function baseArgs(overrides: Partial<RightDetailShellArgs> = {}): RightDetailShellArgs {
   return {
@@ -108,7 +109,7 @@ test('hosted chat destination contract includes icon tabs and renders one full p
 });
 
 test('inspector lists do not draw a trailing row divider under panel list content', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.match(
     shellCss,
@@ -117,7 +118,7 @@ test('inspector lists do not draw a trailing row divider under panel list conten
 });
 
 test('inspector meta lists do not double up with following section dividers', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.match(
     shellCss,
@@ -126,7 +127,7 @@ test('inspector meta lists do not double up with following section dividers', ()
 });
 
 test('right rail detail sheets do not keep a glass filter edge under empty Tasks content', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.match(
     shellCss,
@@ -135,8 +136,8 @@ test('right rail detail sheets do not keep a glass filter edge under empty Tasks
 });
 
 test('right rail does not inherit main panel shadows or transparency that create light-theme seams', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
+  const themeOverridesCss = shellCss;
 
   assert.match(
     shellCss,

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
+
 function readSource(path: string) {
   return readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
 }
@@ -51,7 +53,7 @@ test('shared surface classes own popup, row, state, focus, scroll, and fallback 
   assert.match(transientCss, /@media \(forced-colors: active\)/);
 
   const indexCss = readSource('index.css');
-  assert.ok(indexCss.indexOf("theme-overrides.css") < indexCss.indexOf("transient-surfaces.css"), 'shared contract should be the final style layer');
+  assert.ok(indexCss.indexOf("theme-auth-gate.css") < indexCss.indexOf("transient-surfaces.css"), 'shared contract should be the final style layer');
 });
 
 test('representative popup families opt into the shared transient contract', () => {
@@ -81,7 +83,7 @@ test('representative popup families opt into the shared transient contract', () 
 
 test('legacy one-off popup shells no longer bypass the semantic palette', () => {
   const popovers = readSource('styles/shell-popovers.css');
-  const overrides = readSource('styles/theme-overrides.css');
+  const overrides = readDesktopShellCss();
   const transcript = readSource('kordi-app/components/transcript.tsx');
   const pinDialog = readSource('pages/ChatsPage.tsx');
 

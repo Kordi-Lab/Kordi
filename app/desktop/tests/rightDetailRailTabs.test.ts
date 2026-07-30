@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
+
 test('project rail keeps compact segments while chat page mode owns navigation in its header', () => {
   const rail = readFileSync(new URL('../src/pages/RightDetailRail.tsx', import.meta.url), 'utf8');
-  const shell = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shell = readDesktopShellCss();
 
   const tabListStart = rail.indexOf('app-detail-tab-list');
   const tabListEnd = rail.indexOf(') : null}', tabListStart);

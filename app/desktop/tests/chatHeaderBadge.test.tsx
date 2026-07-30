@@ -15,6 +15,7 @@ import {
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function readChatsPageImplementationSource(): string {
   return [
@@ -86,7 +87,7 @@ test('chat header title text does not flex-grow away from fork or action pills',
 
 test('chat headers reserve a compact second row for icon destination subtitles', () => {
   const source = readChatsPageImplementationSource();
-  const shell = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shell = readDesktopShellCss();
 
   assert.doesNotMatch(source, /min-h-\[112px\]/);
   assert.doesNotMatch(source, /min-h-\[100px\]/);

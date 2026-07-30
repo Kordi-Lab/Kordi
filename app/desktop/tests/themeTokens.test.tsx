@@ -63,8 +63,8 @@ test('glassmorphism tokens are declared in both themes and frame bgs are translu
 
 test('light workspace pages share one flat near-white surface family in web and native shells', () => {
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
+  const themeOverridesCss = shellCss;
   const appShellFrame = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
   const rightDetailRail = readFileSync(new URL('../src/pages/RightDetailRail.tsx', import.meta.url), 'utf8');
   const cloudAccountSettings = readFileSync(new URL('../src/pages/CloudAccountSettingsDialog.tsx', import.meta.url), 'utf8');
@@ -85,7 +85,7 @@ test('light workspace pages share one flat near-white surface family in web and 
 
 test('light cloud login and loading gates use the cool main-shell palette', () => {
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readDesktopShellCss();
   const lightTokenBlock = themeTokensCss.match(/\.kordi-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
   const lightCloudTokenBlock = lightTokenBlock.slice(lightTokenBlock.indexOf('--app-cloud-login-raised-bg:'));
   const lightCloudBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-cloud-login-page,[\s\S]*?\n\}/)?.[0] ?? '';
@@ -106,8 +106,8 @@ test('light cloud login and loading gates use the cool main-shell palette', () =
 });
 
 test('agent workspace is a full-bleed continuous surface with structural dividers', () => {
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
-  const shellPagesCss = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readDesktopShellCss();
+  const shellPagesCss = themeOverridesCss;
   const agentsPageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
   const agentSharedSource = readFileSync(new URL('../src/kordi-app/agents/shared.tsx', import.meta.url), 'utf8');
   const agentBlockStart = themeOverridesCss.indexOf('.kordi-app.theme-light .app-agent-shell');
@@ -133,7 +133,7 @@ test('agent workspace is a full-bleed continuous surface with structural divider
 });
 
 test('shell.css applies backdrop-filter and a paper-grain layer on the workspace shell', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   // @supports query gates the blur so unsupported environments still render.
   assert.match(shellCss, /@supports\s*\(backdrop-filter:\s*blur\(12px\)\)/);
@@ -147,7 +147,7 @@ test('shell.css applies backdrop-filter and a paper-grain layer on the workspace
 });
 
 test('light theme utility buttons use flat navigation-chip styling instead of raised glass', () => {
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readDesktopShellCss();
   const raisedSurfaceBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-input-shell,[\s\S]*?\.app-surface-muted\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
   const flatButtonBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-icon-button,[\s\S]*?\.app-control-chip\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
   const flatButtonHoverBlock = themeOverridesCss.match(/\.kordi-app\.theme-light \.app-icon-button:hover,[\s\S]*?\.app-control-chip:hover\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
@@ -163,8 +163,8 @@ test('light theme utility buttons use flat navigation-chip styling instead of ra
 });
 
 test('composer send area keeps the outer surface without an inner input pop or divider', () => {
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
+  const themeOverridesCss = shellCss;
   const composerShellBlock = shellCss.match(/\.app-composer-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerInputBlock = shellCss.match(/\.app-composer-input \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerMetaBlock = shellCss.match(/\.app-composer-meta \{[\s\S]*?\n\}/)?.[0] ?? '';

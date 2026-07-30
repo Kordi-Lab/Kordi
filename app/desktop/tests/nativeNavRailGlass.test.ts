@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { syncNativeWindowTheme } from '../src/app/nativeWindowTheme';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 const readSource = (relativePath: string) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 
@@ -36,7 +37,7 @@ test('macOS main window enables semantic sidebar vibrancy on a transparent canva
 });
 
 test('native shell exposes vibrancy through the complete left navigation stack', () => {
-  const shellCss = readSource('src/styles/shell.css');
+  const shellCss = readDesktopShellCss();
   const tokensCss = readSource('src/styles/theme-tokens.css');
   const profileControl = readSource('src/pages/workspaceSidebar.profile.tsx');
   const indexHtml = readSource('index.html');

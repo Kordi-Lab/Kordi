@@ -1,0 +1,320 @@
+/* --- Cloud login (gate + signup + loading splash) ---
+ * The page renders before the shell mounts, so it relies on .kordi-app
+ * being applied by KordiAppRoot. All palette is driven by the
+ * --app-cloud-login-* tokens defined in theme-tokens.css.
+ */
+
+.app-cloud-login-shell {
+  min-height: 100vh;
+  width: 100%;
+}
+
+.app-cloud-login-page,
+.app-cloud-login-loading {
+  background: var(--app-cloud-login-page-bg);
+  color: var(--utility-foreground);
+}
+
+.kordi-app .app-cloud-login-page,
+.kordi-app .app-cloud-login-loading {
+  --app-cloud-login-page-bg:
+    radial-gradient(circle at top left, rgba(132, 122, 196, 0.10), transparent 36%),
+    radial-gradient(circle at 86% 12%, rgba(132, 199, 196, 0.06), transparent 30%),
+    linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
+}
+
+.kordi-app.theme-light .app-cloud-login-page,
+.kordi-app.theme-light .app-cloud-login-loading {
+  --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
+}
+
+/* Decorative radial accent layer behind the form. */
+.app-cloud-login-accents {
+  background:
+    radial-gradient(circle at 14% 10%, oklch(0.72 0.16 211 / 0.18), transparent 32%),
+    radial-gradient(circle at 84% 14%, oklch(0.66 0.26 355 / 0.14), transparent 30%),
+    radial-gradient(circle at 74% 82%, oklch(0.82 0.16 83 / 0.18), transparent 34%);
+}
+
+.kordi-app.theme-light .app-cloud-login-accents {
+  background:
+    radial-gradient(circle at 14% 10%, oklch(0.70 0.13 232 / 0.12), transparent 28%),
+    radial-gradient(circle at 84% 14%, oklch(0.74 0.11 190 / 0.10), transparent 26%),
+    radial-gradient(circle at 74% 82%, oklch(0.72 0.08 255 / 0.09), transparent 30%),
+    linear-gradient(90deg, rgba(100, 116, 139, 0.035) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(100, 116, 139, 0.026) 1px, transparent 1px);
+  background-size: auto, auto, auto, 14px 14px, 16px 16px;
+}
+
+/* Paper grain — multiply-blended in light, screen-blended (gentle) in dark. */
+.app-cloud-login-grain {
+  background-image: repeating-linear-gradient(
+    7deg,
+    rgba(255, 255, 255, 0.04) 0 1px,
+    transparent 1px 9px
+  );
+  mix-blend-mode: screen;
+  opacity: 0.30;
+}
+
+.kordi-app.theme-light .app-cloud-login-grain {
+  background-image: repeating-linear-gradient(
+    7deg,
+    rgba(51, 65, 85, 0.035) 0 1px,
+    transparent 1px 9px
+  );
+  mix-blend-mode: multiply;
+  opacity: 0.14;
+}
+
+/* Inputs — placeholder color follows the theme. */
+.app-cloud-login-input::placeholder {
+  color: var(--utility-meta-text);
+}
+
+/* Tauri's WebKit password caps-lock glyph inherits the tall rounded field and
+ * balloons into a vertical key. Keep the field visually stable by hiding the
+ * native glyph rather than letting it distort the login form. */
+.app-cloud-login-input::-webkit-caps-lock-indicator {
+  display: none;
+  width: 0;
+  height: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Big signup avatar — themed inset highlight + soft outer drop. */
+.app-cloud-login-avatar {
+  border-color: var(--app-cloud-login-inner-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 6px 14px rgba(0, 0, 0, 0.32);
+}
+
+.kordi-app.theme-light .app-cloud-login-avatar {
+  border-color: oklch(0.62 0.05 82 / 0.28);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.45),
+    0 6px 14px oklch(0.28 0.04 82 / 0.10);
+}
+
+/* Icon-only social provider pills (Google / GitHub). */
+.app-cloud-login-social-pill:hover {
+  color: var(--utility-foreground);
+}
+
+.kordi-app.theme-light .app-cloud-login-social-pill:hover {
+  color: oklch(0.16 0.02 125);
+}
+
+/* Active segment indicator pill behind the Log in / Sign up tabs. */
+.app-cloud-login-tab-pill {
+  transition-duration: 260ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+}
+
+.kordi-app.theme-light .app-cloud-login-tab-pill {
+  box-shadow: 0 4px 12px oklch(0.42 0.04 82 / 0.10);
+}
+
+.app-cloud-login-panel {
+  min-height: 548px;
+}
+
+.app-cloud-login-mode-copy {
+  transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-cloud-login-signup-section {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  overflow: hidden;
+  transform: translate3d(0, -4px, 0);
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-cloud-login-signup-section[data-cloud-login-signup-section="open"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.app-cloud-login-signup-section > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-cloud-login-mode-copy,
+  .app-cloud-login-signup-section {
+    transition-duration: 1ms;
+  }
+
+  .app-cloud-login-tab-pill {
+    transition-duration: 1ms;
+  }
+}
+
+/* Error banner (per-form submission). */
+.app-cloud-login-error {
+  border-color: var(--app-cloud-login-danger-border);
+  background: var(--app-cloud-login-danger-bg);
+  color: var(--app-cloud-login-danger-text);
+}
+
+/* Primary submit button — inverted ink button that picks up the
+ * shared --app-button-primary-* tokens that flip per theme. */
+.app-cloud-login-submit {
+  background: var(--app-button-primary-bg);
+  color: var(--app-button-primary-text);
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.kordi-app.theme-light .app-cloud-login-submit {
+  background: oklch(0.22 0.02 125);
+  color: oklch(0.985 0.015 82);
+  border-color: oklch(0.27 0.02 125 / 0.10);
+  box-shadow: 0 10px 24px oklch(0.25 0.03 125 / 0.18);
+}
+
+.app-cloud-login-submit:hover:not(:disabled) {
+  background: var(--app-button-primary-hover);
+}
+
+.app-cloud-starting-screen {
+  --app-cloud-starting-dot-a: oklch(0.72 0.11 212 / 0.72);
+  --app-cloud-starting-dot-b: oklch(0.74 0.10 165 / 0.70);
+  --app-cloud-starting-dot-c: oklch(0.76 0.11 78 / 0.68);
+  --app-cloud-starting-retry-bg: oklch(1 0 0 / 0.06);
+  --app-cloud-starting-retry-border: oklch(1 0 0 / 0.12);
+  --app-cloud-starting-retry-text: var(--utility-secondary-text);
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: var(--app-cloud-login-page-bg);
+  color: var(--utility-foreground);
+}
+
+.kordi-app .app-cloud-starting-screen {
+  --app-cloud-login-page-bg:
+    radial-gradient(circle at top left, rgba(132, 122, 196, 0.08), transparent 36%),
+    radial-gradient(circle at 86% 12%, rgba(132, 199, 196, 0.05), transparent 30%),
+    linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
+}
+
+.kordi-app.theme-light .app-cloud-starting-screen {
+  --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
+  --app-cloud-starting-dot-a: oklch(0.56 0.13 232 / 0.68);
+  --app-cloud-starting-dot-b: oklch(0.58 0.10 190 / 0.64);
+  --app-cloud-starting-dot-c: oklch(0.50 0.07 255 / 0.62);
+  --app-cloud-starting-retry-bg: rgba(255, 255, 255, 0.58);
+  --app-cloud-starting-retry-border: rgba(100, 116, 139, 0.20);
+  --app-cloud-starting-retry-text: rgb(51 65 85);
+}
+
+.app-cloud-starting-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+}
+
+.app-cloud-starting-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.68;
+  transform-origin: center;
+  animation: app-cloud-starting-pulse 1.35s var(--app-motion-ease) infinite;
+}
+
+.app-cloud-starting-dot-1 {
+  color: var(--app-cloud-starting-dot-a);
+  animation-delay: 0ms;
+}
+
+.app-cloud-starting-dot-2 {
+  color: var(--app-cloud-starting-dot-b);
+  animation-delay: 120ms;
+}
+
+.app-cloud-starting-dot-3 {
+  color: var(--app-cloud-starting-dot-c);
+  animation-delay: 240ms;
+}
+
+.app-cloud-starting-retry {
+  position: absolute;
+  top: calc(50% + 34px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid var(--app-cloud-starting-retry-border);
+  border-radius: 999px;
+  background: var(--app-cloud-starting-retry-bg);
+  color: var(--app-cloud-starting-retry-text);
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.app-cloud-starting-retry:hover {
+  color: var(--utility-foreground);
+}
+
+@keyframes app-cloud-starting-pulse {
+  0%, 100% {
+    transform: translateY(0) scale(0.94);
+    opacity: 0.46;
+  }
+  45% {
+    transform: translateY(-2px) scale(1);
+    opacity: 0.82;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-cloud-starting-dot {
+    animation: none;
+  }
+}
+
+@layer utilities {
+  .bg-background {
+    background-color: var(--utility-background, rgb(6 16 31));
+  }
+
+  .text-background {
+    color: var(--utility-background, rgb(6 16 31));
+  }
+
+  .bg-foreground {
+    background-color: var(--utility-foreground, rgb(241 245 249));
+  }
+
+  .text-foreground {
+    color: var(--utility-foreground, rgb(241 245 249));
+  }
+
+  .bg-card {
+    background-color: var(--utility-card, rgba(15, 23, 42, 0.84));
+  }
+
+  .bg-muted {
+    background-color: var(--utility-muted, rgba(30, 41, 59, 0.86));
+  }
+
+  .text-muted-foreground {
+    color: var(--utility-muted-text, rgb(148 163 184));
+  }
+}

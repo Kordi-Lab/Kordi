@@ -8,6 +8,7 @@ import { ContactRow } from '../src/kordi-app/components/transcript';
 import { ContactsPage } from '../src/kordi-app/pages';
 import { cloudRequestToContactRequest } from '../src/features/cloud/useCloudContacts';
 import type { Contact, ContactRequest } from '../src/kordi-app/types';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function contact(overrides: Partial<Contact> = {}): Contact {
   return {
@@ -175,8 +176,8 @@ test('active contact rows stay visually neutral until hover', () => {
 test('contacts page controls use a Vercel-style aligned rail with reduced shape', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
   const componentSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
-  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
+  const themeOverridesCss = shellCss;
 
   assert.match(source, /app-contacts-section-button/);
   assert.match(source, /app-contacts-action-chip/);
