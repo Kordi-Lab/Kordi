@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import type { ComponentProps } from 'react';
 
 import { WorkspaceSidebar } from '@/pages/WorkspaceSidebar';
+import type { WorkspaceSidebarProps } from '@/pages/WorkspaceSidebar';
 
 import type { SidebarShellArgs } from '@/app/kordiShellSlots.types';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
@@ -16,34 +16,50 @@ import {
 } from '@/lib/desktop';
 import { isPendingIncomingCloudContactRequest, useCloudContacts } from '@/features/cloud/useCloudContacts';
 
-type SidebarSlotProps = { args: SidebarShellArgs } & Partial<ComponentProps<typeof WorkspaceSidebar>>;
+type SidebarChatActions = Pick<
+  WorkspaceSidebarProps['chats'],
+  | 'onStartChatWithPerson'
+  | 'onStartChatWithAgent'
+  | 'onCreateChatGroup'
+  | 'onRenameChatGroup'
+  | 'onAddChatGroupMembers'
+  | 'onRemoveChatGroupMember'
+  | 'onSetChatGroupAdmin'
+>;
+
+type SidebarSlotProps = {
+  args: SidebarShellArgs;
+  chatActions: SidebarChatActions;
+};
 
 export function assembleSidebarSlot(args: SidebarShellArgs) {
   return (
     <SidebarSlot
       args={args}
-      onStartChatWithPerson={args.handleStartChatWithPerson}
-      onStartChatWithAgent={async (agent) => {
-        if (agent.cloudAgentId) {
+      chatActions={{
+        onStartChatWithPerson: args.handleStartChatWithPerson,
+        onStartChatWithAgent: async (agent) => {
+          if (agent.cloudAgentId) {
+            await args.handleStartChatWithAgent(agent);
+            return;
+          }
+          if (agent.isOwned) {
+            await args.handleCreateChatSession();
+            return;
+          }
           await args.handleStartChatWithAgent(agent);
-          return;
-        }
-        if (agent.isOwned) {
-          await args.handleCreateChatSession();
-          return;
-        }
-        await args.handleStartChatWithAgent(agent);
+        },
+        onCreateChatGroup: args.handleCreateChatGroup,
+        onRenameChatGroup: args.handleRenameChatGroup,
+        onAddChatGroupMembers: args.handleAddChatGroupMembers,
+        onRemoveChatGroupMember: args.handleRemoveChatGroupMember,
+        onSetChatGroupAdmin: args.handleSetChatGroupAdmin,
       }}
-      onCreateChatGroup={args.handleCreateChatGroup}
-      onRenameChatGroup={args.handleRenameChatGroup}
-      onAddChatGroupMembers={args.handleAddChatGroupMembers}
-      onRemoveChatGroupMember={args.handleRemoveChatGroupMember}
-      onSetChatGroupAdmin={args.handleSetChatGroupAdmin}
     />
   );
 }
 
-function SidebarSlot({ args }: SidebarSlotProps) {
+function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
   const cloudSession = args.cloudSession;
   const cloud = useCloudContacts(cloudSession.account);
 
@@ -99,92 +115,90 @@ function SidebarSlot({ args }: SidebarSlotProps) {
 
   return (
     <WorkspaceSidebar
-        isNativeShell={args.isNativeShell}
-        isSingleWorkspacePage={args.isSingleWorkspacePage}
-        collapseChatSessions={args.collapseChatSessions}
-        showSessionRail={args.showSessionRail}
-        sessionRailWidth={args.sessionRailWidth}
-        activeNav={args.activeNav}
-        setActiveNav={args.setActiveNav}
-        chatConversations={args.chatConversations}
-        onCreateChatSession={() => {
+      layout={{
+        isNativeShell: args.isNativeShell,
+        isSingleWorkspacePage: args.isSingleWorkspacePage,
+        collapseChatSessions: args.collapseChatSessions,
+        showSessionRail: args.showSessionRail,
+        sessionRailWidth: args.sessionRailWidth,
+        activeNav: args.activeNav,
+        setActiveNav: args.setActiveNav,
+        onCheckForUpdates: checkDesktopForUpdates,
+        onInstallUpdate: installDesktopUpdate,
+        onRetryUpdate: retryDesktopUpdate,
+        onSubscribeToUpdate: subscribeDesktopUpdater,
+        onOpenUpdateUrl: async (url) => { await openDesktopExternalUrl(url); },
+      }}
+      chats={{
+        chatConversations: args.chatConversations,
+        onCreateChatSession: () => {
           void args.handleCreateChatSession();
-        }}
-        onCheckForUpdates={checkDesktopForUpdates}
-        onInstallUpdate={installDesktopUpdate}
-        onRetryUpdate={retryDesktopUpdate}
-        onSubscribeToUpdate={subscribeDesktopUpdater}
-        onOpenUpdateUrl={async (url) => { await openDesktopExternalUrl(url); }}
-        chatSearch={args.chatSearch}
-        setChatSearch={args.setChatSearch}
-        isDesktopChatLoading={args.isDesktopChatLoading}
-        desktopChatError={args.desktopChatError}
-        participantSpaces={args.participantSpaces}
-        contactParticipantSpaces={args.contactParticipantSpaces}
-        agentParticipantSpaces={args.agentParticipantSpaces}
-        activeConvId={args.activeConvId}
-        onSelectChatSession={(sessionId) => {
+        },
+        chatSearch: args.chatSearch,
+        setChatSearch: args.setChatSearch,
+        isDesktopChatLoading: args.isDesktopChatLoading,
+        desktopChatError: args.desktopChatError,
+        participantSpaces: args.participantSpaces,
+        contactParticipantSpaces: args.contactParticipantSpaces,
+        agentParticipantSpaces: args.agentParticipantSpaces,
+        activeConvId: args.activeConvId,
+        onSelectChatSession: (sessionId) => {
           void args.handleSelectChatSession(sessionId);
-        }}
-        onStartChatWithPerson={(contact) => {
-          void args.handleStartChatWithPerson(contact);
-        }}
-        onStartChatWithAgent={async (agent) => {
-          if (agent.cloudAgentId) {
-            await args.handleStartChatWithAgent(agent);
-            return;
-          }
-          if (agent.isOwned) {
-            await args.handleCreateChatSession();
-            return;
-          }
-          await args.handleStartChatWithAgent(agent);
-        }}
-        onCreateChatGroup={args.handleCreateChatGroup}
-        onAddContactByNodeId={onAddContactByNodeId}
-        onLookupContact={onLookupContact}
-        addContactPlaceholder="Account ID, e.g. acct_…"
-        onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
-        onRenameChatGroup={args.handleRenameChatGroup}
-        onRenameChatSession={(sessionId, title) => {
+        },
+        onStartChatWithPerson: chatActions.onStartChatWithPerson,
+        onStartChatWithAgent: chatActions.onStartChatWithAgent,
+        onCreateChatGroup: chatActions.onCreateChatGroup,
+        onAddContactByNodeId,
+        onLookupContact,
+        addContactPlaceholder: 'Account ID, e.g. acct_…',
+        onCreateChatSessionInParticipantSpace: args.handleCreateChatSessionInParticipantSpace,
+        onRenameChatGroup: chatActions.onRenameChatGroup,
+        onRenameChatSession: (sessionId, title) => {
           void args.handleRenameChatSession(sessionId, title);
-        }}
-        onAddChatGroupMembers={args.handleAddChatGroupMembers}
-        onRemoveChatGroupMember={args.handleRemoveChatGroupMember}
-        onSetChatGroupAdmin={args.handleSetChatGroupAdmin}
-        onDeleteChatSession={(sessionId) => {
+        },
+        onAddChatGroupMembers: chatActions.onAddChatGroupMembers,
+        onRemoveChatGroupMember: chatActions.onRemoveChatGroupMember,
+        onSetChatGroupAdmin: chatActions.onSetChatGroupAdmin,
+        onDeleteChatSession: (sessionId) => {
           void args.handleDeleteChatSession(sessionId);
-        }}
-        onMoveChatSessionToProject={(sessionId, projectRoot) => {
+        },
+        onMoveChatSessionToProject: (sessionId, projectRoot) => {
           void args.handleMoveChatSessionToProject(sessionId, projectRoot);
-        }}
-        onCreateProjectFromFolder={args.handleCreateProjectFromFolder}
-        onCreateProject={args.handleCreateProject}
-        runtimeProjects={args.runtimeProjects}
-        projectSearch={args.projectSearch}
-        setProjectSearch={args.setProjectSearch}
-        filteredProjects={args.filteredProjects}
-        activeProjectId={args.activeProjectId}
-        activeProjectSessionId={args.activeProjectSessionId}
-        projectSelectedSessionIds={args.projectSelectedSessionIds}
-        selectProject={args.selectProject}
-        expandedProjectIds={args.expandedProjectIds}
-        setExpandedProjectIds={args.setExpandedProjectIds}
-        onSelectProjectSession={(projectId, sessionId) => {
+        },
+        isCollaborationSyncing: args.isCollaborationSyncing,
+      }}
+      projects={{
+        onCreateProjectFromFolder: args.handleCreateProjectFromFolder,
+        onCreateProject: args.handleCreateProject,
+        runtimeProjects: args.runtimeProjects,
+        projectSearch: args.projectSearch,
+        setProjectSearch: args.setProjectSearch,
+        filteredProjects: args.filteredProjects,
+        activeProjectId: args.activeProjectId,
+        activeProjectSessionId: args.activeProjectSessionId,
+        projectSelectedSessionIds: args.projectSelectedSessionIds,
+        selectProject: args.selectProject,
+        expandedProjectIds: args.expandedProjectIds,
+        setExpandedProjectIds: args.setExpandedProjectIds,
+        onSelectProjectSession: (projectId, sessionId) => {
           void args.handleSelectProjectSession(projectId, sessionId);
-        }}
-        groupedContacts={args.groupedContacts}
-        displayedContacts={cloud.contacts}
-        addableContacts={[]}
-        contactRequestCount={cloud.requests.filter(isPendingIncomingCloudContactRequest).length}
-        setActiveContactGroup={args.setActiveContactGroup}
-        setActiveContactId={args.setActiveContactId}
-        displayedAgents={args.displayedAgents}
-        localProfileAvatarSeed={args.localProfileAvatarSeed}
-        cloudAccount={cloudSession.account}
-        cloudAccountDialogTab={args.cloudAccountDialogTab}
-        setCloudAccountDialogTab={args.setCloudAccountDialogTab}
-        cloudSettings={{
+        },
+      }}
+      directory={{
+        groupedContacts: args.groupedContacts,
+        displayedContacts: cloud.contacts,
+        addableContacts: [],
+        contactRequestCount: cloud.requests.filter(isPendingIncomingCloudContactRequest).length,
+        setActiveContactGroup: args.setActiveContactGroup,
+        setActiveContactId: args.setActiveContactId,
+        displayedAgents: args.displayedAgents,
+      }}
+      account={{
+        localProfileAvatarSeed: args.localProfileAvatarSeed,
+        cloudAccount: cloudSession.account,
+        cloudAccountDialogTab: args.cloudAccountDialogTab,
+        setCloudAccountDialogTab: args.setCloudAccountDialogTab,
+        cloudSettings: {
           settingsSections: args.settingsSections,
           activeSettingsSectionId: args.activeSettingsSectionId,
           setActiveSettingsSectionId: args.setActiveSettingsSectionId,
@@ -202,10 +216,10 @@ function SidebarSlot({ args }: SidebarSlotProps) {
           handleLogoutProvider: args.handleLogoutProvider,
           themeMode: args.themeMode,
           setThemeMode: args.setThemeMode,
-        }}
-        onUpdateCloudProfile={async (input) => { await cloudSession.updateProfile(input); }}
-        onCloudSignOut={async () => { await cloudSession.signOut(); }}
-        isCollaborationSyncing={args.isCollaborationSyncing}
-      />
+        },
+        onUpdateCloudProfile: async (input) => { await cloudSession.updateProfile(input); },
+        onCloudSignOut: async () => { await cloudSession.signOut(); },
+      }}
+    />
   );
 }

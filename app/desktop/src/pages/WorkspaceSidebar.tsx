@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
   Check,
   CheckCircle2,
@@ -24,26 +24,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import { CloudAccountSettingsDialog, type CloudAccountSettingsConfig, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import { CloudAccountSettingsDialog, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { isBlankParticipantSpaceSession, primaryAgentForConversation } from '@/features/chat/participantSpaces';
-import type {
-  Agent,
-  ChatChannel,
-  Contact,
-  ContactClass,
-  Conversation,
-  ConversationType,
-  NavId,
-  ParticipantSpaceViewModel,
-  SessionStatusIndicator,
-} from '@/kordi-app/types';
+import type { ChatChannel, Conversation, SessionStatusIndicator } from '@/kordi-app/types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { buildForkLineage, isGroupForkSession } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
-import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
 import { cn } from '@/lib/utils';
 import {
@@ -65,25 +54,14 @@ import {
   type ChatSidebarRow,
   type ChatSidebarSessionInput,
 } from '@/pages/sidebar/VirtualChatList';
+import type {
+  WorkspaceSidebarConversation as ConversationItem,
+  WorkspaceSidebarParticipantSpace as ParticipantSpaceItem,
+  WorkspaceSidebarProject as ProjectItem,
+  WorkspaceSidebarProps,
+} from '@/pages/workspaceSidebar.types';
 
-type ConversationItem = {
-  id: string;
-  canonicalSessionId?: string;
-  name: string;
-  subtitle: string;
-  unread: number;
-  messages: Array<{ time?: string }>;
-  participants?: string[];
-  updatedAtLabel?: string;
-  statusIndicator?: SessionStatusIndicator;
-  type?: ConversationType;
-  profileImageUrl?: string | null;
-  avatarSeed?: string | null;
-  forkedFromSessionId?: string | null;
-  forkedFromMessageId?: string | null;
-};
-
-type ParticipantSpaceItem = ParticipantSpaceViewModel;
+export type { WorkspaceSidebarProps } from '@/pages/workspaceSidebar.types';
 
 function filterGroupForkSessionsFromSpaces(spaces: ParticipantSpaceItem[]): ParticipantSpaceItem[] {
   return spaces
@@ -191,104 +169,6 @@ export function participantSpaceCanRenameSessions(space: ParticipantSpaceItem) {
     .filter(Boolean));
   return [...selfIdentityIds].some((identityId) => adminIdentityIds.has(identityId));
 }
-
-type ProjectSessionItem = {
-  id: string;
-  name: string;
-  summary?: string;
-  lastActive: string;
-  unread?: number;
-  statusIndicator?: SessionStatusIndicator;
-};
-
-type ProjectItem = {
-  id: string;
-  name: string;
-  root?: string;
-  sessions: ProjectSessionItem[];
-};
-
-type ContactGroupItem = {
-  id: ContactClass;
-  label: string;
-};
-
-type ContactItem = Contact;
-
-type AgentItem = Agent;
-
-type WorkspaceSidebarProps = {
-  isNativeShell: boolean;
-  isSingleWorkspacePage: boolean;
-  collapseChatSessions: boolean;
-  showSessionRail: boolean;
-  sessionRailWidth: number;
-  activeNav: NavId;
-  setActiveNav: Dispatch<SetStateAction<NavId>>;
-  chatConversations: ConversationItem[];
-  onCreateChatSession: () => void;
-  onCheckForUpdates?: () => Promise<DesktopUpdaterState>;
-  onInstallUpdate?: () => Promise<void>;
-  onRetryUpdate?: () => Promise<void | DesktopUpdaterState>;
-  onSubscribeToUpdate?: (listener: (state: DesktopUpdaterState) => void) => () => void;
-  onOpenUpdateUrl?: (url: string) => Promise<void> | void;
-  chatSearch: string;
-  setChatSearch: Dispatch<SetStateAction<string>>;
-  isDesktopChatLoading: boolean;
-  desktopChatError: string | null;
-  participantSpaces: ParticipantSpaceItem[];
-  contactParticipantSpaces: ParticipantSpaceItem[];
-  agentParticipantSpaces: ParticipantSpaceItem[];
-  initialSelectedParticipantSpaceId?: string | null;
-  initialChatChannel?: ChatChannel;
-  activeConvId: string;
-  onSelectChatSession: (sessionId: string) => void;
-  onStartChatWithPerson: (contact: ContactItem) => Promise<void> | void;
-  onStartChatWithAgent: (agent: AgentItem) => Promise<void> | void;
-  onCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
-  onAddContactByNodeId: (nodeId: string) => Promise<void> | void;
-  /** Optional account lookup. When provided, the Add-contacts surface
-   * inside the chat-create dialog switches to a search-first UX. */
-  onLookupContact?: (idOrEmail: string) => Promise<import('@/pages/ChatCreateDialog').AddContactLookupResult | null>;
-  /** Override the placeholder text shown in the Add-contacts input. */
-  addContactPlaceholder?: string;
-  onCreateChatSessionInParticipantSpace: (space: ParticipantSpaceItem) => Promise<void> | void;
-  onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
-  onRenameChatSession: (sessionId: string, title: string) => void;
-  onAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
-  onRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
-  onSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
-  onDeleteChatSession: (sessionId: string) => void | Promise<void>;
-  onMoveChatSessionToProject: (sessionId: string, projectRoot: string) => void;
-  onCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void> | void;
-  onCreateProject: (name: string, parentDir?: string) => Promise<void> | void;
-  runtimeProjects: ProjectItem[];
-  projectSearch: string;
-  setProjectSearch: Dispatch<SetStateAction<string>>;
-  filteredProjects: ProjectItem[];
-  activeProjectId: string;
-  activeProjectSessionId: string;
-  projectSelectedSessionIds: Record<string, string>;
-  selectProject: (projectId: string, sessionId?: string) => void;
-  expandedProjectIds: Record<string, boolean>;
-  setExpandedProjectIds: Dispatch<SetStateAction<Record<string, boolean>>>;
-  onSelectProjectSession: (projectId: string, sessionId: string) => void;
-  groupedContacts: Array<{ id: ContactClass; label: string; items: ContactItem[] }>;
-  displayedContacts: ContactItem[];
-  addableContacts: ContactItem[];
-  contactRequestCount: number;
-  setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
-  setActiveContactId: Dispatch<SetStateAction<string>>;
-  displayedAgents: AgentItem[];
-  localProfileAvatarSeed?: string | null;
-  cloudAccount?: CloudAccount | null;
-  cloudAccountDialogTab?: CloudAccountSettingsTabId | null;
-  setCloudAccountDialogTab?: Dispatch<SetStateAction<CloudAccountSettingsTabId | null>>;
-  cloudSettings?: CloudAccountSettingsConfig;
-  onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
-  onCloudSignOut?: () => Promise<void> | void;
-  isCollaborationSyncing: boolean;
-};
 
 function formatUpdateBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -576,73 +456,88 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
 }
 
 export function WorkspaceSidebar({
-  isNativeShell,
-  isSingleWorkspacePage,
-  collapseChatSessions,
-  showSessionRail,
-  sessionRailWidth,
-  activeNav,
-  setActiveNav,
-  chatConversations,
-  onCreateChatSession,
-  onCheckForUpdates,
-  onInstallUpdate,
-  onRetryUpdate,
-  onSubscribeToUpdate,
-  onOpenUpdateUrl,
-  chatSearch,
-  setChatSearch,
-  desktopChatError,
-  participantSpaces,
-  contactParticipantSpaces,
-  agentParticipantSpaces,
-  initialSelectedParticipantSpaceId = null,
-  initialChatChannel = 'contact',
-  activeConvId,
-  onSelectChatSession,
-  onStartChatWithPerson,
-  onStartChatWithAgent,
-  onCreateChatGroup,
-  onAddContactByNodeId,
-  onLookupContact,
-  addContactPlaceholder,
-  onCreateChatSessionInParticipantSpace,
-  onRenameChatGroup,
-  onRenameChatSession,
-  onAddChatGroupMembers,
-  onRemoveChatGroupMember,
-  onSetChatGroupAdmin,
-  onDeleteChatSession,
-  onMoveChatSessionToProject,
-  onCreateProjectFromFolder,
-  onCreateProject,
-  runtimeProjects,
-  projectSearch,
-  setProjectSearch,
-  filteredProjects,
-  activeProjectId,
-  activeProjectSessionId,
-  projectSelectedSessionIds,
-  selectProject,
-  expandedProjectIds,
-  setExpandedProjectIds,
-  onSelectProjectSession,
-  groupedContacts,
-  displayedContacts,
-  addableContacts,
-  contactRequestCount,
-  setActiveContactGroup,
-  setActiveContactId,
-  displayedAgents,
-  localProfileAvatarSeed,
-  cloudAccount,
-  cloudAccountDialogTab: controlledCloudAccountDialogTab,
-  setCloudAccountDialogTab: setControlledCloudAccountDialogTab,
-  cloudSettings,
-  onUpdateCloudProfile,
-  onCloudSignOut,
-  isCollaborationSyncing,
+  layout,
+  chats,
+  projects,
+  directory,
+  account,
 }: WorkspaceSidebarProps) {
+  const {
+    isNativeShell,
+    isSingleWorkspacePage,
+    collapseChatSessions,
+    showSessionRail,
+    sessionRailWidth,
+    activeNav,
+    setActiveNav,
+    onCheckForUpdates,
+    onInstallUpdate,
+    onRetryUpdate,
+    onSubscribeToUpdate,
+    onOpenUpdateUrl,
+  } = layout;
+  const {
+    chatConversations,
+    onCreateChatSession,
+    chatSearch,
+    setChatSearch,
+    desktopChatError,
+    participantSpaces,
+    contactParticipantSpaces,
+    agentParticipantSpaces,
+    initialSelectedParticipantSpaceId = null,
+    initialChatChannel = 'contact',
+    activeConvId,
+    onSelectChatSession,
+    onStartChatWithPerson,
+    onStartChatWithAgent,
+    onCreateChatGroup,
+    onAddContactByNodeId,
+    onLookupContact,
+    addContactPlaceholder,
+    onCreateChatSessionInParticipantSpace,
+    onRenameChatGroup,
+    onRenameChatSession,
+    onAddChatGroupMembers,
+    onRemoveChatGroupMember,
+    onSetChatGroupAdmin,
+    onDeleteChatSession,
+    onMoveChatSessionToProject,
+    isCollaborationSyncing,
+  } = chats;
+  const {
+    onCreateProjectFromFolder,
+    onCreateProject,
+    runtimeProjects,
+    projectSearch,
+    setProjectSearch,
+    filteredProjects,
+    activeProjectId,
+    activeProjectSessionId,
+    projectSelectedSessionIds,
+    selectProject,
+    expandedProjectIds,
+    setExpandedProjectIds,
+    onSelectProjectSession,
+  } = projects;
+  const {
+    groupedContacts,
+    displayedContacts,
+    addableContacts,
+    contactRequestCount,
+    setActiveContactGroup,
+    setActiveContactId,
+    displayedAgents,
+  } = directory;
+  const {
+    localProfileAvatarSeed,
+    cloudAccount,
+    cloudAccountDialogTab: controlledCloudAccountDialogTab,
+    setCloudAccountDialogTab: setControlledCloudAccountDialogTab,
+    cloudSettings,
+    onUpdateCloudProfile,
+    onCloudSignOut,
+  } = account;
   const totalUnread = chatConversations.reduce((sum, conversation) => (
     isGroupForkSession(conversation) ? sum : sum + Math.max(0, conversation.unread ?? 0)
   ), 0);
