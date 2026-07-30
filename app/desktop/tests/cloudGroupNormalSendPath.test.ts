@@ -94,9 +94,16 @@ test('outbox delivery persistence mutates the exact canonical message without lo
 test('cloud group image sends persist local sources before starting upload', () => {
   const source = cloudBridgeSource();
   const start = source.indexOf('const sendCloudGroupControl = useCallback');
-  const end = source.indexOf('\n\n  const refreshCloudSessionActivity', start);
+  const end = source.indexOf(
+    '\n\n  const cancelCloudAgentRequest',
+    start,
+  );
   assert.notEqual(start, -1, 'expected the cloud group send closure');
-  assert.notEqual(end, -1, 'expected the next closure after cloud group sending');
+  assert.notEqual(
+    end,
+    -1,
+    'expected the cancellation closure after cloud group sending',
+  );
   const groupSend = source.slice(start, end);
 
   const enqueue = groupSend.indexOf('await cloudGroupOutbox.enqueue(outboxEntry)');
