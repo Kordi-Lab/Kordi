@@ -2,18 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
-  deriveSessionTitle,
-  incomingSessionTitleWins,
-  isGenericSessionTitle,
-  sessionTitleMetadata,
-  titleSourceFromMetadata,
-} from '@/features/chat/sessionTitlePolicy';
-import {
   adoptCloudProfileIdentity,
   buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   markCanonicalSessionRead,
-  openOrCreateCanonicalSessionFast,
   upsertCanonicalIdentityFast,
   upsertCanonicalMessageFast,
   updateCanonicalMessageDelivery,
@@ -38,7 +30,6 @@ import type {
 import {
   applyCanonicalProfileIdentityDelta,
   mergeCanonicalMessageDeliveryDelta,
-  mergeCanonicalMessageRow,
   mergeCanonicalReadCursorDelta,
 } from '@/features/canonical/canonicalStateReducers';
 import {
@@ -75,9 +66,6 @@ import {
   compactCloudAgentNativeContextMessages,
   cloudMessageMentionsLocalAgent,
   encodeCloudAgentCancel,
-  encodeCloudAgentResponse,
-  parseCloudAgentCancel,
-  parseCloudAgentResponse,
 } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteForSession,
@@ -102,7 +90,6 @@ import {
   firstCloudGroupSendFailure,
   firstRequiredCloudGroupSendFailure,
   fulfilledCloudGroupSends,
-  parseCloudGroupControl,
   requiredCloudGroupControlTargetAccountIds,
   type CloudGroupControlEnvelope,
   type CloudGroupMemberJoin,
@@ -116,10 +103,6 @@ import {
   type CloudMessageIndex,
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
-import {
-  cloudDirectMessageAction,
-  cloudDirectMessageDisplayText,
-} from './cloudDirectMessages';
 import {
   cloudMessageActionAllowsAgentContext,
   cloudMessageActionAllowsAgentTrigger,
@@ -209,6 +192,21 @@ import {
   waitForCloudAgentTurn,
 } from './cloudAgentLocalExecution';
 import { useCloudDirectAgentExecution } from './useCloudDirectAgentExecution';
+import {
+  cloudSelfAgentDerivedSyncedStatusBySessionId,
+  type CloudSelfAgentSyncStatus,
+} from './cloudSelfAgentForwardSync';
+import { useCloudSelfAgentForwardSync } from './useCloudSelfAgentForwardSync';
+import { useCloudSelfAgentMetadataSync } from './useCloudSelfAgentMetadataSync';
+import { useCloudSelfAgentCanonicalSync } from './useCloudSelfAgentCanonicalSync';
+import {
+  cloudGroupReadCursorsBySessionId,
+  isSharedCloudSessionId,
+} from './cloudSelfAgentCanonicalSync';
+import {
+  mergeOpenCanonicalSessionFastResultIntoLocalState,
+  upsertCanonicalIdentityIntoLocalState,
+} from './cloudCanonicalStateMerge';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -266,6 +264,13 @@ export {
   optimisticCloudAgentCancelMessage,
   type CloudGroupAgentCancelRole,
 } from './cloudAgentCancellation';
+export {
+  cloudSelfAgentDerivedSyncedStatusBySessionId,
+  planCloudSelfAgentSync,
+  seedCloudSelfAgentForwardSyncLedger,
+  type CloudSelfAgentSyncStatus,
+} from './cloudSelfAgentForwardSync';
+export { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
 
@@ -380,38 +385,6 @@ export function cloudGroupIncomingMessageAlreadyApplied(
   return true;
 }
 
-function upsertCanonicalIdentityIntoLocalState(
-  current: CanonicalSessionState | null,
-  identity: CanonicalIdentity,
-): CanonicalSessionState | null {
-  if (!current) return current;
-  return {
-    ...current,
-    identities: [
-      ...current.identities.filter((candidate) => candidate.id !== identity.id),
-      identity,
-    ],
-  };
-}
-
-function mergeOpenCanonicalSessionFastResultIntoLocalState(
-  current: CanonicalSessionState | null,
-  result: OpenCanonicalSessionFastResult,
-): CanonicalSessionState | null {
-  if (!current) return current;
-  return {
-    ...current,
-    sessions: [
-      result.session,
-      ...current.sessions.filter((session) => session.id !== result.session.id),
-    ],
-    participants: [
-      ...current.participants.filter((participant) => participant.sessionId !== result.session.id),
-      ...result.participants,
-    ],
-  };
-}
-
 export function cloudGroupMessageTargetsLocalAgent(
   message: NonNullable<CloudGroupControlEnvelope['message']>,
   account: CloudAccount,
@@ -458,654 +431,6 @@ export function cloudGroupNativeContextMessages({
       createdAtMs: message.createdAtMs,
     }];
   }));
-}
-
-const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
-const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX = 'kordi.cloud.selfAgentForwardBaseline.v1:';
-
-type CloudSelfAgentSyncLedgerEntry = {
-  cloudMessageId: string | null;
-  syncedAtMs: number;
-  skippedLocalBackfill?: boolean;
-};
-
-type CloudSelfAgentSyncLedger = Record<string, CloudSelfAgentSyncLedgerEntry>;
-
-type CloudSelfAgentSyncOperation = {
-  localMessageId: string;
-  sessionId: string;
-  role: 'user' | 'agent';
-  text: string;
-  parentLocalMessageId: string | null;
-  createdAtMs: number;
-};
-
-export type CloudSelfAgentSyncStatus = {
-  state: 'syncing' | 'synced' | 'error';
-  pendingCount?: number;
-  message?: string;
-  updatedAtMs: number;
-};
-
-export function cloudSelfAgentDerivedSyncedStatusBySessionId(
-  accountId: string | null | undefined,
-  messagesByPeer: Record<string, CloudMessage[]>,
-  updatedAtMs: number = Date.now(),
-): Record<string, CloudSelfAgentSyncStatus> {
-  const localAccountId = accountId?.trim();
-  if (!localAccountId) return {};
-  const statuses: Record<string, CloudSelfAgentSyncStatus> = {};
-  for (const message of messagesByPeer[localAccountId] ?? []) {
-    if (message.fromAccountId !== localAccountId || message.toAccountId !== localAccountId) continue;
-    const sessionId = cleanText(message.sessionId);
-    if (!sessionId) continue;
-    statuses[sessionId] = { state: 'synced', updatedAtMs };
-  }
-  return statuses;
-}
-
-function selfAgentSyncLedgerKey(accountId: string): string {
-  return `${CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`;
-}
-
-function selfAgentForwardBaselineKey(accountId: string): string {
-  return `${CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX}${accountId}`;
-}
-
-function loadCloudSelfAgentForwardBaseline(accountId: string): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(selfAgentForwardBaselineKey(accountId)) === '1';
-}
-
-function saveCloudSelfAgentForwardBaseline(accountId: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(selfAgentForwardBaselineKey(accountId), '1');
-  } catch {
-    // Best effort. If persistence fails, this device may try again later.
-  }
-}
-
-function loadCloudSelfAgentSyncLedger(accountId: string): CloudSelfAgentSyncLedger {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(selfAgentSyncLedgerKey(accountId));
-    const parsed = raw ? JSON.parse(raw) as unknown : null;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    const ledger: CloudSelfAgentSyncLedger = {};
-    for (const [localMessageId, value] of Object.entries(parsed)) {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-      const cloudMessageId = cleanText(typeof (value as Record<string, unknown>).cloudMessageId === 'string'
-        ? (value as Record<string, unknown>).cloudMessageId as string
-        : null);
-      const syncedAtMs = (value as Record<string, unknown>).syncedAtMs;
-      const skippedLocalBackfill = (value as Record<string, unknown>).skippedLocalBackfill === true;
-      if (!localMessageId.trim() || typeof syncedAtMs !== 'number' || !Number.isFinite(syncedAtMs)) continue;
-      if (!cloudMessageId && !skippedLocalBackfill) continue;
-      ledger[localMessageId] = { cloudMessageId: cloudMessageId || null, syncedAtMs, skippedLocalBackfill: skippedLocalBackfill || undefined };
-    }
-    return ledger;
-  } catch {
-    return {};
-  }
-}
-
-function saveCloudSelfAgentSyncLedger(accountId: string, ledger: CloudSelfAgentSyncLedger): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(selfAgentSyncLedgerKey(accountId), JSON.stringify(ledger));
-  } catch {
-    // Best effort. A failed ledger write may cause a future duplicate sync, but
-    // should not block local chat or Cloud refresh.
-  }
-}
-
-function isTerminalSelfAgentMessage(message: CanonicalSessionMessage): boolean {
-  const status = cleanText(message.status).toLowerCase();
-  return !['', 'sending', 'processing', 'failed', 'cancelled'].includes(status);
-}
-
-function cloudSelfAgentCanonicalMessageId(messageId: string): string {
-  return `msg:cloud:self:${messageId}`;
-}
-
-function cloudSelfAgentCreatedAtMs(message: CloudMessage): number {
-  const parsed = Date.parse(message.createdAt);
-  return Number.isFinite(parsed) ? parsed : Date.now();
-}
-
-type CloudSelfAgentRestoreMessage = {
-  message: CloudMessage;
-  sessionId: string;
-  role: 'user' | 'agent';
-  text: string;
-  createdAtMs: number;
-  responseRequestId: string | null;
-  messageAction: MessageActionMetadata | null;
-};
-
-function isSharedCloudSessionId(sessionId: string): boolean {
-  const trimmed = cleanText(sessionId);
-  return trimmed.startsWith('session:direct-person:') || trimmed.startsWith('session:group:');
-}
-
-function cloudGroupReadCursorsBySessionId(canonicalState?: CanonicalSessionState | null): Record<string, CloudGroupReadCursor> {
-  if (!canonicalState) return {};
-  const rawMessageById = new Map(canonicalState.messages.map((message) => [message.id, message]));
-  const cursors: Record<string, CloudGroupReadCursor> = {};
-  for (const participant of canonicalState.participants) {
-    if (participant.role !== 'self') continue;
-    if (canonicalState.profile.humanIdentityId && participant.identityId !== canonicalState.profile.humanIdentityId) continue;
-    const lastReadMessageId = cleanText(participant.lastReadMessageId);
-    if (!lastReadMessageId) continue;
-    const lastReadMessage = rawMessageById.get(lastReadMessageId);
-    cursors[participant.sessionId] = {
-      lastReadMessageId,
-      lastReadCreatedAtMs: lastReadMessage?.createdAtMs ?? participant.lastSeenAtMs ?? null,
-    };
-  }
-  return cursors;
-}
-
-function normalizeCloudSelfAgentRestoreMessage(
-  message: CloudMessage,
-  isGroupControl?: boolean,
-): CloudSelfAgentRestoreMessage | null {
-  const sessionId = cleanText(message.sessionId);
-  if (!sessionId || isSharedCloudSessionId(sessionId)) return null;
-  const response = parseCloudAgentResponse(message.body);
-  if (!response && (parseCloudAgentCancel(message.body) || (isGroupControl ?? Boolean(parseCloudGroupControl(message.body))))) return null;
-  const text = cleanText(response?.text ?? cloudDirectMessageDisplayText(message.body));
-  if (!text) return null;
-  return {
-    message,
-    sessionId,
-    role: response ? 'agent' : 'user',
-    text,
-    createdAtMs: cloudSelfAgentCreatedAtMs(message),
-    responseRequestId: response?.requestId ?? null,
-    messageAction: response ? null : cloudDirectMessageAction(message.body),
-  };
-}
-
-function restoredForkSnapshotCloudMessageIds(
-  messages: CloudSelfAgentRestoreMessage[],
-  forksBySessionId: Record<string, CloudSessionForkSummary>,
-): Set<string> {
-  const messagesBySessionId = new Map<string, CloudSelfAgentRestoreMessage[]>();
-  for (const message of messages) {
-    const bucket = messagesBySessionId.get(message.sessionId) ?? [];
-    bucket.push(message);
-    messagesBySessionId.set(message.sessionId, bucket);
-  }
-
-  const snapshotIds = new Set<string>();
-  for (const fork of Object.values(forksBySessionId)) {
-    const forkSessionId = cleanText(fork.forkSessionId);
-    const parentSessionId = cleanText(fork.parentSessionId);
-    if (!forkSessionId || !parentSessionId) continue;
-    const forkMessages = messagesBySessionId.get(forkSessionId) ?? [];
-    const parentMessages = messagesBySessionId.get(parentSessionId) ?? [];
-    if (forkMessages.length === 0 || parentMessages.length === 0) continue;
-
-    for (let index = 0; index < forkMessages.length && index < parentMessages.length; index += 1) {
-      const forkMessage = forkMessages[index];
-      const parentMessage = parentMessages[index];
-      if (forkMessage.role !== parentMessage.role || forkMessage.text !== parentMessage.text) break;
-      snapshotIds.add(forkMessage.message.messageId);
-    }
-  }
-  return snapshotIds;
-}
-
-function existingCanonicalMessageMatchesCloudSelfAgent(
-  existing: CanonicalSessionMessage,
-  input: { sessionId: string; role: 'user' | 'agent'; text: string; createdAtMs: number; cloudMessageId: string },
-): boolean {
-  if (existing.sessionId !== input.sessionId) return false;
-  if (existing.id === cloudSelfAgentCanonicalMessageId(input.cloudMessageId)) return true;
-  if (existing.sourceTransport === 'cloud-self-agent' && existing.sourceEventId === input.cloudMessageId) return true;
-  const existingText = cleanText(existing.contentText);
-  if (!existingText || existingText !== input.text) return false;
-  const roleMatches = input.role === 'user'
-    ? existing.senderRole === 'user'
-    : existing.senderRole.includes('agent') || existing.messageKind === 'agent-turn';
-  if (!roleMatches) return false;
-  return Math.abs(existing.createdAtMs - input.createdAtMs) <= 5_000;
-}
-
-export function planCloudSelfAgentCanonicalSync({
-  account,
-  messages,
-  state,
-  forksBySessionId = {},
-  groupRowByWireMessageId,
-  cloudTitlesBySessionId = {},
-}: {
-  account: CloudAccount;
-  messages: CloudMessage[];
-  state: CanonicalSessionState;
-  forksBySessionId?: Record<string, CloudSessionForkSummary>;
-  groupRowByWireMessageId?: ReadonlyMap<string, IndexedCloudGroupRow>;
-  cloudTitlesBySessionId?: Readonly<Record<string, CloudSessionTitle>>;
-}): {
-  agentIdentityRequest: UpsertCanonicalIdentityRequest;
-  sessionRequests: OpenCanonicalSessionRequest[];
-  messageRequests: AppendCanonicalMessageRequest[];
-} {
-  const localHumanIdentityId = state.profile.humanIdentityId?.trim() || `human:${account.accountId}`;
-  const agentIdentityId = `agent:cloud-self:${account.accountId}`;
-  const sorted = [...messages]
-    .filter((message) => message.fromAccountId === account.accountId && message.toAccountId === account.accountId)
-    .sort((left, right) => (
-      cloudSelfAgentCreatedAtMs(left) - cloudSelfAgentCreatedAtMs(right)
-      || left.messageId.localeCompare(right.messageId)
-    ));
-  const normalizedMessages = sorted
-    .map((message) => normalizeCloudSelfAgentRestoreMessage(
-      message,
-      groupRowByWireMessageId?.has(message.messageId),
-    ))
-    .filter((message): message is CloudSelfAgentRestoreMessage => Boolean(message));
-  const forkSnapshotCloudMessageIds = restoredForkSnapshotCloudMessageIds(normalizedMessages, forksBySessionId);
-
-  const userTextByCloudMessageId = new Map<string, string>();
-  const requestLocalMessageIdByCloudMessageId = new Map<string, string>();
-  const plannedCanonicalMessageIdByDuplicateKey = new Map<string, string>();
-  const sessionRequestsById = new Map<string, OpenCanonicalSessionRequest>();
-  const existingSessionById = new Map(state.sessions.map((session) => [session.id, session]));
-  const messageRequests: AppendCanonicalMessageRequest[] = [];
-
-  const ensureSessionRequest = (
-    sessionId: string,
-    seed: string,
-    generatedFromMessageId?: string | null,
-    updatedAtMs?: number,
-    isForkSnapshot = false,
-  ) => {
-    const cloudTitle = cloudTitlesBySessionId[sessionId];
-    const fork = forksBySessionId[sessionId];
-    const generatedTitle = deriveSessionTitle(seed);
-    const title = cloudTitle?.title ?? generatedTitle ?? (fork ? 'New fork' : 'New chat');
-    const cloudTitleMetadata = cloudTitle ? {
-      sessionTitleSource: cloudTitle.titleSource,
-      titleSource: cloudTitle.titleSource,
-      sessionTitleRevision: cloudTitle.titleRevision,
-      sessionTitlePolicyVersion: cloudTitle.titlePolicyVersion,
-      sessionTitleUpdatedAtMs: cloudTitle.updatedAtMs,
-      sessionTitleUpdatedByAccountId: cloudTitle.updatedByAccountId,
-      ...(cloudTitle.titleGeneratedFromMessageId
-        ? { sessionTitleGeneratedFromMessageId: cloudTitle.titleGeneratedFromMessageId }
-        : {}),
-    } : null;
-    const planned = sessionRequestsById.get(sessionId);
-    if (planned) {
-      const plannedMetadata = planned.metadata && typeof planned.metadata === 'object' && !Array.isArray(planned.metadata)
-        ? planned.metadata as Record<string, unknown>
-        : {};
-      const plannedSource = titleSourceFromMetadata(plannedMetadata, planned.title);
-      const plannedUpdatedAtMs = typeof plannedMetadata.sessionTitleUpdatedAtMs === 'number'
-        ? plannedMetadata.sessionTitleUpdatedAtMs
-        : 0;
-      const plannedRevision = typeof plannedMetadata.sessionTitleRevision === 'number'
-        ? plannedMetadata.sessionTitleRevision
-        : 0;
-      const plannedUpdatedByAccountId = typeof plannedMetadata.sessionTitleUpdatedByAccountId === 'string'
-        ? plannedMetadata.sessionTitleUpdatedByAccountId
-        : null;
-      const cloudWinsPlanned = Boolean(cloudTitle)
-        && incomingSessionTitleWins(
-          {
-            titleSource: plannedSource,
-            titleRevision: plannedRevision,
-            updatedAtMs: plannedUpdatedAtMs,
-            updatedByAccountId: plannedUpdatedByAccountId,
-          },
-          cloudTitle,
-        );
-      if (cloudWinsPlanned || (generatedTitle && plannedSource === 'placeholder')) {
-        sessionRequestsById.set(sessionId, {
-          ...planned,
-          title,
-          metadata: {
-            ...plannedMetadata,
-            ...(cloudTitleMetadata ?? sessionTitleMetadata('auto', { generatedFromMessageId, updatedAtMs })),
-          },
-        });
-      }
-      return;
-    }
-    const existingSession = existingSessionById.get(sessionId);
-    const existingMetadata = existingSession?.metadata && typeof existingSession.metadata === 'object' && !Array.isArray(existingSession.metadata)
-      ? existingSession.metadata as Record<string, unknown>
-      : {};
-    const existingSource = titleSourceFromMetadata(existingMetadata, existingSession?.title);
-    const existingUpdatedAtMs = typeof existingMetadata.sessionTitleUpdatedAtMs === 'number'
-      ? existingMetadata.sessionTitleUpdatedAtMs
-      : 0;
-    const existingRevision = typeof existingMetadata.sessionTitleRevision === 'number'
-      ? existingMetadata.sessionTitleRevision
-      : 0;
-    const existingUpdatedByAccountId = typeof existingMetadata.sessionTitleUpdatedByAccountId === 'string'
-      ? existingMetadata.sessionTitleUpdatedByAccountId
-      : null;
-    const existingGeneratedFromMessageId = typeof existingMetadata.sessionTitleGeneratedFromMessageId === 'string'
-      ? existingMetadata.sessionTitleGeneratedFromMessageId.trim()
-      : '';
-    const currentGeneratedFromMessageId = generatedFromMessageId?.trim() ?? '';
-    const cloudWinsExisting = Boolean(cloudTitle)
-      && incomingSessionTitleWins(
-        {
-          titleSource: existingSource,
-          titleRevision: existingRevision,
-          updatedAtMs: existingUpdatedAtMs,
-          updatedByAccountId: existingUpdatedByAccountId,
-        },
-          cloudTitle,
-        );
-    const generatedFromCurrentSnapshot = Boolean(currentGeneratedFromMessageId)
-      && (
-        existingGeneratedFromMessageId === currentGeneratedFromMessageId
-        || existingGeneratedFromMessageId === cloudSelfAgentCanonicalMessageId(currentGeneratedFromMessageId)
-      );
-    const cloudTitleProtectsForkTitle = cloudWinsExisting
-      && cloudTitle?.titleSource !== 'auto'
-      && cloudTitle?.titleSource !== 'placeholder';
-    const shouldResetInheritedForkTitle = Boolean(fork)
-      && isForkSnapshot
-      && existingSource === 'auto'
-      && (!existingGeneratedFromMessageId || generatedFromCurrentSnapshot)
-      && !cloudTitleProtectsForkTitle;
-    const shouldUpdateExistingTitle = cloudWinsExisting
-      || shouldResetInheritedForkTitle
-      || (Boolean(generatedTitle) && existingSource === 'placeholder');
-    const existingFork = existingMetadata.fork && typeof existingMetadata.fork === 'object' && !Array.isArray(existingMetadata.fork)
-      ? existingMetadata.fork as Record<string, unknown>
-      : null;
-    const existingForkAliases = Array.isArray(existingFork?.forkedFromMessageAliases)
-      ? existingFork.forkedFromMessageAliases
-          .filter((value): value is string => typeof value === 'string')
-          .map((value) => value.trim())
-          .filter(Boolean)
-      : [];
-    const forkedFromMessageAliases = fork?.parentMessageId
-      ? [...new Set([...existingForkAliases, fork.parentMessageId])]
-      : existingForkAliases;
-    const metadata: Record<string, unknown> = {
-      ...existingMetadata,
-      cloudSelfAgentSession: true,
-      ...(shouldUpdateExistingTitle || !existingSession
-        ? shouldResetInheritedForkTitle
-          ? sessionTitleMetadata('placeholder', { updatedAtMs })
-          : cloudTitleMetadata ?? sessionTitleMetadata(generatedTitle ? 'auto' : 'placeholder', { generatedFromMessageId, updatedAtMs })
-        : {}),
-      ...(fork
-        ? {
-            fork: {
-              ...existingFork,
-              forkedFromSessionId: fork.parentSessionId,
-              ...(fork.parentMessageId ? { forkedFromMessageId: fork.parentMessageId } : {}),
-              ...(forkedFromMessageAliases.length > 0 ? { forkedFromMessageAliases } : {}),
-              forkMode: 'private-local',
-              contextPolicy: 'prefix-through-message',
-              boundary: 'inherited-history-reference-only',
-            },
-          }
-        : {}),
-    };
-    if (shouldResetInheritedForkTitle) {
-      delete metadata.sessionTitleGeneratedFromMessageId;
-    }
-    const existingHasFork = Boolean(fork)
-      && existingFork?.forkedFromSessionId === fork?.parentSessionId
-      && (!fork?.parentMessageId || existingFork?.forkedFromMessageId === fork.parentMessageId);
-    const existingHasCompleteForkContract = existingHasFork
-      && (!fork?.parentMessageId || existingForkAliases.includes(fork.parentMessageId))
-      && existingFork?.forkMode === 'private-local'
-      && existingFork?.contextPolicy === 'prefix-through-message'
-      && existingFork?.boundary === 'inherited-history-reference-only';
-    if (existingSession && (!fork || existingHasCompleteForkContract) && !shouldUpdateExistingTitle) return;
-    sessionRequestsById.set(sessionId, {
-      id: sessionId,
-      kind: 'self-agent',
-      title: shouldResetInheritedForkTitle
-        ? 'New fork'
-        : shouldUpdateExistingTitle
-          ? title
-          : cleanText(existingSession?.title) || title,
-      status: 'active',
-      createdByIdentityId: localHumanIdentityId,
-      primaryIdentityId: agentIdentityId,
-      participantIdentityIds: [agentIdentityId],
-      metadata,
-    });
-  };
-
-  for (const restoreMessage of normalizedMessages) {
-    const { message, sessionId, role, text, createdAtMs, responseRequestId, messageAction } = restoreMessage;
-    const sourceTransport = forkSnapshotCloudMessageIds.has(message.messageId)
-      ? 'canonical-fork-snapshot'
-      : 'cloud-self-agent';
-    const existingMatch = state.messages.find((existing) => existingCanonicalMessageMatchesCloudSelfAgent(existing, {
-      sessionId,
-      role,
-      text,
-      createdAtMs,
-      cloudMessageId: message.messageId,
-    }));
-    if (existingMatch) {
-      if (!responseRequestId) {
-        userTextByCloudMessageId.set(message.messageId, text);
-        requestLocalMessageIdByCloudMessageId.set(message.messageId, existingMatch.id);
-        ensureSessionRequest(
-          sessionId,
-          sourceTransport === 'canonical-fork-snapshot' ? '' : text,
-          message.messageId,
-          createdAtMs,
-          sourceTransport === 'canonical-fork-snapshot',
-        );
-      } else {
-        ensureSessionRequest(
-          sessionId,
-          sourceTransport === 'canonical-fork-snapshot'
-            ? ''
-            : cleanText(userTextByCloudMessageId.get(responseRequestId)) || '',
-          responseRequestId,
-          createdAtMs,
-          sourceTransport === 'canonical-fork-snapshot',
-        );
-      }
-      if (sourceTransport === 'canonical-fork-snapshot' && existingMatch.sourceTransport !== sourceTransport) {
-        messageRequests.push({
-          id: existingMatch.id,
-          sessionId,
-          senderIdentityId: existingMatch.senderIdentityId,
-          senderRole: existingMatch.senderRole,
-          messageKind: existingMatch.messageKind,
-          contentText: existingMatch.contentText,
-          content: existingMatch.content ?? null,
-          parentMessageId: existingMatch.parentMessageId ?? null,
-          status: existingMatch.status,
-          createdAtMs: existingMatch.createdAtMs,
-          sourceTransport,
-          sourceEventId: existingMatch.sourceEventId ?? message.messageId,
-        });
-      }
-      continue;
-    }
-
-    const duplicateKey = [sessionId, role, createdAtMs.toString(), text].join('\u001f');
-    const plannedDuplicateMessageId = plannedCanonicalMessageIdByDuplicateKey.get(duplicateKey);
-    if (plannedDuplicateMessageId) {
-      if (!responseRequestId) {
-        userTextByCloudMessageId.set(message.messageId, text);
-        requestLocalMessageIdByCloudMessageId.set(message.messageId, plannedDuplicateMessageId);
-      }
-      continue;
-    }
-
-    const canonicalMessageId = cloudSelfAgentCanonicalMessageId(message.messageId);
-    if (!responseRequestId) {
-      userTextByCloudMessageId.set(message.messageId, text);
-      requestLocalMessageIdByCloudMessageId.set(message.messageId, canonicalMessageId);
-    }
-    const quoteSourceMessageId = messageAction?.kind === 'quote'
-      ? cleanText(messageAction.source.sourceMessageId)
-      : null;
-    const parentMessageId = responseRequestId
-      ? requestLocalMessageIdByCloudMessageId.get(responseRequestId) ?? null
-      : quoteSourceMessageId;
-    const title = cleanText(userTextByCloudMessageId.get(responseRequestId ?? message.messageId))
-      || cleanText(existingSessionById.get(sessionId)?.title)
-      || '';
-    ensureSessionRequest(
-      sessionId,
-      sourceTransport === 'canonical-fork-snapshot' ? '' : title,
-      responseRequestId ?? message.messageId,
-      createdAtMs,
-      sourceTransport === 'canonical-fork-snapshot',
-    );
-    plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
-    messageRequests.push({
-      id: canonicalMessageId,
-      sessionId,
-      senderIdentityId: responseRequestId ? agentIdentityId : localHumanIdentityId,
-      senderRole: responseRequestId ? 'owned-agent' : 'user',
-      messageKind: responseRequestId ? 'agent-turn' : 'text',
-      contentText: text,
-      content: responseRequestId
-        ? { cloudRequestMessageId: responseRequestId }
-        : messageAction
-          ? {
-              messageAction,
-              ...(quoteSourceMessageId ? { replyToMessageId: quoteSourceMessageId } : {}),
-            }
-          : null,
-      parentMessageId,
-      status: responseRequestId ? 'complete' : 'sent',
-      createdAtMs,
-      sourceTransport,
-      sourceEventId: message.messageId,
-    });
-  }
-
-  return {
-    agentIdentityRequest: {
-      id: agentIdentityId,
-      kind: 'agent',
-      displayName: 'My Kordi',
-      ownerIdentityId: localHumanIdentityId,
-      source: 'local',
-      sourceHostId: null,
-      sourceIdentityId: null,
-      humanId: null,
-      agentId: `cloud-self:${account.accountId}`,
-      avatarKey: `cloud-self:${account.accountId}`,
-      profileImageUrl: null,
-      metadata: { cloudSelfAgent: true, accountId: account.accountId },
-    },
-    sessionRequests: [...sessionRequestsById.values()],
-    messageRequests,
-  };
-}
-
-function localSelfAgentSessionIds(state: CanonicalSessionState): Set<string> {
-  return new Set(state.sessions
-    .filter((session) => session.kind === 'self-agent' && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX))
-    .map((session) => session.id));
-}
-
-function shouldSkipSelfAgentForwardSyncMessage(message: CanonicalSessionMessage): boolean {
-  return message.sourceTransport === 'canonical-fork-snapshot'
-    || message.sourceTransport === 'cloud-group-fork-snapshot'
-    || message.sourceTransport === 'cloud-self-agent'
-    || message.id.startsWith('msg:cloud:self:');
-}
-
-export function seedCloudSelfAgentForwardSyncLedger(
-  state: CanonicalSessionState,
-  ledger: CloudSelfAgentSyncLedger,
-  syncedAtMs: number = Date.now(),
-): { ledger: CloudSelfAgentSyncLedger; changed: boolean } {
-  const selfAgentSessionIds = localSelfAgentSessionIds(state);
-  if (selfAgentSessionIds.size === 0) return { ledger, changed: false };
-
-  let changed = false;
-  const next: CloudSelfAgentSyncLedger = { ...ledger };
-  for (const message of state.messages) {
-    if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
-    if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
-    if (!cleanText(message.contentText) || next[message.id]) continue;
-    next[message.id] = {
-      cloudMessageId: null,
-      syncedAtMs,
-      skippedLocalBackfill: true,
-    };
-    changed = true;
-  }
-  return { ledger: changed ? next : ledger, changed };
-}
-
-export function planCloudSelfAgentSync(
-  state: CanonicalSessionState,
-  ledger: CloudSelfAgentSyncLedger,
-  options: { allowLocalBackfill?: boolean } = {},
-): CloudSelfAgentSyncOperation[] {
-  if (options.allowLocalBackfill === false) return [];
-  const selfAgentSessionIds = localSelfAgentSessionIds(state);
-  if (selfAgentSessionIds.size === 0) return [];
-
-  const messagesBySession = new Map<string, CanonicalSessionMessage[]>();
-  for (const message of state.messages) {
-    if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
-    if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
-    const text = cleanText(message.contentText);
-    if (!text) continue;
-    const bucket = messagesBySession.get(message.sessionId) ?? [];
-    bucket.push(message);
-    messagesBySession.set(message.sessionId, bucket);
-  }
-
-  const operations: CloudSelfAgentSyncOperation[] = [];
-  for (const [sessionId, messages] of messagesBySession.entries()) {
-    const sorted = [...messages].sort((left, right) => (
-      left.sequenceNum - right.sequenceNum
-      || left.createdAtMs - right.createdAtMs
-      || left.id.localeCompare(right.id)
-    ));
-    let lastUserMessageId: string | null = null;
-    for (const message of sorted) {
-      if (message.senderRole === 'user') {
-        lastUserMessageId = message.id;
-        if (!ledger[message.id]) {
-          operations.push({
-            localMessageId: message.id,
-            sessionId,
-            role: 'user',
-            text: cleanText(message.contentText),
-            parentLocalMessageId: null,
-            createdAtMs: message.createdAtMs,
-          });
-        }
-        continue;
-      }
-      const isAgentMessage = message.messageKind === 'agent-turn' || message.senderRole.includes('agent');
-      if (!isAgentMessage || !lastUserMessageId || ledger[message.id]) continue;
-      operations.push({
-        localMessageId: message.id,
-        sessionId,
-        role: 'agent',
-        text: cleanText(message.contentText),
-        parentLocalMessageId: lastUserMessageId,
-        createdAtMs: message.createdAtMs,
-      });
-    }
-  }
-
-  return operations.sort((left, right) => {
-    if (left.sessionId !== right.sessionId) return left.sessionId.localeCompare(right.sessionId);
-    return 0;
-  });
 }
 
 export type SendCloudGroupControlInput = {
@@ -1278,7 +603,6 @@ export function useCloudCollaborationState({
   const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
   const cloudSessionPinsByIdRef = useRef<CloudSessionPinsById>(cloudSessionPinsById);
   const cloudSessionTitlesByIdRef = useRef<CloudSessionTitlesById>(cloudSessionTitlesById);
-  const cloudSessionTitleUploadsRef = useRef<Map<string, string>>(new Map());
   const cloudGroupSessionTitleBackfillsRef = useRef<Set<string>>(new Set());
   const cloudAgentDefinitionsByIdRef = useRef<Record<string, CloudAgentDefinition>>(cloudAgentDefinitionsById);
   const cloudHiddenSessionIdsRef = useRef<Set<string>>(cloudHiddenSessionIds);
@@ -1302,8 +626,6 @@ export function useCloudCollaborationState({
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const syncedProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
-  const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
-  const syncingSelfAgentHistoryRef = useRef(false);
   const lastCloudFocusRefreshAtRef = useRef(0);
   const cloudFocusRefreshTimerRef = useRef<number | null>(null);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
@@ -1379,7 +701,6 @@ export function useCloudCollaborationState({
   useEffect(() => {
     cloudSyncCoordinator.changeAccount();
     const generation = cloudSyncCoordinator.currentGeneration();
-    cloudSelfAgentForkRefreshKeyRef.current = null;
     resetCloudAttachmentPreviewLoader();
     const accountId = account?.accountId ?? null;
     cloudGroupReplayCoordinator.changeAccount(accountId);
@@ -1418,7 +739,6 @@ export function useCloudCollaborationState({
     cloudSessionForksByIdRef.current = {};
     cloudSessionPinsByIdRef.current = {};
     cloudSessionTitlesByIdRef.current = {};
-    cloudSessionTitleUploadsRef.current.clear();
     cloudGroupSessionTitleBackfillsRef.current.clear();
     cloudAgentDefinitionsByIdRef.current = {};
     setCloudSessionActivity(nextSessionActivity);
@@ -1794,96 +1114,19 @@ export function useCloudCollaborationState({
     await Promise.all(exactClaims.map((claim) => claimCloudFallbackRun(claim, token)));
   }, [account, claimCloudFallbackRun, contacts.contacts]);
 
-  useEffect(() => {
-    if (!account || syncingSelfAgentHistoryRef.current) return;
-
-    syncingSelfAgentHistoryRef.current = true;
-    let plannedSessionIds: string[] = [];
-    void (async () => {
-      const latestState = canonicalSessionStateRef.current ?? canonicalSessionState ?? null;
-      if (!latestState) return;
-      const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
-      if (!loadCloudSelfAgentForwardBaseline(account.accountId)) {
-        const seeded = seedCloudSelfAgentForwardSyncLedger(latestState, initialLedger);
-        if (seeded.changed) {
-          saveCloudSelfAgentSyncLedger(account.accountId, seeded.ledger);
-        }
-        saveCloudSelfAgentForwardBaseline(account.accountId);
-        return;
-      }
-      const operations = planCloudSelfAgentSync(latestState, initialLedger);
-      if (operations.length === 0) return;
-
-      plannedSessionIds = [...new Set(operations.map((operation) => operation.sessionId))];
-      const session = await loadSession();
-      if (!session?.token) return;
-      const pendingBySession = operations.reduce<Record<string, number>>((counts, operation) => {
-        counts[operation.sessionId] = (counts[operation.sessionId] ?? 0) + 1;
-        return counts;
-      }, {});
-      setCloudSelfAgentSyncStatusBySessionId((current) => {
-        const next = { ...current };
-        for (const [sessionId, pendingCount] of Object.entries(pendingBySession)) {
-          next[sessionId] = { state: 'syncing', pendingCount, updatedAtMs: Date.now() };
-        }
-        return next;
-      });
-      const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
-      for (const operation of operations) {
-        if (cancelledRef.current) return;
-        if (ledger[operation.localMessageId]) continue;
-        let body = operation.text;
-        if (operation.role === 'agent') {
-          const parentCloudMessageId = operation.parentLocalMessageId
-            ? ledger[operation.parentLocalMessageId]?.cloudMessageId ?? null
-            : null;
-          if (!parentCloudMessageId) continue;
-          body = encodeCloudAgentResponse({ requestId: parentCloudMessageId, text: operation.text });
-        }
-        const message = await client.sendMessage(session.token, account.accountId, body, {
-          sessionId: operation.sessionId,
-          clientCreatedAt: new Date(operation.createdAtMs).toISOString(),
-        });
-        if (operation.role === 'user') {
-          // These are historical local-agent requests, not fresh Cloud asks.
-          // Suppress the direct-agent runner so backfill does not ask My Kordi
-          // to answer old prompts a second time before their historical answer
-          // envelope is uploaded.
-          processedCloudAgentMentionIdsRef.current.add(message.messageId);
-        }
-        ledger[operation.localMessageId] = {
-          cloudMessageId: message.messageId,
-          syncedAtMs: Date.now(),
-        };
-        saveCloudSelfAgentSyncLedger(account.accountId, ledger);
-        pendingBySession[operation.sessionId] = Math.max(0, (pendingBySession[operation.sessionId] ?? 1) - 1);
-        setCloudSelfAgentSyncStatusBySessionId((current) => ({
-          ...current,
-          [operation.sessionId]: pendingBySession[operation.sessionId] > 0
-            ? { state: 'syncing', pendingCount: pendingBySession[operation.sessionId], updatedAtMs: Date.now() }
-            : { state: 'synced', updatedAtMs: Date.now() },
-        }));
-        mergeMessage(message);
-      }
-      await syncCloudCollaborationDiff();
-    })()
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (plannedSessionIds.length > 0) {
-          setCloudSelfAgentSyncStatusBySessionId((current) => {
-            const next = { ...current };
-            for (const sessionId of plannedSessionIds) {
-              next[sessionId] = { state: 'error', message, updatedAtMs: Date.now() };
-            }
-            return next;
-          });
-        }
-        console.warn('[cloud-self-agent-sync] failed to sync local history', error);
-      })
-      .finally(() => {
-        syncingSelfAgentHistoryRef.current = false;
-      });
-  }, [account, canonicalSessionState, client, mergeMessage, syncCloudCollaborationDiff]);
+  useCloudSelfAgentForwardSync({
+    account,
+    canonicalState: canonicalSessionState,
+    canonicalStateRef: canonicalSessionStateRef,
+    client,
+    cancelledRef,
+    processedRequestIdsRef: processedCloudAgentMentionIdsRef,
+    setSyncStatusBySessionId:
+      setCloudSelfAgentSyncStatusBySessionId,
+    mergeMessage,
+    syncCloudCollaborationDiff,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
   const applyCloudGroupControl = useCallback(async (
     cloudMessage: CloudMessage,
@@ -2398,194 +1641,29 @@ export function useCloudCollaborationState({
       });
   }, [account, activeConversationId, client, cloudMessageIndex, messagesByPeer, setCanonicalSessionState, syncCloudCollaborationDiff]);
 
-  useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
-    const selfSessionIds = [...new Set(
-      (messagesByPeer[account.accountId] ?? [])
-        .map((message) => cleanText(message.sessionId))
-        .filter(Boolean),
-    )].sort();
-    if (selfSessionIds.length === 0) return;
-    const refreshKey = `${account.accountId}:${selfSessionIds.join('|')}`;
-    if (cloudSelfAgentForkRefreshKeyRef.current === refreshKey) return;
-    cloudSelfAgentForkRefreshKeyRef.current = refreshKey;
+  useCloudSelfAgentMetadataSync({
+    account,
+    canonicalState: canonicalSessionState,
+    client,
+    initialMessagesSettled,
+    messagesByPeer,
+    setForksBySessionId: setCloudSessionForksById,
+    titlesBySessionId: cloudSessionTitlesById,
+    setTitlesBySessionId: setCloudSessionTitlesById,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
-    let cancelled = false;
-    void (async () => {
-      const session = await loadSession();
-      if (!session?.token) return;
-      const results = await Promise.allSettled(
-        selfSessionIds.map((sessionId) => client.listSessionForks(session.token, sessionId)),
-      );
-      const forks = results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
-      if (cancelled || forks.length === 0) return;
-      setCloudSessionForksById((current) => {
-        let changed = false;
-        const next = { ...current };
-        for (const fork of forks) {
-          const existing = next[fork.forkSessionId];
-          if (
-            existing?.parentSessionId === fork.parentSessionId
-            && existing?.parentMessageId === fork.parentMessageId
-            && existing?.createdAt === fork.createdAt
-          ) {
-            continue;
-          }
-          next[fork.forkSessionId] = fork;
-          changed = true;
-        }
-        return changed ? next : current;
-      });
-    })().catch((error) => {
-      console.warn('[cloud-self-agent-sync] failed to refresh cloud fork lineage', error);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [account, client, initialMessagesSettled, messagesByPeer]);
-
-  useEffect(() => {
-    if (!account || !canonicalSessionState || !setCanonicalSessionState || !initialMessagesSettled) return;
-    const selfMessages = messagesByPeer[account.accountId] ?? [];
-    if (selfMessages.length === 0) return;
-    const plan = planCloudSelfAgentCanonicalSync({
-      account,
-      messages: selfMessages,
-      state: canonicalSessionState,
-      forksBySessionId: cloudSessionForksById,
-      groupRowByWireMessageId: cloudMessageIndex.groupRowByWireMessageId,
-      cloudTitlesBySessionId: cloudSessionTitlesById,
-    });
-    if (plan.sessionRequests.length === 0 && plan.messageRequests.length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      let nextState: CanonicalSessionState | null = canonicalSessionState;
-      const agentIdentity = await upsertCanonicalIdentityFast(plan.agentIdentityRequest);
-      nextState = upsertCanonicalIdentityIntoLocalState(nextState, agentIdentity);
-      for (const sessionRequest of plan.sessionRequests) {
-        if (cancelled) return;
-        const openResult = await openOrCreateCanonicalSessionFast(sessionRequest);
-        nextState = mergeOpenCanonicalSessionFastResultIntoLocalState(nextState, openResult);
-      }
-      for (const messageRequest of plan.messageRequests) {
-        if (cancelled) return;
-        const persistedMessage = await upsertCanonicalMessageFast(messageRequest);
-        nextState = mergeCanonicalMessageRow(nextState, persistedMessage);
-      }
-      if (!cancelled) setCanonicalSessionState(nextState);
-    })().catch((error) => {
-      console.warn('[cloud-self-agent-sync] failed to materialize cloud session locally', error);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [account, canonicalSessionState, cloudMessageIndex, cloudSessionForksById, cloudSessionTitlesById, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
-
-  useEffect(() => {
-    if (!account || !canonicalSessionState || !initialMessagesSettled) return;
-    const cloudBackedSessionIds = new Set(
-      (messagesByPeer[account.accountId] ?? [])
-        .map((message) => cleanText(message.sessionId))
-        .filter(Boolean),
-    );
-    if (cloudBackedSessionIds.size === 0) return;
-
-    const uploads = canonicalSessionState.sessions.flatMap((canonicalSession) => {
-      if (!cloudBackedSessionIds.has(canonicalSession.id)) return [];
-      if (!['self-agent', 'project'].includes(canonicalSession.kind)) return [];
-      if (canonicalSession.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)) return [];
-      const metadata = canonicalSession.metadata && typeof canonicalSession.metadata === 'object' && !Array.isArray(canonicalSession.metadata)
-        ? canonicalSession.metadata as Record<string, unknown>
-        : {};
-      const titleSource = titleSourceFromMetadata(metadata, canonicalSession.title);
-      if (titleSource === 'placeholder' || isGenericSessionTitle(canonicalSession.title)) return [];
-      const titleRevisionValue = typeof metadata.sessionTitleRevision === 'number'
-        ? metadata.sessionTitleRevision
-        : 1;
-      const titleRevision = titleSource === 'auto'
-        ? Math.max(1, Math.min(2, Math.floor(titleRevisionValue)))
-        : Math.max(1, Math.floor(titleRevisionValue));
-      const titlePolicyVersion = typeof metadata.sessionTitlePolicyVersion === 'number'
-        ? Math.max(1, Math.floor(metadata.sessionTitlePolicyVersion))
-        : 1;
-      const updatedAtMs = typeof metadata.sessionTitleUpdatedAtMs === 'number'
-        ? metadata.sessionTitleUpdatedAtMs
-        : canonicalSession.updatedAtMs;
-      const titleGeneratedFromMessageId = typeof metadata.sessionTitleGeneratedFromMessageId === 'string'
-        ? metadata.sessionTitleGeneratedFromMessageId.trim() || null
-        : null;
-      const updatedByAccountId = typeof metadata.sessionTitleUpdatedByAccountId === 'string'
-        ? metadata.sessionTitleUpdatedByAccountId.trim() || null
-        : null;
-      const remote = cloudSessionTitlesById[canonicalSession.id];
-      if (remote) {
-        const remoteWins = incomingSessionTitleWins(
-          { titleSource, titleRevision, updatedAtMs, updatedByAccountId },
-          remote,
-        );
-        const identical = remote.title === canonicalSession.title
-          && remote.titleSource === titleSource
-          && remote.titleRevision === titleRevision
-          && remote.titlePolicyVersion === titlePolicyVersion
-          && remote.titleGeneratedFromMessageId === titleGeneratedFromMessageId;
-        if (identical || remoteWins) return [];
-      }
-      const input = {
-        title: canonicalSession.title.trim(),
-        titleSource,
-        titleRevision,
-        titlePolicyVersion,
-        titleGeneratedFromMessageId,
-        updatedAtMs,
-      };
-      const signature = JSON.stringify(input);
-      if (cloudSessionTitleUploadsRef.current.get(canonicalSession.id) === signature) return [];
-      return [{ sessionId: canonicalSession.id, input, signature }];
-    });
-    if (uploads.length === 0) return;
-
-    let cancelled = false;
-    for (const upload of uploads) {
-      cloudSessionTitleUploadsRef.current.set(upload.sessionId, upload.signature);
-    }
-    void (async () => {
-      const authSession = await loadSession();
-      if (!authSession?.token) {
-        for (const upload of uploads) cloudSessionTitleUploadsRef.current.delete(upload.sessionId);
-        return;
-      }
-      const results = await Promise.allSettled(uploads.map(async (upload) => ({
-        upload,
-        sessionTitle: await client.updateCloudSessionTitle(authSession.token, upload.sessionId, upload.input),
-      })));
-      if (cancelled) return;
-      setCloudSessionTitlesById((current) => {
-        let next = current;
-        for (const [index, result] of results.entries()) {
-          if (result.status === 'fulfilled') {
-            next = {
-              ...next,
-              [result.value.sessionTitle.sessionId]: result.value.sessionTitle,
-            };
-          } else {
-            const failedUpload = uploads[index];
-            if (failedUpload) cloudSessionTitleUploadsRef.current.delete(failedUpload.sessionId);
-          }
-        }
-        return next;
-      });
-    })().catch(() => {
-      for (const upload of uploads) cloudSessionTitleUploadsRef.current.delete(upload.sessionId);
-    });
-    return () => {
-      cancelled = true;
-      for (const upload of uploads) {
-        if (cloudSessionTitleUploadsRef.current.get(upload.sessionId) === upload.signature) {
-          cloudSessionTitleUploadsRef.current.delete(upload.sessionId);
-        }
-      }
-    };
-  }, [account, canonicalSessionState, client, cloudSessionTitlesById, initialMessagesSettled, messagesByPeer]);
+  useCloudSelfAgentCanonicalSync({
+    account,
+    canonicalState: canonicalSessionState,
+    setCanonicalState: setCanonicalSessionState,
+    messagesByPeer,
+    messageIndex: cloudMessageIndex,
+    forksBySessionId: cloudSessionForksById,
+    titlesBySessionId: cloudSessionTitlesById,
+    initialMessagesSettled,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
 
   useEffect(() => {
     if (!account) return;

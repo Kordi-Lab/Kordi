@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-const cloudCollaborationStateSource = () => readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+const cloudCanonicalStateMergeSource = () => readFileSync(new URL('../src/features/cloud/cloudCanonicalStateMerge.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupSessionControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupSessionControl.ts', import.meta.url), 'utf8');
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
@@ -42,15 +42,12 @@ test('group member removal publishes the current membership and a durable leave 
 });
 
 test('cloud compact session merge replaces the native participant list for that group', () => {
-  const source = cloudCollaborationStateSource();
-  const mergeStart = source.indexOf('function mergeOpenCanonicalSessionFastResultIntoLocalState');
-  const mergeEnd = source.indexOf(
-    'export function cloudGroupMessageTargetsLocalAgent',
-    mergeStart,
+  const source = cloudCanonicalStateMergeSource();
+  const mergeStart = source.indexOf(
+    'export function mergeOpenCanonicalSessionFastResultIntoLocalState',
   );
   assert.notEqual(mergeStart, -1, 'expected Cloud compact session merge helper');
-  assert.notEqual(mergeEnd, -1, 'expected Cloud compact session merge helper end');
-  const mergeBlock = source.slice(mergeStart, mergeEnd);
+  const mergeBlock = source.slice(mergeStart);
 
   assert.match(
     mergeBlock,
