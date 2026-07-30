@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
-  Check,
   ChevronDown,
-  Copy,
   MoreHorizontal,
   Plus,
   Search,
-  Settings,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -17,14 +13,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
-import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import { CloudAccountSettingsDialog, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { isBlankParticipantSpaceSession, primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import type { ChatChannel, Conversation, SessionStatusIndicator } from '@/kordi-app/types';
-import type { CloudAccount } from '@/features/cloud/authClient';
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { buildForkLineage, isGroupForkSession } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -54,9 +47,15 @@ import type {
   WorkspaceSidebarProps,
 } from '@/pages/workspaceSidebar.types';
 import { SidebarUpdater } from '@/pages/workspaceSidebar.update';
+import { SidebarProfileControl } from '@/pages/workspaceSidebar.profile';
 
 export type { WorkspaceSidebarProps } from '@/pages/workspaceSidebar.types';
 export { desktopUpdateButtonPresentation } from '@/pages/workspaceSidebar.updatePresentation';
+export {
+  CloudProfileLogoutAction,
+  CloudProfileRowCopyButton,
+} from '@/pages/workspaceSidebar.profile';
+export { buildCloudProfileRows } from '@/pages/workspaceSidebar.profileModel';
 
 function filterGroupForkSessionsFromSpaces(spaces: ParticipantSpaceItem[]): ParticipantSpaceItem[] {
   return spaces
@@ -165,73 +164,6 @@ export function participantSpaceCanRenameSessions(space: ParticipantSpaceItem) {
   return [...selfIdentityIds].some((identityId) => adminIdentityIds.has(identityId));
 }
 
-export type CloudProfileRow = { label: string; value: string; copyable?: boolean };
-
-export function buildCloudProfileRows(account: CloudAccount | null | undefined): CloudProfileRow[] {
-  if (!account) return [];
-  return [
-    account.primaryEmail?.trim() ? { label: 'Email', value: account.primaryEmail.trim() } : null,
-    { label: 'Account ID', value: account.accountId, copyable: true },
-  ].filter((row): row is CloudProfileRow => Boolean(row));
-}
-
-const CLOUD_PROFILE_COPY_RESET_MS = 1800;
-
-export function CloudProfileRowCopyButton({ label, value }: { label: string; value: string }) {
-  const [status, setStatus] = useState<'idle' | 'copied' | 'error'>('idle');
-  const resetTimerRef = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
-  }, []);
-
-  const scheduleReset = () => {
-    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
-    resetTimerRef.current = window.setTimeout(() => {
-      setStatus('idle');
-      resetTimerRef.current = null;
-    }, CLOUD_PROFILE_COPY_RESET_MS);
-  };
-
-  const handleCopy = async () => {
-    if (typeof navigator === 'undefined' || !navigator.clipboard) {
-      setStatus('error');
-      scheduleReset();
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(value);
-      setStatus('copied');
-    } catch {
-      setStatus('error');
-    } finally {
-      scheduleReset();
-    }
-  };
-
-  const copied = status === 'copied';
-  const errored = status === 'error';
-  return (
-    <button
-      type="button"
-      className={cn(
-        'shrink-0 inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[11px] font-semibold transition',
-        copied
-          ? 'bg-emerald-500/15 text-emerald-200'
-          : errored
-            ? 'bg-red-500/15 text-red-200'
-            : 'app-transient-row',
-      )}
-      aria-label={copied ? `${label} copied` : errored ? `Copy ${label} failed` : `Copy ${label}`}
-      aria-live="polite"
-      onClick={() => { void handleCopy(); }}
-    >
-      {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
-      {copied ? 'Copied' : errored ? 'Copy failed' : 'Copy'}
-    </button>
-  );
-}
-
 const SIDEBAR_STATUS_DOT_TONE: Record<SessionStatusIndicator['tone'], string> = {
   running: 'app-session-status-light-running',
   ready: 'app-session-status-light-ready',
@@ -239,29 +171,6 @@ const SIDEBAR_STATUS_DOT_TONE: Record<SessionStatusIndicator['tone'], string> = 
   error: 'app-session-status-light-error',
   stopped: 'app-session-status-light-stopped',
 };
-
-export function CloudProfileLogoutAction({
-  onSignOut,
-  disabled = false,
-}: {
-  onSignOut: () => Promise<void> | void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-semibold text-red-200',
-        'transition hover:bg-red-400/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-60',
-      )}
-      aria-label="Logout of account"
-      disabled={disabled}
-      onClick={() => void onSignOut()}
-    >
-      <span>Logout</span>
-    </button>
-  );
-}
 
 export function SidebarSessionStatusIndicator({
   indicator,
@@ -470,15 +379,7 @@ export function WorkspaceSidebar({
     setActiveContactId,
     displayedAgents,
   } = directory;
-  const {
-    localProfileAvatarSeed,
-    cloudAccount,
-    cloudAccountDialogTab: controlledCloudAccountDialogTab,
-    setCloudAccountDialogTab: setControlledCloudAccountDialogTab,
-    cloudSettings,
-    onUpdateCloudProfile,
-    onCloudSignOut,
-  } = account;
+  const { cloudAccount } = account;
   const totalUnread = chatConversations.reduce((sum, conversation) => (
     isGroupForkSession(conversation) ? sum : sum + Math.max(0, conversation.unread ?? 0)
   ), 0);
@@ -502,71 +403,11 @@ export function WorkspaceSidebar({
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
   const [chatCreateInitialMode, setChatCreateInitialMode] = useState<ChatCreateMode>('menu');
-  const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
-  const [localCloudAccountDialogTab, setLocalCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
-  const isCloudAccountDialogControlled = Boolean(setControlledCloudAccountDialogTab);
-  const cloudAccountDialogTab = isCloudAccountDialogControlled
-    ? (controlledCloudAccountDialogTab ?? null)
-    : localCloudAccountDialogTab;
-  const setCloudAccountDialogTab = setControlledCloudAccountDialogTab ?? setLocalCloudAccountDialogTab;
-  const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const profilePopoverRef = useRef<HTMLDivElement | null>(null);
-  // Computed each time the popover opens, so the surface anchors to the avatar's
-  // actual on-screen position (not just a fixed bottom-left offset).
-  const [profilePopoverAnchor, setProfilePopoverAnchor] = useState<{ left: number; bottom: number } | null>(null);
-
-  useLayoutEffect(() => {
-    if (!isProfileCardOpen) {
-      setProfilePopoverAnchor(null);
-      return;
-    }
-    const trigger = profileTriggerRef.current;
-    if (!trigger) return;
-    const measure = () => {
-      const rect = trigger.getBoundingClientRect();
-      setProfilePopoverAnchor({
-        left: rect.right + 8,
-        bottom: Math.max(8, window.innerHeight - rect.bottom),
-      });
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => {
-      window.removeEventListener('resize', measure);
-    };
-  }, [isProfileCardOpen]);
-
-  useEffect(() => {
-    if (!isProfileCardOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (profilePopoverRef.current?.contains(target)) return;
-      if (profileTriggerRef.current?.contains(target)) return;
-      setIsProfileCardOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsProfileCardOpen(false);
-    };
-    window.addEventListener('mousedown', onPointerDown);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown);
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
   const [chatChannel, setChatChannel] = useState<ChatChannel>(initialChatChannel);
-  const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
-  const profileRows = buildCloudProfileRows(cloudAccount);
-  const profileDisplayName = cloudAccount?.displayName?.trim() || cloudAccount?.primaryEmail?.trim() || 'Local profile';
-  const profileAvatarSeed = cloudAccount
-    ? cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl)
-    : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
-  const profileImageUrl = cloudAccount ? cloudAvatarImageUrl(cloudAccount.avatarUrl) : null;
   const visibleParticipantSpaces = useMemo(() => filterGroupForkSessionsFromSpaces(participantSpaces), [participantSpaces]);
   const visibleContactParticipantSpaces = useMemo(() => filterGroupForkSessionsFromSpaces(contactParticipantSpaces), [contactParticipantSpaces]);
   const visibleAgentParticipantSpaces = useMemo(() => filterGroupForkSessionsFromSpaces(agentParticipantSpaces), [agentParticipantSpaces]);
@@ -584,11 +425,6 @@ export function WorkspaceSidebar({
     setChatCreateInitialMode('menu');
     setChatCreateAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     setIsChatCreateDialogOpen(true);
-  };
-
-  const openCloudAccountDialog = (tab: CloudAccountSettingsTabId) => {
-    setIsProfileCardOpen(false);
-    setCloudAccountDialogTab(tab);
   };
 
   useEffect(() => {
@@ -1342,143 +1178,17 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
-            <button
-              ref={profileTriggerRef}
-              type="button"
-              className="app-nav-rail-profile rounded-full"
-              onClick={() => setIsProfileCardOpen((open) => !open)}
-              aria-label="Open profile"
-              aria-expanded={isProfileCardOpen}
-            >
-              <IdentityAvatar
-                kind="human"
-                seed={profileAvatarSeed}
-                name={profileDisplayName}
-                imageUrl={profileImageUrl}
-                className="app-nav-rail-avatar h-9 w-9"
-              />
-            </button>
+            <SidebarProfileControl
+              localProfileAvatarSeed={account.localProfileAvatarSeed}
+              cloudAccount={account.cloudAccount}
+              cloudAccountDialogTab={account.cloudAccountDialogTab}
+              setCloudAccountDialogTab={account.setCloudAccountDialogTab}
+              cloudSettings={account.cloudSettings}
+              onUpdateCloudProfile={account.onUpdateCloudProfile}
+              onCloudSignOut={account.onCloudSignOut}
+            />
           </div>
         </div>
-
-        {cloudSettings && cloudAccount && onUpdateCloudProfile ? (
-          <CloudAccountSettingsDialog
-            {...cloudSettings}
-            isOpen={cloudAccountDialogTab !== null}
-            initialTab={cloudAccountDialogTab ?? 'profile'}
-            account={cloudAccount}
-            localProfileAvatarSeed={localProfileAvatarSeed}
-            onClose={() => setCloudAccountDialogTab(null)}
-            onUpdateProfile={onUpdateCloudProfile}
-            onSignOut={onCloudSignOut}
-          />
-        ) : null}
-
-        {cloudSettings && cloudAccount && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
-          <div
-            ref={profilePopoverRef}
-            role="dialog"
-            aria-label="Account menu"
-            style={{
-              position: 'fixed',
-              left: profilePopoverAnchor.left,
-              bottom: profilePopoverAnchor.bottom,
-              zIndex: 170,
-            }}
-            className={cn(
-              'app-transient-surface app-popover app-profile-popover',
-              'w-[22rem] rounded-[18px] border px-4 py-3 text-foreground',
-            )}
-          >
-            <div className="mb-3 flex items-start gap-3">
-              <IdentityAvatar
-                kind="human"
-                seed={profileAvatarSeed}
-                name={profileDisplayName}
-                imageUrl={profileImageUrl}
-                className="h-10 w-10 border border-white/10"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold">{profileDisplayName}</div>
-                <div className="app-transient-muted mt-0.5 flex min-w-0 items-center gap-2 text-[11px]">
-                  <span className="shrink-0">Account</span>
-                  <span aria-hidden="true" className="app-transient-subtle">•</span>
-                  <span className="min-w-0 truncate font-mono" title={cloudAccount.accountId}>{cloudAccount.accountId}</span>
-                  <CloudProfileRowCopyButton label="Account ID" value={cloudAccount.accountId} />
-                </div>
-              </div>
-            </div>
-            {cloudAccount.primaryEmail?.trim() ? (
-              <div className="grid gap-1 text-[12px]">
-                <div className="app-transient-row flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">Email</div>
-                    <div className="app-transient-muted mt-0.5 truncate text-[11px]">{cloudAccount.primaryEmail.trim()}</div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-            <div className="app-transient-divider mt-3 grid gap-1 border-t pt-3">
-              <button
-                type="button"
-                className="app-transient-row app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium transition"
-                onClick={() => openCloudAccountDialog('auth')}
-                aria-label="Open account settings"
-              >
-                <span className="flex items-center gap-2.5"><Settings className="app-transient-muted h-4 w-4" />Settings</span>
-                <ChevronRightIcon className="app-transient-subtle h-4 w-4" />
-              </button>
-            </div>
-          </div>,
-          document.querySelector('.kordi-app') ?? document.body,
-        ) : null}
-
-        {!cloudSettings && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
-          <div
-            ref={profilePopoverRef}
-            role="dialog"
-            aria-label="Profile"
-            style={{
-              position: 'fixed',
-              left: profilePopoverAnchor.left,
-              bottom: profilePopoverAnchor.bottom,
-              zIndex: 160,
-            }}
-            className={cn(
-              'app-transient-surface app-popover app-profile-popover',
-              'w-[21.25rem] rounded-[18px] border px-4 py-3 text-foreground',
-            )}
-          >
-            <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium">
-              <span>Profile</span>
-            </div>
-            <div className="grid gap-1 text-[12px]">
-              <div className="app-transient-row rounded-[12px] px-3 py-2.5 transition">
-                <div className="truncate font-medium">{profileDisplayName}</div>
-                <div className="app-transient-muted mt-0.5 truncate text-[11px]">{cloudAccount ? 'Account' : 'Local profile'}</div>
-              </div>
-              {profileRows.length > 0 ? profileRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="app-transient-row flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{row.label}</div>
-                    <div className="app-transient-muted mt-0.5 truncate text-[11px]">{row.value}</div>
-                  </div>
-                  {row.copyable ? (
-                    <CloudProfileRowCopyButton label={row.label} value={row.value} />
-                  ) : null}
-                </div>
-              )) : (
-                <div className="app-transient-muted rounded-[12px] px-3 py-2.5 text-[12px]">
-                  Profile details are stored locally.
-                </div>
-              )}
-            </div>
-          </div>,
-          document.querySelector('.kordi-app') ?? document.body,
-        ) : null}
 
         {showSessionRail && !collapseChatSessions && (
           <div

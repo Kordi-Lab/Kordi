@@ -38,7 +38,7 @@ test('macOS main window enables semantic sidebar vibrancy on a transparent canva
 test('native shell exposes vibrancy through the complete left navigation stack', () => {
   const shellCss = readSource('src/styles/shell.css');
   const tokensCss = readSource('src/styles/theme-tokens.css');
-  const sidebar = readSource('src/pages/WorkspaceSidebar.tsx');
+  const profileControl = readSource('src/pages/workspaceSidebar.profile.tsx');
   const indexHtml = readSource('index.html');
 
   assert.match(indexHtml, /__TAURI_INTERNALS__[\s\S]*document\.documentElement\.classList\.add\('kordi-native-shell'\)/);
@@ -52,9 +52,9 @@ test('native shell exposes vibrancy through the complete left navigation stack',
   assert.equal((tokensCss.match(/--app-native-session-fallback:/g) ?? []).length, 2);
   assert.equal((tokensCss.match(/--app-native-main-bg:/g) ?? []).length, 2);
   assert.match(tokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
-  assert.match(sidebar, /className="app-nav-rail-profile rounded-full"/);
-  assert.match(sidebar, /className="app-nav-rail-avatar h-9 w-9"/);
-  assert.doesNotMatch(sidebar, /shadow-\[inset_-1px_0_0_rgba/);
+  assert.match(profileControl, /className="app-nav-rail-profile rounded-full"/);
+  assert.match(profileControl, /className="app-nav-rail-avatar h-9 w-9"/);
+  assert.doesNotMatch(profileControl, /shadow-\[inset_-1px_0_0_rgba/);
 });
 
 test('navigation rail uses black glass in dark mode and translucent white glass in light mode', () => {
