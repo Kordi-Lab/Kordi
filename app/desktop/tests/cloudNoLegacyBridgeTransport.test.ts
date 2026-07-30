@@ -137,7 +137,19 @@ test('main-cloud tauri runtime does not register live desktop bridge communicati
 
 test('cloud-specific tests do not use desktop bridge transport fixtures', () => {
   const cloudTestFiles = [
-    'tests/cloudCollaborationState.test.tsx',
+    'tests/cloudGroupAuthorityState.test.tsx',
+    'tests/cloudForwardedMessageState.test.tsx',
+    'tests/cloudCollaborationIdentityState.test.tsx',
+    'tests/cloudSelfAgentConversationRestore.test.tsx',
+    'tests/cloudSelfAgentForkRestore.test.tsx',
+    'tests/cloudSelfAgentForkMaterialization.test.tsx',
+    'tests/cloudSelfAgentForwardSync.test.tsx',
+    'tests/cloudGroupParticipantState.test.tsx',
+    'tests/cloudCollaborationUnreadState.test.tsx',
+    'tests/cloudAgentDirectExecutionState.test.tsx',
+    'tests/cloudAgentPendingState.test.tsx',
+    'tests/cloudAgentFallbackClaims.test.tsx',
+    'tests/cloudAgentGroupFallback.test.tsx',
     'tests/cloudGroupMessages.test.tsx',
     'tests/cloudDirectContactSend.test.ts',
     'tests/cloudContactRouting.test.tsx',
