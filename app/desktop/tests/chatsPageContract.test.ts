@@ -20,12 +20,19 @@ const expectedContexts = [
   ['auth', 'ChatsPageAuth'],
 ] as const;
 
+const expectedSessionPaneContexts = [
+  ['viewport', 'ChatSessionPaneViewport'],
+  ['presentation', 'ChatSessionPanePresentation'],
+  ['actions', 'ChatSessionPaneActions'],
+  ['selection', 'ChatSessionPaneSelection'],
+] as const;
+
 function contextFieldCount(typeName: string) {
   const match = contractSource.match(
     new RegExp(`export type ${typeName} = \\{([\\s\\S]*?)\\n\\};`),
   );
   assert.ok(match, `${typeName} must remain an explicit owned context`);
-  return [...match[1].matchAll(/^ {2}[A-Za-z][A-Za-z0-9]*\\??:/gm)].length;
+  return [...match[1].matchAll(/^ {2}[A-Za-z][A-Za-z0-9]*\??:/gm)].length;
 }
 
 test('ChatsPage exposes cohesive contexts below the 50-field boundary', () => {
@@ -56,5 +63,42 @@ test('application composition supplies every ChatsPage context explicitly', () =
 
   for (const [field] of expectedContexts) {
     assert.match(builder, new RegExp(`\\n {4}${field}: \\{`));
+  }
+});
+
+test('ChatSessionPane exposes cohesive contexts below the 50-field boundary', () => {
+  const propsMatch = contractSource.match(
+    /export type ChatSessionPaneProps = \{([\s\S]*?)\n\};/,
+  );
+  assert.ok(propsMatch);
+
+  const publicFields = [...propsMatch[1].matchAll(
+    /^ {2}(\w+): (\w+);$/gm,
+  )].map((match) => [match[1], match[2]]);
+  assert.deepEqual(publicFields, expectedSessionPaneContexts);
+
+  for (const [, typeName] of expectedSessionPaneContexts) {
+    const fieldCount = contextFieldCount(typeName);
+    assert.ok(fieldCount > 0, `${typeName} must own at least one field`);
+    assert.ok(
+      fieldCount <= 50,
+      `${typeName} owns ${fieldCount} fields; split it before exceeding 50`,
+    );
+  }
+});
+
+test('both transcript panes supply every ChatSessionPane context explicitly', () => {
+  const pageSource = readFileSync(
+    new URL('../src/pages/ChatsPage.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.equal(pageSource.match(/<ChatSessionPane/g)?.length, 2);
+  for (const [field] of expectedSessionPaneContexts) {
+    assert.equal(
+      pageSource.match(new RegExp(`\\n {8}${field}=\\{\\{`, 'g'))?.length,
+      2,
+      `both ChatSessionPane instances must explicitly supply ${field}`,
+    );
   }
 });

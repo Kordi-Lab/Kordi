@@ -29,8 +29,11 @@ import type {
   DetailTab,
   EditFilePreview,
   Message,
+  MessageSourceReference,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
+import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
+import type { VirtualTranscriptNavigationRequest } from '@/features/chat/VirtualTranscript';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
 export type ChatAttachment = {
@@ -213,4 +216,91 @@ export type ChatsPageProps = {
   composer: ChatsPageComposer;
   runtime: ChatsPageRuntime;
   auth: ChatsPageAuth;
+};
+
+export type ChatSessionPaneViewport = {
+  sessionKey: string;
+  messages: readonly Message[];
+  scrollRef: RefObject<HTMLDivElement | null>;
+  scrollClassName: string;
+  onTranscriptScroll?: () => void;
+  hasOlderMessages?: boolean;
+  onLoadOlderMessages?: () => Promise<void> | void;
+  navigationRequest?: VirtualTranscriptNavigationRequest | null;
+  onNavigationHandled?: (request: VirtualTranscriptNavigationRequest) => void;
+  emptyState?: ReactNode;
+  composer: ReactNode;
+  queuedMessages?: QueuedDesktopChatMessage[];
+  onEditQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
+  onCancelQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
+};
+
+export type ChatSessionPanePresentation = {
+  liveTurn?: DesktopChatTurnSnapshot | null;
+  liveTurnSender: string;
+  shouldRenderLiveTurn: boolean;
+  isCompressionActive?: boolean;
+  plainAgentResponse?: boolean;
+  inferLatestHumanReplyTarget?: boolean;
+  forkSnapshotBoundaryIndex?: number;
+  activeForkSourceSessionId?: string | null;
+  activeForkSourceTitle?: string | null;
+  messageForksByEntryId?: Map<
+    string,
+    Array<{ sessionId: string; title: string; updatedAtLabel?: string }>
+  >;
+  pinnedMessageId?: string | null;
+  densityMode?: TranscriptDensityMode;
+};
+
+export type ChatSessionPaneActions = {
+  onSelectSession?: (sessionId: string) => void;
+  onOpenSource: (file: EditFilePreview) => void;
+  onOpenArtifact: (artifactId: string) => void;
+  onOpenAuthSettings: () => void;
+  onNavigateToMessage?: (
+    messageId: string,
+    sourceMessage?: MessageSourceReference,
+  ) => void;
+  onOpenMessageDetail?: (message: Message) => void;
+  onStopCollaborationAgentRequest: NonNullable<
+    ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']
+  >;
+  onStopActiveTurn?: () => void;
+  onRequestCollaborationContact?: ComponentProps<
+    typeof MessageBubble
+  >['onRequestCollaborationContact'];
+  onOpenSenderProfile?: ComponentProps<
+    typeof MessageBubble
+  >['onOpenSenderProfile'];
+  onForkMessage?: (entryId: string) => void;
+  onOpenForkSession?: (sessionId: string) => void;
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
+  onRetryMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
+  onRequestPinMessage?: (message: Message) => void;
+  onRequestUnpinMessage?: (message: Message) => void;
+};
+
+export type ChatSessionPaneSelection = {
+  selectionMode?: boolean;
+  selectedMessageIds?: ReadonlySet<string>;
+  isMessageSelectable?: (message: Message) => boolean;
+  onToggleSelectedMessage?: (message: Message) => void;
+  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter?: (message: Message) => void;
+  onSelectionDragEnd?: () => void;
+  selectedMessageCount?: number;
+  onCancelMessageSelection?: () => void;
+  onCopySelectedMessages?: () => void;
+  onForwardSelectedMessages?: () => void;
+  messageSelectionMode?: boolean;
+};
+
+export type ChatSessionPaneProps = {
+  viewport: ChatSessionPaneViewport;
+  presentation: ChatSessionPanePresentation;
+  actions: ChatSessionPaneActions;
+  selection: ChatSessionPaneSelection;
 };
