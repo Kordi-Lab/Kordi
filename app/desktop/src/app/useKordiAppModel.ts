@@ -63,7 +63,6 @@ import type { Agent, CanonicalSessionState, ComposerScope, DesktopCollaborationP
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import {
   createDesktopChatSession,
-  openOrCreateCanonicalSessionFast,
   updateCanonicalSessionMetadata,
 } from '@/lib/desktop';
 
@@ -79,7 +78,6 @@ import {
   groupRenameMetadata,
   isNativeDesktopShell,
   metadataGroupSpaceId,
-  metadataString,
   participantSpaceCreateKey,
   sessionMetadataRecord,
   uniqueStrings,
@@ -95,12 +93,10 @@ import {
 } from '@/app/useKordiChatSessionActions';
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
-import {
-  mergeOpenCanonicalSessionResult,
-} from '@/app/canonicalSessionStateMutations';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
+import { useKordiParticipantDraftSend } from '@/app/useKordiParticipantDraftSend';
 import {
   type ParticipantSpaceDraft,
   useKordiParticipantSpaceContinuation,
@@ -1401,80 +1397,20 @@ export function useKordiAppModel({
     setDesktopError: setDesktopChatError,
   });
 
-  const materializeParticipantSpaceDraft = useCallback(async (sessionId: string) => {
-    const draft = participantSpaceDraftBySessionIdRef.current.get(sessionId);
-    if (!draft) return;
-
-    const pending = participantSpaceDraftMaterializeRef.current.get(sessionId);
-    if (pending) {
-      await pending;
-      return;
-    }
-
-    const materialize = (async () => {
-      const currentState = canonicalSessionState;
-      const localIdentityId = currentState?.profile.humanIdentityId?.trim();
-      if (!currentState || !localIdentityId) {
-        throw new Error('Local profile identity is not ready yet.');
-      }
-      const groupCreatorIdentityId = draft.conversation.canonicalCreatedByIdentityId?.trim()
-        || metadataString(draft.conversation.metadata && typeof draft.conversation.metadata === 'object' && !Array.isArray(draft.conversation.metadata)
-          ? draft.conversation.metadata as Record<string, unknown>
-          : {}, 'groupCreatorIdentityId')
-        || localIdentityId;
-
-      const existingSession = currentState.sessions.find((session) => session.id === sessionId);
-      let nextState = currentState;
-      if (!existingSession) {
-        const openResult = await openOrCreateCanonicalSessionFast({
-          id: sessionId,
-          kind: 'group',
-          title: 'New session',
-          status: 'active',
-          createdByIdentityId: groupCreatorIdentityId,
-          primaryIdentityId: null,
-          relationshipIdentityId: null,
-          participantIdentityIds: draft.participantIdentityIds,
-          metadata: draft.conversation.metadata,
-        });
-        nextState = mergeOpenCanonicalSessionResult(currentState, openResult);
-        setCanonicalSessionState(nextState);
-      }
-
-      participantSpaceDraftBySessionIdRef.current.delete(sessionId);
-      const currentByKey = participantSpaceDraftByKeyRef.current.get(draft.createKey);
-      if (currentByKey?.sessionId === sessionId) {
-        participantSpaceDraftByKeyRef.current.delete(draft.createKey);
-      }
-      setParticipantSpaceDrafts((current) => current.filter((candidate) => candidate.sessionId !== sessionId));
-    })();
-
-    participantSpaceDraftMaterializeRef.current.set(sessionId, materialize);
-    try {
-      await materialize;
-    } finally {
-      participantSpaceDraftMaterializeRef.current.delete(sessionId);
-    }
-  }, [canonicalSessionState]);
-
-  const handleSendChatMessageAfterMaterializingDraft = useCallback(async (
-    draftOverride?: string,
-    targetSessionId?: string,
-    contextMessages?: DesktopChatContextMessage[],
-  ) => {
-    const hasSendableContent = (draftOverride ?? composerDraftsView.chat).trim().length > 0
-      || composerUi.chatComposerAttachments.length > 0;
-    const candidateSessionId = targetSessionId || activeConvId;
-    if (hasSendableContent && participantSpaceDraftBySessionIdRef.current.has(candidateSessionId)) {
-      try {
-        await materializeParticipantSpaceDraft(candidateSessionId);
-      } catch (error) {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to start group session');
-        return;
-      }
-    }
-    await handleSendChatMessage(draftOverride, targetSessionId, contextMessages);
-  }, [activeConvId, composerDraftsView.chat, composerUi.chatComposerAttachments.length, handleSendChatMessage, materializeParticipantSpaceDraft, setDesktopChatError]);
+  const handleSendChatMessageAfterMaterializingDraft =
+    useKordiParticipantDraftSend({
+      activeConversationId: activeConvId,
+      attachmentCount: composerUi.chatComposerAttachments.length,
+      canonicalState: canonicalSessionState,
+      currentDraft: composerDraftsView.chat,
+      draftByKeyRef: participantSpaceDraftByKeyRef,
+      draftBySessionIdRef: participantSpaceDraftBySessionIdRef,
+      materializeRef: participantSpaceDraftMaterializeRef,
+      sendMessage: handleSendChatMessage,
+      setCanonicalState: setCanonicalSessionState,
+      setDesktopError: setDesktopChatError,
+      setDrafts: setParticipantSpaceDrafts,
+    });
 
   const handleSendChatMessageWithQuoteClear = useCallback((
     draftOverride?: string,
