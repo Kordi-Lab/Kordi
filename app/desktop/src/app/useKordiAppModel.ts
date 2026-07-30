@@ -11,6 +11,7 @@ import { useKordiDesktopActivity } from '@/app/useKordiDesktopActivity';
 import { useKordiDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
 import { useKordiAuthNavigationState } from '@/app/useKordiAuthNavigationState';
 import { useKordiLocalUiState } from '@/app/useKordiLocalUiState';
+import { useKordiProfileAvatarState } from '@/app/useKordiProfileAvatarState';
 import { useKordiShellArgs } from '@/app/useKordiShellArgs';
 import { useKordiShellViewModel } from '@/app/useKordiShellViewModel';
 import { useKordiUiEffects } from '@/app/useKordiUiEffects';
@@ -18,7 +19,6 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
-import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
@@ -36,16 +36,11 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions'
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
-import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { CanonicalSessionState, ComposerScope, DesktopChatState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 
 import {
-  canonicalAvatarSeed,
-  canonicalIdentityDisplayName,
-  canonicalLocalAgentAvatarSeed,
-  canonicalProfileImageUrl,
   isNativeDesktopShell,
   participantSpaceCreateKey,
 } from '@/app/useKordiAppModelHelpers';
@@ -341,52 +336,20 @@ export function useKordiAppModel({
     throw new Error(message);
   }, [setDesktopChatError]);
 
-  const avatarCollaborationHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
-    ?? desktopCollaborationState?.hosts[0]
-    ?? null;
-  const avatarCollaborationHostAgentId = avatarCollaborationHost?.activeAgentId ?? null;
-  const avatarCollaborationAgent = avatarCollaborationHost?.agents.find((agent) => agent.id === avatarCollaborationHostAgentId)
-    ?? avatarCollaborationHost?.agents.find((agent) => agent.isActive)
-    ?? avatarCollaborationHost?.agents.find((agent) => agent.isDefault)
-    ?? avatarCollaborationHost?.agents[0]
-    ?? null;
-  const canonicalLocalProfileAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
-    || avatarCollaborationHost?.humanId?.trim()
-    || canonicalSessionState?.profile.id?.trim()
-    || null;
-  const canonicalLocalProfileImageUrl = canonicalProfileImageUrl(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
-    || avatarCollaborationHost?.profileImageUrl?.trim()
-    || null;
-  const cloudLocalProfileAvatar = resolveCloudLocalProfileAvatar({
-    accountId: cloudSession.account?.accountId,
-    avatarUrl: cloudSession.account?.avatarUrl,
-    canonicalAvatarSeed: canonicalLocalProfileAvatarSeed,
-    canonicalProfileImageUrl: canonicalLocalProfileImageUrl,
+  const {
+    localProfileAvatarSeed,
+    localProfileDisplayName,
+    localProfileImageUrl,
+    localAgentAvatarSeed,
+    localAgentDisplayName,
+  } = useKordiProfileAvatarState({
+    account: cloudSession.account,
+    canonicalState: canonicalSessionState,
+    collaborationState: desktopCollaborationState,
   });
-  const localProfileAvatarSeed = cloudLocalProfileAvatar?.seed ?? canonicalLocalProfileAvatarSeed;
-  const localProfileImageUrl = cloudLocalProfileAvatar?.imageUrl ?? canonicalLocalProfileImageUrl;
-  const localProfileDisplayName = cloudSession.account?.displayName?.trim()
-    || canonicalIdentityDisplayName(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)?.trim()
-    || avatarCollaborationHost?.ownerName?.trim()
-    || null;
-  const localAgentIdentity = canonicalSessionState?.identities.find((identity) => (
-    identity.kind === 'agent'
-    && identity.id === canonicalSessionState.profile.activeAgentIdentityId
-  )) ?? canonicalSessionState?.identities.find((identity) => (
-    identity.kind === 'agent'
-    && identity.source === 'local'
-    && identity.ownerIdentityId === canonicalSessionState.profile.humanIdentityId
-  ));
-  const localAgentDisplayName = localAgentIdentity?.displayName?.trim()
-    || avatarCollaborationAgent?.label?.trim()
-    || avatarCollaborationHost?.displayName?.trim()
-    || null;
-  const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
-    || avatarCollaborationAgent?.id?.trim()
-    || avatarCollaborationHost?.activeAgentId?.trim()
-    || avatarCollaborationAgent?.nodeId?.trim()
-    || avatarCollaborationHost?.nodeId?.trim()
-    || null;
+  // Transcript mapping runs while composing this same render. Keep the stable
+  // adapter ref current synchronously to avoid a one-render fallback-avatar
+  // flash; the changed-code lint baseline tracks this intentional exception.
   localAvatarSeedsRef.current.human = localProfileAvatarSeed;
   localAvatarSeedsRef.current.humanDisplayName = localProfileDisplayName;
   localAvatarSeedsRef.current.humanProfileImageUrl = localProfileImageUrl;
@@ -546,15 +509,6 @@ export function useKordiAppModel({
       }
     }
   }, [participantSpaces]);
-
-  useEffect(() => {
-    if (!cloudLocalProfileAvatar?.shouldPersistSeed) return;
-    setLocalProfileAvatarSeed(localProfileAvatarSeed);
-  }, [cloudLocalProfileAvatar?.shouldPersistSeed, localProfileAvatarSeed]);
-
-  useEffect(() => {
-    setLocalAgentAvatarSeed(localAgentAvatarSeed);
-  }, [localAgentAvatarSeed]);
 
   const collaborationContactRequests = useMemo(
     () => collaborationContactRequestsForContactsPage(activeCollaborationHost),
