@@ -37,7 +37,6 @@ import {
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
-import { mentionScopeConversationForActiveConversation } from '@/features/chat/messageActions/mentions';
 import {
   buildChatCreatePeopleContactLookup,
   existingBlankSessionIdForParticipantSpace,
@@ -49,7 +48,6 @@ import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composer
 import { removeQueuedDesktopMessageById } from '@/features/chat/queuedDesktopMessages';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
-import { buildCollaborationMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '@/app/useKordiAppModelCollaborationMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { CanonicalSessionState, ComposerScope, DesktopCollaborationProject, DesktopChatState } from '@/kordi-app/types';
@@ -62,8 +60,6 @@ import {
   canonicalIdentityDisplayName,
   canonicalLocalAgentAvatarSeed,
   canonicalProfileImageUrl,
-  currentMentionQuery,
-  filterMentionTargets,
   isNativeDesktopShell,
   participantSpaceCreateKey,
 } from '@/app/useKordiAppModelHelpers';
@@ -77,6 +73,7 @@ import {
 } from '@/app/useKordiChatSessionActions';
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
+import { useKordiCollaborationMentions } from '@/app/useKordiCollaborationMentions';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
 import { useKordiCloudAgentActions } from '@/app/useKordiCloudAgentActions';
 import { useKordiCloudInitialSyncState } from '@/app/useKordiCloudInitialSyncState';
@@ -594,52 +591,24 @@ export function useKordiAppModel({
     },
   });
 
-  const activeConvMentionScope = useMemo(
-    () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
-    [activeConv, chatConversations],
-  );
-
-  const sharedCloudAgentOwnerIds = useMemo(() => sharedCloudAgentOwnerIdsForMentionScope(
-    activeConvMentionScope,
-    cloudSession.account?.accountId,
-  ), [activeConvMentionScope, cloudSession.account?.accountId]);
-
-  useEffect(() => {
-    void refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => undefined);
-  }, [refreshSharedCloudAgents, sharedCloudAgentOwnerIds]);
-
-  const mentionableCloudAgents = useMemo(() => mentionableCloudAgentSummaries({
-    sharedCloudAgents,
-    ownedCloudAgentsById: cloudAgentDefinitionsById,
-    ownerDisplayName: cloudSession.account?.displayName?.trim()
-      || cloudSession.account?.primaryEmail?.trim()
-      || null,
-  }), [cloudAgentDefinitionsById, cloudSession.account?.displayName, cloudSession.account?.primaryEmail, sharedCloudAgents]);
-
-  const resolveSharedCloudAgentsForMention = useCallback(async () => {
-    const refreshed = await refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => []);
-    return mentionableCloudAgentSummaries({
-      sharedCloudAgents: [...sharedCloudAgents, ...refreshed],
-      ownedCloudAgentsById: cloudAgentDefinitionsById,
-      ownerDisplayName: cloudSession.account?.displayName?.trim()
-        || cloudSession.account?.primaryEmail?.trim()
-        || null,
-    });
-  }, [cloudAgentDefinitionsById, cloudSession.account?.displayName, cloudSession.account?.primaryEmail, refreshSharedCloudAgents, sharedCloudAgentOwnerIds, sharedCloudAgents]);
-
-  const collaborationMentionTargetsByScope = useMemo(() => buildCollaborationMentionTargetsByScope({
-    isNativeShell,
-    desktopCollaborationState,
-    desktopChatState,
-    activeConvMentionScope,
+  const {
+    activeConversationScope: activeConvMentionScope,
+    filteredChatMentionTargets,
+    filteredProjectMentionTargets,
+    mentionableCloudAgents,
+    resolveSharedCloudAgentsForMention,
+  } = useKordiCollaborationMentions({
+    account: cloudSession.account,
+    activeConversation: activeConv,
+    cloudAgentDefinitionsById,
+    collaborationState: desktopCollaborationState,
     conversations: chatConversations,
-    sharedCloudAgents: mentionableCloudAgents,
-  }), [activeConvMentionScope, chatConversations, desktopCollaborationState, desktopChatState, isNativeShell, mentionableCloudAgents]);
-
-  const chatMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.chat), [composerDraftsView.chat]);
-  const projectMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.project), [composerDraftsView.project]);
-  const filteredChatMentionTargets = useMemo(() => filterMentionTargets(collaborationMentionTargetsByScope.chat, chatMentionQuery), [collaborationMentionTargetsByScope.chat, chatMentionQuery]);
-  const filteredProjectMentionTargets = useMemo(() => filterMentionTargets(collaborationMentionTargetsByScope.project, projectMentionQuery), [collaborationMentionTargetsByScope.project, projectMentionQuery]);
+    desktopChatState,
+    drafts: composerDraftsView,
+    isNativeShell,
+    refreshSharedCloudAgents,
+    sharedCloudAgents,
+  });
 
   useEffect(() => {
     for (const [spaceKey, sessionId] of pendingParticipantSpaceCreateRef.current) {
