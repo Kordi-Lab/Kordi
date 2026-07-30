@@ -34,7 +34,6 @@ import {
   type CloudMessage,
   type CloudPublicProfile,
   type SendCloudMessageAttachmentInput,
-  type CloudSessionForkSummary,
   type CloudSessionPin,
   type CloudSessionTitle,
   type UpsertCloudArtifactActivityInput,
@@ -106,9 +105,6 @@ import {
   type CloudSessionPinsById,
 } from './cloudDiffSync';
 import {
-  cloneCloudSessionActivityForFork,
-  mergeCloudSessionActivity,
-  normalizeCloudSessionActivitySnapshot,
   type CloudSessionActivityStore,
 } from './cloudSessionActivity';
 import { loadSession } from './session';
@@ -212,6 +208,9 @@ import {
 import {
   useCloudAgentCatalog,
 } from './useCloudAgentCatalog';
+import {
+  useCloudSessionActions,
+} from './useCloudSessionActions';
 
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
@@ -1561,133 +1560,39 @@ export function useCloudCollaborationState({
     sendCloudGroupControl,
   ]);
 
-  const refreshCloudSessionActivity = useCallback(async (sessionId: string) => {
-    const trimmedSessionId = sessionId.trim();
-    if (!account || !trimmedSessionId) return;
-    const session = await loadSession();
-    if (!session?.token) return;
-    const snapshot = await client.listSessionActivity(session.token, trimmedSessionId);
-    const normalized = normalizeCloudSessionActivitySnapshot(snapshot);
-    setCloudSessionActivity((current) => mergeCloudSessionActivity(current, normalized));
-  }, [account, client, setCloudSessionActivity]);
-
-  const publishCloudTaskActivity = useCallback(async (input: UpsertCloudTaskActivityInput) => {
-    if (!account) throw new Error('Not signed in.');
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    const task = await client.upsertTaskActivity(session.token, input);
-    setCloudSessionActivity((current) => mergeCloudSessionActivity(
-      current,
-      normalizeCloudSessionActivitySnapshot({ tasks: [task], artifacts: [] }),
-    ));
-  }, [account, client, setCloudSessionActivity]);
-
-  const publishCloudArtifactActivity = useCallback(async (input: UpsertCloudArtifactActivityInput) => {
-    if (!account) throw new Error('Not signed in.');
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    const artifact = await client.upsertArtifactActivity(session.token, input);
-    setCloudSessionActivity((current) => mergeCloudSessionActivity(
-      current,
-      normalizeCloudSessionActivitySnapshot({ tasks: [], artifacts: [artifact] }),
-    ));
-  }, [account, client, setCloudSessionActivity]);
-
-  const recordCloudSessionFork = useCallback(async (input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }) => {
-    if (!account) throw new Error('Not signed in.');
-    const sourceSessionId = input.sourceSessionId.trim();
-    const forkSessionId = input.forkSessionId.trim();
-    if (!sourceSessionId || !forkSessionId) return;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    const fork = await client.createSessionFork(session.token, sourceSessionId, {
-      forkSessionId,
-      parentMessageId: input.parentMessageId ?? null,
-    });
-    setCloudSessionForksById((current) => ({ ...current, [fork.forkSessionId]: fork }));
-    const cloned = cloneCloudSessionActivityForFork(
-      cloudSessionActivityRef.current,
-      sourceSessionId,
-      forkSessionId,
-      new Date().toISOString(),
-    );
-    setCloudSessionActivity((current) => mergeCloudSessionActivity(current, cloned));
-    void refreshCloudSessionActivity(forkSessionId);
-  }, [
+  const {
+    refreshActivity: refreshCloudSessionActivity,
+    publishTask: publishCloudTaskActivity,
+    publishArtifact: publishCloudArtifactActivity,
+    recordFork: recordCloudSessionFork,
+    updatePin: updateCloudSessionPin,
+    hide: hideCloudSession,
+    unhide: unhideCloudSession,
+    remove: deleteCloudSession,
+  } = useCloudSessionActions({
     account,
     client,
-    cloudSessionActivityRef,
-    refreshCloudSessionActivity,
-    setCloudSessionActivity,
-    setCloudSessionForksById,
-  ]);
-
-  const updateCloudSessionPin = useCallback(async (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => {
-    if (!account) throw new Error('Cloud account is not signed in.');
-    const trimmedSessionId = input.sessionId.trim();
-    if (!trimmedSessionId) throw new Error('Session id is required.');
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Cloud session is not available.');
-    const pin = await client.updateCloudSessionPin(session.token, trimmedSessionId, {
-      messageId: input.messageId?.trim() || null,
-      scope: input.scope,
-    });
-    setCloudSessionPinsById((current) => ({ ...current, [pin.sessionId]: pin }));
-    void syncCloudCollaborationDiff();
-    return pin;
-  }, [
-    account,
-    client,
-    setCloudSessionPinsById,
-    syncCloudCollaborationDiff,
-  ]);
-
-  const hideCloudSession = useCallback(async (sessionId: string) => {
-    const trimmedSessionId = sessionId.trim();
-    if (!trimmedSessionId) return;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    await client.hideCloudSession(session.token, trimmedSessionId);
-    setCloudHiddenSessionIds((current) => new Set(current).add(trimmedSessionId));
-  }, [client, setCloudHiddenSessionIds]);
-
-  const unhideCloudSession = useCallback(async (sessionId: string) => {
-    const trimmedSessionId = sessionId.trim();
-    if (!trimmedSessionId) return;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    await client.unhideCloudSession(session.token, trimmedSessionId);
-    setCloudHiddenSessionIds((current) => {
-      if (!current.has(trimmedSessionId)) return current;
-      const next = new Set(current);
-      next.delete(trimmedSessionId);
-      return next;
-    });
-  }, [client, setCloudHiddenSessionIds]);
-
-  const deleteCloudSession = useCallback(async (sessionId: string) => {
-    const trimmedSessionId = sessionId.trim();
-    if (!trimmedSessionId) return;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    await client.deleteCloudSession(session.token, trimmedSessionId);
-    setCloudHiddenSessionIds((current) => {
-      if (!current.has(trimmedSessionId)) return current;
-      const next = new Set(current);
-      next.delete(trimmedSessionId);
-      return next;
-    });
-    setCloudDeletedSessionIds((current) => new Set(current).add(trimmedSessionId));
-    if (account) {
-      setMessagesByPeer((current) => removeCloudSessionMessages(account.accountId, current, trimmedSessionId));
-    }
-  }, [
-    account,
-    client,
-    setCloudDeletedSessionIds,
-    setCloudHiddenSessionIds,
-    setMessagesByPeer,
-  ]);
+    stores: {
+      activity: {
+        valueRef: cloudSessionActivityRef,
+        setValue: setCloudSessionActivity,
+      },
+      forks: {
+        setById: setCloudSessionForksById,
+      },
+      pins: {
+        setById: setCloudSessionPinsById,
+      },
+      visibility: {
+        setHiddenIds: setCloudHiddenSessionIds,
+        setDeletedIds: setCloudDeletedSessionIds,
+      },
+      messages: {
+        setByPeer: setMessagesByPeer,
+      },
+    },
+    syncCollaborationDiff: syncCloudCollaborationDiff,
+  });
 
   const cancelCloudAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
