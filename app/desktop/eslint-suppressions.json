@@ -355,14 +355,8 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 9
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 12
-    },
     "no-console": {
-      "count": 12
+      "count": 9
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
