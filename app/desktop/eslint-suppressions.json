@@ -349,14 +349,8 @@
     }
   },
   "src/features/cloud/useCloudCollaborationState.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "no-console": {
       "count": 2
-    },
-    "react-hooks/preserve-manual-memoization": {
-      "count": 1
     },
     "react-hooks/refs": {
       "count": 6

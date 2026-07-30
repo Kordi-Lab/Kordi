@@ -118,10 +118,10 @@ test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail co
 
 test('Cloud contact selection validation uses the rendered Cloud contact rows', () => {
   const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
-  const cloudCollaborationStateSource = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
+  const cloudCollaborationTopologySource = readFileSync(new URL('../src/features/cloud/useCloudCollaborationTopology.ts', import.meta.url), 'utf8');
 
   assert.match(
-    cloudCollaborationStateSource,
+    cloudCollaborationTopologySource,
     /cloudContacts:\s*contacts\.contacts/,
     'Cloud bridge state should expose the same contacts rendered by CloudContactsAdapter',
   );

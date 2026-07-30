@@ -18,17 +18,25 @@ const accountLifecycleSource = () => readFileSync(
   'utf8',
 );
 
+const readModelSource = () => readFileSync(
+  new URL(
+    '../src/features/cloud/useCloudCollaborationReadModel.ts',
+    import.meta.url,
+  ),
+  'utf8',
+);
+
 test('Cloud cache stays interactive without becoming authoritative', () => {
-  const source = collaborationSource();
+  const source = `${collaborationSource()}\n${readModelSource()}`;
   const lifecycleSource = accountLifecycleSource();
 
   assert.match(
     source,
-    /let next = currentAccountMessagesByPeer;[\s\S]*removeCloudSessionMessages\(account\.accountId, next, sessionId\)/,
+    /let next = messagesByPeer;[\s\S]*removeCloudSessionMessages\([\s\S]*account\.accountId,[\s\S]*next,[\s\S]*sessionId/,
   );
   assert.match(
     source,
-    /initialMessagesSettled \? routed : suppressCloudCollaborationUnreadCounts\(routed\)/,
+    /return initialMessagesSettled\s*\?\s*routed\s*:\s*suppressCloudCollaborationUnreadCounts\(routed\)/,
   );
   assert.match(source, /defaultCloudMessageCache\(\)/);
   assert.match(
