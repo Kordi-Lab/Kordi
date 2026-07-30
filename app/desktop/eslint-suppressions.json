@@ -356,7 +356,7 @@
       "count": 1
     },
     "no-console": {
-      "count": 9
+      "count": 7
     },
     "react-hooks/exhaustive-deps": {
       "count": 2
@@ -368,7 +368,7 @@
       "count": 6
     },
     "react-hooks/set-state-in-effect": {
-      "count": 3
+      "count": 1
     }
   },
   "src/features/cloud/useCloudContacts.ts": {
