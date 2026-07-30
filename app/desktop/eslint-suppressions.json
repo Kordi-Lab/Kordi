@@ -53,7 +53,7 @@
   },
   "src/app/useKordiAppModel.ts": {
     "@typescript-eslint/require-await": {
-      "count": 2
+      "count": 1
     },
     "@typescript-eslint/unbound-method": {
       "count": 15
@@ -62,10 +62,7 @@
       "count": 1
     },
     "react-hooks/exhaustive-deps": {
-      "count": 19
-    },
-    "react-hooks/preserve-manual-memoization": {
-      "count": 2
+      "count": 15
     },
     "react-hooks/refs": {
       "count": 7
