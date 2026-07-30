@@ -14,11 +14,17 @@ These limits are planning signals, not automatic failures:
 Use the scan script to refresh the list:
 
 ```bash
+pnpm maintainability:audit
+pnpm maintainability:audit -- --json
 pnpm maintainability:scan -- --min-lines 500 --limit 60
 pnpm maintainability:scan -- --min-lines 1000 --limit 40
 ```
 
-The script skips generated/build/vendor paths including `target/`, `node_modules/`, `dist/`, `.git/`, and `app/desktop/src-tauri/gen/`.
+The audit inventories git-tracked source and reports production, test, and generated
+code separately. Its category rules and output schema are contract-tested, and CI
+runs it before the no-growth ratchets. The older hotspot-only scan skips
+generated/build/vendor paths including `target/`, `node_modules/`, `dist/`,
+`.git/`, and `app/desktop/src-tauri/gen/`.
 
 ## Automated no-growth ratchet
 
