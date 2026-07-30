@@ -44,7 +44,10 @@ test('group member removal publishes the current membership and a durable leave 
 test('cloud compact session merge replaces the native participant list for that group', () => {
   const source = cloudCollaborationStateSource();
   const mergeStart = source.indexOf('function mergeOpenCanonicalSessionFastResultIntoLocalState');
-  const mergeEnd = source.indexOf('function wait(', mergeStart);
+  const mergeEnd = source.indexOf(
+    'export function cloudGroupMessageTargetsLocalAgent',
+    mergeStart,
+  );
   assert.notEqual(mergeStart, -1, 'expected Cloud compact session merge helper');
   assert.notEqual(mergeEnd, -1, 'expected Cloud compact session merge helper end');
   const mergeBlock = source.slice(mergeStart, mergeEnd);
