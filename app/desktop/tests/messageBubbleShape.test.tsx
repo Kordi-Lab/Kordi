@@ -27,14 +27,14 @@ test('queued message bubble shape uses the outgoing clean squared soft-tail clas
 
 test('transcript and queued bubbles no longer hardcode the old pill radius utilities', () => {
   const transcript = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
-  const chatsPage = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const queuedMessage = readFileSync(new URL('../src/pages/chatsPage.queuedMessage.tsx', import.meta.url), 'utf8');
 
   assert.match(transcript, /humanMessageBubbleShapeClass\('own'\)/);
   assert.match(transcript, /humanMessageBubbleShapeClass\('peer'\)/);
-  assert.match(chatsPage, /queuedMessageBubbleShapeClass/);
+  assert.match(queuedMessage, /queuedMessageBubbleShapeClass/);
   assert.doesNotMatch(transcript, /rounded-\[20px\] rounded-br-\[6px\]/);
   assert.doesNotMatch(transcript, /rounded-\[20px\] rounded-bl-\[6px\]/);
-  assert.doesNotMatch(chatsPage, /rounded-\[19px\] rounded-br-\[6px\]/);
+  assert.doesNotMatch(queuedMessage, /rounded-\[19px\] rounded-br-\[6px\]/);
 });
 
 test('bubble backdrop renders one seamless vector path instead of separate tail pieces', () => {
