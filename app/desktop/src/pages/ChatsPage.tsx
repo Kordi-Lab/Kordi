@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, ComponentType, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
+import type { ComponentProps, ComponentType, Dispatch, DragEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
@@ -40,7 +40,7 @@ import {
 } from '@/features/collaboration/agentModelRouting';
 import { isCloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
-import type { CloudAccount, CloudSessionPin } from '@/features/cloud/authClient';
+import type { CloudSessionPin } from '@/features/cloud/authClient';
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -55,8 +55,6 @@ import {
   LiveChatTurnMessage,
   MessageBubble,
   fallbackComposerThinkingValue,
-  type ComposerAuthOption,
-  type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
   type CompactComposerModelMenuSaveInput,
@@ -68,9 +66,6 @@ import type {
   ConversationParticipant,
   DesktopCollaborationAgentRouting,
   DesktopCollaborationHost,
-  DesktopChatContextWindowStatus,
-  DesktopChatSlashCommand,
-  DesktopChatState,
   DesktopChatTurnSnapshot,
   DetailTab,
   EditFilePreview,
@@ -105,12 +100,15 @@ import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { navigateToTranscriptMessage, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
-import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { MemberContactProfilePopover } from '@/pages/MemberContactProfilePopover';
+import type {
+  ChatAttachment as Attachment,
+  ChatsPageProps,
+} from '@/pages/chatsPage.types';
 
 export const COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const COLLABORATION_ROUTING_NOTICE_EXIT_MS = 180;
@@ -478,13 +476,6 @@ export function PinMessageDialog({
     </div>
   );
 }
-
-type Attachment = {
-  id: string;
-  name: string;
-  path: string;
-  kind: 'image' | 'file';
-};
 
 type ChatComposerShellProps = {
   children: ReactNode;
@@ -1183,218 +1174,123 @@ function collaborationRouteDisplayName(
   return auth ? `${auth} · ${model}` : model;
 }
 
-type ChatsPageProps = {
-  isNativeShell: boolean;
-  showChatDetailRail: boolean;
-  collapseChatSessions: boolean;
-  setIsSessionPanelCollapsed: Dispatch<SetStateAction<boolean>>;
-  showRightDetailRail: boolean;
-  isDetailPanelCollapsed: boolean;
-  setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
-  rightDetailRail?: ReactNode;
-  detailRailWidth?: number;
-  activeDetailTab: DetailTab;
-  setActiveDetailTab: Dispatch<SetStateAction<DetailTab>>;
-  activeArtifactId: string | null;
-  setActiveArtifactId: Dispatch<SetStateAction<string | null>>;
-  onDetailResizeMouseDown?: MouseEventHandler<HTMLDivElement>;
-  activeConv: Conversation;
-  chatConversations: Conversation[];
-  activeConversationUsesCollaboration: boolean;
-  activeCollaborationModelHost: DesktopCollaborationHost | null;
-  desktopChatState: DesktopChatState | null;
-  cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
-  cloudAccount?: CloudAccount | null;
-  cloudSessionPin?: CloudSessionPin | null;
-  onUpdateCloudSessionPin?: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
-  onUpdateCollaborationAgentModelRouting: (
-    hostId: string,
-    agentId: string,
-    defaultModel?: string | null,
-    fallbackModel?: string | null,
-    thinking?: string | null,
-    defaultAuthProvider?: string | null,
-    defaultAuthChoice?: string | null,
-    fallbackAuthProvider?: string | null,
-    fallbackAuthChoice?: string | null,
-    targetSessionIdOverride?: string | null,
-  ) => Promise<void>;
-  isEditingDesktopSessionTitle: boolean;
-  setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
-  desktopSessionRenameDraft: string;
-  setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
-  onRenameDesktopSession: (baselineName: string) => Promise<void>;
-  onRenameChatSession: (sessionId: string, title: string) => Promise<void>;
-  chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
-  canonicalHasOlderBySessionId?: Record<string, boolean>;
-  onLoadOlderCanonicalSessionMessages?: (sessionId: string) => Promise<void>;
-  onTranscriptScroll: () => void;
-  onOpenSource: (file: EditFilePreview) => void;
-  onClearSourcePreview?: () => void;
-  onOpenArtifact: (artifactId: string) => void;
-  desktopLiveTurn: DesktopChatTurnSnapshot | null;
-  queuedDesktopMessages: QueuedDesktopChatMessage[];
-  queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
-  onEditQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
-  onCancelQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
-  filteredChatSlashCommands: DesktopChatSlashCommand[];
-  filteredChatMentionTargets: ComposerMentionOption[];
-  chatSlashMenuIndex: number;
-  setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
-  acceptChatSlashCommand: (value: string) => void;
-  acceptChatMentionTarget: (value: string) => void;
-  chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
-  chatComposerAttachments: Attachment[];
-  saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
-  saveDesktopAttachmentPaths: (paths: string[]) => Promise<Attachment[]>;
-  removeChatComposerAttachment: (id: string) => void;
-  chatComposerText: string;
-  updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
-  setChatComposerText: (value: string) => void;
-  setChatComposerTextForSession: (sessionId: string, value: string) => void;
-  activeChatQuote?: ComposerQuoteState | null;
-  onClearChatQuote?: () => void;
-  onReplyMessage?: (message: Message) => void;
-  onForwardMessage?: (message: Message) => void;
-  onSelectMessage?: (message: Message) => void;
-  messageSelectionMode?: boolean;
-  selectedMessageCount?: number;
-  selectedMessageIds?: ReadonlySet<string>;
-  isMessageSelectable?: (message: Message) => boolean;
-  onToggleSelectedMessage?: (message: Message) => void;
-  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
-  onSelectionDragEnter?: (message: Message) => void;
-  onSelectionDragEnd?: () => void;
-  onCancelMessageSelection?: () => void;
-  onCopySelectedMessages?: () => void;
-  onForwardSelectedMessages?: () => void;
-  composerControlsRef: RefObject<HTMLDivElement | null>;
-  activeRuntimeContextStatus?: DesktopChatContextWindowStatus | null;
-  activeRuntimeCacheText?: string | null;
-  composerSelection: { mode: string; model: string; thinking: string };
-  openComposerSelector: { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
-  toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
-  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => void;
-  composerAuthLabel: string;
-  composerAuthOptions: ComposerAuthOption[];
-  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => void;
-  composerProviderOptions: ComposerProviderOption[];
-  chatModelOptions?: ComposerModelOption[];
-  isDesktopChatSending: boolean;
-  onStopDesktopChatTurn: () => void;
-  onStopCollaborationAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopCollaborationAgentRequest']>;
-  onRequestCollaborationContact?: ComponentProps<typeof MessageBubble>['onRequestCollaborationContact'];
-  onMessageContact?: (contact: Contact) => Promise<void> | void;
-  onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
-  onRetryChatMessage?: (message: Message) => void;
-  onSelectSession?: (sessionId: string) => void;
-  onSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
-  onCreateAgentSession?: () => string | null | Promise<string | null>;
-  hasAnyAuth: boolean;
-  onOpenAuthSettings: () => void;
-  onOpenAccountAuthentication?: () => void;
-};
-
 export function ChatsPage({
-  isNativeShell,
-  showChatDetailRail,
-  collapseChatSessions,
-  setIsSessionPanelCollapsed,
-  showRightDetailRail,
-  isDetailPanelCollapsed,
-  setIsDetailPanelCollapsed,
-  rightDetailRail,
-  activeDetailTab,
-  setActiveDetailTab,
-  activeArtifactId,
-  setActiveArtifactId,
-  activeConv,
-  chatConversations,
-  activeConversationUsesCollaboration,
-  activeCollaborationModelHost,
-  desktopChatState,
-  cloudSelfAgentSyncStatus,
-  cloudAccount = null,
-  cloudSessionPin,
-  onUpdateCloudSessionPin,
-  onUpdateCollaborationAgentModelRouting,
-  isEditingDesktopSessionTitle,
-  setIsEditingDesktopSessionTitle,
-  desktopSessionRenameDraft,
-  setDesktopSessionRenameDraft,
-  onRenameDesktopSession,
-  onRenameChatSession,
-  chatTranscriptScrollRef,
-  canonicalHasOlderBySessionId = {},
-  onLoadOlderCanonicalSessionMessages,
-  onTranscriptScroll,
-  onOpenSource,
-  onClearSourcePreview,
-  onOpenArtifact,
-  desktopLiveTurn,
-  queuedDesktopMessages,
-  queuedDesktopMessagesBySession,
-  onEditQueuedMessage,
-  onCancelQueuedMessage,
-  filteredChatSlashCommands,
-  filteredChatMentionTargets,
-  chatSlashMenuIndex,
-  setChatSlashMenuIndex,
-  acceptChatSlashCommand,
-  acceptChatMentionTarget,
-  chatAttachmentInputRef,
-  chatComposerAttachments,
-  saveDesktopAttachments,
-  saveDesktopAttachmentPaths,
-  removeChatComposerAttachment,
-  chatComposerText,
-  updateChatComposerDraft,
-  setChatComposerText,
-  setChatComposerTextForSession,
-  activeChatQuote,
-  onClearChatQuote,
-  onReplyMessage,
-  onForwardMessage,
-  onSelectMessage,
-  messageSelectionMode = false,
-  selectedMessageCount = 0,
-  selectedMessageIds,
-  isMessageSelectable,
-  onToggleSelectedMessage,
-  onSelectionDragStart,
-  onSelectionDragEnter,
-  onSelectionDragEnd,
-  onCancelMessageSelection,
-  onCopySelectedMessages,
-  onForwardSelectedMessages,
-  composerControlsRef,
-  activeRuntimeContextStatus,
-  activeRuntimeCacheText,
-  composerSelection,
-  openComposerSelector,
-  toggleComposerSelector,
-  selectComposerValue,
-  composerAuthLabel,
-  composerAuthOptions,
-  selectComposerAuthChoice,
-  selectComposerProviderChoice,
-  composerProviderOptions,
-  chatModelOptions,
-  isDesktopChatSending,
-  onStopDesktopChatTurn,
-  onStopCollaborationAgentRequest,
-  onRequestCollaborationContact,
-  onMessageContact,
-  onForkChatMessage,
-  onRetryChatMessage,
-  onSelectSession,
-  onSendChatMessage,
-  onCreateAgentSession,
-  hasAnyAuth,
-  onOpenAuthSettings,
-  onOpenAccountAuthentication,
+  layout,
+  session,
+  transcript,
+  composer,
+  runtime,
+  auth,
 }: ChatsPageProps) {
+  const {
+    isNativeShell,
+    showChatDetailRail,
+    collapseChatSessions,
+    setIsSessionPanelCollapsed,
+    showRightDetailRail,
+    isDetailPanelCollapsed,
+    setIsDetailPanelCollapsed,
+    rightDetailRail,
+    activeDetailTab,
+    setActiveDetailTab,
+    activeArtifactId,
+    setActiveArtifactId,
+  } = layout;
+  const {
+    activeConv,
+    chatConversations,
+    activeConversationUsesCollaboration,
+    activeCollaborationModelHost,
+    desktopChatState,
+    cloudSelfAgentSyncStatus,
+    cloudAccount = null,
+    cloudSessionPin,
+    onUpdateCloudSessionPin,
+    onUpdateCollaborationAgentModelRouting,
+    isEditingDesktopSessionTitle,
+    setIsEditingDesktopSessionTitle,
+    desktopSessionRenameDraft,
+    setDesktopSessionRenameDraft,
+    onRenameDesktopSession,
+    onRenameChatSession,
+  } = session;
+  const {
+    chatTranscriptScrollRef,
+    canonicalHasOlderBySessionId = {},
+    onLoadOlderCanonicalSessionMessages,
+    onTranscriptScroll,
+    onOpenSource,
+    onClearSourcePreview,
+    onOpenArtifact,
+    desktopLiveTurn,
+    queuedDesktopMessages,
+    queuedDesktopMessagesBySession,
+    onEditQueuedMessage,
+    onCancelQueuedMessage,
+  } = transcript;
+  const {
+    filteredChatSlashCommands,
+    filteredChatMentionTargets,
+    chatSlashMenuIndex,
+    setChatSlashMenuIndex,
+    acceptChatSlashCommand,
+    acceptChatMentionTarget,
+    chatAttachmentInputRef,
+    chatComposerAttachments,
+    saveDesktopAttachments,
+    saveDesktopAttachmentPaths,
+    removeChatComposerAttachment,
+    chatComposerText,
+    updateChatComposerDraft,
+    setChatComposerText,
+    setChatComposerTextForSession,
+    activeChatQuote,
+    onClearChatQuote,
+    onReplyMessage,
+    onForwardMessage,
+    onSelectMessage,
+    messageSelectionMode = false,
+    selectedMessageCount = 0,
+    selectedMessageIds,
+    isMessageSelectable,
+    onToggleSelectedMessage,
+    onSelectionDragStart,
+    onSelectionDragEnter,
+    onSelectionDragEnd,
+    onCancelMessageSelection,
+    onCopySelectedMessages,
+    onForwardSelectedMessages,
+  } = composer;
+  const {
+    composerControlsRef,
+    activeRuntimeContextStatus,
+    activeRuntimeCacheText,
+    composerSelection,
+    openComposerSelector,
+    toggleComposerSelector,
+    selectComposerValue,
+    composerAuthLabel,
+    composerAuthOptions,
+    selectComposerAuthChoice,
+    selectComposerProviderChoice,
+    composerProviderOptions,
+    chatModelOptions,
+    isDesktopChatSending,
+    onStopDesktopChatTurn,
+    onStopCollaborationAgentRequest,
+    onRequestCollaborationContact,
+    onMessageContact,
+    onForkChatMessage,
+    onRetryChatMessage,
+    onSelectSession,
+    onSendChatMessage,
+    onCreateAgentSession,
+  } = runtime;
+  const {
+    hasAnyAuth,
+    onOpenAuthSettings,
+    onOpenAccountAuthentication,
+  } = auth;
   const cloudContacts = useCloudContacts(cloudAccount);
   const [senderProfileTarget, setSenderProfileTarget] = useState<{
     participant: ConversationParticipant;

@@ -28,7 +28,7 @@ const activeConv: Conversation = {
 };
 
 function renderChatsPage(overrides: Record<string, unknown> = {}) {
-  return renderToStaticMarkup(createElement(ChatsPage, {
+  const props = {
     isNativeShell: false,
     showChatDetailRail: false,
     collapseChatSessions: false,
@@ -92,6 +92,14 @@ function renderChatsPage(overrides: Record<string, unknown> = {}) {
     onOpenAuthSettings: () => undefined,
     onOpenAccountAuthentication: () => undefined,
     ...overrides,
+  };
+  return renderToStaticMarkup(createElement(ChatsPage, {
+    layout: props,
+    session: props,
+    transcript: props,
+    composer: props,
+    runtime: props,
+    auth: props,
   } as any));
 }
 
