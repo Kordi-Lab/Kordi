@@ -13,6 +13,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
   const activeCloudSelfAgentSessionId = args.activeConv?.canonicalSessionId ?? args.activeConv?.id ?? '';
 
   return {
+    layout: {
     isNativeShell: args.isNativeShell,
     showChatDetailRail: args.showChatDetailRail,
     collapseChatSessions: args.collapseChatSessions,
@@ -27,6 +28,8 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     activeArtifactId: args.activeArtifactId,
     setActiveArtifactId: args.setActiveArtifactId,
     onDetailResizeMouseDown: args.onDetailResizeMouseDown,
+    },
+    session: {
     activeConv: args.activeConv,
     chatConversations: args.chatConversations,
     activeConversationUsesCollaboration: args.activeConversationUsesCollaboration,
@@ -45,6 +48,8 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     setDesktopSessionRenameDraft: args.setDesktopSessionRenameDraft,
     onRenameDesktopSession: args.handleRenameDesktopSession,
     onRenameChatSession: args.handleRenameChatSession,
+    },
+    transcript: {
     chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     canonicalHasOlderBySessionId: args.canonicalHasOlderBySessionId,
     onLoadOlderCanonicalSessionMessages: args.loadOlderCanonicalSessionMessages,
@@ -66,6 +71,8 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     queuedDesktopMessagesBySession: args.queuedDesktopMessagesBySession,
     onEditQueuedMessage: args.handleEditQueuedMessage,
     onCancelQueuedMessage: args.handleCancelQueuedMessage,
+    },
+    composer: {
     filteredChatSlashCommands: args.filteredChatSlashCommands,
     filteredChatMentionTargets: args.filteredChatMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
@@ -97,6 +104,8 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onCancelMessageSelection: args.onCancelMessageSelection,
     onCopySelectedMessages: args.onCopySelectedMessages,
     onForwardSelectedMessages: args.onForwardSelectedMessages,
+    },
+    runtime: {
     composerControlsRef: args.composerControlsRef,
     activeRuntimeContextStatus: args.activeRuntimeContextStatus,
     activeRuntimeCacheText: args.activeRuntimeCacheText,
@@ -122,8 +131,11 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onCreateAgentSession: args.handleCreateSideAgentSession,
     onForkChatMessage: args.handleForkChatMessage,
     onSelectSession: args.handleSelectChatSession,
+    },
+    auth: {
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,
     onOpenAccountAuthentication: args.openCloudAccountAuthentication,
+    },
   };
 }

@@ -363,9 +363,11 @@ test('chat transcript contact-request hint calls Add contact for the active brid
     handleAddCollaborationContact: async (hostId: string, peerNodeId: string) => {
       calls.push(`add:${hostId}:${peerNodeId}`);
     },
-  }) as never) as never as { onRequestCollaborationContact?: () => Promise<void> | void };
+  }) as never) as never as {
+    runtime: { onRequestCollaborationContact?: () => Promise<void> | void };
+  };
 
-  await props.onRequestCollaborationContact?.();
+  await props.runtime.onRequestCollaborationContact?.();
 
   assert.deepEqual(calls, ['add:host-1:node-shared']);
 });
@@ -377,5 +379,5 @@ test('chat transcript member profile reuses the normal person-chat route', () =>
     handleStartChatWithPerson: startPerson,
   }) as never);
 
-  assert.equal(props.onMessageContact, startPerson);
+  assert.equal(props.runtime.onMessageContact, startPerson);
 });
