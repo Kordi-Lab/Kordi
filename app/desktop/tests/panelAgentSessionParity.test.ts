@@ -16,6 +16,10 @@ const chatsPageSource = () => [
   '../src/pages/chatsPage.companionPane.tsx',
   '../src/pages/chatsPage.collaborationRoutingControls.tsx',
   '../src/pages/chatsPage.mainComposer.tsx',
+  '../src/pages/useChatCollaborationRouting.ts',
+  '../src/pages/useChatForkModel.ts',
+  '../src/pages/useChatPins.ts',
+  '../src/pages/useChatTranscriptNavigation.ts',
 ]
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n');
@@ -159,17 +163,17 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
   const side = sidePanelBlock(source);
   const collaborationNavigationActions = collaborationNavigationActionsSource();
 
-  assert.match(source, /const \[selectedCompanionCollaborationAgentId, setSelectedCompanionCollaborationAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
-  assert.match(source, /const companionCollaborationRoutingAgents = useMemo/, 'side-panel bridge agent menu should derive routing agents for the companion session');
+  assert.match(source, /const \[selectedMainAgentId, setSelectedMainAgentId\][\s\S]*const \[selectedCompanionAgentId, setSelectedCompanionAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
+  assert.match(source, /const companionAgents = useMemo\([\s\S]*companion\.host \? \[companion\.host\]/, 'side-panel bridge agent menu should derive routing agents for the companion session');
   assert.match(source, /enabled: companionConversationIsCollaborationAgent[\s\S]*selectedAgent: selectedCompanionCollaborationRoutingAgent/, 'side-panel cloud agents should receive the bridge-routing model branch');
   assert.match(source, /selection: companionCollaborationRoutingSelection/, 'side-panel cloud agent model controls should receive bridge routing selection');
   assert.match(side, /selection: collaborationRouting\.selection/, 'side-panel cloud agent model controls should pass the supplied bridge routing selection to the shared controls');
   assert.match(side, /selection=\{selection\}/, 'shared cloud agent model controls should render the supplied bridge routing selection');
   assert.match(side, /actions\.onUpdate\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing through the shared action');
   assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*actions\.onUpdate/, 'side-panel cloud agent provider changes should update bridge routing through the shared action');
-  assert.match(source, /const companionCollaborationRoutingTargetSessionId = companionConversation\?\.canonicalSessionId \?\? companionConversation\?\.id \?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
-  assert.match(source, /applyCollaborationAgentRoutingUpdate\(\{[\s\S]*targetSessionId: companionCollaborationRoutingTargetSessionId/, 'side-panel cloud route changes should pass the companion session id through the shared bridge routing updater');
-  assert.match(source, /onUpdateCollaborationAgentModelRouting\([\s\S]*routing\.fallbackAuthChoice,\s*targetSessionId,\s*\)/, 'the shared bridge routing updater should pass its target session through the bridge callback');
+  assert.match(source, /targetSessionId: companion\.conversation\?\.canonicalSessionId[\s\S]*\?\? companion\.conversation\?\.id[\s\S]*\?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
+  assert.match(source, /applyUpdate\(\{[\s\S]*agent: companionAgent,[\s\S]*targetSessionId: companion\.conversation/, 'side-panel cloud route changes should pass the companion session id through the shared bridge routing updater');
+  assert.match(source, /shared\.updateRouting\([\s\S]*routing\.fallbackAuthChoice,\s*targetSessionId,\s*\)/, 'the shared bridge routing updater should pass its target session through the bridge callback');
   assert.match(collaborationNavigationActions, /targetSessionIdOverride\?: string \| null/, 'cloud bridge route updater should accept an explicit target session override');
   assert.match(collaborationNavigationActions, /targetSessionIdOverride\?\.trim\(\)[\s\S]*\|\| activeConversation\.canonicalSessionId/, 'cloud bridge route updater should prefer the explicit side-panel session id before falling back to the active conversation');
   assert.doesNotMatch(side, /companionPaneKind === 'agent' && !companionConversationUsesCollaborationTransport[\s\S]*<ComposerModelControls/, 'side-panel model menu must not disappear for bridge-backed agent sessions');
@@ -273,10 +277,10 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
   assert.match(virtual, /if \(!request \|\| navigationTargetIndex >= 0 \|\| !hasOlder \|\| !onLoadOlder\) return;/, 'already-loaded targets should not fetch older pages');
   assert.match(virtual, /void requestOlder\(signature\)/, 'missing targets should request older pages');
   assert.match(virtual, /virtualizer\.scrollToIndex\(navigationTargetIndex/, 'found targets should move into the mounted range');
-  assert.match(source, /setMainTranscriptNavigationRequest\(\{ id: resolvedMessageId, nonce: transcriptNavigationNonceRef\.current, sessionKey: activeConv\.id \}\)/, 'main navigation requests should retain their source session');
-  assert.match(source, /setCompanionTranscriptNavigationRequest\(\{ id: resolvedMessageId, nonce: transcriptNavigationNonceRef\.current, sessionKey: companionConversation\.id \}\)/, 'companion navigation requests should retain their source session');
-  assert.match(source, /onNavigationHandled: handleMainTranscriptNavigationHandled/, 'main navigation should acknowledge the exact handled request');
-  assert.match(source, /onNavigationHandled: handleCompanionTranscriptNavigationHandled/, 'companion navigation should acknowledge the exact handled request');
+  assert.match(source, /setMainRequest\(\{[\s\S]*sessionKey: main\.conversation\.id,?[\s\S]*\}\)/, 'main navigation requests should retain their source session');
+  assert.match(source, /setCompanionRequest\(\{[\s\S]*sessionKey: companion\.conversation\.id,?[\s\S]*\}\)/, 'companion navigation requests should retain their source session');
+  assert.match(source, /onNavigationHandled: transcriptNavigation\.main\.acknowledge/, 'main navigation should acknowledge the exact handled request');
+  assert.match(source, /onNavigationHandled: transcriptNavigation\.companion\.acknowledge/, 'companion navigation should acknowledge the exact handled request');
 });
 
 test('side-panel Agent session uses independent full-pane destination subtitles', () => {
