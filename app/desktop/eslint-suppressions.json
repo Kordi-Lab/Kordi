@@ -785,15 +785,6 @@
     }
   },
   "src/pages/WorkspaceSidebar.tsx": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    },
-    "react-hooks/preserve-manual-memoization": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
     "react-refresh/only-export-components": {
       "count": 6
     }

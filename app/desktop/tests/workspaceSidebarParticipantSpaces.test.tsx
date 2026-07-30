@@ -786,9 +786,9 @@ test('direct participant-space rows still highlight when their session is active
 });
 
 test('participant-space parent rows are not styled as the active session row', () => {
-  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
-  const renderStart = source.indexOf('const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {');
-  const renderEnd = source.indexOf('const renderParticipantSpaceList =', renderStart);
+  const source = readFileSync(new URL('../src/pages/workspaceSidebar.contactRows.tsx', import.meta.url), 'utf8');
+  const renderStart = source.indexOf('function ParticipantSpaceRow({');
+  const renderEnd = source.indexOf('export function ContactSidebarRow', renderStart);
   assert.notEqual(renderStart, -1, 'expected participant-space renderer');
   assert.notEqual(renderEnd, -1, 'expected end of participant-space renderer');
   const renderer = source.slice(renderStart, renderEnd);
@@ -806,16 +806,16 @@ test('participant-space parent rows are not styled as the active session row', (
 });
 
 test('participant-space parent row primary click selects a session while chevron toggles expansion', () => {
-  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
-  const selectHelperStart = source.indexOf('const selectParticipantSpacePrimarySession = (space: ParticipantSpaceItem) => {');
+  const source = readFileSync(new URL('../src/pages/workspaceSidebar.contactRows.tsx', import.meta.url), 'utf8');
+  const selectHelperStart = source.indexOf('const selectPrimarySession = () => {');
   assert.notEqual(selectHelperStart, -1, 'expected primary parent-row selection helper');
-  const selectHelper = source.slice(selectHelperStart, source.indexOf('\n    };', selectHelperStart));
-  assert.match(selectHelper, /onSelectChatSession\(latestSession\.id\)/, 'primary parent click should select the latest session in one click');
+  const selectHelper = source.slice(selectHelperStart, source.indexOf('\n  };', selectHelperStart));
+  assert.match(selectHelper, /onSelectChatSession\(primarySession\.id\)/, 'primary parent click should select the latest session in one click');
 
-  const renderStart = source.indexOf('const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {');
-  const renderEnd = source.indexOf('const renderParticipantSpaceList =', renderStart);
+  const renderStart = source.indexOf('function ParticipantSpaceRow({');
+  const renderEnd = source.indexOf('export function ContactSidebarRow', renderStart);
   const renderer = source.slice(renderStart, renderEnd);
-  assert.match(renderer, /onClick=\{\(\) => selectParticipantSpacePrimarySession\(space\)\}/, 'parent row button should select, not toggle');
+  assert.match(renderer, /onClick=\{selectPrimarySession\}/, 'parent row button should select, not toggle');
   assert.match(renderer, /data-participant-space-toggle-button="true"[\s\S]*toggleSpace\(\)/, 'chevron remains the explicit expand-collapse control');
 });
 
@@ -933,7 +933,7 @@ test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-
   const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
   const dialogSource = readFileSync(new URL('../src/pages/ChatCreateDialog.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /const \[chatCreateInitialMode, setChatCreateInitialMode\] = useState<ChatCreateMode>\('menu'\)/);
+  assert.match(source, /const \[chatCreateInitialMode, setChatCreateInitialMode\]\s*=\s*useState<ChatCreateMode>\('menu'\)/);
   assert.match(source, /const openChatCreateDialog = \(event: ReactMouseEvent<HTMLElement>\) => \{[\s\S]*setChatCreateInitialMode\('menu'\);[\s\S]*setIsChatCreateDialogOpen\(true\);[\s\S]*\};/);
   assert.match(source, /setChatCreateInitialMode\('agent'\);[\s\S]*setIsChatCreateDialogOpen\(true\);/);
   assert.match(source, /initialMode=\{chatCreateInitialMode\}/);
@@ -1900,14 +1900,11 @@ test('WorkspaceSidebar group child titles avoid native tooltips that destabilize
 });
 
 test('WorkspaceSidebar keeps group child host rows mounted across parent refreshes', () => {
-  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
-  const workspaceStart = source.indexOf('export function WorkspaceSidebar({');
-  const workspaceEnd = source.indexOf('\nexport ', workspaceStart + 1);
-  const workspace = source.slice(workspaceStart, workspaceEnd < 0 ? undefined : workspaceEnd);
+  const source = readFileSync(new URL('../src/pages/workspaceSidebar.contactRows.tsx', import.meta.url), 'utf8');
 
-  assert.doesNotMatch(workspace, /const ParticipantSpaceSessionRow\s*=\s*\(/);
-  assert.match(workspace, /const renderParticipantSpaceSessionRow\s*=\s*\(\s*session:\s*ParticipantSpaceItem\['sessions'\]\[number\],/);
-  assert.match(workspace, /return row \? renderParticipantSpaceSessionRow\(row\.session, row\.space, descriptor\.depth\) : null;/);
+  assert.match(source, /function ParticipantSpaceSessionRow\(\{/);
+  assert.match(source, /const row = model\.allSidebarSessionRowsById\.get\(descriptor\.sessionId\);/);
+  assert.match(source, /<ParticipantSpaceSessionRow[\s\S]*session=\{row\.session\}[\s\S]*space=\{row\.space\}[\s\S]*depth=\{descriptor\.depth\}/);
 });
 
 test('WorkspaceSidebar hides old fork rows for canonical group sessions', () => {
