@@ -5,7 +5,7 @@ import { test } from 'node:test';
 const readSource = (relativePath: string) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 
 test('workspace rail navigation owns its semantic active and focus states', () => {
-  const source = readSource('src/pages/WorkspaceSidebar.tsx');
+  const source = readSource('src/pages/workspaceSidebar.navigation.tsx');
   const styles = readSource('src/styles/shell-sidebar.css');
 
   assert.match(source, /data-active=\{active \? 'true' : 'false'\}/);
