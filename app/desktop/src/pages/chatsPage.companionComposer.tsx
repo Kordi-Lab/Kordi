@@ -1,7 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ChevronDown,
   FileText,
   Image as ImageIcon,
   Paperclip,
@@ -23,17 +22,16 @@ import {
 } from '@/kordi-app/components';
 import type {
   Conversation,
-  DesktopCollaborationAgentRouting,
   DesktopChatContextWindowStatus,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import {
+  CollaborationRoutingControls,
+  type CollaborationRoutingPatch,
+} from '@/pages/chatsPage.collaborationRoutingControls';
+import {
   COLLABORATION_ROUTING_NOTICE_EXIT_MS,
 } from '@/pages/chatsPage.constants';
-import {
-  authChoiceFromProviderOption,
-  firstModelForProvider,
-} from '@/pages/chatsPage.model';
 import type {
   ChatsPageComposer,
   ChatsPageRuntime,
@@ -54,11 +52,6 @@ type CompanionLocalRouting = {
   runtimeCacheText: string | null;
 };
 
-export type CompanionCollaborationRoutingPatch =
-  DesktopCollaborationAgentRouting & {
-    selectorType?: 'provider' | 'model' | 'thinking';
-  };
-
 type CompanionCollaborationRouting = {
   enabled: boolean;
   notice: string | null;
@@ -68,7 +61,7 @@ type CompanionCollaborationRouting = {
   visibility: ReturnType<typeof collaborationChatRoutingControlVisibility>;
   selectorOpen: boolean;
   setSelectedAgentId: Dispatch<SetStateAction<string | null>>;
-  update: (patch: CompanionCollaborationRoutingPatch) => void;
+  update: (patch: CollaborationRoutingPatch) => void;
   defaultThinkingForModel: (
     modelValue: string | null | undefined,
     currentThinking: string | null | undefined,
@@ -300,92 +293,38 @@ export function CompanionComposer({
                 Retry model
               </button>
             ) : collaborationRouting.enabled && selectedAgent ? (
-              <div className="relative flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true" data-companion-collaboration-model-controls="true">
-                {collaborationRouting.visibility.showAgentSelector ? (
-                  <button
-                    type="button"
-                    onClick={() => toggleSelector('chat', 'mode')}
-                    className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
-                    title="Choose which owned agent these session settings apply to"
-                  >
-                    <span className="truncate">{selectedAgent.label}</span>
-                    <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', collaborationRouting.selectorOpen ? 'rotate-180 text-slate-300' : '')} />
-                  </button>
-                ) : null}
-                {collaborationRouting.selectorOpen ? (
-                  <div className="app-transient-surface app-transient-scroll absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]">
-                    <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
-                    <div className="space-y-1">
-                      {collaborationRouting.agents.map((agent) => (
-                        <button
-                          key={`${agent.hostId}:${agent.id}`}
-                          type="button"
-                          onClick={() => {
-                            collaborationRouting.setSelectedAgentId(agent.id);
-                            setOpenSelector(null);
-                          }}
-                          className={cn(
-                            'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                            selectedAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
-                          )}
-                        >
-                          <span className="truncate">{agent.label}</span>
-                          <span className="shrink-0 text-[11px] text-[color:var(--utility-muted-text)]">{agent.isDefault ? 'Default' : 'Owned'}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                <ComposerModelControls
-                  scope="chat"
-                  selection={collaborationRouting.selection}
-                  openSelector={openSelector}
-                  onToggleSelector={toggleSelector}
-                  onSelectValue={(_scope, type, value) => {
-                    if (type === 'model') {
-                      collaborationRouting.update({
-                        defaultModel: value,
-                        defaultAuthProvider: selectedAgent.defaultAuthProvider ?? null,
-                        defaultAuthChoice: selectedAgent.defaultAuthChoice ?? null,
-                        fallbackModel: selectedAgent.fallbackModel ?? null,
-                        fallbackAuthProvider: selectedAgent.fallbackAuthProvider ?? null,
-                        fallbackAuthChoice: selectedAgent.fallbackAuthChoice ?? null,
-                        thinking: collaborationRouting.defaultThinkingForModel(value, selectedAgent.thinking),
-                        selectorType: 'model',
-                      });
-                    } else if (type === 'thinking') {
-                      collaborationRouting.update({
-                        defaultModel: selectedAgent.defaultModel ?? null,
-                        defaultAuthProvider: selectedAgent.defaultAuthProvider ?? null,
-                        defaultAuthChoice: selectedAgent.defaultAuthChoice ?? null,
-                        fallbackModel: selectedAgent.fallbackModel ?? null,
-                        fallbackAuthProvider: selectedAgent.fallbackAuthProvider ?? null,
-                        fallbackAuthChoice: selectedAgent.fallbackAuthChoice ?? null,
-                        thinking: value,
-                        selectorType: 'thinking',
-                      });
-                    }
+              <div
+                className="flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible"
+                data-companion-model-controls="true"
+                data-companion-collaboration-model-controls="true"
+              >
+                <CollaborationRoutingControls
+                  model={{
+                    agents: collaborationRouting.agents,
+                    selectedAgent,
+                    selection: collaborationRouting.selection,
+                    visibility: collaborationRouting.visibility,
                   }}
-                  authLabel={composerAuthLabel}
-                  authOptions={composerAuthOptions}
-                  onSelectAuthChoice={() => {}}
-                  onSelectProviderChoice={(_scope, option) => {
-                    const nextModel = firstModelForProvider(option.providerId, chatModelOptions);
-                    if (!nextModel) return;
-                    collaborationRouting.update({
-                      defaultModel: nextModel,
-                      defaultAuthProvider: option.providerId,
-                      defaultAuthChoice: authChoiceFromProviderOption(option),
-                      fallbackModel: selectedAgent.fallbackModel ?? null,
-                      fallbackAuthProvider: selectedAgent.fallbackAuthProvider ?? null,
-                      fallbackAuthChoice: selectedAgent.fallbackAuthChoice ?? null,
-                      thinking: collaborationRouting.defaultThinkingForModel(nextModel, selectedAgent.thinking),
-                      selectorType: 'provider',
-                    });
+                  menu={{
+                    openSelector,
+                    agentSelectorOpen: collaborationRouting.selectorOpen,
+                    compact: true,
                   }}
-                  providerOptions={composerProviderOptions}
-                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                  compact={true}
+                  options={{
+                    authLabel: composerAuthLabel,
+                    authOptions: composerAuthOptions,
+                    providerOptions: composerProviderOptions,
+                    modelOptions: chatModelOptions,
+                  }}
+                  actions={{
+                    toggleSelector,
+                    onSelectAgent: (agentId) => {
+                      collaborationRouting.setSelectedAgentId(agentId);
+                      setOpenSelector(null);
+                    },
+                    onUpdate: collaborationRouting.update,
+                    defaultThinkingForModel: collaborationRouting.defaultThinkingForModel,
+                  }}
                 />
               </div>
             ) : null}

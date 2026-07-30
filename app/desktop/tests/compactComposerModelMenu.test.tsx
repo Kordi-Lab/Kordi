@@ -173,13 +173,14 @@ test('compact model route menu dismisses when users click outside or press escap
 });
 
 test('ChatsPage places compact model route control before attachment and keeps explicit agent controls', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
   assert.match(source, /<CompactComposerModelMenu[\s\S]*<Button[\s\S]*title="Add attachment"/);
-  assert.match(source, /!shouldUseCompactModelRouteMenu\(activeConv\)[\s\S]*<ComposerModelControls/);
+  assert.match(source, /!useCompactRouteMenu[\s\S]*<ComposerModelControls/);
 });
 
 test('ChatsPage shows compact model route for group/contact chats even without a bridge routing agent', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
-  assert.match(source, /\{shouldUseCompactModelRouteMenu\(activeConv\) \? \(/);
-  assert.doesNotMatch(source, /shouldUseCompactModelRouteMenu\(activeConv\) && \(!activeConversationUsesCollaboration \|\| selectedCollaborationRoutingAgent\)/);
+  const source = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const useCompactRouteMenu = shouldUseCompactModelRouteMenu\(conversation\)/);
+  assert.match(source, /\{useCompactRouteMenu \? \(/);
+  assert.doesNotMatch(source, /useCompactRouteMenu && \(!collaborationRouting\.enabled \|\| collaborationRouting\.model\)/);
 });
