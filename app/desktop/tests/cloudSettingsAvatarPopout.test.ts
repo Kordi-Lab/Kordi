@@ -154,10 +154,13 @@ test('profile editor does not reset avatar drafts while open for same account sy
 });
 
 test('cloud profile updates publish to observers and the edited account', () => {
-  const routes = readFileSync(new URL('../../../bridges/cloud-server/src/auth/routes.rs', import.meta.url), 'utf8');
+  const profileHandlers = readFileSync(
+    new URL('../../../bridges/cloud-server/src/auth/routes/profile_handlers.rs', import.meta.url),
+    'utf8',
+  );
 
-  assert.match(routes, /observer_account_ids\.insert\(session\.account_id\.clone\(\)\)/);
-  assert.match(routes, /for observer_account_id in observer_account_ids/);
+  assert.match(profileHandlers, /observer_account_ids\.insert\(session\.account_id\.clone\(\)\)/);
+  assert.match(profileHandlers, /for observer_account_id in observer_account_ids/);
 });
 
 test('auth notice opens the cloud account settings authentication panel', () => {
