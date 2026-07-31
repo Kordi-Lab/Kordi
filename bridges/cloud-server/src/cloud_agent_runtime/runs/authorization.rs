@@ -3,7 +3,8 @@
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use super::{cloud_group_request_envelope_for_run, ClaimRunRequest};
+use super::envelopes::cloud_group_request_envelope_for_run;
+use super::ClaimRunRequest;
 
 pub async fn requester_can_target_owner(
     pool: &PgPool,
