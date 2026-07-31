@@ -13,7 +13,8 @@ concurrency:
 jobs:
   frontend:
     name: Desktop frontend
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -29,8 +30,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -52,7 +51,8 @@ jobs:
 
   desktop-visual:
     name: Desktop visual regression
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -68,8 +68,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -82,7 +80,8 @@ jobs:
 
   rust:
     name: Rust checks
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -93,8 +92,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - name: Configure runner-local Rust build cache
+        shell: bash
+        run: |
+          mkdir -p "$HOME/Library/Caches/kordi-ci/cargo-target"
+          printf 'CARGO_TARGET_DIR=%s\n' "$HOME/Library/Caches/kordi-ci/cargo-target" >> "$GITHUB_ENV"
 
       - name: Prepare Tauri sidecar placeholders
         run: bash scripts/prepare-tauri-sidecar-placeholders.sh
@@ -122,7 +124,8 @@ jobs:
 
   hygiene:
     name: Repository hygiene
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
