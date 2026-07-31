@@ -8,8 +8,8 @@ use kordi_core::config;
 use kordi_core::settings::Settings;
 use kordi_protocol::{
     APP_PROTOCOL_VERSION, BootstrapSnapshot, FeatureFlags, ForkSessionRequest, ForkSessionResponse,
-    ServerMetadata, SessionDetail, SessionForksPage, SessionSource, SessionStatus, SessionSummary,
-    SessionsPage, SubmitTurnAccepted, SubmitTurnRequest, WorkspaceSummary,
+    ServerMetadata, SessionDetail, SessionForksPage, SessionsPage, SubmitTurnAccepted,
+    SubmitTurnRequest, WorkspaceSummary,
 };
 use kordi_session::store;
 use serde::Deserialize;
@@ -23,12 +23,15 @@ use uuid::Uuid;
 mod bridge_health;
 mod configuration;
 mod protocol_mapping;
+mod session_projection;
 mod turn_execution;
 
 use bridge_health::{BridgesStatusProvider, HttpBridgesStatusProvider, build_services_snapshot};
 use configuration::{resolve_bridges_base_url, resolve_turn_command};
-use protocol_mapping::{
-    client_metadata_from_headers, entry_preview, timeline_entry_from_row, workspace_root_name,
+use protocol_mapping::{client_metadata_from_headers, workspace_root_name};
+use session_projection::{
+    SessionProjectionError, fork_session, load_session_detail, load_session_forks,
+    load_sessions_page,
 };
 use turn_execution::{ProcessTurnExecutor, TurnExecution, TurnExecutor};
 
@@ -43,7 +46,7 @@ use kordi_core::types::{AgentMessage, ContentBlock, SessionEntry};
 #[cfg(test)]
 use kordi_protocol::ServiceState;
 #[cfg(test)]
-use kordi_protocol::{ClientKind, ModelSelector, ThinkingLevel};
+use kordi_protocol::{ClientKind, ModelSelector, SessionSource, SessionStatus, ThinkingLevel};
 #[cfg(test)]
 use turn_execution::protocol_thinking_level;
 
@@ -173,7 +176,8 @@ async fn handle_bootstrap(
 ) -> AppResult<Json<BootstrapSnapshot>> {
     let settings = Settings::load_merged(&state.cwd);
     let active_turns = active_turn_sessions(&state).await;
-    let sessions = load_sessions_page(&state, 1, &active_turns).map_err(AppError::internal)?;
+    let sessions = load_sessions_page(&state.sessions_db_path, &state.cwd, 1, &active_turns)
+        .map_err(AppError::internal)?;
     let services =
         build_services_snapshot(&state.sessions_db_path, state.bridges_status.as_ref()).await;
 
@@ -211,7 +215,8 @@ async fn handle_sessions(
 ) -> AppResult<Json<SessionsPage>> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let active_turns = active_turn_sessions(&state).await;
-    let page = load_sessions_page(&state, limit, &active_turns).map_err(AppError::internal)?;
+    let page = load_sessions_page(&state.sessions_db_path, &state.cwd, limit, &active_turns)
+        .map_err(AppError::internal)?;
     Ok(Json(page))
 }
 
@@ -220,8 +225,13 @@ async fn handle_session_detail(
     AxumPath(session_id): AxumPath<String>,
 ) -> AppResult<Json<SessionDetail>> {
     let active_turns = active_turn_sessions(&state).await;
-    let detail = load_session_detail(&state, &session_id, &active_turns)
-        .map_err(|error| map_session_load_error(error, &session_id))?;
+    let detail = load_session_detail(
+        &state.sessions_db_path,
+        &state.cwd,
+        &session_id,
+        &active_turns,
+    )
+    .map_err(|error| map_session_load_error(error, &session_id))?;
     Ok(Json(detail))
 }
 
@@ -230,8 +240,13 @@ async fn handle_session_forks(
     AxumPath(session_id): AxumPath<String>,
 ) -> AppResult<Json<SessionForksPage>> {
     let active_turns = active_turn_sessions(&state).await;
-    let page = load_session_forks(&state, &session_id, &active_turns)
-        .map_err(|error| map_session_load_error(error, &session_id))?;
+    let page = load_session_forks(
+        &state.sessions_db_path,
+        &state.cwd,
+        &session_id,
+        &active_turns,
+    )
+    .map_err(|error| map_session_load_error(error, &session_id))?;
     Ok(Json(page))
 }
 
@@ -240,7 +255,7 @@ async fn handle_fork_session(
     AxumPath(session_id): AxumPath<String>,
     Json(request): Json<ForkSessionRequest>,
 ) -> AppResult<(StatusCode, Json<ForkSessionResponse>)> {
-    let response = fork_session(&state, &session_id, request)
+    let response = fork_session(&state.sessions_db_path, &state.cwd, &session_id, request)
         .map_err(|error| map_fork_error(error, &session_id))?;
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -352,234 +367,24 @@ async fn handle_submit_turn(
     ))
 }
 
-fn load_sessions_page(
-    state: &AppState,
-    limit: usize,
-    active_turns: &HashSet<String>,
-) -> Result<SessionsPage> {
-    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
-        format!(
-            "opening Kordi session store at {}",
-            state.sessions_db_path.display()
-        )
-    })?;
-    let cwd = state.cwd.display().to_string();
-    let rows = store::list_sessions(&conn, &cwd)
-        .with_context(|| format!("listing sessions for {}", cwd))?;
-
-    let fork_counts = fork_counts_by_parent(&rows);
-    let items = rows
-        .iter()
-        .take(limit)
-        .map(|row| session_summary_from_row(&conn, row, active_turns, &fork_counts))
-        .collect::<Result<Vec<_>>>()?;
-
-    Ok(SessionsPage {
-        items,
-        next_cursor: None,
-    })
-}
-
-fn fork_counts_by_parent(rows: &[store::SessionRow]) -> HashMap<String, u32> {
-    let mut counts = HashMap::new();
-    for row in rows {
-        if let Some(parent_id) = row
-            .parent_session_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            *counts.entry(parent_id.to_string()).or_insert(0) += 1;
+fn map_session_load_error(error: SessionProjectionError, session_id: &str) -> AppError {
+    match error {
+        SessionProjectionError::BadRequest(message) => AppError::bad_request(message),
+        SessionProjectionError::NotFound(message) => {
+            AppError::not_found(format!("Unable to load session {session_id}: {message}"))
         }
+        SessionProjectionError::Internal(error) => AppError::internal(error),
     }
-    counts
 }
 
-fn session_summary_from_row(
-    conn: &rusqlite::Connection,
-    row: &store::SessionRow,
-    active_turns: &HashSet<String>,
-    fork_counts: &HashMap<String, u32>,
-) -> Result<SessionSummary> {
-    let status = if active_turns.contains(&row.session_id) {
-        SessionStatus::Running
-    } else {
-        SessionStatus::Idle
-    };
-    let preview = session_preview(conn, &row.session_id, row.leaf_id.as_deref())?;
-    let title = row
-        .name
-        .clone()
-        .filter(|name| {
-            !kordi_session::naming::is_raw_session_identifier(name, &row.session_id)
-                && !kordi_session::naming::is_explicit_placeholder_session_title(name)
-                && row.title_source != store::SessionTitleSource::Placeholder
-                && (!matches!(
-                    row.title_source,
-                    store::SessionTitleSource::Auto | store::SessionTitleSource::Legacy
-                ) || !kordi_session::naming::is_placeholder_or_weak_legacy_title(
-                    name,
-                    &row.session_id,
-                ))
-        })
-        .or_else(|| {
-            preview
-                .as_deref()
-                .and_then(kordi_session::naming::derive_session_title)
-        })
-        .unwrap_or_else(|| fallback_session_title(row));
-
-    Ok(SessionSummary {
-        session_id: row.session_id.clone(),
-        title,
-        source: SessionSource::Local,
-        status,
-        updated_at: row.updated_at.clone(),
-        cwd: Some(row.cwd.clone()),
-        project_id: None,
-        peer_id: None,
-        parent_session_id: row.parent_session_id.clone(),
-        parent_session_message_id: row.parent_session_message_id.clone(),
-        fork_count: fork_counts.get(&row.session_id).copied().unwrap_or(0),
-        last_message_preview: preview,
-        unread_count: 0,
-    })
-}
-
-fn load_session_detail(
-    state: &AppState,
-    session_id: &str,
-    active_turns: &HashSet<String>,
-) -> Result<SessionDetail> {
-    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
-        format!(
-            "opening Kordi session store at {}",
-            state.sessions_db_path.display()
-        )
-    })?;
-    let cwd = state.cwd.display().to_string();
-    let Some(row) = store::get_session(&conn, session_id)? else {
-        anyhow::bail!("session {session_id} was not found for workspace {cwd}");
-    };
-    if row.cwd != cwd {
-        anyhow::bail!("session {session_id} does not belong to workspace {cwd}");
+fn map_fork_error(error: SessionProjectionError, session_id: &str) -> AppError {
+    match error {
+        SessionProjectionError::BadRequest(message) => AppError::bad_request(message),
+        SessionProjectionError::NotFound(message) => {
+            AppError::not_found(format!("Unable to fork session {session_id}: {message}"))
+        }
+        SessionProjectionError::Internal(error) => AppError::internal(error),
     }
-    let rows = store::list_sessions(&conn, &cwd)?;
-    let fork_counts = fork_counts_by_parent(&rows);
-    let session = session_summary_from_row(&conn, &row, active_turns, &fork_counts)?;
-    let entries = store::get_entries(&conn, session_id)?
-        .iter()
-        .map(timeline_entry_from_row)
-        .collect::<Result<Vec<_>>>()?;
-    Ok(SessionDetail {
-        session,
-        entries,
-        has_more: false,
-        next_cursor: None,
-    })
-}
-
-fn load_session_forks(
-    state: &AppState,
-    session_id: &str,
-    active_turns: &HashSet<String>,
-) -> Result<SessionForksPage> {
-    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
-        format!(
-            "opening Kordi session store at {}",
-            state.sessions_db_path.display()
-        )
-    })?;
-    let cwd = state.cwd.display().to_string();
-    let rows = store::list_sessions(&conn, &cwd)?;
-    if !rows.iter().any(|row| row.session_id == session_id) {
-        anyhow::bail!("session {session_id} was not found for workspace {cwd}");
-    }
-    let fork_counts = fork_counts_by_parent(&rows);
-    let items = rows
-        .iter()
-        .filter(|row| row.parent_session_id.as_deref() == Some(session_id))
-        .map(|row| session_summary_from_row(&conn, row, active_turns, &fork_counts))
-        .collect::<Result<Vec<_>>>()?;
-    Ok(SessionForksPage {
-        items,
-        next_cursor: None,
-    })
-}
-
-fn fork_session(
-    state: &AppState,
-    source_session_id: &str,
-    request: ForkSessionRequest,
-) -> Result<ForkSessionResponse> {
-    let source_entry_id = request.source_entry_id.trim();
-    if source_entry_id.is_empty() {
-        anyhow::bail!("source_entry_id must not be empty");
-    }
-    let conn = store::open_db(&state.sessions_db_path).with_context(|| {
-        format!(
-            "opening Kordi session store at {}",
-            state.sessions_db_path.display()
-        )
-    })?;
-    let cwd = state.cwd.display().to_string();
-    let Some(source_session) = store::get_session(&conn, source_session_id)? else {
-        anyhow::bail!("session {source_session_id} was not found for workspace {cwd}");
-    };
-    if source_session.cwd != cwd {
-        anyhow::bail!("session {source_session_id} does not belong to workspace {cwd}");
-    }
-    let forked = store::fork_session_from_entry(&conn, source_session_id, source_entry_id, &cwd)?;
-    if let Some(title) = request
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        store::set_session_name(&conn, &forked.session_id, Some(title))?;
-    }
-    let rows = store::list_sessions(&conn, &cwd)?;
-    let fork_counts = fork_counts_by_parent(&rows);
-    let fork_row = rows
-        .iter()
-        .find(|row| row.session_id == forked.session_id)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "fork session {} was not found after creation",
-                forked.session_id
-            )
-        })?;
-    let session = session_summary_from_row(&conn, fork_row, &HashSet::new(), &fork_counts)?;
-    Ok(ForkSessionResponse {
-        session,
-        source_session_id: forked.source_session_id,
-        source_entry_id: forked.source_entry_id,
-    })
-}
-
-fn map_session_load_error(error: anyhow::Error, session_id: &str) -> AppError {
-    let message = error.to_string();
-    let normalized = message.to_lowercase();
-    if normalized.contains("was not found") || normalized.contains("does not belong") {
-        return AppError::not_found(format!("Unable to load session {session_id}: {message}"));
-    }
-    AppError::internal(message)
-}
-
-fn map_fork_error(error: anyhow::Error, session_id: &str) -> AppError {
-    let message = error.to_string();
-    let normalized = message.to_lowercase();
-    if normalized.contains("source_entry_id must not be empty") {
-        return AppError::bad_request(message);
-    }
-    if normalized.contains("invalid entry id")
-        || normalized.contains("invalid entry id for forking")
-        || normalized.contains("entry not found")
-        || normalized.contains("was not found")
-    {
-        return AppError::not_found(format!("Unable to fork session {session_id}: {message}"));
-    }
-    AppError::internal(message)
 }
 
 fn validate_turn_request(
@@ -633,31 +438,6 @@ fn validate_turn_request(
     }
 
     Ok(())
-}
-
-fn session_preview(
-    conn: &rusqlite::Connection,
-    session_id: &str,
-    leaf_id: Option<&str>,
-) -> Result<Option<String>> {
-    let Some(leaf_id) = leaf_id else {
-        return Ok(None);
-    };
-    let Some(entry) = store::get_entry(conn, session_id, leaf_id)? else {
-        return Ok(None);
-    };
-    let parsed = store::parse_entry(&entry)?;
-    Ok(entry_preview(&parsed))
-}
-
-fn fallback_session_title(row: &store::SessionRow) -> String {
-    if row.entry_count <= 0 {
-        return "New chat".to_string();
-    }
-    let date = chrono::DateTime::parse_from_rfc3339(&row.created_at)
-        .map(|value| value.format("%b %-d").to_string())
-        .unwrap_or_else(|_| "recently".to_string());
-    format!("Chat with My Kordi · {date}")
 }
 
 async fn active_turn_sessions(state: &AppState) -> HashSet<String> {
