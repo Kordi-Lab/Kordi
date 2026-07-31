@@ -1,3 +1,5 @@
+//! Mapping between persisted session entries and app-server wire DTOs.
+
 use anyhow::Result;
 use axum::http::HeaderMap;
 use kordi_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry};

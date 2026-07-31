@@ -1,3 +1,5 @@
+//! Authentication file discovery, locking, validation, and atomic persistence.
+
 use super::migrations::migrate_loaded_store;
 use super::models::AuthStore;
 use anyhow::Result;

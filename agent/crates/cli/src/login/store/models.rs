@@ -1,3 +1,5 @@
+//! Serialized authentication-store records and secret-redacting debug views.
+
 use crate::login::ProviderAuthMethod;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

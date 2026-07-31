@@ -1,3 +1,5 @@
+//! Environment, executable, port, and workspace command resolution.
+
 use directories::BaseDirs;
 use serde::Deserialize;
 use std::path::PathBuf;

@@ -1,3 +1,5 @@
+//! Idempotent legacy-record conversion and authentication schema normalization.
+
 use super::models::{AUTH_STORE_VERSION, AuthEntry, AuthProfile, AuthStore, ProviderConfigRecord};
 use super::profile_selection::{
     normalized_auth_provider, oauth_identity_from_entry, repair_active_auth_selections,

@@ -1,3 +1,5 @@
+//! Bridge transport status contract and local service-health projection.
+
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use kordi_protocol::{ServiceSnapshot, ServiceState, ServiceStatusSummary};

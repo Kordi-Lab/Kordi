@@ -1,3 +1,5 @@
+//! Axum request validation, handlers, and typed HTTP error mapping.
+
 use anyhow::Context;
 use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};

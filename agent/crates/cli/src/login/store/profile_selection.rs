@@ -1,3 +1,5 @@
+//! Pure profile lookup, selection, normalization, and active-choice repair policy.
+
 use super::models::{AuthEntry, AuthProfile, AuthStore, StoredAuthProfileSummary};
 use crate::login::{ProviderAuthMethod, normalize_provider_for_model_selection};
 

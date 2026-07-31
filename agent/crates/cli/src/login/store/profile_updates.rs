@@ -1,3 +1,5 @@
+//! Timestamped API-key and OAuth profile upsert policy.
+
 use super::models::{AuthEntry, AuthProfile, AuthStore};
 use super::profile_selection::{
     auth_profile_matches, normalized_auth_provider, oauth_identity_from_entry, provider_storage_key,

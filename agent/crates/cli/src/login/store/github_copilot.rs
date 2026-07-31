@@ -1,3 +1,5 @@
+//! GitHub Copilot authority, token, header, and model-cache projection.
+
 use super::models::{AuthEntry, AuthProfile, ProviderConfigRecord};
 use super::persistence::{load_auth, save_auth};
 use super::profile_selection::{auth_entry_authority, stored_auth_profile_for_method};

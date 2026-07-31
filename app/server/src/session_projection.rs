@@ -1,3 +1,5 @@
+//! Typed session catalog, detail, lineage, and fork projections.
+
 use anyhow::Context;
 use kordi_protocol::{
     ForkSessionRequest, ForkSessionResponse, SessionDetail, SessionForksPage, SessionSource,

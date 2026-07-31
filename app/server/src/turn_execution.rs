@@ -1,3 +1,5 @@
+//! Process-backed turn execution and bounded command diagnostics.
+
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use kordi_protocol::{ModelSelector, ThinkingLevel};
