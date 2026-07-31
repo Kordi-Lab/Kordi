@@ -46,6 +46,9 @@ test('generates deterministic beta.6 metadata, keys, checksums, and product URLs
   assert.equal(first.urls.manual, `https://kordi.ai/updates/releases/${VERSION}/${fixture.dmgName}`);
   assert.equal(first.urls.updaterArchive, `https://kordi.ai/updates/releases/${VERSION}/Kordi.app.tar.gz`);
   assert.equal(first.urls.updaterEndpoint, 'https://kordi.ai/updates/desktop/darwin/aarch64/0.0.0');
+  assert.equal(first.legacyUrls.manual, `https://coordinar.io/updates/releases/${VERSION}/${fixture.dmgName}`);
+  assert.equal(first.legacyUrls.updaterArchive, `https://coordinar.io/updates/releases/${VERSION}/Kordi.app.tar.gz`);
+  assert.equal(first.legacyUrls.updaterEndpoint, 'https://coordinar.io/updates/desktop/darwin/aarch64/0.0.0');
   assert.match(first.checksumsBytes.toString(), new RegExp(`${first.artifacts.manual.sha256}  macos/aarch64/${fixture.dmgName}`));
   assert.match(first.checksumsBytes.toString(), new RegExp(`${first.artifacts.updater.sha256}  macos/aarch64/Kordi\\.app\\.tar\\.gz`));
   assert.deepEqual(await readFile(join(fixture.releaseDir, 'release.json')), first.releaseBytes);

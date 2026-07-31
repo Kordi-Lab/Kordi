@@ -9,6 +9,7 @@ import {
   redactPublisherText,
   releaseTreeScanArguments,
   createS3ReleaseStore,
+  createPublicHttpAdapter,
   parsePublisherArguments,
   VERSION,
   PUB_DATE,
@@ -48,6 +49,33 @@ test('publisher error redaction removes credentials, signing material, and inter
   for (const secret of Object.values(env)) assert.doesNotMatch(redacted, new RegExp(secret));
   assert.doesNotMatch(redacted, /minio|svc\.cluster\.local/i);
   assert.match(redacted, /REDACTED/);
+});
+
+test('public release verification accepts only canonical and legacy product origins', async () => {
+  const requested = [];
+  const publicHttp = createPublicHttpAdapter({
+    fetchImpl: async (url, options) => {
+      requested.push([url.toString(), options.method]);
+      return {
+        status: 200,
+        headers: {},
+        async arrayBuffer() {
+          return Uint8Array.from([1, 2, 3]).buffer;
+        },
+      };
+    },
+  });
+
+  await publicHttp.get('https://kordi.ai/updates/releases/version');
+  await publicHttp.head('https://coordinar.io/updates/releases/version');
+  await assert.rejects(
+    publicHttp.get('https://example.com/updates/releases/version'),
+    /must use https:\/\/kordi\.ai or its legacy release origin/i,
+  );
+  assert.deepEqual(requested, [
+    ['https://kordi.ai/updates/releases/version', 'GET'],
+    ['https://coordinar.io/updates/releases/version', 'HEAD'],
+  ]);
 });
 
 test('privacy scanning includes ignored build outputs and every mounted release file', () => {

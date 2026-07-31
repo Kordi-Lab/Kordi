@@ -20,9 +20,13 @@ test('acceptance cleanup conditionally writes an unpublished tombstone and verif
   const store = new MemoryStore(storedReleaseEntries(prepared));
   const priorEtag = (await store.getObject(prepared.pointerKey)).etag;
   store.actions.length = 0;
+  const updaterEndpoints = new Set([
+    prepared.urls.updaterEndpoint,
+    prepared.legacyUrls.updaterEndpoint,
+  ]);
   const publicHttp = {
     async get(url) {
-      assert.equal(url, prepared.urls.updaterEndpoint);
+      assert.equal(updaterEndpoints.has(url), true);
       return { status: 204, headers: {}, body: Buffer.alloc(0) };
     },
     async head() { throw new Error('acceptance cleanup must not read beta stable assets'); },
@@ -80,9 +84,13 @@ test('acceptance cleanup is idempotent for an existing tombstone and still verif
   const prepared = await preparedFixture(fixture, { channel: 'acceptance' });
   const store = new MemoryStore([[prepared.pointerKey, tombstoneBytes('acceptance')]]);
   let endpointReads = 0;
+  const updaterEndpoints = new Set([
+    prepared.urls.updaterEndpoint,
+    prepared.legacyUrls.updaterEndpoint,
+  ]);
   const publicHttp = {
     async get(url) {
-      assert.equal(url, prepared.urls.updaterEndpoint);
+      assert.equal(updaterEndpoints.has(url), true);
       endpointReads += 1;
       return { status: 204, headers: {}, body: Buffer.alloc(0) };
     },
@@ -95,7 +103,7 @@ test('acceptance cleanup is idempotent for an existing tombstone and still verif
   );
 
   assert.deepEqual(result, { channel: 'acceptance', removed: false });
-  assert.equal(endpointReads, 1);
+  assert.equal(endpointReads, 2);
   assert.equal(store.actions.some((action) => action.type === 'put'), false);
 });
 
@@ -143,11 +151,18 @@ test('beta rollback tombstones only the expected current release and verifies sa
   const store = new MemoryStore(storedReleaseEntries(prepared));
   const priorEtag = (await store.getObject(prepared.pointerKey)).etag;
   store.actions.length = 0;
+  const publicUrlSets = [prepared.urls, prepared.legacyUrls];
+  const updaterEndpoints = new Set(publicUrlSets.map((urls) => urls.updaterEndpoint));
+  const stableManualUrls = new Set(publicUrlSets.map((urls) => urls.stableManual));
+  const legacyMetadataUrls = new Set([
+    'https://kordi.ai/updates/releases/version',
+    'https://coordinar.io/updates/releases/version',
+  ]);
   const publicHttp = {
     async get(url) {
-      if (url === prepared.urls.updaterEndpoint) return { status: 204, headers: {}, body: Buffer.alloc(0) };
-      if (url === prepared.urls.stableManual) return { status: 404, headers: {}, body: Buffer.alloc(0) };
-      if (url === 'https://kordi.ai/updates/releases/version') {
+      if (updaterEndpoints.has(url)) return { status: 204, headers: {}, body: Buffer.alloc(0) };
+      if (stableManualUrls.has(url)) return { status: 404, headers: {}, body: Buffer.alloc(0) };
+      if (legacyMetadataUrls.has(url)) {
         return {
           status: 200,
           headers: {},
@@ -160,7 +175,7 @@ test('beta rollback tombstones only the expected current release and verifies sa
       throw new Error(`unexpected GET ${url}`);
     },
     async head(url) {
-      assert.equal(url, prepared.urls.stableManual);
+      assert.equal(stableManualUrls.has(url), true);
       return { status: 404, headers: {}, body: Buffer.alloc(0) };
     },
   };

@@ -70,6 +70,28 @@ test('failed first promotion atomically replaces the pointer with an unpublished
   assert.equal(pointerWrites[1].metadata.ifMatch, pointerWrites[0].resultEtag);
 });
 
+test('a legacy-origin manifest failure rolls back the promoted pointer', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  const store = new MemoryStore();
+
+  await assert.rejects(
+    publishDesktopRelease(optionsFor(fixture), {
+      verifier: passingVerifier(),
+      store,
+      publicHttp: makePublicHttp(prepared, { failLegacyPostPromotion: true }),
+    }),
+    /post-promotion|updater endpoint/i,
+  );
+
+  assert.deepEqual(JSON.parse(store.bytes(prepared.pointerKey)), {
+    schemaVersion: 1,
+    channel: 'beta',
+    unpublished: true,
+  });
+});
+
 test('a pointer read-back failure still rolls back the exact first promotion', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
