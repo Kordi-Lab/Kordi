@@ -8,11 +8,10 @@ mod profile_selection;
 mod profile_updates;
 
 pub use github_copilot::{
-    github_copilot_api_base_url, github_copilot_cached_models, github_copilot_domain,
-    github_copilot_runtime_headers, github_copilot_status, normalize_github_domain,
-    save_github_copilot_config,
+    GithubCopilotStatus, github_copilot_api_base_url, github_copilot_cached_models,
+    github_copilot_domain, github_copilot_runtime_headers, github_copilot_status,
+    normalize_github_domain, save_github_copilot_config,
 };
-pub type GithubCopilotStatus = github_copilot::GithubCopilotStatus;
 #[cfg(test)]
 use models::AUTH_STORE_VERSION;
 #[cfg(test)]
