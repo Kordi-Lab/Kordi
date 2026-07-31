@@ -644,16 +644,22 @@ mod tests {
         commands
     }
 
-    #[test]
-    fn exact_model_match_with_multiple_auth_sources_prompts_for_auth_selection() {
-        let _lock = env_lock().lock().unwrap();
+    fn temp_project() -> tempfile::TempDir {
         let tempdir = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             tempdir.path().join("Cargo.toml"),
             "[package]\nname='demo'\n",
         )
         .expect("cargo toml");
+        tempdir
+    }
+
+    #[test]
+    fn exact_model_match_with_multiple_auth_sources_prompts_for_auth_selection() {
+        let _lock = env_lock().lock().unwrap();
+        let tempdir = temp_project();
         let _home = EnvVarGuard::set_path("HOME", tempdir.path());
+        let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &tempdir.path().join("auth"));
         let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-test-key");
         crate::login::save_oauth_credentials(
             "openai-codex",
@@ -701,13 +707,10 @@ mod tests {
     #[test]
     fn model_auth_menu_distinguishes_multiple_saved_api_keys() {
         let _lock = env_lock().lock().unwrap();
-        let tempdir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(
-            tempdir.path().join("Cargo.toml"),
-            "[package]\nname='demo'\n",
-        )
-        .expect("cargo toml");
+        let tempdir = temp_project();
         let _home = EnvVarGuard::set_path("HOME", tempdir.path());
+        let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &tempdir.path().join("auth"));
+        let _openrouter = EnvVarGuard::set_value("OPENROUTER_API_KEY", "");
 
         crate::login::save_api_key("openrouter", "key-1111".to_string()).expect("save first key");
         crate::login::save_api_key("openrouter", "key-2222".to_string()).expect("save second key");
@@ -777,14 +780,11 @@ mod tests {
     #[test]
     fn ambiguous_exact_model_match_prompts_for_provider_selection() {
         let _lock = env_lock().lock().unwrap();
-        let tempdir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(
-            tempdir.path().join("Cargo.toml"),
-            "[package]\nname='demo'\n",
-        )
-        .expect("cargo toml");
+        let tempdir = temp_project();
         let _home = EnvVarGuard::set_path("HOME", tempdir.path());
+        let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &tempdir.path().join("auth"));
         let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "openai-test-key");
+        let _openrouter = EnvVarGuard::set_value("OPENROUTER_API_KEY", "");
         crate::login::save_api_key("openrouter", "openrouter-saved-key".to_string())
             .expect("save openrouter key");
         crate::login::save_oauth_credentials(
