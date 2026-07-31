@@ -22,7 +22,7 @@ use crate::cloud_agent_runtime::runs::{
     claim_has_shared_cloud_agent_target, claim_run, complete_run, fail_run, lease_canary_run,
     lease_next_run, lookup_run_for_request, mark_run_running, requester_can_target_owner,
     validate_shared_cloud_agent_claim, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
-    RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
+    RunError, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::presence::{account_presence_status, presence_timeout, AccountPresenceStatus};
 use crate::server::ServerState;
@@ -115,6 +115,28 @@ fn runner_unauthorized() -> Response {
     )
 }
 
+fn run_error_response(
+    context: &'static str,
+    persistence_message: &'static str,
+    error: RunError,
+) -> Response {
+    match error {
+        RunError::NotFound => error_response(
+            "agent_run_not_found",
+            "Cloud agent run was not found for this runner.",
+            StatusCode::NOT_FOUND,
+        ),
+        RunError::Persistence(source) => {
+            eprintln!("[cloud_agent_runtime] {context}: {source}");
+            error_response(
+                "server_error",
+                persistence_message,
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
 async fn lease_runner_run(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -136,14 +158,11 @@ async fn lease_runner_run(
     };
     match lease_result {
         Ok(run) => Json(RunnerLeaseResponse { run }).into_response(),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] lease run: {err}");
-            error_response(
-                "server_error",
-                "Could not lease Cloud agent fallback run.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
+        Err(error) => run_error_response(
+            "lease run",
+            "Could not lease Cloud agent fallback run.",
+            error,
+        ),
     }
 }
 
@@ -164,20 +183,8 @@ async fn mark_runner_run_running(
         );
     };
     match mark_run_running(state.db_pool(), &run_id, &runner_id).await {
-        Ok(Some(run)) => Json(RunnerRunEnvelope { run }).into_response(),
-        Ok(None) => error_response(
-            "agent_run_not_found",
-            "Cloud agent run was not found for this runner.",
-            StatusCode::NOT_FOUND,
-        ),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] mark running: {err}");
-            error_response(
-                "server_error",
-                "Could not mark run running.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
+        Ok(run) => Json(RunnerRunEnvelope { run }).into_response(),
+        Err(error) => run_error_response("mark running", "Could not mark run running.", error),
     }
 }
 
@@ -198,20 +205,8 @@ async fn complete_runner_run(
         );
     };
     match complete_run(state.db_pool(), &run_id, &runner_id, &input.response_text).await {
-        Ok(Some(run)) => Json(RunnerRunEnvelope { run }).into_response(),
-        Ok(None) => error_response(
-            "agent_run_not_found",
-            "Cloud agent run was not found for this runner.",
-            StatusCode::NOT_FOUND,
-        ),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] complete run: {err}");
-            error_response(
-                "server_error",
-                "Could not complete run.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
+        Ok(run) => Json(RunnerRunEnvelope { run }).into_response(),
+        Err(error) => run_error_response("complete run", "Could not complete run.", error),
     }
 }
 
@@ -240,20 +235,8 @@ async fn fail_runner_run(
     )
     .await
     {
-        Ok(Some(run)) => Json(RunnerRunEnvelope { run }).into_response(),
-        Ok(None) => error_response(
-            "agent_run_not_found",
-            "Cloud agent run was not found for this runner.",
-            StatusCode::NOT_FOUND,
-        ),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] fail run: {err}");
-            error_response(
-                "server_error",
-                "Could not fail run.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
+        Ok(run) => Json(RunnerRunEnvelope { run }).into_response(),
+        Err(error) => run_error_response("fail run", "Could not fail run.", error),
     }
 }
 
@@ -358,14 +341,11 @@ async fn lookup_cloud_agent_run_for_request(
     }
     match lookup_run_for_request(state.db_pool(), trimmed, &session.account_id).await {
         Ok(response) => Json(response).into_response(),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] lookup run for request: {err}");
-            error_response(
-                "server_error",
-                "Could not load Cloud fallback status.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
+        Err(error) => run_error_response(
+            "lookup run for request",
+            "Could not load Cloud fallback status.",
+            error,
+        ),
     }
 }
 
@@ -478,24 +458,22 @@ async fn claim_cloud_agent_run(
     let shared_agent_target =
         match claim_has_shared_cloud_agent_target(state.db_pool(), &input).await {
             Ok(value) => value,
-            Err(err) => {
-                eprintln!("[cloud_agent_runtime] inspect shared agent target: {err}");
-                return error_response(
-                    "server_error",
+            Err(error) => {
+                return run_error_response(
+                    "inspect shared agent target",
                     "Could not validate Cloud agent run authorization.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error,
                 );
             }
         };
     let shared_agent_allowed = if shared_agent_target {
         match validate_shared_cloud_agent_claim(state.db_pool(), &input).await {
             Ok(value) => value,
-            Err(err) => {
-                eprintln!("[cloud_agent_runtime] validate shared agent target: {err}");
-                return error_response(
-                    "server_error",
+            Err(error) => {
+                return run_error_response(
+                    "validate shared agent target",
                     "Could not validate Cloud agent run authorization.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error,
                 );
             }
         }
@@ -518,12 +496,11 @@ async fn claim_cloud_agent_run(
     .await
     {
         Ok(value) => value,
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] check requester contact: {err}");
-            return error_response(
-                "server_error",
+        Err(error) => {
+            return run_error_response(
+                "check requester contact",
                 "Could not validate Cloud agent run authorization.",
-                StatusCode::INTERNAL_SERVER_ERROR,
+                error,
             );
         }
     };
@@ -565,13 +542,10 @@ async fn claim_cloud_agent_run(
 
     match claim_run(state.db_pool(), &input).await {
         Ok(run) => Json(run).into_response(),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] claim run: {err}");
-            error_response(
-                "server_error",
-                "Could not claim Cloud agent fallback run.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
+        Err(error) => run_error_response(
+            "claim run",
+            "Could not claim Cloud agent fallback run.",
+            error,
+        ),
     }
 }

@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
 
 use super::prompt_history::fallback_prompt_for_claim;
+use super::RunResult;
 
 #[derive(Debug, Deserialize)]
 pub struct ClaimRunRequest {
@@ -58,7 +59,7 @@ pub async fn lookup_run_for_request(
     pool: &PgPool,
     request_message_id: &str,
     account_id: &str,
-) -> Result<CloudAgentRunLookupResponse, sqlx_core::Error> {
+) -> RunResult<CloudAgentRunLookupResponse> {
     let row: Option<(String, String, Option<String>, String, String)> = query_as(
         "SELECT run_id, status, sandbox_id, created_at, updated_at \
          FROM cloud_agent_fallback_runs \
@@ -81,10 +82,7 @@ pub async fn lookup_run_for_request(
     })
 }
 
-pub async fn claim_run(
-    pool: &PgPool,
-    input: &ClaimRunRequest,
-) -> Result<CloudAgentRunResponse, sqlx_core::Error> {
+pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<CloudAgentRunResponse> {
     let existing: Option<(String, String, Option<String>, String, String)> = query_as(
         "SELECT run_id, status, sandbox_id, created_at, updated_at \
          FROM cloud_agent_fallback_runs WHERE idempotency_key = $1",

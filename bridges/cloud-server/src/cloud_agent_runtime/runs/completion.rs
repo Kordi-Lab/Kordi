@@ -20,6 +20,7 @@ use super::envelopes::{
     encode_cloud_agent_response_body, encode_cloud_agent_response_body_with_state,
 };
 use super::leases::{runner_response_from_row, RunnerRunResponse, RunnerRunRow};
+use super::{RunError, RunResult};
 
 #[derive(Debug, Deserialize)]
 pub struct CompleteRunRequest {
@@ -95,10 +96,10 @@ pub async fn complete_run(
     run_id: &str,
     runner_id: &str,
     response_text: &str,
-) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+) -> RunResult<RunnerRunResponse> {
     let trimmed = response_text.trim();
     if trimmed.is_empty() {
-        return Ok(None);
+        return Err(RunError::NotFound);
     }
     let existing: Option<(String, String, String, String, String, Option<String>)> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, response_message_id \
@@ -118,7 +119,7 @@ pub async fn complete_run(
         _message_id,
     )) = existing
     else {
-        return Ok(None);
+        return Err(RunError::NotFound);
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
     let mut direct_response_sync_event: Option<String> = None;
@@ -235,9 +236,9 @@ pub async fn complete_run(
         Some(row) => {
             mark_scheduled_task_run_completed(pool, &request_message_id, &response_message_id, now)
                 .await?;
-            runner_response_from_row(pool, row).await.map(Some)
+            runner_response_from_row(pool, row).await
         }
-        None => Ok(None),
+        None => Err(RunError::NotFound),
     }
 }
 
@@ -247,7 +248,7 @@ pub async fn fail_run(
     runner_id: &str,
     error_code: &str,
     message: &str,
-) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+) -> RunResult<RunnerRunResponse> {
     let existing: Option<(String, String, String, String, Option<String>)> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
          FROM cloud_agent_fallback_runs \
@@ -260,7 +261,7 @@ pub async fn fail_run(
     let Some((owner_account_id, requester_account_id, session_id, request_message_id, _message_id)) =
         existing
     else {
-        return Ok(None);
+        return Err(RunError::NotFound);
     };
     let failure_text = cloud_agent_failure_response_text(error_code);
     let response_body = encode_failed_cloud_agent_response_body(&request_message_id, error_code);
@@ -379,8 +380,8 @@ pub async fn fail_run(
         Some(row) => {
             mark_scheduled_task_run_failed(pool, &request_message_id, error_code, message, now)
                 .await?;
-            runner_response_from_row(pool, row).await.map(Some)
+            runner_response_from_row(pool, row).await
         }
-        None => Ok(None),
+        None => Err(RunError::NotFound),
     }
 }

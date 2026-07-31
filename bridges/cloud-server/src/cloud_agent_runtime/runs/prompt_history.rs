@@ -7,7 +7,7 @@ use super::authorization::shared_cloud_agent_target_for_claim;
 use super::envelopes::{
     cloud_agent_response_text, direct_message_envelope, parse_cloud_group_envelope,
 };
-use super::ClaimRunRequest;
+use super::{ClaimRunRequest, RunResult};
 
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES: i64 = 12;
 
@@ -215,7 +215,7 @@ async fn shared_cloud_agent_prompt_prefix(
 pub(super) async fn fallback_prompt_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
-) -> Result<String, sqlx_core::Error> {
+) -> RunResult<String> {
     let Some((request_created_at,)) = query_as::<_, (String,)>(
         "SELECT created_at FROM cloud_messages WHERE message_id = $1 AND session_id = $2",
     )

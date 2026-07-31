@@ -13,6 +13,7 @@ use super::envelopes::{
     cloud_group_request_envelope_for_run, cloud_group_response_body,
     latest_cloud_group_envelope_for_session, CloudGroupEnvelope,
 };
+use super::RunResult;
 
 pub(super) fn direct_person_peer_account_id(
     session_id: &str,
@@ -72,7 +73,7 @@ pub(super) struct GroupResponse<'a> {
 pub(super) async fn ensure_group_response_messages(
     pool: &PgPool,
     response: GroupResponse<'_>,
-) -> Result<Option<String>, sqlx_core::Error> {
+) -> RunResult<Option<String>> {
     let request_envelope = if is_scheduled_run_request_id(response.request_message_id) {
         latest_cloud_group_envelope_for_session(pool, response.session_id).await?
     } else {
@@ -151,7 +152,7 @@ pub(super) async fn ensure_scheduled_direct_person_response_message(
     owner_account_id: &str,
     session_id: &str,
     response_body: &str,
-) -> Result<Option<String>, sqlx_core::Error> {
+) -> RunResult<Option<String>> {
     let Some(peer_account_id) = direct_person_peer_account_id(session_id, owner_account_id) else {
         return Ok(None);
     };

@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use super::{RunError, RunResult};
+
 #[derive(Debug, Deserialize)]
 pub struct RunnerRunRequest {
     #[serde(rename = "runnerId")]
@@ -83,7 +85,7 @@ pub(super) type RunnerRunRow = (
 pub async fn lease_next_run(
     pool: &PgPool,
     runner_id: &str,
-) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+) -> RunResult<Option<RunnerRunResponse>> {
     let now = Utc::now();
     let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
@@ -113,7 +115,7 @@ pub async fn lease_canary_run(
     pool: &PgPool,
     runner_id: &str,
     canary_run_id: &str,
-) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+) -> RunResult<Option<RunnerRunResponse>> {
     let now = Utc::now();
     let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
@@ -138,7 +140,7 @@ pub async fn mark_run_running(
     pool: &PgPool,
     run_id: &str,
     runner_id: &str,
-) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+) -> RunResult<RunnerRunResponse> {
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'running', updated_at = $3 \
@@ -151,15 +153,15 @@ pub async fn mark_run_running(
     .fetch_optional(pool)
     .await?;
     match row {
-        Some(row) => runner_response_from_row(pool, row).await.map(Some),
-        None => Ok(None),
+        Some(row) => runner_response_from_row(pool, row).await,
+        None => Err(RunError::NotFound),
     }
 }
 
 pub(super) async fn runner_response_from_row(
     pool: &PgPool,
     row: RunnerRunRow,
-) -> Result<RunnerRunResponse, sqlx_core::Error> {
+) -> RunResult<RunnerRunResponse> {
     let provider_auth_available: Option<(String,)> = query_as(
         "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL \

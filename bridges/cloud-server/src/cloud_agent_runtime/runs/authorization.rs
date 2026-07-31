@@ -4,13 +4,13 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::envelopes::cloud_group_request_envelope_for_run;
-use super::ClaimRunRequest;
+use super::{ClaimRunRequest, RunResult};
 
 pub async fn requester_can_target_owner(
     pool: &PgPool,
     requester_account_id: &str,
     owner_account_id: &str,
-) -> Result<bool, sqlx_core::Error> {
+) -> RunResult<bool> {
     if requester_account_id == owner_account_id {
         return Ok(true);
     }
@@ -75,7 +75,7 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
 pub async fn claim_has_shared_cloud_agent_target(
     pool: &PgPool,
     input: &ClaimRunRequest,
-) -> Result<bool, sqlx_core::Error> {
+) -> RunResult<bool> {
     Ok(shared_cloud_agent_target_for_claim(pool, input)
         .await?
         .is_some())
@@ -84,7 +84,7 @@ pub async fn claim_has_shared_cloud_agent_target(
 pub async fn validate_shared_cloud_agent_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
-) -> Result<bool, sqlx_core::Error> {
+) -> RunResult<bool> {
     let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
         return Ok(true);
     };
