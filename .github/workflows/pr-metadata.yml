@@ -17,7 +17,8 @@ permissions:
 jobs:
   linked-issue:
     name: Require linked issue
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    timeout-minutes: 10
 
     steps:
       - name: Check PR body for a related issue
