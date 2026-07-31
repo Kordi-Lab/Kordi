@@ -99,6 +99,8 @@ test('product origin serves desktop compatibility routes without redirects', asy
   assert.match(portForwardService, /service\/kordi-cloud-server 17081:17081/);
   assert.match(portForwardService, /--address=127\.0\.0\.1/);
   assert.match(portForwardService, /Restart=always/);
+  assert.match(portForwardService, /LimitNOFILE=65536/);
+  assert.doesNotMatch(portForwardService, /LimitNOFILE=1024/);
 
   assert.match(deploy, /PUBLIC_ORIGIN=.*https:\/\/kordi\.ai/);
   assert.match(deploy, /LEGACY_ORIGIN=.*https:\/\/coordinar\.io/);

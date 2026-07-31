@@ -33,7 +33,10 @@ AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 MemoryMax=128M
 TasksMax=64
-LimitNOFILE=1024
+# Desktop WebSockets and updater/API requests share this loopback bridge. Keep
+# enough descriptors available for concurrent long-lived connections so the
+# bridge cannot wedge while Caddy and the Kubernetes workloads remain healthy.
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
