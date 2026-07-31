@@ -1,6 +1,6 @@
 //! Bounded workspace reads, contract validation, and content fingerprinting.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -148,201 +148,219 @@ pub(super) fn workspace_fingerprint(workspace: &Path) -> Result<(String, Vec<Pat
     Ok((format!("{:x}", digest.finalize()), files))
 }
 
-pub(super) fn validate_workspace(
-    workspace: &Path,
-) -> (
-    Option<DesktopAgentBuilderDraft>,
-    DesktopAgentBuilderValidation,
-) {
-    let mut errors = Vec::new();
-    let mut files = Vec::new();
-    let (fingerprint, workspace_files) = workspace_fingerprint(workspace).unwrap_or_else(|error| {
-        errors.push(error);
-        (String::new(), Vec::new())
-    });
-    let mut expected_files =
-        BTreeSet::from([PathBuf::from(AGENT_FILE), PathBuf::from(PROMPT_FILE)]);
-    let mut declared_skill_roots = BTreeSet::new();
+struct WorkspaceValidationState {
+    errors: Vec<String>,
+    files: Vec<DesktopAgentBuilderFileStatus>,
+    expected_files: BTreeSet<PathBuf>,
+    declared_skill_roots: BTreeSet<PathBuf>,
+    draft_skills: Vec<DesktopAgentBuilderSkillDraft>,
+}
 
-    let agent_text = read_limited_inside(workspace, Path::new(AGENT_FILE), MAX_AGENT_BYTES);
-    let mut agent_file = None;
-    match agent_text {
+impl WorkspaceValidationState {
+    fn new() -> Self {
+        Self {
+            errors: Vec::new(),
+            files: Vec::new(),
+            expected_files: BTreeSet::from([PathBuf::from(AGENT_FILE), PathBuf::from(PROMPT_FILE)]),
+            declared_skill_roots: BTreeSet::new(),
+            draft_skills: Vec::new(),
+        }
+    }
+
+    fn record_file(&mut self, path: String, kind: &str, valid: bool) {
+        self.files.push(DesktopAgentBuilderFileStatus {
+            path,
+            kind: kind.to_string(),
+            valid,
+        });
+    }
+}
+
+fn load_agent_file(
+    workspace: &Path,
+    state: &mut WorkspaceValidationState,
+) -> Option<DesktopAgentBuilderAgentFile> {
+    match read_limited_inside(workspace, Path::new(AGENT_FILE), MAX_AGENT_BYTES) {
         Ok(text) => match serde_json::from_str::<DesktopAgentBuilderAgentFile>(&text) {
             Ok(parsed) => {
-                files.push(DesktopAgentBuilderFileStatus {
-                    path: AGENT_FILE.to_string(),
-                    kind: "agent".to_string(),
-                    valid: true,
-                });
-                agent_file = Some(parsed);
+                state.record_file(AGENT_FILE.to_string(), "agent", true);
+                Some(parsed)
             }
             Err(error) => {
-                errors.push(format!("agent.json is invalid: {error}"));
-                files.push(DesktopAgentBuilderFileStatus {
-                    path: AGENT_FILE.to_string(),
-                    kind: "agent".to_string(),
-                    valid: false,
-                });
+                state.errors.push(format!("agent.json is invalid: {error}"));
+                state.record_file(AGENT_FILE.to_string(), "agent", false);
+                None
             }
         },
         Err(error) => {
-            errors.push(error);
-            files.push(DesktopAgentBuilderFileStatus {
-                path: AGENT_FILE.to_string(),
-                kind: "agent".to_string(),
-                valid: false,
-            });
+            state.errors.push(error);
+            state.record_file(AGENT_FILE.to_string(), "agent", false);
+            None
         }
     }
+}
 
-    let prompt = match read_limited_inside(workspace, Path::new(PROMPT_FILE), MAX_PROMPT_BYTES) {
+fn load_system_prompt(workspace: &Path, state: &mut WorkspaceValidationState) -> Option<String> {
+    match read_limited_inside(workspace, Path::new(PROMPT_FILE), MAX_PROMPT_BYTES) {
         Ok(value) if !value.trim().is_empty() => {
-            files.push(DesktopAgentBuilderFileStatus {
-                path: PROMPT_FILE.to_string(),
-                kind: "prompt".to_string(),
-                valid: true,
-            });
+            state.record_file(PROMPT_FILE.to_string(), "prompt", true);
             Some(value.trim().to_string())
         }
         Ok(_) => {
-            errors.push("SYSTEM_PROMPT.md cannot be empty".to_string());
-            files.push(DesktopAgentBuilderFileStatus {
-                path: PROMPT_FILE.to_string(),
-                kind: "prompt".to_string(),
-                valid: false,
-            });
+            state
+                .errors
+                .push("SYSTEM_PROMPT.md cannot be empty".to_string());
+            state.record_file(PROMPT_FILE.to_string(), "prompt", false);
             None
         }
         Err(error) => {
-            errors.push(error);
-            files.push(DesktopAgentBuilderFileStatus {
-                path: PROMPT_FILE.to_string(),
-                kind: "prompt".to_string(),
-                valid: false,
-            });
+            state.errors.push(error);
+            state.record_file(PROMPT_FILE.to_string(), "prompt", false);
             None
         }
-    };
+    }
+}
 
-    let mut draft_skills = Vec::new();
-    if let Some(agent) = agent_file.as_ref() {
-        let agent_error_count = errors.len();
-        if agent.name.trim().is_empty() {
-            errors.push("agent.json must include a name".to_string());
-        }
-        if agent.role.trim().is_empty() {
-            errors.push("agent.json must include a role".to_string());
-        }
-        if agent.skills.len() > MAX_SKILLS {
+fn validate_named_values(kind: &str, values: &[String], errors: &mut Vec<String>) {
+    let mut seen_values = BTreeSet::new();
+    for value in values {
+        let normalized = value.trim();
+        if normalized.is_empty() || normalized.len() > 96 {
+            errors.push(format!("agent.json contains an invalid {kind} name"));
+        } else if !seen_values.insert(normalized.to_ascii_lowercase()) {
             errors.push(format!(
-                "agent.json may reference at most {MAX_SKILLS} skills"
+                "agent.json contains duplicate {kind} '{normalized}'"
             ));
-        }
-        if !matches!(agent.access.trim(), "only-me" | "participant-conversations") {
-            errors.push(
-                "agent.json access must be 'only-me' or 'participant-conversations'".to_string(),
-            );
-        }
-        if agent.tools.len() > MAX_TOOLS {
-            errors.push(format!("agent.json may include at most {MAX_TOOLS} tools"));
-        }
-        if agent.plugins.len() > MAX_PLUGINS {
-            errors.push(format!(
-                "agent.json may include at most {MAX_PLUGINS} plugins"
-            ));
-        }
-        for (kind, values) in [("tool", &agent.tools), ("plugin", &agent.plugins)] {
-            let mut seen_values = BTreeSet::new();
-            for value in values {
-                let normalized = value.trim();
-                if normalized.is_empty() || normalized.len() > 96 {
-                    errors.push(format!("agent.json contains an invalid {kind} name"));
-                } else if !seen_values.insert(normalized.to_ascii_lowercase()) {
-                    errors.push(format!(
-                        "agent.json contains duplicate {kind} '{normalized}'"
-                    ));
-                }
-            }
-        }
-        let mut seen = BTreeSet::new();
-        for skill in agent.skills.iter().take(MAX_SKILLS) {
-            let normalized_name = clean_slug(&skill.name);
-            if normalized_name.is_empty() || !seen.insert(normalized_name.clone()) {
-                errors.push(format!(
-                    "Skill '{}' has an invalid or duplicate name",
-                    skill.name
-                ));
-                continue;
-            }
-            let relative = match skill_path(skill) {
-                Ok(value) => value,
-                Err(error) => {
-                    errors.push(error);
-                    continue;
-                }
-            };
-            let display_path = relative.to_string_lossy().to_string();
-            expected_files.insert(relative.clone());
-            if let Some(parent) = relative.parent() {
-                declared_skill_roots.insert(parent.to_path_buf());
-            }
-            match read_limited_inside(workspace, &relative, MAX_SKILL_BYTES) {
-                Ok(content) => {
-                    let header_name = frontmatter_name(&content);
-                    let header_description = frontmatter_field(&content, "description")
-                        .filter(|value| !value.trim().is_empty());
-                    let valid_name = header_name.as_deref() == Some(normalized_name.as_str());
-                    let valid_description =
-                        !skill.description.trim().is_empty() && header_description.is_some();
-                    let valid = valid_name && valid_description;
-                    if !valid_name {
-                        errors.push(format!(
-                            "{display_path} must have YAML frontmatter name: {normalized_name}"
-                        ));
-                    }
-                    if !valid_description {
-                        errors.push(format!(
-                            "{display_path} and its agent.json entry must include a description"
-                        ));
-                    }
-                    files.push(DesktopAgentBuilderFileStatus {
-                        path: display_path.clone(),
-                        kind: "skill".to_string(),
-                        valid,
-                    });
-                    draft_skills.push(DesktopAgentBuilderSkillDraft {
-                        name: normalized_name,
-                        description: skill.description.trim().to_string(),
-                        path: display_path,
-                        content,
-                    });
-                }
-                Err(error) => {
-                    errors.push(error);
-                    files.push(DesktopAgentBuilderFileStatus {
-                        path: display_path,
-                        kind: "skill".to_string(),
-                        valid: false,
-                    });
-                }
-            }
-        }
-        if errors.len() > agent_error_count {
-            if let Some(file) = files.iter_mut().find(|file| file.path == AGENT_FILE) {
-                file.valid = false;
-            }
         }
     }
+}
 
-    let mut skill_bundle_file_counts = declared_skill_roots
-        .iter()
-        .map(|root| (root.clone(), 1_usize))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    for relative in workspace_files {
-        if expected_files.contains(&relative) {
+fn validate_agent_metadata(agent: &DesktopAgentBuilderAgentFile, errors: &mut Vec<String>) {
+    if agent.name.trim().is_empty() {
+        errors.push("agent.json must include a name".to_string());
+    }
+    if agent.role.trim().is_empty() {
+        errors.push("agent.json must include a role".to_string());
+    }
+    if agent.skills.len() > MAX_SKILLS {
+        errors.push(format!(
+            "agent.json may reference at most {MAX_SKILLS} skills"
+        ));
+    }
+    if !matches!(agent.access.trim(), "only-me" | "participant-conversations") {
+        errors
+            .push("agent.json access must be 'only-me' or 'participant-conversations'".to_string());
+    }
+    if agent.tools.len() > MAX_TOOLS {
+        errors.push(format!("agent.json may include at most {MAX_TOOLS} tools"));
+    }
+    if agent.plugins.len() > MAX_PLUGINS {
+        errors.push(format!(
+            "agent.json may include at most {MAX_PLUGINS} plugins"
+        ));
+    }
+    validate_named_values("tool", &agent.tools, errors);
+    validate_named_values("plugin", &agent.plugins, errors);
+}
+
+fn validate_declared_skill(
+    workspace: &Path,
+    skill: &DesktopAgentBuilderSkillFile,
+    normalized_name: String,
+    state: &mut WorkspaceValidationState,
+) {
+    let relative = match skill_path(skill) {
+        Ok(value) => value,
+        Err(error) => {
+            state.errors.push(error);
+            return;
+        }
+    };
+    let display_path = relative.to_string_lossy().to_string();
+    state.expected_files.insert(relative.clone());
+    if let Some(parent) = relative.parent() {
+        state.declared_skill_roots.insert(parent.to_path_buf());
+    }
+
+    match read_limited_inside(workspace, &relative, MAX_SKILL_BYTES) {
+        Ok(content) => {
+            let header_name = frontmatter_name(&content);
+            let header_description =
+                frontmatter_field(&content, "description").filter(|value| !value.trim().is_empty());
+            let valid_name = header_name.as_deref() == Some(normalized_name.as_str());
+            let valid_description =
+                !skill.description.trim().is_empty() && header_description.is_some();
+            if !valid_name {
+                state.errors.push(format!(
+                    "{display_path} must have YAML frontmatter name: {normalized_name}"
+                ));
+            }
+            if !valid_description {
+                state.errors.push(format!(
+                    "{display_path} and its agent.json entry must include a description"
+                ));
+            }
+            state.record_file(
+                display_path.clone(),
+                "skill",
+                valid_name && valid_description,
+            );
+            state.draft_skills.push(DesktopAgentBuilderSkillDraft {
+                name: normalized_name,
+                description: skill.description.trim().to_string(),
+                path: display_path,
+                content,
+            });
+        }
+        Err(error) => {
+            state.errors.push(error);
+            state.record_file(display_path, "skill", false);
+        }
+    }
+}
+
+fn validate_agent_contract(
+    workspace: &Path,
+    agent: &DesktopAgentBuilderAgentFile,
+    state: &mut WorkspaceValidationState,
+) {
+    let agent_error_count = state.errors.len();
+    validate_agent_metadata(agent, &mut state.errors);
+    let mut seen = BTreeSet::new();
+    for skill in agent.skills.iter().take(MAX_SKILLS) {
+        let normalized_name = clean_slug(&skill.name);
+        if normalized_name.is_empty() || !seen.insert(normalized_name.clone()) {
+            state.errors.push(format!(
+                "Skill '{}' has an invalid or duplicate name",
+                skill.name
+            ));
             continue;
         }
-        if let Some(skill_root) = declared_skill_roots
+        validate_declared_skill(workspace, skill, normalized_name, state);
+    }
+    if state.errors.len() > agent_error_count {
+        if let Some(file) = state.files.iter_mut().find(|file| file.path == AGENT_FILE) {
+            file.valid = false;
+        }
+    }
+}
+
+fn validate_remaining_workspace_files(
+    workspace: &Path,
+    workspace_files: Vec<PathBuf>,
+    state: &mut WorkspaceValidationState,
+) {
+    let mut skill_bundle_file_counts = state
+        .declared_skill_roots
+        .iter()
+        .map(|root| (root.clone(), 1_usize))
+        .collect::<BTreeMap<_, _>>();
+    for relative in workspace_files {
+        if state.expected_files.contains(&relative) {
+            continue;
+        }
+        if let Some(skill_root) = state
+            .declared_skill_roots
             .iter()
             .find(|skill_root| relative.starts_with(skill_root.as_path()))
         {
@@ -359,70 +377,90 @@ pub(super) fn validate_workspace(
                 && *count <= MAX_SKILL_BUNDLE_FILES
                 && size <= MAX_SKILL_SUPPORT_FILE_BYTES;
             if !within_limits {
-                errors.push(format!(
+                state.errors.push(format!(
                     "Skill support file is invalid or exceeds bundle limits: {}",
                     relative.display()
                 ));
             }
-            files.push(DesktopAgentBuilderFileStatus {
-                path: relative.to_string_lossy().to_string(),
-                kind: "skill-support".to_string(),
-                valid: within_limits,
-            });
+            state.record_file(
+                relative.to_string_lossy().to_string(),
+                "skill-support",
+                within_limits,
+            );
             continue;
         }
-        errors.push(format!(
+        state.errors.push(format!(
             "Unsupported file in Kordi Factory draft: {}",
             relative.display()
         ));
-        files.push(DesktopAgentBuilderFileStatus {
-            path: relative.to_string_lossy().to_string(),
-            kind: "unsupported".to_string(),
-            valid: false,
-        });
+        state.record_file(relative.to_string_lossy().to_string(), "unsupported", false);
     }
+}
 
-    let draft = match (agent_file, prompt) {
-        (Some(agent), Some(system_prompt)) => Some(DesktopAgentBuilderDraft {
-            name: agent.name.trim().to_string(),
-            role: agent.role.trim().to_string(),
-            description: agent.description.trim().to_string(),
-            system_prompt,
-            source_summary: agent.source_summary.trim().to_string(),
-            boundaries: agent
-                .boundaries
-                .into_iter()
-                .map(|entry| entry.trim().to_string())
-                .filter(|entry| !entry.is_empty())
-                .collect(),
-            access: agent.access.trim().to_string(),
-            provider: agent.model.provider,
-            model: agent.model.model,
-            thinking: agent.model.thinking,
-            tools: agent
-                .tools
-                .into_iter()
-                .map(|entry| entry.trim().to_string())
-                .filter(|entry| !entry.is_empty())
-                .collect(),
-            plugins: agent
-                .plugins
-                .into_iter()
-                .map(|entry| entry.trim().to_string())
-                .filter(|entry| !entry.is_empty())
-                .collect(),
-            skills: draft_skills,
-        }),
-        _ => None,
-    };
+fn build_draft(
+    agent_file: Option<DesktopAgentBuilderAgentFile>,
+    system_prompt: Option<String>,
+    skills: Vec<DesktopAgentBuilderSkillDraft>,
+) -> Option<DesktopAgentBuilderDraft> {
+    let (agent, system_prompt) = agent_file.zip(system_prompt)?;
+    Some(DesktopAgentBuilderDraft {
+        name: agent.name.trim().to_string(),
+        role: agent.role.trim().to_string(),
+        description: agent.description.trim().to_string(),
+        system_prompt,
+        source_summary: agent.source_summary.trim().to_string(),
+        boundaries: agent
+            .boundaries
+            .into_iter()
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty())
+            .collect(),
+        access: agent.access.trim().to_string(),
+        provider: agent.model.provider,
+        model: agent.model.model,
+        thinking: agent.model.thinking,
+        tools: agent
+            .tools
+            .into_iter()
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty())
+            .collect(),
+        plugins: agent
+            .plugins
+            .into_iter()
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty())
+            .collect(),
+        skills,
+    })
+}
+
+pub(super) fn validate_workspace(
+    workspace: &Path,
+) -> (
+    Option<DesktopAgentBuilderDraft>,
+    DesktopAgentBuilderValidation,
+) {
+    let mut state = WorkspaceValidationState::new();
+    let (fingerprint, workspace_files) = workspace_fingerprint(workspace).unwrap_or_else(|error| {
+        state.errors.push(error);
+        (String::new(), Vec::new())
+    });
+    let agent_file = load_agent_file(workspace, &mut state);
+    let system_prompt = load_system_prompt(workspace, &mut state);
+    if let Some(agent) = agent_file.as_ref() {
+        validate_agent_contract(workspace, agent, &mut state);
+    }
+    validate_remaining_workspace_files(workspace, workspace_files, &mut state);
+    let draft = build_draft(agent_file, system_prompt, state.draft_skills);
 
     (
         draft,
         DesktopAgentBuilderValidation {
-            valid: errors.is_empty(),
+            valid: state.errors.is_empty(),
             fingerprint,
-            errors,
-            files,
+            errors: state.errors,
+            files: state.files,
         },
     )
 }
