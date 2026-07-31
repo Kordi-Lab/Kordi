@@ -61,15 +61,6 @@ export function SettingsPage({
   setThemeMode,
 }: SettingsPageProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
-  const sectionGuide =
-    activeSettingsSection.id === 'auth'
-      ? 'Start with one provider. Save more later only if you want fallbacks, different billing, or separate accounts.'
-      : activeSettingsSection.id === 'configuration'
-        ? 'These defaults apply before per-chat or per-project overrides, so choose the safest common starting point.'
-        : activeSettingsSection.id === 'appearance'
-          ? 'If the shell feels too heavy or too dense, start here before changing anything else.'
-          : null;
-
   return (
     <div className="app-settings-page h-full" style={{ WebkitAppRegion: 'no-drag' as const }}>
       <div
@@ -113,16 +104,8 @@ export function SettingsPage({
             style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
           >
             {activeSettingsSection.id !== 'auth' && (
-              <div className="mb-5 space-y-3">
-                <div>
-                  <div className="text-[18px] font-semibold tracking-tight text-white">{activeSettingsSection.title}</div>
-                  <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">{activeSettingsSection.description}</div>
-                </div>
-                {sectionGuide ? (
-                  <div className="app-surface-muted rounded-[18px] px-4 py-3 text-[12px] leading-5 text-slate-300">
-                    {sectionGuide}
-                  </div>
-                ) : null}
+              <div className="mb-5">
+                <div className="text-[18px] font-semibold tracking-tight text-white">{activeSettingsSection.title}</div>
               </div>
             )}
             {activeSettingsSection.id === 'auth' ? (
@@ -156,9 +139,6 @@ export function SettingsPage({
                   <div className="mb-3.5 flex items-start justify-between gap-3">
                     <div>
                       <div className="text-[15px] font-medium text-white">Profile avatar</div>
-                      <div className="mt-1 max-w-2xl text-[13px] leading-5 text-slate-400">
-                        Upload a custom image for your local human identity. If you reset it, Kordi falls back to the deterministic pixel avatar.
-                      </div>
                     </div>
                   </div>
                   <EditableIdentityAvatar
@@ -181,7 +161,7 @@ export function SettingsPage({
                     >
                       <div>
                         <div className="text-[13px] font-medium text-white">{item.label}</div>
-                        <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div>
+                        {item.hint ? <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div> : null}
                       </div>
                       <div className="flex justify-end">
                         <SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
@@ -202,7 +182,7 @@ export function SettingsPage({
                   >
                     <div>
                       <div className="text-[13px] font-medium text-white">{item.label}</div>
-                      <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div>
+                      {item.hint ? <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div> : null}
                     </div>
                     <div className="flex justify-end">
                       <SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />

@@ -25,7 +25,7 @@ export function SidebarProjectsPanel({
         <div>
           <div className="text-[15px] font-semibold text-white">Projects</div>
           <div className="mt-0.5 text-[11px] text-slate-400">
-            {projects.runtimeProjects.length} workspaces with shared context and sessions
+            {projects.runtimeProjects.length} total
           </div>
         </div>
         <Button
@@ -178,9 +178,6 @@ export function SidebarContactsPanel({
           </button>
         ))}
       </div>
-      <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-slate-400">
-        Compact messenger-style contacts. Select a row to view details.
-      </div>
     </div>
   );
 }
@@ -259,9 +256,6 @@ export function SidebarSettingsPanel() {
           >
             <div>
               <div className="text-[13px] font-medium">{section}</div>
-              <div className="text-[11px] text-slate-400">
-                Open {section.toLowerCase()} settings
-              </div>
             </div>
             <ChevronDown className="h-4 w-4 text-slate-400" />
           </button>

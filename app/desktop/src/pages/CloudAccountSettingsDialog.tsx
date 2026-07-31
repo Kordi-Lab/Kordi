@@ -317,7 +317,7 @@ export function CloudAccountSettingsDialog({
         >
           <div>
             <div className="text-[13px] font-medium text-white">{item.label}</div>
-            <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div>
+            {item.hint ? <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div> : null}
           </div>
           <div className="flex justify-end">
             <SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
@@ -371,11 +371,6 @@ export function CloudAccountSettingsDialog({
               <div className="text-[18px] font-semibold tracking-tight text-white">
                 {activeTab === 'profile' ? 'Profile' : activeTab === 'auth' ? 'Authentication' : 'Theme'}
               </div>
-              {activeTab !== 'profile' ? (
-                <div className="mt-1 max-w-[42rem] text-[12px] leading-5 text-slate-400">
-                  {activeTab === 'auth' ? 'Connect model providers and manage saved access.' : 'Adjust the interface palette.'}
-                </div>
-              ) : null}
             </div>
             <button type="button" className="app-transient-flat-action grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:text-white" onClick={onClose} aria-label="Close account settings">
               <X className="h-4 w-4" />

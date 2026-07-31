@@ -150,7 +150,7 @@ test('ChatCreateDialog add contact mode shows visible non-contact Bridge users',
   assert.match(markup, /Request/);
 });
 
-test('ChatCreateDialog group picker requires at least 2 people and excludes agents', () => {
+test('ChatCreateDialog group picker requires at least 2 contacts and excludes agents', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     initialMode: 'group',
@@ -166,7 +166,7 @@ test('ChatCreateDialog group picker requires at least 2 people and excludes agen
     onCreateGroup: () => {},
   }));
 
-  assert.match(markup, /Select at least 2 people/);
+  assert.match(markup, /Select at least 2 contacts/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Bob/);
   assert.doesNotMatch(markup, /Helper Kordi/);

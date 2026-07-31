@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import {
   AppDialog,
   AppDialogActions,
-  AppDialogDescription,
   AppDialogTitle,
   type AppDialogAnchor,
 } from '@/components/ui/dialog';
@@ -121,15 +120,11 @@ export function RenameSessionDialog({ target, onCancel, onConfirm }: RenameSessi
   return (
     <AppDialog
       titleId="rename-session-dialog-title"
-      descriptionId="rename-session-dialog-description"
       onDismiss={onCancel}
       presentation="popover"
       anchorRect={target.anchorRect}
     >
       <AppDialogTitle id="rename-session-dialog-title" className="text-[13px] leading-5">Rename session</AppDialogTitle>
-      <AppDialogDescription id="rename-session-dialog-description" className="mt-1 text-[11px] leading-4">
-        Choose a new title for <span className="font-medium text-[color:var(--utility-foreground)]">{target.sessionName}</span>.
-      </AppDialogDescription>
       <input
         autoFocus
         value={draft}
@@ -241,14 +236,10 @@ export function MoveSessionDialog({
   return (
     <AppDialog
       titleId="move-session-dialog-title"
-      descriptionId="move-session-dialog-description"
       onDismiss={onCancel}
       className="max-w-lg"
     >
       <AppDialogTitle id="move-session-dialog-title">Move to project</AppDialogTitle>
-      <AppDialogDescription id="move-session-dialog-description">
-        Move <span className="font-medium text-[color:var(--utility-foreground)]">{target.sessionName}</span> out of Chats and into an explicit project folder.
-      </AppDialogDescription>
 
       <div className="mt-4">
         <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Existing projects</div>
@@ -343,16 +334,12 @@ export function ProjectCreateDialog({
   return (
     <AppDialog
       titleId="create-project-dialog-title"
-      descriptionId="create-project-dialog-description"
       onDismiss={onCancel}
       dismissDisabled={isSubmitting}
       busy={isSubmitting}
       className="max-w-xl"
     >
       <AppDialogTitle id="create-project-dialog-title">Create project</AppDialogTitle>
-      <AppDialogDescription id="create-project-dialog-description">
-        Projects group sessions by a shared local folder. Every session under a project uses the same project context and settings.
-      </AppDialogDescription>
 
       <div className="mt-4 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--app-control-bg)] p-1">
         <button

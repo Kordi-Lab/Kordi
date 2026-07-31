@@ -112,7 +112,7 @@ export function AgentStudioRail({
     <aside className="app-agent-studio-rail">
       <header className="app-agent-studio-rail-head">
         <div className="flex items-start justify-between gap-3">
-          <div><h1>Factory</h1><p>Build agents, skills, tools, and workflows</p></div>
+          <h1>Factory</h1>
           <details
             ref={createMenuRef}
             className="app-factory-create-menu"

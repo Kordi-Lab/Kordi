@@ -12,13 +12,13 @@ test('provider gate is a focused single-column launch surface', () => {
   const authPage = readAuthSource('AuthPage.tsx');
 
   assert.match(authPage, /Connect a provider/);
-  assert.match(authPage, /Use cloud APIs or local models to start chatting\./);
+  assert.doesNotMatch(authPage, /Use cloud APIs or local models to start chatting\./);
   assert.doesNotMatch(authPage, /Connect one provider before your first chat\./);
   assert.doesNotMatch(authPage, /grid-cols-\[minmax\(320px,0\.86fr\)_minmax\(460px,1\.08fr\)\]/);
   assert.doesNotMatch(authPage, /Shared sign-in store/);
   assert.doesNotMatch(authPage, /Shared authentication enabled/);
   assert.doesNotMatch(authPage, /Details stay in Settings → Authentication\./);
-  assert.match(authPage, /You can find this setting anytime in Settings → Authentication\./);
+  assert.doesNotMatch(authPage, /You can find this setting anytime in Settings → Authentication\./);
 });
 
 test('gate provider picker uses cards without forced uppercase microcopy', () => {

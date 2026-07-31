@@ -222,9 +222,6 @@ export function AuthPage({
                   <h1 className="text-[42px] font-semibold leading-[0.98] tracking-[-0.045em] text-white">
                     Connect a provider
                   </h1>
-                  <p className="mt-3 max-w-[34ch] text-[15px] leading-6 text-slate-300">
-                    Use cloud APIs or local models to start chatting.
-                  </p>
                 </div>
 
                 {onDismissGate ? (
@@ -239,10 +236,6 @@ export function AuthPage({
               </div>
 
               <div className="min-h-0">{content}</div>
-
-              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/8 pt-4 text-[12px] text-slate-400">
-                <div>You can find this setting anytime in Settings → Authentication.</div>
-              </div>
             </div>
           </div>
         )
@@ -251,9 +244,6 @@ export function AuthPage({
           {showSettingsHeader && !showDetailPage ? (
             <div className="mb-5 shrink-0">
               <div className="text-[18px] font-semibold tracking-tight text-white">Authentication</div>
-              <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">
-                Connect model providers, manage saved accounts and optional keys, and switch which access method is active.
-              </div>
             </div>
           ) : null}
 

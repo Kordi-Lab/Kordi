@@ -66,13 +66,6 @@
   letter-spacing: -0.035em;
 }
 
-.app-agent-studio-rail-head p {
-  margin: 4px 0 0;
-  color: var(--utility-muted-text);
-  font-size: var(--agent-studio-type-secondary);
-  line-height: 1.45;
-}
-
 .app-agent-studio-rail-add,
 .app-agent-studio-icon-button {
   display: inline-flex;

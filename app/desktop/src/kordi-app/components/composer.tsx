@@ -461,7 +461,6 @@ export function CompactComposerModelMenu({
       <div className="app-compact-model-menu-header mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold leading-5">Agent model</div>
-          <div className="app-transient-muted mt-px text-[10.5px] leading-4">Choose the provider, model, and thinking level.</div>
         </div>
         <button
           type="button"
