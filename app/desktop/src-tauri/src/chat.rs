@@ -5,9 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::State;
 
+#[cfg(test)]
+use kordi_cli::desktop_runtime::DesktopChatSessionSummary;
 use kordi_cli::desktop_runtime::{
-    DesktopChatContextMessage, DesktopChatModelOption, DesktopChatProjectGroup,
-    DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopRuntimeSession,
+    DesktopChatContextMessage, DesktopChatSessionDetail, DesktopRuntimeSession,
     DesktopVisibleTaskRecord,
 };
 
@@ -22,6 +23,7 @@ mod models;
 pub(crate) mod session_actions;
 pub(crate) mod session_observation;
 pub(crate) mod session_preparation;
+mod transient_drafts;
 pub(crate) mod turns;
 
 pub(crate) use attachments::allow_attachment_asset_scope;
@@ -91,6 +93,10 @@ use session_actions::{
     resolve_session_action_fallback_target,
 };
 use session_preparation::prepare_desktop_session_for_send;
+use transient_drafts::{
+    build_transient_draft_chat_state, ensure_transient_draft_runtime, filter_blank_draft_projects,
+    is_blank_draft_summary, materialize_transient_draft_runtime, TRANSIENT_LOCAL_DRAFT_SESSION_ID,
+};
 
 use turns::{
     apply_desktop_turn_event, desktop_task_tools_from_messages, prune_finished_turns,
@@ -143,8 +149,6 @@ impl DesktopChatManager {
     }
 }
 
-const TRANSIENT_LOCAL_DRAFT_SESSION_ID: &str = "draft:local-chat";
-
 fn chat_cwd() -> Result<PathBuf, String> {
     std::env::current_dir().map_err(|err| err.to_string())
 }
@@ -170,111 +174,6 @@ async fn resume_desktop_runtime(
         .map_err(|err| err.to_string())?;
     attach_cloud_scheduled_task_runtime(&mut runtime);
     Ok(runtime)
-}
-
-fn is_placeholder_session_title(title: &str) -> bool {
-    let trimmed = title.trim();
-    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("New session") || trimmed == "Session"
-}
-
-fn is_default_agent_session_title(title: &str) -> bool {
-    matches!(
-        title.trim().to_lowercase().as_str(),
-        "kordi" | "my kordi" | "my agent" | "my kordi session" | "my agent session"
-    )
-}
-
-fn is_blank_draft_summary(summary: &DesktopChatSessionSummary) -> bool {
-    summary.message_count == 0
-        && (summary.draft
-            || is_placeholder_session_title(&summary.title)
-            || is_default_agent_session_title(&summary.title))
-}
-
-fn filter_blank_draft_projects(
-    projects: Vec<DesktopChatProjectGroup>,
-) -> Vec<DesktopChatProjectGroup> {
-    projects
-        .into_iter()
-        .map(|mut project| {
-            project
-                .sessions
-                .retain(|session| !is_blank_draft_summary(session));
-            project
-        })
-        .collect()
-}
-
-async fn ensure_transient_draft_runtime(
-    manager: &DesktopChatManager,
-    cwd: &std::path::Path,
-) -> Result<DesktopSessionHandle, String> {
-    {
-        let sessions = manager.sessions.lock().await;
-        if let Some(handle) = sessions.get(TRANSIENT_LOCAL_DRAFT_SESSION_ID).cloned() {
-            return Ok(handle);
-        }
-    }
-
-    let mut runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
-        .await
-        .map_err(|err| err.to_string())?;
-    attach_cloud_scheduled_task_runtime(&mut runtime);
-    let handle = Arc::new(tokio::sync::Mutex::new(runtime));
-    let mut sessions = manager.sessions.lock().await;
-    Ok(sessions
-        .entry(TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string())
-        .or_insert_with(|| handle.clone())
-        .clone())
-}
-
-async fn materialize_transient_draft_runtime(
-    manager: &DesktopChatManager,
-    cwd: &std::path::Path,
-) -> Result<String, String> {
-    let handle = ensure_transient_draft_runtime(manager, cwd).await?;
-    let session_id = {
-        let mut runtime = handle.lock().await;
-        runtime
-            .materialize_session()
-            .map_err(|err| err.to_string())?;
-        runtime.session_id().to_string()
-    };
-
-    let mut sessions = manager.sessions.lock().await;
-    sessions.remove(TRANSIENT_LOCAL_DRAFT_SESSION_ID);
-    sessions.insert(session_id.clone(), handle);
-    Ok(session_id)
-}
-
-async fn build_transient_draft_chat_state(
-    manager: &DesktopChatManager,
-    cwd: &std::path::Path,
-    persisted: Vec<DesktopChatSessionSummary>,
-    projects: Vec<DesktopChatProjectGroup>,
-    model_options: Vec<DesktopChatModelOption>,
-) -> Result<DesktopChatState, String> {
-    let runtime = ensure_transient_draft_runtime(manager, cwd).await?;
-    let runtime = runtime.lock().await;
-    let mut active_session = runtime.detail().map_err(|err| err.to_string())?;
-    active_session.id = TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string();
-    active_session.title = "New session".to_string();
-    active_session.subtitle.clear();
-    active_session.updated_at_label = "Draft".to_string();
-    active_session.message_count = 0;
-    active_session.draft = true;
-    active_session.messages.clear();
-
-    Ok(DesktopChatState {
-        cwd: cwd.display().to_string(),
-        active_session_id: TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string(),
-        sessions: persisted,
-        projects,
-        active_session,
-        local_agent: runtime.agent_profile(),
-        model_options,
-        slash_commands: runtime.slash_commands(),
-    })
 }
 
 async fn ensure_loaded_session(
