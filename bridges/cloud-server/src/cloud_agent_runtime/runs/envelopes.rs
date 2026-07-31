@@ -1,0 +1,242 @@
+//! Cloud message wire envelopes and their persistence lookup helpers.
+
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use serde::{Deserialize, Serialize};
+use sqlx_core::query_as::query_as;
+use sqlx_postgres::PgPool;
+
+const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
+const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(super) struct CloudGroupParticipant {
+    #[serde(rename = "accountId")]
+    pub(super) account_id: String,
+    #[serde(rename = "displayName")]
+    pub(super) display_name: String,
+    #[serde(rename = "avatarUrl")]
+    pub(super) avatar_url: Option<String>,
+    pub(super) role: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(super) struct CloudGroupMessage {
+    pub(super) id: String,
+    #[serde(rename = "senderAccountId")]
+    pub(super) sender_account_id: String,
+    pub(super) text: String,
+    #[serde(rename = "createdAtMs")]
+    pub(super) created_at_ms: i64,
+    #[serde(rename = "senderKind", skip_serializing_if = "Option::is_none")]
+    pub(super) sender_kind: Option<String>,
+    #[serde(rename = "senderDisplayName", skip_serializing_if = "Option::is_none")]
+    pub(super) sender_display_name: Option<String>,
+    #[serde(rename = "deliveryState", skip_serializing_if = "Option::is_none")]
+    pub(super) delivery_state: Option<String>,
+    #[serde(rename = "replyToMessageId", skip_serializing_if = "Option::is_none")]
+    pub(super) reply_to_message_id: Option<String>,
+    #[serde(rename = "requestId", skip_serializing_if = "Option::is_none")]
+    pub(super) request_id: Option<String>,
+    #[serde(rename = "messageAction", skip_serializing_if = "Option::is_none")]
+    pub(super) message_action: Option<serde_json::Value>,
+    #[serde(rename = "targetCloudAgentId", skip_serializing_if = "Option::is_none")]
+    pub(super) target_cloud_agent_id: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) target_cloud_agent_name: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentOwnerAccountId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) target_cloud_agent_owner_account_id: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentOwnerName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) target_cloud_agent_owner_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(super) struct CloudGroupEnvelope {
+    pub(super) kind: String,
+    #[serde(rename = "groupId")]
+    pub(super) group_id: String,
+    #[serde(rename = "groupSpaceId", skip_serializing_if = "Option::is_none")]
+    pub(super) group_space_id: Option<String>,
+    #[serde(rename = "groupTitle")]
+    pub(super) group_title: Option<String>,
+    #[serde(rename = "createdByAccountId")]
+    pub(super) created_by_account_id: String,
+    pub(super) actor: CloudGroupParticipant,
+    pub(super) participants: Vec<CloudGroupParticipant>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) message: Option<CloudGroupMessage>,
+}
+
+pub(super) fn cloud_agent_response_text(body: &str) -> Option<String> {
+    let encoded = body.trim().strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    value
+        .get("text")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToString::to_string)
+}
+
+pub(super) fn parse_cloud_group_envelope(body: &str) -> Option<CloudGroupEnvelope> {
+    let encoded = body.trim().strip_prefix(CLOUD_GROUP_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn encode_cloud_group_envelope(envelope: &CloudGroupEnvelope) -> String {
+    format!(
+        "{}{}",
+        CLOUD_GROUP_PREFIX,
+        URL_SAFE_NO_PAD.encode(serde_json::to_string(envelope).unwrap_or_default())
+    )
+}
+
+pub(super) fn cloud_group_response_body(
+    request_envelope: &CloudGroupEnvelope,
+    owner_account_id: &str,
+    request_message_id: &str,
+    response_message_id: &str,
+    response_text: &str,
+    delivery_state: &str,
+    created_at_ms: i64,
+) -> String {
+    let owner = request_envelope
+        .participants
+        .iter()
+        .find(|participant| participant.account_id == owner_account_id)
+        .cloned()
+        .unwrap_or_else(|| CloudGroupParticipant {
+            account_id: owner_account_id.to_string(),
+            display_name: "Kordi".to_string(),
+            avatar_url: None,
+            role: Some("person".to_string()),
+        });
+    let shared_agent_label = request_envelope.message.as_ref().and_then(|message| {
+        let agent_name = message.target_cloud_agent_name.as_deref()?.trim();
+        if agent_name.is_empty() {
+            return None;
+        }
+        let owner_name = message
+            .target_cloud_agent_owner_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| owner.display_name.trim());
+        if owner_name.is_empty() {
+            Some(agent_name.to_string())
+        } else {
+            Some(format!("{} · {}'s Agent", agent_name, owner_name))
+        }
+    });
+    let sender_display_name = shared_agent_label.unwrap_or_else(|| {
+        if owner.display_name.trim().is_empty() {
+            "Kordi".to_string()
+        } else {
+            format!("{}'s Kordi", owner.display_name.trim())
+        }
+    });
+    encode_cloud_group_envelope(&CloudGroupEnvelope {
+        kind: "group-message".to_string(),
+        group_id: request_envelope.group_id.clone(),
+        group_space_id: request_envelope.group_space_id.clone(),
+        group_title: None,
+        created_by_account_id: request_envelope.created_by_account_id.clone(),
+        actor: owner,
+        participants: request_envelope.participants.clone(),
+        message: Some(CloudGroupMessage {
+            id: response_message_id.to_string(),
+            sender_account_id: owner_account_id.to_string(),
+            text: response_text.to_string(),
+            created_at_ms,
+            sender_kind: Some("agent".to_string()),
+            sender_display_name: Some(sender_display_name),
+            delivery_state: Some(delivery_state.to_string()),
+            reply_to_message_id: Some(request_message_id.to_string()),
+            request_id: Some(request_message_id.to_string()),
+            message_action: None,
+            target_cloud_agent_id: None,
+            target_cloud_agent_name: None,
+            target_cloud_agent_owner_account_id: None,
+            target_cloud_agent_owner_name: None,
+        }),
+    })
+}
+
+pub(super) fn direct_message_envelope(body: &str) -> Option<serde_json::Value> {
+    let encoded = body.trim().strip_prefix(CLOUD_DIRECT_MESSAGE_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+pub(super) fn encode_cloud_agent_response_body_with_state(
+    request_message_id: &str,
+    response_text: &str,
+    delivery_state: &str,
+) -> String {
+    let envelope = serde_json::json!({
+        "kind": "agent-response",
+        "requestId": request_message_id,
+        "text": response_text,
+        "deliveryState": delivery_state,
+    });
+    format!(
+        "{}{}",
+        CLOUD_AGENT_RESPONSE_PREFIX,
+        URL_SAFE_NO_PAD.encode(envelope.to_string())
+    )
+}
+
+pub fn encode_cloud_agent_response_body(request_message_id: &str, response_text: &str) -> String {
+    encode_cloud_agent_response_body_with_state(request_message_id, response_text, "complete")
+}
+
+pub(super) async fn cloud_group_request_envelope_for_run(
+    pool: &PgPool,
+    session_id: &str,
+    request_message_id: &str,
+) -> Result<Option<CloudGroupEnvelope>, sqlx_core::Error> {
+    if !session_id.trim().starts_with("session:group:") {
+        return Ok(None);
+    }
+    let rows = query_as::<_, (String,)>(
+        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at ASC",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().find_map(|(body,)| {
+        let envelope = parse_cloud_group_envelope(&body)?;
+        let message = envelope.message.as_ref()?;
+        (envelope.kind == "group-message" && message.id == request_message_id).then_some(envelope)
+    }))
+}
+
+pub(super) async fn latest_cloud_group_envelope_for_session(
+    pool: &PgPool,
+    session_id: &str,
+) -> Result<Option<CloudGroupEnvelope>, sqlx_core::Error> {
+    if !session_id.trim().starts_with("session:group:") {
+        return Ok(None);
+    }
+    let rows = query_as::<_, (String,)>(
+        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at DESC",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().find_map(|(body,)| {
+        let envelope = parse_cloud_group_envelope(&body)?;
+        (envelope.kind == "group-message" && !envelope.participants.is_empty()).then_some(envelope)
+    }))
+}
