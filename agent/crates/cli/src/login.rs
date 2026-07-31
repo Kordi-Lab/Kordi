@@ -37,10 +37,11 @@ pub use resolver::{
 #[cfg(test)]
 pub(crate) use resolver::save_oauth_credentials;
 pub use store::{
-    active_auth_method, auth_path, configured_providers, github_copilot_api_base_url,
-    github_copilot_cached_models, github_copilot_domain, github_copilot_runtime_headers,
-    github_copilot_status, normalize_github_domain, remove_auth, save_api_key,
-    save_github_copilot_config, set_active_auth_profile, stored_auth_methods, stored_auth_profiles,
+    GithubCopilotStatus, active_auth_method, auth_path, configured_providers,
+    github_copilot_api_base_url, github_copilot_cached_models, github_copilot_domain,
+    github_copilot_runtime_headers, github_copilot_status, normalize_github_domain, remove_auth,
+    save_api_key, save_github_copilot_config, set_active_auth_profile, stored_auth_methods,
+    stored_auth_profiles,
 };
 
 // The desktop crate consumes this through the library target; the CLI binary
