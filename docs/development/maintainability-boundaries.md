@@ -120,6 +120,7 @@ This table records the current disposition of the high-priority #235/#693 areas.
 
 ## Completed slices
 
+- `app/desktop/src-tauri/src/chat/agent_builder.rs`: public Tauri DTOs and internal persisted draft records moved to `app/desktop/src-tauri/src/chat/agent_builder/models.rs`; camelCase serialization, field defaults, public type paths, and command signatures remain unchanged.
 - `app/desktop/src-tauri/src/canonical_sessions/commands.rs`: SQLite row projection, bounded transcript pages, session catalog summaries, and compatibility full-state loading moved behind the typed `app/desktop/src-tauri/src/canonical_sessions/commands/catalog.rs` boundary. Existing command names, DTOs, query ordering, and page limits remain unchanged; the command root is now 774 lines.
 - `app/desktop/src-tauri/src/canonical_sessions/commands.rs`: catalog, membership, and message-delivery regression scenarios moved under `app/desktop/src-tauri/src/canonical_sessions/commands/catalog_tests/`; all seven test functions and assertions are preserved while every scenario file remains below 500 lines.
 - `app/desktop/src-tauri/src/canonical_sessions.rs`: canonical session upsert, participant-role persistence, local group-self enforcement, and session row projection moved behind `app/desktop/src-tauri/src/canonical_sessions/persistence/sessions.rs`; SQL, stored metadata, title precedence, and caller-visible DTOs remain unchanged.

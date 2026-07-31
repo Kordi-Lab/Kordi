@@ -4,9 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use kordi_cli::desktop_runtime::{
-    DesktopChatSessionDetail, DesktopRuntimeProfile, DesktopRuntimeSession,
-};
+use kordi_cli::desktop_runtime::{DesktopRuntimeProfile, DesktopRuntimeSession};
 use kordi_cli::skill_library::{
     self, SkillBundle, SkillBundleFile, SkillInstallScope, SkillLibraryEntry,
 };
@@ -46,176 +44,17 @@ After each change, briefly list the files changed and tell the user whether the 
 const AGENT_CREATOR_SKILL: &str = include_str!("agent_builder_resources/agent-creator/SKILL.md");
 const SKILL_CREATOR_SKILL: &str = include_str!("agent_builder_resources/skill-creator/SKILL.md");
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderSkillSeed {
-    pub name: String,
-    #[serde(default)]
-    pub description: String,
-    #[serde(default)]
-    pub content: Option<String>,
-}
+mod models;
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderSeed {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub role: String,
-    #[serde(default)]
-    pub description: String,
-    #[serde(default)]
-    pub system_prompt: String,
-    #[serde(default)]
-    pub source_summary: String,
-    #[serde(default)]
-    pub boundaries: Vec<String>,
-    #[serde(default)]
-    pub access: String,
-    #[serde(default)]
-    pub provider: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub thinking: Option<String>,
-    #[serde(default)]
-    pub tools: Vec<String>,
-    #[serde(default)]
-    pub plugins: Vec<String>,
-    #[serde(default)]
-    pub skills: Vec<DesktopAgentBuilderSkillSeed>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DesktopAgentBuilderMetadata {
-    draft_id: String,
-    target_key: String,
-    session_id: String,
-    status: String,
-    created_at_ms: i64,
-    updated_at_ms: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct DesktopAgentBuilderModelFile {
-    #[serde(default)]
-    provider: Option<String>,
-    #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
-    thinking: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct DesktopAgentBuilderSkillFile {
-    name: String,
-    #[serde(default)]
-    description: String,
-    #[serde(default)]
-    path: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct DesktopAgentBuilderAgentFile {
-    name: String,
-    #[serde(default)]
-    role: String,
-    #[serde(default)]
-    description: String,
-    #[serde(default)]
-    source_summary: String,
-    #[serde(default)]
-    boundaries: Vec<String>,
-    #[serde(default)]
-    model: DesktopAgentBuilderModelFile,
-    #[serde(default)]
-    access: String,
-    #[serde(default)]
-    tools: Vec<String>,
-    #[serde(default)]
-    plugins: Vec<String>,
-    #[serde(default)]
-    skills: Vec<DesktopAgentBuilderSkillFile>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderSkillDraft {
-    pub name: String,
-    pub description: String,
-    pub path: String,
-    pub content: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderDraft {
-    pub name: String,
-    pub role: String,
-    pub description: String,
-    pub system_prompt: String,
-    pub source_summary: String,
-    pub boundaries: Vec<String>,
-    pub access: String,
-    pub provider: Option<String>,
-    pub model: Option<String>,
-    pub thinking: Option<String>,
-    pub tools: Vec<String>,
-    pub plugins: Vec<String>,
-    pub skills: Vec<DesktopAgentBuilderSkillDraft>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderFileStatus {
-    pub path: String,
-    pub kind: String,
-    pub valid: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderValidation {
-    pub valid: bool,
-    pub fingerprint: String,
-    pub errors: Vec<String>,
-    pub files: Vec<DesktopAgentBuilderFileStatus>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderTestReport {
-    pub passed: bool,
-    pub fingerprint: String,
-    pub summary: String,
-    pub tested_at_ms: i64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderStatus {
-    pub draft_id: String,
-    pub target_key: String,
-    pub session_id: String,
-    pub workspace_path: String,
-    pub lifecycle: String,
-    pub draft: Option<DesktopAgentBuilderDraft>,
-    pub validation: DesktopAgentBuilderValidation,
-    pub test_report: Option<DesktopAgentBuilderTestReport>,
-    pub publish_ready: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopAgentBuilderOpenResult {
-    pub status: DesktopAgentBuilderStatus,
-    pub session: DesktopChatSessionDetail,
-}
+use self::models::{
+    DesktopAgentBuilderAgentFile, DesktopAgentBuilderMetadata, DesktopAgentBuilderModelFile,
+    DesktopAgentBuilderSkillFile,
+};
+pub use self::models::{
+    DesktopAgentBuilderDraft, DesktopAgentBuilderFileStatus, DesktopAgentBuilderOpenResult,
+    DesktopAgentBuilderSeed, DesktopAgentBuilderSkillDraft, DesktopAgentBuilderSkillSeed,
+    DesktopAgentBuilderStatus, DesktopAgentBuilderTestReport, DesktopAgentBuilderValidation,
+};
 
 fn drafts_root() -> PathBuf {
     kordi_core::config::preferred_global_settings_dir().join("agent-drafts")
