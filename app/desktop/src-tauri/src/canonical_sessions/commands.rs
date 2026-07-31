@@ -34,4 +34,4 @@ pub(super) use self::lifecycle::{
 };
 
 #[cfg(test)]
-mod catalog_tests;
+mod tests;

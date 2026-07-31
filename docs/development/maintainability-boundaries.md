@@ -135,12 +135,12 @@ number, matching the issue baseline methodology.
 | Category | Snapshot | Files | LOC | >=500 LOC | >=1,000 LOC | >=1,500 LOC |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | Production-path Rust | Baseline | 547 | 153,084 | 78 | 19 | 7 |
-| Production-path Rust | #838 result | 599 | 150,046 | 71 | 6 | 0 |
+| Production-path Rust | #838 result | 596 | 149,456 | 71 | 6 | 0 |
 | Test-path Rust | Baseline | 90 | 25,960 | 12 | 0 | 0 |
-| Test-path Rust | #838 result | 112 | 29,875 | 12 | 0 | 0 |
+| Test-path Rust | #838 result | 115 | 30,489 | 12 | 0 | 0 |
 
 The higher file counts are the intended result of moving cohesive responsibilities and
-tests into named modules. Production-path Rust shrank by 3,038 LOC, 1,000-line
+tests into named modules. Production-path Rust shrank by 3,628 LOC, 1,000-line
 hotspots fell from 19 to 6, and 1,500-line hotspots fell from 7 to zero. The six
 remaining 1,000-line Rust files are outside #838's P1 list and remain governed by
 #235; none is a root accepted by #838 as complete.
@@ -199,7 +199,7 @@ than a retained exception to this refactor.
 - `app/desktop/src-tauri/src/chat/agent_builder.rs`: draft-id validation, durable draft path resolution, JSON metadata/test-report persistence, active-draft discovery, and the process-local mutation lock moved to `app/desktop/src-tauri/src/chat/agent_builder/storage.rs`; on-disk names, JSON shapes, UUID validation, timestamps, and caller-visible errors remain unchanged.
 - `app/desktop/src-tauri/src/chat/agent_builder.rs`: public Tauri DTOs and internal persisted draft records moved to `app/desktop/src-tauri/src/chat/agent_builder/models.rs`; camelCase serialization, field defaults, public type paths, and command signatures remain unchanged.
 - `app/desktop/src-tauri/src/canonical_sessions/commands.rs`: SQLite row projection, bounded transcript pages, session catalog summaries, and compatibility full-state loading moved behind the typed `app/desktop/src-tauri/src/canonical_sessions/commands/catalog.rs` boundary. Existing command names, DTOs, query ordering, and page limits remain unchanged; subsequent resource extractions reduced the final command facade to 37 lines.
-- `app/desktop/src-tauri/src/canonical_sessions/commands.rs`: catalog, membership, and message-delivery regression scenarios moved under `app/desktop/src-tauri/src/canonical_sessions/commands/catalog_tests/`; all seven test functions and assertions are preserved while every scenario file remains below 500 lines.
+- `app/desktop/src-tauri/src/canonical_sessions/commands.rs`: catalog, membership, and message-delivery regression scenarios moved under `app/desktop/src-tauri/src/canonical_sessions/commands/tests/`; all seven test functions and assertions are preserved while every scenario file remains below 500 lines and is classified as test-path Rust.
 - `app/desktop/src-tauri/src/canonical_sessions.rs`: canonical session upsert, participant-role persistence, local group-self enforcement, and session row projection moved behind `app/desktop/src-tauri/src/canonical_sessions/persistence/sessions.rs`; SQL, stored metadata, title precedence, and caller-visible DTOs remain unchanged.
 - `app/desktop/src-tauri/src/canonical_sessions.rs`: cloud-profile adoption, identity-reference migration, and stable local human/delegate identity lifecycle moved to `app/desktop/src-tauri/src/canonical_sessions/identity_migration.rs`. Transaction boundaries, schema, IDs, and stored JSON remain unchanged.
 - `app/desktop/src-tauri/src/canonical_sessions.rs`: canonical message insert/upsert, source-event deduplication, cloud-self echo reconciliation, transactional write locking, and row projection moved to `app/desktop/src-tauri/src/canonical_sessions/persistence/messages.rs`. SQL, content hashing, timestamps, error strings, source precedence, and root helper paths remain unchanged.
