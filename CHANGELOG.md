@@ -4,6 +4,40 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1-beta.10] - 2026-07-31
+
+### Changed
+
+- Moved the canonical desktop, Cloud API, OAuth, and updater origin to
+  `https://kordi.ai`. Existing installations that still poll
+  `https://coordinar.io` retain a verified compatibility path to the same
+  immutable release artifacts, so they can install beta.10 and migrate to the
+  new origin safely. ([#753], [#840])
+- Decoupled the Cloud desktop from the legacy Bridges runtime and consolidated
+  collaboration state around the canonical Cloud/session model. This removes
+  duplicate transport work while preserving direct chats, groups, agents,
+  forks, drafts, and synchronized activity. ([#754], [#693])
+- Completed the repository maintainability program: large desktop, Cloud,
+  runtime, installer, provider, and TUI units now have focused ownership
+  boundaries; warning-free Rust, typed linting, hotspot ratchets, and
+  partitioned regression suites prevent the same debt from returning.
+  ([#693], [#759])
+
+### Fixed
+
+- Preserved fork context and manual session titles across local and Cloud
+  reconciliation, preventing older or incomplete snapshots from replacing
+  the active conversation. ([#751])
+- Converted provider HTTP failures into concise, actionable errors instead of
+  displaying raw HTML, retry wrappers, infrastructure details, or unbounded
+  upstream response bodies. ([#752])
+- Kept newly active sessions sorted first and restored runtime-only Cloud
+  direct chats even when an initial backend snapshot is incomplete.
+  ([#755], [#757])
+- Made release publication fail closed unless both the canonical and legacy
+  updater origins return the exact expected manifests, sizes, and checksums;
+  failed promotion now restores the previous channel pointer. ([#840])
+
 ## [0.0.1-beta.9] - 2026-07-22
 
 ### Added
@@ -91,7 +125,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-AI/Kordi/compare/V0.0.1.beta9...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta10...HEAD
+[0.0.1-beta.10]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta9...V0.0.1.beta10
 [0.0.1-beta.9]: https://github.com/Kordi-AI/Kordi/compare/V0.0.1.beta8...V0.0.1.beta9
 [0.0.1-beta.8]: https://github.com/Kordi-AI/Kordi/compare/V0.0.1.beta7...V0.0.1.beta8
 [0.0.1-beta.7]: https://github.com/Kordi-AI/Kordi/releases/tag/V0.0.1.beta7
@@ -118,3 +153,12 @@ This release is the comparison baseline for beta.8. See the
 [#739]: https://github.com/Kordi-AI/Kordi/pull/739
 [#740]: https://github.com/Kordi-AI/Kordi/pull/740
 [#741]: https://github.com/Kordi-AI/Kordi/pull/741
+[#693]: https://github.com/Kordi-Lab/Kordi/issues/693
+[#751]: https://github.com/Kordi-Lab/Kordi/pull/751
+[#752]: https://github.com/Kordi-Lab/Kordi/pull/752
+[#753]: https://github.com/Kordi-Lab/Kordi/pull/753
+[#754]: https://github.com/Kordi-Lab/Kordi/pull/754
+[#755]: https://github.com/Kordi-Lab/Kordi/pull/755
+[#757]: https://github.com/Kordi-Lab/Kordi/pull/757
+[#759]: https://github.com/Kordi-Lab/Kordi/pull/759
+[#840]: https://github.com/Kordi-Lab/Kordi/pull/840
