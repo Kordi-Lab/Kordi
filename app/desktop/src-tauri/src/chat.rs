@@ -17,6 +17,7 @@ pub(crate) mod agent_prompt_runner;
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
 pub(crate) mod canonical_sync;
+mod message_execution;
 pub(crate) mod message_route;
 pub(crate) mod model_options;
 mod models;
@@ -608,236 +609,19 @@ pub async fn desktop_chat_start_message(
     visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     scheduled_task_session_id: Option<String>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
-    let attachment_paths = attachment_paths.unwrap_or_default();
-    if text.trim().is_empty() && attachment_paths.is_empty() {
-        return Err("Message is empty".to_string());
-    }
-
-    let cwd = chat_cwd()?;
-    let target_session_id =
-        ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
-    prune_finished_turns(&manager).await;
-    if session_has_running_turn(&manager, &target_session_id).await {
-        return Err(
-            "This session already has a running task. Open another session to work concurrently."
-                .to_string(),
-        );
-    }
-    let turn_id = uuid::Uuid::new_v4().to_string();
-    let started_at_ms = now_millis();
-    let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
-        id: turn_id.clone(),
-        session_id: target_session_id.clone(),
-        prompt: text.trim().to_string(),
-        status: "starting".to_string(),
-        message: "Working…".to_string(),
-        assistant_text: String::new(),
-        thinking_text: String::new(),
-        tools: Vec::new(),
-        completed: false,
-        succeeded: false,
-        started_at_ms,
-        completed_at_ms: None,
-        error: None,
-        transcript_refresh_required: false,
-    }));
-
-    let cancel = tokio_util::sync::CancellationToken::new();
-
-    {
-        let mut turns = manager.turns.lock().await;
-        turns.insert(
-            turn_id.clone(),
-            DesktopChatTurnHandle {
-                snapshot: snapshot.clone(),
-                cancel: cancel.clone(),
-            },
-        );
-    }
-
-    let session = {
-        let sessions = manager.sessions.lock().await;
-        sessions
-            .get(&target_session_id)
-            .cloned()
-            .ok_or_else(|| "Session is unavailable".to_string())?
-    };
-
-    let snapshot_for_task = snapshot.clone();
-    let session_handle = session;
-    let is_agent_builder_session = agent_builder::is_agent_builder_session_id(&target_session_id);
-    tokio::spawn(async move {
-        let (provider, model) = {
-            let mut session = session_handle.lock().await;
-            if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
-                update_turn(&snapshot_for_task, |state| {
-                    state.status = "failed".to_string();
-                    state.message = error.clone();
-                    state.completed = true;
-                    state.completed_at_ms = Some(now_millis());
-                    state.succeeded = false;
-                    state.error = Some(error);
-                });
-                return;
-            }
-            if !is_agent_builder_session {
-                attach_cloud_scheduled_task_runtime_for_session(
-                    &mut session,
-                    scheduled_task_session_id.as_deref(),
-                );
-                if let Err(error) =
-                    session.sync_visible_task_records(&visible_task_records.unwrap_or_default())
-                {
-                    let error = error.to_string();
-                    update_turn(&snapshot_for_task, |state| {
-                        state.status = "failed".to_string();
-                        state.message = error.clone();
-                        state.completed = true;
-                        state.completed_at_ms = Some(now_millis());
-                        state.succeeded = false;
-                        state.error = Some(error);
-                    });
-                    return;
-                }
-                if let Err(error) =
-                    session.sync_context_messages(&context_messages.unwrap_or_default())
-                {
-                    let error = error.to_string();
-                    update_turn(&snapshot_for_task, |state| {
-                        state.status = "failed".to_string();
-                        state.message = error.clone();
-                        state.completed = true;
-                        state.completed_at_ms = Some(now_millis());
-                        state.succeeded = false;
-                        state.error = Some(error);
-                    });
-                    return;
-                }
-                prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
-            }
-
-            let detail = session.detail().ok();
-            let provider = detail
-                .as_ref()
-                .map(|detail| detail.provider.clone())
-                .unwrap_or_default();
-            let model = detail
-                .as_ref()
-                .map(|detail| detail.model.clone())
-                .unwrap_or_default();
-            (provider, model)
-        };
-
-        if let Err(error) = ensure_provider_ready_for_send(&provider, &model, &cwd).await {
-            update_turn(&snapshot_for_task, |state| {
-                state.status = "failed".to_string();
-                state.message = error.clone();
-                state.completed = true;
-                state.completed_at_ms = Some(now_millis());
-                state.succeeded = false;
-                state.error = Some(error);
-            });
-            return;
-        }
-
-        let mut session = session_handle.lock().await;
-        let turn = match session
-            .begin_message_streaming(text, attachment_paths, cancel.clone())
-            .await
-        {
-            Ok(turn) => turn,
-            Err(err) => {
-                update_turn(&snapshot_for_task, |state| {
-                    state.status = "failed".to_string();
-                    state.message = "Chat request failed".to_string();
-                    state.completed = true;
-                    state.completed_at_ms = Some(now_millis());
-                    state.succeeded = false;
-                    state.error = Some(err.to_string());
-                });
-                return;
-            }
-        };
-        drop(session);
-
-        let turn_result = turn
-            .run(|event| apply_desktop_turn_event(&snapshot_for_task, event))
-            .await;
-        let result = match turn_result {
-            Ok(turn_result) => {
-                let mut session = session_handle.lock().await;
-                session.finish_message_streaming(turn_result)
-            }
-            Err(err) => Err(err),
-        };
-
-        match result {
-            Ok(_) if cancel.is_cancelled() => {
-                if !is_agent_builder_session {
-                    sync_completed_desktop_session_to_canonical(
-                        &cwd,
-                        &target_session_id,
-                        &session_handle,
-                    )
-                    .await;
-                }
-                update_turn(&snapshot_for_task, |state| {
-                    state.status = "cancelled".to_string();
-                    state.message = "Response stopped".to_string();
-                    state.completed = true;
-                    state.completed_at_ms = Some(now_millis());
-                    state.succeeded = false;
-                    state.error = None;
-                });
-            }
-            Ok(_) => {
-                if !is_agent_builder_session {
-                    sync_completed_desktop_session_to_canonical(
-                        &cwd,
-                        &target_session_id,
-                        &session_handle,
-                    )
-                    .await;
-                }
-                let task_tools = {
-                    let session = session_handle.lock().await;
-                    session
-                        .detail()
-                        .map(|detail| desktop_task_tools_from_messages(&detail.messages))
-                        .unwrap_or_default()
-                };
-                update_turn(&snapshot_for_task, |state| {
-                    if !task_tools.is_empty() && !turn_snapshot_has_model_task_tools(&state.tools) {
-                        state.tools = task_tools;
-                    }
-                    state.status = "succeeded".to_string();
-                    state.message = "Response complete".to_string();
-                    state.completed = true;
-                    state.completed_at_ms = Some(now_millis());
-                    state.succeeded = true;
-                    state.error = None;
-                });
-            }
-            Err(_err) if cancel.is_cancelled() => update_turn(&snapshot_for_task, |state| {
-                state.status = "cancelled".to_string();
-                state.message = "Response stopped".to_string();
-                state.completed = true;
-                state.completed_at_ms = Some(now_millis());
-                state.succeeded = false;
-                state.error = None;
-            }),
-            Err(err) => update_turn(&snapshot_for_task, |state| {
-                state.status = "failed".to_string();
-                state.message = "Chat request failed".to_string();
-                state.completed = true;
-                state.completed_at_ms = Some(now_millis());
-                state.succeeded = false;
-                state.error = Some(err.to_string());
-            }),
-        }
-    });
-
-    snapshot_turn(&snapshot)
+    message_execution::start_message(
+        manager.inner(),
+        message_execution::StartMessageInput {
+            session_id,
+            text,
+            attachment_paths,
+            route,
+            context_messages,
+            visible_task_records,
+            scheduled_task_session_id,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
