@@ -8,7 +8,6 @@ use kordi_core::config;
 use kordi_core::settings::Settings;
 use kordi_provider::registry::{Model, ModelRegistry};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::oauth::OAuthCredentials;

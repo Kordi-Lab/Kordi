@@ -1,78 +1,13 @@
 use super::*;
 use std::sync::{LazyLock, Mutex};
 
-const AUTH_STORE_VERSION: u32 = 3;
+mod models;
+
+use models::AUTH_STORE_VERSION;
+pub use models::StoredAuthProfileSummary;
+pub(super) use models::{AuthEntry, AuthProfile, AuthStore, ProviderConfigRecord};
 
 static AUTH_STORE_PROCESS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-pub(super) struct AuthStore {
-    #[serde(default)]
-    pub(super) version: u32,
-    #[serde(default)]
-    pub(super) last_provider: Option<String>,
-    #[serde(default)]
-    pub(super) active_auth_methods: HashMap<String, ProviderAuthMethod>,
-    #[serde(default)]
-    pub(super) active_env_auth_methods: HashMap<String, ProviderAuthMethod>,
-    #[serde(default)]
-    pub(super) active_auth_profiles: HashMap<String, String>,
-    #[serde(default)]
-    pub(super) profiles: HashMap<String, Vec<AuthProfile>>,
-    #[serde(default)]
-    pub(super) provider_configs: HashMap<String, ProviderConfigRecord>,
-    #[serde(flatten)]
-    pub(super) providers: HashMap<String, AuthEntry>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub(super) enum AuthEntry {
-    #[serde(rename = "api_key")]
-    ApiKey { key: String },
-    #[serde(rename = "oauth")]
-    OAuth {
-        access: String,
-        refresh: String,
-        expires: i64,
-        #[serde(flatten)]
-        extra: serde_json::Value,
-    },
-    #[serde(rename = "provider_config")]
-    ProviderConfig { domain: String },
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub(super) struct AuthProfile {
-    pub(super) id: String,
-    pub(super) method: ProviderAuthMethod,
-    #[serde(default)]
-    pub(super) created_at_ms: Option<i64>,
-    #[serde(default)]
-    pub(super) updated_at_ms: Option<i64>,
-    #[serde(flatten)]
-    pub(super) entry: AuthEntry,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-pub(super) struct ProviderConfigRecord {
-    pub(super) domain: String,
-    #[serde(default)]
-    pub(super) created_at_ms: Option<i64>,
-    #[serde(default)]
-    pub(super) updated_at_ms: Option<i64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoredAuthProfileSummary {
-    pub profile_id: String,
-    pub method: ProviderAuthMethod,
-    pub account_label: Option<String>,
-    pub authority: Option<String>,
-    pub configured_at_ms: Option<i64>,
-    pub updated_at_ms: Option<i64>,
-    pub active: bool,
-}
 
 /// Snapshot of the persisted GitHub Copilot login state used by session info,
 /// auth menus, and post-login status messages.
@@ -647,46 +582,6 @@ pub(super) fn load_auth() -> AuthStore {
     };
     migrate_loaded_store(&mut store);
     store
-}
-
-impl std::fmt::Debug for AuthStore {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut provider_names = self.profiles.keys().cloned().collect::<Vec<_>>();
-        provider_names.extend(self.provider_configs.keys().cloned());
-        provider_names.extend(self.providers.keys().cloned());
-        provider_names.sort();
-        provider_names.dedup();
-        f.debug_struct("AuthStore")
-            .field("version", &self.version)
-            .field("last_provider", &self.last_provider)
-            .field("active_auth_methods", &self.active_auth_methods)
-            .field("active_env_auth_methods", &self.active_env_auth_methods)
-            .field("active_auth_profiles", &self.active_auth_profiles)
-            .field("providers", &provider_names)
-            .finish()
-    }
-}
-
-impl std::fmt::Debug for AuthEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ApiKey { .. } => f
-                .debug_struct("ApiKey")
-                .field("key", &"[REDACTED]")
-                .finish(),
-            Self::OAuth { expires, .. } => f
-                .debug_struct("OAuth")
-                .field("access", &"[REDACTED]")
-                .field("refresh", &"[REDACTED]")
-                .field("expires", expires)
-                .field("extra", &"[REDACTED]")
-                .finish(),
-            Self::ProviderConfig { domain } => f
-                .debug_struct("ProviderConfig")
-                .field("domain", domain)
-                .finish(),
-        }
-    }
 }
 
 pub(super) fn save_auth(store: &AuthStore) -> Result<()> {
