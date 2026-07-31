@@ -4,11 +4,9 @@ mod resolver;
 mod store;
 
 use anyhow::Result;
-use kordi_core::config;
 use kordi_core::settings::Settings;
 use kordi_provider::registry::{Model, ModelRegistry};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 use crate::oauth::OAuthCredentials;
 
