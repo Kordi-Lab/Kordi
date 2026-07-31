@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use async_trait::async_trait;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -10,10 +9,10 @@ use kordi_core::settings::Settings;
 use kordi_core::types::{AgentMessage, AssistantContent, ContentBlock, SessionEntry};
 use kordi_protocol::{
     APP_PROTOCOL_VERSION, BootstrapSnapshot, ClientKind, ClientMetadata, FeatureFlags,
-    ForkSessionRequest, ForkSessionResponse, ServerMetadata, ServiceSnapshot, ServiceState,
-    ServiceStatusSummary, SessionDetail, SessionForksPage, SessionSource, SessionStatus,
-    SessionSummary, SessionsPage, SubmitTurnAccepted, SubmitTurnRequest, TimelineEntry,
-    TimelineEntryKind, TimelineRole, TimelineState, WorkspaceSummary,
+    ForkSessionRequest, ForkSessionResponse, ServerMetadata, SessionDetail, SessionForksPage,
+    SessionSource, SessionStatus, SessionSummary, SessionsPage, SubmitTurnAccepted,
+    SubmitTurnRequest, TimelineEntry, TimelineEntryKind, TimelineRole, TimelineState,
+    WorkspaceSummary,
 };
 use kordi_session::store;
 use serde::Deserialize;
@@ -24,12 +23,22 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+mod bridge_health;
 mod configuration;
 mod turn_execution;
 
+use bridge_health::{BridgesStatusProvider, HttpBridgesStatusProvider, build_services_snapshot};
 use configuration::{resolve_bridges_base_url, resolve_turn_command};
 use turn_execution::{ProcessTurnExecutor, TurnExecution, TurnExecutor};
 
+#[cfg(test)]
+use async_trait::async_trait;
+#[cfg(test)]
+use bridge_health::{
+    BridgesComponentStatus, BridgesDaemonStatus, BridgesReachabilityStatus, BridgesStatusResponse,
+};
+#[cfg(test)]
+use kordi_protocol::ServiceState;
 #[cfg(test)]
 use kordi_protocol::{ModelSelector, ThinkingLevel};
 #[cfg(test)]
@@ -57,38 +66,6 @@ struct ActiveTurn {
 #[derive(Debug, Clone, Deserialize)]
 struct ListSessionsQuery {
     limit: Option<usize>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct BridgesStatusResponse {
-    node_id: String,
-    healthy: bool,
-    daemon: BridgesDaemonStatus,
-    coordination: BridgesComponentStatus,
-    runtime: BridgesComponentStatus,
-    reachability: BridgesReachabilityStatus,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct BridgesDaemonStatus {
-    state: String,
-    started_at: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct BridgesComponentStatus {
-    state: String,
-    detail: Option<String>,
-    checked_at: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct BridgesReachabilityStatus {
-    mode: String,
-    endpoint_hints_published: usize,
-    derp_connected: bool,
-    mailbox_fallback: bool,
-    mailbox_durable: bool,
 }
 
 #[derive(Debug)]
@@ -141,36 +118,6 @@ impl IntoResponse for AppError {
 
 type AppResult<T> = std::result::Result<T, AppError>;
 
-#[async_trait]
-trait BridgesStatusProvider: Send + Sync {
-    async fn fetch_status(&self) -> Result<BridgesStatusResponse>;
-}
-
-#[derive(Clone)]
-struct HttpBridgesStatusProvider {
-    client: reqwest::Client,
-    base_url: String,
-}
-
-#[async_trait]
-impl BridgesStatusProvider for HttpBridgesStatusProvider {
-    async fn fetch_status(&self) -> Result<BridgesStatusResponse> {
-        let response = self
-            .client
-            .get(format!("{}/status", self.base_url))
-            .send()
-            .await
-            .with_context(|| format!("requesting Bridges status from {}", self.base_url))?
-            .error_for_status()
-            .with_context(|| format!("Bridges status request to {} failed", self.base_url))?;
-
-        response
-            .json::<BridgesStatusResponse>()
-            .await
-            .context("decoding Bridges status response")
-    }
-}
-
 impl AppServer {
     pub fn from_cwd(cwd: PathBuf) -> Result<Self> {
         let cwd = std::fs::canonicalize(&cwd)
@@ -184,10 +131,7 @@ impl AppServer {
             state: Arc::new(AppState {
                 cwd,
                 sessions_db_path,
-                bridges_status: Arc::new(HttpBridgesStatusProvider {
-                    client: reqwest::Client::new(),
-                    base_url: bridges_base_url,
-                }),
+                bridges_status: Arc::new(HttpBridgesStatusProvider::new(bridges_base_url)),
                 turn_executor: Arc::new(ProcessTurnExecutor {
                     command: turn_command,
                 }),
@@ -227,7 +171,8 @@ async fn handle_bootstrap(
     let settings = Settings::load_merged(&state.cwd);
     let active_turns = active_turn_sessions(&state).await;
     let sessions = load_sessions_page(&state, 1, &active_turns).map_err(AppError::internal)?;
-    let services = build_services_snapshot(&state).await;
+    let services =
+        build_services_snapshot(&state.sessions_db_path, state.bridges_status.as_ref()).await;
 
     Ok(Json(BootstrapSnapshot {
         server: ServerMetadata {
@@ -860,80 +805,6 @@ fn truncate_preview(text: &str) -> String {
 
     let truncated = trimmed.chars().take(LIMIT - 1).collect::<String>();
     format!("{truncated}...")
-}
-
-async fn build_services_snapshot(state: &AppState) -> ServiceSnapshot {
-    let runtime = match store::open_db(&state.sessions_db_path) {
-        Ok(_) => ServiceStatusSummary {
-            state: ServiceState::Ready,
-            detail: Some(format!(
-                "session store available at {}",
-                state.sessions_db_path.display()
-            )),
-            last_heartbeat_at: None,
-        },
-        Err(error) => ServiceStatusSummary {
-            state: ServiceState::Error,
-            detail: Some(format!(
-                "unable to open session store {}: {error}",
-                state.sessions_db_path.display()
-            )),
-            last_heartbeat_at: None,
-        },
-    };
-
-    let bridges = match state.bridges_status.fetch_status().await {
-        Ok(status) => map_bridges_status(status),
-        Err(error) => ServiceStatusSummary {
-            state: ServiceState::Unknown,
-            detail: Some(error.to_string()),
-            last_heartbeat_at: None,
-        },
-    };
-
-    ServiceSnapshot {
-        runtime,
-        bridges,
-        registry: None,
-    }
-}
-
-fn map_bridges_status(status: BridgesStatusResponse) -> ServiceStatusSummary {
-    let state = if status.healthy {
-        ServiceState::Ready
-    } else {
-        ServiceState::Degraded
-    };
-
-    ServiceStatusSummary {
-        state,
-        detail: Some(format!(
-            "node {} • daemon={} since {} • coordination={} • runtime={} • reachability={} (direct_hints={} derp={} mailbox={} durable={})",
-            status.node_id,
-            status.daemon.state,
-            status.daemon.started_at,
-            bridges_component_summary(&status.coordination),
-            bridges_component_summary(&status.runtime),
-            status.reachability.mode,
-            status.reachability.endpoint_hints_published,
-            status.reachability.derp_connected,
-            status.reachability.mailbox_fallback,
-            status.reachability.mailbox_durable,
-        )),
-        last_heartbeat_at: Some(
-            status
-                .coordination
-                .checked_at
-                .max(status.runtime.checked_at),
-        ),
-    }
-}
-
-fn bridges_component_summary(component: &BridgesComponentStatus) -> String {
-    match &component.detail {
-        Some(detail) if !detail.trim().is_empty() => format!("{} ({detail})", component.state),
-        _ => component.state.clone(),
-    }
 }
 
 fn client_metadata_from_headers(headers: &HeaderMap) -> ClientMetadata {
