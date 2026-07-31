@@ -529,7 +529,7 @@ export function ArtifactInspector({
               {fileNameFromPath(browserDirectory?.path ?? folderBrowserRootPath)}
             </div>
             <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">
-              Browse the full project folder. Open folders to inspect their files; select a file to preview it here.
+              {browserDirectory?.entries.length ?? 0} items
             </div>
           </div>
           {isBrowserLoading ? (

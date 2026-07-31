@@ -106,7 +106,6 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
         <div className="app-agent-panel-header flex items-start justify-between gap-4 px-5 py-4">
           <div>
             <div id="agent-create-title" className="app-agent-panel-title text-[16px] font-semibold">Create Cloud Agent</div>
-            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">Kordi shapes the private Agent with its configured LLM provider, tools, and skills.</div>
           </div>
           <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onClose}>Close</Button>
         </div>
@@ -115,7 +114,6 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
           <div className="app-agent-create-panel space-y-4 px-5 py-5">
             <div className="app-agent-create-muted rounded-[14px] px-4 py-3 text-[12px] leading-5">
               <div className="app-agent-row-title font-medium">Created by {creatorAgent?.name ?? 'Kordi'}</div>
-              <div className="app-agent-row-meta mt-1">Uses Kordi's configured LLM provider and current tool/skill context during shaping.</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className="app-agent-chip rounded-full border px-2.5 py-1">{creatorAgent?.loadedTools.length ?? 0} tools</span>
                 <span className="app-agent-chip rounded-full border px-2.5 py-1">{creatorAgent?.loadedSkills.length ?? 0} skills</span>
@@ -166,7 +164,6 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
           <div className="space-y-4 px-5 py-5">
             <div>
               <div className="app-agent-row-title text-[13px] font-medium">Draft</div>
-              <div className="app-agent-row-meta mt-1 text-[11px]">Output follows the Cloud Agent definition schema.</div>
             </div>
 
             {draft ? (
@@ -175,7 +172,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
                 <input value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })} className="app-agent-inspector-row w-full rounded-[14px] border bg-transparent px-3 py-2 text-[13px] outline-none" />
                 <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className="app-agent-inspector-row min-h-20 w-full resize-y rounded-[14px] border bg-transparent px-3 py-3 text-[13px] outline-none" />
                 <textarea value={draft.systemPrompt} onChange={(event) => setDraft({ ...draft, systemPrompt: event.target.value })} className="app-agent-code-panel min-h-40 w-full resize-y rounded-[14px] border bg-transparent px-3 py-3 font-mono text-[12px] leading-5 outline-none" />
-                <div className="app-agent-row-meta text-[11px]">Shape prompt preview is kept for LLM refinement:</div>
+                <div className="app-agent-row-meta text-[11px]">Shape prompt</div>
                 <pre className="app-agent-code-panel max-h-28 overflow-auto rounded-[14px] border px-3 py-3 text-[10px] leading-4 whitespace-pre-wrap">{shapePrompt}</pre>
               </div>
             ) : (
@@ -185,10 +182,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
           </div>
         </div>
 
-        <div className="app-agent-create-actions flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <div className="app-agent-row-meta text-[12px] leading-5">
-            Shape prepares the draft. Create saves it with the selected Cloud access.
-          </div>
+        <div className="app-agent-create-actions flex flex-wrap items-center justify-end gap-3 px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => void generateDraft()} disabled={!canShape}>{shaping ? 'Shaping…' : 'Shape draft with Kordi'}</Button>
             <Button className="rounded-xl text-[12px]" disabled={!canCreate} onClick={() => void createAgent()}>{creating ? 'Creating…' : 'Create Agent'}</Button>

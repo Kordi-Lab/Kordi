@@ -372,8 +372,7 @@ export function ContactsPage({
                 }}
               >
                 <div className="mb-1 text-[12px] font-medium text-white">Add contact</div>
-                <div className="mb-3 text-[11px] leading-4 text-slate-400">Search by exact account ID, then send an approval request.</div>
-                <div className="flex gap-2">
+                <div className="mt-2 flex gap-2">
                   <input
                     value={contactNodeId}
                     onChange={(event) => {
@@ -427,9 +426,7 @@ export function ContactsPage({
                         ? addContactError || 'Unable to send contact request.'
                         : lookupState === 'error'
                           ? lookupError || 'No account found.'
-                          : lookupResult
-                            ? 'Send an approval request to start chatting after they accept.'
-                            : 'Enter the account ID your contact shared with you.'}
+                          : ''}
                 </div>
               </form>
             )}

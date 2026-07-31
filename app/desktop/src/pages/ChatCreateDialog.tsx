@@ -146,12 +146,12 @@ function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; on
   );
 }
 
-function CreateDialogHeader({ title, subtitle, onClose }: { title: string; subtitle: string; onClose: () => void }) {
+function CreateDialogHeader({ title, subtitle, onClose }: { title: string; subtitle?: string; onClose: () => void }) {
   return (
     <div className="mb-2 flex items-start justify-between gap-2">
       <div className="min-w-0">
         <div className="truncate text-[13px] font-semibold leading-5 text-[color:var(--utility-foreground)]">{title}</div>
-        <div className="mt-px text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{subtitle}</div>
+        {subtitle ? <div className="mt-px text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{subtitle}</div> : null}
       </div>
       <button
         type="button"
@@ -165,7 +165,7 @@ function CreateDialogHeader({ title, subtitle, onClose }: { title: string; subti
   );
 }
 
-function ChoiceButton({ icon, title, detail, onClick }: { icon: ReactNode; title: string; detail: string; onClick: () => void }) {
+function ChoiceButton({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -175,7 +175,6 @@ function ChoiceButton({ icon, title, detail, onClick }: { icon: ReactNode; title
       <span className="app-chat-create-icon grid h-7 w-7 shrink-0 place-items-center rounded-[10px]">{icon}</span>
       <span className="min-w-0">
         <span className="block truncate text-[12.5px] font-semibold leading-4 text-[color:var(--utility-foreground)]">{title}</span>
-        <span className="mt-px block truncate text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">{detail}</span>
       </span>
     </button>
   );
@@ -322,16 +321,16 @@ export function ChatCreateDialog({
     <DialogCard onClose={close} anchorRect={anchorRect}>
       <CreateDialogHeader
         title={mode === 'menu' ? 'Start a chat' : mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : 'Start group'}
-        subtitle={mode === 'group' ? 'Select at least 2 people. Agents are added later.' : mode === 'add-contact' ? addContactSubtitle : 'Choose who this conversation is with.'}
+        subtitle={mode === 'group' ? 'Select at least 2 contacts.' : mode === 'add-contact' ? addContactSubtitle : undefined}
         onClose={close}
       />
 
       {mode === 'menu' ? (
         <div className="space-y-1">
-          <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with contact" detail="Direct contact conversation" onClick={() => setMode('person')} />
-          <ChoiceButton icon={<Bot className="h-3.5 w-3.5" />} title="Chat with agent" detail="Start with one Kordi agent" onClick={() => setMode('agent')} />
-          <ChoiceButton icon={<Users className="h-3.5 w-3.5" />} title="Start group" detail="Stable group with people only" onClick={() => setMode('group')} />
-          <ChoiceButton icon={<UserPlus className="h-3.5 w-3.5" />} title="Add contacts" detail="Request a private Kordi account" onClick={() => setMode('add-contact')} />
+          <ChoiceButton icon={<MessageSquare className="h-3.5 w-3.5" />} title="Chat with contact" onClick={() => setMode('person')} />
+          <ChoiceButton icon={<Bot className="h-3.5 w-3.5" />} title="Chat with agent" onClick={() => setMode('agent')} />
+          <ChoiceButton icon={<Users className="h-3.5 w-3.5" />} title="Start group" onClick={() => setMode('group')} />
+          <ChoiceButton icon={<UserPlus className="h-3.5 w-3.5" />} title="Add contacts" onClick={() => setMode('add-contact')} />
         </div>
       ) : null}
 

@@ -180,7 +180,7 @@ function AgentAccessMenu({ agent, onUpdateAccess, isSaving }: {
 
 function EditHistorySection({ entries }: { entries: AgentEditHistoryEntry[] }) {
   return (
-    <AgentInspectorSection title="Edit history" detail="Recent saved changes, shown in file path style.">
+    <AgentInspectorSection title="Edit history">
       <div className="app-agent-inner-list overflow-hidden rounded-[14px] border">
         {entries.length > 0 ? (
           entries.map((entry, index) => (
@@ -767,8 +767,8 @@ export function AgentDetailPane({
   const routingDraftDirty = !sameRoutingDraft(activeRoutingDraft, persistedRoutingDraft);
   const routingSaveDirty = !sameRoutingDraft(effectiveRoutingDraft, persistedRoutingDraft);
   const routingIdleCopy = routingPersistsToCollaboration
-    ? 'Select routes instantly; saved routes run this collaboration agent.'
-    : 'Saved locally until this agent is connected to hosted collaboration; connected agents inherit it.';
+    ? 'Routing saved.'
+    : 'Saved locally until this agent connects.';
   const confirmArchiveAgent = () => {
     if (!archiveConfirmAgent || isArchiveDeleting) return;
     setIsArchiveDeleting(true);
@@ -804,13 +804,8 @@ export function AgentDetailPane({
     }
   };
   const modelRoutingSection = activeAgent.isOwned ? (
-    <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned agent. These choices are private and not announced in shared chat history.">
-      <div className="app-agent-section-detail text-[13px] leading-5">
-        {routingPersistsToCollaboration
-          ? 'Use the default model for inbound mentions and reach-outs. If it is unavailable or errors during generation, Kordi retries with the fallback model.'
-          : 'Choose the default and fallback now. Saved locally until this agent is connected to hosted collaboration, then the connected agent inherits the same routing.'}
-      </div>
-      <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
+    <AgentInspectorSection title="Model routing">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
         <AgentRoutingSelect
           label="Default route"
           value={selectedDefaultRouteValue}
@@ -956,7 +951,7 @@ export function AgentDetailPane({
           {modelRoutingSection}
 
           {(activeAgent.collaborationReachouts?.length ?? 0) > 0 ? (
-            <AgentInspectorSection title="Direct reachouts" detail="People contacting this agent directly appear here instead of in your person chats.">
+            <AgentInspectorSection title="Direct reachouts">
               <div className="app-agent-inner-list overflow-hidden rounded-[14px] border">
                 {activeAgent.collaborationReachouts?.map((reachout, index) => (
                   <button

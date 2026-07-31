@@ -566,8 +566,8 @@ test('owned local runtime agent keeps editable default and fallback routing befo
   assert.match(markup, /Model routing/);
   assert.match(markup, /Default route/);
   assert.match(markup, /Fallback route/);
-  assert.match(markup, /Saved locally until this agent is connected to hosted collaboration/);
   assert.match(markup, /Unsaved route changes\. Save when ready\./);
+  assert.doesNotMatch(markup, /Saved locally until this agent is connected to hosted collaboration/);
   assert.doesNotMatch(markup, /Register this agent on a host before setting default or fallback routes\./);
   assert.doesNotMatch(markup, /disabled="">Save routing/);
 });

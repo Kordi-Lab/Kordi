@@ -209,7 +209,6 @@ export function ProjectsPage({
         <div className="app-page-header shrink-0 flex items-start justify-between gap-3 px-4 py-2.5 shadow-[inset_0_-1px_0_var(--app-divider)]">
           <div>
             <div className="text-[17px] font-semibold text-white" data-kordi-window-drag="false">Projects</div>
-            <div className="mt-1 text-[12px] text-slate-400">Projects should start explicitly from the + menu, not from ordinary chats.</div>
           </div>
         </div>
         <div className="flex flex-1 items-center justify-center p-6">
@@ -219,7 +218,7 @@ export function ProjectsPage({
             </div>
             <div className="text-[16px] font-medium text-white">No project yet</div>
             <p className="mt-2 text-[13px] leading-6 text-slate-400">
-              Normal sessions stay in Chats by default. Use the + menu to start a project from scratch or from an existing folder.
+              Use the + menu to create one.
             </p>
           </div>
         </div>

@@ -75,13 +75,10 @@ function EmptyWorkspaceState({ icon: Icon, title, detail }: { icon: typeof FileT
   );
 }
 
-function WorkspaceHeading({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) {
+function WorkspaceHeading({ title, action }: { title: string; action?: ReactNode }) {
   return (
     <div className="app-agent-studio-view-head">
-      <div>
-        <h3>{title}</h3>
-        <p>{detail}</p>
-      </div>
+      <h3>{title}</h3>
       {action}
     </div>
   );
@@ -393,7 +390,7 @@ function CapabilityEditor({
   return (
     <section className="app-agent-studio-popover" role="dialog" aria-label={mode === 'add' ? 'Add capability' : `Edit ${capability?.name ?? 'capability'}`}>
       <div className="app-agent-studio-popover-head">
-        <div><strong>{mode === 'add' ? 'Add capability' : 'Edit capability'}</strong><p>{mode === 'add' ? 'Choose what to add to this draft.' : 'Rename this capability in the draft.'}</p></div>
+        <strong>{mode === 'add' ? 'Add capability' : 'Edit capability'}</strong>
         <button type="button" className="app-agent-studio-icon-button" onClick={onClose} aria-label="Close capability editor"><X className="h-4 w-4" /></button>
       </div>
       {mode === 'add' ? (
@@ -511,7 +508,6 @@ export function CapabilitiesView({
     <div className="app-agent-studio-view-scroll">
       <WorkspaceHeading
         title="Capabilities"
-        detail="Review the skills, tools, and plugins available to this agent."
         action={allowCapabilityCreation ? <button type="button" className="app-agent-studio-button is-primary is-small" disabled={editableKinds.size === 0 || (creating && !creationDraft)} onClick={() => setEditor({ mode: 'add' })}><Plus className="h-3.5 w-3.5" />Add capability</button> : undefined}
       />
       <div className="app-agent-studio-capability-toolbar">
@@ -635,7 +631,7 @@ function FilesView({
 
   return (
     <div className="app-agent-studio-view-scroll is-files-view">
-      <WorkspaceHeading title="Build files" detail="Preview and edit supported workspace files without leaving Kordi Factory." />
+      <WorkspaceHeading title="Build files" />
       {!creating && !agent ? <EmptyWorkspaceState icon={FileText} title="No agent selected" detail="Select an agent to inspect its files." /> : (
         <div className="app-agent-studio-files-layout">
           <div className="app-agent-studio-file-list">
@@ -728,7 +724,7 @@ function BuilderDraftFilesView({
 
   return (
     <div className="app-agent-studio-view-scroll is-files-view">
-      <WorkspaceHeading title="Draft files" detail="Review the files used to validate, test, and publish this build." />
+      <WorkspaceHeading title="Draft files" />
       <div className="app-agent-studio-files-layout">
         <div className="app-agent-studio-file-list">
           {files.map((file) => (
@@ -778,7 +774,6 @@ function RunsView({
       <div className="app-agent-studio-view-scroll">
         <WorkspaceHeading
           title="Validate and test"
-          detail="Publishing stays locked until the current files pass validation and a real runtime smoke test."
           action={<button type="button" className="app-agent-studio-button is-primary is-small" disabled={!builderStatus.validation.valid || builderTesting} onClick={onTestBuilderDraft}>{builderTesting ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Testing…</> : 'Test draft'}</button>}
         />
         <div className="app-agent-studio-run-checks">
@@ -798,7 +793,7 @@ function RunsView({
   const activities = agent?.lastActivities ?? [];
   return (
     <div className="app-agent-studio-view-scroll">
-      <WorkspaceHeading title="Runs" detail="See real direct reachouts and runtime activity without mixing execution events into configuration." />
+      <WorkspaceHeading title="Runs" />
       {reachouts.length === 0 && activities.length === 0 ? <EmptyWorkspaceState icon={Activity} title="No runtime activity yet" detail="Runs and direct reachouts will appear here when this agent starts working." /> : (
         <div className="app-agent-studio-simple-list">
           {reachouts.map((reachout) => (
@@ -818,7 +813,7 @@ function RunsView({
 function HistoryView({ entries }: { entries: AgentEditHistoryEntry[] }) {
   return (
     <div className="app-agent-studio-view-scroll">
-      <WorkspaceHeading title="Change history" detail="Review saved and published changes." />
+      <WorkspaceHeading title="Change history" />
       {entries.length === 0 ? <EmptyWorkspaceState icon={History} title="No published changes yet" detail="Saved and published configuration edits will appear here." /> : (
         <div className="app-agent-studio-simple-list">
           {entries.map((entry, index) => (

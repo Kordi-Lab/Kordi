@@ -93,10 +93,7 @@ export function AgentStudioRoutingEditor({
   return (
     <section className="app-agent-studio-popover" role="dialog" aria-modal="false" aria-label="Edit model routing">
       <div className="app-agent-studio-popover-head">
-        <div>
-          <strong>Model routing</strong>
-          <p>Choose the default route, fallback, and thinking level for this agent.</p>
-        </div>
+        <strong>Model routing</strong>
         <button type="button" className="app-agent-studio-icon-button" aria-label="Close model routing" onClick={onClose}><X className="h-4 w-4" /></button>
       </div>
       <label className="app-agent-studio-field">

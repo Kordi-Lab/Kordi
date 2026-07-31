@@ -137,9 +137,6 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
         <header className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-[18px] font-semibold tracking-tight">Cloud contacts</h2>
-            <p className="app-transient-muted mt-1 text-[12px]">
-              Find other Kordi cloud users by their account ID.
-            </p>
           </div>
           <button
             type="button"

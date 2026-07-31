@@ -58,7 +58,7 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.match(markup, /app-button-outline/);
   assert.match(markup, /app-button-primary/);
   assert.match(markup, /app-compact-model-menu-option/);
-  assert.match(markup, /Choose the provider, model, and thinking level\./);
+  assert.doesNotMatch(markup, /Choose the provider, model, and thinking level\./);
   assert.doesNotMatch(markup, /only you see this/);
   assert.doesNotMatch(markup, /changes stay local in this popout until you save them\./);
   assert.doesNotMatch(markup, /pending route:/);

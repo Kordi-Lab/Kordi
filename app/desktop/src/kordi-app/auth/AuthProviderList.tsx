@@ -51,7 +51,6 @@ export function AuthProviderList({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="font-medium text-white">Provider saved — you can start chatting.</div>
-                <div className="mt-0.5 text-[11px] text-emerald-50/75">Enter chat now, or add another source.</div>
               </div>
               {onEnterChat ? (
                 <Button
@@ -115,9 +114,6 @@ export function AuthProviderList({
               {configuredCount} saved · {providers.length} total
             </div>
           </div>
-          <div className="mt-1.5 max-w-[34ch] text-[12px] leading-5 text-slate-400">
-            Pick a provider. One working connection is enough.
-          </div>
         </div>
         <Button
           type="button"
@@ -136,7 +132,6 @@ export function AuthProviderList({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="font-medium text-white">Provider saved — you can start chatting.</div>
-              <div className="mt-0.5 text-[11px] text-emerald-50/75">Enter chat now, or configure another source from the list below.</div>
             </div>
             {onEnterChat ? (
               <Button

@@ -250,7 +250,7 @@ export function SkillLibraryView({
       <header className="app-agent-studio-header">
         <div className="flex min-w-0 items-center gap-3">
           <span className="app-agent-studio-factory-mark" aria-hidden="true"><Puzzle className="h-5 w-5" /></span>
-          <div className="min-w-0"><h2>Skill Library</h2><p>Build, inspect, and install reusable capabilities.</p></div>
+          <h2>Skill Library</h2>
         </div>
         <button type="button" className="app-agent-studio-button is-ghost" onClick={() => void onRefresh()} disabled={loading}><RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />Refresh</button>
       </header>

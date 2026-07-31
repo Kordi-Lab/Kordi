@@ -22,7 +22,7 @@ export type SettingsControl =
 export type SettingsItem = {
   label: string;
   value: string;
-  hint: string;
+  hint?: string;
   control?: SettingsControl;
 };
 
@@ -31,7 +31,6 @@ export type SettingsSection = {
   label: string;
   icon: LucideIcon;
   title: string;
-  description: string;
   items: SettingsItem[];
 };
 
@@ -41,7 +40,6 @@ export const settingsSections: SettingsSection[] = [
     label: 'Authentication',
     icon: KeyRound,
     title: 'Authentication',
-    description: 'Connect Kordi to cloud accounts or local model servers and manage saved access.',
     items: [],
   },
   {
@@ -49,12 +47,10 @@ export const settingsSections: SettingsSection[] = [
     label: 'Theme',
     icon: Sparkles,
     title: 'Theme',
-    description: 'Choose the primary interface palette.',
     items: [
       {
         label: 'Theme',
         value: 'Obsidian',
-        hint: 'Primary interface palette for the app.',
         control: { type: 'theme' },
       },
     ],

@@ -116,14 +116,6 @@
   letter-spacing: -0.025em;
 }
 
-.app-agent-studio-view-head p {
-  max-width: 560px;
-  margin: 4px 0 0;
-  color: var(--utility-muted-text);
-  font-size: var(--agent-studio-type-secondary);
-  line-height: 1.5;
-}
-
 .app-agent-studio-file-editor {
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--app-divider) 68%, transparent);

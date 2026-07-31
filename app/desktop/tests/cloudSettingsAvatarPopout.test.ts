@@ -89,7 +89,7 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
   assert.match(authPage, /showSettingsHeader = true/);
   assert.match(authPage, /settingsLayoutMode = 'fixed'/);
   assert.doesNotMatch(providerList, /Pick a cloud account/);
-  assert.match(providerList, /Pick a provider\. One working connection is enough\./);
+  assert.doesNotMatch(providerList, /Pick a provider\. One working connection is enough\./);
   assert.match(providerList, /app-auth-provider-rows[^\n]*border-y[^\n]*bg-transparent[^\n]*shadow-none/);
   assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*rounded-\[22px\]/);
 });

@@ -244,12 +244,6 @@ export function WorkspaceSidebar({
                       </div>
                     </div>
 
-                    <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
-                      {chatModel.chatChannel === 'contact'
-                        ? 'People open as one flat chat; groups expand into sessions.'
-                        : 'Each row is a # session with one of your agents.'}
-                    </div>
-
                     <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
                       <Search className="h-3.5 w-3.5 text-slate-400" />
                       <input
