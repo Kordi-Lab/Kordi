@@ -120,6 +120,7 @@ This table records the current disposition of the high-priority #235/#693 areas.
 
 ## Completed slices
 
+- `app/desktop/src-tauri/src/chat/agent_builder.rs`: bounded workspace reads, safe path/frontmatter validation, deterministic content fingerprinting, and draft contract projection moved to `app/desktop/src-tauri/src/chat/agent_builder/validation.rs`; size limits, accepted draft schema, validation errors, and fingerprint bytes remain unchanged.
 - `app/desktop/src-tauri/src/chat/agent_builder.rs`: draft-id validation, durable draft path resolution, JSON metadata/test-report persistence, active-draft discovery, and the process-local mutation lock moved to `app/desktop/src-tauri/src/chat/agent_builder/storage.rs`; on-disk names, JSON shapes, UUID validation, timestamps, and caller-visible errors remain unchanged.
 - `app/desktop/src-tauri/src/chat/agent_builder.rs`: public Tauri DTOs and internal persisted draft records moved to `app/desktop/src-tauri/src/chat/agent_builder/models.rs`; camelCase serialization, field defaults, public type paths, and command signatures remain unchanged.
 - `app/desktop/src-tauri/src/canonical_sessions/commands.rs`: SQLite row projection, bounded transcript pages, session catalog summaries, and compatibility full-state loading moved behind the typed `app/desktop/src-tauri/src/canonical_sessions/commands/catalog.rs` boundary. Existing command names, DTOs, query ordering, and page limits remain unchanged; the command root is now 774 lines.
