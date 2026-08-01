@@ -4,6 +4,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::envelopes::cloud_group_request_envelope_for_run;
+use super::group_mentions::agent_handoff_target;
 use super::{ClaimRunRequest, RunResult};
 
 pub async fn requester_can_target_owner(
@@ -22,6 +23,29 @@ pub async fn requester_can_target_owner(
     .fetch_optional(pool)
     .await?;
     Ok(row.is_some())
+}
+
+pub async fn validate_agent_authored_group_handoff_claim(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> RunResult<bool> {
+    let Some(envelope) =
+        cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
+            .await?
+    else {
+        return Ok(true);
+    };
+    let Some(message) = envelope.message.as_ref() else {
+        return Ok(false);
+    };
+    if message.sender_kind.as_deref() != Some("agent") {
+        return Ok(true);
+    }
+    if message.sender_account_id.trim() != input.requester_account_id.trim() {
+        return Ok(false);
+    }
+    Ok(agent_handoff_target(&envelope)
+        .is_some_and(|target| target.account_id.trim() == input.owner_account_id.trim()))
 }
 
 #[derive(Debug, Clone)]

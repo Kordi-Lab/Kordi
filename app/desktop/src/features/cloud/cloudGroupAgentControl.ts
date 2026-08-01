@@ -19,6 +19,9 @@ import {
 } from './cloudAgentMessages';
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentRuntime';
 import {
+  cloudGroupAgentHandoffForResponse,
+} from './cloudGroupMentions';
+import {
   cloudGroupAgentConversationId,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupLocalAgentRequestAlreadyHandled,
@@ -65,6 +68,7 @@ type CloudGroupAgentPolicy = {
   messageTargetsLocalAgent(
     message: NonNullable<CloudGroupMessageControlContext['envelope']['message']>,
     account: CloudGroupMessageControlContext['account'],
+    participants: CloudGroupMessageControlContext['envelope']['participants'],
   ): boolean;
   responseExists(input: {
     localAccountId: string;
@@ -82,6 +86,7 @@ type CloudGroupAgentPolicy = {
     groupId: string;
     requestMessageId: string;
     requestCreatedAtMs: number;
+    respondingAccountId: string;
   }): DesktopChatContextMessage[];
   waitForTurn(
     turnId: string,
@@ -119,13 +124,15 @@ export function applyCloudGroupAgentControl(input: ApplyCloudGroupAgentControlIn
     account,
     cloudMessage,
     envelope,
-    senderIsAgent,
   } = context;
   const message = envelope.message;
   if (
     !message
-    || senderIsAgent
-    || !policy.messageTargetsLocalAgent(message, account)
+    || !policy.messageTargetsLocalAgent(
+      message,
+      account,
+      envelope.participants,
+    )
     || !policy.isRecentMention(cloudMessage.createdAt)
     || runtime.processedMentionIds.has(message.id)
   ) return;
@@ -290,6 +297,7 @@ async function respondToCloudGroupAgentMention(
       groupId: envelope.groupId,
       requestMessageId: message.id,
       requestCreatedAtMs: message.createdAtMs,
+      respondingAccountId: account.accountId,
     }),
   ];
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
@@ -338,6 +346,7 @@ async function respondToCloudGroupAgentMention(
   });
 
   const succeeded = finalTurn.succeeded && finalTurn.assistantText.trim().length > 0;
+  const responseText = succeeded ? finalTurn.assistantText.trim() : '';
   const failureMessage = succeeded
     ? null
     : isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message)
@@ -370,9 +379,17 @@ async function respondToCloudGroupAgentMention(
   const responseDeliveryState: 'complete' | 'failed' = succeeded ? 'complete' : 'failed';
   const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
   const responseCreatedAtMs = Date.now();
+  const agentHandoff = succeeded
+    ? cloudGroupAgentHandoffForResponse({
+      responseText,
+      participants: envelope.participants,
+      respondingAccountId: account.accountId,
+      requestMessage: message,
+    })
+    : null;
   const responseRequest = {
     ...processingRequest,
-    contentText: succeeded ? finalTurn.assistantText.trim() : '',
+    contentText: responseText,
     content: {
       sender: agentDisplayName,
       timestampMs: responseCreatedAtMs,
@@ -410,13 +427,14 @@ async function respondToCloudGroupAgentMention(
       message: {
         id: responseMessageId,
         senderAccountId: account.accountId,
-        text: succeeded ? finalTurn.assistantText.trim() : (failureMessage ?? ''),
+        text: succeeded ? responseText : (failureMessage ?? ''),
         createdAtMs: responseCreatedAtMs,
         senderKind: 'agent',
         senderDisplayName: agentDisplayName,
         deliveryState: responseDeliveryState,
         replyToMessageId: message.id,
         requestId: message.id,
+        ...(agentHandoff ?? {}),
       },
     }),
     sessionId: envelope.groupId,

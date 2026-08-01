@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use super::group_mentions::{resolve_agent_mention, CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH};
+
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
@@ -57,6 +59,8 @@ pub(super) struct CloudGroupMessage {
         skip_serializing_if = "Option::is_none"
     )]
     pub(super) target_cloud_agent_owner_name: Option<String>,
+    #[serde(rename = "agentMentionDepth", skip_serializing_if = "Option::is_none")]
+    pub(super) agent_mention_depth: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -146,6 +150,28 @@ pub(super) fn cloud_group_response_body(
             format!("{}'s Kordi", owner.display_name.trim())
         }
     });
+    let request_mention_depth = request_envelope
+        .message
+        .as_ref()
+        .and_then(|message| message.agent_mention_depth)
+        .unwrap_or(0);
+    let mentioned_agent = (delivery_state == "complete"
+        && request_mention_depth < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH)
+        .then(|| {
+            resolve_agent_mention(
+                response_text,
+                &request_envelope.participants,
+                owner_account_id,
+            )
+        })
+        .flatten();
+    let target_cloud_agent_owner_account_id = mentioned_agent
+        .as_ref()
+        .map(|target| target.account_id.clone());
+    let target_cloud_agent_owner_name = mentioned_agent
+        .as_ref()
+        .map(|target| target.display_name.clone());
+    let agent_mention_depth = mentioned_agent.as_ref().map(|_| request_mention_depth + 1);
     encode_cloud_group_envelope(&CloudGroupEnvelope {
         kind: "group-message".to_string(),
         group_id: request_envelope.group_id.clone(),
@@ -167,8 +193,9 @@ pub(super) fn cloud_group_response_body(
             message_action: None,
             target_cloud_agent_id: None,
             target_cloud_agent_name: None,
-            target_cloud_agent_owner_account_id: None,
-            target_cloud_agent_owner_name: None,
+            target_cloud_agent_owner_account_id,
+            target_cloud_agent_owner_name,
+            agent_mention_depth,
         }),
     })
 }
@@ -206,19 +233,32 @@ pub(super) async fn cloud_group_request_envelope_for_run(
     session_id: &str,
     request_message_id: &str,
 ) -> Result<Option<CloudGroupEnvelope>, sqlx_core::Error> {
+    Ok(
+        cloud_group_request_envelope_with_created_at_for_run(pool, session_id, request_message_id)
+            .await?
+            .map(|(envelope, _)| envelope),
+    )
+}
+
+pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
+    pool: &PgPool,
+    session_id: &str,
+    request_message_id: &str,
+) -> Result<Option<(CloudGroupEnvelope, String)>, sqlx_core::Error> {
     if !session_id.trim().starts_with("session:group:") {
         return Ok(None);
     }
-    let rows = query_as::<_, (String,)>(
-        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at ASC",
+    let rows = query_as::<_, (String, String)>(
+        "SELECT body, created_at FROM cloud_messages WHERE session_id = $1 ORDER BY created_at ASC",
     )
     .bind(session_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().find_map(|(body,)| {
+    Ok(rows.into_iter().find_map(|(body, created_at)| {
         let envelope = parse_cloud_group_envelope(&body)?;
         let message = envelope.message.as_ref()?;
-        (envelope.kind == "group-message" && message.id == request_message_id).then_some(envelope)
+        (envelope.kind == "group-message" && message.id == request_message_id)
+            .then_some((envelope, created_at))
     }))
 }
 
