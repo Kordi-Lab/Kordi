@@ -7,7 +7,7 @@ const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/can
 test('canonical SQLite connections use WAL and busy timeout to avoid UI-blocking lock failures', () => {
   const source = canonicalSessionsSource();
   const openStart = source.indexOf('fn open_db() -> Result<Connection, String>');
-  const openEnd = source.indexOf('\n}\n\nfn upsert_identity_in_db', openStart);
+  const openEnd = source.indexOf('\n}\n\nfn latest_readable_session_message_id', openStart);
   assert.notEqual(openStart, -1, 'expected canonical open_db');
   assert.notEqual(openEnd, -1, 'expected end of canonical open_db');
   const openDb = source.slice(openStart, openEnd);

@@ -4,12 +4,9 @@ mod resolver;
 mod store;
 
 use anyhow::Result;
-use kordi_core::config;
 use kordi_core::settings::Settings;
 use kordi_provider::registry::{Model, ModelRegistry};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
 
 use crate::oauth::OAuthCredentials;
 
@@ -40,11 +37,15 @@ pub use resolver::{
 #[cfg(test)]
 pub(crate) use resolver::save_oauth_credentials;
 pub use store::{
-    active_auth_method, auth_path, configured_providers, github_copilot_api_base_url,
-    github_copilot_cached_models, github_copilot_domain, github_copilot_runtime_headers,
-    github_copilot_status, normalize_github_domain, remove_auth, save_api_key,
+    GithubCopilotStatus, active_auth_method, auth_path, configured_providers,
+    github_copilot_api_base_url, github_copilot_cached_models, github_copilot_domain,
+    github_copilot_runtime_headers, normalize_github_domain, remove_auth, save_api_key,
     save_github_copilot_config, set_active_auth_profile, stored_auth_methods, stored_auth_profiles,
 };
+
+pub fn github_copilot_status() -> GithubCopilotStatus {
+    store::github_copilot_status()
+}
 
 // The desktop crate consumes this through the library target; the CLI binary
 // compiles the same module without calling it directly.

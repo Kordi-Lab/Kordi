@@ -304,10 +304,10 @@ fn cloud_agent_scheduled_responses_are_written_to_cloud_sync_events() {
 
 #[test]
 fn cloud_agent_completion_updates_scheduled_task_run_status() {
-    let runs_source = std::fs::read_to_string("src/cloud_agent_runtime/runs.rs")
-        .expect("read cloud agent runs source");
-    assert!(runs_source.contains("mark_scheduled_task_run_completed"));
-    assert!(runs_source.contains("mark_scheduled_task_run_failed"));
+    let completion_source = std::fs::read_to_string("src/cloud_agent_runtime/runs/completion.rs")
+        .expect("read cloud agent run completion source");
+    assert!(completion_source.contains("mark_scheduled_task_run_completed"));
+    assert!(completion_source.contains("mark_scheduled_task_run_failed"));
 }
 
 #[test]
