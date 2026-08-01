@@ -10,6 +10,7 @@ import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
   cloudGroupAgentProcessingSlotForResponse,
   cloudGroupIncomingMessageAlreadyApplied,
+  cloudGroupMessageTargetsLocalAgent,
   cloudGroupNativeContextMessages,
   cloudFallbackRunClaimsForMessages,
 } from '../src/features/cloud/useCloudCollaborationState';
@@ -129,6 +130,144 @@ test('cloud outgoing group remote-agent mentions produce Cloud fallback run clai
     prompt: 'Group chat history:\nThree Person: hii every one\n\nCurrent request:\nsay hello to everyone',
     idempotencyKey: 'cloud-agent-fallback-group:session:group:one:msg:ui:group_request:acct_peer',
   }]);
+
+  const index = buildCloudMessageIndex(account.accountId, {
+    acct_peer: [requestToOwner],
+    acct_three: [previous, requestToParticipant],
+  });
+  const context = cloudGroupNativeContextMessages({
+    groupRows: index.groupRows,
+    groupId,
+    requestMessageId: 'msg:ui:group_request',
+    requestCreatedAtMs: 2_000,
+    respondingAccountId: 'acct_peer',
+  });
+  assert.match(context.at(-1)?.text ?? '', /Group @mention permissions/);
+  assert.match(context.at(-1)?.text ?? '', /"my Kordi" means @MeCloudsKordi/);
+  assert.match(context.at(-1)?.text ?? '', /@ThreePersonsKordi/);
+  assert.doesNotMatch(context.at(-1)?.text ?? '', /@PeerPersonsKordi/);
+});
+
+test('one-hop agent-authored Kordi mentions target exactly one owner', () => {
+  const groupId = 'session:group:agent-handoff';
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'admin' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' as const },
+    { accountId: 'acct_three', displayName: 'Three Person', avatarUrl: null, role: 'person' as const },
+  ];
+  const handoffMessage = {
+    id: 'msg:agent:handoff',
+    senderAccountId: 'acct_me',
+    text: '@PeerPersonsKordi prepare the budget',
+    createdAtMs: 2_000,
+    senderKind: 'agent' as const,
+    senderDisplayName: "Me Cloud's Kordi",
+    targetCloudAgentOwnerAccountId: 'acct_peer',
+    targetCloudAgentOwnerName: 'Peer Person',
+    agentMentionDepth: 1,
+  };
+  const handoff: CloudMessage = {
+    ...message,
+    messageId: 'msg_agent_handoff_wire',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId,
+      groupSpaceId: groupId,
+      groupTitle: null,
+      createdByAccountId: 'acct_me',
+      actor: participants[0],
+      participants,
+      message: handoffMessage,
+    }),
+    direction: 'outgoing',
+    sessionId: groupId,
+  };
+
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [handoff] },
+  });
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.requestMessageId, handoffMessage.id);
+  assert.match(claims[0]?.prompt ?? '', /prepare the budget/);
+
+  const peerAccount = {
+    ...account,
+    accountId: 'acct_peer',
+    displayName: 'Peer Person',
+  };
+  assert.equal(
+    cloudGroupMessageTargetsLocalAgent(
+      handoffMessage,
+      peerAccount,
+      participants,
+    ),
+    true,
+  );
+  assert.equal(
+    cloudGroupMessageTargetsLocalAgent(
+      { ...handoffMessage, targetCloudAgentOwnerAccountId: 'acct_three' },
+      peerAccount,
+      participants,
+    ),
+    false,
+  );
+  assert.equal(
+    cloudGroupMessageTargetsLocalAgent(
+      { ...handoffMessage, agentMentionDepth: 2 },
+      peerAccount,
+      participants,
+    ),
+    false,
+  );
+});
+
+test('agent-authored people, unknown handles, and missing metadata stay non-actionable', () => {
+  const groupId = 'session:group:unresolved-agent-handoff';
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'admin' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' as const },
+  ];
+  const bodies = [
+    { text: '@PeerPerson what do you think?', targetCloudAgentOwnerAccountId: undefined },
+    { text: '@InventedKordi prepare this', targetCloudAgentOwnerAccountId: 'acct_peer' },
+    { text: '@PeerPersonsKordi prepare this', targetCloudAgentOwnerAccountId: undefined },
+  ].map((candidate, index) => encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: participants[0],
+    participants,
+    message: {
+      id: `msg:agent:unresolved:${index}`,
+      senderAccountId: 'acct_me',
+      text: candidate.text,
+      createdAtMs: 2_000 + index,
+      senderKind: 'agent',
+      targetCloudAgentOwnerAccountId: candidate.targetCloudAgentOwnerAccountId,
+      agentMentionDepth: 1,
+    },
+  }));
+  const peerMessages = bodies.map((body, index): CloudMessage => ({
+    ...message,
+    messageId: `wire_unresolved_${index}`,
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body,
+    direction: 'outgoing',
+    sessionId: groupId,
+  }));
+
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: peerMessages },
+  }), []);
 });
 
 test('cloud forwarded group mentions do not produce fallback run claims', () => {
@@ -203,12 +342,16 @@ test('cloud forwarded group mentions do not produce fallback run claims', () => 
   assert.match(claims[0]?.prompt ?? '', /answer only this/);
   assert.doesNotMatch(claims[0]?.prompt ?? '', /PeerPersonKordi test/);
   const index = buildCloudMessageIndex(account.accountId, { acct_peer: [request, nextRequest] });
-  assert.deepEqual(cloudGroupNativeContextMessages({
+  const nativeContext = cloudGroupNativeContextMessages({
     groupRows: index.groupRows,
     groupId,
     requestMessageId: 'msg:ui:group_after_forward_request',
     requestCreatedAtMs: 3_000,
-  }), []);
+    respondingAccountId: 'acct_peer',
+  });
+  assert.equal(nativeContext.length, 1);
+  assert.equal(nativeContext[0]?.authorName, 'Group mention permissions');
+  assert.doesNotMatch(nativeContext[0]?.text ?? '', /PeerPersonKordi test/);
 });
 
 test('cloud outgoing remote-agent mention claims include prior direct chat history', () => {

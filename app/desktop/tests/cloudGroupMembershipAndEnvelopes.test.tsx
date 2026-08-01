@@ -1,6 +1,141 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cloudGroupAttachmentReferences, cloudGroupAdminAccountIds, cloudGroupControlWithAttachmentReferences, cloudGroupControlMessagesForAccount, cloudGroupOutgoingParticipantSnapshot, cloudGroupParticipantsForCollaborationSession, cloudGroupRelatedControlsForSend, encodeCloudGroupControl, isCloudGroupSessionId, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import {
+  cloudGroupAttachmentReferences,
+  cloudGroupAdminAccountIds,
+  cloudGroupControlMessagesForAccount,
+  cloudGroupControlWithAttachmentReferences,
+  cloudGroupOutgoingParticipantSnapshot,
+  cloudGroupParticipantsForCollaborationSession,
+  cloudGroupRelatedControlsForSend,
+  encodeCloudGroupControl,
+  isCloudGroupSessionId,
+  parseCloudGroupControl,
+} from '../src/features/cloud/cloudGroupMessages';
+import {
+  cloudGroupAgentHandoffForResponse,
+  cloudGroupAgentHandoffTargetsAccount,
+  cloudGroupMentionCatalog,
+  cloudGroupMentionInstruction,
+  resolveCloudGroupAgentMention,
+} from '../src/features/cloud/cloudGroupMentions';
+
+test('group mention catalog exposes exact people, Kordi, and requester handles', () => {
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Shu Yang', avatarUrl: null, role: 'admin' },
+    { accountId: 'acct_fish', displayName: 'C UFishAI', avatarUrl: null, role: 'person' },
+    { accountId: 'acct_unicode', displayName: '贾 欣', avatarUrl: null, role: 'person' },
+  ];
+  const catalog = cloudGroupMentionCatalog(participants);
+
+  assert.ok(catalog.some((entry) => (
+    entry.accountId === 'acct_fish'
+    && entry.targetKind === 'person'
+    && entry.handle === 'CUFishAI'
+  )));
+  assert.ok(catalog.some((entry) => (
+    entry.accountId === 'acct_fish'
+    && entry.targetKind === 'agent'
+    && entry.handle === 'CUFishAIsKordi'
+  )));
+  assert.ok(catalog.some((entry) => (
+    entry.accountId === 'acct_unicode'
+    && entry.targetKind === 'agent'
+    && entry.handle === '贾欣sKordi'
+  )));
+
+  const instruction = cloudGroupMentionInstruction({
+    participants,
+    respondingAccountId: 'acct_fish',
+    requesterAccountId: 'acct_me',
+    requesterKind: 'human',
+    allowAgentMentions: true,
+  });
+  assert.match(instruction ?? '', /"my Kordi" means @ShuYangsKordi/);
+  assert.match(instruction ?? '', /@贾欣sKordi/);
+  assert.doesNotMatch(instruction ?? '', /@CUFishAIsKordi/);
+  assert.equal(resolveCloudGroupAgentMention({
+    text: '@ShuYangsKordi can you verify this?',
+    participants,
+    respondingAccountId: 'acct_fish',
+  })?.accountId, 'acct_me');
+});
+
+test('ambiguous, invented, self, and mismatched group handoffs fail closed', () => {
+  const ambiguousParticipants = [
+    { accountId: 'acct_one', displayName: 'Same Name', avatarUrl: null, role: 'person' },
+    { accountId: 'acct_two', displayName: 'Same-Name', avatarUrl: null, role: 'person' },
+  ];
+  assert.deepEqual(cloudGroupMentionCatalog(ambiguousParticipants), []);
+  assert.equal(resolveCloudGroupAgentMention({
+    text: '@SameNamesKordi hello',
+    participants: ambiguousParticipants,
+    respondingAccountId: 'acct_source',
+  }), null);
+
+  const participants = [
+    { accountId: 'acct_source', displayName: 'Source', avatarUrl: null, role: 'admin' },
+    { accountId: 'acct_target', displayName: 'Target', avatarUrl: null, role: 'person' },
+  ];
+  assert.equal(resolveCloudGroupAgentMention({
+    text: '@SourcesKordi self',
+    participants,
+    respondingAccountId: 'acct_source',
+  }), null);
+  assert.equal(resolveCloudGroupAgentMention({
+    text: '@InventedKordi hello',
+    participants,
+    respondingAccountId: 'acct_source',
+  }), null);
+  assert.equal(cloudGroupAgentHandoffTargetsAccount({
+    participants,
+    message: {
+      id: 'msg_handoff',
+      senderAccountId: 'acct_source',
+      text: '@TargetsKordi hello',
+      createdAtMs: 1,
+      senderKind: 'agent',
+      targetCloudAgentOwnerAccountId: 'acct_other',
+      agentMentionDepth: 1,
+    },
+  }, 'acct_target'), false);
+});
+
+test('agent final text resolves one exact Kordi handoff and never a second hop', () => {
+  const participants = [
+    { accountId: 'acct_source', displayName: 'Source', avatarUrl: null, role: 'admin' },
+    { accountId: 'acct_target', displayName: 'Target Human', avatarUrl: null, role: 'person' },
+  ];
+  const requestMessage = {
+    id: 'msg_request',
+    senderAccountId: 'acct_source',
+    text: '@SourcesKordi ask the target',
+    createdAtMs: 1,
+    senderKind: 'human' as const,
+  };
+  assert.deepEqual(cloudGroupAgentHandoffForResponse({
+    responseText: '@TargetHumansKordi please provide the status',
+    participants,
+    respondingAccountId: 'acct_source',
+    requestMessage,
+  }), {
+    targetCloudAgentOwnerAccountId: 'acct_target',
+    targetCloudAgentOwnerName: 'Target Human',
+    agentMentionDepth: 1,
+  });
+  assert.equal(cloudGroupAgentHandoffForResponse({
+    responseText: '@TargetHumansKordi ask again',
+    participants,
+    respondingAccountId: 'acct_source',
+    requestMessage: { ...requestMessage, senderKind: 'agent', agentMentionDepth: 1 },
+  }), null);
+  assert.equal(cloudGroupAgentHandoffForResponse({
+    responseText: '@TargetHuman what do you think?',
+    participants,
+    respondingAccountId: 'acct_source',
+    requestMessage,
+  }), null);
+});
 
 test('group admin snapshots always keep the creator and explicit promoted admins', () => {
   const envelope = parseCloudGroupControl(encodeCloudGroupControl({
@@ -168,6 +303,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
       targetCloudAgentName: 'Project Driver',
       targetCloudAgentOwnerAccountId: 'acct_owner',
       targetCloudAgentOwnerName: 'Shuyang',
+      agentMentionDepth: 1,
     },
   });
 
@@ -185,6 +321,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.targetCloudAgentName, 'Project Driver');
   assert.equal(parsed?.message?.targetCloudAgentOwnerAccountId, 'acct_owner');
   assert.equal(parsed?.message?.targetCloudAgentOwnerName, 'Shuyang');
+  assert.equal(parsed?.message?.agentMentionDepth, 1);
 });
 
 test('cloud group control envelopes preserve quote message actions for recipients', () => {

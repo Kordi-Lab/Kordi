@@ -90,6 +90,7 @@ export type CloudGroupControlEnvelope = {
     targetCloudAgentName?: string | null;
     targetCloudAgentOwnerAccountId?: string | null;
     targetCloudAgentOwnerName?: string | null;
+    agentMentionDepth?: number | null;
   } | null;
 };
 
@@ -668,6 +669,11 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         targetCloudAgentName: cleanText(typeof candidate.targetCloudAgentName === 'string' ? candidate.targetCloudAgentName : null) || null,
         targetCloudAgentOwnerAccountId: cleanText(typeof candidate.targetCloudAgentOwnerAccountId === 'string' ? candidate.targetCloudAgentOwnerAccountId : null) || null,
         targetCloudAgentOwnerName: cleanText(typeof candidate.targetCloudAgentOwnerName === 'string' ? candidate.targetCloudAgentOwnerName : null) || null,
+        agentMentionDepth: typeof candidate.agentMentionDepth === 'number'
+          && Number.isInteger(candidate.agentMentionDepth)
+          && candidate.agentMentionDepth >= 0
+          ? candidate.agentMentionDepth
+          : null,
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);

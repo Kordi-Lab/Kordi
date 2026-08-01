@@ -23,6 +23,9 @@ import {
   cloudMessageActionAllowsAgentContext,
   cloudMessageActionAllowsAgentTrigger,
 } from './cloudAgentTriggerPolicy';
+import {
+  cloudGroupAgentHandoffTargetsAccount,
+} from './cloudGroupMentions';
 import type { CloudGroupControlEnvelope } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
@@ -268,6 +271,13 @@ export function cloudFallbackRunClaimsForMessages({
         if (!cloudMessageActionAllowsAgentTrigger(groupMessage.messageAction)) {
           continue;
         }
+        if (
+          groupMessage.senderKind === 'agent'
+          && !cloudGroupAgentHandoffTargetsAccount(
+            groupEnvelope,
+            ownerAccountId,
+          )
+        ) continue;
         const groupRequestMessage = { ...message, body: groupMessage.text };
         if (!cloudMessageMentionsContactAgent(groupRequestMessage, contact)) {
           continue;

@@ -5,8 +5,10 @@ use sqlx_postgres::PgPool;
 
 use super::authorization::shared_cloud_agent_target_for_claim;
 use super::envelopes::{
-    cloud_agent_response_text, direct_message_envelope, parse_cloud_group_envelope,
+    cloud_agent_response_text, cloud_group_request_envelope_with_created_at_for_run,
+    direct_message_envelope, parse_cloud_group_envelope,
 };
+use super::group_mentions::mention_instruction;
 use super::{ClaimRunRequest, RunResult};
 
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES: i64 = 12;
@@ -216,15 +218,26 @@ pub(super) async fn fallback_prompt_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> RunResult<String> {
-    let Some((request_created_at,)) = query_as::<_, (String,)>(
-        "SELECT created_at FROM cloud_messages WHERE message_id = $1 AND session_id = $2",
+    let group_request = cloud_group_request_envelope_with_created_at_for_run(
+        pool,
+        &input.session_id,
+        &input.request_message_id,
     )
-    .bind(&input.request_message_id)
-    .bind(&input.session_id)
-    .fetch_optional(pool)
-    .await?
-    else {
-        return Ok(input.prompt.trim().to_string());
+    .await?;
+    let request_created_at = if let Some((_, created_at)) = group_request.as_ref() {
+        created_at.clone()
+    } else {
+        let Some((created_at,)) = query_as::<_, (String,)>(
+            "SELECT created_at FROM cloud_messages WHERE message_id = $1 AND session_id = $2",
+        )
+        .bind(&input.request_message_id)
+        .bind(&input.session_id)
+        .fetch_optional(pool)
+        .await?
+        else {
+            return Ok(input.prompt.trim().to_string());
+        };
+        created_at
     };
 
     let mut history = query_as::<_, (String, String)>(
@@ -251,6 +264,12 @@ pub(super) async fn fallback_prompt_for_claim(
         &input.prompt,
         &history,
     );
+    let group_mention_instruction = group_request
+        .as_ref()
+        .and_then(|(envelope, _)| mention_instruction(envelope, &input.owner_account_id));
+    let prompt = group_mention_instruction
+        .map(|instruction| format!("{instruction}\n\n{prompt}"))
+        .unwrap_or(prompt);
     if let Some(prefix) = shared_cloud_agent_prompt_prefix(pool, input).await? {
         return Ok(format!("{prefix}\n\nConversation request:\n{prompt}"));
     }

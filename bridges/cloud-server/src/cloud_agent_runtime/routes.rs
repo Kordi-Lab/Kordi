@@ -21,8 +21,9 @@ use crate::cloud_agent_runtime::provider_auth::{
 use crate::cloud_agent_runtime::runs::{
     claim_has_shared_cloud_agent_target, claim_run, complete_run, fail_run, lease_canary_run,
     lease_next_run, lookup_run_for_request, mark_run_running, requester_can_target_owner,
-    validate_shared_cloud_agent_claim, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
-    RunError, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
+    validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
+    ClaimRunRequest, CompleteRunRequest, FailRunRequest, RunError, RunnerLeaseResponse,
+    RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::presence::{account_presence_status, presence_timeout, AccountPresenceStatus};
 use crate::server::ServerState;
@@ -451,6 +452,25 @@ async fn claim_cloud_agent_run(
         return error_response(
             "requester_mismatch",
             "Cloud agent run requester must match the authenticated session.",
+            StatusCode::FORBIDDEN,
+        );
+    }
+
+    let valid_agent_handoff =
+        match validate_agent_authored_group_handoff_claim(state.db_pool(), &input).await {
+            Ok(value) => value,
+            Err(error) => {
+                return run_error_response(
+                    "validate agent-authored handoff",
+                    "Could not validate Cloud agent run authorization.",
+                    error,
+                );
+            }
+        };
+    if !valid_agent_handoff {
+        return error_response(
+            "agent_not_available",
+            "Agent-authored group request does not target this Kordi.",
             StatusCode::FORBIDDEN,
         );
     }

@@ -4,12 +4,13 @@ mod completion;
 mod delivery;
 mod envelopes;
 mod errors;
+mod group_mentions;
 mod leases;
 mod prompt_history;
 
 pub use authorization::{
     claim_has_shared_cloud_agent_target, requester_can_target_owner,
-    validate_shared_cloud_agent_claim,
+    validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
 };
 pub use claims::{
     claim_run, lookup_run_for_request, ClaimRunRequest, CloudAgentRunLookupResponse,
@@ -56,7 +57,7 @@ mod tests {
 
     #[test]
     fn cloud_group_response_body_links_to_group_request() {
-        let request = super::CloudGroupEnvelope {
+        let mut request = super::CloudGroupEnvelope {
             kind: "group-message".to_string(),
             group_id: "session:group:one".to_string(),
             group_space_id: Some("session:group:one".to_string()),
@@ -97,6 +98,7 @@ mod tests {
                 target_cloud_agent_name: None,
                 target_cloud_agent_owner_account_id: None,
                 target_cloud_agent_owner_name: None,
+                agent_mention_depth: None,
             }),
         };
 
@@ -105,7 +107,7 @@ mod tests {
             "acct_owner",
             "msg:ui:request",
             "cloudrunmsg_response",
-            "Hello everyone!",
+            "@RequestersKordi Hello everyone!",
             "complete",
             2,
         );
@@ -121,7 +123,36 @@ mod tests {
         );
         assert_eq!(message.request_id.as_deref(), Some("msg:ui:request"));
         assert_eq!(message.delivery_state.as_deref(), Some("complete"));
-        assert_eq!(message.text, "Hello everyone!");
+        assert_eq!(message.text, "@RequestersKordi Hello everyone!");
+        assert_eq!(
+            message.target_cloud_agent_owner_account_id.as_deref(),
+            Some("acct_requester")
+        );
+        assert_eq!(
+            message.target_cloud_agent_owner_name.as_deref(),
+            Some("Requester")
+        );
+        assert_eq!(message.agent_mention_depth, Some(1));
+
+        request
+            .message
+            .as_mut()
+            .expect("request message")
+            .agent_mention_depth = Some(1);
+        let chained_body = super::cloud_group_response_body(
+            &request,
+            "acct_owner",
+            "msg:ui:request",
+            "cloudrunmsg_chained_response",
+            "@RequestersKordi ask again",
+            "complete",
+            3,
+        );
+        let chained_message = super::parse_cloud_group_envelope(&chained_body)
+            .and_then(|envelope| envelope.message)
+            .expect("chained group response message");
+        assert_eq!(chained_message.target_cloud_agent_owner_account_id, None);
+        assert_eq!(chained_message.agent_mention_depth, None);
     }
 
     #[test]
@@ -167,6 +198,7 @@ mod tests {
                 target_cloud_agent_name: Some("Project Driver".to_string()),
                 target_cloud_agent_owner_account_id: Some("acct_owner".to_string()),
                 target_cloud_agent_owner_name: Some("Shuyang".to_string()),
+                agent_mention_depth: None,
             }),
         };
 
@@ -175,7 +207,7 @@ mod tests {
             "acct_owner",
             "msg:ui:request",
             "cloudrunmsg_response",
-            "Done.",
+            "@RequestersKordi please investigate.",
             "complete",
             2,
         );
@@ -186,6 +218,17 @@ mod tests {
             message.sender_display_name.as_deref(),
             Some("Project Driver · Shuyang's Agent")
         );
+        assert_eq!(
+            message.target_cloud_agent_owner_account_id.as_deref(),
+            Some("acct_requester")
+        );
+        assert_eq!(
+            message.target_cloud_agent_owner_name.as_deref(),
+            Some("Requester")
+        );
+        assert_eq!(message.target_cloud_agent_id, None);
+        assert_eq!(message.target_cloud_agent_name, None);
+        assert_eq!(message.agent_mention_depth, Some(1));
     }
 
     #[test]
