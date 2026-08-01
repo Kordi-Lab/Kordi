@@ -2,8 +2,35 @@ import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-const commandsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/commands.rs', import.meta.url), 'utf8');
 const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions.rs', import.meta.url), 'utf8');
+const fullStateSource = () => readFileSync(
+  new URL('../src-tauri/src/canonical_sessions/commands/catalog/full_state.rs', import.meta.url),
+  'utf8',
+);
+const sessionCatalogSource = () => readFileSync(
+  new URL('../src-tauri/src/canonical_sessions/commands/catalog/session_catalog.rs', import.meta.url),
+  'utf8',
+);
+const messagePageSource = () => readFileSync(
+  new URL('../src-tauri/src/canonical_sessions/commands/catalog/message_page.rs', import.meta.url),
+  'utf8',
+);
+const lifecycleCommandsSource = () => readFileSync(
+  new URL('../src-tauri/src/canonical_sessions/commands/lifecycle.rs', import.meta.url),
+  'utf8',
+);
+const deliveryCommandsSource = () => readFileSync(
+  new URL('../src-tauri/src/canonical_sessions/commands/delivery.rs', import.meta.url),
+  'utf8',
+);
+const catalogTestsSource = () => readFileSync(
+  new URL('../src-tauri/src/canonical_sessions/commands/tests/catalog.rs', import.meta.url),
+  'utf8',
+);
+const cloudProfileMigrationSource = () => readFileSync(
+  new URL('../src-tauri/src/canonical_sessions/identity_migration/cloud_profile.rs', import.meta.url),
+  'utf8',
+);
 const tauriLibSource = () => readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
 const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
 const modelsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/models.rs', import.meta.url), 'utf8');
@@ -19,10 +46,10 @@ const cloudIdentitySyncSource = () => readFileSync(
 );
 
 test('canonical state loading maps session_messages in one query instead of N+1 select_message calls', () => {
-  const source = commandsSource();
-  const loadStart = source.indexOf('pub(super) fn load_state_from_db');
-  assert.notEqual(loadStart, -1, 'expected load_state_from_db in canonical session commands');
-  const loadEnd = source.indexOf('pub(super) fn desktop_canonical_session_state', loadStart);
+  const source = fullStateSource();
+  const loadStart = source.indexOf('pub(in crate::canonical_sessions) fn load_state_from_db');
+  assert.notEqual(loadStart, -1, 'expected load_state_from_db in the full-state projection');
+  const loadEnd = source.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_session_state', loadStart);
   assert.notEqual(loadEnd, -1, 'expected next command after load_state_from_db');
   const loader = source.slice(loadStart, loadEnd);
 
@@ -44,8 +71,8 @@ test('canonical open-or-create command runs blocking database work off the Tauri
 });
 
 test('mark-session-read returns a cursor delta without reloading canonical state', () => {
-  const source = commandsSource();
-  const commandStart = source.indexOf('pub(super) fn desktop_canonical_mark_session_read');
+  const source = lifecycleCommandsSource();
+  const commandStart = source.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_mark_session_read');
   assert.notEqual(commandStart, -1, 'expected mark-session-read command');
   const commandEnd = source.indexOf('pub(crate) fn session_exists', commandStart);
   assert.notEqual(commandEnd, -1, 'expected next function after mark-session-read');
@@ -64,9 +91,9 @@ test('fast append returns the persisted canonical message row across the native 
 });
 
 test('canonical catalog returns summaries without loading complete message or context history', () => {
-  const source = commandsSource();
+  const source = sessionCatalogSource();
   const start = source.indexOf('fn load_catalog_from_db');
-  const end = source.indexOf('pub(super) fn desktop_canonical_session_catalog', start);
+  const end = source.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_session_catalog', start);
   assert.notEqual(start, -1, 'expected catalog query');
   assert.notEqual(end, -1, 'expected catalog command after catalog query');
   const command = source.slice(start, end);
@@ -80,9 +107,9 @@ test('canonical catalog returns summaries without loading complete message or co
 });
 
 test('canonical transcript page uses descending indexed reads with a bounded limit', () => {
-  const source = commandsSource();
+  const source = messagePageSource();
   const start = source.indexOf('fn load_message_page_from_db');
-  const end = source.indexOf('pub(super) fn desktop_canonical_session_messages', start);
+  const end = source.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_session_messages', start);
   assert.notEqual(start, -1, 'expected paged transcript query');
   assert.notEqual(end, -1, 'expected page command after page query');
   const command = source.slice(start, end);
@@ -95,7 +122,7 @@ test('canonical transcript page uses descending indexed reads with a bounded lim
 });
 
 test('native scale regression seeds 20,000 rows and enforces catalog and page byte budgets', () => {
-  const source = commandsSource();
+  const source = catalogTestsSource();
   const start = source.indexOf('fn catalog_and_first_page_stay_bounded_with_twenty_thousand_messages');
   assert.notEqual(start, -1, 'expected native 20k-row payload regression');
   const testSource = source.slice(start);
@@ -145,9 +172,9 @@ test('canonical delivery mutation is an exact-id bounded delta path across nativ
     ],
   );
 
-  const commandSource = commandsSource();
+  const commandSource = deliveryCommandsSource();
   const helperStart = commandSource.indexOf('fn update_canonical_message_delivery_in_db');
-  const helperEnd = commandSource.indexOf('pub(super) fn desktop_canonical_update_message_delivery', helperStart);
+  const helperEnd = commandSource.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_update_message_delivery', helperStart);
   assert.notEqual(helperStart, -1, 'expected dedicated exact-id delivery helper');
   assert.notEqual(helperEnd, -1, 'expected command wrapper after delivery helper');
   const helper = commandSource.slice(helperStart, helperEnd);
@@ -155,7 +182,7 @@ test('canonical delivery mutation is an exact-id bounded delta path across nativ
   assert.match(helper, /FROM session_messages WHERE id = \?1/);
   assert.doesNotMatch(helper, /load_state_from_db|load_catalog_from_db|load_message_page_from_db|LIMIT 200|CanonicalSessionState/);
 
-  const commandEnd = commandSource.indexOf('pub(super) fn desktop_canonical_create_delegated_exchange', helperEnd);
+  const commandEnd = commandSource.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_create_delegated_exchange', helperEnd);
   const command = commandSource.slice(helperEnd, commandEnd);
   assert.match(command, /Result<Option<CanonicalMessageDeliveryDelta>, String>/);
   assert.doesNotMatch(command, /load_state_from_db|load_catalog_from_db|load_message_page_from_db|LIMIT 200|CanonicalSessionState/);
@@ -193,22 +220,22 @@ test('cloud profile adoption returns a bounded identity delta without loading ca
     ['profile', 'identity', 'previousIdentityId', 'groupSelfSessionIds'],
   );
 
-  const commandSource = commandsSource();
-  const commandStart = commandSource.indexOf('pub(super) fn desktop_canonical_adopt_cloud_profile_identity');
-  const commandEnd = commandSource.indexOf('pub(super) fn desktop_canonical_upsert_identity_fast', commandStart);
+  const commandSource = lifecycleCommandsSource();
+  const commandStart = commandSource.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_adopt_cloud_profile_identity');
+  const commandEnd = commandSource.indexOf('pub(in crate::canonical_sessions) fn desktop_canonical_upsert_identity_fast', commandStart);
   assert.notEqual(commandStart, -1, 'expected native cloud profile adoption command');
   assert.notEqual(commandEnd, -1, 'expected the next native command');
   const command = commandSource.slice(commandStart, commandEnd);
   assert.match(command, /Result<CanonicalProfileIdentityDelta, String>/);
   assert.doesNotMatch(command, /CanonicalSessionState|load_state_from_db/);
 
-  const rustSource = canonicalSessionsSource();
-  const dbStart = rustSource.indexOf('pub(super) fn adopt_cloud_profile_identity_in_db');
-  const dbEnd = rustSource.indexOf('fn update_local_profile_identities', dbStart);
-  const dbAdoption = rustSource.slice(dbStart, dbEnd);
+  const migrationSource = cloudProfileMigrationSource();
+  const dbStart = migrationSource.indexOf('pub(in crate::canonical_sessions) fn adopt_cloud_profile_identity_in_db');
+  const dbAdoption = migrationSource.slice(dbStart);
   assert.match(dbAdoption, /Result<CanonicalProfileIdentityDelta, String>/);
   assert.doesNotMatch(dbAdoption, /CanonicalSessionState|load_state_from_db/);
 
+  const rustSource = canonicalSessionsSource();
   const wrapperStart = rustSource.indexOf('pub async fn desktop_canonical_adopt_cloud_profile_identity');
   const wrapperEnd = rustSource.indexOf('#[tauri::command]', wrapperStart + 1);
   const wrapper = rustSource.slice(wrapperStart, wrapperEnd);
