@@ -440,7 +440,7 @@ export default function AuthPopup({
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void handleClose()}>
+                  <Button type="button" variant="quiet" className="rounded-xl" onClick={() => void handleClose()}>
                     Cancel
                   </Button>
                   <Button type="button" className="rounded-xl" disabled={isSubmitting || !apiKeyDraft.trim()} onClick={() => void handleSaveApiKey()}>
@@ -486,7 +486,7 @@ export default function AuthPopup({
                       <div className="mb-1 text-[11px] font-medium tracking-[-0.01em] text-slate-500">Sign-in URL</div>
                       <div className="break-all text-[11px] leading-5 text-slate-300">{authAttempt.authUrl}</div>
                       <div className="mt-3 flex justify-end">
-                        <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void copyText(authAttempt.authUrl!, setCopyFeedback)}>
+                        <Button type="button" variant="quiet" className="rounded-xl" onClick={() => void copyText(authAttempt.authUrl!, setCopyFeedback)}>
                           <Copy className="mr-2 h-3.5 w-3.5" />
                           Copy URL
                         </Button>
@@ -505,7 +505,7 @@ export default function AuthPopup({
                             <ExternalLink className="h-3.5 w-3.5" />
                           </a>
                         ) : <span />}
-                        <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void copyText(authAttempt.userCode!, setCopyFeedback)}>
+                        <Button type="button" variant="quiet" className="rounded-xl" onClick={() => void copyText(authAttempt.userCode!, setCopyFeedback)}>
                           <Copy className="mr-2 h-3.5 w-3.5" />
                           Copy code
                         </Button>
@@ -559,7 +559,7 @@ export default function AuthPopup({
                   ) : null}
 
                   {!embedded && (
-                    <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void handleClose()}>
+                    <Button type="button" variant="quiet" className="rounded-xl" onClick={() => void handleClose()}>
                       {authAttempt?.succeeded ? 'Done' : authAttempt?.completed ? 'Close flow' : authAttempt ? 'Cancel' : 'Close'}
                     </Button>
                   )}
@@ -572,7 +572,7 @@ export default function AuthPopup({
         {embedded && (
           <div className="app-auth-popup-footer flex items-center justify-between gap-3 border-t border-white/8 px-4 py-2.5 sm:px-4.5">
             <div className="text-[11px] text-slate-500">Esc to close</div>
-            <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void handleClose()}>
+            <Button type="button" variant="quiet" className="rounded-xl" onClick={() => void handleClose()}>
               {authAttempt?.succeeded ? 'Done' : authAttempt?.completed ? 'Close' : authAttempt ? 'Cancel' : 'Close'}
             </Button>
           </div>

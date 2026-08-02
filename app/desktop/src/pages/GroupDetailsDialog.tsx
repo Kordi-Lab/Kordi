@@ -573,7 +573,7 @@ export function GroupDetailsDialog({
             <button
               type="button"
               onClick={onClose}
-              className="app-group-management-close grid h-8 w-8 shrink-0 place-items-center rounded-[10px] transition"
+              className="app-button-quiet app-group-management-close grid h-8 w-8 shrink-0 place-items-center rounded-[10px] p-0"
               aria-label="Close group management"
             >
               <X className="h-4 w-4" />
@@ -700,7 +700,7 @@ export function GroupDetailsDialog({
               {memberListCanCollapse ? (
                 <button
                   type="button"
-                  className="app-group-management-show-all mt-1 flex w-full items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition"
+                  className="app-button-quiet app-group-management-show-all mt-1 flex w-full items-center justify-center gap-1 rounded-[9px] py-1.5 text-[10px] font-medium"
                   aria-expanded={showAllMembers}
                   aria-controls={`${memberSearchId}-member-grid`}
                   onClick={() => setShowAllMembers((current) => !current)}
@@ -751,7 +751,7 @@ export function GroupDetailsDialog({
                     />
                     <button
                       type="button"
-                      className="app-group-management-close absolute right-0 top-0 grid h-7 w-7 place-items-center rounded-[9px]"
+                      className="app-button-quiet app-group-management-close absolute right-0 top-0 grid h-7 w-7 place-items-center rounded-[9px] p-0"
                       aria-label={`Close ${selectedMember.name} actions`}
                       onClick={() => {
                         setSelectedMemberId(null);
@@ -840,7 +840,7 @@ export function GroupDetailsDialog({
                 <div className="flex items-center gap-2 px-1 py-1">
                   <button
                     type="button"
-                    className="app-group-management-close grid h-7 w-7 place-items-center rounded-[9px]"
+                    className="app-button-quiet app-group-management-close grid h-7 w-7 place-items-center rounded-[9px] p-0"
                     aria-label="Back to group members"
                     onClick={() => {
                       setIsAddPeopleOpen(false);

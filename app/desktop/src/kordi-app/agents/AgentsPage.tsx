@@ -748,7 +748,7 @@ export function AgentsPage({
           {!creating && selectedAgent?.cloudAgentId && onArchiveCloudAgent ? (
             <div className="app-agent-studio-header-actions is-floating">
               <details className="relative">
-                <summary className="app-agent-studio-icon-button" aria-label="More agent actions"><MoreHorizontal className="h-4 w-4" /></summary>
+                <summary className="app-button-quiet app-agent-studio-icon-button" aria-label="More agent actions"><MoreHorizontal className="h-4 w-4" /></summary>
                 <div className="app-agent-studio-actions-menu"><button type="button" onClick={() => setArchiveConfirmAgent(selectedAgent)}>Delete agent</button></div>
               </details>
             </div>

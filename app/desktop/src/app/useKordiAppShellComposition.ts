@@ -103,8 +103,6 @@ export function useKordiAppShellComposition({
       isNativeShell: environment.isNativeShell,
       desktopChatState: chat.desktopChatState,
       refreshDesktopChat: chat.refreshDesktopChat,
-      cloudSelfAgentSyncStatusBySessionId:
-        cloud.cloudSelfAgentSyncStatusBySessionId,
       cloudSessionPinsById: cloud.cloudSessionPinsById,
       onUpdateCloudSessionPin: cloud.updateCloudSessionPin,
       windowWidth: layout.windowSize.width,

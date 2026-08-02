@@ -294,7 +294,6 @@ export function useKordiAppFoundation({
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
     cloudSessionPinsById,
-    cloudSelfAgentSyncStatusBySessionId,
   } = useCloudCollaborationState({
     account: cloudSession.account,
     activeConversationId: activeConvId,
@@ -437,7 +436,7 @@ export function useKordiAppFoundation({
       cloudAgentDefinitionsById, refreshCloudContacts, cloudContacts,
       cloudSessionActivity, initialContactsSettled, initialMessagesSettled,
       cachedMessagesReady, cloudHiddenSessionIds, cloudDeletedSessionIds,
-      cloudSessionPinsById, cloudSelfAgentSyncStatusBySessionId,
+      cloudSessionPinsById,
       isCollaborationSyncing, lastCollaborationSyncAt,
       unsupportedLegacyCollaborationAction,
       setCloudAgentRuntimeRoutesBySessionId,

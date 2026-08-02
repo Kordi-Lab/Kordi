@@ -8,7 +8,6 @@ export type KordiShellCompositionArgs = {
     | 'isNativeShell'
     | 'desktopChatState'
     | 'refreshDesktopChat'
-    | 'cloudSelfAgentSyncStatusBySessionId'
     | 'cloudSessionPinsById'
     | 'onUpdateCloudSessionPin'
     | 'windowWidth'

@@ -1,0 +1,272 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button {
+  font: inherit;
+}
+
+.quiet-page {
+  width: 1440px;
+  min-height: 1040px;
+  padding: 42px 56px;
+  background: var(--app-native-main-bg);
+  color: var(--app-sidebar-title-text);
+}
+
+.quiet-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.quiet-heading h1 {
+  margin: 4px 0 5px;
+  color: var(--app-sidebar-title-text);
+  font-size: 28px;
+  letter-spacing: -0.025em;
+}
+
+.quiet-heading p,
+.quiet-containment p {
+  margin: 0;
+  color: var(--utility-muted-text);
+  font-size: 13px;
+}
+
+.quiet-kicker,
+.quiet-theme-label,
+.quiet-section-label,
+.quiet-state-cell > span,
+.quiet-surface-grid article > span {
+  color: var(--utility-muted-text);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+
+.quiet-theme-label {
+  padding-bottom: 7px;
+}
+
+.quiet-section {
+  margin-top: 18px;
+  border: 1px solid var(--app-divider);
+  border-radius: 20px;
+  background: color-mix(in oklab, var(--app-native-session-bg) 91%, transparent);
+  overflow: hidden;
+}
+
+.quiet-section-label {
+  padding: 14px 18px 0;
+}
+
+.quiet-chat-shell {
+  position: relative;
+  margin-top: 10px;
+  padding-bottom: 36px;
+  background: var(--app-main-bg);
+}
+
+.quiet-chat-header {
+  display: flex;
+  min-height: 84px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 16px 32px;
+  border-bottom: 1px solid var(--app-divider);
+}
+
+.quiet-chat-identity {
+  min-width: 0;
+  flex: 1;
+}
+
+.quiet-chat-identity h2 {
+  width: 100%;
+  max-width: 512px;
+  margin: 0;
+  color: var(--app-sidebar-title-text);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 26px;
+}
+
+.quiet-rename-title {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  padding: 2px 4px;
+  color: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quiet-chat-metadata {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--utility-muted-text);
+  font-size: 11px;
+  line-height: 22px;
+}
+
+.quiet-fork-link {
+  display: inline-flex;
+  height: 24px;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.quiet-fork-link span:last-child {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quiet-icon-control,
+.quiet-text-control,
+.quiet-ask-agent {
+  min-height: 32px;
+  border-radius: 10px;
+}
+
+.quiet-icon-control {
+  display: inline-grid;
+  width: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  padding: 0;
+}
+
+.quiet-text-control,
+.quiet-ask-agent {
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.quiet-ask-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quiet-destinations {
+  position: absolute;
+  bottom: 0;
+  left: 58px;
+  display: flex;
+  gap: 20px;
+}
+
+.quiet-destination {
+  height: 35px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--utility-muted-text);
+  font-size: 11px;
+}
+
+.quiet-destination-active {
+  border-bottom-color: var(--app-sidebar-accent);
+  color: var(--app-sidebar-title-text);
+}
+
+.quiet-state-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1px;
+  margin-top: 12px;
+  background: var(--app-divider);
+}
+
+.quiet-state-cell {
+  display: flex;
+  min-height: 116px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--app-main-bg);
+}
+
+.quiet-surface-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 14px 18px 18px;
+}
+
+.quiet-surface-grid article {
+  min-width: 0;
+  border: 1px solid var(--app-divider);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--app-main-bg) 82%, transparent);
+}
+
+.quiet-surface-grid article > div {
+  display: flex;
+  min-height: 54px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.quiet-containment {
+  display: flex;
+  min-height: 112px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px;
+}
+
+.quiet-containment .quiet-section-label {
+  padding: 0 0 5px;
+}
+
+.quiet-containment-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.quiet-contained {
+  min-height: 34px;
+  border-radius: 10px;
+  padding: 0 13px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quiet-danger {
+  border: 1px solid color-mix(in oklab, var(--app-transient-danger-text) 28%, transparent);
+  background: color-mix(in oklab, var(--app-transient-danger-text) 12%, transparent);
+  color: var(--app-transient-danger-text);
+}

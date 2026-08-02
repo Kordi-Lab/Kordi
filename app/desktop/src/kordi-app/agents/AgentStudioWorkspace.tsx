@@ -98,7 +98,7 @@ function BlueprintRow({ icon: Icon, label, value, detail, onEdit }: {
         <div className="app-agent-studio-blueprint-value">{value}</div>
         {detail ? <div className="app-agent-studio-blueprint-detail">{detail}</div> : null}
       </div>
-      {onEdit ? <button type="button" className="app-agent-studio-icon-button is-inline-edit" aria-label={`Edit ${label.toLowerCase()}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></button> : <span />}
+      {onEdit ? <button type="button" className="app-button-quiet app-agent-studio-icon-button is-inline-edit" aria-label={`Edit ${label.toLowerCase()}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></button> : <span />}
     </div>
   );
 }
@@ -109,14 +109,14 @@ function PromptEditor({ value, onChange, onClose }: { value: string; onChange: (
     <section className="app-agent-studio-popover is-wide" role="dialog" aria-label="Edit system prompt">
       <div className="app-agent-studio-popover-head">
         <div><strong>System prompt</strong><p>Changes stay in the draft until you publish them.</p></div>
-        <button type="button" className="app-agent-studio-icon-button" onClick={onClose} aria-label="Close system prompt editor"><X className="h-4 w-4" /></button>
+        <button type="button" className="app-button-quiet app-agent-studio-icon-button" onClick={onClose} aria-label="Close system prompt editor"><X className="h-4 w-4" /></button>
       </div>
       <label className="app-agent-studio-field">
         <span>Instructions</span>
         <textarea value={draft} onChange={(event) => setDraft(event.currentTarget.value)} spellCheck={false} />
       </label>
       <div className="app-agent-studio-popover-actions">
-        <button type="button" className="app-agent-studio-button is-primary is-small" onClick={() => { onChange(draft); onClose(); }}>Keep in draft</button>
+        <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => { onChange(draft); onClose(); }}>Keep in draft</button>
       </div>
     </section>
   );
@@ -232,7 +232,7 @@ function BlueprintView({
               <button
                 ref={accessTriggerRef}
                 type="button"
-                className="app-agent-studio-icon-button is-inline-edit app-agent-studio-access-edit"
+                className="app-button-quiet app-agent-studio-icon-button is-inline-edit app-agent-studio-access-edit"
                 aria-label="Edit access"
                 aria-haspopup="menu"
                 aria-expanded={accessMenuOpen}
@@ -391,7 +391,7 @@ function CapabilityEditor({
     <section className="app-agent-studio-popover" role="dialog" aria-label={mode === 'add' ? 'Add capability' : `Edit ${capability?.name ?? 'capability'}`}>
       <div className="app-agent-studio-popover-head">
         <strong>{mode === 'add' ? 'Add capability' : 'Edit capability'}</strong>
-        <button type="button" className="app-agent-studio-icon-button" onClick={onClose} aria-label="Close capability editor"><X className="h-4 w-4" /></button>
+        <button type="button" className="app-button-quiet app-agent-studio-icon-button" onClick={onClose} aria-label="Close capability editor"><X className="h-4 w-4" /></button>
       </div>
       {mode === 'add' ? (
         <>
@@ -418,10 +418,10 @@ function CapabilityEditor({
         <input value={value} onChange={(event) => setValue(event.currentTarget.value)} placeholder={source === 'catalog' ? 'navigate-knowledge' : source === 'path' ? './skills/review' : 'github:team/review-skill'} />
       </label>
       <div className="app-agent-studio-popover-actions">
-        <button type="button" className="app-agent-studio-button is-ghost is-small" onClick={onClose}>Cancel</button>
+        <button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onClose}>Cancel</button>
         <button
           type="button"
-          className="app-agent-studio-button is-primary is-small"
+          className="app-button-quiet app-agent-studio-button is-primary is-small"
           disabled={!normalized || !editableKinds.has(kind)}
           onClick={() => {
             if (mode === 'add') onAdd(kind, normalized);
@@ -508,14 +508,14 @@ export function CapabilitiesView({
     <div className="app-agent-studio-view-scroll">
       <WorkspaceHeading
         title="Capabilities"
-        action={allowCapabilityCreation ? <button type="button" className="app-agent-studio-button is-primary is-small" disabled={editableKinds.size === 0 || (creating && !creationDraft)} onClick={() => setEditor({ mode: 'add' })}><Plus className="h-3.5 w-3.5" />Add capability</button> : undefined}
+        action={allowCapabilityCreation ? <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" disabled={editableKinds.size === 0 || (creating && !creationDraft)} onClick={() => setEditor({ mode: 'add' })}><Plus className="h-3.5 w-3.5" />Add capability</button> : undefined}
       />
       <div className="app-agent-studio-capability-toolbar">
         <label className="app-agent-studio-search"><Search className="h-4 w-4" /><input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Search capabilities" /></label>
         <div className="app-agent-studio-segmented" role="group" aria-label="Capability type">
           {(['all', 'skill', 'tool', 'plugin'] as const).map((value) => <button key={value} type="button" className={cn(filter === value && 'is-active')} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : `${value[0]?.toUpperCase()}${value.slice(1)}s`}</button>)}
         </div>
-        <button type="button" className={cn('app-agent-studio-button is-small', loadedOnly && 'is-selected')} onClick={() => setLoadedOnly((current) => !current)}>Loaded only</button>
+        <button type="button" className={cn('app-button-quiet app-agent-studio-button is-small', loadedOnly && 'is-selected')} onClick={() => setLoadedOnly((current) => !current)}>Loaded only</button>
       </div>
       <div className="app-agent-studio-capability-list">
         {items.map((item) => {
@@ -529,7 +529,7 @@ export function CapabilitiesView({
                 <p title={item.description}>{item.description}</p>
               </div>
               <div className="app-agent-studio-capability-actions">
-                {editable && allowCapabilityCreation && item.loaded ? <button type="button" className="app-agent-studio-icon-button" aria-label={`Edit ${item.name}`} onClick={() => setEditor({ mode: 'edit', capability: item })}><Pencil className="h-3.5 w-3.5" /></button> : null}
+                {editable && allowCapabilityCreation && item.loaded ? <button type="button" className="app-button-quiet app-agent-studio-icon-button" aria-label={`Edit ${item.name}`} onClick={() => setEditor({ mode: 'edit', capability: item })}><Pencil className="h-3.5 w-3.5" /></button> : null}
                 <button
                   type="button"
                   role="switch"
@@ -648,8 +648,8 @@ function FilesView({
             <div className="app-agent-studio-file-toolbar">
               <div className="min-w-0"><strong>{isPrompt ? 'System prompt' : selectedPath?.split('/').pop() ?? 'File'}</strong><span>{isPrompt ? (canEditPrompt ? 'Reviewable draft' : 'Read only') : selectedPath}</span></div>
               {!isPrompt && activeFileCanEdit ? (
-                activeFileIsEditing ? <div className="flex gap-2"><button type="button" className="app-agent-studio-button is-ghost is-small" onClick={onCancelFileEditing}>Discard</button><button type="button" className="app-agent-studio-button is-primary is-small" onClick={onSaveFile}>Save file</button></div>
-                  : <button type="button" className="app-agent-studio-button is-small" onClick={onStartFileEditing} disabled={activeFilePreview.status === 'loading'}>Edit file</button>
+                activeFileIsEditing ? <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onCancelFileEditing}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onSaveFile}>Save file</button></div>
+                  : <button type="button" className="app-button-quiet app-agent-studio-button is-small" onClick={onStartFileEditing} disabled={activeFilePreview.status === 'loading'}>Edit file</button>
               ) : null}
             </div>
             {fileFeedback && !isPrompt ? <div className={cn('app-agent-studio-file-feedback', fileFeedback.tone === 'error' && 'is-error')}>{fileFeedback.text}</div> : null}
@@ -738,7 +738,7 @@ function BuilderDraftFilesView({
         <section className="app-agent-studio-file-editor">
           <div className="app-agent-studio-file-toolbar">
             <div className="min-w-0"><strong>{selectedPath.split('/').pop()}</strong><span>{selectedPath}</span></div>
-            <button type="button" className="app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={loading || saving || content === savedContent}>
+            <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={loading || saving || content === savedContent}>
               {saving ? 'Saving…' : 'Save file'}
             </button>
           </div>
@@ -774,7 +774,7 @@ function RunsView({
       <div className="app-agent-studio-view-scroll">
         <WorkspaceHeading
           title="Validate and test"
-          action={<button type="button" className="app-agent-studio-button is-primary is-small" disabled={!builderStatus.validation.valid || builderTesting} onClick={onTestBuilderDraft}>{builderTesting ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Testing…</> : 'Test draft'}</button>}
+          action={<button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" disabled={!builderStatus.validation.valid || builderTesting} onClick={onTestBuilderDraft}>{builderTesting ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Testing…</> : 'Test draft'}</button>}
         />
         <div className="app-agent-studio-run-checks">
           <section className={cn('app-agent-studio-run-check', builderStatus.validation.valid ? 'is-success' : 'is-error')}>
@@ -1037,7 +1037,7 @@ export function AgentStudioWorkspace({
       {(changes.length > 0 || creating && creationDraft) ? (
         <div className="app-agent-studio-workspace-footer">
           <span>{skillBuild ? 'New skill build' : creating ? 'New Factory build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
-          <div className="flex gap-2"><button type="button" className="app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? (skillBuild ? 'Installing…' : 'Publishing…') : skillBuild ? 'Install skill' : creating ? 'Create agent' : 'Publish'}</button></div>
+          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? (skillBuild ? 'Installing…' : 'Publishing…') : skillBuild ? 'Install skill' : creating ? 'Create agent' : 'Publish'}</button></div>
         </div>
       ) : null}
     </section>

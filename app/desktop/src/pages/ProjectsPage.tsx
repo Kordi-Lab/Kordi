@@ -307,7 +307,7 @@ export function ProjectsPage({
           {isNativeShell && activeProject.root ? (
             <Button
               type="button"
-              variant="secondary"
+              variant="quiet"
               onClick={onCreateProjectSession}
               className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
               title="Create a new session in this project"
@@ -318,7 +318,7 @@ export function ProjectsPage({
           {showRightDetailRail && (
             <Button
               type="button"
-              variant="secondary"
+              variant="quiet"
               onClick={() => setIsDetailPanelCollapsed((collapsed) => !collapsed)}
               className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
               aria-label={isDetailPanelCollapsed ? 'Open project details' : 'Hide project details'}
@@ -504,7 +504,7 @@ export function ProjectsPage({
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
               <Button
                 size="icon"
-                variant="secondary"
+                variant="quiet"
                 className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
                 onClick={() => chatAttachmentInputRef.current?.click()}
                 title="Add attachment"

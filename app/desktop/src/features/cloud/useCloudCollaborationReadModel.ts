@@ -31,10 +31,6 @@ import {
   removeCloudSessionMessages,
 } from './cloudDiffSync';
 import {
-  cloudSelfAgentDerivedSyncedStatusBySessionId,
-  type CloudSelfAgentSyncStatus,
-} from './cloudSelfAgentForwardSync';
-import {
   cloudGroupReadCursorsBySessionId,
 } from './cloudSelfAgentCanonicalSync';
 import type {
@@ -112,7 +108,6 @@ export function useCloudCollaborationReadModel({
   messageIndex,
   messagesByPeer,
   readInboundMessageIdsByPeer,
-  selfAgentSyncStatusBySessionId,
 }: {
   account: CloudAccount | null;
   activeConversationId?: string | null;
@@ -137,8 +132,6 @@ export function useCloudCollaborationReadModel({
   messageIndex: CloudMessageIndex;
   messagesByPeer: Record<string, CloudMessage[]>;
   readInboundMessageIdsByPeer: Record<string, Set<string>>;
-  selfAgentSyncStatusBySessionId:
-    Record<string, CloudSelfAgentSyncStatus>;
 }) {
   const cloudCollaborationState = useMemo(() => {
     if (!account) return null;
@@ -259,21 +252,8 @@ export function useCloudCollaborationReadModel({
     stateRef,
   ]);
 
-  const visibleSelfAgentSyncStatusBySessionId = useMemo(() => ({
-    ...cloudSelfAgentDerivedSyncedStatusBySessionId(
-      account?.accountId,
-      messagesByPeer,
-    ),
-    ...selfAgentSyncStatusBySessionId,
-  }), [
-    account?.accountId,
-    messagesByPeer,
-    selfAgentSyncStatusBySessionId,
-  ]);
-
   return {
     cloudCollaborationState,
     setCloudCollaborationState,
-    visibleSelfAgentSyncStatusBySessionId,
   };
 }

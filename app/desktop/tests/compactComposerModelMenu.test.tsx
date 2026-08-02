@@ -55,7 +55,8 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.match(markup, /role="dialog"/);
   assert.match(markup, /aria-label="Agent model"/);
   assert.match(markup, /aria-label="Close agent model"/);
-  assert.match(markup, /app-button-outline/);
+  assert.match(markup, /app-button-quiet/);
+  assert.doesNotMatch(markup, /app-button-outline/);
   assert.match(markup, /app-button-primary/);
   assert.match(markup, /app-compact-model-menu-option/);
   assert.doesNotMatch(markup, /Choose the provider, model, and thinking level\./);

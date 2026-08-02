@@ -24,7 +24,7 @@ export function InlineChangedFiles({
       <button
         type="button"
         onClick={() => setExpanded((current) => !current)}
-        className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-4 text-slate-400 transition hover:bg-white/[0.035] hover:text-slate-200"
+        className="app-button-quiet inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-4"
         aria-expanded={expanded}
       >
         <span className="text-[10px] text-slate-500" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
@@ -39,7 +39,7 @@ export function InlineChangedFiles({
               data-inline-changed-file-row="true"
               data-artifact-id={row.artifactId}
               onClick={() => openInlineChangedFile(row, onOpenArtifact)}
-              className="block w-full truncate rounded px-1.5 py-0.5 text-left font-mono text-[11px] leading-4 text-slate-300 transition hover:bg-white/[0.035] hover:text-white"
+              className="app-button-quiet block w-full truncate rounded px-1.5 py-0.5 text-left font-mono text-[11px] leading-4"
               aria-label={`Open ${row.path} in Artifact Inspector`}
               title={row.path}
             >

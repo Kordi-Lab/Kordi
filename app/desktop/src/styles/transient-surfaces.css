@@ -150,6 +150,16 @@
 /* Command-like actions inside dialogs stay quiet until the user interacts.
  * Scope through the shared surface so Button's secondary variant cannot
  * reintroduce a permanently raised control background. */
+.app-transient-surface {
+  --app-quiet-control-text: var(--app-transient-text);
+  --app-quiet-control-hover-text: var(--app-transient-text);
+  --app-quiet-control-hover-bg: var(--app-transient-hover-bg);
+  --app-quiet-control-pressed-bg: var(--app-transient-selected-bg);
+  --app-quiet-control-selected-bg: var(--app-transient-selected-bg);
+  --app-quiet-control-focus-ring: var(--app-transient-focus-ring);
+  --app-quiet-control-disabled-text: var(--app-transient-disabled-text);
+}
+
 .app-transient-surface .app-transient-flat-action {
   border-color: transparent;
   background: transparent;
@@ -162,6 +172,7 @@
   border-color: transparent;
   background: var(--app-transient-hover-bg);
   color: var(--app-transient-text);
+  box-shadow: none;
 }
 
 .app-transient-surface .app-transient-flat-action:disabled {

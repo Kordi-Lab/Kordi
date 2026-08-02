@@ -25,7 +25,6 @@ import { conversationPaneKind } from '@/pages/chatsPage.model';
 
 export {
   chatHeaderSubtitle,
-  cloudSelfAgentSyncStatusLabel,
   isGenericChatHeaderSubtitle,
   localAgentComposerConfigTargetSessionId,
   selfAgentSessionIdForTitleRename,

@@ -295,14 +295,14 @@
 }
 
 .kordi-app.theme-light .app-transcript-wrap-toggle {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(15, 23, 42, 0.05) !important;
-  color: rgb(71 85 105) !important;
+  border: 1px solid transparent;
+  background: transparent !important;
+  color: var(--app-quiet-control-text) !important;
 }
 
 .kordi-app.theme-light .app-transcript-wrap-toggle:hover {
-  background: rgba(15, 23, 42, 0.08) !important;
-  color: rgb(30 41 59) !important;
+  background: var(--app-quiet-control-hover-bg) !important;
+  color: var(--app-quiet-control-hover-text) !important;
 }
 
 .kordi-app.theme-light .app-transcript-utility-chip {

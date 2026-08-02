@@ -291,14 +291,14 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
     );
   }
 
-  const actionButtonClass = 'h-7 w-7 rounded-full border-white/10 bg-white/5 p-0 text-slate-200 hover:bg-white/10';
+  const actionButtonClass = 'h-7 w-7 rounded-full p-0';
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">
       <div className="flex items-center gap-1">
         <Button
           type="button"
-          variant="outline"
+          variant="quiet"
           size="icon"
           onClick={() => void handleDownload()}
           disabled={isDownloading}
@@ -311,7 +311,7 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
         {canOpen ? (
           <Button
             type="button"
-            variant="outline"
+            variant="quiet"
             size="icon"
             onClick={() => void handleOpen()}
             className={actionButtonClass}
@@ -707,7 +707,7 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onCon
         <button
           type="button"
           onClick={onClose}
-          className="app-transient-icon absolute right-3 top-3 z-10 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition focus-visible:outline-none"
+          className="app-button-quiet absolute right-3 top-3 z-10 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-0"
           aria-label="Close image preview"
         >
           <X className="h-4 w-4" />

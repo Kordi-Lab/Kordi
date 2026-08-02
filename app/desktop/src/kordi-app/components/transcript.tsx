@@ -733,7 +733,7 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
             <button
               type="button"
               onClick={() => setExpanded((current) => !current)}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[color:var(--app-divider)] px-2.5 py-1 text-[11px] font-medium text-[color:var(--utility-muted-text)] transition hover:border-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]"
+              className="app-button-quiet inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
               aria-expanded={expanded}
             >
               {expanded ? 'Hide summary' : 'Show summary'}
@@ -956,7 +956,7 @@ function MessageBubbleView({
   const forkButton = canRenderForkControl ? (
     <button
       type="button"
-      className={cn('app-message-fork-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20', !msg.entryId && 'invisible pointer-events-none')}
+      className={cn('app-button-quiet app-message-fork-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md p-0', !msg.entryId && 'invisible pointer-events-none')}
       disabled={!msg.entryId}
       aria-hidden={!msg.entryId}
       tabIndex={msg.entryId ? undefined : -1}
@@ -979,7 +979,7 @@ function MessageBubbleView({
     <span className="relative inline-flex">
       <button
         type="button"
-        className="app-message-fork-chip inline-flex h-6 items-center gap-1 rounded-full bg-white/[0.05] px-2 text-[10.5px] font-medium tabular-nums text-slate-300 transition hover:bg-white/[0.09] hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+        className="app-button-quiet app-message-fork-chip inline-flex h-6 items-center gap-1 rounded-full px-2 text-[10.5px] font-medium tabular-nums"
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -1080,7 +1080,7 @@ function MessageBubbleView({
         <div className="app-detail-sheet w-full max-w-[760px]">
           <div className="flex items-center justify-between px-3.5 py-3">
             <div className="text-[14px] font-medium text-white/92">{msg.text}</div>
-            <button className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-400 transition hover:text-slate-200">
+            <button className="app-button-quiet inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[12px] font-medium">
               <Undo2 className="h-3.5 w-3.5" />
               Undo
             </button>

@@ -164,7 +164,7 @@ export function SidebarUpdatePopover({
             && state.status !== 'relaunching' ? (
               <button
                 type="button"
-                className="app-update-popover-close grid h-6 w-6 shrink-0 place-items-center rounded-full transition"
+                className="app-button-quiet app-update-popover-close grid h-6 w-6 shrink-0 place-items-center rounded-full p-0"
                 aria-label="Close update status"
                 onClick={onClose}
               >
@@ -241,7 +241,7 @@ export function SidebarUpdatePopover({
             {state.status === 'failed' && state.manualDownloadUrl ? (
               <button
                 type="button"
-                className="app-update-popover-action app-update-popover-action-secondary mr-auto rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium transition"
+                    className="app-button-quiet app-update-popover-action app-update-popover-action-secondary mr-auto rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium"
                 onClick={() => {
                   void onOpenUrl?.(state.manualDownloadUrl!);
                 }}
@@ -254,7 +254,7 @@ export function SidebarUpdatePopover({
                 {state.status === 'available' || state.failureStage !== 'check' ? (
                   <button
                     type="button"
-                    className="app-update-popover-action app-update-popover-action-secondary rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium transition"
+                    className="app-button-quiet app-update-popover-action app-update-popover-action-secondary rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium"
                     onClick={onClose}
                   >
                     Not now

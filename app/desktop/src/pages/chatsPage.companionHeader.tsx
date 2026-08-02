@@ -62,9 +62,9 @@ export function CompanionHeader({
     >
       <div className="flex min-w-0 items-center gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5 text-white">
+          <div className="flex min-w-0 flex-col text-white">
             <span className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6">Ask Agent · {conversation.name}</span>
-            <span data-chat-session-subtitle-pill="true" className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.045] px-2 text-[10.5px] font-medium leading-none text-slate-300">Agent session</span>
+            <span data-chat-session-subtitle="true" className="text-[11px] leading-5 text-slate-400">Agent session</span>
           </div>
         </div>
       </div>
@@ -78,7 +78,7 @@ export function CompanionHeader({
       >
         <button
           type="button"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 text-[color:var(--utility-muted-text)] opacity-70 transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+          className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 opacity-70 hover:opacity-100"
           title="Side chat options"
           aria-label="Side chat options"
           onClick={actions.onToggleActions}
@@ -149,7 +149,7 @@ export function CompanionHeader({
         <button
           type="button"
           onClick={actions.onClose}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 text-[color:var(--utility-muted-text)] opacity-70 transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+          className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 opacity-70 hover:opacity-100"
           title="Close side chat"
           aria-label="Close side chat"
         >

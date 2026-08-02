@@ -51,7 +51,7 @@ export function QueuedMessageBubble({
             >
               <button
                 type="button"
-                className="app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70"
+                className="app-button-quiet app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
                 aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
                 title="Edit queued message"
                 onClick={() => onEdit?.(message.sessionId, message.id)}
@@ -60,7 +60,7 @@ export function QueuedMessageBubble({
               </button>
               <button
                 type="button"
-                className="app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70"
+                className="app-button-quiet app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
                 aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
                 title="Cancel queued message"
                 onClick={() => onCancel?.(message.sessionId, message.id)}

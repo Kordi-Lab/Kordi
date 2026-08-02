@@ -55,8 +55,7 @@ export function AuthProviderList({
               {onEnterChat ? (
                 <Button
                   type="button"
-                  variant="secondary"
-                  className="app-control-chip h-8.5 shrink-0 rounded-full border-0 px-3.5 text-[12px]"
+                  className="h-8.5 shrink-0 rounded-full px-3.5 text-[12px]"
                   onClick={() => { void onEnterChat(); }}
                   style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
                 >
@@ -117,8 +116,8 @@ export function AuthProviderList({
         </div>
         <Button
           type="button"
-          variant="secondary"
-          className="app-control-chip h-9 shrink-0 rounded-full border-0 px-3 text-[12px]"
+          variant="quiet"
+          className="h-9 shrink-0 rounded-full px-3 text-[12px]"
           onClick={onRefresh}
           style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
         >
@@ -136,8 +135,7 @@ export function AuthProviderList({
             {onEnterChat ? (
               <Button
                 type="button"
-                variant="secondary"
-                className="app-control-chip h-8.5 shrink-0 rounded-full border-0 px-3.5 text-[12px]"
+                className="h-8.5 shrink-0 rounded-full px-3.5 text-[12px]"
                 onClick={() => { void onEnterChat(); }}
                 style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
               >

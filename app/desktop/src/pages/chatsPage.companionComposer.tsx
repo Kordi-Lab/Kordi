@@ -233,7 +233,7 @@ export function CompanionComposer({
           <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
             <Button
               size="icon"
-              variant="secondary"
+              variant="quiet"
               className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
               onClick={() => attachmentInputRef.current?.click()}
               title="Add attachment"
@@ -286,7 +286,7 @@ export function CompanionComposer({
               <button
                 type="button"
                 onClick={localRouting.retry}
-                className="text-[12px] text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
+                className="app-button-quiet rounded-[9px] px-2 py-1 text-[12px]"
                 title={localRouting.loadError}
                 data-companion-model-retry="true"
               >

@@ -2,7 +2,6 @@ import type { RefObject } from 'react';
 
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import type { Conversation } from '@/kordi-app/types';
 import { scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
@@ -91,22 +90,4 @@ export function selfAgentSessionIdForTitleRename(
     return null;
   }
   return sessionId;
-}
-
-export function cloudSelfAgentSyncStatusLabel(
-  status?:
-    | Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'>
-    | null,
-) {
-  if (!status) return null;
-  if (status.state === 'syncing') {
-    const pendingCount =
-      typeof status.pendingCount === 'number'
-      && Number.isFinite(status.pendingCount)
-        ? Math.max(0, Math.floor(status.pendingCount))
-        : 0;
-    return pendingCount > 1 ? `Syncing ${pendingCount}` : 'Syncing';
-  }
-  if (status.state === 'synced') return 'Synced';
-  return 'Sync issue';
 }

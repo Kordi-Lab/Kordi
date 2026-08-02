@@ -141,8 +141,6 @@ export function ChatMainWorkspace({
           }}
           metadata={{
             subtitle: models.header.subtitle,
-            cloudSyncLabel: models.header.cloudSyncLabel,
-            cloudSyncStatus: session.cloudSelfAgentSyncStatus,
             forkSourceSessionId: models.fork.sourceSessionId,
             forkSourceTitle: models.fork.sourceTitle ?? 'source session',
             onOpenForkSource: runtime.onSelectSession,

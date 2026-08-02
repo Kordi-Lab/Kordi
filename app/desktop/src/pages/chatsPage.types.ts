@@ -8,7 +8,6 @@ import type {
 } from 'react';
 
 import type { CloudAccount, CloudSessionPin } from '@/features/cloud/authClient';
-import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import type {
   ComposerAuthOption,
@@ -66,7 +65,6 @@ export type ChatsPageSession = {
   activeConversationUsesCollaboration: boolean;
   activeCollaborationModelHost: DesktopCollaborationHost | null;
   desktopChatState: DesktopChatState | null;
-  cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
   cloudAccount?: CloudAccount | null;
   cloudSessionPin?: CloudSessionPin | null;
   onUpdateCloudSessionPin?: (input: {

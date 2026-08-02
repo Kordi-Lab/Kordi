@@ -40,7 +40,6 @@ function renderChatsPage(overrides: Record<string, unknown> = {}) {
     activeConversationUsesCollaboration: false,
     activeCollaborationModelHost: null,
     desktopChatState: null,
-    cloudSelfAgentSyncStatus: null,
     onUpdateCollaborationAgentModelRouting: async () => undefined,
     isEditingDesktopSessionTitle: false,
     setIsEditingDesktopSessionTitle: () => undefined,

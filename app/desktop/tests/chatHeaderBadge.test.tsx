@@ -8,7 +8,6 @@ import {
   chatCompanionSideFromDropPosition,
   buildAskAgentSessionReferenceContext,
   chatSideAgentConversationForOpenRequest,
-  cloudSelfAgentSyncStatusLabel,
   humanSideForCompanionSide,
   pairedCompanionConversation,
   parseAskAgentTriggerCommand,
@@ -85,7 +84,15 @@ test('chat header title text does not flex-grow away from fork or action pills',
   assert.doesNotMatch(source, /min-w-\[10rem\] flex-1 break-words/);
 });
 
-test('chat headers reserve a compact second row for icon destination subtitles', () => {
+test('renameable chat title owns the available line before truncating its text', () => {
+  const source = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /<h2 className="min-w-0 w-full max-w-\[32rem\]/);
+  assert.match(source, /app-button-quiet -ml-1 inline-block max-w-full truncate/);
+  assert.doesNotMatch(source, /app-button-quiet -ml-1 block w-full truncate/);
+});
+
+test('chat headers reserve a compact second row for quiet metadata', () => {
   const source = readChatsPageImplementationSource();
   const shell = readDesktopShellCss();
 
@@ -93,14 +100,16 @@ test('chat headers reserve a compact second row for icon destination subtitles',
   assert.doesNotMatch(source, /min-h-\[100px\]/);
   assert.equal((source.match(/min-h-\[84px\]/g) ?? []).length, 2, 'main and Ask Agent headers should share the compact height');
   assert.match(shell, /\.app-right-detail-page-content\s*{[^}]*padding:\s*12px clamp\(20px, 4vw, 44px\) 40px;/s);
-  assert.match(source, /data-chat-session-subtitle-pill="true"/);
+  assert.match(source, /data-chat-session-metadata="true"/);
+  assert.match(source, /data-chat-session-subtitle="true"/);
+  assert.doesNotMatch(source, /data-chat-session-subtitle-pill="true"/);
   assert.match(source, /data-chat-destination-tabs=\{scope\}/);
   assert.match(source, /icon: MessageSquare/);
   assert.match(source, /icon: Info/);
   assert.match(source, /icon: FolderOpen/);
   assert.match(source, /icon: CheckCircle2/);
-  assert.doesNotMatch(source, /mt-0\.5 flex min-w-0 items-center text-\[11px\] leading-5 text-slate-400/);
-  assert.doesNotMatch(source, /mt-0\.5 text-\[11px\] leading-5 text-slate-400">Agent session/);
+  assert.match(source, /mt-0\.5 flex min-w-0 items-center gap-1 text-\[11px\] leading-5 text-slate-400/);
+  assert.match(source, /data-chat-session-subtitle="true"[^>]*className="text-\[11px\] leading-5 text-slate-400">Agent session/);
 });
 
 test('Ask Agent remains a flat utility action while chat details move into destination subtitles', () => {
@@ -110,8 +119,9 @@ test('Ask Agent remains a flat utility action while chat details move into desti
   const projectDetailsButton = projectSource.slice(projectSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, projectSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
 
   assert.doesNotMatch(`${askAgentButton}\n${projectDetailsButton}`, /border-pink|bg-white\/\[0\.06\]|text-pink|text-slate-100/);
-  assert.match(askAgentButton, /className="app-utility-button[^"]*font-medium transition"/);
-  assert.match(projectDetailsButton, /className="app-utility-button[^"]*font-medium transition"/);
+  assert.match(askAgentButton, /variant="quiet"/);
+  assert.match(askAgentButton, /className="app-utility-button[^"]*font-medium"/);
+  assert.match(projectDetailsButton, /className="app-utility-button[^"]*font-medium/);
   assert.doesNotMatch(chatSource, /Open session details|Hide session details|>\s*Hide details\s*</);
 });
 
@@ -131,20 +141,23 @@ test('message selection control is smaller than the old oversized blue circle', 
   assert.match(source, /<Check className="h-3 w-3"/);
 });
 
-test('chat header cloud self-agent sync indicator is icon-only', () => {
-  const source = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
-  const indicatorStart = source.indexOf('data-cloud-self-agent-sync-status');
-  const indicatorMarkup = source.slice(indicatorStart, source.indexOf('{metadata.forkSourceSessionId', indicatorStart));
+test('chat header permanently omits the decorative Cloud sync presentation', () => {
+  const source = readChatsPageImplementationSource();
 
-  assert.match(indicatorMarkup, /<Cloud/);
-  assert.doesNotMatch(indicatorMarkup, /\{metadata\.cloudSyncLabel\}/);
+  assert.doesNotMatch(source, /data-cloud-self-agent-sync-status/);
+  assert.doesNotMatch(source, /cloudSyncLabel|cloudSyncStatus/);
+  assert.doesNotMatch(source, /<Cloud\b/);
 });
 
-test('chat header cloud self-agent sync label is concise and stable', () => {
-  assert.equal(cloudSelfAgentSyncStatusLabel(undefined), null);
-  assert.equal(cloudSelfAgentSyncStatusLabel({ state: 'syncing', pendingCount: 2 }), 'Syncing 2');
-  assert.equal(cloudSelfAgentSyncStatusLabel({ state: 'synced' }), 'Synced');
-  assert.equal(cloudSelfAgentSyncStatusLabel({ state: 'error', message: 'network failed' }), 'Sync issue');
+test('chat header presents fork provenance as a quiet metadata action', () => {
+  const source = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
+  const start = source.indexOf('app-fork-source-link');
+  const markup = source.slice(start - 120, source.indexOf('</button>', start));
+
+  assert.match(markup, /app-button-quiet app-fork-source-link/);
+  assert.match(markup, /Forked from \{metadata\.forkSourceTitle\}/);
+  assert.match(markup, /aria-label=\{`Open source session/);
+  assert.doesNotMatch(markup, /rounded-full|border-white|bg-white/);
 });
 
 test('chat companion pairing links human chats to that human owner agent chat', () => {
@@ -335,7 +348,7 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.match(sidePanelHeader, /data-side-chat-controls="true"/);
   assert.doesNotMatch(sidePanelHeader, /rounded-full border border-white\/10 bg-white\/\[0\.035\] p-1 shadow/);
   assert.doesNotMatch(sidePanelHeader, /app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100/);
-  assert.match(sidePanelHeader, /hover:bg-\[color:var\(--app-control-hover\)\]/);
+  assert.equal((sidePanelHeader.match(/app-button-quiet/g) ?? []).length, 2);
   assert.match(source, /data-side-chat-root-menu="true"/);
   assert.match(source, /app-page-header[^"`]*z-40/);
   assert.match(source, /data-side-chat-options-menu="true"/);

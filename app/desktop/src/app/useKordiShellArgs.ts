@@ -164,7 +164,6 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         isNativeShell: args.isNativeShell,
         desktopChatState: args.desktopChatState,
         refreshDesktopChat: args.refreshDesktopChat,
-        cloudSelfAgentSyncStatusBySessionId: args.cloudSelfAgentSyncStatusBySessionId,
         cloudSessionPinsById: args.cloudSessionPinsById,
         onUpdateCloudSessionPin: args.onUpdateCloudSessionPin,
         desktopAuthState: args.desktopAuthState,

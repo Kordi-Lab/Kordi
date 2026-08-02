@@ -113,7 +113,7 @@ export function SourceMessageQuote({
         <div className="app-fold-reveal-row app-source-message-quote-reveal-row">
           <button
             type="button"
-            className="app-inline-expand-toggle app-source-message-quote-toggle"
+            className="app-button-quiet app-inline-expand-toggle app-source-message-quote-toggle"
             onClick={() => setExpanded((current) => !current)}
             aria-expanded={expanded}
           >

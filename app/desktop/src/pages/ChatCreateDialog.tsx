@@ -156,7 +156,7 @@ function CreateDialogHeader({ title, subtitle, onClose }: { title: string; subti
       <button
         type="button"
         onClick={onClose}
-        className="app-chat-create-close grid h-6 w-6 shrink-0 place-items-center rounded-[9px] transition"
+      className="app-button-quiet app-chat-create-close grid h-6 w-6 shrink-0 place-items-center rounded-[9px] p-0"
         aria-label="Close create chat"
       >
         <X className="h-3.5 w-3.5" />
@@ -354,7 +354,7 @@ export function ChatCreateDialog({
               <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No contacts available.</div>
             )}
           </div>
-          <Button type="button" variant="secondary" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+          <Button type="button" variant="quiet" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
         </div>
       ) : null}
 
@@ -389,7 +389,7 @@ export function ChatCreateDialog({
             )}
           </div>
           {initialMode === 'menu' ? (
-            <Button type="button" variant="secondary" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+            <Button type="button" variant="quiet" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
           ) : null}
         </div>
       ) : null}
@@ -470,7 +470,7 @@ export function ChatCreateDialog({
           </div>
 
           <div className="flex gap-1.5">
-            <Button type="button" variant="secondary" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+            <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
             <Button
               type="submit"
               className="h-8 flex-1 rounded-[12px] px-3 text-[12px]"
@@ -538,7 +538,7 @@ export function ChatCreateDialog({
                 : 'Paste a Kordi account ID to request approval.'}
           </div>
           <div className="flex gap-1.5">
-            <Button type="button" variant="secondary" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+            <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
             <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={!onAddContact || !contactNodeId.trim() || addContactState === 'saving'}>
               {addContactState === 'saving' ? 'Sending…' : 'Send request'}
             </Button>
@@ -587,7 +587,7 @@ export function ChatCreateDialog({
             )}
           </div>
           <div className="flex gap-1.5">
-            <Button type="button" variant="secondary" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+            <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
             <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={!canSubmitGroup}>
               {canSubmitGroup ? 'Create group' : 'Pick 2 people'}
             </Button>

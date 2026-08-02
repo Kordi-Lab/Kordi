@@ -1,7 +1,6 @@
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import {
   chatHeaderSubtitle,
-  cloudSelfAgentSyncStatusLabel,
   selfAgentSessionIdForTitleRename,
 } from '@/pages/chatsPage.header';
 import type {
@@ -15,7 +14,6 @@ type UseChatHeaderModelInput = {
   session: Pick<
     ChatsPageSession,
     | 'activeConv'
-    | 'cloudSelfAgentSyncStatus'
     | 'isEditingDesktopSessionTitle'
     | 'setIsEditingDesktopSessionTitle'
     | 'desktopSessionRenameDraft'
@@ -32,7 +30,6 @@ export function useChatHeaderModel({
 }: UseChatHeaderModelInput) {
   const {
     activeConv,
-    cloudSelfAgentSyncStatus,
     isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle,
     desktopSessionRenameDraft,
@@ -83,7 +80,6 @@ export function useChatHeaderModel({
 
   return {
     subtitle: chatHeaderSubtitle(activeConv),
-    cloudSyncLabel: cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus),
     isStarting,
     rename: {
       enabled: canRename,

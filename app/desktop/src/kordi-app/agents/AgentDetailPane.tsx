@@ -108,7 +108,7 @@ export function AgentDeleteConfirmDialog({
         </div>
       ) : null}
       <AppDialogActions className="mt-5 gap-3">
-        <Button variant="secondary" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={onCancel}>Cancel</Button>
+        <Button variant="quiet" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={onCancel}>Cancel</Button>
         <Button
           className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400"
           disabled={isDeleting}
@@ -129,7 +129,7 @@ function AgentActionsMenu({ agent, onRequestArchive }: {
   return (
     <details className="relative">
       <summary
-        className="app-agent-inspector-row flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl border text-slate-300 transition hover:border-white/18 hover:text-white [&::-webkit-details-marker]:hidden"
+        className="app-button-quiet flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl p-0 [&::-webkit-details-marker]:hidden"
         aria-label="More agent actions"
         title="More agent actions"
       >
@@ -856,7 +856,7 @@ export function AgentDetailPane({
         </div>
         <div className="flex items-center gap-2">
           {routingDraftDirty ? (
-            <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={resetRoutingDraft} disabled={isRoutingSaving}>
+            <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={resetRoutingDraft} disabled={isRoutingSaving}>
               Discard
             </Button>
           ) : null}
@@ -911,7 +911,7 @@ export function AgentDetailPane({
               } : undefined}
             />
             {isEditable ? (
-              <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => onReset(activeAgent)}>
+              <Button variant="quiet" className="rounded-xl text-[12px]" onClick={() => onReset(activeAgent)}>
                 Reset
               </Button>
             ) : null}
@@ -1009,7 +1009,7 @@ export function AgentDetailPane({
                   <div className="mb-3 flex items-center justify-end gap-2">
                     {activeEditingSection === 'skills' ? (
                       <div className="flex items-center gap-2">
-                        <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelEditing(activeAgent)}>
+                        <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelEditing(activeAgent)}>
                           Cancel
                         </Button>
                         <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onSave(activeAgent, 'skills')}>
@@ -1017,7 +1017,7 @@ export function AgentDetailPane({
                         </Button>
                       </div>
                     ) : (
-                      <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartEditing(activeAgent.id, 'skills')}>
+                      <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartEditing(activeAgent.id, 'skills')}>
                         Edit
                       </Button>
                     )}

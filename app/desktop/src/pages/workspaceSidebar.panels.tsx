@@ -31,7 +31,7 @@ export function SidebarProjectsPanel({
         <Button
           type="button"
           size="icon"
-          variant="secondary"
+          variant="quiet"
           className="app-icon-button h-8 w-8 rounded-lg border-0"
           title="Create project"
           aria-label="Create project"
@@ -162,6 +162,7 @@ export function SidebarContactsPanel({
         {directory.groupedContacts.map((group) => (
           <button
             key={group.id}
+            type="button"
             onClick={() => {
               directory.setActiveContactGroup(group.id);
               const first = directory.displayedContacts.find(
@@ -169,7 +170,7 @@ export function SidebarContactsPanel({
               );
               if (first) directory.setActiveContactId(first.id);
             }}
-            className="flex items-center justify-between rounded-xl bg-white/12 px-3 py-2 text-left text-white ring-1 ring-white/15 transition"
+            className="app-button-quiet flex items-center justify-between rounded-xl px-3 py-2 text-left"
           >
             <span className="text-sm font-medium">{group.label}</span>
             <Badge variant="secondary" className="rounded-full text-slate-950">
@@ -231,7 +232,7 @@ export function SidebarAgentsPanel({
                 <div className="mb-3 text-xs text-slate-400">Messaging: {agent.messaging}</div>
                 <div className="flex items-center justify-between text-xs text-slate-400">
                   <span>{agent.tasks} active tasks</span>
-                  <Button size="sm" variant="secondary" className="rounded-xl">
+                  <Button size="sm" variant="quiet" className="rounded-xl">
                     Open
                   </Button>
                 </div>

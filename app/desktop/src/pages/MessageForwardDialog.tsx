@@ -71,7 +71,7 @@ export function MessageForwardDialog({
           </div>
           <button
             type="button"
-            className="grid h-7 w-7 place-items-center rounded-full text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
+            className="app-button-quiet grid h-7 w-7 place-items-center rounded-full p-0"
             onClick={onClose}
             aria-label="Close forward dialog"
           >
@@ -113,7 +113,7 @@ export function MessageForwardDialog({
             />
           ) : null}
           <div className="flex justify-end gap-2">
-            <button type="button" className="rounded-full px-3 py-1.5 text-[12px] text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]" onClick={onClose}>
+            <button type="button" className="app-button-quiet rounded-full px-3 py-1.5 text-[12px]" onClick={onClose}>
               Cancel
             </button>
             <button

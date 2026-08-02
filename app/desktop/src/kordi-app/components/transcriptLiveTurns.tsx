@@ -142,7 +142,7 @@ function ToolTranscriptBlock({
             aria-label={isWrapped ? 'Disable line wrapping' : 'Wrap long lines'}
             title={isWrapped ? 'Disable line wrapping' : 'Wrap long lines'}
             onClick={() => setIsWrapped((current) => !current)}
-            className="app-transcript-wrap-toggle inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="app-button-quiet app-transcript-wrap-toggle inline-flex h-6 w-6 items-center justify-center rounded-md p-0"
           >
             <WrapText className="h-3 w-3" aria-hidden="true" />
           </button>
@@ -255,7 +255,7 @@ function ToolTimelineDetails({ tool, display }: { tool: ToolSnapshot; display: T
     <div className="app-transcript-timeline-details">
       <button
         type="button"
-        className="app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
+        className="app-button-quiet app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
         onClick={() => setExpandedDetails((current) => !current)}
         aria-expanded={expandedDetails}
       >
@@ -290,7 +290,7 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
           <div className="app-transcript-timeline-details">
             <button
               type="button"
-              className="app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
+              className="app-button-quiet app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
               onClick={() => setExpandedThinking((current) => !current)}
               aria-expanded={expandedThinking}
             >

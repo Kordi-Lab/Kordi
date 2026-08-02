@@ -120,7 +120,7 @@ export function AgentStudioRail({
           >
             <summary
               ref={createMenuSummaryRef}
-              className="app-agent-studio-rail-add"
+              className="app-button-quiet app-agent-studio-rail-add"
               aria-label="Start a new Factory build"
               aria-haspopup="menu"
               aria-expanded={createMenuOpen}

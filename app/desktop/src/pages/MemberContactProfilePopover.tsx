@@ -264,7 +264,7 @@ export function MemberContactProfilePopover({
       >
         <button
           type="button"
-          className="app-group-management-close absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-[9px]"
+          className="app-button-quiet app-group-management-close absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-[9px] p-0"
           aria-label="Close member profile"
           onClick={onClose}
         >
