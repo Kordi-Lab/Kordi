@@ -22,6 +22,7 @@ import type { SessionHydrationState } from '@/features/canonical/canonicalStore'
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
 import { buildParticipantSpaces, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
+import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
@@ -179,8 +180,7 @@ export function applyCanonicalHydrationPlaceholder(
   }
   return {
     ...selectedConversation,
-    subtitle: 'Loading chat history…',
-    messages: [{ role: 'system', text: 'Loading chat history…', time: '--:--' }],
+    messages: [transcriptLoadingNotice()],
   };
 }
 
@@ -193,13 +193,13 @@ export function pendingCanonicalCloudConversationForActiveId(activeConvId: strin
     canonicalSessionId: sessionId,
     name: isGroup ? 'Opening group chat…' : 'Opening Cloud chat…',
     type: isGroup ? 'owned-agent' : 'person',
-    subtitle: 'Loading chat history…',
+    subtitle: '',
     unread: 0,
     collaborationSources: ['Cloud'],
     trust: 'Cloud',
     directness: isGroup ? 'Group chat' : 'Person chat',
     participants: ['Me'],
-    messages: [{ role: 'system', text: 'Loading chat history…', time: '--:--' }],
+    messages: [transcriptLoadingNotice()],
   };
 }
 
@@ -212,13 +212,13 @@ export function pendingCloudCollaborationConversationForActiveId(activeConvId: s
     canonicalSessionId: undefined,
     name: peerId,
     type: 'person',
-    subtitle: 'Opening chat with this person…',
+    subtitle: '',
     unread: 0,
     collaborationSources: ['Cloud'],
     trust: 'Cloud',
     directness: 'Person chat',
     participants: ['Me', peerId],
-    messages: [{ role: 'system', text: 'Opening chat with this person…', time: '--:--' }],
+    messages: [transcriptLoadingNotice('Opening chat with this person…')],
     collaborationTarget: {
       hostId: 'cloud',
       nodeId: peerId,

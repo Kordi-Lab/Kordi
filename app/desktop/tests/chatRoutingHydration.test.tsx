@@ -56,6 +56,9 @@ test('pending Cloud contact selection keeps active conversation on Cloud instead
   assert.equal(conversation?.collaborationTarget?.hostId, 'cloud');
   assert.equal(conversation?.collaborationTarget?.nodeId, 'acct_peer');
   assert.equal(conversation?.collaborationSources.includes('Cloud'), true);
+  assert.equal(conversation?.subtitle, '');
+  assert.equal(conversation?.messages.length, 1);
+  assert.equal(conversation?.messages[0]?.detail, 'transcript-loading');
 });
 
 test('workspace active conversation resolves Cloud self-agent bridge session ids to restored canonical sessions', () => {
@@ -108,6 +111,7 @@ test('workspace active conversation keeps selected canonical Cloud session in lo
   assert.equal(selected.id, 'session:group:clicked-before-hydration');
   assert.equal(selected.canonicalSessionId, 'session:group:clicked-before-hydration');
   assert.equal(selected.unread, 0);
+  assert.equal(selected.subtitle, '');
   assert.equal(selected.messages.length > 0, true);
   assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
   assert.notEqual(selected.messages[0]?.text, 'wrong local fallback');
@@ -136,6 +140,7 @@ test('workspace active conversation shows loading copy for an empty selected can
 
   assert.equal(selected.id, 'session:group:main');
   assert.equal(selected.name, 'main');
+  assert.equal(selected.subtitle, '');
   assert.equal(selected.messages.length > 0, true);
   assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
 });
@@ -179,6 +184,52 @@ test('workspace active conversation keeps a catalog-confirmed empty group sessio
   assert.equal(hydrated.id, emptyGroupSession.id);
   assert.equal(hydrated.subtitle, '');
   assert.deepEqual(hydrated.messages, []);
+});
+
+test('canonical history loading keeps one transcript notice without replacing the header subtitle', () => {
+  const selected = {
+    id: 'session:group:history',
+    canonicalSessionId: 'session:group:history',
+    canonicalMessageCount: 5,
+    name: 'main',
+    type: 'owned-agent' as const,
+    subtitle: 'Latest synced message',
+    unread: 0,
+    collaborationSources: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Group chat',
+    participants: ['Me', 'Alice'],
+    messages: [],
+  };
+
+  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+
+  assert.equal(loading.subtitle, 'Latest synced message');
+  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+});
+
+test('contact history loading uses the same single neutral transcript notice', () => {
+  const selected = {
+    id: 'session:direct-person:acct_me:acct_peer',
+    canonicalSessionId: 'session:direct-person:acct_me:acct_peer',
+    canonicalMessageCount: 3,
+    name: 'Jiaxin Pei',
+    type: 'person' as const,
+    subtitle: 'Latest synced contact message',
+    unread: 0,
+    collaborationSources: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Person chat',
+    participants: ['Me', 'Jiaxin Pei'],
+    messages: [],
+  };
+
+  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+
+  assert.equal(loading.subtitle, 'Latest synced contact message');
+  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
 });
 
 test('workspace keeps a desktop runtime transcript visible while canonical hydration is loading', () => {

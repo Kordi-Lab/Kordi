@@ -108,7 +108,8 @@ test('shared Agent session pane and composer include transcript, attachments, fo
 
   for (const required of [
     'MessageBubble',
-    'LiveChatTurnMessage',
+    'buildDesktopLiveTurnTranscriptMessage',
+    'onStopActiveTurn',
     'onReplyMessage',
     'onForwardMessage',
     'onSelectMessage',

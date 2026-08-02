@@ -46,6 +46,10 @@ function cloudAgentTranscriptIdentity(context?: DesktopTranscriptSessionContext)
 }
 
 function desktopTranscriptMessageId(sessionId: string, message: DesktopChatMessage, index: number) {
+  const renderId = message.transcriptRenderId?.trim();
+  if (renderId) return renderId;
+  const entryId = message.entryId?.trim();
+  if (entryId) return `desktop-entry:${sessionId}:${entryId}`;
   const role = message.role.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-') || 'message';
   return `desktop-message:${sessionId}:${message.timestampMs}:${index}:${role}`;
 }
@@ -62,9 +66,13 @@ function desktopMessageActionSource(message: DesktopChatMessage) {
   };
 }
 
-function assistantSenderLabelForTranscript(sender: string | null | undefined, cloudAgentIdentity: { name: string; id: string } | null) {
-  if (cloudAgentIdentity?.name) return cloudAgentIdentity.name;
-  const label = sender?.trim() || 'Kordi';
+function assistantSenderLabelForTranscript(
+  sender: string | null | undefined,
+  explicitDisplayName?: string | null,
+) {
+  const displayName = explicitDisplayName?.trim();
+  if (displayName && !/^kordi$/iu.test(displayName)) return displayName;
+  const label = sender?.trim() || displayName || 'Kordi';
   if (/·\s+.+?'s Agent$/u.test(label)) return label;
   return firstPersonPossessiveLabel(label);
 }
@@ -77,6 +85,7 @@ export function mapDesktopMessagesForTranscript(
 ): Message[] {
   const cloudAgentIdentity = cloudAgentTranscriptIdentity(sessionContext);
   return messages.flatMap((message, index) => {
+    const messageId = desktopTranscriptMessageId(sessionId, message, index);
     const isAssistant = message.role === 'assistant';
     const failedAssistant = isAssistant && message.failed === true;
     const cancelledAssistant = isAssistant && message.cancelled === true;
@@ -96,12 +105,11 @@ export function mapDesktopMessagesForTranscript(
     }
 
     const assistantSenderLabel = cloudAgentIdentity?.name
-      || avatarSeeds?.agentDisplayName?.trim()
-      || assistantSenderLabelForTranscript(message.sender, cloudAgentIdentity);
+      || assistantSenderLabelForTranscript(message.sender, avatarSeeds?.agentDisplayName);
     const assistantAvatarSeed = cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed(message.sender ?? 'Kordi');
 
     return [{
-      id: desktopTranscriptMessageId(sessionId, message, index),
+      id: messageId,
       entryId: message.entryId ?? null,
       role:
         message.role === 'assistant'
@@ -154,7 +162,7 @@ export function mapDesktopMessagesForTranscript(
       turn:
         hasHistoricalTurn
           ? {
-              id: `${sessionId}-historical-${message.timestampMs}-${index}`,
+              id: messageId,
               sessionId,
               prompt: '',
               status: failedAssistant ? 'failed' : cancelledAssistant ? 'cancelled' : 'succeeded',

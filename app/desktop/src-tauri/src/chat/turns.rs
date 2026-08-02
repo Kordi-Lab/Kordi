@@ -25,7 +25,7 @@ pub(super) fn desktop_task_tools_from_messages(
 ) -> Vec<DesktopChatToolSnapshot> {
     let mut tools = Vec::new();
     for message in messages.iter().rev() {
-        if message.role == "user" && !tools.is_empty() {
+        if message.role == "user" {
             break;
         }
         if message.role != "assistant" {

@@ -225,6 +225,7 @@ test('folds only substantially long completed agent responses by default', () =>
 test('expanded fold controls use click-to-hide copy consistently', () => {
   const transcriptSource = [
     readFileSync(new URL('../src/kordi-app/components/transcriptReplyAttribution.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/kordi-app/components/transcriptAssistantAnswer.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8'),
   ].join('\n');
 

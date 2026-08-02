@@ -60,6 +60,8 @@ pub struct DesktopChatTurnSnapshot {
     pub succeeded: bool,
     pub started_at_ms: i64,
     pub completed_at_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript_entry_id: Option<String>,
     pub error: Option<String>,
     pub transcript_refresh_required: bool,
 }

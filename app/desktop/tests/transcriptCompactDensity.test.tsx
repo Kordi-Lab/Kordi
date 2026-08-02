@@ -6,7 +6,7 @@ import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/tra
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
-test('renders transcript system notices with compact stable spacing', () => {
+test('renders transcript system notices as neutral text without a colored pill', () => {
   const message: Message = {
     role: 'system',
     text: 'Switched model to openai/gpt-5.5',
@@ -17,9 +17,44 @@ test('renders transcript system notices with compact stable spacing', () => {
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /app-system-notice-row/);
-  assert.match(markup, /app-system-notice-pill/);
+  assert.match(markup, /app-system-notice-text/);
+  assert.match(markup, /text-\[color:var\(--utility-muted-text\)\]/);
   assert.match(markup, /py-0\.5/);
+  assert.doesNotMatch(markup, /bg-muted|rounded-full|\bborder\b|text-muted-foreground/);
   assert.doesNotMatch(markup, /flex justify-center py-2/);
+});
+
+test('contact transcripts use the same neutral system-notice treatment', () => {
+  const message: Message = {
+    role: 'system',
+    text: 'Switched model to openai/gpt-5.6-sol',
+    time: '22:10',
+    detail: 'Model updated',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'contact-compact',
+  }));
+
+  assert.match(markup, /app-system-notice-text/);
+  assert.match(markup, /text-\[color:var\(--utility-muted-text\)\]/);
+  assert.doesNotMatch(markup, /bg-muted|rounded-full|\bborder\b|text-muted-foreground/);
+});
+
+test('renders transcript loading once as neutral text without a notice background', () => {
+  const message: Message = {
+    role: 'system',
+    text: 'Loading chat history…',
+    time: '--:--',
+    detail: 'transcript-loading',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-transcript-loading-notice/);
+  assert.match(markup, /text-\[color:var\(--utility-muted-text\)\]/);
+  assert.doesNotMatch(markup, /bg-muted|rounded-full|\bborder\b/);
 });
 
 test('renders human messages with a larger reading width than before', () => {

@@ -21,19 +21,19 @@ import {
   Undo2,
   User,
 } from 'lucide-react';
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { transcriptSystemNoticeClassName } from '@/features/chat/transcriptLoadingNotice';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownContent } from './markdown';
 import { AttachmentPreview } from './transcriptAttachments';
 import { RequestReplyLine, SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
-import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
+import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
@@ -750,19 +750,17 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
     </div>
   );
 }
-
 export type MessageForkSummary = {
   sessionId: string;
   title: string;
   updatedAtLabel?: string;
 };
-
 export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact' | 'agent-compact';
-
 function MessageBubbleView({
   msg,
   onOpenSource,
   onStopCollaborationAgentRequest,
+  onStopActiveTurn,
   onNavigateToMessage,
   onOpenArtifact,
   onOpenAuthSettings,
@@ -794,6 +792,7 @@ function MessageBubbleView({
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
   onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
+  onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
@@ -950,16 +949,17 @@ function MessageBubbleView({
     </button>
   ) : null;
 
-  // Fork is offered on assistant turns only: clicking branches the
-  // conversation into a new session that includes everything through
-  // (and including) the clicked assistant response. The user can then
-  // continue the conversation from there.
+  // Fork is offered on assistant turns only. Reserve its header slot before the
+  // canonical entry ID arrives so reconciliation cannot shift or remount it.
   const isAssistantRoleForFork = msg.role === 'owned-agent' || msg.role === 'external-agent';
-  const canForkMessage = Boolean(onForkMessage && msg.entryId && isAssistantRoleForFork);
-  const forkButton = canForkMessage ? (
+  const canRenderForkControl = Boolean(onForkMessage && isAssistantRoleForFork);
+  const forkButton = canRenderForkControl ? (
     <button
       type="button"
-      className="app-message-fork-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+      className={cn('app-message-fork-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20', !msg.entryId && 'invisible pointer-events-none')}
+      disabled={!msg.entryId}
+      aria-hidden={!msg.entryId}
+      tabIndex={msg.entryId ? undefined : -1}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1041,7 +1041,7 @@ function MessageBubbleView({
   if (msg.role === 'system') {
     return (
       <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
-        <div className="app-system-notice-pill max-w-[min(100%,34rem)] truncate rounded-full border bg-muted px-2.5 py-0.5 text-center text-[11px] leading-5 text-muted-foreground">{msg.text}</div>
+        <div className={transcriptSystemNoticeClassName(msg)}>{msg.text}</div>
       </MessageContextMenuHost>
     );
   }
@@ -1189,6 +1189,7 @@ function MessageBubbleView({
           historical={msg.turn.completed}
           plainAgentResponse={plainAgentResponse}
           onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
+          onStopActiveTurn={onStopActiveTurn}
           onNavigateToMessage={onNavigateToMessage}
           onOpenArtifact={onOpenArtifact}
           onOpenAuthSettings={onOpenAuthSettings}
@@ -1489,6 +1490,7 @@ function messageSnapshotKey(msg: Message) {
 export const MessageBubble = memo(
   MessageBubbleView,
   (previous, next) => previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
+    && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
     && previous.onOpenAuthSettings === next.onOpenAuthSettings
@@ -1518,8 +1520,6 @@ export const MessageBubble = memo(
     && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
 );
-
-
 function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
 }
