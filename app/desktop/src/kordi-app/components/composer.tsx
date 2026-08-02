@@ -831,8 +831,7 @@ export function ComposerModelControls({
           updateSelectorMenuPosition('provider');
           onToggleSelector(scope, 'provider');
         }}
-        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[5.75rem]' : 'w-[8.75rem]')}
-        aria-expanded={activeSelector === 'provider'}
+        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[5.75rem]' : 'w-[8.75rem]')} aria-expanded={activeSelector === 'provider'}
       >
         <span className="truncate text-left">{selectedProviderLabel || 'Provider'}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'provider' ? 'rotate-180 text-slate-300' : '')} />
@@ -844,8 +843,7 @@ export function ComposerModelControls({
           updateSelectorMenuPosition('model');
           onToggleSelector(scope, 'model');
         }}
-        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[5.75rem]' : 'w-[8.5rem]')}
-        aria-expanded={activeSelector === 'model'}
+        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[5.75rem]' : 'w-[8.5rem]')} aria-expanded={activeSelector === 'model'}
       >
         <span className="truncate text-left">{selectedModel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} />
@@ -857,8 +855,7 @@ export function ComposerModelControls({
           updateSelectorMenuPosition('thinking');
           onToggleSelector(scope, 'thinking');
         }}
-        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[4.75rem]' : 'w-[6.5rem]')}
-        aria-expanded={activeSelector === 'thinking'}
+        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[4.75rem]' : 'w-[6.5rem]')} aria-expanded={activeSelector === 'thinking'}
       >
         <span className="truncate text-left">{selectedThinkingLabel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} />

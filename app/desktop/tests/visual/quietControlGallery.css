@@ -238,6 +238,105 @@ button {
   gap: 6px;
 }
 
+.quiet-provider-stage {
+  padding: 14px 18px 18px;
+}
+
+.quiet-provider-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 8px;
+  color: var(--utility-foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quiet-provider-heading span:last-child {
+  color: var(--utility-muted-text);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.quiet-provider-list {
+  display: grid;
+  gap: 4px;
+}
+
+.quiet-provider-row {
+  display: flex;
+  min-height: 58px;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 8px 14px;
+  text-align: left;
+}
+
+.quiet-provider-row > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.quiet-provider-row strong,
+.quiet-provider-row small {
+  display: block;
+}
+
+.quiet-provider-row strong {
+  color: var(--utility-foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quiet-provider-row small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--utility-muted-text);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quiet-provider-glyph {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  opacity: 0.8;
+}
+
+.quiet-provider-glyph svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+
+.quiet-provider-local {
+  color: #d97706;
+}
+
+.quiet-provider-neutral {
+  color: var(--utility-muted-text);
+}
+
+.quiet-provider-cloud {
+  color: #059669;
+}
+
+.quiet-provider-chevron {
+  color: var(--utility-muted-text);
+  font-size: 22px;
+  line-height: 1;
+}
+
 .quiet-containment {
   display: flex;
   min-height: 112px;

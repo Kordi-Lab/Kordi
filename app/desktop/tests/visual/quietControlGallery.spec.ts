@@ -12,11 +12,15 @@ for (const theme of ['light', 'dark'] as const) {
 
     await hover.hover();
     await focus.focus();
+    await page.locator('[data-provider-state="hover"]').hover();
 
     await expect(rest).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(rest).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
     await expect(hover).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(focus).toBeFocused();
+    await expect(page.locator('[data-provider-state="selected"]')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(page.locator('[data-provider-state="hover"]')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(page.locator('[data-provider-state="selected"] .app-auth-provider-glyph')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('[data-chat-session-metadata="true"]')).toContainText('Forked from Hihi');
     await expect(page.locator('[data-icon="cloud"]')).toHaveCount(0);
 

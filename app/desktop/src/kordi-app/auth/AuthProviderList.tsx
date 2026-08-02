@@ -147,8 +147,8 @@ export function AuthProviderList({
       ) : null}
 
       <ScrollArea className="min-h-0 flex-1 pr-1">
-        <div className="app-auth-provider-rows w-full overflow-hidden border-y border-white/8 bg-transparent shadow-none">
-          {providers.map((provider, index) => {
+        <div className="app-auth-provider-rows grid w-full gap-1 bg-transparent shadow-none">
+          {providers.map((provider) => {
             const selected = provider.id === selectedProviderId;
 
             return (
@@ -157,12 +157,10 @@ export function AuthProviderList({
                 type="button"
                 onClick={() => onSelectProvider(provider.id)}
                 className={cn(
-                  'app-auth-provider-row flex w-full cursor-pointer items-center gap-3.5 px-[18px] py-3.5 text-left transition',
-                  selected
-                    ? 'bg-white/[0.055] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.055)]'
-                    : 'hover:bg-white/[0.032]',
-                  index > 0 && 'border-t border-white/8',
+                  'app-auth-provider-row group relative flex min-h-[64px] w-full cursor-pointer items-center gap-3.5 rounded-[14px] px-[14px] py-3 text-left',
+                  selected && 'app-auth-provider-row-selected',
                 )}
+                aria-current={selected ? 'page' : undefined}
                 style={{ WebkitAppRegion: 'no-drag' as const }}
               >
                 <AuthProviderGlyph providerId={provider.id} label={provider.label} size="sm" />
@@ -172,7 +170,7 @@ export function AuthProviderList({
                   <div className="mt-0.5 truncate text-[11px] text-slate-400">{providerListSubtitle(provider)}</div>
                 </div>
 
-                <ChevronRight className={cn('h-4 w-4 shrink-0 text-slate-500 transition', selected && 'text-slate-300')} />
+                <ChevronRight className="app-auth-provider-chevron h-4 w-4 shrink-0 text-slate-500 transition-colors" />
               </button>
             );
           })}

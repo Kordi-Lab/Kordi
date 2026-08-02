@@ -5,9 +5,7 @@
 }
 
 .app-auth-settings-page .app-auth-provider-rows {
-  border-right: 0;
-  border-left: 0;
-  border-radius: 0;
+  border: 0;
   background: transparent;
   box-shadow: none;
 }
@@ -61,8 +59,65 @@
   }
 }
 
-.app-auth-settings-page .app-auth-provider-row:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 32%, transparent);
+.app-auth-settings-page .app-auth-provider-row {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--utility-foreground);
+  box-shadow: none;
+  outline: none;
+  transition:
+    color var(--app-quiet-control-duration) var(--app-quiet-control-ease),
+    background-color var(--app-quiet-control-duration) var(--app-quiet-control-ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .app-auth-settings-page .app-auth-provider-row:hover {
+    background: var(--app-quiet-control-hover-bg);
+  }
+}
+
+.app-auth-settings-page .app-auth-provider-row:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-auth-settings-page .app-auth-provider-row::before {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 2px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--app-quiet-control-hover-text);
+  content: '';
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity var(--app-quiet-control-duration) var(--app-quiet-control-ease);
+}
+
+.app-auth-settings-page .app-auth-provider-row-selected {
+  background: transparent;
+}
+
+.app-auth-settings-page .app-auth-provider-row-selected::before {
+  opacity: 0.72;
+}
+
+.app-auth-settings-page .app-auth-provider-row:is(:hover, :focus-visible, .app-auth-provider-row-selected) .app-auth-provider-glyph {
+  opacity: 1;
+}
+
+.app-auth-settings-page .app-auth-provider-row:is(:hover, :focus-visible, .app-auth-provider-row-selected) .app-auth-provider-chevron {
+  color: var(--app-quiet-control-hover-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-auth-settings-page .app-auth-provider-row,
+  .app-auth-settings-page .app-auth-provider-row::before,
+  .app-auth-settings-page .app-auth-provider-glyph,
+  .app-auth-settings-page .app-auth-provider-chevron {
+    transition-duration: 0.01ms;
+  }
 }
 
 .app-auth-provider-gate-card:hover {
@@ -75,9 +130,14 @@
   outline-offset: 3px;
 }
 
-.app-auth-settings-page .app-auth-provider-row.bg-white\/\[0\.065\] {
-  background: color-mix(in oklab, var(--app-control-active) 46%, transparent);
-  box-shadow: none;
+@media (forced-colors: active) {
+  .app-auth-settings-page .app-auth-provider-row {
+    border-color: ButtonText;
+  }
+
+  .app-auth-settings-page .app-auth-provider-row-selected::before {
+    background: Highlight;
+  }
 }
 
 .app-settings-page .app-settings-nav-item {
