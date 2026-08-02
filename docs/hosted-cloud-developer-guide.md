@@ -61,13 +61,15 @@ The operator profile exists for approved core-maintainer diagnostics against a r
 
 The launcher verifies the account currently authenticated in GitHub CLI against [`../deploy/dev/operator-github-allowlist.txt`](../deploy/dev/operator-github-allowlist.txt). The staged allowlist contains only `shuyhere`. A local source edit is not authorization; server-side controls remain mandatory.
 
-Authenticate GitHub CLI, then launch with an explicit acknowledgement and approved API origin:
+Authenticate GitHub CLI, then launch with an explicit acknowledgement against the current production API at `https://kordi.ai`:
 
 ```bash
 gh auth login
 KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
-  pnpm dev:cloud:operator -- "<APPROVED_REMOTE_API_BASE>"
+  pnpm dev:cloud:operator -- "https://kordi.ai"
 ```
+
+`coordinar.io` is retained only for compatibility with already-released updater clients. Do not use it as the API origin for new operator previews.
 
 The launcher fails closed unless all of these are true:
 

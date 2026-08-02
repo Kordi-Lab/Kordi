@@ -126,7 +126,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY: 'must-not-reach-desktop',
       KORDI_OAUTH_GOOGLE_CLIENT_SECRET: 'must-not-reach-desktop',
     };
-    const rejected = spawnSync('bash', [scriptPath, 'https://coordinar.io'], {
+    const rejected = spawnSync('bash', [scriptPath, 'https://kordi.ai'], {
       cwd: repoRoot,
       env: { ...baseEnv, TEST_GITHUB_LOGIN: 'not-allowlisted' },
       encoding: 'utf8',
@@ -134,7 +134,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, /is not allowlisted/i);
 
-    const allowed = spawnSync('bash', [scriptPath, 'https://coordinar.io'], {
+    const allowed = spawnSync('bash', [scriptPath, 'https://kordi.ai'], {
       cwd: repoRoot,
       env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
       encoding: 'utf8',
@@ -142,7 +142,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
     assert.equal(allowed.status, 0, allowed.stderr);
     assert.equal(
       readFileSync(capturePath, 'utf8').trim(),
-      'https://coordinar.io|operator|1|||||',
+      'https://kordi.ai|operator|1|||||',
     );
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
