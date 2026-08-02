@@ -53,7 +53,7 @@ export function FoldableAssistantAnswer({
         <div className="app-fold-reveal-row app-live-assistant-answer-reveal-row">
           <button
             type="button"
-            className="app-inline-expand-toggle app-live-assistant-answer-toggle"
+            className="app-button-quiet app-inline-expand-toggle app-live-assistant-answer-toggle"
             onClick={() => setExpanded((current) => !current)}
             aria-expanded={expanded}
           >

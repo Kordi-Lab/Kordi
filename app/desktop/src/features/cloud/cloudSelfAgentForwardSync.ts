@@ -2,7 +2,6 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '@/kordi-app/types';
-import type { CloudMessage } from './authClient';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
 
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX =
@@ -28,35 +27,8 @@ export type CloudSelfAgentSyncOperation = {
   createdAtMs: number;
 };
 
-export type CloudSelfAgentSyncStatus = {
-  state: 'syncing' | 'synced' | 'error';
-  pendingCount?: number;
-  message?: string;
-  updatedAtMs: number;
-};
-
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
-}
-
-export function cloudSelfAgentDerivedSyncedStatusBySessionId(
-  accountId: string | null | undefined,
-  messagesByPeer: Record<string, CloudMessage[]>,
-  updatedAtMs: number = Date.now(),
-): Record<string, CloudSelfAgentSyncStatus> {
-  const localAccountId = accountId?.trim();
-  if (!localAccountId) return {};
-  const statuses: Record<string, CloudSelfAgentSyncStatus> = {};
-  for (const message of messagesByPeer[localAccountId] ?? []) {
-    if (
-      message.fromAccountId !== localAccountId
-      || message.toAccountId !== localAccountId
-    ) continue;
-    const sessionId = cleanText(message.sessionId);
-    if (!sessionId) continue;
-    statuses[sessionId] = { state: 'synced', updatedAtMs };
-  }
-  return statuses;
 }
 
 function selfAgentSyncLedgerKey(accountId: string): string {

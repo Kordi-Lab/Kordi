@@ -107,7 +107,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
           <div>
             <div id="agent-create-title" className="app-agent-panel-title text-[16px] font-semibold">Create Cloud Agent</div>
           </div>
-          <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onClose}>Close</Button>
+          <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onClose}>Close</Button>
         </div>
 
         <div className="grid max-h-[min(70vh,42rem)] gap-0 overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

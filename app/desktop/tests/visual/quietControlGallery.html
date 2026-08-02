@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kordi quiet control visual baseline</title>
+    <link rel="stylesheet" href="/src/index.css" />
+    <link rel="stylesheet" href="/tests/visual/quietControlGallery.css" />
+  </head>
+  <body>
+    <main class="quiet-page kordi-app" data-quiet-gallery data-visual-ready="true">
+      <header class="quiet-heading">
+        <div>
+          <div class="quiet-kicker">Kordi desktop</div>
+          <h1>Quiet controls</h1>
+          <p>Invisible at rest. Clear on intent.</p>
+        </div>
+        <div class="quiet-theme-label" data-theme-label></div>
+      </header>
+
+      <section class="quiet-section" data-visual-surface="header">
+        <div class="quiet-section-label">Chat header hierarchy</div>
+        <div class="quiet-chat-shell">
+          <header class="app-page-header quiet-chat-header">
+            <button type="button" class="app-button-quiet quiet-icon-control" aria-label="Open sessions">☰</button>
+            <div class="quiet-chat-identity">
+              <h2 data-rename-title-container>
+                <button
+                  type="button"
+                  class="app-button-quiet quiet-rename-title"
+                  data-rename-title
+                >Model and identity research with a deliberately long session title for agent coordination</button>
+              </h2>
+              <div class="quiet-chat-metadata" data-chat-session-metadata="true">
+                <span>Shared research workspace</span>
+                <span aria-hidden="true">·</span>
+                <button type="button" class="app-button-quiet quiet-fork-link" aria-label="Open source session Hihi">
+                  <span aria-hidden="true">⑂</span>
+                  <span>Forked from Hihi</span>
+                </button>
+              </div>
+            </div>
+            <button type="button" class="app-button-quiet quiet-ask-agent"><span aria-hidden="true">◫</span> Ask Agent</button>
+          </header>
+          <nav class="quiet-destinations" aria-label="Chat destinations">
+            <button type="button" class="quiet-destination quiet-destination-active">Messages</button>
+            <button type="button" class="quiet-destination">Info</button>
+            <button type="button" class="quiet-destination">Artifacts</button>
+            <button type="button" class="quiet-destination">Tasks</button>
+          </nav>
+        </div>
+      </section>
+
+      <section class="quiet-section" data-visual-surface="states">
+        <div class="quiet-section-label">Interaction states</div>
+        <div class="quiet-state-grid">
+          <div class="quiet-state-cell"><span>Rest</span><button type="button" class="app-button-quiet quiet-text-control" data-state-preview="rest">Edit</button></div>
+          <div class="quiet-state-cell"><span>Hover</span><button type="button" class="app-button-quiet quiet-text-control" data-state-preview="hover">Edit</button></div>
+          <div class="quiet-state-cell"><span>Keyboard focus</span><button type="button" class="app-button-quiet quiet-text-control" data-state-preview="focus">Edit</button></div>
+          <div class="quiet-state-cell"><span>Selected</span><button type="button" class="app-button-quiet quiet-text-control" aria-pressed="true">Edit</button></div>
+          <div class="quiet-state-cell"><span>Disabled</span><button type="button" class="app-button-quiet quiet-text-control" disabled>Edit</button></div>
+          <div class="quiet-state-cell"><span>Icon only</span><button type="button" class="app-button-quiet quiet-icon-control" aria-label="Close">×</button></div>
+        </div>
+      </section>
+
+      <section class="quiet-section" data-visual-surface="surfaces">
+        <div class="quiet-section-label">Product-wide utility actions</div>
+        <div class="quiet-surface-grid">
+          <article><span>Chats</span><div><button type="button" class="app-button-quiet quiet-icon-control" aria-label="Attach">⌕</button><button type="button" class="app-button-quiet quiet-text-control">Copy</button></div></article>
+          <article><span>Projects</span><div><button type="button" class="app-button-quiet quiet-text-control">New session</button><button type="button" class="app-button-quiet quiet-text-control">Details</button></div></article>
+          <article><span>Factory</span><div><button type="button" class="app-button-quiet quiet-text-control">Edit through chat</button><button type="button" class="app-button-quiet quiet-icon-control" aria-label="More">···</button></div></article>
+          <article><span>Cloud</span><div><button type="button" class="app-button-quiet quiet-text-control">Copy ID</button><button type="button" class="app-button-quiet quiet-icon-control" aria-label="Close">×</button></div></article>
+        </div>
+      </section>
+
+      <section class="quiet-section app-auth-settings-page" data-visual-surface="providers">
+        <div class="quiet-section-label">Provider selection</div>
+        <div class="quiet-provider-stage">
+          <div class="quiet-provider-heading">
+            <span>Choose a provider</span>
+            <span>1 saved · 3 shown</span>
+          </div>
+          <div class="app-auth-provider-rows quiet-provider-list">
+            <button type="button" class="app-auth-provider-row app-auth-provider-row-selected quiet-provider-row" aria-current="page" data-provider-state="selected">
+              <span class="app-auth-provider-glyph quiet-provider-glyph quiet-provider-local" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3"/></svg>
+              </span>
+              <span><strong>LM Studio</strong><small>Local endpoint · http://localhost:1234/v1</small></span>
+              <span class="app-auth-provider-chevron quiet-provider-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="app-auth-provider-row quiet-provider-row" data-provider-state="rest">
+              <span class="app-auth-provider-glyph quiet-provider-glyph quiet-provider-neutral" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01"/></svg>
+              </span>
+              <span><strong>Ollama</strong><small>Local endpoint · http://localhost:11434/v1</small></span>
+              <span class="app-auth-provider-chevron quiet-provider-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="app-auth-provider-row quiet-provider-row" data-provider-state="hover">
+              <span class="app-auth-provider-glyph quiet-provider-glyph quiet-provider-cloud" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="4" r="2"/><circle cx="5" cy="16" r="2"/><circle cx="19" cy="16" r="2"/><path d="m12 6-1 3m-3.5 5-1-1m10 1 1-1"/></svg>
+              </span>
+              <span><strong>OpenAI</strong><small>No saved accounts or keys yet</small></span>
+              <span class="app-auth-provider-chevron quiet-provider-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="quiet-section quiet-containment" data-visual-surface="containment">
+        <div>
+          <div class="quiet-section-label">Intentional containment</div>
+          <p>Primary, destructive, and input-like controls retain visible affordances.</p>
+        </div>
+        <div class="quiet-containment-actions">
+          <button type="button" class="app-button-primary quiet-contained">Save changes</button>
+          <button type="button" class="quiet-danger quiet-contained">Delete agent</button>
+          <button type="button" class="app-control-chip quiet-contained" aria-expanded="false">Choose model⌄</button>
+        </div>
+      </section>
+    </main>
+    <script type="module">
+      const theme = new URLSearchParams(window.location.search).get('theme') === 'light' ? 'light' : 'dark';
+      document.documentElement.style.colorScheme = theme;
+      document.querySelector('[data-quiet-gallery]')?.classList.add(`theme-${theme}`);
+      document.querySelector('[data-theme-label]').textContent = `${theme} mode`;
+    </script>
+  </body>
+</html>

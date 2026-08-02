@@ -1,9 +1,7 @@
-import { Cloud, Columns2, PanelLeftClose, PanelLeftOpen, Split } from 'lucide-react';
+import { Columns2, PanelLeftClose, PanelLeftOpen, Split } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
 import type { Conversation } from '@/kordi-app/types';
-import { cn } from '@/lib/utils';
 import { SessionDestinationTabs } from '@/pages/chatsPage.destinations';
 import type { ChatDestination } from '@/pages/chatsPage.destinationModel';
 
@@ -37,8 +35,6 @@ type MainHeaderProps = {
   };
   metadata: {
     subtitle: string | null;
-    cloudSyncLabel: string | null;
-    cloudSyncStatus: CloudSelfAgentSyncStatus | null | undefined;
     forkSourceSessionId: string | null;
     forkSourceTitle: string;
     onOpenForkSource?: (sessionId: string) => void;
@@ -56,7 +52,7 @@ export function MainChatHeader({
 }: MainHeaderProps) {
   return (
     <div className="app-page-header relative flex min-h-[84px] shrink-0 items-start justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 pb-8 pt-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         {layout.showSessionToggle ? (
           <button
             type="button"
@@ -73,7 +69,7 @@ export function MainChatHeader({
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
-          <div className="app-page-header-title-row mb-1 flex min-w-0 items-center gap-1.5 text-white">
+          <div className="app-page-header-title-row flex min-w-0 items-center text-white">
             {rename.enabled ? (
               rename.editing ? (
                 <input
@@ -92,11 +88,11 @@ export function MainChatHeader({
                   onBlur={rename.commit}
                   autoFocus
                   data-kordi-window-drag="false"
-                  className="min-w-[220px] max-w-full rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
+                  className="min-w-0 w-full max-w-[32rem] rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
                   placeholder="Session name"
                 />
               ) : (
-                <h2 className="min-w-0 max-w-[18rem] text-[17px] font-semibold leading-6">
+                <h2 className="min-w-0 w-full max-w-[32rem] text-[17px] font-semibold leading-6">
                   <button
                     type="button"
                     onDoubleClick={rename.begin}
@@ -105,7 +101,7 @@ export function MainChatHeader({
                       event.preventDefault();
                       rename.begin();
                     }}
-                    className="block w-full truncate rounded-lg px-1 py-0.5 text-left text-white transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                    className="app-button-quiet -ml-1 inline-block max-w-full truncate rounded-lg px-1 py-0.5 text-left font-semibold"
                     data-chat-session-title-rename="true"
                     data-session-title-rename-trigger="double-click"
                     data-session-id={rename.sessionId}
@@ -119,67 +115,58 @@ export function MainChatHeader({
               )
             ) : (
               <h2
-                className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6"
+                className="min-w-0 w-full max-w-[32rem] truncate text-[17px] font-semibold leading-6"
                 data-kordi-window-drag="false"
+                title={conversation.name}
               >
                 {conversation.name}
               </h2>
             )}
-            {metadata.cloudSyncLabel ? (
-              <span
-                className={cn(
-                  'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
-                  metadata.cloudSyncStatus?.state === 'error'
-                    ? 'text-rose-300'
-                    : metadata.cloudSyncStatus?.state === 'syncing'
-                      ? 'text-sky-200'
-                      : 'text-emerald-200',
-                )}
-                title={metadata.cloudSyncStatus?.state === 'error'
-                  ? metadata.cloudSyncStatus.message || 'Cloud sync needs attention'
-                  : metadata.cloudSyncLabel}
-                aria-label={metadata.cloudSyncStatus?.state === 'error'
-                  ? 'Cloud sync issue'
-                  : metadata.cloudSyncLabel}
-                data-cloud-self-agent-sync-status={metadata.cloudSyncStatus?.state ?? 'idle'}
-              >
-                <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-            ) : null}
-            {metadata.subtitle ? (
-              <span
-                data-chat-session-subtitle-pill="true"
-                className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.045] px-2 text-[10.5px] font-medium leading-none text-slate-300"
-                title={metadata.subtitle}
-              >
-                {metadata.subtitle}
-              </span>
-            ) : null}
-            {metadata.forkSourceSessionId ? (
-              <button
-                type="button"
-                onClick={() => metadata.onOpenForkSource?.(metadata.forkSourceSessionId!)}
-                disabled={!metadata.onOpenForkSource}
-                className="app-fork-source-pill inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 text-[10.5px] font-medium text-slate-300 transition hover:bg-white/[0.08] hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                title={`Forked from "${metadata.forkSourceTitle}" — open the source session`}
-                data-kordi-window-drag="false"
-              >
-                <Split className="h-2.5 w-2.5" />
-                <span className="max-w-[12rem] truncate">
-                  Forked from {metadata.forkSourceTitle}
-                </span>
-              </button>
-            ) : null}
           </div>
+          {metadata.subtitle || metadata.forkSourceSessionId ? (
+            <div
+              className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"
+              data-chat-session-metadata="true"
+            >
+              {metadata.subtitle ? (
+                <span
+                  data-chat-session-subtitle="true"
+                  className="min-w-0 truncate"
+                  title={metadata.subtitle}
+                >
+                  {metadata.subtitle}
+                </span>
+              ) : null}
+              {metadata.subtitle && metadata.forkSourceSessionId ? (
+                <span className="shrink-0 opacity-50" aria-hidden="true">·</span>
+              ) : null}
+              {metadata.forkSourceSessionId ? (
+                <button
+                  type="button"
+                  onClick={() => metadata.onOpenForkSource?.(metadata.forkSourceSessionId!)}
+                  disabled={!metadata.onOpenForkSource}
+                  className="app-button-quiet app-fork-source-link inline-flex h-6 min-w-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium"
+                  title={`Forked from "${metadata.forkSourceTitle}" — open the source session`}
+                  aria-label={`Open source session ${metadata.forkSourceTitle}`}
+                  data-kordi-window-drag="false"
+                >
+                  <Split className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="max-w-[18rem] truncate">
+                    Forked from {metadata.forkSourceTitle}
+                  </span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2 self-start">
         {companion.canOpen && !companion.isOpen ? (
           <Button
             type="button"
-            variant="secondary"
+            variant="quiet"
             onClick={companion.onOpen}
-            className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
+            className="app-utility-button mt-0.5 h-8 rounded-[10px] px-2.5 text-[12px] font-medium"
             aria-label="Ask Agent"
             title={companion.suggestedName
               ? `Ask Agent with ${companion.suggestedName}`

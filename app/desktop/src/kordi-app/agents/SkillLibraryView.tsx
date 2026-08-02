@@ -171,7 +171,7 @@ export function AddToAgentControl({
       className="app-skill-agent-picker"
       onToggle={(event) => setPickerOpen(event.currentTarget.open)}
     >
-      <summary ref={summaryRef} className="app-agent-studio-button is-primary" aria-label={`Add ${skill.name} to an agent`}>
+      <summary ref={summaryRef} className="app-button-quiet app-agent-studio-button is-primary" aria-label={`Add ${skill.name} to an agent`}>
         <Plus className="h-4 w-4" />
         Add to agent
       </summary>
@@ -252,7 +252,7 @@ export function SkillLibraryView({
           <span className="app-agent-studio-factory-mark" aria-hidden="true"><Puzzle className="h-5 w-5" /></span>
           <h2>Skill Library</h2>
         </div>
-        <button type="button" className="app-agent-studio-button is-ghost" onClick={() => void onRefresh()} disabled={loading}><RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />Refresh</button>
+        <button type="button" className="app-button-quiet app-agent-studio-button is-ghost" onClick={() => void onRefresh()} disabled={loading}><RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />Refresh</button>
       </header>
       <div className="app-skill-library-mode" role="tablist" aria-label="Skill Library sections">
         <button type="button" role="tab" aria-selected={mode === 'installed'} className={cn(mode === 'installed' && 'is-active')} onClick={() => setMode('installed')}>My skills <span>{skills.length}</span></button>
@@ -414,9 +414,9 @@ function InstalledSkillView({
           <div><dt>Version</dt><dd>{version}</dd></div>
         </dl>
         <div className="app-skill-library-actions">
-          <button type="button" className="app-agent-studio-button" disabled={mutatingSkillId === selectedSkill.id} onClick={() => void onSetEnabled(selectedSkill, !selectedSkill.enabled)}>{mutatingSkillId === selectedSkill.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{selectedSkill.enabled ? 'Disable' : 'Enable'}</button>
+          <button type="button" className="app-button-quiet app-agent-studio-button" disabled={mutatingSkillId === selectedSkill.id} onClick={() => void onSetEnabled(selectedSkill, !selectedSkill.enabled)}>{mutatingSkillId === selectedSkill.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{selectedSkill.enabled ? 'Disable' : 'Enable'}</button>
           <AddToAgentControl skill={selectedSkill} content={detail?.skillMd ?? ''} agentTargets={agentTargets} onAddToAgent={onAddToAgent} />
-          {selectedSkill.removable ? <button type="button" className="app-agent-studio-button is-danger" onClick={() => setConfirmRemove(true)}><Trash2 className="h-4 w-4" />Remove</button> : null}
+          {selectedSkill.removable ? <button type="button" className="app-button-quiet app-agent-studio-button is-danger" onClick={() => setConfirmRemove(true)}><Trash2 className="h-4 w-4" />Remove</button> : null}
         </div>
         {confirmRemove ? (
           <div className="app-skill-library-confirm" role="alertdialog" aria-label={`Remove ${selectedSkill.name}`}>
@@ -445,7 +445,7 @@ function InstalledSkillView({
           <section className="app-skill-library-editor">
             <header>
               <strong className="min-w-0">{selectedPath}</strong>
-              {canEditFile ? <button type="button" className="app-agent-studio-button is-primary is-small" disabled={saving || fileLoading || content === savedContent} onClick={() => void save()}>{saving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save file</button> : null}
+              {canEditFile ? <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" disabled={saving || fileLoading || content === savedContent} onClick={() => void save()}>{saving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save file</button> : null}
             </header>
             {fileLoading ? <div className="app-skill-library-loading"><LoaderCircle className="h-4 w-4 animate-spin" />Loading file…</div> : canEditFile ? <textarea value={content} onChange={(event) => setContent(event.currentTarget.value)} spellCheck={false} /> : <pre>{content}</pre>}
           </section>
@@ -621,7 +621,7 @@ function CommunitySkillView({
           <>
             <header className="app-skill-community-preview-head">
               <div><div className="app-skill-community-kicker">{detail.skill.owner ?? detail.skill.provider}</div><h3>{detail.skill.name}</h3><p>{detail.skill.description || 'No description provided.'}</p></div>
-              <a className="app-agent-studio-icon-button" href={detail.skill.sourceUrl} target="_blank" rel="noreferrer" aria-label="Open community source" onClick={(event) => { event.preventDefault(); void openDesktopExternalUrl(detail.skill.sourceUrl); }}><ExternalLink className="h-4 w-4" /></a>
+              <a className="app-button-quiet app-agent-studio-icon-button" href={detail.skill.sourceUrl} target="_blank" rel="noreferrer" aria-label="Open community source" onClick={(event) => { event.preventDefault(); void openDesktopExternalUrl(detail.skill.sourceUrl); }}><ExternalLink className="h-4 w-4" /></a>
             </header>
             <div className={cn('app-skill-community-security', detail.securityStatus === 'clean' || detail.securityStatus === 'pass' ? 'is-clean' : 'is-warning')}>
               {detail.securityStatus === 'clean' || detail.securityStatus === 'pass' ? <ShieldCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
@@ -637,7 +637,7 @@ function CommunitySkillView({
               {installedSkill ? (
                 agentTargets.length > 0 ? <AddToAgentControl skill={installedSkill} content={detail.skillMd} agentTargets={agentTargets} onAddToAgent={onAddToAgent} />
                   : <span className="app-agent-studio-state-pill is-enabled"><Check className="h-3.5 w-3.5" />Installed</span>
-              ) : <button type="button" className="app-agent-studio-button is-primary" onClick={() => void install()} disabled={installing}>{installing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{installing ? 'Installing' : 'Install reviewed skill'}</button>}
+              ) : <button type="button" className="app-button-quiet app-agent-studio-button is-primary" onClick={() => void install()} disabled={installing}>{installing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{installing ? 'Installing' : 'Install reviewed skill'}</button>}
             </div>
             <div className="app-skill-community-file-strip" aria-label="Community skill files">{detail.files.map((file) => <button key={file.path} type="button" className={cn(selectedPreviewFile?.path === file.path && 'is-active')} onClick={() => setSelectedFilePath(file.path)}><FileText className="h-3.5 w-3.5" />{file.path}</button>)}</div>
             <pre className="app-skill-community-code">{selectedPreviewFile?.text ?? 'Preview unavailable for this binary file.'}</pre>

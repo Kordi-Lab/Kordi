@@ -88,7 +88,7 @@ export function AgentContentPane({
               {isEditable ? (
                 activeEditingSection === 'prompt' ? (
                   <>
-                    <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelPromptEditing(activeAgent)}>
+                    <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelPromptEditing(activeAgent)}>
                       Cancel
                     </Button>
                     <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onSavePrompt(activeAgent)}>
@@ -96,7 +96,7 @@ export function AgentContentPane({
                     </Button>
                   </>
                 ) : (
-                  <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartPromptEditing(activeAgent.id)}>
+                  <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartPromptEditing(activeAgent.id)}>
                     Edit prompt
                   </Button>
                 )
@@ -159,7 +159,7 @@ export function AgentContentPane({
             {activeFileCanEdit ? (
               activeFileIsEditing ? (
                 <>
-                  <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onCancelFileEditing}>
+                  <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onCancelFileEditing}>
                     Cancel
                   </Button>
                   <Button className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onSaveFile}>
@@ -167,7 +167,7 @@ export function AgentContentPane({
                   </Button>
                 </>
               ) : (
-                <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onStartFileEditing} disabled={activeFilePreview.status === 'loading'}>
+                <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onStartFileEditing} disabled={activeFilePreview.status === 'loading'}>
                   Edit file
                 </Button>
               )

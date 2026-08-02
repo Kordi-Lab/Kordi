@@ -611,7 +611,7 @@ function MarkdownCodeBlock({
         onClick={() => {
           void handleCopy();
         }}
-        className="app-markdown-code-copy-button absolute right-2 top-2 z-10 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-slate-300 opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100 group-focus-within:opacity-100"
+        className="app-button-quiet app-markdown-code-copy-button absolute right-2 top-2 z-10 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md p-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
       </button>

@@ -248,7 +248,7 @@
 }
 
 .app-transcript-tool-activity-action {
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 76%, transparent);
+  border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
   padding: 4px 8px;
@@ -262,7 +262,7 @@
 }
 
 .app-transcript-tool-activity-action:hover {
-  border-color: color-mix(in oklab, var(--utility-muted-text) 70%, var(--app-control-border));
+  border-color: transparent;
   background: color-mix(in oklab, var(--app-control-bg) 58%, transparent);
   color: var(--utility-foreground);
 }

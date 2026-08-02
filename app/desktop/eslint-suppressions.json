@@ -706,7 +706,7 @@
   },
   "src/pages/ChatsPage.tsx": {
     "react-refresh/only-export-components": {
-      "count": 20
+      "count": 19
     }
   },
   "src/pages/CloudAccountSettingsDialog.tsx": {
@@ -768,11 +768,6 @@
   "tests/chatPerformance.test.tsx": {
     "no-console": {
       "count": 9
-    }
-  },
-  "tests/chatRouting.test.tsx": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 2
     }
   },
   "tests/chatsPageQuotePreview.test.tsx": {

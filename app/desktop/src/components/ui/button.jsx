@@ -5,6 +5,7 @@ const variants = {
   default: 'app-button-primary',
   secondary: 'app-control-chip',
   outline: 'app-button-outline',
+  quiet: 'app-button-quiet',
 }
 
 const sizes = {

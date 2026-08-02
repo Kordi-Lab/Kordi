@@ -32,7 +32,6 @@ import {
   useCloudAccountLifecycleState,
   useCloudSessionVisibilityRefresh,
 } from './useCloudAccountLifecycleState';
-import type { CloudSelfAgentSyncStatus } from './cloudSelfAgentForwardSync';
 
 export type CloudCollaborationMessageStore = {
   value: Record<string, CloudMessage[]>;
@@ -103,10 +102,6 @@ export function useCloudCollaborationStores({
   ] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [collaborationOverride, setCollaborationOverride] =
     useState<DesktopCollaborationState | null>(null);
-  const [
-    selfAgentSyncStatusBySessionId,
-    setSelfAgentSyncStatusBySessionId,
-  ] = useState<Record<string, CloudSelfAgentSyncStatus>>({});
   const collaborationStateRef =
     useRef<DesktopCollaborationState | null>(null);
   const collaborationStateContextKeyRef =
@@ -192,10 +187,6 @@ export function useCloudCollaborationStores({
       stateRef: collaborationStateRef,
       stateContextKeyRef: collaborationStateContextKeyRef,
       overrideContextKeyRef: collaborationOverrideContextKeyRef,
-    },
-    selfAgentSync: {
-      statusBySessionId: selfAgentSyncStatusBySessionId,
-      setStatusBySessionId: setSelfAgentSyncStatusBySessionId,
     },
     agentRequests: {
       processedMentionIdsRef: processedAgentMentionIdsRef,

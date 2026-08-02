@@ -68,15 +68,6 @@
   box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.04) !important;
 }
 
-/* Provider glyph avatars carry per-provider dark gradient fills that are
- * tuned for dark mode. In light mode we replace the neutral gray disc with
- * a quiet blue-tinted surface so the auth panel aligns with the chat shell. */
-.kordi-app.theme-light .app-auth-provider-glyph {
-  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(219, 234, 254, 0.72) 100%) !important;
-  border-color: rgba(37, 99, 235, 0.14) !important;
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.04) !important;
-}
-
 .kordi-app.theme-light .bg-slate-800 {
   background-color: rgba(226, 232, 240, 0.92) !important;
 }
@@ -295,14 +286,14 @@
 }
 
 .kordi-app.theme-light .app-transcript-wrap-toggle {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(15, 23, 42, 0.05) !important;
-  color: rgb(71 85 105) !important;
+  border: 1px solid transparent;
+  background: transparent !important;
+  color: var(--app-quiet-control-text) !important;
 }
 
 .kordi-app.theme-light .app-transcript-wrap-toggle:hover {
-  background: rgba(15, 23, 42, 0.08) !important;
-  color: rgb(30 41 59) !important;
+  background: var(--app-quiet-control-hover-bg) !important;
+  color: var(--app-quiet-control-hover-text) !important;
 }
 
 .kordi-app.theme-light .app-transcript-utility-chip {

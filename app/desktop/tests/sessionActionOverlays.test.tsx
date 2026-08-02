@@ -134,7 +134,7 @@ test('DeleteSessionDialog keeps the confirmation concise and exposes semantic ac
   assert.match(dialogPanelClass(removeMarkup), /app-frosted-popover/);
   assert.doesNotMatch(dialogPanelClass(removeMarkup), /app-modal-panel/);
   assert.match(dialogPanelClass(renameMarkup), /app-frosted-popover/);
-  assert.match(removeMarkup, /app-control-chip[^\"]*h-9[^\"]*rounded-\[12px\][^\"]*px-3/);
+  assert.match(removeMarkup, /app-button-quiet[^\"]*h-9[^\"]*rounded-\[12px\][^\"]*px-3/);
   assert.match(removeMarkup, /app-button-primary[^\"]*h-9[^\"]*rounded-\[12px\][^\"]*px-3/);
   assert.doesNotMatch(removeMarkup, /app-button-muted|app-button-destructive/);
   assert.match(removeMarkup, />Cancel</);
@@ -164,7 +164,7 @@ test('larger session action forms share the semantic modal frame and standard ac
     assert.match(markup, /role="dialog"/);
     assert.match(markup, /aria-modal="true"/);
     assert.match(dialogPanelClass(markup), /app-modal-panel/);
-    assert.match(markup, /app-control-chip/);
+    assert.match(markup, /app-button-quiet/);
     assert.match(markup, /app-button-primary/);
   }
 });

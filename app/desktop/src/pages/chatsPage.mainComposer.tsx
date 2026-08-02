@@ -333,7 +333,7 @@ export function MainComposer({
             ) : null}
             <Button
               size="icon"
-              variant="secondary"
+              variant="quiet"
               className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
               onClick={() => chatAttachmentInputRef.current?.click()}
               title="Add attachment"

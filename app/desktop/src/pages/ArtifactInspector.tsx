@@ -356,7 +356,7 @@ export function ArtifactPreviewWindow({
             <button
               type="button"
               onClick={onClose}
-              className="app-transient-icon app-icon-button grid h-8 w-8 place-items-center rounded-xl border transition"
+              className="app-button-quiet grid h-8 w-8 place-items-center rounded-xl p-0"
               aria-label="Close preview window"
               title="Close preview window"
             >
@@ -645,7 +645,7 @@ export function ArtifactInspector({
                   <button
                     type="button"
                     onClick={() => setPreviewWindowOpen(true)}
-                    className="app-utility-button inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9.5px] font-medium leading-3 text-slate-300 transition hover:bg-white/[0.07] hover:text-white"
+                    className="app-button-quiet inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] font-medium leading-3"
                     aria-label="Open preview window"
                     title="Open preview window"
                   >

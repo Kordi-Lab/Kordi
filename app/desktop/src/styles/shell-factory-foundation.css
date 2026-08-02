@@ -74,10 +74,11 @@
   flex: 0 0 auto;
   width: 32px;
   height: 32px;
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 74%, transparent);
+  border: 1px solid transparent;
   border-radius: 10px;
-  background: color-mix(in oklab, var(--app-control-bg) 68%, transparent);
-  color: var(--utility-muted-text);
+  background: transparent;
+  color: var(--app-quiet-control-text);
+  box-shadow: none;
   transition:
     border-color var(--app-motion-fast) var(--app-motion-ease),
     background var(--app-motion-fast) var(--app-motion-ease),
@@ -86,9 +87,9 @@
 
 .app-agent-studio-rail-add:hover:not(:disabled),
 .app-agent-studio-icon-button:hover:not(:disabled) {
-  border-color: color-mix(in oklab, var(--agent-studio-accent) 48%, var(--app-control-border));
-  background: color-mix(in oklab, var(--agent-studio-accent) 10%, var(--app-control-bg));
-  color: var(--utility-foreground);
+  border-color: transparent;
+  background: var(--app-quiet-control-hover-bg);
+  color: var(--app-quiet-control-hover-text);
 }
 
 .app-agent-studio-rail-search,

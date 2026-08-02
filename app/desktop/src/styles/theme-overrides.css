@@ -313,17 +313,12 @@
 }
 
 .kordi-app.theme-light .app-auth-settings-page .app-auth-provider-rows {
-  border-color: rgba(15, 23, 42, 0.10) !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
 .kordi-app.theme-light .app-auth-settings-page .app-auth-provider-row {
-  border-color: rgba(37, 99, 235, 0.08) !important;
-}
-
-.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-row:hover {
-  background: rgba(37, 99, 235, 0.045) !important;
+  border-color: transparent !important;
 }
 
 .kordi-app.theme-light .app-cloud-account-settings-overlay {
@@ -339,20 +334,6 @@
 .kordi-app.theme-light .app-cloud-account-settings-rail {
   border-color: var(--app-divider) !important;
   background: var(--app-session-bg);
-}
-
-.kordi-app.theme-light .app-avatar-upload-button {
-  border-color: color-mix(in oklab, rgb(148 163 184) 32%, transparent);
-  background: color-mix(in oklab, rgb(255 255 255) 72%, rgb(226 232 240));
-  color: rgb(51 65 85);
-  box-shadow:
-    0 6px 14px rgba(15, 23, 42, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68);
-}
-
-.kordi-app.theme-light .app-avatar-upload-button:hover {
-  background: color-mix(in oklab, rgb(255 255 255) 56%, rgb(226 232 240));
-  color: rgb(15 23 42);
 }
 
 .kordi-app.theme-light .app-auth-popup-panel {

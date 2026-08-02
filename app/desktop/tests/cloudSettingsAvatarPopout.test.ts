@@ -45,6 +45,7 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const authPage = readSource('kordi-app/auth/AuthPage.tsx');
   const providerList = readSource('kordi-app/auth/AuthProviderList.tsx');
+  const providerGlyph = readSource('kordi-app/auth/AuthProviderGlyph.tsx');
   const shellPages = readDesktopShellCss();
   const themeOverrides = shellPages;
 
@@ -73,7 +74,9 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   assert.match(shellPages, /\.app-transient-surface\.app-cloud-account-settings-dialog\s*\{[^}]*border:\s*0[^}]*box-shadow:\s*0 14px 36px rgb\(0 0 0 \/ 0\.28\)/s);
   assert.doesNotMatch(shellPages, /\.app-cloud-account-profile\s*\{[^}]*border-(?:top|bottom)/s);
   assert.doesNotMatch(modal, /app-cloud-account-theme[^\n]*border-y/);
-  assert.match(themeOverrides, /\.kordi-app\.theme-light \.app-auth-provider-glyph[\s\S]*rgba\(239, 246, 255, 0\.96\)/);
+  assert.doesNotMatch(providerGlyph, /bg-\[linear-gradient|rounded-\[14px\] border|shadow-\[inset/);
+  assert.match(providerGlyph, /opacity-80 transition-\[color,opacity\]/);
+  assert.doesNotMatch(themeOverrides, /\.kordi-app\.theme-light \.app-auth-provider-glyph\s*\{[^}]*background:/s);
   assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });
 
@@ -90,7 +93,11 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
   assert.match(authPage, /settingsLayoutMode = 'fixed'/);
   assert.doesNotMatch(providerList, /Pick a cloud account/);
   assert.doesNotMatch(providerList, /Pick a provider\. One working connection is enough\./);
-  assert.match(providerList, /app-auth-provider-rows[^\n]*border-y[^\n]*bg-transparent[^\n]*shadow-none/);
+  assert.match(providerList, /app-auth-provider-rows[^\n]*grid[^\n]*gap-1[^\n]*bg-transparent[^\n]*shadow-none/);
+  assert.match(providerList, /app-auth-provider-row-selected/);
+  assert.match(providerList, /aria-current=\{selected \? 'page' : undefined\}/);
+  assert.doesNotMatch(providerList, /app-auth-provider-row[^\n]*bg-white/);
+  assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*border-y/);
   assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*rounded-\[22px\]/);
 });
 

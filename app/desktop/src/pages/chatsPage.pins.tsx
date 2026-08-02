@@ -67,7 +67,7 @@ export function PinnedMessageBar({
         <button
           type="button"
           onClick={onRequestUnpin}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-hover-bg)] hover:text-[color:var(--app-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--app-focus)]"
+          className="app-button-quiet inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-0"
           aria-label="Unpin pinned message"
           title="Unpin pinned message"
         >
@@ -120,7 +120,7 @@ export function PinMessageDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="app-transient-row rounded-[10px] px-3 py-1.5 transition"
+            className="app-button-quiet app-transient-flat-action rounded-[10px] px-3 py-1.5"
           >
             Cancel
           </button>

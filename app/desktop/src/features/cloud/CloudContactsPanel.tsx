@@ -142,7 +142,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="app-transient-row rounded-[10px] border px-2.5 py-1 text-[11px] font-semibold transition"
+            className="app-button-quiet app-transient-flat-action rounded-[10px] px-2.5 py-1 text-[11px] font-semibold"
           >
             Close
           </button>
@@ -169,7 +169,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
             <button
               type="button"
               onClick={handleCopy}
-              className="app-transient-row rounded-[10px] border px-3 py-1 text-[11px] font-semibold transition"
+              className="app-button-quiet app-transient-flat-action rounded-[10px] px-3 py-1 text-[11px] font-semibold"
               aria-label="Copy your Kordi ID"
             >
               {copied ? 'Copied' : 'Copy ID'}

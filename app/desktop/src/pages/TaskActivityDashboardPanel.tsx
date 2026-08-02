@@ -236,7 +236,7 @@ function TaskActions({
           type="button"
           data-task-action="jump-response"
           onClick={jumpToResponse}
-          className="grid h-7 w-7 place-items-center rounded-lg border border-[color:var(--app-divider)] bg-white/[0.03] text-[color:var(--utility-muted-text)] transition hover:border-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]"
+          className="app-button-quiet grid h-7 w-7 place-items-center rounded-lg p-0"
           aria-label="Jump to related response"
           title="Jump to related response"
         >
@@ -248,7 +248,7 @@ function TaskActions({
           type="button"
           data-task-action="open-artifact"
           onClick={openArtifact}
-          className="grid h-7 w-7 place-items-center rounded-lg border border-emerald-300/20 bg-emerald-300/10 text-emerald-100 transition hover:border-emerald-200/40 hover:bg-emerald-300/15"
+          className="app-button-quiet grid h-7 w-7 place-items-center rounded-lg p-0 text-emerald-300"
           aria-label="Open related artifact"
           title="Open related artifact"
         >

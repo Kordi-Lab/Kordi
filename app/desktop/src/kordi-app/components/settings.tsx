@@ -123,7 +123,7 @@ export function SettingsValueControl({
     return (
       <div className="app-settings-action-row flex items-center justify-end gap-2.5">
         <div className="text-[12px] font-medium text-slate-300">{item.value}</div>
-        <button className="app-control-chip app-settings-action-button rounded-xl px-2.5 py-1 text-[12px] font-medium transition">
+        <button className="app-button-quiet app-settings-action-button rounded-xl px-2.5 py-1 text-[12px] font-medium">
           {control?.type === 'action' ? (control.actionLabel ?? 'Set') : 'Set'}
         </button>
       </div>

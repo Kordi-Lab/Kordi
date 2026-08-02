@@ -94,7 +94,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in oklab, var(--app-divider) 68%, transparent);
+  border: 1px solid transparent;
   border-radius: 9999px;
   padding: 6px 11px;
   font-size: 11px;
@@ -114,7 +114,7 @@
 }
 
 .app-filter-toggle-active {
-  border-color: color-mix(in oklab, var(--app-divider) 82%, transparent);
+  border-color: transparent;
   background: color-mix(in oklab, var(--app-control-active) 68%, transparent);
   color: var(--utility-foreground);
 }
@@ -303,7 +303,7 @@
 
 .app-participant-space-action:hover,
 .app-participant-space-action:focus-visible {
-  border-color: color-mix(in oklab, var(--app-divider) 42%, transparent);
+  border-color: transparent;
   background: color-mix(in oklab, var(--app-control-hover) 42%, transparent);
   color: var(--utility-foreground);
   opacity: 1;
@@ -315,8 +315,8 @@
 }
 
 .app-participant-space-menu-action {
-  border-color: color-mix(in oklab, var(--app-divider) 46%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);
+  border-color: transparent;
+  background: transparent;
   opacity: 0.88;
 }
 
@@ -329,7 +329,7 @@
 
 .app-participant-space-context-create:hover,
 .app-participant-space-context-create:focus-visible {
-  border-color: color-mix(in oklab, var(--app-divider) 38%, transparent);
+  border-color: transparent;
   background: color-mix(in oklab, var(--app-control-hover) 38%, transparent);
   color: var(--utility-foreground);
   opacity: 1;

@@ -13,6 +13,13 @@
   background: transparent;
 }
 
+.kordi-app.theme-light .app-button-quiet,
+.kordi-app.theme-light .app-icon-button,
+.kordi-app.theme-light .app-utility-button {
+  transition-duration: var(--app-quiet-control-duration);
+  transition-timing-function: var(--app-quiet-control-ease);
+}
+
 .kordi-app.theme-light .app-input-shell,
 .kordi-app.theme-light .app-list-item:hover,
 .kordi-app.theme-light .app-composer-shell,
@@ -25,8 +32,6 @@
     inset 0 -1px 0 rgba(138, 118, 98, 0.05);
 }
 
-.kordi-app.theme-light .app-icon-button,
-.kordi-app.theme-light .app-utility-button,
 .kordi-app.theme-light .app-control-chip {
   border-color: rgba(15, 23, 42, 0.10);
   background: rgba(15, 23, 42, 0.055);
@@ -34,8 +39,6 @@
   box-shadow: none;
 }
 
-.kordi-app.theme-light .app-icon-button:hover,
-.kordi-app.theme-light .app-utility-button:hover,
 .kordi-app.theme-light .app-control-chip:hover {
   border-color: rgba(15, 23, 42, 0.13);
   background: rgba(15, 23, 42, 0.08);
@@ -82,8 +85,6 @@
   color: var(--app-sidebar-time-text) !important;
 }
 
-.kordi-app.theme-light .app-icon-button,
-.kordi-app.theme-light .app-utility-button,
 .kordi-app.theme-light .app-control-chip,
 .kordi-app.theme-light .app-input-shell,
 .kordi-app.theme-light .app-composer-shell {
@@ -115,20 +116,14 @@
 .kordi-app .app-update-logo-button[data-update-status='downloading'],
 .kordi-app .app-update-logo-button[data-update-status='installing'],
 .kordi-app .app-update-logo-button[data-update-status='relaunching'] {
-  border-color: color-mix(in oklab, var(--app-update-control-active) 24%, transparent);
-  background: color-mix(in oklab, var(--app-update-control-active) 11%, transparent);
   color: var(--app-update-control-active);
 }
 
 .kordi-app .app-update-logo-button[data-update-status='up-to-date'] {
-  border-color: color-mix(in oklab, var(--app-update-control-success) 24%, transparent);
-  background: color-mix(in oklab, var(--app-update-control-success) 10%, transparent);
   color: var(--app-update-control-success);
 }
 
 .kordi-app .app-update-logo-button[data-update-status='failed'] {
-  border-color: color-mix(in oklab, var(--app-update-control-danger) 24%, transparent);
-  background: color-mix(in oklab, var(--app-update-control-danger) 10%, transparent);
   color: var(--app-update-control-danger);
 }
 

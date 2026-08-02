@@ -139,7 +139,7 @@ export function RenameSessionDialog({ target, onCancel, onConfirm }: RenameSessi
         className="app-input-shell mt-3 h-9 w-full rounded-[12px] px-3 text-[13px] outline-none"
       />
       <AppDialogActions className="mt-3 gap-2">
-        <Button variant="secondary" size="sm" className="rounded-[12px] px-3" onClick={onCancel}>Cancel</Button>
+        <Button variant="quiet" size="sm" className="rounded-[12px] px-3" onClick={onCancel}>Cancel</Button>
         <Button
           size="sm"
           className="rounded-[12px] px-3"
@@ -198,7 +198,7 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
         </div>
       ) : null}
       <AppDialogActions className="mt-3 gap-2">
-        <Button variant="secondary" size="sm" className="rounded-[12px] px-3" autoFocus disabled={isDeleting} onClick={cancel}>Cancel</Button>
+        <Button variant="quiet" size="sm" className="rounded-[12px] px-3" autoFocus disabled={isDeleting} onClick={cancel}>Cancel</Button>
         <Button
           size="sm"
           className="rounded-[12px] px-3"
@@ -279,7 +279,7 @@ export function MoveSessionDialog({
       </div>
 
       <AppDialogActions className="justify-between">
-        <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
+        <Button variant="quiet" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
         <Button
           className="rounded-full px-4"
           disabled={!newProjectRootDraft.trim()}
@@ -407,7 +407,7 @@ export function ProjectCreateDialog({
       {error ? <div className="app-error-text mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
 
       <AppDialogActions>
-        <Button variant="secondary" className="rounded-full px-4" disabled={isSubmitting} onClick={onCancel}>Cancel</Button>
+        <Button variant="quiet" className="rounded-full px-4" disabled={isSubmitting} onClick={onCancel}>Cancel</Button>
         <Button
           className="rounded-full px-4"
           disabled={!canSubmit || isSubmitting}

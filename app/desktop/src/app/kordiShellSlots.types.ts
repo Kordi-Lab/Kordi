@@ -2,7 +2,6 @@ import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNo
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
-import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudCollaborationState';
 import type { CloudSessionPin } from '@/features/cloud/authClient';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
@@ -51,7 +50,6 @@ export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
-  cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
   cloudSessionPinsById: Record<string, CloudSessionPin>;
   onUpdateCloudSessionPin: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
   windowWidth: number;
@@ -462,7 +460,6 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isNativeShell'
   | 'desktopChatState'
   | 'refreshDesktopChat'
-  | 'cloudSelfAgentSyncStatusBySessionId'
   | 'cloudSessionPinsById'
   | 'onUpdateCloudSessionPin'
   | 'desktopAuthState'

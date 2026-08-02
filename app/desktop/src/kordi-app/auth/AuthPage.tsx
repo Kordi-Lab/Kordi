@@ -161,8 +161,8 @@ export function AuthPage({
     <div className="flex shrink-0 items-center gap-3 pb-4">
       <Button
         type="button"
-        variant="secondary"
-        className="app-control-chip h-9 rounded-full border-0 px-3.5 text-[12px] text-white"
+        variant="quiet"
+        className="h-9 rounded-full px-3.5 text-[12px]"
         onClick={goToProviderList}
       >
         <ChevronLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -226,8 +226,8 @@ export function AuthPage({
 
                 {onDismissGate ? (
                   <Button
-                    variant="secondary"
-                    className="h-9 shrink-0 rounded-full px-4 text-[12px] text-white"
+                    variant="quiet"
+                    className="h-9 shrink-0 rounded-full px-4 text-[12px]"
                     onClick={onDismissGate}
                   >
                     Skip for now →

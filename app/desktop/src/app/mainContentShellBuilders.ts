@@ -37,7 +37,6 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ?? args.desktopCollaborationState?.hosts.find((host) => host.id === args.activeConv.collaborationTarget?.hostId)
       ?? args.activeCollaborationHost,
     desktopChatState: args.desktopChatState,
-    cloudSelfAgentSyncStatus: args.cloudSelfAgentSyncStatusBySessionId?.[activeCloudSelfAgentSessionId] ?? null,
     cloudAccount: args.cloudSession?.account ?? null,
     cloudSessionPin: args.cloudSessionPinsById?.[activeCloudSelfAgentSessionId] ?? null,
     onUpdateCloudSessionPin: args.onUpdateCloudSessionPin,

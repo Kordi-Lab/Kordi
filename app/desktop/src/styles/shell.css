@@ -159,17 +159,6 @@ html.kordi-native-shell .kordi-app .app-main-panel {
   background: var(--app-transient-surface-bg);
 }
 
-.app-avatar-upload-button {
-  border-color: color-mix(in oklab, var(--app-divider) 68%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 86%, var(--utility-foreground) 10%);
-  color: var(--utility-foreground);
-  box-shadow: 0 6px 14px color-mix(in oklab, #000 34%, transparent);
-}
-
-.app-avatar-upload-button:hover {
-  background: color-mix(in oklab, var(--app-control-hover) 90%, var(--utility-foreground) 12%);
-}
-
 .app-code-panel {
   background: var(--app-code-bg);
 }
@@ -280,32 +269,102 @@ html.kordi-native-shell .kordi-app .app-main-panel {
   color: var(--utility-foreground);
 }
 
-.app-icon-button {
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 92%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 72%, transparent);
-  color: var(--utility-foreground);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
-    0 1px 0 rgba(255, 255, 255, 0.015);
-}
-
-.app-icon-button:hover {
-  background: color-mix(in oklab, var(--app-control-hover) 86%, transparent);
-}
-
+.app-button-quiet,
+.app-icon-button,
 .app-utility-button {
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 88%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 56%, transparent);
-  color: var(--utility-muted-text);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.025),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  position: relative;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--app-quiet-control-text);
+  box-shadow: none;
+  transition:
+    color var(--app-quiet-control-duration) var(--app-quiet-control-ease),
+    background-color var(--app-quiet-control-duration) var(--app-quiet-control-ease),
+    opacity var(--app-quiet-control-duration) var(--app-quiet-control-ease),
+    transform var(--app-quiet-control-duration) var(--app-quiet-control-ease);
 }
 
-.app-utility-button:hover {
-  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
-  color: var(--utility-foreground);
+@media (hover: hover) and (pointer: fine) {
+  .app-button-quiet:hover:not(:disabled),
+  .app-icon-button:hover:not(:disabled),
+  .app-utility-button:hover:not(:disabled) {
+    background: var(--app-quiet-control-hover-bg);
+    color: var(--app-quiet-control-hover-text);
+    transform: translateY(-1px);
+  }
+}
+
+.app-button-quiet:active:not(:disabled),
+.app-icon-button:active:not(:disabled),
+.app-utility-button:active:not(:disabled) {
+  background: var(--app-quiet-control-pressed-bg);
+  color: var(--app-quiet-control-hover-text);
+  transform: translateY(0);
+}
+
+.app-button-quiet:focus-visible,
+.app-icon-button:focus-visible,
+.app-utility-button:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: 2px;
+}
+
+.app-button-quiet:is([aria-pressed='true'], [aria-expanded='true'], [data-state='open'], [data-state='active'], .is-active),
+.app-icon-button:is([aria-pressed='true'], [aria-expanded='true'], [data-state='open'], [data-state='active'], .is-active),
+.app-utility-button:is([aria-pressed='true'], [aria-expanded='true'], [data-state='open'], [data-state='active'], .is-active) {
+  background: var(--app-quiet-control-selected-bg);
+  color: var(--app-quiet-control-hover-text);
+}
+
+.app-button-quiet:disabled,
+.app-icon-button:disabled,
+.app-utility-button:disabled,
+.app-button-quiet[aria-disabled='true'],
+.app-icon-button[aria-disabled='true'],
+.app-utility-button[aria-disabled='true'] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--app-quiet-control-disabled-text);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+  transform: none;
+}
+
+@media (pointer: coarse) {
+  .app-button-quiet,
+  .app-icon-button,
+  .app-utility-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-button-quiet,
+  .app-icon-button,
+  .app-utility-button {
+    transition-duration: 0.01ms;
+  }
+
+  .app-button-quiet:hover,
+  .app-button-quiet:active,
+  .app-icon-button:hover,
+  .app-icon-button:active,
+  .app-utility-button:hover,
+  .app-utility-button:active {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .app-button-quiet,
+  .app-icon-button,
+  .app-utility-button {
+    border-color: ButtonText;
+    color: ButtonText;
+    forced-color-adjust: auto;
+  }
 }
 
 .app-control-chip {
@@ -344,14 +403,14 @@ html.kordi-native-shell .kordi-app .app-main-panel {
 }
 
 .app-contacts-section-button {
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 70%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 56%, transparent);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--utility-foreground);
   box-shadow: none;
 }
 
 .app-contacts-section-button:hover {
-  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+  background: var(--app-quiet-control-hover-bg);
 }
 
 .app-contacts-content-rail {

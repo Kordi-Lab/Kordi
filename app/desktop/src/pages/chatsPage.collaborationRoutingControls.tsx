@@ -76,7 +76,7 @@ export function CollaborationRoutingControls({
         <button
           type="button"
           onClick={() => actions.toggleSelector('chat', 'mode')}
-          className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+          className="app-button-quiet inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium"
           title="Choose which owned agent these session settings apply to"
         >
           <span className="truncate">{selectedAgent.label}</span>

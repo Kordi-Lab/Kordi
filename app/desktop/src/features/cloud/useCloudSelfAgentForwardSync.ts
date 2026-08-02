@@ -1,9 +1,7 @@
 import {
   useEffect,
   useRef,
-  type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from 'react';
 import type { CanonicalSessionState } from '@/kordi-app/types';
 import type {
@@ -19,7 +17,6 @@ import {
   saveCloudSelfAgentForwardBaseline,
   saveCloudSelfAgentSyncLedger,
   seedCloudSelfAgentForwardSyncLedger,
-  type CloudSelfAgentSyncStatus,
 } from './cloudSelfAgentForwardSync';
 import { loadSession } from './session';
 
@@ -30,7 +27,6 @@ export function useCloudSelfAgentForwardSync({
   client,
   cancelledRef,
   processedRequestIdsRef,
-  setSyncStatusBySessionId,
   mergeMessage,
   syncCloudCollaborationDiff,
   reportWarning,
@@ -41,9 +37,6 @@ export function useCloudSelfAgentForwardSync({
   client: CloudAuthClient;
   cancelledRef: MutableRefObject<boolean>;
   processedRequestIdsRef: MutableRefObject<Set<string>>;
-  setSyncStatusBySessionId: Dispatch<
-    SetStateAction<Record<string, CloudSelfAgentSyncStatus>>
-  >;
   mergeMessage: (message: CloudMessage) => void;
   syncCloudCollaborationDiff: () => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
@@ -54,7 +47,6 @@ export function useCloudSelfAgentForwardSync({
     if (!account || syncingRef.current) return;
 
     syncingRef.current = true;
-    let plannedSessionIds: string[] = [];
     void (async () => {
       const latestState =
         canonicalStateRef.current ?? canonicalState ?? null;
@@ -82,35 +74,8 @@ export function useCloudSelfAgentForwardSync({
       );
       if (operations.length === 0) return;
 
-      plannedSessionIds = [
-        ...new Set(
-          operations.map((operation) => operation.sessionId),
-        ),
-      ];
       const session = await loadSession();
       if (!session?.token) return;
-      const pendingBySession = operations.reduce<Record<string, number>>(
-        (counts, operation) => {
-          counts[operation.sessionId] =
-            (counts[operation.sessionId] ?? 0) + 1;
-          return counts;
-        },
-        {},
-      );
-      setSyncStatusBySessionId((current) => {
-        const next = { ...current };
-        for (
-          const [sessionId, pendingCount]
-          of Object.entries(pendingBySession)
-        ) {
-          next[sessionId] = {
-            state: 'syncing',
-            pendingCount,
-            updatedAtMs: Date.now(),
-          };
-        }
-        return next;
-      });
       const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
       for (const operation of operations) {
         if (cancelledRef.current) return;
@@ -148,44 +113,11 @@ export function useCloudSelfAgentForwardSync({
           syncedAtMs: Date.now(),
         };
         saveCloudSelfAgentSyncLedger(account.accountId, ledger);
-        pendingBySession[operation.sessionId] = Math.max(
-          0,
-          (pendingBySession[operation.sessionId] ?? 1) - 1,
-        );
-        setSyncStatusBySessionId((current) => ({
-          ...current,
-          [operation.sessionId]:
-            pendingBySession[operation.sessionId] > 0
-              ? {
-                  state: 'syncing',
-                  pendingCount: pendingBySession[operation.sessionId],
-                  updatedAtMs: Date.now(),
-                }
-              : {
-                  state: 'synced',
-                  updatedAtMs: Date.now(),
-                },
-        }));
         mergeMessage(message);
       }
       await syncCloudCollaborationDiff();
     })()
       .catch((error) => {
-        const message =
-          error instanceof Error ? error.message : String(error);
-        if (plannedSessionIds.length > 0) {
-          setSyncStatusBySessionId((current) => {
-            const next = { ...current };
-            for (const sessionId of plannedSessionIds) {
-              next[sessionId] = {
-                state: 'error',
-                message,
-                updatedAtMs: Date.now(),
-              };
-            }
-            return next;
-          });
-        }
         reportWarning(
           '[cloud-self-agent-sync] failed to sync local history',
           error,
@@ -203,7 +135,6 @@ export function useCloudSelfAgentForwardSync({
     mergeMessage,
     processedRequestIdsRef,
     reportWarning,
-    setSyncStatusBySessionId,
     syncCloudCollaborationDiff,
   ]);
 }

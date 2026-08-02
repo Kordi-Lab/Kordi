@@ -24,14 +24,14 @@ export function MessageSelectionBar({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
+          className="app-button-quiet rounded-full px-3 py-1.5 text-[12px] font-medium"
           onClick={onCancel}
         >
           Cancel
         </button>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="app-button-quiet inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold"
           onClick={onCopy}
           disabled={!onCopy || count <= 0}
         >
@@ -80,7 +80,7 @@ export function ComposerQuotePreview({
         type="button"
         aria-label="Remove quoted message"
         onClick={onClear}
-        className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+        className="app-button-quiet grid h-5 w-5 shrink-0 place-items-center rounded-full p-0"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -115,7 +115,7 @@ export function ComposerAttachmentList({
           <button
             type="button"
             onClick={() => removeChatComposerAttachment(attachment.id)}
-            className="text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
+            className="app-button-quiet grid h-5 w-5 place-items-center rounded-full p-0"
             aria-label={`Remove ${attachment.name}`}
           >
             <X className="h-3.5 w-3.5" />

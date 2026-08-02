@@ -534,7 +534,7 @@ export function AgentStudioConversation({
               <Button
                 type="button"
                 size="icon"
-                variant="secondary"
+                variant="quiet"
                 className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
                 aria-label="Add attachment"
                 title="Add attachment"

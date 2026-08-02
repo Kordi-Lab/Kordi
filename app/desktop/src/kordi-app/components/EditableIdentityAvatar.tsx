@@ -40,7 +40,7 @@ export function EditableIdentityAvatar({ label = 'Avatar', compact = false, cont
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="app-avatar-upload-button absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full border shadow-sm transition"
+          className="app-button-quiet absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full p-0"
           aria-label={`Upload ${label.toLowerCase()}`}
           title={`Upload ${label.toLowerCase()}`}
         >

@@ -69,7 +69,7 @@ export function CloudProfileRowCopyButton({
           ? 'bg-emerald-500/15 text-emerald-200'
           : errored
             ? 'bg-red-500/15 text-red-200'
-            : 'app-transient-row',
+            : 'app-button-quiet app-transient-flat-action',
       )}
       aria-label={copied
         ? `${label} copied`
@@ -275,7 +275,7 @@ export function SidebarProfileControl({
             <div className="app-transient-divider mt-3 grid gap-1 border-t pt-3">
               <button
                 type="button"
-                className="app-transient-row app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium transition"
+                className="app-button-quiet app-transient-flat-action flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium"
                 onClick={() => openCloudAccountDialog('auth')}
                 aria-label="Open account settings"
               >

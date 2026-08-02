@@ -91,7 +91,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
             type="button"
             onClick={onClose}
             aria-label="Close chat"
-            className="app-transient-icon grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border transition"
+            className="app-button-quiet grid h-8 w-8 shrink-0 place-items-center rounded-[10px] p-0"
           >
             <X className="h-4 w-4" />
           </button>
@@ -185,10 +185,10 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
             />
             <Button
               type="button"
-              variant="outline"
+              variant="quiet"
               disabled={conversation.sending}
               onClick={() => fileInputRef.current?.click()}
-              className="app-transient-icon h-9 w-9 shrink-0 rounded-[12px] border p-0"
+              className="h-9 w-9 shrink-0 rounded-[12px] p-0"
               aria-label="Attach files"
             >
               <Paperclip className="h-4 w-4" />

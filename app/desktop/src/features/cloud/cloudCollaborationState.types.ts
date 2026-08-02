@@ -19,7 +19,6 @@ import type {
   CreateCloudAgentInput,
   UpdateCloudAgentInput,
 } from './cloudAgentsClient';
-import type { CloudSelfAgentSyncStatus } from './cloudSelfAgentForwardSync';
 import type { CloudSessionPinsById } from './cloudDiffSync';
 import type { CloudUnreadReadinessStatus } from './cloudMessageSyncState';
 import type { CloudSessionActivityStore } from './cloudSessionActivity';
@@ -86,6 +85,4 @@ export type UseCloudCollaborationStateResult = {
   cloudHiddenSessionIds: Set<string>;
   cloudDeletedSessionIds: Set<string>;
   cloudSessionPinsById: CloudSessionPinsById;
-  cloudSelfAgentSyncStatusBySessionId:
-    Record<string, CloudSelfAgentSyncStatus>;
 };

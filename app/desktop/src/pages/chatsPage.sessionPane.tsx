@@ -364,7 +364,7 @@ export function ChatSessionPane({
                     onSelectSession?.(activeForkSourceSessionId)
                   }
                   disabled={!onSelectSession}
-                  className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="app-button-quiet inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300"
                   title={`Open the source conversation${
                     activeForkSourceTitle
                       ? ` (${activeForkSourceTitle})`
@@ -410,14 +410,14 @@ export function ChatSessionPane({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
+                className="app-button-quiet rounded-full px-3 py-1.5 text-[12px] font-medium"
                 onClick={onCancelMessageSelection}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="app-button-quiet inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold"
                 onClick={onCopySelectedMessages}
                 disabled={!onCopySelectedMessages || selectedMessageCount <= 0}
               >

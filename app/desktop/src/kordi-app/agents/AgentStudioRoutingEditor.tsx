@@ -94,7 +94,7 @@ export function AgentStudioRoutingEditor({
     <section className="app-agent-studio-popover" role="dialog" aria-modal="false" aria-label="Edit model routing">
       <div className="app-agent-studio-popover-head">
         <strong>Model routing</strong>
-        <button type="button" className="app-agent-studio-icon-button" aria-label="Close model routing" onClick={onClose}><X className="h-4 w-4" /></button>
+        <button type="button" className="app-button-quiet app-agent-studio-icon-button" aria-label="Close model routing" onClick={onClose}><X className="h-4 w-4" /></button>
       </div>
       <label className="app-agent-studio-field">
         <span>Default model</span>
@@ -118,8 +118,8 @@ export function AgentStudioRoutingEditor({
       </label>
       {error ? <div className="app-agent-studio-inline-error">{error}</div> : null}
       <div className="app-agent-studio-popover-actions">
-        <button type="button" className="app-agent-studio-button is-ghost is-small" onClick={onClose} disabled={saving}>Cancel</button>
-        <button type="button" className="app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={saving || !defaultModel}>
+        <button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onClose} disabled={saving}>Cancel</button>
+        <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={saving || !defaultModel}>
           {saving ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Saving</> : 'Save routing'}
         </button>
       </div>

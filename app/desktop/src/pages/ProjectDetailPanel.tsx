@@ -188,17 +188,17 @@ export function ProjectDetailPanel({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Project actions</div>
           <div className="app-inspector-actions">
-            <Button variant="secondary" className="justify-start rounded-[14px] border-0 px-3 py-2 text-[12px]">
+            <Button variant="quiet" className="justify-start rounded-[14px] px-3 py-2 text-[12px]">
               <Users className="mr-2 h-3.5 w-3.5" />
               Invite people
             </Button>
-            <Button variant="secondary" className="justify-start rounded-[14px] border-0 px-3 py-2 text-[12px]">
+            <Button variant="quiet" className="justify-start rounded-[14px] px-3 py-2 text-[12px]">
               <Bot className="mr-2 h-3.5 w-3.5" />
               Invite agent
             </Button>
             <Button
-              variant="outline"
-              className="justify-start rounded-[14px] border-white/15 px-3 py-2 text-[12px] text-slate-200"
+              variant="quiet"
+              className="justify-start rounded-[14px] px-3 py-2 text-[12px]"
               onClick={onSetTasksTab}
             >
               <CheckCircle2 className="mr-2 h-3.5 w-3.5" />

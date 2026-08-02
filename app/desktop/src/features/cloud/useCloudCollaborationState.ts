@@ -166,10 +166,8 @@ export {
   type CloudGroupAgentCancelRole,
 } from './cloudAgentCancellation';
 export {
-  cloudSelfAgentDerivedSyncedStatusBySessionId,
   planCloudSelfAgentSync,
   seedCloudSelfAgentForwardSyncLedger,
-  type CloudSelfAgentSyncStatus,
 } from './cloudSelfAgentForwardSync';
 export { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
 export {
@@ -342,10 +340,6 @@ export function useCloudCollaborationState({
       overrideContextKeyRef:
         cloudCollaborationOverrideContextKeyRef,
     },
-    selfAgentSync: {
-      statusBySessionId: cloudSelfAgentSyncStatusBySessionId,
-      setStatusBySessionId: setCloudSelfAgentSyncStatusBySessionId,
-    },
     agentRequests: {
       processedMentionIdsRef: processedCloudAgentMentionIdsRef,
       turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
@@ -455,8 +449,6 @@ export function useCloudCollaborationState({
     client,
     cancelledRef,
     processedRequestIdsRef: processedCloudAgentMentionIdsRef,
-    setSyncStatusBySessionId:
-      setCloudSelfAgentSyncStatusBySessionId,
     mergeMessage,
     syncCloudCollaborationDiff,
     reportWarning: reportCloudAgentExecutionWarning,
@@ -635,8 +627,6 @@ export function useCloudCollaborationState({
   const {
     cloudCollaborationState,
     setCloudCollaborationState,
-    visibleSelfAgentSyncStatusBySessionId:
-      visibleCloudSelfAgentSyncStatusBySessionId,
   } = useCloudCollaborationReadModel({
     account,
     activeConversationId,
@@ -659,8 +649,6 @@ export function useCloudCollaborationState({
     messageIndex: cloudMessageIndex,
     messagesByPeer: currentAccountMessagesByPeer,
     readInboundMessageIdsByPeer,
-    selfAgentSyncStatusBySessionId:
-      cloudSelfAgentSyncStatusBySessionId,
   });
 
   const sendCloudGroupControl = useCloudGroupControlSender({
@@ -764,6 +752,5 @@ export function useCloudCollaborationState({
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
     cloudSessionPinsById,
-    cloudSelfAgentSyncStatusBySessionId: visibleCloudSelfAgentSyncStatusBySessionId,
   };
 }

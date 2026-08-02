@@ -353,7 +353,7 @@ export function ContactsPage({
 
             <div className="app-contacts-section-heading mb-4 flex items-center justify-start gap-2">
               <div className="text-[13px] font-medium leading-5 text-white">Contacts</div>
-              <Button variant="secondary" className="app-contacts-action-chip app-contacts-add-button h-8 rounded-[8px] px-3 text-[12.5px] font-medium" onClick={() => setIsAddContactOpen((open) => !open)} disabled={!onAddContactByNodeId}>
+              <Button variant="quiet" className="app-contacts-add-button h-8 rounded-[8px] px-3 text-[12.5px] font-medium" onClick={() => setIsAddContactOpen((open) => !open)} disabled={!onAddContactByNodeId}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Add
               </Button>
@@ -517,7 +517,7 @@ export function ContactsPage({
                     type="button"
                     onClick={onCloseOverlay}
                     aria-label="Close"
-                    className="app-transient-flat-action inline-flex h-8 w-8 items-center justify-center rounded-[10px] p-0 transition"
+                    className="app-button-quiet app-transient-flat-action inline-flex h-8 w-8 items-center justify-center rounded-[10px] p-0"
                   >
                     <X className="h-4 w-4" />
                   </button>

@@ -238,7 +238,7 @@ export function CloudAccountSettingsDialog({
             placeholder="Your display name"
           />
         </label>
-        <Button type="button" variant="secondary" className="app-avatar-upload-button h-9 rounded-full border px-4 text-[12px]" onClick={() => {
+        <Button type="button" variant="quiet" className="h-9 rounded-full px-4 text-[12px]" onClick={() => {
           setProfileError('');
           fileInputRef.current?.click();
         }}>
@@ -372,7 +372,7 @@ export function CloudAccountSettingsDialog({
                 {activeTab === 'profile' ? 'Profile' : activeTab === 'auth' ? 'Authentication' : 'Theme'}
               </div>
             </div>
-            <button type="button" className="app-transient-flat-action grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:text-white" onClick={onClose} aria-label="Close account settings">
+            <button type="button" className="app-button-quiet app-transient-flat-action grid h-8 w-8 place-items-center rounded-full p-0" onClick={onClose} aria-label="Close account settings">
               <X className="h-4 w-4" />
             </button>
           </div>
