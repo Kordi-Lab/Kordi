@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
   type UIEvent,
@@ -44,13 +45,14 @@ export type VirtualTranscriptProps<Item> = {
   onNavigationHandled?: (request: VirtualTranscriptNavigationRequest) => void;
   hasOlder?: boolean;
   onLoadOlder?: () => Promise<void> | void;
-  olderLoadingLabel?: ReactNode;
   emptyState?: ReactNode;
   tail?: ReactNode;
   tailKey?: string | number;
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
+
+const preserveMeasuredDisclosurePosition = () => false;
 
 export function VirtualTranscript<Item>({
   items,
@@ -67,7 +69,6 @@ export function VirtualTranscript<Item>({
   onNavigationHandled,
   hasOlder = false,
   onLoadOlder,
-  olderLoadingLabel = 'Loading earlier messages…',
   emptyState,
   tail,
   tailKey,
@@ -77,6 +78,7 @@ export function VirtualTranscript<Item>({
   const renderPerformanceSpan = beginChatPerformanceSpan('transcript-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [stableDisclosureActive, setStableDisclosureActive] = useState(false);
   const loadAttemptSignatureRef = useRef<string | null>(null);
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
   const olderLoadGenerationRef = useRef(0);
@@ -93,6 +95,11 @@ export function VirtualTranscript<Item>({
   const tailAlignmentActiveRef = useRef(false);
   const tailAlignmentFrameRef = useRef<number | null>(null);
   const tailAlignmentTargetRef = useRef<number | null>(null);
+  const stableDisclosureAnchorRef = useRef<{
+    sessionKey: string;
+    scrollTop: number;
+  } | null>(null);
+  const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
   const handledNavigationRequestRef = useRef<string | null>(null);
 
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
@@ -117,9 +124,12 @@ export function VirtualTranscript<Item>({
     getItemKey: itemKeyAt,
     overscan: TRANSCRIPT_WINDOW_OVERSCAN,
     gap,
-    anchorTo: 'end',
+    anchorTo: stableDisclosureActive ? 'start' : 'end',
     useFlushSync: false,
   });
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = stableDisclosureActive
+    ? preserveMeasuredDisclosurePosition
+    : undefined;
 
   const scopedNavigationRequest = navigationRequest?.sessionKey === sessionKey
     ? navigationRequest
@@ -151,6 +161,32 @@ export function VirtualTranscript<Item>({
       tailAlignmentFrameRef.current = null;
     }
   }, []);
+
+  const cancelStableDisclosureRelease = useCallback(() => {
+    if (stableDisclosureReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(stableDisclosureReleaseFrameRef.current);
+      stableDisclosureReleaseFrameRef.current = null;
+    }
+  }, []);
+
+  const scheduleStableDisclosureRelease = useCallback((anchor: {
+    sessionKey: string;
+    scrollTop: number;
+  }) => {
+    cancelStableDisclosureRelease();
+    let framesRemaining = 2;
+    const release = () => {
+      stableDisclosureReleaseFrameRef.current = null;
+      framesRemaining -= 1;
+      if (framesRemaining > 0) {
+        stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
+      } else if (stableDisclosureAnchorRef.current === anchor) {
+        stableDisclosureAnchorRef.current = null;
+        setStableDisclosureActive(false);
+      }
+    };
+    stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
+  }, [cancelStableDisclosureRelease]);
 
   const alignViewportToTail = useCallback(() => {
     const element = internalScrollRef.current;
@@ -188,8 +224,10 @@ export function VirtualTranscript<Item>({
     return () => {
       mountedRef.current = false;
       cancelTailAlignment();
+      cancelStableDisclosureRelease();
+      stableDisclosureAnchorRef.current = null;
     };
-  }, [cancelTailAlignment]);
+  }, [cancelStableDisclosureRelease, cancelTailAlignment]);
 
   useLayoutEffect(() => {
     const previousScope = committedOlderLoadScopeRef.current;
@@ -264,8 +302,27 @@ export function VirtualTranscript<Item>({
     void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
   }, [cancelTailAlignment, gap, items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
 
+  const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest('[data-transcript-stable-disclosure="true"]')) return;
+    const element = internalScrollRef.current;
+    if (!element) return;
+    cancelTailAlignment();
+    cancelStableDisclosureRelease();
+    setStableDisclosureActive(true);
+    const anchor = {
+      sessionKey,
+      scrollTop: element.scrollTop,
+    };
+    stableDisclosureAnchorRef.current = anchor;
+    scheduleStableDisclosureRelease(anchor);
+  }, [cancelStableDisclosureRelease, cancelTailAlignment, scheduleStableDisclosureRelease, sessionKey]);
+
   useLayoutEffect(() => {
     const aligned = alignedSessionRef.current;
+    const stableDisclosureAnchor = stableDisclosureAnchorRef.current?.sessionKey === sessionKey
+      ? stableDisclosureAnchorRef.current
+      : null;
     const firstPageReplacedLoadingCopy = Boolean(
       aligned
       && aligned.sessionKey === sessionKey
@@ -298,6 +355,12 @@ export function VirtualTranscript<Item>({
       && totalSize !== aligned.totalSize
       && (viewportWasAtTailRef.current || tailAlignmentActiveRef.current),
     );
+    const stableDisclosureSizeChanged = Boolean(
+      stableDisclosureAnchor
+      && aligned
+      && aligned.sessionKey === sessionKey
+      && totalSize !== aligned.totalSize,
+    );
     const viewportSizeChanged = Boolean(
       aligned
       && aligned.sessionKey === sessionKey
@@ -319,7 +382,16 @@ export function VirtualTranscript<Item>({
       totalSize,
       viewportSize,
     };
-    if (shouldAlign) {
+    if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
+      cancelTailAlignment();
+      const element = internalScrollRef.current;
+      if (element) {
+        element.scrollTop = stableDisclosureAnchor.scrollTop;
+        const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
+        viewportWasAtTailRef.current = distanceFromTail <= Math.max(4, gap);
+      }
+      scheduleStableDisclosureRelease(stableDisclosureAnchor);
+    } else if (shouldAlign) {
       viewportWasAtTailRef.current = true;
       tailAlignmentActiveRef.current = true;
       if (items.length > 0) {
@@ -327,7 +399,7 @@ export function VirtualTranscript<Item>({
       }
       scheduleTailAlignment();
     }
-  }, [items.length, newestItemKey, normalizedTailKey, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
+  }, [cancelTailAlignment, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   useLayoutEffect(() => {
     const request = scopedNavigationRequest;
@@ -365,20 +437,14 @@ export function VirtualTranscript<Item>({
       className={scrollClassName}
       style={scrollStyle}
       onScroll={handleScroll}
+      onClickCapture={handleClickCapture}
       onWheelCapture={cancelTailAlignment}
       onPointerDownCapture={cancelTailAlignment}
       onTouchStartCapture={cancelTailAlignment}
       data-virtual-transcript-scroll="true"
+      data-transcript-loading-older={isLoadingOlder ? 'true' : undefined}
+      aria-busy={isLoadingOlder || undefined}
     >
-      {isLoadingOlder ? (
-        <div
-          data-transcript-older-loading="true"
-          className="pointer-events-none sticky top-1 z-10 flex h-0 justify-center overflow-visible text-[11px] text-[color:var(--utility-muted-text)]"
-          role="status"
-        >
-          {olderLoadingLabel}
-        </div>
-      ) : null}
       {items.length > 0 ? (
         <div
           data-virtual-transcript-size="true"

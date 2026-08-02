@@ -22,6 +22,7 @@ import {
   shouldPollDesktopLiveTurn,
   suppressIncompleteLiveTurnEcho,
 } from './desktopLiveTurns';
+import { createDesktopTurnRenderAliasRegistry } from './desktopTurnRenderAliasRegistry';
 import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession } from './queuedDesktopMessages';
 
 type UseDesktopChatStateArgs = {
@@ -66,6 +67,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const [cachedChatSessionMessages, setCachedChatSessionMessages] = useState<Record<string, Message[]>>({});
   const [cachedProjectSessionMessages, setCachedProjectSessionMessages] = useState<Record<string, Message[]>>({});
   const [localSessionUnreadCounts, setLocalSessionUnreadCounts] = useState<Record<string, number>>({});
+  const [desktopTurnRenderAliases] = useState(createDesktopTurnRenderAliasRegistry);
 
   const incrementUnreadForSession = useCallback((sessionId?: string | null, count = 1) => {
     const normalizedSessionId = sessionId?.trim();
@@ -177,8 +179,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     const targetSessionId = activeSessionId ?? latestDesktopSessionIdRef.current;
     const requestId = latestDesktopRefreshRequestRef.current + 1;
     latestDesktopRefreshRequestRef.current = requestId;
-
-    const nextState = await fetchDesktopChatState(targetSessionId);
+    const nextState = desktopTurnRenderAliases.reconcile(await fetchDesktopChatState(targetSessionId));
     if (!nextState) return;
     if (latestDesktopRefreshRequestRef.current !== requestId) return;
     if (targetSessionId && nextState.activeSessionId !== targetSessionId) return;
@@ -190,13 +191,12 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       clearUnreadForSession(nextState.activeSessionId);
     }
     setDesktopChatError(null);
-  }, [clearUnreadForSession]);
+  }, [clearUnreadForSession, desktopTurnRenderAliases]);
 
   const refreshCompletedDesktopTurnTranscript = useCallback(async (turn: DesktopChatTurnSnapshot) => {
     const requestId = latestDesktopRefreshRequestRef.current + 1;
     latestDesktopRefreshRequestRef.current = requestId;
-
-    const nextState = await fetchDesktopChatState(turn.sessionId);
+    const nextState = desktopTurnRenderAliases.reconcile(await fetchDesktopChatState(turn.sessionId));
     if (!nextState) {
       throw new Error('Unable to load completed transcript');
     }
@@ -209,7 +209,6 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     if (!desktopStateIncludesCompletedTurn(nextState, turn)) {
       throw new Error('Completed transcript is not available yet');
     }
-
     const mappedMessages = mapDesktopMessages(nextState.activeSessionId, nextState.activeSession.messages);
     latestDesktopSessionIdRef.current = nextState.activeSessionId;
     setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState, false));
@@ -225,7 +224,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       clearUnreadForSession(nextState.activeSessionId);
     }
     setDesktopChatError(null);
-  }, [clearUnreadForSession, mapDesktopMessages]);
+  }, [clearUnreadForSession, desktopTurnRenderAliases, mapDesktopMessages]);
 
   useEffect(() => {
     latestDesktopSessionIdRef.current = desktopChatState?.activeSessionId;
@@ -261,8 +260,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       setIsDesktopChatLoading(true);
     }
     fetchDesktopChatState(latestDesktopSessionIdRef.current)
-      .then((state) => {
-        if (cancelled || !state) return;
+      .then((fetchedState) => {
+        if (cancelled || !fetchedState) return;
+        const state = desktopTurnRenderAliases.reconcile(fetchedState)!;
         const activeLiveTurn = desktopLiveTurnsBySessionRef.current[state.activeSessionId];
         setDesktopChatState((current) => mergeLatestDesktopChatState(current, state, Boolean(activeLiveTurn && !activeLiveTurn.completed)));
         if (visibleLocalSessionIdRef.current === state.activeSessionId) {
@@ -283,7 +283,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     return () => {
       cancelled = true;
     };
-  }, [clearUnreadForSession, isNativeShell]);
+  }, [clearUnreadForSession, desktopTurnRenderAliases, isNativeShell]);
 
   const activeIncompleteLiveTurn = desktopChatState?.activeSessionId
     ? desktopLiveTurnsBySession[desktopChatState.activeSessionId]
@@ -326,7 +326,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       || Boolean(turn.error)
       || turn.status === 'cancelled';
     const completedMessage = shouldAppendAssistantMessage
-      ? buildCompletedDesktopAssistantMessage(turn, finishedAt)
+      ? buildCompletedDesktopAssistantMessage(turn, finishedAtMs)
       : null;
     const isBackgroundSession = visibleLocalSessionId !== turn.sessionId
       && latestDesktopSessionIdRef.current !== turn.sessionId;
@@ -388,7 +388,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     });
 
     if (!completedMessage) {
-      window.setTimeout(() => removeLiveTurnSnapshot(turn.sessionId, turn.id), 180);
+      removeLiveTurnSnapshot(turn.sessionId, turn.id);
       if (!isBackgroundSession) {
         clearUnreadForSession(turn.sessionId);
       }
@@ -422,7 +422,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       turn.sessionId,
       mappedMessage,
     ));
-    window.setTimeout(() => removeLiveTurnSnapshot(turn.sessionId, turn.id), 180);
+    removeLiveTurnSnapshot(turn.sessionId, turn.id);
   }, [clearUnreadForSession, incrementUnreadForSession, mapDesktopMessages, removeLiveTurnSnapshot]);
 
   const watchDesktopLiveTurn = useCallback(
@@ -460,8 +460,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
             scheduleLiveTurnSnapshot(nextTurn);
           }
         }
-
         setPendingUserChatMessage(null);
+        desktopTurnRenderAliases.register(nextTurn);
 
         const visibleSessionId = visibleLocalSessionIdRef.current;
         const isVisibleCompletedSession = visibleSessionId === nextTurn.sessionId
@@ -497,7 +497,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, mergeCompletedDesktopTurn, refreshCompletedDesktopTurnTranscript, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
+    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, desktopTurnRenderAliases, mergeCompletedDesktopTurn, refreshCompletedDesktopTurnTranscript, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {

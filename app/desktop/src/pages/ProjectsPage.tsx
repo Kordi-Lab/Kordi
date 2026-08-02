@@ -25,15 +25,16 @@ import {
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
-  LiveChatTurnMessage,
   MessageBubble,
   type ComposerAuthOption,
   type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
+import { buildDesktopLiveTurnTranscriptMessage } from '@/features/chat/desktopLiveTurns';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import type {
   DesktopCollaborationHost,
   DesktopCollaborationProject,
@@ -56,7 +57,6 @@ type ProjectSession = {
   tasks: number;
   messages: Message[];
 };
-
 type ProjectWorkspace = {
   id: string;
   name: string;
@@ -201,6 +201,13 @@ export function ProjectsPage({
   const transcriptMessages = suppressLiveTurnEchoMessages(activeProjectSession.messages, activeProjectLiveTurn);
   const shouldRenderLiveTurn = Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed);
   const liveTurnSender = localOwnedAgentSenderLabel(activeProjectSession);
+  const liveTurnMessage = shouldRenderLiveTurn && activeProjectLiveTurn
+    ? buildDesktopLiveTurnTranscriptMessage(activeProjectLiveTurn, liveTurnSender)
+    : null;
+  const visibleTranscriptMessages = liveTurnMessage
+    && !transcriptMessages.some((message) => message.id === liveTurnMessage.id)
+    ? [...transcriptMessages, liveTurnMessage]
+    : transcriptMessages;
   const projectImeCompositionGuard = useImeCompositionGuard();
 
   if (isNativeShell && !activeProject.id) {
@@ -339,23 +346,16 @@ export function ProjectsPage({
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {transcriptMessages.map((msg, idx) => (
+            {visibleTranscriptMessages.map((msg, idx) => (
               <MessageBubble
-                key={`${activeProjectSession.id}-${msg.time}-${idx}`}
+                key={transcriptMessageRenderKey(msg, idx)}
                 msg={msg}
                 onOpenSource={onOpenSource}
                 onOpenArtifact={onOpenArtifact}
-              />
-            ))}
-            {shouldRenderLiveTurn && activeProjectLiveTurn ? (
-              <LiveChatTurnMessage
-                turn={activeProjectLiveTurn}
-                sender={liveTurnSender}
                 onStopActiveTurn={onStopDesktopChatTurn}
-                onOpenArtifact={onOpenArtifact}
                 onOpenAuthSettings={openAuthentication}
               />
-            ) : null}
+            ))}
           </motion.div>
         </ScrollArea>
       </div>

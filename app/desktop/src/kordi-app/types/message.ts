@@ -134,8 +134,8 @@ export type ComposerQuoteState = {
 
 export type Message = {
   id?: string;
-  /** Stable id of the underlying session entry, when the message maps
-   * 1:1 to a desktop session entry. Required for actions like fork. */
+  /** Stable id of the canonical session entry rendered by this row,
+   * including aggregated assistant turns. Required for actions like fork. */
   entryId?: string | null;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
@@ -217,6 +217,7 @@ export type DesktopChatTurnSnapshot = {
   succeeded: boolean;
   startedAtMs?: number | null;
   completedAtMs?: number | null;
+  transcriptEntryId?: string | null;
   error?: string | null;
   transcriptRefreshRequired?: boolean;
   replyToMessageId?: string | null;

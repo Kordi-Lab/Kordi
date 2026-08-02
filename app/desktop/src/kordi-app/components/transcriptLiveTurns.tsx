@@ -3,9 +3,7 @@ import {
   ArrowRightLeft,
   Braces,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
-  ChevronUp,
   CircleAlert,
   Clock3,
   FileText,
@@ -23,11 +21,13 @@ import {
 } from 'lucide-react';
 
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
+import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
+import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';
 import {
   firstMeaningfulThinkingLine,
@@ -255,7 +255,7 @@ function ToolTimelineDetails({ tool, display }: { tool: ToolSnapshot; display: T
     <div className="app-transcript-timeline-details">
       <button
         type="button"
-        className="app-transcript-timeline-details-toggle"
+        className="app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
         onClick={() => setExpandedDetails((current) => !current)}
         aria-expanded={expandedDetails}
       >
@@ -290,7 +290,7 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
           <div className="app-transcript-timeline-details">
             <button
               type="button"
-              className="app-transcript-timeline-details-toggle"
+              className="app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
               onClick={() => setExpandedThinking((current) => !current)}
               aria-expanded={expandedThinking}
             >
@@ -299,7 +299,7 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
             </button>
             {expandedThinking ? (
               <div className="app-transcript-timeline-details-body pr-1">
-                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown text-[12px] leading-[1.55rem]" />
+                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" />
               </div>
             ) : null}
           </div>
@@ -381,7 +381,7 @@ function ToolTimelineToolGroupRow({ group }: { group: ToolTimelineLayerGroup<Too
       <div className="app-transcript-timeline-row-body">
         <button
           type="button"
-          className="app-transcript-timeline-group-summary"
+          className="app-transcript-timeline-group-summary" data-transcript-stable-disclosure="true"
           onClick={() => setExpandedGroup((current) => !current)}
           aria-expanded={expandedGroup}
         >
@@ -458,31 +458,48 @@ function FoldableToolTimeline({
   thinkingText,
   active,
   completed,
+  summaryOverride,
+  separatesAnswer,
   trailing,
 }: {
   tools: ToolSnapshot[];
   thinkingText: string;
   active: boolean;
   completed: boolean;
+  summaryOverride?: string | null;
+  separatesAnswer?: boolean;
   trailing?: ReactNode;
 }) {
   const [expandedTimeline, setExpandedTimeline] = useState(false);
+  const [timelineMounted, setTimelineMounted] = useState(false);
   const hasThinking = thinkingText.trim().length > 0;
   const failedCount = tools.filter(isFailedTool).length;
   const failed = failedCount > 0;
   const runningTool = tools.find(isRunningTool);
   const runningElapsed = useRunningElapsedLabel(Boolean(runningTool), runningTool?.id ?? null);
-  const summary = toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed });
-
+  const summary = summaryOverride?.trim()
+    || toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed });
   if (!hasThinking && tools.length === 0) return null;
-
   return (
-    <section className={cn('app-transcript-tool-timeline', active && 'app-transcript-tool-timeline-active')}>
+    <section
+      className={cn(
+        'app-transcript-tool-timeline',
+        active && 'app-transcript-tool-timeline-active',
+        separatesAnswer && 'app-transcript-tool-timeline-before-answer',
+      )}
+    >
       <div className="app-transcript-tool-timeline-row flex w-full items-center gap-2">
         <button
           type="button"
-          className={cn('app-transcript-tool-timeline-summary min-w-0 flex-1', active && 'app-transcript-tool-timeline-summary-active')}
-          onClick={() => setExpandedTimeline((current) => !current)}
+          className={cn(
+            'app-transcript-tool-timeline-summary min-w-0 flex-1',
+            active && 'app-transcript-tool-timeline-summary-active',
+          )}
+          data-transcript-stable-disclosure="true"
+          onClick={() => {
+            setTimelineMounted(true);
+            setExpandedTimeline((current) => !current);
+          }}
           aria-expanded={expandedTimeline}
         >
           <span className="app-transcript-tool-timeline-summary-copy min-w-0">
@@ -494,14 +511,26 @@ function FoldableToolTimeline({
         </button>
         {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
-
-      {expandedTimeline ? (
-        <div className="app-transcript-timeline-list">
-          {hasThinking ? <ToolTimelineThinkingRow thinkingText={thinkingText} /> : null}
-          {toolTimelineLayerGroups(tools).map((group) => <ToolTimelineToolGroupRow key={group.id} group={group} />)}
-          {completed || failed ? <ToolTimelineCompletionRow failedCount={failedCount} /> : null}
+      <div
+        className={cn(
+          'app-transcript-timeline-reveal',
+          expandedTimeline && 'app-transcript-timeline-reveal-open',
+        )}
+        aria-hidden={!expandedTimeline}
+        inert={!expandedTimeline}
+      >
+        <div className="app-transcript-timeline-reveal-inner">
+          {timelineMounted ? (
+            <div className="app-transcript-timeline-list">
+              {hasThinking ? <ToolTimelineThinkingRow thinkingText={thinkingText} /> : null}
+              {toolTimelineLayerGroups(tools).map((group) => (
+                <ToolTimelineToolGroupRow key={group.id} group={group} />
+              ))}
+              {completed || failed ? <ToolTimelineCompletionRow failedCount={failedCount} /> : null}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }
@@ -678,69 +707,6 @@ function CollaborationAgentStopButton({
   return <TurnStopButton onStop={() => onStop(request)} />;
 }
 
-const ASSISTANT_ANSWER_FOLDED_VISIBLE_LINES = 6;
-
-function assistantAnswerFoldInfo(text: string) {
-  const lines = text.split(/\r?\n/);
-  const hiddenLineCount = Math.max(0, lines.length - ASSISTANT_ANSWER_FOLDED_VISIBLE_LINES);
-  const shouldFold = hiddenLineCount > 0 || text.replace(/\s+/g, ' ').trim().length > 720;
-  return { shouldFold, hiddenLineCount };
-}
-
-function foldedAssistantAnswerToggleLabel(hiddenLineCount: number) {
-  if (hiddenLineCount > 0) {
-    return `Show ${hiddenLineCount} more line${hiddenLineCount === 1 ? '' : 's'}`;
-  }
-  return 'Show full response';
-}
-
-function FoldableAssistantAnswer({
-  text,
-  foldable = true,
-  tone = 'default',
-}: {
-  text: string;
-  foldable?: boolean;
-  tone?: 'default' | 'cancelled';
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const foldInfo = useMemo(() => assistantAnswerFoldInfo(text), [text]);
-  const shouldFold = foldable && foldInfo.shouldFold;
-  const folded = shouldFold && !expanded;
-  const cancelled = tone === 'cancelled';
-
-  return (
-    <div className={cn(
-      'app-live-assistant-answer w-full text-[13px]',
-      cancelled && 'app-live-assistant-answer-cancelled text-rose-300',
-    )}>
-      <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
-        <MarkdownContent
-          text={text}
-          className={cn(
-            'app-live-assistant-answer-markdown',
-            cancelled && '[&_p]:!text-rose-300 [&_li]:!text-rose-300 [&_blockquote]:!text-rose-300',
-          )}
-        />
-      </div>
-      {shouldFold ? (
-        <div className="app-fold-reveal-row app-live-assistant-answer-reveal-row">
-          <button
-            type="button"
-            className="app-inline-expand-toggle app-live-assistant-answer-toggle"
-            onClick={() => setExpanded((current) => !current)}
-            aria-expanded={expanded}
-          >
-            <span>{folded ? foldedAssistantAnswerToggleLabel(foldInfo.hiddenLineCount) : 'Hide response'}</span>
-            {folded ? <ChevronDown className="app-inline-expand-toggle-icon" aria-hidden="true" /> : <ChevronUp className="app-inline-expand-toggle-icon" aria-hidden="true" />}
-          </button>
-          <span className="app-fold-reveal-line" aria-hidden="true" />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function LiveChatTurnCardView({
   turn,
   historical = false,
@@ -873,31 +839,33 @@ function LiveChatTurnCardView({
         </div>
       ) : null}
 
-      {hasTimelineActivity ? (
-        <FoldableToolTimeline
-          tools={visibleTurn.tools}
-          thinkingText={visibleTurn.thinkingText}
-          active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
-          completed={visibleTurn.completed}
-          trailing={pendingCollaborationAgentRequest && onStopCollaborationAgentRequest ? (
-            <CollaborationAgentStopButton
-              request={pendingCollaborationAgentRequest}
-              onStop={onStopCollaborationAgentRequest}
+          {hasTimelineActivity ? (
+            <FoldableToolTimeline
+              key="activity"
+              tools={visibleTurn.tools}
+              thinkingText={visibleTurn.thinkingText}
+              active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
+              completed={visibleTurn.completed}
+              summaryOverride={visibleTurn.tools.some(isFailedTool) ? null : desktopTurnWorkDurationLabel(visibleTurn)}
+              separatesAnswer={hasAssistant}
+              trailing={pendingCollaborationAgentRequest && onStopCollaborationAgentRequest ? (
+                <CollaborationAgentStopButton
+                  request={pendingCollaborationAgentRequest}
+                  onStop={onStopCollaborationAgentRequest}
+                />
+              ) : activeStopAvailable ? (
+                <TurnStopButton onStop={onStopActiveTurn} />
+              ) : null}
             />
-          ) : activeStopAvailable ? (
-            <TurnStopButton onStop={onStopActiveTurn} />
           ) : null}
-        />
-      ) : null}
-
           {hasAssistant ? (
             <FoldableAssistantAnswer
+              key="answer"
               text={visibleTurn.assistantText}
               foldable={!plainAgentResponse}
               tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
             />
           ) : null}
-
           {cancellationNotice ? (
             <div className="app-live-turn-cancelled px-0.5 text-[12px] font-medium leading-5 text-[color:var(--utility-muted-text)]">
               {cancellationNotice}

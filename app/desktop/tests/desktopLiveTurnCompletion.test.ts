@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-test('completed live turn appends historical reply before removing live snapshot to avoid a blank frame', () => {
+test('completed live turn installs the keyed transcript reply before removing the live snapshot', () => {
   const source = readFileSync(new URL('../src/features/chat/useDesktopChatState.ts', import.meta.url), 'utf8');
   const functionStart = source.indexOf('const mergeCompletedDesktopTurn = useCallback');
   assert.notEqual(functionStart, -1);
@@ -24,9 +24,15 @@ test('completed live turn appends historical reply before removing live snapshot
     firstCacheAppend < completedMessageRemove,
     'the completed assistant message should reach a hydrated inactive-session cache before the live row is removed',
   );
-  assert.match(
-    body,
-    /window\.setTimeout\(\(\) => removeLiveTurnSnapshot\(turn\.sessionId, turn\.id\), 180\)/,
-    'live snapshot removal should be delayed briefly and guarded by turn id so the historical row can hydrate without a completion flash',
-  );
+  assert.doesNotMatch(body, /setTimeout[\s\S]*removeLiveTurnSnapshot/);
+  assert.match(body, /buildCompletedDesktopAssistantMessage\(turn, finishedAtMs\)/);
+  assert.match(source, /desktopTurnRenderAliases\.register\(nextTurn\)[\s\S]*refreshCompletedDesktopTurnTranscript\(nextTurn\)/);
+});
+
+test('live replies render inside the keyed transcript item collection instead of a separate tail row', () => {
+  const source = readFileSync(new URL('../src/pages/chatsPage.sessionPane.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /buildDesktopLiveTurnTranscriptMessage/);
+  assert.match(source, /\[\.\.\.attributedTranscript\.messages, liveTurnMessage\]/);
+  assert.doesNotMatch(source, /<LiveChatTurnMessage/);
 });

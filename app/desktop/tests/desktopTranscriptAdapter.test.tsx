@@ -45,6 +45,31 @@ test('desktop transcript assigns stable ids before reply attribution so task jum
   assert.equal(attributed[1].id, mapped[1].id);
 });
 
+test('desktop transcript prefers persisted entry ids and completion render aliases over mutable timestamps', () => {
+  const [persisted] = mapDesktopMessagesForTranscript('session-stable', [{
+    role: 'assistant',
+    sender: 'My Kordi',
+    text: 'Stable reply',
+    timeLabel: '12:00',
+    timestampMs: 20,
+    entryId: 'entry:assistant:1',
+  }]);
+  const [reconciled] = mapDesktopMessagesForTranscript('session-stable', [{
+    role: 'assistant',
+    sender: 'My Kordi',
+    text: 'Stable reply',
+    timeLabel: '11:59',
+    timestampMs: 10,
+    entryId: 'entry:assistant:1',
+    transcriptRenderId: 'turn-live-1',
+  }]);
+
+  assert.equal(persisted.id, 'desktop-entry:session-stable:entry:assistant:1');
+  assert.equal(persisted.turn?.id, persisted.id);
+  assert.equal(reconciled.id, 'turn-live-1');
+  assert.equal(reconciled.turn?.id, reconciled.id);
+});
+
 test('desktop transcript maps plain completed assistant replies to foldable sourced turn cards', () => {
   const longClaudeReply = [
     'Here’s the current Mac landscape as of today (May 6, 2026):',
@@ -125,6 +150,22 @@ test('desktop transcript uses an explicit local agent display name as the visibl
   assert.equal(mapped.sender, 'Kordi Factory');
   assert.equal(mapped.sourceSenderLabel, 'Kordi Factory');
   assert.equal(mapped.senderAvatarSeed, 'agent-builder');
+});
+
+test('generic persisted Kordi identity keeps the live My Kordi sender label', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session-local', [{
+    role: 'assistant',
+    sender: 'Kordi',
+    text: 'Hi! 👋 How can I help you today?',
+    timeLabel: '20:45',
+    timestampMs: 1,
+  }], {
+    agent: 'agent-local',
+    agentDisplayName: 'Kordi',
+  });
+
+  assert.equal(mapped.sender, 'My Kordi');
+  assert.equal(mapped.sourceSenderLabel, 'My Kordi');
 });
 
 test('desktop transcript keeps an empty cancelled assistant turn as visible history', () => {

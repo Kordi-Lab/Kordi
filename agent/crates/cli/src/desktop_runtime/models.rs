@@ -115,8 +115,8 @@ pub struct DesktopChatMessage {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<DesktopChatStoredTool>,
     /// Stable id of the underlying session entry. Present for messages
-    /// that map 1:1 to a `SessionEntry` (e.g., user messages); `None`
-    /// for synthesized rows like assistant turn aggregations.
+    /// that map to a canonical entry, including aggregated assistant turns;
+    /// `None` only for rows synthesized outside transcript history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_id: Option<String>,
 }

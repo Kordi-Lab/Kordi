@@ -67,6 +67,7 @@ async fn running_turn_lookup_is_session_scoped() {
         succeeded: false,
         started_at_ms: 1,
         completed_at_ms: None,
+        transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
     }));

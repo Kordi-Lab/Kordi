@@ -3,7 +3,8 @@
 use std::sync::{Arc, Mutex};
 
 use kordi_cli::desktop_runtime::{
-    DesktopChatContextMessage, DesktopChatSessionDetail, DesktopVisibleTaskRecord,
+    DesktopChatContextMessage, DesktopChatMessage, DesktopChatSessionDetail,
+    DesktopVisibleTaskRecord,
 };
 
 use super::{
@@ -69,6 +70,7 @@ pub(super) async fn start_message(
         succeeded: false,
         started_at_ms: now_millis(),
         completed_at_ms: None,
+        transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
     }));
@@ -204,6 +206,19 @@ fn fail_chat_request(snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>, error: Stri
     });
 }
 
+fn latest_turn_assistant_entry_id(messages: &[DesktopChatMessage]) -> Option<String> {
+    for message in messages.iter().rev() {
+        let role = message.role.trim();
+        if role.eq_ignore_ascii_case("user") {
+            return None;
+        }
+        if role.eq_ignore_ascii_case("assistant") {
+            return message.entry_id.clone();
+        }
+    }
+    None
+}
+
 async fn finish_turn(
     snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
     session_handle: &super::DesktopSessionHandle,
@@ -214,18 +229,21 @@ async fn finish_turn(
     result: Result<DesktopChatSessionDetail, String>,
 ) {
     match result {
-        Ok(_) if cancel.is_cancelled() => {
+        Ok(detail) if cancel.is_cancelled() => {
+            let transcript_entry_id = latest_turn_assistant_entry_id(&detail.messages);
             sync_completed_session(cwd, session_id, session_handle, is_agent_builder_session).await;
             update_turn(snapshot, |state| {
                 state.status = "cancelled".to_string();
                 state.message = "Response stopped".to_string();
                 state.completed = true;
                 state.completed_at_ms = Some(now_millis());
+                state.transcript_entry_id = transcript_entry_id;
                 state.succeeded = false;
                 state.error = None;
             });
         }
-        Ok(_) => {
+        Ok(detail) => {
+            let transcript_entry_id = latest_turn_assistant_entry_id(&detail.messages);
             sync_completed_session(cwd, session_id, session_handle, is_agent_builder_session).await;
             let task_tools = {
                 let session = session_handle.lock().await;
@@ -242,6 +260,7 @@ async fn finish_turn(
                 state.message = "Response complete".to_string();
                 state.completed = true;
                 state.completed_at_ms = Some(now_millis());
+                state.transcript_entry_id = transcript_entry_id;
                 state.succeeded = true;
                 state.error = None;
             });
@@ -266,5 +285,52 @@ async fn sync_completed_session(
 ) {
     if !is_agent_builder_session {
         sync_completed_desktop_session_to_canonical(cwd, session_id, session_handle).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::latest_turn_assistant_entry_id;
+    use kordi_cli::desktop_runtime::DesktopChatMessage;
+
+    fn message(role: &str, entry_id: Option<&str>) -> DesktopChatMessage {
+        DesktopChatMessage {
+            role: role.to_string(),
+            sender: None,
+            text: String::new(),
+            detail: None,
+            time_label: String::new(),
+            timestamp_ms: 0,
+            failed: false,
+            cancelled: false,
+            attachments: Vec::new(),
+            thinking_text: None,
+            tools: Vec::new(),
+            entry_id: entry_id.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn current_turn_assistant_entry_id_stops_at_latest_user_boundary() {
+        let messages = vec![
+            message("assistant", Some("entry:old")),
+            message("user", Some("entry:user")),
+        ];
+
+        assert_eq!(latest_turn_assistant_entry_id(&messages), None);
+    }
+
+    #[test]
+    fn current_turn_assistant_entry_id_returns_the_new_reply() {
+        let messages = vec![
+            message("assistant", Some("entry:old")),
+            message("user", Some("entry:user")),
+            message("assistant", Some("entry:new")),
+        ];
+
+        assert_eq!(
+            latest_turn_assistant_entry_id(&messages).as_deref(),
+            Some("entry:new")
+        );
     }
 }

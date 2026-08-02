@@ -114,6 +114,7 @@ async fn run_agent_prompt_once(
         succeeded: false,
         started_at_ms,
         completed_at_ms: None,
+        transcript_entry_id: None,
         error: None,
         transcript_refresh_required: false,
     }));
@@ -340,6 +341,53 @@ mod tests {
     }
 
     #[test]
+    fn agent_task_tools_do_not_cross_latest_user_boundary_when_current_turn_has_none() {
+        let mut first_failed_tool = stored_tool("tool-old-1", "read");
+        first_failed_tool.status = "error".to_string();
+        first_failed_tool.is_error = true;
+        let mut second_failed_tool = stored_tool("tool-old-2", "bash");
+        second_failed_tool.status = "error".to_string();
+        second_failed_tool.is_error = true;
+        let messages = vec![
+            chat_message("user", "run the old request", Vec::new()),
+            chat_message(
+                "assistant",
+                "The old request failed.",
+                vec![first_failed_tool, second_failed_tool],
+            ),
+            chat_message("user", "hihi", Vec::new()),
+            chat_message("assistant", "Hi hi! 👋", Vec::new()),
+        ];
+
+        let tools = desktop_task_tools_from_messages(&messages);
+
+        assert!(tools.is_empty());
+    }
+
+    #[test]
+    fn agent_task_tools_retain_failed_tools_from_current_turn() {
+        let mut current_failed_tool = stored_tool("tool-current", "read");
+        current_failed_tool.status = "error".to_string();
+        current_failed_tool.is_error = true;
+        let messages = vec![
+            chat_message("user", "run the old request", Vec::new()),
+            chat_message("assistant", "Old response", Vec::new()),
+            chat_message("user", "run the current request", Vec::new()),
+            chat_message(
+                "assistant",
+                "The current request failed.",
+                vec![current_failed_tool],
+            ),
+        ];
+
+        let tools = desktop_task_tools_from_messages(&messages);
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].id, "tool-current");
+        assert!(tools[0].is_error);
+    }
+
+    #[test]
     fn agent_fallback_route_distinguishes_auth_choice_from_default_route() {
         let primary = DesktopChatTurnSnapshot {
             id: "turn-1".to_string(),
@@ -354,6 +402,7 @@ mod tests {
             succeeded: false,
             started_at_ms: 1,
             completed_at_ms: Some(2),
+            transcript_entry_id: None,
             error: Some("default auth failed".to_string()),
             transcript_refresh_required: false,
         };

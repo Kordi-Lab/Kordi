@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { buildReplyAttribution } from '@/features/chat/replyAttribution';
+import { buildDesktopLiveTurnTranscriptMessage } from '@/features/chat/desktopLiveTurns';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import {
   transcriptWindowMessageIdentity,
@@ -19,7 +20,6 @@ import {
 } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import {
-  LiveChatTurnMessage,
   MessageBubble,
 } from '@/kordi-app/components';
 import {
@@ -213,18 +213,33 @@ export function ChatSessionPane({
       ),
     [messages],
   );
+  const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
+  const liveTurnMessage = useMemo(
+    () => shouldRenderLiveTurn && attributedLiveTurn
+      ? buildDesktopLiveTurnTranscriptMessage(attributedLiveTurn, liveTurnSender)
+      : null,
+    [attributedLiveTurn, liveTurnSender, shouldRenderLiveTurn],
+  );
+  const transcriptMessages = useMemo(() => {
+    if (!liveTurnMessage) return attributedTranscript.messages;
+    const persistedReplacementIsVisible = attributedTranscript.messages.some(
+      (message) => message.id === liveTurnMessage.id,
+    );
+    return persistedReplacementIsVisible
+      ? attributedTranscript.messages
+      : [...attributedTranscript.messages, liveTurnMessage];
+  }, [attributedTranscript.messages, liveTurnMessage]);
   const transcriptEntries = useMemo(
     () =>
-      attributedTranscript.messages.map((message, index) => ({
+      transcriptMessages.map((message, index) => ({
         message,
         originalIndex:
           originalIndexByMessageKey.get(
             transcriptWindowMessageIdentity(message, index),
           ) ?? index,
       })),
-    [attributedTranscript.messages, originalIndexByMessageKey],
+    [originalIndexByMessageKey, transcriptMessages],
   );
-  const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
   const liveTurnTailKey =
     shouldRenderLiveTurn && attributedLiveTurn
       ? [
@@ -296,6 +311,7 @@ export function ChatSessionPane({
               onStopCollaborationAgentRequest={
                 onStopCollaborationAgentRequest
               }
+              onStopActiveTurn={onStopActiveTurn}
               onRequestCollaborationContact={
                 onRequestCollaborationContact
               }
@@ -325,12 +341,12 @@ export function ChatSessionPane({
               onSelectionDragEnd={onSelectionDragEnd}
               plainAgentResponse={plainAgentResponse}
               isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(
-                messages,
+                transcriptMessages,
                 idx,
                 -1,
               )}
               isGroupedWithNext={isGroupedWithAdjacentHumanMessage(
-                messages,
+                transcriptMessages,
                 idx,
                 1,
               )}
@@ -366,24 +382,10 @@ export function ChatSessionPane({
             ) : null}
           </div>
         )}
-        emptyState={!shouldRenderLiveTurn ? emptyState : null}
+        emptyState={transcriptMessages.length === 0 ? emptyState : null}
         tailKey={transcriptTailKey}
         tail={
           <div className="space-y-1">
-            {shouldRenderLiveTurn && attributedLiveTurn ? (
-              <LiveChatTurnMessage
-                turn={attributedLiveTurn}
-                sender={liveTurnSender}
-                onStopCollaborationAgentRequest={
-                  onStopCollaborationAgentRequest
-                }
-                onStopActiveTurn={onStopActiveTurn}
-                plainAgentResponse={plainAgentResponse}
-                onNavigateToMessage={onNavigateToMessage}
-                onOpenArtifact={onOpenArtifact}
-                onOpenAuthSettings={onOpenAuthSettings}
-              />
-            ) : null}
             {queuedMessages.map((message) => (
               <QueuedMessageBubble
                 key={message.id}

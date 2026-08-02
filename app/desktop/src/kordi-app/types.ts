@@ -818,11 +818,11 @@ export type DesktopChatMessage = {
   tools?: DesktopChatToolSnapshot[];
   turnStartedAtMs?: number | null;
   turnCompletedAtMs?: number | null;
+  transcriptRenderId?: string | null; // Ephemeral renderer identity; never persisted.
   /** Stable id of the underlying session entry; only set for messages
    * that map 1:1 to a SessionEntry (e.g., user messages). */
   entryId?: string | null;
 };
-
 export type DesktopChatSessionSummary = {
   id: string;
   title: string;

@@ -436,7 +436,7 @@ test('prepending an older page preserves the first visible message and pixel off
 });
 
 test('jump-to-message loads older pages until the target exists and then mounts it', async () => {
-  let loadCount = 0;
+  const loadCalls: string[] = [];
   const readyIds: string[] = [];
   function Harness() {
     const [items, setItems] = React.useState(() => rows('m', 900, 100));
@@ -447,7 +447,7 @@ test('jump-to-message loads older pages until the target exists and then mounts 
       onNavigationReady: (id) => readyIds.push(id),
       hasOlder,
       onLoadOlder: async () => {
-        loadCount += 1;
+        loadCalls.push('older');
         setItems((current) => [...rows('m', 850, 50), ...current]);
         setHasOlder(false);
       },
@@ -458,10 +458,10 @@ test('jump-to-message loads older pages until the target exists and then mounts 
   await flush();
   await view.rerender(<Harness />);
 
-  assert.equal(loadCount, 1);
+  assert.equal(loadCalls.length, 1);
   assert.deepEqual(readyIds, ['m850']);
   assert.ok(view.host.querySelector('[data-message-id="m850"]'));
-  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+  assert.equal(view.host.querySelector('[data-transcript-loading-older="true"]'), null);
 });
 
 test('a handled navigation request stays one-shot across transcript rerenders', async () => {
@@ -545,12 +545,8 @@ test('main and companion transcript requests remain independently one-shot', asy
 test('a handled navigation request stays consumed after the transcript remounts', async () => {
   const readyIds: string[] = [];
   const request = { id: 'm10', nonce: 1, sessionKey: 'session:one' };
-  let setVisible: React.Dispatch<React.SetStateAction<boolean>> | null = null;
-
-  function Harness() {
-    const [visible, updateVisible] = React.useState(true);
+  function Harness({ visible }: { visible: boolean }) {
     const [navigationRequest, setNavigationRequest] = React.useState<typeof request | null>(request);
-    setVisible = updateVisible;
     if (!visible) return null;
     return transcript({
       items: rows('m', 0, 20),
@@ -569,12 +565,12 @@ test('a handled navigation request stays consumed after the transcript remounts'
     });
   }
 
-  const view = await render(<Harness />);
+  const view = await render(<Harness visible />);
   assert.deepEqual(readyIds, ['m10']);
 
-  await act(async () => setVisible?.(false));
+  await view.rerender(<Harness visible={false} />);
   await flush();
-  await act(async () => setVisible?.(true));
+  await view.rerender(<Harness visible />);
   await flush();
 
   assert.deepEqual(readyIds, ['m10']);
@@ -644,7 +640,7 @@ test('a 1,000-message transcript mounts at most 60 row nodes', async () => {
   assert.ok(mounted.length <= 60, `mounted ${mounted.length} transcript rows`);
 });
 
-test('ready rows remain visible while an older page is loading', async () => {
+test('ready rows remain visible while older-page loading stays non-visual', async () => {
   let resolveLoad: (() => void) | null = null;
   const loading = new Promise<void>((resolve) => { resolveLoad = resolve; });
   const view = await render(transcript({
@@ -655,7 +651,9 @@ test('ready rows remain visible while an older page is loading', async () => {
   }));
 
   assert.ok(view.host.querySelectorAll('[data-transcript-window-item]').length > 0);
-  assert.ok(view.host.querySelector('[data-transcript-older-loading="true"]'));
+  assert.ok(view.host.querySelector('[data-transcript-loading-older="true"]'));
+  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+  assert.doesNotMatch(view.host.textContent ?? '', /Loading (earlier|previous) messages/i);
   await act(async () => resolveLoad?.());
 });
 
@@ -671,7 +669,7 @@ test('disabling canonical paging clears an in-flight earlier-message loader', as
     onLoadOlder: () => loading,
   }));
 
-  assert.ok(view.host.querySelector('[data-transcript-older-loading="true"]'));
+  assert.ok(view.host.querySelector('[data-transcript-loading-older="true"]'));
 
   await view.rerender(transcript({
     items,
@@ -679,7 +677,7 @@ test('disabling canonical paging clears an in-flight earlier-message loader', as
     hasOlder: false,
   }));
 
-  const loaderStayedVisible = Boolean(view.host.querySelector('[data-transcript-older-loading="true"]'));
+  const loaderStayedVisible = Boolean(view.host.querySelector('[data-transcript-loading-older="true"]'));
   await act(async () => resolveLoad?.());
   assert.equal(loaderStayedVisible, false);
 });
@@ -695,7 +693,7 @@ test('switching sessions clears an earlier-message loader owned by the previous 
     onLoadOlder: () => loading,
   }));
 
-  assert.ok(view.host.querySelector('[data-transcript-older-loading="true"]'));
+  assert.ok(view.host.querySelector('[data-transcript-loading-older="true"]'));
 
   await view.rerender(transcript({
     items: rows('new-', 0, 8),
@@ -703,10 +701,10 @@ test('switching sessions clears an earlier-message loader owned by the previous 
     hasOlder: false,
   }));
 
-  const loaderFollowedSessionSwitch = Boolean(view.host.querySelector('[data-transcript-older-loading="true"]'));
+  const loaderFollowedSessionSwitch = Boolean(view.host.querySelector('[data-transcript-loading-older="true"]'));
   await act(async () => resolveLoad?.());
   assert.equal(loaderFollowedSessionSwitch, false);
-  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+  assert.equal(view.host.querySelector('[data-transcript-loading-older="true"]'), null);
 });
 
 test('a transcript with canonical paging disabled never shows the earlier-message loader', async () => {
@@ -723,7 +721,7 @@ test('a transcript with canonical paging disabled never shows the earlier-messag
   await flush();
 
   assert.equal(loadCount, 0);
-  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+  assert.equal(view.host.querySelector('[data-transcript-loading-older="true"]'), null);
 });
 
 test('strict mode clears the earlier-message loader after the request finishes', async () => {
@@ -740,5 +738,5 @@ test('strict mode clears the earlier-message loader after the request finishes',
   );
   await flush();
 
-  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+  assert.equal(view.host.querySelector('[data-transcript-loading-older="true"]'), null);
 });

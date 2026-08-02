@@ -4,8 +4,12 @@ import assert from 'node:assert/strict';
 import type { DesktopChatMessage, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import {
   buildCompletedDesktopAssistantMessage,
+  buildDesktopLiveTurnTranscriptMessage,
+  createDesktopTurnRenderAlias,
   desktopAssistantMessageMatchesTurn,
+  desktopTurnWorkDurationLabel,
   mergeDesktopTurnSnapshot,
+  reconcileDesktopMessagesWithTurnRenderAliases,
   shouldConfirmCompletedDesktopTurnTranscript,
   shouldPollDesktopLiveTurn,
   suppressIncompleteLiveTurnEcho,
@@ -121,7 +125,7 @@ test('visible completed plain-text turns confirm persisted history before the li
 });
 
 test('completed desktop assistant messages fall back to error text and failed status', () => {
-  const completed = buildCompletedDesktopAssistantMessage(turn({
+  const failedTurn = turn({
     status: 'failed',
     assistantText: '',
     message: 'provider stopped',
@@ -130,7 +134,10 @@ test('completed desktop assistant messages fall back to error text and failed st
     tools: [{ id: 'tool-1', name: 'bash', status: 'failed', arguments: '', liveOutput: '', resultText: null, detail: null, isError: true }],
     completed: true,
     succeeded: false,
-  }), '12:04');
+    startedAtMs: 1_725_000_000_000,
+    completedAtMs: 1_725_000_010_000,
+  });
+  const completed = buildCompletedDesktopAssistantMessage(failedTurn, 1_725_000_020_000);
 
   assert.equal(completed.role, 'assistant');
   assert.equal(completed.sender, 'My Kordi');
@@ -138,6 +145,8 @@ test('completed desktop assistant messages fall back to error text and failed st
   assert.equal(completed.failed, true);
   assert.equal(completed.thinkingText, 'thoughts');
   assert.equal(completed.tools?.length, 1);
+  assert.equal(completed.timestampMs, failedTurn.startedAtMs);
+  assert.equal(completed.transcriptRenderId, failedTurn.id);
 });
 
 test('completed cancelled turns retain explicit cancellation metadata without fake reply text', () => {
@@ -147,9 +156,96 @@ test('completed cancelled turns retain explicit cancellation metadata without fa
     message: 'Response stopped',
     completed: true,
     succeeded: false,
-  }), '12:05');
+    startedAtMs: 1_725_000_000_000,
+  }), 1_725_000_020_000);
 
   assert.equal(completed.text, '');
   assert.equal(completed.failed, false);
   assert.equal(completed.cancelled, true);
+});
+
+test('live, synthetic completion, and canonical hydration keep one render identity and display time', () => {
+  const completedTurn = turn({
+    id: 'turn-stable',
+    status: 'succeeded',
+    assistantText: 'Hi hi! 👋',
+    completed: true,
+    succeeded: true,
+    startedAtMs: 1_725_000_000_000,
+    completedAtMs: 1_725_000_010_000,
+    transcriptEntryId: 'entry:assistant:stable',
+  });
+  const liveMessage = buildDesktopLiveTurnTranscriptMessage(
+    { ...completedTurn, status: 'writing', completed: false, succeeded: false },
+    'My Kordi',
+    1_725_000_020_000,
+  );
+  const synthetic = buildCompletedDesktopAssistantMessage(completedTurn, 1_725_000_020_000);
+  const alias = createDesktopTurnRenderAlias(completedTurn, 1_725_000_020_000);
+  const [canonical] = reconcileDesktopMessagesWithTurnRenderAliases(
+    'session-a',
+    [{
+      role: 'assistant',
+      sender: 'Kordi',
+      text: 'Hi hi! 👋',
+      timeLabel: 'later',
+      timestampMs: 1_725_000_010_000,
+      entryId: 'entry:assistant:stable',
+    }],
+    new Map([[alias.turnId, alias]]),
+  );
+
+  assert.equal(liveMessage.id, completedTurn.id);
+  assert.equal(synthetic.transcriptRenderId, liveMessage.id);
+  assert.equal(synthetic.entryId, completedTurn.transcriptEntryId);
+  assert.equal(canonical.transcriptRenderId, liveMessage.id);
+  assert.equal(synthetic.timeLabel, liveMessage.time);
+  assert.equal(canonical.timeLabel, liveMessage.time);
+  assert.equal(alias.entryId, 'entry:assistant:stable');
+});
+
+test('completed activity uses an immutable Codex-style work duration', () => {
+  assert.equal(desktopTurnWorkDurationLabel({
+    startedAtMs: 1_725_000_000_000,
+    completedAtMs: 1_725_000_352_000,
+  }), 'Worked for 5m 52s');
+  assert.equal(desktopTurnWorkDurationLabel({ startedAtMs: 100, completedAtMs: null }), null);
+});
+
+test('persisted entry correlation cannot bind a completed turn to an older identical reply', () => {
+  const completedTurn = turn({
+    id: 'turn-repeat-new',
+    status: 'succeeded',
+    assistantText: 'Same reply',
+    completed: true,
+    succeeded: true,
+    startedAtMs: 1_725_000_020_000,
+    completedAtMs: 1_725_000_030_000,
+    transcriptEntryId: 'entry:new',
+  });
+  const oldMessage: DesktopChatMessage = {
+    role: 'assistant',
+    text: 'Same reply',
+    timeLabel: '12:00',
+    timestampMs: 1_725_000_000_000,
+    entryId: 'entry:old',
+  };
+  const newMessage: DesktopChatMessage = {
+    ...oldMessage,
+    timeLabel: '12:01',
+    timestampMs: 1_725_000_030_000,
+    entryId: 'entry:new',
+  };
+
+  assert.equal(desktopAssistantMessageMatchesTurn(oldMessage, completedTurn), false);
+  assert.equal(desktopAssistantMessageMatchesTurn(newMessage, completedTurn), true);
+
+  const alias = createDesktopTurnRenderAlias(completedTurn);
+  const reconciled = reconcileDesktopMessagesWithTurnRenderAliases(
+    'session-a',
+    [oldMessage, newMessage],
+    new Map([[alias.turnId, alias]]),
+  );
+  assert.equal(reconciled[0]?.transcriptRenderId, undefined);
+  assert.equal(reconciled[1]?.transcriptRenderId, completedTurn.id);
 });
