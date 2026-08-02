@@ -506,7 +506,10 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   }
 
   const nextCursor = normalizeCursor(response.cursor);
-  if (cursorWentBackwards(previousCursor, nextCursor)) {
+  if (
+    cursorWentBackwards(previousCursor, nextCursor)
+    || (response.hasMore && nextCursor === previousCursor)
+  ) {
     return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, sessionTitlesById: input.sessionTitlesById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 

@@ -1022,6 +1022,7 @@ export function cloudGroupLocalAgentRequestAlreadyHandled(input: {
   requestMessageId: string;
   messages?: CloudMessage[];
   groupRows?: readonly IndexedCloudGroupRow[];
+  ignoreFailedCloudFallback?: boolean;
 }): boolean {
   const localAccountId = cleanText(input.localAccountId);
   const requestMessageId = cleanText(input.requestMessageId);
@@ -1034,6 +1035,11 @@ export function cloudGroupLocalAgentRequestAlreadyHandled(input: {
     if (wire.fromAccountId !== localAccountId) return false;
     const groupMessage = envelope?.kind === 'group-message' ? envelope.message : null;
     if (!groupMessage || groupMessage.senderAccountId !== localAccountId || groupMessage.senderKind !== 'agent') return false;
+    if (
+      input.ignoreFailedCloudFallback
+      && groupMessage.deliveryState === 'failed'
+      && groupMessage.id.startsWith('cloudrunmsg_')
+    ) return false;
     const linkedRequestId = cleanText(groupMessage.requestId) || cleanText(groupMessage.replyToMessageId);
     return linkedRequestId === requestMessageId;
   });

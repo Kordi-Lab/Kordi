@@ -7,6 +7,7 @@ import {
   type SetStateAction,
 } from 'react';
 import { upsertCanonicalMessageFast } from '@/lib/desktop';
+import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import type {
   CanonicalSessionState,
   Contact,
@@ -25,7 +26,6 @@ import {
   appendCloudGroupRequestingPlaceholder,
   cloudAgentRequestReachedCloud,
   cloudAgentRunAlreadyOwnsRequest,
-  cloudFallbackClaimErrorIsRetryable,
   cloudFallbackRunAlreadyOwnsRequest,
   cloudGroupAgentUnavailableFallbackRequest,
   removeCloudGroupOfflinePlaceholder,
@@ -34,6 +34,10 @@ import {
   upsertCanonicalRequestIntoLocalState,
   type CloudFallbackClaimAttemptResult,
 } from './cloudAgentRequestState';
+import {
+  cloudFallbackClaimErrorIsRetryable,
+  cloudFallbackClaimFailureDiagnostic,
+} from './cloudFallbackClaimDiagnostics';
 import {
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentRequestingNoticeRequest,
@@ -112,7 +116,10 @@ export function useCloudAgentAvailability({
       // Owner presence and invite propagation can race a fresh group send.
       // Retry only the bounded transient set; terminal failures remain final.
       const retryable = cloudFallbackClaimErrorIsRetryable(error);
-      reportWarning('[cloud-agent-fallback] claim failed', error);
+      reportWarning(
+        '[cloud-agent-fallback] claim failed',
+        cloudFallbackClaimFailureDiagnostic(error),
+      );
       return retryable ? 'retryable-failure' : 'terminal-failure';
     } finally {
       claimingRunKeysRef.current.delete(claim.idempotencyKey);
@@ -209,10 +216,12 @@ export function useCloudAgentAvailability({
           targetAgentDisplayName: candidate.targetAgentDisplayName,
           createdAtMs: Date.now(),
         });
-        setCanonicalSessionState((current) =>
-          upsertCanonicalRequestIntoLocalState(current, failedNoticeRequest)
+        const persistedNotice = await upsertCanonicalMessageFast(
+          failedNoticeRequest,
         );
-        await upsertCanonicalMessageFast(failedNoticeRequest);
+        setCanonicalSessionState((current) =>
+          mergeCanonicalMessageRow(current, persistedNotice)
+        );
       };
       const scheduleStatusCheck = (delayMs: number) => {
         const timeoutId = window.setTimeout(() => {
@@ -350,12 +359,18 @@ export function useCloudAgentAvailability({
           requestingNoticeRequest,
         )
       );
-      void upsertCanonicalMessageFast(requestingNoticeRequest).catch((error) => {
-        reportWarning(
-          '[cloud-group-agent-requesting] failed to persist processing notice',
-          error,
-        );
-      });
+      void upsertCanonicalMessageFast(requestingNoticeRequest)
+        .then((persistedNotice) => {
+          setCanonicalSessionState((current) =>
+            mergeCanonicalMessageRow(current, persistedNotice)
+          );
+        })
+        .catch((error) => {
+          reportWarning(
+            '[cloud-group-agent-requesting] failed to persist processing notice',
+            error,
+          );
+        });
     }
 
     for (const [key, timerId] of offlineTimersRef.current.entries()) {

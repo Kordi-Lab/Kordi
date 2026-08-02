@@ -14,6 +14,7 @@ import type {
   CanonicalSessionState,
   DesktopCollaborationState,
 } from '@/kordi-app/types';
+import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import type {
   CloudAccount,
   CloudAuthClient,
@@ -39,7 +40,6 @@ import {
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
   collapseCloudAgentOfflinePlaceholderForRequest,
-  upsertCanonicalRequestIntoLocalState,
 } from './cloudAgentRequestState';
 import {
   loadSession,
@@ -137,22 +137,24 @@ export function useCloudAgentCancellation({
             ? cancelDeliveredAtMs
             : undefined,
       });
-      setCanonicalState((current) => {
-        const nextState = upsertCanonicalRequestIntoLocalState(
-          current,
-          cancelNoticeRequest,
-        );
-        if (!nextState) return nextState;
-        const collapsedState =
-          collapseCloudAgentOfflinePlaceholderForRequest(
-            nextState,
-            processingMessage,
-            cancel.requestId,
-          );
-        canonicalStateRef.current = collapsedState;
-        return collapsedState;
-      });
       void upsertCanonicalMessageFast(cancelNoticeRequest)
+        .then((persistedNotice) => {
+          setCanonicalState((current) => {
+            const nextState = mergeCanonicalMessageRow(
+              current,
+              persistedNotice,
+            );
+            if (!nextState) return nextState;
+            const collapsedState =
+              collapseCloudAgentOfflinePlaceholderForRequest(
+                nextState,
+                processingMessage,
+                cancel.requestId,
+              );
+            canonicalStateRef.current = collapsedState;
+            return collapsedState;
+          });
+        })
         .catch((error) => {
           reportWarning(
             '[cloud-agent-mention] group cancel notice failed',
@@ -248,15 +250,16 @@ export function useCloudAgentRequestCancellation({
             }),
             now: Date.now(),
           });
-        await upsertCanonicalMessageFast(cancelNoticeRequest);
+        const persistedNotice = await upsertCanonicalMessageFast(
+          cancelNoticeRequest,
+        );
         // Apply the cancel and offline-placeholder removal together so
         // the replacement notice cannot flicker between renders.
         setCanonicalState((current) => {
-          const cancelledState =
-            upsertCanonicalRequestIntoLocalState(
-              current,
-              cancelNoticeRequest,
-            );
+          const cancelledState = mergeCanonicalMessageRow(
+            current,
+            persistedNotice,
+          );
           if (!cancelledState) return cancelledState;
           return collapseCloudAgentOfflinePlaceholderForRequest(
             cancelledState,

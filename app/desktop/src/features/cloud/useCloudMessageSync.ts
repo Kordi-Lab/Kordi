@@ -44,6 +44,7 @@ import { loadSession } from './session';
 // the normal delivery path.
 export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
 const CLOUD_MESSAGE_SNAPSHOT_LIMIT = 500;
+const CLOUD_SYNC_EVENT_PAGE_LIMIT = 1_000;
 
 type PendingCloudSyncRequest = {
   mode: 'diff' | 'full' | 'bootstrap';
@@ -153,6 +154,7 @@ export function useCloudMessageSync({
   const refreshMessagesOnce = useCallback(async (
     generation: number,
     settleUnreadReadiness: boolean = true,
+    publishMessages: boolean = true,
   ) => {
     if (!coordinator.isCurrentGeneration(generation)) return;
     const retainedPeerIds = Object.keys(messagesRef.current);
@@ -160,9 +162,11 @@ export function useCloudMessageSync({
     if (!account || initialPeerIds.length === 0) {
       if (!coordinator.isCurrentGeneration(generation)) return;
       messagesRef.current = {};
-      setMessages((current) => (
-        Object.keys(current).length === 0 ? current : {}
-      ));
+      if (publishMessages) {
+        setMessages((current) => (
+          Object.keys(current).length === 0 ? current : {}
+        ));
+      }
       if (settleUnreadReadiness) {
         markUnreadReadiness('ready', generation, bootstrapPeerKey);
       }
@@ -191,11 +195,12 @@ export function useCloudMessageSync({
       messagesRef.current,
       loaded.messagesByPeer,
     );
-    setMessages((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
-      if (cloudMessagesByPeerEqual(current, merged)) return current;
-      return merged;
-    });
+    if (publishMessages) {
+      setMessages((current) => {
+        const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
+        return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      });
+    }
     if (settleUnreadReadiness) {
       markUnreadReadiness(
         loaded.complete ? 'ready' : 'error',
@@ -236,7 +241,11 @@ export function useCloudMessageSync({
     let hiddenSessionIds = hiddenSessionIdsRef.current;
     let deletedSessionIds = deletedSessionIdsRef.current;
     let fallbackRequired = false;
-    for (let pass = 0; pass < 20; pass += 1) {
+    // A bootstrap cursor can be many pages behind the server (especially on a
+    // fresh install). Keep the accumulated state private until the cursor is
+    // exhausted so the sidebar never publishes a succession of partial
+    // session catalogs and message counts.
+    while (true) {
       const result = await syncCloudDiffOnce({
         accountId: account.accountId,
         messagesByPeer,
@@ -248,7 +257,11 @@ export function useCloudMessageSync({
         hiddenSessionIds,
         deletedSessionIds,
         shouldSaveCursor: () => coordinator.isCurrentGeneration(generation),
-        fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
+        fetchEvents: (cursor) => client.syncCloudEvents(
+          session.token,
+          cursor,
+          CLOUD_SYNC_EVENT_PAGE_LIMIT,
+        ),
       });
       if (!coordinator.isCurrentGeneration(generation)) return;
       if (result.fallbackRequired) {
@@ -336,7 +349,7 @@ export function useCloudMessageSync({
       if (request.mode === 'bootstrap') {
         // Establish the newest server state before replaying historical events,
         // then publish unread state only after the final authoritative snapshot.
-        await refreshMessagesOnce(generation, false);
+        await refreshMessagesOnce(generation, false, false);
         await syncDiffOnceForGeneration(generation, false);
         await refreshMessagesOnce(generation, true);
       } else if (request.mode === 'full') {

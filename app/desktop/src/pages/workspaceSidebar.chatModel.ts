@@ -258,33 +258,14 @@ export function useWorkspaceChatSidebarModel(chats: WorkspaceSidebarChats) {
           const isSelectedSpace =
             !isDirectHuman && selectedParticipantSpaceId === space.id;
           const expanded = !isDirectHuman && (isSelectedSpace || isActiveSpace);
-          const rootSessionIds = (() => {
-            if (!expanded) return [];
-            if (
-              isActiveSpace
-              && !isSelectedSpace
-              && activeSidebarRowSessionId
-            ) {
-              let rootSessionId = activeSidebarRowSessionId;
-              const seen = new Set<string>();
-              while (!seen.has(rootSessionId)) {
-                seen.add(rootSessionId);
-                const parentId =
-                  allSidebarSessionRowsById
-                    .get(rootSessionId)
-                    ?.session.forkedFromSessionId?.trim();
-                if (!parentId || !allSidebarSessionRowsById.has(parentId)) break;
-                rootSessionId = parentId;
-              }
-              return [rootSessionId];
-            }
-            return space.sessions
+          const rootSessionIds = expanded
+            ? space.sessions
               .filter((session) => {
                 const parentId = session.forkedFromSessionId?.trim();
                 return !parentId || !allSidebarSessionRowsById.has(parentId);
               })
-              .map((session) => session.id);
-          })();
+              .map((session) => session.id)
+            : [];
           return { spaceId: space.id, expanded, rootSessionIds };
         }),
         sessions: sidebarSessionInputs,

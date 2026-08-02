@@ -37,6 +37,19 @@ export function cloudAgentRuntimeSessionId(accountId?: string | null, cloudSessi
   return `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${localAccountId}:${runtimeTargetId}`;
 }
 
+export function cloudGroupAgentRuntimeSessionId(
+  accountId?: string | null,
+  groupId?: string | null,
+  targetCloudAgentId?: string | null,
+): string | null {
+  const groupRuntimeSessionId = cloudAgentRuntimeSessionId(accountId, groupId);
+  if (!groupRuntimeSessionId) return null;
+  const targetAgentId = cleanText(targetCloudAgentId);
+  return targetAgentId?.startsWith('cloud_agent_')
+    ? `${groupRuntimeSessionId}:${targetAgentId}`
+    : groupRuntimeSessionId;
+}
+
 export function compactCloudAgentRuntimeRoute(route?: DesktopChatMessageRoute | null): DesktopChatMessageRoute | null {
   const compacted: DesktopChatMessageRoute = {};
   const model = cleanText(route?.model);

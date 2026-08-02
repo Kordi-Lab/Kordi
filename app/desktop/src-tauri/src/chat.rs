@@ -100,7 +100,7 @@ use transient_drafts::{
 };
 
 use turns::{
-    apply_desktop_turn_event, desktop_task_tools_from_messages, prune_finished_turns,
+    apply_desktop_turn_event, desktop_task_tools_from_messages, reserve_turn_if_session_idle,
     session_has_running_turn, snapshot_turn, turn_snapshot_has_model_task_tools, update_turn,
 };
 

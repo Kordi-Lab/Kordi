@@ -172,7 +172,13 @@ export function useCloudGroupControlSender({
         explicitTargetAccountIds,
         memberLeaves: input.memberLeaves,
       });
-    if (targetAccountIds.length === 0) return;
+    if (targetAccountIds.length === 0) {
+      finishChatPerformanceSpan(firstAckPerformanceSpan, {
+        resultClass: 'failed',
+        recipientCount: 0,
+      });
+      return;
+    }
     const groupTitle = cloudGroupTitleForOutgoingControl({
       kind: input.kind,
       groupTitle: input.groupTitle,
@@ -237,6 +243,7 @@ export function useCloudGroupControlSender({
       envelope: string,
       attachmentCount: number,
     ) => finishChatPerformanceSpan(firstAckPerformanceSpan, () => ({
+      resultClass: 'success',
       recipientCount: targetAccountIds.length,
       attachmentCount,
       payloadBytes: chatPerformancePayloadBytes(envelope),
@@ -282,7 +289,13 @@ export function useCloudGroupControlSender({
       const queued = input.retryFailed
         ? await outbox.requeueFailed(outboxEntry)
         : await outbox.enqueue(outboxEntry);
-      if (!queued) return;
+      if (!queued) {
+        finishChatPerformanceSpan(firstAckPerformanceSpan, {
+          resultClass: 'duplicate',
+          recipientCount: targetAccountIds.length,
+        });
+        return;
+      }
       let sentAny = false;
       const sentMessages: CloudMessage[] = [];
       let preparedEntry: Promise<CloudGroupOutboxEntry> | null = null;
@@ -376,6 +389,11 @@ export function useCloudGroupControlSender({
         requiredTargetAccountIds,
       );
     if (requiredControlFailure) {
+      finishChatPerformanceSpan(firstAckPerformanceSpan, {
+        resultClass: 'failed',
+        recipientCount: targetAccountIds.length,
+        errorCount: 1,
+      });
       throw requiredControlFailure.reason instanceof Error
         ? requiredControlFailure.reason
         : new Error(String(
@@ -402,6 +420,11 @@ export function useCloudGroupControlSender({
     const failureMessage = typeof firstFailure === 'string'
       ? firstFailure
       : 'Group message failed.';
+    finishChatPerformanceSpan(firstAckPerformanceSpan, {
+      resultClass: 'failed',
+      recipientCount: targetAccountIds.length,
+      errorCount: targetAccountIds.length,
+    });
     throw firstFailure instanceof Error
       ? firstFailure
       : new Error(failureMessage);

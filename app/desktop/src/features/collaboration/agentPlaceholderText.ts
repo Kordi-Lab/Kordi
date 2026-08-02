@@ -7,13 +7,14 @@
  * can't drift between the two consumers.
  */
 
-const PROCESSING_PLACEHOLDER_PATTERN = /^(?:processing|requesting)(?:\.{0,3}|…)?$/i;
+const PROCESSING_PLACEHOLDER_PATTERN = /^(?:queued|processing|requesting)(?:\.{0,3}|…)?$/i;
 
 const OUTREACH_CONTEXT_ENVELOPE_PATTERN = /^Context:\s*[\s\S]*?\n\s*Request:\s*\n?([\s\S]*)$/i;
 
 /**
- * Returns true if a collaboration message body is the synthetic "processing..." /
- * "requesting..." placeholder Kordi writes while an agent reply is in flight.
+ * Returns true if a collaboration message body is the synthetic "queued..." /
+ * "processing..." / "requesting..." placeholder Kordi writes while an agent
+ * reply is in flight.
  * Matches optional 0-3 trailing dots or a single ellipsis character.
  */
 export function isProcessingPlaceholderText(text: string): boolean {

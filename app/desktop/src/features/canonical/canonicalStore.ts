@@ -9,6 +9,7 @@ import {
   canonicalJsonValuesEqual,
   canonicalMessagesEqual,
 } from './canonicalEquality';
+import { canApplyCloudAgentTurnTransition } from './cloudAgentTurnLifecycle';
 
 export type SessionHydrationState = 'cold' | 'loading' | 'ready' | 'error';
 
@@ -48,13 +49,16 @@ function mergeMessages(
       changed = true;
       continue;
     }
+    if (message.updatedAtMs < previous.updatedAtMs) continue;
     if (
-      message.updatedAtMs >= previous.updatedAtMs
-      && !canonicalMessagesEqual(previous, message)
+      previous.messageKind === 'agent-turn'
+      || message.messageKind === 'agent-turn'
     ) {
-      byId.set(message.id, message);
-      changed = true;
+      if (!canApplyCloudAgentTurnTransition(previous, message)) continue;
     }
+    if (canonicalMessagesEqual(previous, message)) continue;
+    byId.set(message.id, message);
+    changed = true;
   }
   if (!changed) return existing;
   const merged = [...byId.values()].sort(compareCanonicalMessages);

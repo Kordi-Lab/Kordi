@@ -124,6 +124,49 @@ test('an older page prepends without replacing the existing ready tail', () => {
   assert.equal(store.hasOlderBySessionId['session:one'], false);
 });
 
+test('hydration cannot replace a terminal agent turn with stale processing state', () => {
+  const terminal: CanonicalSessionMessage = {
+    ...message('agent-response', 'session:one', 4),
+    senderIdentityId: 'agent:cloud:account:agent',
+    senderRole: 'owned-agent',
+    messageKind: 'agent-turn',
+    contentText: 'Finished answer',
+    content: { deliveryState: 'complete', requestId: 'request:one' },
+    status: 'complete',
+    updatedAtMs: 10,
+  };
+  let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [terminal],
+    oldestSequenceNum: 4,
+    newestSequenceNum: 4,
+    hasOlder: false,
+  });
+
+  const staleProcessing: CanonicalSessionMessage = {
+    ...terminal,
+    contentText: 'processing...',
+    content: { deliveryState: 'processing', requestId: 'request:one' },
+    status: 'processing',
+    updatedAtMs: 20,
+  };
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [staleProcessing],
+    oldestSequenceNum: 4,
+    newestSequenceNum: 4,
+    hasOlder: false,
+  });
+
+  assert.equal(
+    store.messagesBySessionId['session:one']?.find(
+      (item) => item.id === terminal.id,
+    ),
+    terminal,
+  );
+});
+
 test('an empty terminal page clears stale has-older state without deleting loaded rows', () => {
   let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
   store = mergeCanonicalMessagePage(store, {

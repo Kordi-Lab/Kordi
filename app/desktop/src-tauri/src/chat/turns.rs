@@ -223,7 +223,15 @@ pub(super) fn turn_matches_running_session(
         .unwrap_or(false)
 }
 
-pub(super) async fn prune_finished_turns(manager: &DesktopChatManager) {
+pub(super) async fn reserve_turn_if_session_idle(
+    manager: &DesktopChatManager,
+    turn_id: String,
+    handle: super::DesktopChatTurnHandle,
+) -> bool {
+    let session_id = match handle.snapshot.lock() {
+        Ok(snapshot) => snapshot.session_id.clone(),
+        Err(_) => return false,
+    };
     let mut turns = manager.turns.lock().await;
     turns.retain(|_, turn| {
         turn.snapshot
@@ -231,6 +239,14 @@ pub(super) async fn prune_finished_turns(manager: &DesktopChatManager) {
             .map(|snapshot| !snapshot.completed)
             .unwrap_or(false)
     });
+    if turns
+        .values()
+        .any(|turn| turn_matches_running_session(&turn.snapshot, &session_id))
+    {
+        return false;
+    }
+    turns.insert(turn_id, handle);
+    true
 }
 
 pub(super) async fn session_has_running_turn(

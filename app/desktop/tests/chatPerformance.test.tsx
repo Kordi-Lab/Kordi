@@ -26,43 +26,66 @@ test.after(() => {
   delete globalThis.__KORDI_PERF_DIAGNOSTICS__;
 });
 
+function withoutPerformanceDebug(run: () => void) {
+  const originalDebug = globalThis.console.debug;
+  globalThis.console.debug = () => {};
+  try {
+    run();
+  } finally {
+    globalThis.console.debug = originalDebug;
+  }
+}
+
 test('performance spans stay disabled outside Vite development without an explicit flag', () => {
   const span = beginChatPerformanceSpan('canonical-page-ipc');
   assert.equal(span, null);
   assert.deepEqual(readChatPerformanceRecords(), []);
 });
 
-test('performance spans expose only fixed numeric counts and payload bytes', () => {
+test('performance spans expose only fixed counts, result classes, and payload bytes', () => {
   globalThis.__KORDI_PERF_DIAGNOSTICS__ = true;
-  const originalDebug = console.debug;
-  console.debug = () => {};
-  try {
+  withoutPerformanceDebug(() => {
     const span = beginChatPerformanceSpan('cloud-message-index');
     assert.ok(span);
     finishChatPerformanceSpan(span, () => ({
       messageCount: 20_000,
       rowCount: 1_000,
       payloadBytes: chatPerformancePayloadBytes('\u4F60\u597D'),
+      resultClass: 'success',
       accountId: 'acct_secret',
     } as never));
-  } finally {
-    console.debug = originalDebug;
-  }
+  });
 
   const [record] = readChatPerformanceRecords();
   assert.equal(record?.name, 'cloud-message-index');
   assert.equal(record?.metrics.messageCount, 20_000);
   assert.equal(record?.metrics.rowCount, 1_000);
   assert.equal(record?.metrics.payloadBytes, 6);
+  assert.equal(record?.metrics.resultClass, 'success');
   assert.equal('accountId' in (record?.metrics ?? {}), false);
   assert.equal(JSON.stringify(record).includes('acct_secret'), false);
 });
 
+test('performance spans discard arbitrary result and error text', () => {
+  globalThis.__KORDI_PERF_DIAGNOSTICS__ = true;
+  withoutPerformanceDebug(() => {
+    const span = beginChatPerformanceSpan('cloud-agent-ownership-guard');
+    assert.ok(span);
+    finishChatPerformanceSpan(span, {
+      resultClass: 'provider body with a secret' as never,
+      error: 'raw provider body' as never,
+    });
+  });
+
+  const [record] = readChatPerformanceRecords();
+  assert.deepEqual(record?.metrics, {});
+  assert.equal(JSON.stringify(record).includes('secret'), false);
+  assert.equal(JSON.stringify(record).includes('provider body'), false);
+});
+
 test('session click correlation stays internal and completes only for the matching transcript', () => {
   globalThis.__KORDI_PERF_DIAGNOSTICS__ = true;
-  const originalDebug = console.debug;
-  console.debug = () => {};
-  try {
+  withoutPerformanceDebug(() => {
     startSessionClickToFirstMessage('session:private-value');
     completeSessionClickToFirstMessage('session:other', {
       messageCount: 10,
@@ -74,9 +97,7 @@ test('session click correlation stays internal and completes only for the matchi
       messageCount: 10,
       visibleRowCount: 5,
     });
-  } finally {
-    console.debug = originalDebug;
-  }
+  });
 
   const [record] = readChatPerformanceRecords();
   assert.equal(record?.name, 'session-click-to-first-message');
@@ -86,13 +107,9 @@ test('session click correlation stays internal and completes only for the matchi
 
 test('Cloud index instrumentation records aggregate sizes without source values', () => {
   globalThis.__KORDI_PERF_DIAGNOSTICS__ = true;
-  const originalDebug = console.debug;
-  console.debug = () => {};
-  try {
+  withoutPerformanceDebug(() => {
     buildCloudMessageIndex('acct_private', {});
-  } finally {
-    console.debug = originalDebug;
-  }
+  });
 
   const [record] = readChatPerformanceRecords();
   assert.equal(record?.name, 'cloud-message-index');

@@ -16,6 +16,8 @@ type CollaborationConversationViewModel = Conversation & {
   _updatedAtMs?: number;
 };
 
+export const COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60_000;
+
 function collaborationHostLabel(host?: DesktopCollaborationHost | null) {
   return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Cloud';
 }
@@ -196,7 +198,16 @@ function isCollaborationProcessingResponsePlaceholder(
     && isCollaborationAgentResponseDirection(message);
 }
 
-function historicalCollaborationProcessingPlaceholderIds(conversation: DesktopCollaborationConversation) {
+function collaborationTimestampIsExpired(timestampMs: number, nowMs: number) {
+  return Number.isFinite(timestampMs)
+    && timestampMs > 0
+    && nowMs - timestampMs >= COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
+}
+
+function historicalCollaborationProcessingPlaceholderIds(
+  conversation: DesktopCollaborationConversation,
+  nowMs: number,
+) {
   const requestIdsWithBaseMessage = new Set<string>();
   for (const message of conversation.messages) {
     const requestId = message.requestId?.trim();
@@ -218,7 +229,8 @@ function historicalCollaborationProcessingPlaceholderIds(conversation: DesktopCo
     const requestId = message.requestId?.trim() || null;
     if (processing) {
       if (
-        (requestId && terminalResponseRequestIds.has(requestId))
+        collaborationTimestampIsExpired(message.timestampMs, nowMs)
+        || (requestId && terminalResponseRequestIds.has(requestId))
         || ((!requestId || !requestIdsWithBaseMessage.has(requestId)) && hasLaterTranscriptActivity)
       ) {
         staleIds.add(message.id);
@@ -286,6 +298,7 @@ export function mapCollaborationConversationToViewModel(
   conversation: DesktopCollaborationConversation,
   host: DesktopCollaborationHost | undefined,
   localAgentLabel: string,
+  nowMs: number = Date.now(),
 ): CollaborationConversationViewModel {
   const hostLabel = collaborationHostLabel(host);
   const isPersonChat = isCollaborationConversationPersonChat(conversation);
@@ -295,11 +308,24 @@ export function mapCollaborationConversationToViewModel(
   const isAgent = !isPersonChat && isCollaborationAgentRuntime(conversation.peerRuntime);
   const hasSentCollaborationRequest = Boolean(conversation.outreach?.sourceRequestId)
     || conversation.messages.some((message) => Boolean(message.requestId));
-  const staleProcessingPlaceholderIds = historicalCollaborationProcessingPlaceholderIds(conversation);
+  const staleProcessingPlaceholderIds = historicalCollaborationProcessingPlaceholderIds(
+    conversation,
+    nowMs,
+  );
   const latestAgentRequestState = latestOutboundAgentRequestState(conversation);
+  const latestRequestTimestampMs = [...conversation.messages]
+    .reverse()
+    .find((message) => (
+      message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
+      && Boolean(message.requestId?.trim())
+    ))?.timestampMs;
   const awaitingReplyFromSentRequest = conversation.awaitingReply
     && hasSentCollaborationRequest
-    && !isTerminalAgentRequestState(latestAgentRequestState);
+    && !isTerminalAgentRequestState(latestAgentRequestState)
+    && !(
+      latestRequestTimestampMs
+      && collaborationTimestampIsExpired(latestRequestTimestampMs, nowMs)
+    );
   const activeAgentReplyMessage = awaitingReplyFromSentRequest
     ? [...conversation.messages].reverse().find((message) => (
         isCollaborationAgentResponseDirection(message)
@@ -354,7 +380,11 @@ export function mapCollaborationConversationToViewModel(
   const awaitingAgentOutreach = conversation.outreach?.targetKind === 'agent'
     && isActiveOutreachStatus(conversation.outreach.status)
     && !isTerminalAgentRequestState(conversation.outreach.deliveryState)
-    && hasSentCollaborationRequest;
+    && hasSentCollaborationRequest
+    && !collaborationTimestampIsExpired(
+      conversation.outreach.updatedAtMs || conversation.outreach.createdAtMs,
+      nowMs,
+    );
   const outreachAgentLabel = conversation.outreach?.targetDisplayName || remoteAgentLabel;
   const outreachAgentAvatarSeed = conversation.outreach?.targetAgentId || remoteAgentAvatarSeed;
   const outreachPrefix = conversation.outreach && !isPersonChat

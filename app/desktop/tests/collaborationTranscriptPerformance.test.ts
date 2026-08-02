@@ -66,7 +66,12 @@ test('Bridge processing placeholder classification stays linear at 5,000 rows', 
     },
   ).flat();
 
-  const view = mapCollaborationConversationToViewModel({ ...conversation, messages }, undefined, 'My Kordi');
+  const view = mapCollaborationConversationToViewModel(
+    { ...conversation, messages },
+    undefined,
+    'My Kordi',
+    10_000,
+  );
   const propertyReads = readCounter.count();
 
   assert.equal(view.messages.length, messages.length);

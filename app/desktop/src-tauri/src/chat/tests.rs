@@ -82,3 +82,48 @@ async fn running_turn_lookup_is_session_scoped() {
     assert!(session_has_running_turn(&manager, "session-a").await);
     assert!(!session_has_running_turn(&manager, "session-b").await);
 }
+
+#[tokio::test]
+async fn concurrent_turn_admission_is_atomic_per_session() {
+    fn turn_handle(turn_id: &str) -> DesktopChatTurnHandle {
+        DesktopChatTurnHandle {
+            snapshot: Arc::new(Mutex::new(DesktopChatTurnSnapshot {
+                id: turn_id.to_string(),
+                session_id: "session-shared".to_string(),
+                prompt: "work".to_string(),
+                status: "starting".to_string(),
+                message: "Working…".to_string(),
+                assistant_text: String::new(),
+                thinking_text: String::new(),
+                tools: Vec::new(),
+                completed: false,
+                succeeded: false,
+                started_at_ms: 1,
+                completed_at_ms: None,
+                transcript_entry_id: None,
+                error: None,
+                transcript_refresh_required: false,
+            })),
+            cancel: tokio_util::sync::CancellationToken::new(),
+        }
+    }
+
+    let manager = DesktopChatManager::default();
+    let left_manager = manager.clone();
+    let right_manager = manager.clone();
+    let (left, right) = tokio::join!(
+        reserve_turn_if_session_idle(
+            &left_manager,
+            "turn-left".to_string(),
+            turn_handle("turn-left"),
+        ),
+        reserve_turn_if_session_idle(
+            &right_manager,
+            "turn-right".to_string(),
+            turn_handle("turn-right"),
+        ),
+    );
+
+    assert_ne!(left, right);
+    assert_eq!(manager.turns.lock().await.len(), 1);
+}

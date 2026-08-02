@@ -15,6 +15,8 @@ import { readKordiAppModelImplementationSource } from './helpers/appModelSource'
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
 const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
 const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
+const cloudGroupAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
+const cloudGroupAgentPublicationSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentPublication.ts', import.meta.url), 'utf8');
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
@@ -327,7 +329,7 @@ test('fresh group sends claim fallback before waiting for a background Cloud syn
   const outboxBlock = source.slice(outboxBlockStart, outboxBlockStart + 3200);
   assert.match(outboxBlock, /await Promise\.all\(\[[\s\S]*claimFreshFallback\(\s*sentMessages,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
   const directSendBlockStart = source.indexOf('const sent = fulfilledCloudGroupSends(results);', outboxBlockStart);
-  const directSendBlock = source.slice(directSendBlockStart, directSendBlockStart + 900);
+  const directSendBlock = source.slice(directSendBlockStart, directSendBlockStart + 1800);
   assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshFallback\(\s*sent,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
 });
 
@@ -355,12 +357,14 @@ test('cloud group hosted-agent sends render processing in the final response slo
 });
 
 test('cloud group owner processing upserts the shared slot so a local placeholder cannot block broadcast', () => {
-  const source = cloudGroupAgentControlSource();
-  const processingMessageIdIndex = source.indexOf('const processingMessageId = `msg:cloud-agent-processing:${message.id}:${account.accountId}`;');
+  const source = `${cloudGroupAgentExecutionSource()}\n${cloudGroupAgentPublicationSource()}`;
+  const processingMessageIdIndex = source.indexOf(
+    '`msg:cloud-agent-processing:${message.id}:${account.accountId}`',
+  );
   assert.ok(processingMessageIdIndex >= 0, 'expected owner cloud group processing slot');
   const processingBlock = source.slice(processingMessageIdIndex);
-  assert.match(processingBlock, /await upsertCanonicalMessageFast\(processingRequest\)/);
-  assert.match(processingBlock, /upsertRequest\(current, processingRequest\)/);
+  assert.match(processingBlock, /await upsertCanonicalMessageFast\(\s*processingRequest,?\s*\)/);
+  assert.match(processingBlock, /mergeCanonicalMessageRow\(\s*current,\s*persistedProcessingMessage,?\s*\)/);
   assert.doesNotMatch(processingBlock, /await (?:append|upsert)CanonicalMessage\(\{/);
   assert.match(processingBlock, /sourceTransport:\s*'cloud-group-agent'/);
   assert.match(processingBlock, /targetAccountIds\.map\(\(targetAccountId\) => \([\s\S]*runtime\.client\.sendMessage/);
@@ -375,17 +379,17 @@ test('cloud group terminal hosted-agent responses reserve the stable slot even w
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
   const stateSource = cloudAgentRequestStateSource();
-  const agentSource = cloudGroupAgentControlSource();
+  const agentSource = cloudGroupAgentExecutionSource();
   assert.match(stateSource, /removeCloudGroupPendingRowsForTerminalResponse/);
   assert.match(stateSource, /cloudGroupPendingAgentRowMatches/);
   assert.match(stateSource, /cloud-group-agent-unavailable-timeout:/);
-  assert.match(agentSource, /sender: agentDisplayName/);
+  assert.match(agentSource, /sender: presentation\.displayName/);
   assert.doesNotMatch(agentSource, /sender:\s*'My Kordi'/);
 });
 
 test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {
   const stateSource = cloudGroupControlApplicationSource();
-  const agentSource = cloudGroupAgentControlSource();
+  const agentSource = `${cloudGroupAgentControlSource()}\n${cloudGroupAgentExecutionSource()}`;
   assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
   assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
   assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentOwnerAccountId\)[\s\S]*?=== account\.accountId/);

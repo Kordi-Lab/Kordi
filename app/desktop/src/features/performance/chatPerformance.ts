@@ -8,9 +8,31 @@ export type ChatPerformanceSpanName =
   | 'session-click-to-first-message'
   | 'transcript-virtual-render'
   | 'sidebar-virtual-render'
-  | 'cloud-send-to-first-ack';
+  | 'cloud-send-to-first-ack'
+  | 'cloud-group-replay'
+  | 'cloud-agent-ownership-guard'
+  | 'cloud-agent-runtime-start'
+  | 'cloud-agent-model-completion'
+  | 'cloud-agent-terminal-upsert'
+  | 'cloud-agent-terminal-fanout'
+  | 'cloud-agent-activity-publish';
+
+export const CHAT_PERFORMANCE_RESULT_CLASSES = [
+  'success',
+  'failed',
+  'timeout',
+  'queued',
+  'duplicate',
+  'owned-elsewhere',
+  'cancelled',
+  'partial',
+] as const;
+
+export type ChatPerformanceResultClass =
+  typeof CHAT_PERFORMANCE_RESULT_CLASSES[number];
 
 export type ChatPerformanceMetrics = {
+  resultClass?: ChatPerformanceResultClass;
   itemCount?: number;
   messageCount?: number;
   sessionCount?: number;
@@ -72,7 +94,18 @@ function safeMetric(value: unknown) {
 
 function safeMetrics(metrics: ChatPerformanceMetrics): ChatPerformanceMetrics {
   const result: ChatPerformanceMetrics = {};
-  const assign = (key: keyof ChatPerformanceMetrics) => {
+  const resultClass = metrics.resultClass;
+  if (
+    resultClass &&
+    CHAT_PERFORMANCE_RESULT_CLASSES.includes(
+      resultClass,
+    )
+  ) {
+    result.resultClass = resultClass;
+  }
+  const assign = (
+    key: Exclude<keyof ChatPerformanceMetrics, 'resultClass'>,
+  ) => {
     const value = safeMetric(metrics[key]);
     if (value !== undefined) result[key] = value;
   };

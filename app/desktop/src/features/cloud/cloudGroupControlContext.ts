@@ -12,6 +12,7 @@ import type {
   CloudPublicProfile,
 } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
+import type { CloudAgentTurnCoordinator } from './cloudAgentTurnCoordinator';
 import type { CloudGroupControlEnvelope, CloudGroupParticipant } from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import type { CloudSessionActivityStore } from './cloudSessionActivity';
@@ -62,6 +63,7 @@ export type CloudGroupCanonicalRuntime = {
 
 export type CloudGroupAgentRuntime = {
   client: CloudAuthClient;
+  turnCoordinator: CloudAgentTurnCoordinator;
   messageIndex(): CloudMessageIndex;
   sessionActivity(): CloudSessionActivityStore;
   setSessionActivity: Dispatch<SetStateAction<CloudSessionActivityStore>>;

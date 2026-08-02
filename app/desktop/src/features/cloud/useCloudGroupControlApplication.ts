@@ -1,5 +1,7 @@
 import {
   useCallback,
+  useEffect,
+  useMemo,
   useRef,
   type Dispatch,
   type MutableRefObject,
@@ -27,6 +29,7 @@ import {
   compactCloudAgentNativeContextMessages,
   cloudMessageMentionsLocalAgent,
 } from './cloudAgentMessages';
+import { CloudAgentTurnCoordinator } from './cloudAgentTurnCoordinator';
 import type {
   CloudSessionActivityStore,
 } from './cloudSessionActivity';
@@ -60,7 +63,6 @@ import {
   removeCloudGroupOfflinePlaceholder,
   removeCloudGroupPendingRowsForTerminalResponse,
   removeCloudGroupTimeoutPlaceholderForTerminalResponse,
-  upsertCanonicalRequestIntoLocalState,
 } from './cloudAgentRequestState';
 import {
   isRecentCloudAgentMention,
@@ -124,7 +126,9 @@ export function cloudGroupAgentProcessingSlotForResponse(
         : null,
     ).toLowerCase();
     return (
-      message.status === 'processing'
+      message.status === 'queued'
+      || message.status === 'processing'
+      || deliveryState === 'queued'
       || deliveryState === 'processing'
     );
   }) ?? null;
@@ -138,7 +142,7 @@ export function cloudGroupIncomingMessageAlreadyApplied(
   const incomingState =
     cleanCloudText(incomingDeliveryState).toLowerCase();
   const incomingIsTerminal = Boolean(incomingState)
-    && !['sending', 'processing'].includes(incomingState);
+    && !['sending', 'queued', 'processing'].includes(incomingState);
   if (!incomingIsTerminal) return true;
 
   const content = cloudObjectContent(existingMessage.content);
@@ -148,9 +152,18 @@ export function cloudGroupIncomingMessageAlreadyApplied(
       : null,
   ).toLowerCase();
   const existingStatus = existingMessage.status.trim().toLowerCase();
+  const existingIsFailedFallback = (
+    existingStatus === 'failed'
+    || existingDeliveryState === 'failed'
+  ) && existingMessage.sourceEventId?.startsWith(
+    'cloud-group-agent:cloudrunmsg_',
+  ) === true;
+  if (existingIsFailedFallback && incomingState === 'complete') {
+    return false;
+  }
   const existingIsPending =
-    ['sending', 'processing'].includes(existingStatus)
-    || ['sending', 'processing'].includes(existingDeliveryState);
+    ['sending', 'queued', 'processing'].includes(existingStatus)
+    || ['sending', 'queued', 'processing'].includes(existingDeliveryState);
   if (existingIsPending) return false;
 
   // The offline tier is a local timeout hint, not a terminal Cloud
@@ -280,6 +293,11 @@ export function useCloudGroupControlApplication({
   defaultRoute,
   reportWarning,
 }: CloudGroupControlApplicationProps) {
+  const turnCoordinator = useMemo(
+    () => new CloudAgentTurnCoordinator(account?.accountId ?? null),
+    [account?.accountId],
+  );
+  useEffect(() => () => turnCoordinator.dispose(), [turnCoordinator]);
   const sessionPreparationCacheRef = useRef<{
     accountId: string | null;
     entries: CloudGroupSessionPreparationCache;
@@ -369,11 +387,12 @@ export function useCloudGroupControlApplication({
     });
     if (!messageContext) return;
 
-    applyCloudGroupAgentControl({
+    await applyCloudGroupAgentControl({
       context: messageContext,
       setCanonicalState: publishCanonicalStateImmediately,
       runtime: {
         client,
+        turnCoordinator,
         messageIndex: () => messageIndexRef.current,
         sessionActivity: () => sessionActivityRef.current,
         setSessionActivity,
@@ -396,7 +415,6 @@ export function useCloudGroupControlApplication({
       },
       stateOps: {
         cleanText: cleanCloudText,
-        upsertRequest: upsertCanonicalRequestIntoLocalState,
         upsertIdentity: upsertCanonicalIdentityIntoLocalState,
         removePendingRows:
           removeCloudGroupPendingRowsForTerminalResponse,
@@ -435,6 +453,7 @@ export function useCloudGroupControlApplication({
     setLocalTurns,
     setSessionActivity,
     syncDiff,
+    turnCoordinator,
     turnIdsByRequestIdRef,
   ]);
   return { apply, flushCanonicalState };

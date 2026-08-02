@@ -11,6 +11,7 @@ import {
   cloudAgentResponseExistsForRequest,
   cloudGroupAgentResponseExistsForRequest,
   cloudFallbackClaimErrorIsRetryable,
+  cloudFallbackClaimFailureDiagnostic,
   cloudFallbackRunClaimsForMessages,
 } from '../src/features/cloud/useCloudCollaborationState';
 
@@ -49,6 +50,33 @@ test('cloud fallback claim retries transient presence, invite, and network races
   for (const code of ['provider_auth_not_configured', 'requester_mismatch', 'invalid_session']) {
     assert.equal(cloudFallbackClaimErrorIsRetryable({ code }), false, code);
   }
+});
+
+test('cloud fallback claim diagnostics retain only a safe code, status, and retry disposition', () => {
+  const retryable = cloudFallbackClaimFailureDiagnostic({
+    code: 'rate_limited',
+    status: 429,
+    message: 'secret provider response',
+    body: '<html>private</html>',
+  });
+  assert.deepEqual(retryable, {
+    errorCode: 'rate_limited',
+    httpStatus: 429,
+    retryDisposition: 'retry',
+  });
+
+  const unknown = cloudFallbackClaimFailureDiagnostic({
+    code: 'private_provider_token',
+    status: 999,
+    message: 'do not log me',
+  });
+  assert.deepEqual(unknown, {
+    errorCode: 'unknown',
+    httpStatus: null,
+    retryDisposition: 'terminal',
+  });
+  assert.equal(JSON.stringify(unknown).includes('private_provider_token'), false);
+  assert.equal(JSON.stringify(unknown).includes('do not log me'), false);
 });
 
 test('cloud local group owner agent detects existing Cloud fallback response for request', () => {
@@ -90,6 +118,61 @@ test('cloud local group owner agent detects existing Cloud fallback response for
       direction: 'outgoing',
       sessionId: groupId,
     }],
+  }), true);
+});
+
+test('cloud local group owner can repair a failed fallback but not replace a Cloud success', () => {
+  const groupId = 'session:group:repair';
+  const requestMessageId = 'msg:ui:group_repair';
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'person' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'admin' as const },
+  ];
+  const response = (deliveryState: 'complete' | 'failed', id: string) => ({
+    ...message,
+    messageId: `${id}_wire`,
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    direction: 'outgoing' as const,
+    sessionId: groupId,
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId,
+      groupSpaceId: groupId,
+      groupTitle: null,
+      createdByAccountId: 'acct_peer',
+      actor: participants[0],
+      participants,
+      message: {
+        id,
+        senderAccountId: 'acct_me',
+        text: deliveryState === 'failed' ? 'No provider configured yet.' : 'Cloud answer',
+        createdAtMs: 2_000,
+        senderKind: 'agent',
+        deliveryState,
+        requestId: requestMessageId,
+        replyToMessageId: requestMessageId,
+      },
+    }),
+  });
+
+  assert.equal(cloudGroupAgentResponseExistsForRequest({
+    localAccountId: 'acct_me',
+    requestMessageId,
+    messages: [response('failed', 'cloudrunmsg_failed')],
+    ignoreFailedCloudFallback: true,
+  }), false);
+  assert.equal(cloudGroupAgentResponseExistsForRequest({
+    localAccountId: 'acct_me',
+    requestMessageId,
+    messages: [response('failed', 'msg:cloud-agent-local-failed')],
+    ignoreFailedCloudFallback: true,
+  }), true);
+  assert.equal(cloudGroupAgentResponseExistsForRequest({
+    localAccountId: 'acct_me',
+    requestMessageId,
+    messages: [response('complete', 'cloudrunmsg_complete')],
+    ignoreFailedCloudFallback: true,
   }), true);
 });
 

@@ -196,6 +196,53 @@ test('cloud group local agent requests are considered handled after a synced pro
   }), true);
 });
 
+test('cloud group local agent may repair a failed hosted fallback response', () => {
+  const requestId = 'msg_request_repair';
+  const responseBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:repair',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_b',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'admin' },
+    ],
+    message: {
+      id: 'cloudrunmsg_failed',
+      senderAccountId: 'acct_a',
+      text: 'No provider configured yet.',
+      createdAtMs: 200,
+      senderKind: 'agent',
+      deliveryState: 'failed',
+      requestId,
+      replyToMessageId: requestId,
+    },
+  });
+  const messages = [{
+    messageId: 'cloudrunmsg_failed_wire',
+    fromAccountId: 'acct_a',
+    toAccountId: 'acct_b',
+    body: responseBody,
+    createdAt: new Date(200).toISOString(),
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing' as const,
+  }];
+
+  assert.equal(cloudGroupLocalAgentRequestAlreadyHandled({
+    localAccountId: 'acct_a',
+    requestMessageId: requestId,
+    messages,
+  }), true);
+  assert.equal(cloudGroupLocalAgentRequestAlreadyHandled({
+    localAccountId: 'acct_a',
+    requestMessageId: requestId,
+    messages,
+    ignoreFailedCloudFallback: true,
+  }), false);
+});
+
 test('cloud group replay deduplicates fanout rows for the same canonical message', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',

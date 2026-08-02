@@ -70,11 +70,26 @@ test('cloud startup snapshots latest messages before catch-up and publishes afte
   );
   assert.match(
     source,
-    /request\.mode === 'bootstrap'[\s\S]*refreshMessagesOnce\(generation, false\)[\s\S]*syncDiffOnceForGeneration\(generation, false\)[\s\S]*refreshMessagesOnce\(generation, true\)/,
+    /request\.mode === 'bootstrap'[\s\S]*refreshMessagesOnce\(generation, false, false\)[\s\S]*syncDiffOnceForGeneration\(generation, false\)[\s\S]*refreshMessagesOnce\(generation, true\)/,
   );
   assert.match(
     source,
     /client\.listMessages\(session\.token, peerId, CLOUD_MESSAGE_SNAPSHOT_LIMIT\)/,
+  );
+  assert.match(
+    source,
+    /while \(true\)[\s\S]*syncCloudEvents\([\s\S]*CLOUD_SYNC_EVENT_PAGE_LIMIT[\s\S]*if \(!result\.hasMore\) break/,
+    'initial event replay must drain every page before publishing the catalog',
+  );
+  assert.doesNotMatch(
+    source,
+    /pass < 20/,
+    'a fixed page cap makes large accounts publish partial session catalogs',
+  );
+  assert.match(
+    source,
+    /if \(publishMessages\) \{[\s\S]*setMessages/,
+    'the pre-replay latest snapshot must remain staged until catch-up is complete',
   );
   assert.match(
     source,
