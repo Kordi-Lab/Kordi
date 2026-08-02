@@ -43,12 +43,6 @@
   width: 100%;
 }
 
-.app-cloud-account-theme,
-.app-cloud-account-settings-meta-row,
-.app-cloud-account-settings-divider {
-  border-color: var(--app-divider);
-}
-
 @media (max-width: 767px) {
   .app-cloud-account-settings-rail {
     overflow-x: auto;
@@ -65,9 +59,7 @@
   color: var(--utility-foreground);
   box-shadow: none;
   outline: none;
-  transition:
-    color var(--app-quiet-control-duration) var(--app-quiet-control-ease),
-    background-color var(--app-quiet-control-duration) var(--app-quiet-control-ease);
+  transition: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -92,7 +84,12 @@
   content: '';
   opacity: 0;
   transform: translateY(-50%);
-  transition: opacity var(--app-quiet-control-duration) var(--app-quiet-control-ease);
+  transition: none;
+}
+
+.app-auth-settings-page .app-auth-provider-glyph,
+.app-auth-settings-page .app-auth-provider-chevron {
+  transition: none;
 }
 
 .app-auth-settings-page .app-auth-provider-row-selected {
@@ -109,15 +106,6 @@
 
 .app-auth-settings-page .app-auth-provider-row:is(:hover, :focus-visible, .app-auth-provider-row-selected) .app-auth-provider-chevron {
   color: var(--app-quiet-control-hover-text);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-auth-settings-page .app-auth-provider-row,
-  .app-auth-settings-page .app-auth-provider-row::before,
-  .app-auth-settings-page .app-auth-provider-glyph,
-  .app-auth-settings-page .app-auth-provider-chevron {
-    transition-duration: 0.01ms;
-  }
 }
 
 .app-auth-provider-gate-card:hover {
@@ -140,32 +128,70 @@
   }
 }
 
-.app-settings-page .app-settings-nav-item {
+.app-settings-nav-item {
+  position: relative;
   min-height: 40px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  transition: none;
 }
 
-.app-settings-page .app-settings-surface {
-  border-color: color-mix(in oklab, var(--app-divider) 62%, transparent);
-  background: color-mix(in oklab, var(--app-card-bg) 58%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .app-settings-nav-item:hover {
+    background: var(--app-quiet-control-hover-bg);
+    color: var(--app-quiet-control-hover-text);
+  }
+}
+
+.app-settings-nav-item:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-settings-nav-item-active {
+  color: var(--utility-foreground);
+}
+
+.app-settings-nav-item::before {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--app-quiet-control-hover-text);
+  content: '';
+  opacity: 0;
+  transform: translateY(-50%);
+}
+
+.app-settings-nav-item-active::before {
+  opacity: 0.72;
+}
+
+@media (forced-colors: active) {
+  .app-settings-nav-item-active::before {
+    background: Highlight;
+  }
+}
+
+.app-settings-profile-section,
+.app-settings-option-list,
+.app-settings-option-row {
+  border: 0;
+  background: transparent;
   box-shadow: none;
 }
 
-.app-settings-page .app-settings-memory-card {
-  border-color: color-mix(in oklab, var(--app-divider) 56%, transparent);
-}
-
-.app-settings-page .app-settings-field {
-  line-height: 1.45;
-}
-
-.app-settings-page .app-settings-source-list {
+.app-settings-option-list {
   display: grid;
-  gap: 0;
-  border-top: 1px solid color-mix(in oklab, var(--app-divider) 54%, transparent);
+  gap: 2px;
 }
 
-.app-settings-page .app-settings-source-row {
-  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 54%, transparent);
+.app-settings-option-row {
+  min-height: 64px;
 }
 
 .app-settings-page .app-settings-control {

@@ -257,7 +257,7 @@ export function CloudAccountSettingsDialog({
         />
       </div>
       {profileError ? <div className="app-error-text mt-3 text-[12px] text-rose-200">{profileError}</div> : null}
-      <div className="app-cloud-account-settings-meta-row mt-3 flex flex-wrap items-center justify-between gap-3 border-t py-3">
+      <div className="app-cloud-account-settings-meta-row mt-5 flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="grid gap-1 text-[11px] text-slate-500">
           {cloudProfileRows(account).map((row) => (
             <div key={row.label}><span className="text-slate-400">{row.label}:</span> {row.value}</div>
@@ -306,14 +306,11 @@ export function CloudAccountSettingsDialog({
   );
 
   const themePanel = (
-    <div className="app-cloud-account-settings-section app-cloud-account-theme max-w-[680px]">
-      {(appearanceSection?.items ?? []).map((item, index) => (
+    <div className="app-cloud-account-settings-section app-cloud-account-theme app-settings-option-list max-w-[680px]">
+      {(appearanceSection?.items ?? []).map((item) => (
         <div
           key={item.label}
-          className={cn(
-            'grid items-center gap-3 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]',
-            index > 0 && 'app-cloud-account-settings-divider border-t',
-          )}
+          className="app-settings-option-row grid items-center gap-3 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]"
         >
           <div>
             <div className="text-[13px] font-medium text-white">{item.label}</div>
@@ -353,10 +350,11 @@ export function CloudAccountSettingsDialog({
                   key={tab.id}
                   type="button"
                   className={cn(
-                    'flex min-w-0 items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left text-[13px] font-medium transition',
-                    active ? 'app-list-item-active text-white' : 'app-list-item text-slate-300 hover:text-white',
+                    'app-settings-nav-item flex min-w-0 items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left text-[13px] font-medium text-slate-300',
+                    active && 'app-settings-nav-item-active text-white',
                   )}
                   onClick={() => selectTab(tab.id)}
+                  aria-current={active ? 'page' : undefined}
                 >
                   <Icon className="h-4 w-4" />
                   {tab.label}

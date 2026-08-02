@@ -76,13 +76,14 @@ export function SettingsPage({
                 <button
                   key={section.id}
                   type="button"
+                  aria-current={active ? 'page' : undefined}
                   onClick={() => setActiveSettingsSectionId(section.id)}
                   className={cn(
-                    'app-settings-nav-item flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition',
-                    active ? 'app-list-item-active text-white' : 'app-list-item text-slate-300 hover:text-white',
+                    'app-settings-nav-item flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-slate-300',
+                    active && 'app-settings-nav-item-active text-white',
                   )}
                 >
-                  <div className={cn('grid h-7 w-7 place-items-center rounded-[10px] border', active ? 'border-white/15 bg-white/[0.05]' : 'border-transparent bg-transparent')}>
+                  <div className="grid h-7 w-7 place-items-center">
                     <Icon className={cn('h-3.5 w-3.5', active ? 'text-white' : 'text-slate-400')} />
                   </div>
                   <div className="text-[13px] font-medium leading-5">{section.label}</div>
@@ -134,8 +135,8 @@ export function SettingsPage({
                 onEnterChat={onEnterChat}
               />
             ) : activeSettingsSection.id === 'personalization' ? (
-              <div className="space-y-3.5">
-                <div className="app-surface-muted app-settings-surface overflow-hidden rounded-[22px] p-[18px] shadow-none">
+              <div className="space-y-5">
+                <div className="app-settings-profile-section px-1 py-3">
                   <div className="mb-3.5 flex items-start justify-between gap-3">
                     <div>
                       <div className="text-[15px] font-medium text-white">Profile avatar</div>
@@ -150,14 +151,11 @@ export function SettingsPage({
                   />
                 </div>
 
-                <div className="app-surface-muted app-settings-surface overflow-hidden rounded-[22px] shadow-none">
-                  {activeSettingsSection.items.map((item, index) => (
+                <div className="app-settings-option-list">
+                  {activeSettingsSection.items.map((item) => (
                     <div
                       key={item.label}
-                      className={cn(
-                        'grid items-center gap-3 px-5 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]',
-                        index > 0 ? 'border-t border-white/10' : '',
-                      )}
+                      className="app-settings-option-row grid items-center gap-3 px-1 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]"
                     >
                       <div>
                         <div className="text-[13px] font-medium text-white">{item.label}</div>
@@ -171,14 +169,11 @@ export function SettingsPage({
                 </div>
               </div>
             ) : (
-              <div className="app-surface-muted app-settings-surface overflow-hidden rounded-[22px] shadow-none">
-                {activeSettingsSection.items.map((item, index) => (
+              <div className="app-settings-option-list">
+                {activeSettingsSection.items.map((item) => (
                   <div
                     key={item.label}
-                    className={cn(
-                      'grid items-center gap-3 px-5 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]',
-                      index > 0 ? 'border-t border-white/10' : '',
-                    )}
+                    className="app-settings-option-row grid items-center gap-3 px-1 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]"
                   >
                     <div>
                       <div className="text-[13px] font-medium text-white">{item.label}</div>

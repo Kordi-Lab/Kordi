@@ -21,7 +21,7 @@ function ThemePreview({ mode, selected }: { mode: ThemeMode; selected: boolean }
   return (
     <div
       className={cn(
-        'relative h-[46px] overflow-hidden rounded-[11px] border bg-gradient-to-br shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition',
+        'app-settings-theme-preview relative h-[46px] overflow-hidden rounded-[11px] border bg-gradient-to-br shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-none',
         mode === 'auto' ? 'from-[#f5f0e3] via-[#d8edf2] to-[#07112d]' : surfaceClass,
         selected ? 'border-emerald-300/85 ring-2 ring-emerald-400/70 ring-offset-1 ring-offset-transparent' : 'border-white/12',
       )}
@@ -67,10 +67,7 @@ function ThemeModeSelector({ themeMode, onSelectThemeMode }: { themeMode: ThemeM
               aria-label={`${option.label} theme`}
               title={option.detail}
               onClick={() => onSelectThemeMode(option.mode)}
-              className={cn(
-                'group rounded-[14px] p-1 text-center outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-300/80',
-                selected ? 'bg-emerald-400/10' : 'hover:bg-white/[0.04]',
-              )}
+              className="app-settings-theme-option group rounded-[14px] bg-transparent p-1 text-center outline-none transition-none hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-emerald-300/80"
             >
               <ThemePreview mode={option.mode} selected={selected} />
               <div className={cn('mt-1 text-[11px] font-medium leading-4', selected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200')}>
@@ -123,7 +120,7 @@ export function SettingsValueControl({
     return (
       <div className="app-settings-action-row flex items-center justify-end gap-2.5">
         <div className="text-[12px] font-medium text-slate-300">{item.value}</div>
-        <button className="app-button-quiet app-settings-action-button rounded-xl px-2.5 py-1 text-[12px] font-medium">
+        <button type="button" className="app-button-quiet app-settings-action-button rounded-xl px-2.5 py-1 text-[12px] font-medium">
           {control?.type === 'action' ? (control.actionLabel ?? 'Set') : 'Set'}
         </button>
       </div>
@@ -131,7 +128,7 @@ export function SettingsValueControl({
   }
 
   return (
-    <button className="app-input-shell app-settings-control flex min-w-[232px] items-center justify-between gap-3 rounded-[14px] px-3 py-2 text-left transition">
+    <button type="button" className="app-input-shell app-settings-control flex min-w-[232px] items-center justify-between gap-3 rounded-[14px] px-3 py-2 text-left transition">
       <div className="flex items-center gap-3">
         {control?.type === 'select' && control.iconGlyph && (
           <div className="app-settings-control-icon grid h-6 w-6 place-items-center rounded-[10px] bg-slate-900 text-[13px] font-bold text-amber-400">
