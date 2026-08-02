@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import {
-  COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS,
-  mapCollaborationConversationToViewModel,
-} from '../src/features/collaboration/transcript';
+import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
 import type { DesktopCollaborationConversation, DesktopCollaborationHost } from '../src/kordi-app/types';
 
 function host(overrides: Partial<DesktopCollaborationHost> = {}): DesktopCollaborationHost {
@@ -491,73 +488,6 @@ test('direct person bridge transcript hides historical processing placeholders a
     '@MyKordi summarize PR 201',
     'thanks',
   ]);
-});
-
-test('bridge transcript expires an orphaned historical processing response with its request', () => {
-  const nowMs = Date.parse('2026-08-02T12:00:00Z');
-  const requestId = 'bridge_req_orphaned_processing';
-  const oldTimestampMs = nowMs - COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS - 1;
-  const view = mapCollaborationConversationToViewModel(conversation({
-    hostId: 'cloud',
-    awaitingReply: true,
-    messages: [{
-      id: 'msg-old-request',
-      direction: 'outbound',
-      sender: 'Me',
-      text: '@MyKordi hi',
-      timeLabel: '21:03',
-      timestampMs: oldTimestampMs,
-      requestId,
-      deliveryState: 'sent',
-      outreach: null,
-    }, {
-      id: 'msg-old-processing',
-      direction: 'outbound-response',
-      sender: 'My Kordi',
-      text: 'processing...',
-      timeLabel: '21:03',
-      timestampMs: oldTimestampMs + 1,
-      requestId,
-      deliveryState: 'processing',
-      outreach: null,
-    }],
-  }), host({ id: 'cloud' }), 'My Kordi', nowMs);
-
-  assert.deepEqual(view.messages.map((message) => message.text), ['@MyKordi hi']);
-  assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), false);
-});
-
-test('bridge transcript keeps a fresh processing response visible', () => {
-  const nowMs = Date.parse('2026-08-02T12:00:00Z');
-  const requestId = 'bridge_req_active_processing';
-  const recentTimestampMs = nowMs - 1_000;
-  const view = mapCollaborationConversationToViewModel(conversation({
-    hostId: 'cloud',
-    awaitingReply: true,
-    messages: [{
-      id: 'msg-recent-request',
-      direction: 'outbound',
-      sender: 'Me',
-      text: '@MyKordi hi',
-      timeLabel: '11:59',
-      timestampMs: recentTimestampMs,
-      requestId,
-      deliveryState: 'sent',
-      outreach: null,
-    }, {
-      id: 'msg-recent-processing',
-      direction: 'outbound-response',
-      sender: 'My Kordi',
-      text: 'processing...',
-      timeLabel: '11:59',
-      timestampMs: recentTimestampMs + 1,
-      requestId,
-      deliveryState: 'processing',
-      outreach: null,
-    }],
-  }), host({ id: 'cloud' }), 'My Kordi', nowMs);
-
-  assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), true);
 });
 
 test('bridge transcript renders cancelled bridge agent requests as stopped instead of processing', () => {

@@ -24,6 +24,7 @@ export function useRecoveredCloudGroupReplay({
   coordinator,
   messageIndex,
   applyControl,
+  flushCanonicalState,
   reportWarning,
 }: {
   account: CloudAccount | null;
@@ -38,6 +39,7 @@ export function useRecoveredCloudGroupReplay({
     wire: CloudMessage,
     envelope: CloudGroupControlEnvelope,
   ) => Promise<void>;
+  flushCanonicalState: () => void;
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const recoverySettled = useCloudAgentTurnRecovery({
@@ -63,6 +65,7 @@ export function useRecoveredCloudGroupReplay({
     coordinator,
     messageIndex,
     applyControl,
+    flushCanonicalState,
     reportWarning,
   });
 }

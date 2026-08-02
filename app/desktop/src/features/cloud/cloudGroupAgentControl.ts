@@ -7,7 +7,7 @@ import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.
 import { respondToCloudGroupAgentMention } from './cloudGroupAgentExecution';
 import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
 import { persistQueuedCloudGroupAgentTurn } from './cloudGroupAgentPersistence';
-import { cloudGroupLocalAgentRequestAlreadyHandled } from './cloudGroupMessages';
+import { cloudGroupLocalAgentRequestAlreadyHandled } from './cloudGroupLocalAgentRequestState';
 
 export type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 

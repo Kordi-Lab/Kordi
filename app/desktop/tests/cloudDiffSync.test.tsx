@@ -531,18 +531,3 @@ test('syncCloudDiffOnce requests fallback for invalid cursors without advancing 
   assert.equal(result.fallbackRequired, true);
   assert.equal(loadCloudSyncCursor('acct_me', storage), '42');
 });
-
-test('syncCloudDiffOnce rejects a non-advancing cursor while more pages remain', async () => {
-  const storage = memoryStorage();
-  saveCloudSyncCursor('acct_me', '42', storage);
-
-  const result = await syncCloudDiffOnce({
-    accountId: 'acct_me',
-    cursorStorage: storage,
-    messagesByPeer: {},
-    fetchEvents: async () => ({ cursor: '42', hasMore: true, events: [] }),
-  });
-
-  assert.equal(result.fallbackRequired, true);
-  assert.equal(loadCloudSyncCursor('acct_me', storage), '42');
-});

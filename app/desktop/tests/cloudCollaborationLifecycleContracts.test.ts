@@ -78,7 +78,7 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   );
   assert.match(
     recoveredReplaySource(),
-    /processedRequestIdsRef,\s*reportWarning,\s*\}\);[\s\S]*messageIndex,\s*applyControl,\s*reportWarning,\s*\}\);/,
+    /processedRequestIdsRef,\s*reportWarning,\s*\}\);[\s\S]*messageIndex,\s*applyControl,\s*flushCanonicalState,\s*reportWarning,\s*\}\);/,
     'recovery and replay must pass stable callbacks through during history hydration',
   );
 });

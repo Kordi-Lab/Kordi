@@ -9,14 +9,17 @@ import {
 } from '@/features/collaboration/messages';
 import { isCollaborationAgentRuntime, isCollaborationPersonRuntime } from '@/features/collaboration/runtime';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
+import {
+  collaborationTimestampIsExpired,
+  historicalCollaborationProcessingPlaceholderIds,
+  isCollaborationAgentResponseDirection,
+} from '@/features/collaboration/collaborationProcessingState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
 type CollaborationConversationViewModel = Conversation & {
   _updatedAtMs?: number;
 };
-
-export const COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS = 10 * 60_000;
 
 function collaborationHostLabel(host?: DesktopCollaborationHost | null) {
   return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Cloud';
@@ -184,67 +187,6 @@ function isTerminalAgentRequestState(value: string | null | undefined) {
   return ['responded', 'cancelled', 'failed', 'processing_failed', 'no_response'].includes(normalizeDeliveryState(value));
 }
 
-function isCollaborationAgentResponseDirection(message: DesktopCollaborationConversationMessage) {
-  return message.direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE
-    || message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
-}
-
-function isCollaborationProcessingResponsePlaceholder(
-  conversation: DesktopCollaborationConversation,
-  message: DesktopCollaborationConversationMessage,
-) {
-  return normalizeDeliveryState(message.deliveryState) === 'processing'
-    && isProcessingPlaceholderText(collaborationMessageDisplayText(conversation, message))
-    && isCollaborationAgentResponseDirection(message);
-}
-
-function collaborationTimestampIsExpired(timestampMs: number, nowMs: number) {
-  return Number.isFinite(timestampMs)
-    && timestampMs > 0
-    && nowMs - timestampMs >= COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS;
-}
-
-function historicalCollaborationProcessingPlaceholderIds(
-  conversation: DesktopCollaborationConversation,
-  nowMs: number,
-) {
-  const requestIdsWithBaseMessage = new Set<string>();
-  for (const message of conversation.messages) {
-    const requestId = message.requestId?.trim();
-    if (!requestId) continue;
-    if (
-      message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
-      || message.direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND
-    ) {
-      requestIdsWithBaseMessage.add(requestId);
-    }
-  }
-
-  const staleIds = new Set<string>();
-  const terminalResponseRequestIds = new Set<string>();
-  let hasLaterTranscriptActivity = false;
-  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
-    const message = conversation.messages[index];
-    const processing = isCollaborationProcessingResponsePlaceholder(conversation, message);
-    const requestId = message.requestId?.trim() || null;
-    if (processing) {
-      if (
-        collaborationTimestampIsExpired(message.timestampMs, nowMs)
-        || (requestId && terminalResponseRequestIds.has(requestId))
-        || ((!requestId || !requestIdsWithBaseMessage.has(requestId)) && hasLaterTranscriptActivity)
-      ) {
-        staleIds.add(message.id);
-      }
-      continue;
-    }
-    hasLaterTranscriptActivity = true;
-    if (requestId && isCollaborationAgentResponseDirection(message)) {
-      terminalResponseRequestIds.add(requestId);
-    }
-  }
-  return staleIds;
-}
-
 function latestOutboundAgentRequestState(conversation: DesktopCollaborationConversation) {
   return [...conversation.messages]
     .reverse()
@@ -311,6 +253,7 @@ export function mapCollaborationConversationToViewModel(
   const staleProcessingPlaceholderIds = historicalCollaborationProcessingPlaceholderIds(
     conversation,
     nowMs,
+    (message) => collaborationMessageDisplayText(conversation, message),
   );
   const latestAgentRequestState = latestOutboundAgentRequestState(conversation);
   const latestRequestTimestampMs = [...conversation.messages]

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cloudGroupAgentResponseTargetAccountIds, cloudGroupControlMessagesForAccount, cloudGroupLocalAgentRequestAlreadyHandled, cloudGroupMessageReadPeerIds, cloudGroupMessageReadTargets, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState, cloudGroupAgentOfflineNoticeRequest, cloudGroupAgentRequestingNoticeMessage } from '../src/features/cloud/cloudGroupMessages';
+import { cloudGroupAgentResponseTargetAccountIds, cloudGroupControlMessagesForAccount, cloudGroupMessageReadPeerIds, cloudGroupMessageReadTargets, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState, cloudGroupAgentOfflineNoticeRequest, cloudGroupAgentRequestingNoticeMessage } from '../src/features/cloud/cloudGroupMessages';
+import { cloudGroupLocalAgentRequestAlreadyHandled } from '../src/features/cloud/cloudGroupLocalAgentRequestState';
 import {
   upsertCanonicalRequestIntoLocalState,
 } from '../src/features/cloud/cloudAgentRequestState';
