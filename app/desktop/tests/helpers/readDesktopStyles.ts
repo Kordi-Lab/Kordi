@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const SHELL_STYLE_FILES = [
   '../../src/styles/shell.css',
+  '../../src/styles/shell-contacts.css',
   '../../src/styles/shell-navigation.css',
   '../../src/styles/shell-composer.css',
   '../../src/styles/shell-inspector.css',
