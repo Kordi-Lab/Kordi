@@ -299,7 +299,7 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
             </button>
             {expandedThinking ? (
               <div className="app-transcript-timeline-details-body pr-1">
-                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" />
+                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" showLinkIcons />
               </div>
             ) : null}
           </div>

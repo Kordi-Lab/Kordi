@@ -1,8 +1,15 @@
-import { Fragment, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 
-import { openDesktopExternalUrl } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { ExternalMessageLink } from './messageInlineContent';
+import {
+  bareHttpUrlStartPattern,
+  safeExternalHttpHref,
+  splitBareHttpUrl,
+} from './messageLinks';
+
+export { openExternalMessageLink as openExternalMarkdownLink } from './messageLinks';
 
 type MarkdownInlinePart =
   | { type: 'text'; value: string }
@@ -30,54 +37,10 @@ type MarkdownBlock =
   | { type: 'blockquote'; text: string }
   | { type: 'table'; headers: string[]; rows: string[][] };
 
-type ExternalMarkdownLinkClickEvent = Pick<ReactMouseEvent<HTMLAnchorElement>, 'preventDefault'> & {
-  altKey?: boolean;
-  button?: number;
-  ctrlKey?: boolean;
-  defaultPrevented?: boolean;
-  metaKey?: boolean;
-  shiftKey?: boolean;
-};
-
-type ExternalMarkdownLinkOpener = (url: string) => Promise<unknown> | unknown;
-
-const bareHttpUrlStartPattern = /https?:\/\//;
-const trailingBareUrlPunctuationPattern = /[.,!?;:]+$/;
-
-function splitBareHttpUrl(value: string) {
-  const href = value.replace(trailingBareUrlPunctuationPattern, '');
-  return {
-    href,
-    suffix: value.slice(href.length),
-  };
-}
-
 function nextInlineTokenIndex(slice: string) {
   return [slice.indexOf('['), slice.indexOf('`'), slice.indexOf('*'), slice.search(bareHttpUrlStartPattern)]
     .filter((value) => value >= 0)
     .sort((left, right) => left - right)[0];
-}
-
-export function openExternalMarkdownLink(
-  event: ExternalMarkdownLinkClickEvent,
-  href: string,
-  openExternalUrl: ExternalMarkdownLinkOpener = openDesktopExternalUrl,
-) {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-    return false;
-  }
-
-  event.preventDefault();
-
-  try {
-    void Promise.resolve(openExternalUrl(href)).catch((error: unknown) => {
-      console.error('[kordi] Unable to open external link', error);
-    });
-  } catch (error) {
-    console.error('[kordi] Unable to open external link', error);
-  }
-
-  return true;
 }
 
 function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
@@ -87,8 +50,8 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
   while (index < text.length) {
     const slice = text.slice(index);
     const patterns = [
-      { type: 'link' as const, match: slice.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/) },
-      { type: 'bareLink' as const, match: slice.match(/^https?:\/\/[^\s<>"']+/) },
+      { type: 'link' as const, match: slice.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/i) },
+      { type: 'bareLink' as const, match: slice.match(/^https?:\/\/[^\s<>"']+/i) },
       { type: 'code' as const, match: slice.match(/^`([^`]+)`/) },
       { type: 'strong' as const, match: slice.match(/^\*\*([^*]+)\*\*/) },
       { type: 'em' as const, match: slice.match(/^\*([^*]+)\*/) },
@@ -114,10 +77,16 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
 
     const [matched, first, second] = hit.match;
     if (hit.type === 'link') {
-      parts.push({ type: 'link', label: first, href: second ?? '#' });
+      const href = safeExternalHttpHref(second ?? '');
+      parts.push(href
+        ? { type: 'link', label: first, href }
+        : { type: 'text', value: matched });
     } else if (hit.type === 'bareLink') {
       const { href, suffix } = splitBareHttpUrl(matched);
-      parts.push({ type: 'link', label: href, href });
+      const safeHref = safeExternalHttpHref(href);
+      parts.push(safeHref
+        ? { type: 'link', label: href, href: safeHref }
+        : { type: 'text', value: href });
       if (suffix) {
         parts.push({ type: 'text', value: suffix });
       }
@@ -134,7 +103,11 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
   return parts;
 }
 
-function renderInlineMarkdown(text: string, tone: 'default' | 'muted' = 'default') {
+function renderInlineMarkdown(
+  text: string,
+  tone: 'default' | 'muted' = 'default',
+  showLinkIcons = false,
+) {
   return parseInlineMarkdown(text).map((part, index) => {
     if (part.type === 'code') {
       return (
@@ -165,21 +138,14 @@ function renderInlineMarkdown(text: string, tone: 'default' | 'muted' = 'default
     }
     if (part.type === 'link') {
       return (
-        <a
+        <ExternalMessageLink
           key={`link-${index}`}
           href={part.href}
-          target="_blank"
-          rel="noreferrer noopener"
-          onClick={(event) => {
-            openExternalMarkdownLink(event, part.href);
-          }}
-          className={cn(
-            'app-markdown-link break-words [overflow-wrap:anywhere] transition-colors',
-            tone === 'muted' && 'app-markdown-link-muted',
-          )}
+          tone={tone}
+          showSiteIcon={showLinkIcons}
         >
-          <span>{part.label}</span>
-        </a>
+          {part.label}
+        </ExternalMessageLink>
       );
     }
     return <Fragment key={`text-${index}`}>{part.value}</Fragment>;
@@ -637,7 +603,15 @@ function MarkdownCodeBlock({
   );
 }
 
-function MarkdownListView({ list, depth = 0 }: { list: MarkdownList; depth?: number }) {
+function MarkdownListView({
+  list,
+  depth = 0,
+  showLinkIcons = false,
+}: {
+  list: MarkdownList;
+  depth?: number;
+  showLinkIcons?: boolean;
+}) {
   const Wrapper = list.ordered ? 'ol' : 'ul';
 
   return (
@@ -661,10 +635,10 @@ function MarkdownListView({ list, depth = 0 }: { list: MarkdownList; depth?: num
                 {item.checked ? '✓' : ''}
               </span>
             ) : null}
-            <div className="min-w-0">{renderInlineMarkdown(item.text)}</div>
+            <div className="min-w-0">{renderInlineMarkdown(item.text, 'default', showLinkIcons)}</div>
           </div>
           {item.children.map((child, childIndex) => (
-            <MarkdownListView key={`${depth}-${index}-child-${childIndex}`} list={child} depth={depth + 1} />
+            <MarkdownListView key={`${depth}-${index}-child-${childIndex}`} list={child} depth={depth + 1} showLinkIcons={showLinkIcons} />
           ))}
         </li>
       ))}
@@ -672,7 +646,7 @@ function MarkdownListView({ list, depth = 0 }: { list: MarkdownList; depth?: num
   );
 }
 
-function MarkdownTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+function MarkdownTable({ headers, rows, showLinkIcons = false }: { headers: string[]; rows: string[][]; showLinkIcons?: boolean }) {
   return (
     <div className="max-w-full overflow-hidden rounded-2xl border border-white/8 bg-[color:var(--app-control-bg)]">
       <div className="overflow-x-auto overscroll-x-contain px-1 py-1">
@@ -681,7 +655,7 @@ function MarkdownTable({ headers, rows }: { headers: string[]; rows: string[][] 
           <tr>
             {headers.map((header, index) => (
               <th key={`header-${index}`} className="border-b border-white/8 px-3 py-2 font-medium">
-                {renderInlineMarkdown(header)}
+                {renderInlineMarkdown(header, 'default', showLinkIcons)}
               </th>
             ))}
           </tr>
@@ -691,7 +665,7 @@ function MarkdownTable({ headers, rows }: { headers: string[]; rows: string[][] 
             <tr key={`row-${rowIndex}`} className="border-b border-white/6 last:border-b-0">
               {headers.map((_, cellIndex) => (
                 <td key={`cell-${rowIndex}-${cellIndex}`} className="align-top px-3 py-2 text-slate-200">
-                  {renderInlineMarkdown(row[cellIndex] ?? '')}
+                  {renderInlineMarkdown(row[cellIndex] ?? '', 'default', showLinkIcons)}
                 </td>
               ))}
             </tr>
@@ -703,7 +677,17 @@ function MarkdownTable({ headers, rows }: { headers: string[]; rows: string[][] 
   );
 }
 
-function MarkdownContent({ text, className, tone = 'default' }: { text: string; className?: string; tone?: 'default' | 'muted' }) {
+function MarkdownContent({
+  text,
+  className,
+  tone = 'default',
+  showLinkIcons = false,
+}: {
+  text: string;
+  className?: string;
+  tone?: 'default' | 'muted';
+  showLinkIcons?: boolean;
+}) {
   const blocks = useMemo(() => parseMarkdownBlocks(text), [text]);
 
   return (
@@ -724,7 +708,7 @@ function MarkdownContent({ text, className, tone = 'default' }: { text: string; 
                   : 'text-[0.92rem] font-semibold text-slate-100';
           return (
             <div key={`heading-${index}`} className={cn(headingClass, 'min-w-0 break-words [overflow-wrap:anywhere]')}>
-              {renderInlineMarkdown(block.text, tone)}
+              {renderInlineMarkdown(block.text, tone, showLinkIcons)}
             </div>
           );
         }
@@ -734,23 +718,23 @@ function MarkdownContent({ text, className, tone = 'default' }: { text: string; 
             : <MarkdownCodeBlock key={`code-${index}`} language={block.language} code={block.code} />;
         }
         if (block.type === 'list') {
-          return <MarkdownListView key={`list-${index}`} list={{ ordered: block.ordered, items: block.items }} />;
+          return <MarkdownListView key={`list-${index}`} list={{ ordered: block.ordered, items: block.items }} showLinkIcons={showLinkIcons} />;
         }
         if (block.type === 'blockquote') {
           return (
             <blockquote key={`quote-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] border-l-2 pl-4 text-sm italic leading-6', tone === 'muted' ? 'app-markdown-muted-quote border-slate-500/20 text-slate-500' : 'border-slate-500/40 text-slate-300')}>
               {block.text.split('\n').map((line, lineIndex) => (
-                <p key={`quote-line-${lineIndex}`}>{renderInlineMarkdown(line, tone)}</p>
+                <p key={`quote-line-${lineIndex}`}>{renderInlineMarkdown(line, tone, showLinkIcons)}</p>
               ))}
             </blockquote>
           );
         }
         if (block.type === 'table') {
-          return <MarkdownTable key={`table-${index}`} headers={block.headers} rows={block.rows} />;
+          return <MarkdownTable key={`table-${index}`} headers={block.headers} rows={block.rows} showLinkIcons={showLinkIcons} />;
         }
         return (
           <p key={`paragraph-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', tone === 'muted' ? 'app-markdown-muted-copy text-slate-400' : 'text-slate-100')}>
-            {renderInlineMarkdown(block.text, tone)}
+            {renderInlineMarkdown(block.text, tone, showLinkIcons)}
           </p>
         );
       })}

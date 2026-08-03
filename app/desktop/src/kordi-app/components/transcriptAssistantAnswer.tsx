@@ -43,6 +43,7 @@ export function FoldableAssistantAnswer({
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
         <MarkdownContent
           text={text}
+          showLinkIcons
           className={cn(
             'app-live-assistant-answer-markdown',
             cancelled && '[&_p]:!text-rose-300 [&_li]:!text-rose-300 [&_blockquote]:!text-rose-300',

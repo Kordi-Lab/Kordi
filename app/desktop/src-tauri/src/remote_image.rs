@@ -74,8 +74,7 @@ fn is_public_remote_ipv6(address: Ipv6Addr) -> bool {
         );
         return is_public_remote_ipv4(embedded);
     }
-    // RFC 8215 reserves 64:ff9b:1::/48 for local-use translation. It must not
-    // be treated as a public destination even when its embedded IPv4 address
+    // RFC 8215 reserves 64:ff9b:1::/48 for local use; never treat it as public even when its embedded IPv4 address
     // is not represented in the well-known /96 layout above.
     if segments[..3] == [0x0064, 0xff9b, 0x0001] {
         return false;
@@ -133,6 +132,7 @@ fn supported_image_media_type(value: &str) -> Option<&'static str> {
         "image/webp" => Some("image/webp"),
         "image/gif" => Some("image/gif"),
         "image/avif" => Some("image/avif"),
+        "image/x-icon" | "image/vnd.microsoft.icon" => Some("image/x-icon"),
         _ => None,
     }
 }
@@ -388,10 +388,8 @@ fn remote_image_client(url: &Url, addresses: &[SocketAddr]) -> Result<reqwest::C
     let builder = if host.parse::<IpAddr>().is_ok() {
         builder
     } else {
-        // Pin the addresses that passed the public-IP check so a direct request
-        // cannot resolve the hostname a second time to a private destination.
-        // Configured HTTP(S) proxies remain supported and are trusted to apply
-        // their own destination policy when they resolve the target remotely.
+        // Pin public addresses to prevent a second DNS resolution to a private destination.
+        // Configured HTTP(S) proxies are trusted to apply their own destination policy.
         builder.resolve_to_addrs(host, addresses)
     };
     builder
@@ -545,6 +543,8 @@ mod tests {
             supported_image_media_type("image/jpeg; charset=binary"),
             Some("image/jpeg")
         );
+        let icon_type = supported_image_media_type("image/vnd.microsoft.icon");
+        assert_eq!(icon_type, Some("image/x-icon"));
         assert_eq!(supported_image_media_type("image/svg+xml"), None);
     }
 
