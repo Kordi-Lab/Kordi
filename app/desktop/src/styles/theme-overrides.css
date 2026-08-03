@@ -305,9 +305,7 @@
   border-color: rgba(37, 99, 235, 0.12);
 }
 
-.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-count-chip {
-  border-color: rgba(37, 99, 235, 0.14);
-  background: rgba(37, 99, 235, 0.055);
+.kordi-app.theme-light .app-auth-settings-page .app-auth-provider-count {
   color: rgb(71 85 105);
 }
 

@@ -75,27 +75,46 @@ test('contact request rows do not repeat the review-details action beside accept
   assert.doesNotMatch(block, /onReview/);
 });
 
-test('contacts request header does not show an attention zero badge when no requests are pending', () => {
+test('contacts page hides the complete request activity area when no requests or invites are pending', () => {
   const markup = renderContactsPage([]);
 
-  assert.match(markup, />No pending</);
-  assert.equal((markup.match(/No requests for you to review\./g) ?? []).length, 1);
-  assert.equal((markup.match(/No sent invites waiting for approval\./g) ?? []).length, 1);
-  assert.doesNotMatch(markup, /app-badge-attention[^>]*>0</);
+  assert.doesNotMatch(markup, /app-contacts-request-activity/);
+  assert.doesNotMatch(markup, />New requests</);
+  assert.doesNotMatch(markup, />Sent invites</);
+  assert.doesNotMatch(markup, /No pending|None sent/);
+  assert.match(markup, />Contacts</);
+  assert.match(markup, /aria-label="Search contacts"/);
 });
 
-test('contacts request header counts incoming approvals separately from outgoing invites', () => {
+test('contacts page shows incoming requests without an empty sent-invites section', () => {
+  const markup = renderContactsPage([
+    request({ id: 'request-in', direction: 'incoming' }),
+  ]);
+
+  assert.match(markup, /app-contacts-request-activity/);
+  assert.match(markup, />New requests</);
+  assert.match(markup, />Review 1 pending request\.</);
+  assert.match(markup, /app-badge-attention[^>]*>1</);
+  assert.match(markup, />Testuser wants to connect</);
+  assert.match(markup, />Accept</);
+  assert.match(markup, />Reject</);
+  assert.doesNotMatch(markup, />Sent invites</);
+  assert.doesNotMatch(markup, /No pending|None sent/);
+});
+
+test('contacts request activity counts incoming approvals separately from outgoing invites', () => {
   const markup = renderContactsPage([
     request({ id: 'request-in', direction: 'incoming' }),
     request({ id: 'request-out', title: 'Request sent to Maya Chen', detail: 'acct_maya_123', direction: 'outgoing' }),
   ]);
 
-  assert.match(markup, /app-badge-attention[^>]*>1</);
+  assert.equal((markup.match(/app-badge-attention/g) ?? []).length, 2);
   assert.doesNotMatch(markup, /app-badge-attention[^>]*>2</);
   assert.match(markup, />Review 1 pending request\.</);
   assert.match(markup, />Sent invites</);
   assert.match(markup, />Waiting on 1 person to approve\.</);
   assert.doesNotMatch(markup, />Request sent to Maya Chen</);
+  assert.doesNotMatch(markup, /No pending|None sent/);
 });
 
 test('contacts page summarizes outgoing-only pending invites without showing the full list by default', () => {
@@ -103,10 +122,11 @@ test('contacts page summarizes outgoing-only pending invites without showing the
     request({ id: 'request-out', title: 'Request sent to Maya Chen', detail: 'acct_maya_123', direction: 'outgoing' }),
   ]);
 
-  assert.match(markup, />No pending</);
-  assert.match(markup, />No requests for you to review\.</);
+  assert.doesNotMatch(markup, />New requests</);
   assert.match(markup, />Sent invites</);
   assert.match(markup, />Waiting on 1 person to approve\.</);
+  assert.match(markup, /app-badge-attention[^>]*>1</);
+  assert.doesNotMatch(markup, /No pending|None sent/);
   assert.doesNotMatch(markup, />Waiting for approval</);
   assert.doesNotMatch(markup, />Request sent to Maya Chen</);
   assert.doesNotMatch(markup, />Accept</);
@@ -129,9 +149,10 @@ test('sent invite rows use real account avatars in a compact row', () => {
   assert.match(source, /<IdentityAvatar/);
   assert.match(source, /imageUrl=\{request\.profileImageUrl\}/);
   assert.match(source, /name=\{request\.avatarName \?\? request\.title\}/);
-  assert.match(source, /className="app-list-item w-full rounded-2xl bg-transparent px-3 py-2 text-white"/);
+  assert.match(source, /className="app-contacts-sent-invite-item w-full px-3 py-2 text-white"/);
+  assert.doesNotMatch(source, /className="app-list-item w-full rounded-2xl bg-transparent px-3 py-2 text-white"/);
   assert.doesNotMatch(source, /max-w-\[720px\]/);
-  assert.match(source, /px-3 py-2 text-white/);
+  assert.match(source, /app-contacts-sent-invite-item w-full px-3 py-2 text-white/);
   assert.match(source, /className="h-9 w-9 border border-white\/10"/);
   assert.match(source, /items-center justify-between/);
   assert.doesNotMatch(source, /mt-3 inline-flex rounded-full border border-amber-300\/20 bg-amber-300\/10/);
@@ -173,7 +194,7 @@ test('active contact rows stay visually neutral until hover', () => {
   assert.doesNotMatch(markup, /text-slate-100/);
 });
 
-test('contacts page controls use a Vercel-style aligned rail with reduced shape', () => {
+test('contacts page uses positive-only request activity and flat page-plane controls', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
   const componentSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
   const shellCss = readDesktopShellCss();
@@ -181,19 +202,24 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
 
   assert.match(source, /app-contacts-section-button/);
   assert.match(source, /app-contacts-action-chip/);
-  assert.match(source, /app-contacts-status-chip/);
+  assert.match(source, /app-contacts-request-activity/);
   assert.match(source, /app-contacts-content-rail/);
   assert.match(source, /app-contacts-request-row/);
-  assert.match(source, /app-contacts-search/);
+  assert.match(source, /app-flat-input app-contacts-search/);
+  assert.match(source, /app-contacts-add-form/);
   assert.match(source, /app-contacts-group-row/);
   assert.match(source, /app-contacts-section-heading/);
   assert.match(source, /app-contacts-add-button h-8 rounded-\[8px\]/);
   assert.match(source, /app-contacts-sent-invites-row/);
+  assert.match(source, /pendingRequestCount > 0 && \(/);
+  assert.match(source, /sentInviteCount > 0 && \(/);
+  assert.doesNotMatch(source, /app-contacts-status-chip|No pending|None sent/);
   assert.doesNotMatch(source, /Classified as my agents/);
   assert.doesNotMatch(source, /Foldable classes with quick letter jump/);
   assert.doesNotMatch(source, /mb-4 flex items-center justify-between/);
   assert.doesNotMatch(source, /app-control-chip rounded-xl border-0/);
   assert.doesNotMatch(source, /app-surface-muted flex w-full items-center justify-between gap-3 rounded-2xl/);
+  assert.doesNotMatch(source, /className="app-surface-muted mb-4 rounded-2xl px-3 py-3"/);
   assert.doesNotMatch(source, /app-contacts-section-button flex w-full items-center justify-between gap-3 rounded-\[24px\]/);
   assert.doesNotMatch(source, /app-contacts-section-button flex w-full items-center justify-between rounded-\[24px\]/);
   assert.doesNotMatch(source, /app-contacts-action-chip h-9 rounded-full px-4/);
@@ -202,7 +228,11 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
   assert.match(shellCss, /\.app-contacts-content-rail[\s\S]*max-width:\s*none/);
   assert.match(shellCss, /\.app-contacts-request-row[\s\S]*border-radius:\s*8px/);
   assert.match(shellCss, /\.app-contacts-search[\s\S]*border-radius:\s*8px/);
-  assert.match(shellCss, /\.app-contacts-sent-invites-row[\s\S]*border-radius:\s*8px/);
+  assert.match(shellCss, /\.app-contacts-sent-invites-row\s*\{[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+  assert.match(shellCss, /\.app-contact-request-item,[\s\S]*?\.app-contacts-sent-invite-item\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+  assert.match(shellCss, /\.app-contacts-add-form\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+  assert.match(shellCss, /\.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
+  assert.match(shellCss, /\.kordi-app\.theme-light \.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
   assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-radius:\s*0/);
   assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-width:\s*0 0 1px/);
   const contactRowStart = componentSource.indexOf('export function ContactRow');
@@ -212,6 +242,7 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
   assert.match(contactRowBlock, /app-contact-row app-list-item/);
   assert.doesNotMatch(contactRowBlock, /app-list-item-active/);
   assert.match(shellCss, /\.app-list-item:hover[\s\S]*background:\s*var\(--app-control-bg\)/);
+  assert.match(shellCss, /\.app-contacts-content-rail \.app-contact-row\.app-list-item:hover\s*\{[^}]*box-shadow:\s*none;/s);
   assert.doesNotMatch(shellCss, /\.app-contact-row\.app-list-item-active/);
   assert.doesNotMatch(themeOverridesCss, /\.kordi-app\.theme-light \.app-contact-row\.app-list-item-active/);
 });

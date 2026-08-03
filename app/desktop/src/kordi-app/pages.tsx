@@ -197,12 +197,8 @@ export function ContactsPage({
   }, [contactRequests]);
   const pendingRequestCount = incomingContactRequests.length;
   const sentInviteCount = outgoingContactRequests.length;
-  const requestInboxSummary = pendingRequestCount > 0
-    ? `Review ${pendingRequestCount} pending ${pendingRequestCount === 1 ? 'request' : 'requests'}.`
-    : 'No requests for you to review.';
-  const sentInvitesSummary = sentInviteCount > 0
-    ? `Waiting on ${sentInviteCount} ${sentInviteCount === 1 ? 'person' : 'people'} to approve.`
-    : 'No sent invites waiting for approval.';
+  const requestInboxSummary = `Review ${pendingRequestCount} pending ${pendingRequestCount === 1 ? 'request' : 'requests'}.`;
+  const sentInvitesSummary = `Waiting on ${sentInviteCount} ${sentInviteCount === 1 ? 'person' : 'people'} to approve.`;
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
   const activeContactDetailBody = contactDetailBodyText(activeContact);
   const activeContactPresenceStatus = contactPresenceStatus(activeContact);
@@ -259,47 +255,53 @@ export function ContactsPage({
 
         <div className="relative min-h-0 flex-1 px-5 py-4">
           <div className="app-contacts-content-rail flex h-full w-full min-h-0 flex-col">
-            <div className="mb-4">
-              <button
-                type="button"
-                onClick={onToggleRequests}
-                className="app-contacts-section-button app-contacts-request-row flex w-full items-center justify-between gap-3 text-left transition"
-              >
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium leading-5 text-white">New requests</div>
-                  <div className="text-[11px] text-slate-400">{requestInboxSummary}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {pendingRequestCount > 0 ? (
-                    <div className="app-badge-attention px-2 py-0.5 text-[10px] font-medium">{pendingRequestCount}</div>
-                  ) : (
-                    <div className="app-contacts-status-chip rounded-full px-2 py-0.5 text-[10px] font-medium">No pending</div>
-                  )}
-                  <ChevronDown className={cn('h-4 w-4 text-slate-400 transition', isContactRequestsOpen ? 'rotate-180' : '')} />
-                </div>
-              </button>
-              {isContactRequestsOpen && (
-                <div className="mt-2 grid gap-2">
-                  {incomingContactRequests.length > 0 ? incomingContactRequests.map((request) => (
-                    <ContactRequestRow
-                      key={request.id}
-                      request={request}
-                      active={activeContactRequestId === request.id}
-                      onAccept={() => { void submitContactRequestAction(request, 'accept'); }}
-                      onReject={() => { void submitContactRequestAction(request, 'reject'); }}
-                      actionState={contactRequestActionState(request)}
-                    />
-                  )) : null}
-                  {contactRequestActionError ? (
-                    <div className="app-error-text rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
-                      {contactRequestActionError}
-                    </div>
-                  ) : null}
-                  <div className="app-contacts-sent-invites-row px-3 py-3">
+            {(pendingRequestCount > 0 || sentInviteCount > 0) && (
+              <div className="app-contacts-request-activity mb-4 grid gap-2">
+                {pendingRequestCount > 0 && (
+                  <section aria-label="Incoming contact requests">
+                    <button
+                      type="button"
+                      onClick={onToggleRequests}
+                      className="app-contacts-section-button app-contacts-request-row flex w-full items-center justify-between gap-3 text-left transition-none"
+                      aria-expanded={isContactRequestsOpen}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium leading-5 text-white">New requests</div>
+                        <div className="text-[11px] text-slate-400">{requestInboxSummary}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="app-badge-attention px-2 py-0.5 text-[10px] font-medium">{pendingRequestCount}</div>
+                        <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', isContactRequestsOpen ? 'rotate-180' : '')} />
+                      </div>
+                    </button>
+                    {isContactRequestsOpen && (
+                      <div className="mt-2 grid gap-1">
+                        {incomingContactRequests.map((request) => (
+                          <ContactRequestRow
+                            key={request.id}
+                            request={request}
+                            active={activeContactRequestId === request.id}
+                            onAccept={() => { void submitContactRequestAction(request, 'accept'); }}
+                            onReject={() => { void submitContactRequestAction(request, 'reject'); }}
+                            actionState={contactRequestActionState(request)}
+                          />
+                        ))}
+                        {contactRequestActionError ? (
+                          <div className="app-error-text rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
+                            {contactRequestActionError}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {sentInviteCount > 0 && (
+                  <section className="app-contacts-sent-invites-row" aria-label="Sent contact invites">
                     <button
                       type="button"
                       onClick={() => setIsSentInvitesOpen((open) => !open)}
-                      className="flex w-full items-center justify-between gap-3 text-left"
+                      className="app-contacts-section-button flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-none"
                       aria-expanded={isSentInvitesOpen}
                     >
                       <div className="flex min-w-0 items-center gap-3">
@@ -313,16 +315,12 @@ export function ContactsPage({
                           <div className="truncate text-[11px] leading-4 text-slate-400">{sentInvitesSummary}</div>
                         </div>
                       </div>
-                      {sentInviteCount > 0 ? (
-                        <div className="app-badge-attention shrink-0 px-2 py-0.5 text-[10px] font-medium">{sentInviteCount}</div>
-                      ) : (
-                        <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-400">None sent</div>
-                      )}
+                      <div className="app-badge-attention shrink-0 px-2 py-0.5 text-[10px] font-medium">{sentInviteCount}</div>
                     </button>
                     {isSentInvitesOpen && (
-                      <div className="mt-2 grid gap-2">
-                        {outgoingContactRequests.length > 0 ? outgoingContactRequests.map((request) => (
-                          <div key={request.id} className="app-list-item w-full rounded-2xl bg-transparent px-3 py-2 text-white">
+                      <div className="grid gap-1">
+                        {outgoingContactRequests.map((request) => (
+                          <div key={request.id} className="app-contacts-sent-invite-item w-full px-3 py-2 text-white">
                             <div className="flex items-center gap-3">
                               <IdentityAvatar
                                 kind="human"
@@ -343,13 +341,13 @@ export function ContactsPage({
                               </div>
                             </div>
                           </div>
-                        )) : null}
+                        ))}
                       </div>
                     )}
-                  </div>
-                </div>
-              )}
-            </div>
+                  </section>
+                )}
+              </div>
+            )}
 
             <div className="app-contacts-section-heading mb-4 flex items-center justify-start gap-2">
               <div className="text-[13px] font-medium leading-5 text-white">Contacts</div>
@@ -361,7 +359,7 @@ export function ContactsPage({
 
             {isAddContactOpen && (
               <form
-                className="app-surface-muted mb-4 rounded-2xl px-3 py-3"
+                className="app-contacts-add-form mb-4 px-3 py-3"
                 onSubmit={(event) => {
                   event.preventDefault();
                   if (lookupResult) {
@@ -431,12 +429,13 @@ export function ContactsPage({
               </form>
             )}
 
-            <div className="app-input-shell app-contacts-search mb-4 flex items-center gap-2 px-3 py-2 text-slate-300">
+            <div className="app-input-shell app-flat-input app-contacts-search mb-4 flex items-center gap-2 px-3 py-2 text-slate-300">
               <Search className="h-4 w-4" />
               <input
                 value={contactSearch}
                 onChange={(event) => onContactSearchChange(event.target.value)}
                 placeholder="Search contacts"
+                aria-label="Search contacts"
                 className="w-full bg-transparent text-[13px] leading-5 text-slate-100 outline-none placeholder:text-slate-400"
               />
             </div>
@@ -449,7 +448,7 @@ export function ContactsPage({
                       <button
                         type="button"
                         onClick={() => onToggleGroup(group.id)}
-                        className="app-contacts-group-row flex w-full items-center justify-between px-2 py-3 text-left transition"
+                        className="app-contacts-group-row flex w-full items-center justify-between px-2 py-3 text-left transition-none"
                       >
                         <div className="flex items-center gap-3">
                           {expandedContactGroups[group.id] ? (

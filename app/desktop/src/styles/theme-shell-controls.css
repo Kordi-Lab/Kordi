@@ -160,6 +160,29 @@
     inset 0 -1px 0 rgba(73, 62, 54, 0.07);
 }
 
+.kordi-app.theme-light .app-input-shell.app-flat-input {
+  border-color: color-mix(in oklab, var(--app-control-border) 86%, transparent);
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+.kordi-app.theme-light .app-input-shell.app-flat-input:hover {
+  border-color: color-mix(in oklab, var(--app-control-border) 96%, var(--utility-muted-text));
+  background: color-mix(in oklab, var(--app-quiet-control-hover-bg) 48%, transparent);
+  box-shadow: none;
+}
+
+.kordi-app.theme-light .app-input-shell.app-flat-input:focus,
+.kordi-app.theme-light .app-input-shell.app-flat-input:focus-visible,
+.kordi-app.theme-light .app-input-shell.app-flat-input:focus-within {
+  border-color: color-mix(in oklab, var(--app-quiet-control-focus-ring) 62%, var(--app-control-border));
+  background: transparent;
+  box-shadow: none;
+  outline: 2px solid color-mix(in oklab, var(--app-quiet-control-focus-ring) 72%, transparent);
+  outline-offset: 2px;
+}
+
 .kordi-app.theme-light .app-input-shell::placeholder,
 .kordi-app.theme-light .app-input-shell input::placeholder,
 .kordi-app.theme-light .app-input-shell textarea::placeholder,

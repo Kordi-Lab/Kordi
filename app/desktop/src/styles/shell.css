@@ -269,6 +269,39 @@ html.kordi-native-shell .kordi-app .app-main-panel {
   color: var(--utility-foreground);
 }
 
+.app-input-shell.app-flat-input {
+  border-color: color-mix(in oklab, var(--app-control-border) 86%, transparent);
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+.app-input-shell.app-flat-input:hover {
+  border-color: color-mix(in oklab, var(--app-control-border) 96%, var(--utility-muted-text));
+  background: color-mix(in oklab, var(--app-quiet-control-hover-bg) 48%, transparent);
+  box-shadow: none;
+}
+
+.app-input-shell.app-flat-input:focus,
+.app-input-shell.app-flat-input:focus-visible,
+.app-input-shell.app-flat-input:focus-within {
+  border-color: color-mix(in oklab, var(--app-quiet-control-focus-ring) 62%, var(--app-control-border));
+  background: transparent;
+  box-shadow: none;
+  outline: 2px solid color-mix(in oklab, var(--app-quiet-control-focus-ring) 72%, transparent);
+  outline-offset: 2px;
+}
+
+.app-input-shell.app-flat-input.app-flat-input-error {
+  border-color: var(--app-transient-danger-border);
+}
+
+.app-input-shell.app-flat-input.app-flat-input-error:focus,
+.app-input-shell.app-flat-input.app-flat-input-error:focus-visible,
+.app-input-shell.app-flat-input.app-flat-input-error:focus-within {
+  outline-color: color-mix(in oklab, var(--app-transient-danger-border) 76%, transparent);
+}
+
 .app-button-quiet,
 .app-icon-button,
 .app-utility-button {
@@ -407,10 +440,17 @@ html.kordi-native-shell .kordi-app .app-main-panel {
   background: transparent;
   color: var(--utility-foreground);
   box-shadow: none;
+  transition: none;
 }
 
 .app-contacts-section-button:hover {
   background: var(--app-quiet-control-hover-bg);
+}
+
+.app-contacts-section-button:focus-visible,
+.app-contacts-group-row:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
 }
 
 .app-contacts-content-rail {
@@ -429,10 +469,43 @@ html.kordi-native-shell .kordi-app .app-main-panel {
 }
 
 .app-contacts-sent-invites-row {
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 70%, transparent);
-  border-radius: 8px;
-  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--utility-foreground);
+  box-shadow: none;
+}
+
+.app-contacts-sent-invites-row > button {
+  border-radius: 8px;
+}
+
+.app-contact-request-item,
+.app-contacts-sent-invite-item {
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-contact-request-item-active {
+  background: var(--app-quiet-control-selected-bg);
+  box-shadow: none;
+}
+
+.app-contacts-add-form {
+  border-color: color-mix(in oklab, var(--app-divider) 68%, transparent);
+  border-style: solid;
+  border-width: 1px 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-contacts-content-rail .app-contact-row.app-list-item {
+  transition: none;
+}
+
+.app-contacts-content-rail .app-contact-row.app-list-item:hover {
   box-shadow: none;
 }
 
@@ -448,11 +521,4 @@ html.kordi-native-shell .kordi-app .app-main-panel {
 
 .app-contacts-group-row:hover {
   background: color-mix(in oklab, var(--app-control-hover) 44%, transparent);
-}
-
-.app-contacts-status-chip {
-  border: 1px solid color-mix(in oklab, var(--app-control-border) 70%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 62%, transparent);
-  color: var(--utility-muted-text);
-  box-shadow: none;
 }

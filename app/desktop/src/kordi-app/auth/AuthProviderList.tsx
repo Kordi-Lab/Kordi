@@ -109,7 +109,7 @@ export function AuthProviderList({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="text-[14px] font-medium tracking-[-0.015em] text-white">Choose a provider</div>
-            <div className="app-auth-provider-count-chip rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-300">
+            <div className="app-auth-provider-count text-[11px] text-slate-300">
               {configuredCount} saved · {providers.length} total
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { KeyRound, Palette, User, X } from 'lucide-react';
 
@@ -107,6 +107,7 @@ export function CloudAccountSettingsDialog({
   const [profileError, setProfileError] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const profileErrorId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openedAccountIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
@@ -148,6 +149,7 @@ export function CloudAccountSettingsDialog({
   if (!isOpen || !account || typeof document === 'undefined') return null;
 
   const displayName = profileDisplayName(account);
+  const isDisplayNameInvalid = Boolean(profileError && !displayNameDraft.trim());
   const avatarSeed = cloudAvatarSeedForAccount(account.accountId, account.avatarUrl) || localProfileAvatarSeed || account.accountId;
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
   const tabs: Array<{ id: CloudAccountSettingsTabId; label: string; icon: typeof User }> = [
@@ -234,8 +236,13 @@ export function CloudAccountSettingsDialog({
               setDisplayNameDraft(event.currentTarget.value);
               if (profileError) setProfileError('');
             }}
-            className="app-input-shell h-10 rounded-[14px] px-3 text-[13px] text-white outline-none"
+            className={cn(
+              'app-input-shell app-flat-input app-cloud-account-profile-name-input h-10 rounded-[10px] px-3 text-[13px] text-white outline-none',
+              isDisplayNameInvalid && 'app-flat-input-error',
+            )}
             placeholder="Your display name"
+            aria-invalid={isDisplayNameInvalid || undefined}
+            aria-describedby={profileError ? profileErrorId : undefined}
           />
         </label>
         <Button type="button" variant="quiet" className="h-9 rounded-full px-4 text-[12px]" onClick={() => {
@@ -256,7 +263,7 @@ export function CloudAccountSettingsDialog({
           }}
         />
       </div>
-      {profileError ? <div className="app-error-text mt-3 text-[12px] text-rose-200">{profileError}</div> : null}
+      {profileError ? <div id={profileErrorId} className="app-error-text mt-3 text-[12px] text-rose-200" aria-live="polite">{profileError}</div> : null}
       <div className="app-cloud-account-settings-meta-row mt-5 flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="grid gap-1 text-[11px] text-slate-500">
           {cloudProfileRows(account).map((row) => (

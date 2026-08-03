@@ -93,6 +93,39 @@
   color: var(--app-transient-text);
 }
 
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input {
+  border-color: color-mix(in oklab, var(--app-transient-border) 86%, transparent);
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input:hover {
+  border-color: var(--app-transient-border);
+  background: color-mix(in oklab, var(--app-transient-hover-bg) 42%, transparent);
+  box-shadow: none;
+}
+
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input:focus,
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input:focus-visible,
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input:focus-within {
+  border-color: color-mix(in oklab, var(--app-transient-focus-ring) 58%, var(--app-transient-border));
+  background: transparent;
+  box-shadow: none;
+  outline: 2px solid color-mix(in oklab, var(--app-transient-focus-ring) 72%, transparent);
+  outline-offset: 2px;
+}
+
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error {
+  border-color: var(--app-transient-danger-border);
+}
+
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error:focus,
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error:focus-visible,
+.kordi-app .app-transient-surface .app-input-shell.app-flat-input.app-flat-input-error:focus-within {
+  outline-color: color-mix(in oklab, var(--app-transient-danger-border) 76%, transparent);
+}
+
 .app-transient-surface :where(input, textarea)::placeholder {
   color: var(--app-transient-subtle-text);
 }
