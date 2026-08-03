@@ -151,7 +151,7 @@ export function transcript(props: {
   items: readonly Row[];
   sessionKey?: string;
   navigationRequest?: { id: string; nonce: number; sessionKey?: string } | null;
-  onNavigationReady?: (messageId: string) => void;
+  onNavigationReady?: (messageId: string) => boolean | void;
   onNavigationHandled?: (request: { id: string; nonce: number; sessionKey: string }) => void;
   hasOlder?: boolean;
   onLoadOlder?: () => Promise<void> | void;
