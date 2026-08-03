@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
+import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
@@ -46,7 +46,6 @@ import type {
   MessageMention,
   MessageSourceReference,
 } from '../types';
-
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
 
 function isCompactionSummaryMessage(msg: Message) {
@@ -1213,10 +1212,6 @@ function MessageBubbleView({
       : 'app-chat-bubble-agent';
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
-  const animateMessageEntry = Boolean(
-    (isOwnHumanMessage || isPeerHumanMessage)
-      && (deliveryStatus === 'sending' || deliveryStatus === 'pending_send'),
-  );
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
   const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasText = msg.text.trim().length > 0;
@@ -1341,8 +1336,7 @@ function MessageBubbleView({
           className={cn(
           'min-w-0',
           canOpenSenderProfile ? 'cursor-pointer' : '',
-          hasOnlyImageAttachments ? 'bg-transparent shadow-none' : 'shadow-sm',
-          animateMessageEntry && !hasOnlyImageAttachments ? 'app-message-bubble-enter' : '',
+          hasOnlyImageAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
             ? hasOnlyImageAttachments

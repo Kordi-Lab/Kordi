@@ -19,7 +19,6 @@ import {
   WrapText,
   Wrench,
 } from 'lucide-react';
-
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';

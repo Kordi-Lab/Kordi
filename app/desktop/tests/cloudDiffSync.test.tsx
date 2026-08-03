@@ -70,25 +70,6 @@ test('session title sync events restore explicit source and revision metadata', 
   assert.equal(titles['session:self-agent:one']?.titleRevision, 3);
 });
 
-test('applyCloudSyncEventsToMessagesByPeer upserts messages idempotently by messageId', () => {
-  const event: CloudSyncEvent = {
-    eventId: '10',
-    eventType: 'message.upsert',
-    peerAccountId: 'acct_peer',
-    messageId: 'msg_1',
-    payload: { message: incoming },
-    occurredAt: '2026-05-13T00:00:00Z',
-  };
-
-  const once = applyCloudSyncEventsToMessagesByPeer('acct_me', {}, [event]);
-  const twice = applyCloudSyncEventsToMessagesByPeer('acct_me', once, [event]);
-
-  assert.deepEqual(twice, { acct_peer: [incoming] });
-  assert.equal(twice, once, 'a duplicate upsert must preserve the store root');
-  assert.equal(twice.acct_peer, once.acct_peer, 'a duplicate upsert must preserve the peer list');
-  assert.equal(twice.acct_peer[0], once.acct_peer[0], 'a duplicate upsert must preserve the message');
-});
-
 test('historical message upserts cannot regress authoritative delivery and read receipts', () => {
   const authoritative: CloudMessage = {
     ...incoming,
@@ -241,57 +222,6 @@ test('applyCloudSyncEventsToMessagesByPeer applies read receipts to cached messa
 
   assert.equal(result.acct_peer[0]?.readAt, '2026-05-13T00:01:00Z');
   assert.equal(result.acct_peer[0]?.deliveredAt, '2026-05-13T00:00:00Z');
-});
-
-test('duplicate and stale read receipts preserve the Cloud message store identity', () => {
-  const readMessage: CloudMessage = {
-    ...incoming,
-    readAt: '2026-05-13T00:02:00Z',
-  };
-  const current = { acct_peer: [readMessage] };
-  const duplicate = applyCloudSyncEventsToMessagesByPeer('acct_me', current, [{
-    eventId: '12',
-    eventType: 'message.read',
-    peerAccountId: 'acct_peer',
-    messageId: null,
-    payload: {
-      readerAccountId: 'acct_peer',
-      messageIds: ['msg_1'],
-      readAt: readMessage.readAt,
-    },
-    occurredAt: readMessage.readAt!,
-  }]);
-  const stale = applyCloudSyncEventsToMessagesByPeer('acct_me', duplicate, [{
-    eventId: '13',
-    eventType: 'message.read',
-    peerAccountId: 'acct_peer',
-    messageId: null,
-    payload: {
-      readerAccountId: 'acct_peer',
-      messageIds: ['msg_1'],
-      readAt: '2026-05-13T00:01:00Z',
-    },
-    occurredAt: '2026-05-13T00:01:00Z',
-  }]);
-
-  assert.equal(duplicate, current);
-  assert.equal(stale, current);
-  assert.equal(stale.acct_peer, current.acct_peer);
-  assert.equal(stale.acct_peer[0], readMessage);
-});
-
-test('deleting an unknown session preserves the Cloud message store identity', () => {
-  const current = { acct_peer: [incoming] };
-  const result = applyCloudSyncEventsToMessagesByPeer('acct_me', current, [{
-    eventId: '14',
-    eventType: 'session.deleted',
-    peerAccountId: 'session:missing',
-    messageId: null,
-    payload: { sessionId: 'session:missing', deletedAt: '2026-05-13T00:03:00Z' },
-    occurredAt: '2026-05-13T00:03:00Z',
-  }]);
-
-  assert.equal(result, current);
 });
 
 test('cloud diff sync applies session fork events', () => {

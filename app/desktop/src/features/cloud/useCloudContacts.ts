@@ -20,7 +20,14 @@ import {
   type CloudPublicProfile,
 } from './authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import {
+  applyCloudContactsRefreshSnapshot,
+  type CloudContactsSnapshot,
+} from './cloudContactsSnapshot';
 import { loadSession } from './session';
+
+export { applyCloudContactsRefreshSnapshot } from './cloudContactsSnapshot';
+export type { CloudContactsSnapshot } from './cloudContactsSnapshot';
 
 export type UseCloudContactsResult = {
   contacts: Contact[];
@@ -37,11 +44,6 @@ export type UseCloudContactsResult = {
 
 const REFRESH_INTERVAL_MS = 15_000;
 export const CLOUD_CONTACT_ACCEPTED_SYNC_EVENT = 'kordi.cloud.contact.accepted-sync';
-
-export type CloudContactsSnapshot = {
-  contacts: CloudContactSummary[];
-  requests: CloudContactRequest[];
-};
 
 export type CloudContactsStoreSnapshot = CloudContactsSnapshot & {
   loading: boolean;
@@ -115,92 +117,6 @@ export function applyAcceptedCloudContactRequest(
     createdAt: counterpart.createdAt || request.decidedAt || new Date().toISOString(),
   };
   return mergeCloudContactSummarySnapshot({ ...snapshot, requests: nextRequests }, acceptedContact);
-}
-
-export function applyCloudContactsRefreshSnapshot(
-  current: CloudContactsSnapshot,
-  refreshed: CloudContactsSnapshot,
-  revisions: { startedMutationRevision: number; currentMutationRevision: number },
-): CloudContactsSnapshot {
-  if (revisions.startedMutationRevision !== revisions.currentMutationRevision) return current;
-
-  const contactsByAccountId = new Map<string, CloudContactSummary>();
-  for (const contact of current.contacts) contactsByAccountId.set(contact.accountId, contact);
-  for (const contact of refreshed.contacts) {
-    const existing = contactsByAccountId.get(contact.accountId);
-    contactsByAccountId.set(
-      contact.accountId,
-      existing && cloudContactSummariesEqual(existing, contact)
-        ? existing
-        : contact,
-    );
-  }
-  const contacts = [...contactsByAccountId.values()];
-  const acceptedAccountIds = new Set(contacts.map((contact) => contact.accountId));
-  const currentRequestsById = new Map(
-    current.requests.map((request) => [request.requestId, request]),
-  );
-  const requests = refreshed.requests.filter((request) => {
-    const counterpartId = request.counterpart?.accountId || (request.direction === 'incoming' ? request.fromAccountId : request.toAccountId);
-    return !acceptedAccountIds.has(counterpartId);
-  }).map((request) => {
-    const existing = currentRequestsById.get(request.requestId);
-    return existing && cloudContactRequestsEqual(existing, request)
-      ? existing
-      : request;
-  });
-
-  return {
-    contacts: cloudContactSummaryArraysEqual(current.contacts, contacts)
-      ? current.contacts
-      : contacts,
-    requests: cloudContactRequestArraysEqual(current.requests, requests)
-      ? current.requests
-      : requests,
-  };
-}
-
-function cloudContactSummariesEqual(left: CloudContactSummary, right: CloudContactSummary): boolean {
-  return left.accountId === right.accountId
-    && left.displayName === right.displayName
-    && left.avatarUrl === right.avatarUrl
-    && left.nodeId === right.nodeId
-    && left.createdAt === right.createdAt;
-}
-
-function cloudContactRequestsEqual(left: CloudContactRequest, right: CloudContactRequest): boolean {
-  return left.requestId === right.requestId
-    && left.fromAccountId === right.fromAccountId
-    && left.toAccountId === right.toAccountId
-    && left.status === right.status
-    && left.direction === right.direction
-    && left.message === right.message
-    && left.createdAt === right.createdAt
-    && left.decidedAt === right.decidedAt
-    && (
-      left.counterpart === right.counterpart
-      || Boolean(
-        left.counterpart
-        && right.counterpart
-        && cloudContactSummariesEqual(left.counterpart, right.counterpart),
-      )
-    );
-}
-
-function cloudContactSummaryArraysEqual(
-  left: readonly CloudContactSummary[],
-  right: readonly CloudContactSummary[],
-): boolean {
-  return left.length === right.length
-    && left.every((contact, index) => cloudContactSummariesEqual(contact, right[index]));
-}
-
-function cloudContactRequestArraysEqual(
-  left: readonly CloudContactRequest[],
-  right: readonly CloudContactRequest[],
-): boolean {
-  return left.length === right.length
-    && left.every((request, index) => cloudContactRequestsEqual(request, right[index]));
 }
 
 function cleanText(value: unknown): string {

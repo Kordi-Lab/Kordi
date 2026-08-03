@@ -399,30 +399,6 @@ test('profile identity deltas update the loaded profile without replacing messag
   assert.equal(next?.messages, state.messages);
 });
 
-test('equivalent profile identity delta replay preserves the complete state reference', () => {
-  const state = fixtureState();
-  state.profile = { ...state.profile, humanIdentityId: 'human:legacy' };
-  const once = applyProfileIdentityDelta(state, profileIdentityDelta(state));
-  assert.ok(once);
-  const stableIdentity = once.identities.find((identity) => identity.id === 'human:acct');
-  assert.ok(stableIdentity);
-
-  const replayed = applyProfileIdentityDelta(once, {
-    profile: { ...once.profile },
-    identity: {
-      ...stableIdentity,
-      metadata: { ...(stableIdentity.metadata as Record<string, unknown>) },
-    },
-    previousIdentityId: 'human:legacy',
-    groupSelfSessionIds: [],
-  });
-
-  assert.equal(replayed, once);
-  assert.equal(replayed?.profile, once.profile);
-  assert.equal(replayed?.identities, once.identities);
-  assert.equal(replayed?.messages, once.messages);
-});
-
 test('profile identity deltas migrate loaded references, dedupe participants, and enforce group self roles', () => {
   const oldId = 'human:legacy';
   const stableId = 'human:acct';

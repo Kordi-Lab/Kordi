@@ -2,23 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Message, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import {
-  fetchDesktopChatSessionDetail,
   fetchDesktopChatState,
   fetchDesktopChatTurnState,
 } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 
-import {
-  appendDesktopSessionSourceMessageToCache,
-  appendMappedSessionMessageToCache,
-  mergeLatestDesktopChatState,
-  mergeDesktopSessionSourceMessagesCache,
-  mergeMappedSessionMessagesCache,
-  pruneDesktopSessionCacheByKnownSessions,
-  pruneDesktopLiveTurnsByKnownSessions,
-  pruneLocalSessionUnreadCounts,
-  pruneQueuedDesktopMessagesByKnownSessions,
-} from './desktopChatStateReducers';
+import { mergeLatestDesktopChatState, pruneDesktopLiveTurnsByKnownSessions, pruneLocalSessionUnreadCounts, pruneQueuedDesktopMessagesByKnownSessions } from './desktopChatStateReducers';
 import {
   buildCompletedDesktopAssistantMessage,
   desktopAssistantMessageMatchesTurn,
@@ -31,6 +20,7 @@ import {
 } from './desktopLiveTurns';
 import { createDesktopTurnRenderAliasRegistry } from './desktopTurnRenderAliasRegistry';
 import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession } from './queuedDesktopMessages';
+import { useDesktopSessionTranscriptCache } from './useDesktopSessionTranscriptCache';
 
 type UseDesktopChatStateArgs = {
   isNativeShell: boolean;
@@ -63,11 +53,6 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const liveTurnCommitTimersRef = useRef<Record<string, number>>({});
   const watchedDesktopTurnIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedInitialDesktopChatRef = useRef(false);
-  const desktopSessionTranscriptCacheRef = useRef<Record<string, DesktopChatMessage[]>>({});
-  const desktopSessionTranscriptPreloadFlightsRef = useRef(
-    new Map<string, Promise<boolean>>(),
-  );
-
   const [desktopChatState, setDesktopChatState] = useState<DesktopChatState | null>(null);
   const [isDesktopChatLoading, setIsDesktopChatLoading] = useState(isNativeShell);
   const [desktopChatError, setDesktopChatError] = useState<string | null>(null);
@@ -75,67 +60,23 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const [desktopLiveTurnsBySession, setDesktopLiveTurnsBySession] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [pendingUserChatMessage, setPendingUserChatMessage] = useState<{ text: string; time: string } | null>(null);
   const [queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession] = useState<Record<string, QueuedDesktopChatMessage[]>>(() => loadQueuedDesktopMessagesBySession());
-  const [cachedChatSessionMessages, setCachedChatSessionMessages] = useState<Record<string, Message[]>>({});
-  const [cachedProjectSessionMessages, setCachedProjectSessionMessages] = useState<Record<string, Message[]>>({});
-  const [cachedDesktopSessionSourceMessages, setCachedDesktopSessionSourceMessages] = useState<Record<string, DesktopChatMessage[]>>({});
   const [localSessionUnreadCounts, setLocalSessionUnreadCounts] = useState<Record<string, number>>({});
   const [desktopTurnRenderAliases] = useState(createDesktopTurnRenderAliasRegistry);
-
-  useEffect(() => {
-    desktopSessionTranscriptCacheRef.current = cachedDesktopSessionSourceMessages;
-  }, [cachedDesktopSessionSourceMessages]);
-
-  const isDesktopSessionTranscriptCached = useCallback((sessionId: string) => (
-    Boolean(desktopSessionTranscriptCacheRef.current[sessionId.trim()])
-  ), []);
-
-  const preloadDesktopSessionTranscript = useCallback((sessionId: string) => {
-    const normalizedSessionId = sessionId.trim();
-    if (!isNativeShell || !normalizedSessionId) return Promise.resolve(false);
-    if (desktopSessionTranscriptCacheRef.current[normalizedSessionId]) {
-      return Promise.resolve(true);
-    }
-    const existingFlight = desktopSessionTranscriptPreloadFlightsRef.current.get(normalizedSessionId);
-    if (existingFlight) return existingFlight;
-
-    const request = fetchDesktopChatSessionDetail(normalizedSessionId)
-      .then((detail) => {
-        if (!detail || detail.id !== normalizedSessionId) return false;
-        const liveTurn = desktopLiveTurnsBySessionRef.current[normalizedSessionId];
-        const preserveExistingMessages = Boolean(liveTurn && !liveTurn.completed);
-        const mappedMessages = mapDesktopMessages(normalizedSessionId, detail.messages);
-        desktopSessionTranscriptCacheRef.current = mergeDesktopSessionSourceMessagesCache(
-          desktopSessionTranscriptCacheRef.current,
-          normalizedSessionId,
-          detail.messages,
-          preserveExistingMessages,
-        );
-        setCachedDesktopSessionSourceMessages((current) => mergeDesktopSessionSourceMessagesCache(
-          current,
-          normalizedSessionId,
-          detail.messages,
-          preserveExistingMessages,
-        ));
-        setCachedChatSessionMessages((current) => mergeMappedSessionMessagesCache(
-          current,
-          normalizedSessionId,
-          mappedMessages,
-          preserveExistingMessages,
-        ));
-        setCachedProjectSessionMessages((current) => mergeMappedSessionMessagesCache(
-          current,
-          normalizedSessionId,
-          mappedMessages,
-          preserveExistingMessages,
-        ));
-        return true;
-      })
-      .finally(() => {
-        desktopSessionTranscriptPreloadFlightsRef.current.delete(normalizedSessionId);
-      });
-    desktopSessionTranscriptPreloadFlightsRef.current.set(normalizedSessionId, request);
-    return request;
-  }, [isNativeShell, mapDesktopMessages]);
+  const {
+    cachedChatSessionMessages,
+    cachedProjectSessionMessages,
+    cachedDesktopSessionSourceMessages,
+    mergeSessionTranscript,
+    replaceSessionTranscript,
+    appendSessionSourceMessage,
+    pruneKnownSessions,
+    isDesktopSessionTranscriptCached,
+    preloadDesktopSessionTranscript,
+  } = useDesktopSessionTranscriptCache({
+    isNativeShell,
+    mapDesktopMessages,
+    liveTurnsBySessionRef: desktopLiveTurnsBySessionRef,
+  });
 
   const incrementUnreadForSession = useCallback((sessionId?: string | null, count = 1) => {
     const normalizedSessionId = sessionId?.trim();
@@ -277,26 +218,14 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     if (!desktopStateIncludesCompletedTurn(nextState, turn)) {
       throw new Error('Completed transcript is not available yet');
     }
-    const mappedMessages = mapDesktopMessages(nextState.activeSessionId, nextState.activeSession.messages);
     latestDesktopSessionIdRef.current = nextState.activeSessionId;
     setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState, false));
-    setCachedChatSessionMessages((current) => ({
-      ...current,
-      [nextState.activeSessionId]: mappedMessages,
-    }));
-    setCachedProjectSessionMessages((current) => ({
-      ...current,
-      [nextState.activeSessionId]: mappedMessages,
-    }));
-    setCachedDesktopSessionSourceMessages((current) => ({
-      ...current,
-      [nextState.activeSessionId]: nextState.activeSession.messages,
-    }));
+    replaceSessionTranscript(nextState.activeSessionId, nextState.activeSession.messages);
     if (visibleLocalSessionIdRef.current === nextState.activeSessionId) {
       clearUnreadForSession(nextState.activeSessionId);
     }
     setDesktopChatError(null);
-  }, [clearUnreadForSession, desktopTurnRenderAliases, mapDesktopMessages]);
+  }, [clearUnreadForSession, desktopTurnRenderAliases, replaceSessionTranscript]);
 
   useEffect(() => {
     latestDesktopSessionIdRef.current = desktopChatState?.activeSessionId;
@@ -326,19 +255,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       current,
       knownSessionIds,
     ));
-    setCachedChatSessionMessages((current) => pruneDesktopSessionCacheByKnownSessions(
-      current,
-      knownSessionIds,
-    ));
-    setCachedProjectSessionMessages((current) => pruneDesktopSessionCacheByKnownSessions(
-      current,
-      knownSessionIds,
-    ));
-    setCachedDesktopSessionSourceMessages((current) => pruneDesktopSessionCacheByKnownSessions(
-      current,
-      knownSessionIds,
-    ));
-  }, [desktopChatState]);
+    pruneKnownSessions(knownSessionIds);
+  }, [desktopChatState, pruneKnownSessions]);
 
   useEffect(() => {
     if (!isNativeShell) return;
@@ -380,33 +298,22 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) return;
+    const sourceMessages = desktopChatState.activeSession.messages;
     const mappedMessages = suppressIncompleteLiveTurnEcho(
       mapDesktopMessages(
         desktopChatState.activeSessionId,
-        desktopChatState.activeSession.messages,
+        sourceMessages,
       ),
       activeIncompleteLiveTurn,
     );
     const preserveExistingMessages = activeSessionHasVisibleLiveTurn;
-    setCachedChatSessionMessages((current) => mergeMappedSessionMessagesCache(
-      current,
+    mergeSessionTranscript(
       desktopChatState.activeSessionId,
+      sourceMessages,
+      preserveExistingMessages,
       mappedMessages,
-      preserveExistingMessages,
-    ));
-    setCachedProjectSessionMessages((current) => mergeMappedSessionMessagesCache(
-      current,
-      desktopChatState.activeSessionId,
-      mappedMessages,
-      preserveExistingMessages,
-    ));
-    setCachedDesktopSessionSourceMessages((current) => mergeDesktopSessionSourceMessagesCache(
-      current,
-      desktopChatState.activeSessionId,
-      desktopChatState.activeSession.messages,
-      preserveExistingMessages,
-    ));
-  }, [activeIncompleteLiveTurn, activeSessionHasVisibleLiveTurn, desktopChatState?.activeSession, desktopChatState?.activeSessionId, isNativeShell, mapDesktopMessages]);
+    );
+  }, [activeIncompleteLiveTurn, activeSessionHasVisibleLiveTurn, desktopChatState?.activeSession, desktopChatState?.activeSessionId, isNativeShell, mapDesktopMessages, mergeSessionTranscript]);
 
   const mergeCompletedDesktopTurn = useCallback((turn: DesktopChatTurnSnapshot) => {
     const finishedAtDate = new Date();
@@ -489,8 +396,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       return;
     }
 
-    const mappedMessage = mapDesktopMessages(turn.sessionId, [completedMessage])[0];
-    if (!mappedMessage) return;
+    if (!appendSessionSourceMessage(turn.sessionId, completedMessage)) return;
 
     if (isBackgroundSession) {
       incrementUnreadForSession(turn.sessionId);
@@ -506,23 +412,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     // skip the cache update too. Commit the completed response/error into any
     // hydrated cache before removing the live row so one source always owns the
     // visible replacement.
-    setCachedChatSessionMessages((current) => appendMappedSessionMessageToCache(
-      current,
-      turn.sessionId,
-      mappedMessage,
-    ));
-    setCachedProjectSessionMessages((current) => appendMappedSessionMessageToCache(
-      current,
-      turn.sessionId,
-      mappedMessage,
-    ));
-    setCachedDesktopSessionSourceMessages((current) => appendDesktopSessionSourceMessageToCache(
-      current,
-      turn.sessionId,
-      completedMessage,
-    ));
     removeLiveTurnSnapshot(turn.sessionId, turn.id);
-  }, [clearUnreadForSession, incrementUnreadForSession, mapDesktopMessages, removeLiveTurnSnapshot]);
+  }, [appendSessionSourceMessage, clearUnreadForSession, incrementUnreadForSession, removeLiveTurnSnapshot]);
 
   const watchDesktopLiveTurn = useCallback(
     async (turnOrSnapshot: string | DesktopChatTurnSnapshot) => {
@@ -623,9 +514,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     queuedDesktopMessagesBySession,
     setQueuedDesktopMessagesBySession,
     cachedChatSessionMessages,
-    setCachedChatSessionMessages,
     cachedProjectSessionMessages,
-    setCachedProjectSessionMessages,
     cachedDesktopSessionSourceMessages,
     localSessionUnreadCounts,
     setLocalSessionUnreadCounts,

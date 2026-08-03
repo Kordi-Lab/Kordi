@@ -21,6 +21,7 @@ import {
   type CloudOAuthProvider,
   type CloudProfileUpdateInput,
 } from './authClient';
+import { applyCloudSessionProfileUpdate, cloudAccountsEqual } from './cloudAccountState';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
   CLOUD_SESSION_SIGNED_OUT_EVENT,
@@ -30,6 +31,8 @@ import {
   saveSession,
   type StoredSession,
 } from './session';
+
+export { applyCloudSessionProfileUpdate, cloudAccountsEqual } from './cloudAccountState';
 
 export type CloudSessionStatus = 'loading' | 'signed-out' | 'authenticated';
 
@@ -61,39 +64,9 @@ export type UseCloudSessionOptions = {
 const CLOUD_PROFILE_REFRESH_INTERVAL_MS = 15_000;
 const CLOUD_PROFILE_UPDATED_SUBJECT_PREFIX = 'kordi.events.account.profile.updated.';
 
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
 export function shouldRefreshCloudSessionProfileForWsSubject(subject: string | undefined | null, accountId: string | undefined | null): boolean {
   const cleanAccountId = accountId?.trim();
   return Boolean(cleanAccountId && subject === `${CLOUD_PROFILE_UPDATED_SUBJECT_PREFIX}${cleanAccountId}`);
-}
-
-export function applyCloudSessionProfileUpdate(account: CloudAccount | null, payload: unknown): CloudAccount | null {
-  if (!account) return null;
-  const record = objectRecord(payload);
-  if (record?.account_id !== account.accountId) return null;
-  const displayName = typeof record.display_name === 'string' ? record.display_name : account.displayName;
-  const avatarUrl = typeof record.avatar_url === 'string' ? record.avatar_url : account.avatarUrl;
-  return {
-    ...account,
-    displayName,
-    avatarUrl,
-  };
-}
-
-export function cloudAccountsEqual(left: CloudAccount | null, right: CloudAccount | null): boolean {
-  return left === right || Boolean(
-    left
-    && right
-    && left.accountId === right.accountId
-    && left.displayName === right.displayName
-    && left.primaryEmail === right.primaryEmail
-    && left.avatarUrl === right.avatarUrl
-    && left.nodeId === right.nodeId
-    && left.passwordSet === right.passwordSet,
-  );
 }
 
 type CompleteCloudAuthResultOptions = {

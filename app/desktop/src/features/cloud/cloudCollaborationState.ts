@@ -30,6 +30,13 @@ import { formatDesktopClockTime, formatDesktopLastActiveLabel } from '@/lib/time
 
 import type { CloudAccount, CloudMessage } from './authClient';
 import { buildCloudMessageIndex, type CloudMessageIndex } from './cloudMessageIndex';
+import {
+  cloudDirectPersonMessagesForPeer,
+  cloudGroupControlMessageIds,
+  cloudReadIdsRevision,
+  cloudSelfAgentMessagesBySession,
+  cloudTurnRevision,
+} from './cloudCollaborationMemo';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { cloudAvatarImageUrl } from './avatar';
 import {
@@ -65,27 +72,6 @@ const CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS = 10 * 60_000;
 const CLOUD_PERSON_RUNTIME = 'person';
 const CLOUD_AGENT_RUNTIME = 'kordi-desktop';
 const cloudConversationRevisionByObject = new WeakMap<DesktopCollaborationConversation, string>();
-type CloudSelfAgentSessionPartition = {
-  hasSessionScopedMessages: boolean;
-  messagesBySessionId: ReadonlyMap<string | null, readonly CloudMessage[]>;
-};
-const cloudSelfAgentSessionPartitionCache = new WeakMap<
-  readonly CloudMessage[],
-  CloudSelfAgentSessionPartition
->();
-const cloudDirectPersonMessagesCache = new WeakMap<
-  readonly CloudMessage[],
-  Map<string, readonly CloudMessage[]>
->();
-const cloudGroupControlMessageIdsCache = new WeakMap<
-  CloudMessageIndex,
-  ReadonlySet<string>
->();
-const cloudTurnRevisionCache = new WeakMap<
-  readonly CloudMessage[],
-  WeakMap<Record<string, DesktopChatTurnSnapshot>, string>
->();
-const cloudReadIdsRevisionCache = new WeakMap<ReadonlySet<string>, string>();
 
 export function isCloudCollaborationHostId(hostId: string | null | undefined): boolean {
   return hostId === CLOUD_HOST_SENTINEL;
@@ -424,81 +410,6 @@ function cloudAgentCancelledCollaborationMessage({
 
 function isDirectCloudContact(contact: Contact): boolean {
   return contact.contactStatus?.trim().toLowerCase() !== 'group-member';
-}
-
-function cloudDirectPersonMessagesForPeer(
-  account: CloudAccount,
-  peerAccountId: string,
-  messages: readonly CloudMessage[],
-): readonly CloudMessage[] {
-  const cacheKey = `${account.accountId}\u0000${peerAccountId}`;
-  const cached = cloudDirectPersonMessagesCache.get(messages)?.get(cacheKey);
-  if (cached) return cached;
-  const directSessionId = cloudDirectPersonSessionId(account.accountId, peerAccountId);
-  const directMessages = messages.filter((message) => {
-    const sessionId = cleanCloudSessionId(message.sessionId);
-    return !sessionId || sessionId === directSessionId;
-  });
-  const cache = cloudDirectPersonMessagesCache.get(messages)
-    ?? new Map<string, readonly CloudMessage[]>();
-  cache.set(cacheKey, directMessages);
-  cloudDirectPersonMessagesCache.set(messages, cache);
-  return directMessages;
-}
-
-function cloudSelfAgentMessagesBySession(
-  messages: readonly CloudMessage[],
-): CloudSelfAgentSessionPartition {
-  const cached = cloudSelfAgentSessionPartitionCache.get(messages);
-  if (cached) return cached;
-  const mutable = new Map<string | null, CloudMessage[]>();
-  let hasSessionScopedMessages = false;
-  for (const message of messages) {
-    const sessionId = cleanCloudSessionId(message.sessionId);
-    if (sessionId) hasSessionScopedMessages = true;
-    const bucket = mutable.get(sessionId) ?? [];
-    bucket.push(message);
-    mutable.set(sessionId, bucket);
-  }
-  const messagesBySessionId = new Map<string | null, readonly CloudMessage[]>(mutable);
-  const partition = { hasSessionScopedMessages, messagesBySessionId };
-  cloudSelfAgentSessionPartitionCache.set(messages, partition);
-  return partition;
-}
-
-function cloudGroupControlMessageIds(index: CloudMessageIndex): ReadonlySet<string> {
-  const cached = cloudGroupControlMessageIdsCache.get(index);
-  if (cached) return cached;
-  const ids = new Set(index.groupRows.map((row) => row.wire.messageId));
-  cloudGroupControlMessageIdsCache.set(index, ids);
-  return ids;
-}
-
-function cloudTurnRevision(
-  messages: readonly CloudMessage[],
-  localAgentTurnsByRequestId: Record<string, DesktopChatTurnSnapshot>,
-): string {
-  let byTurnStore = cloudTurnRevisionCache.get(messages);
-  const cached = byTurnStore?.get(localAgentTurnsByRequestId);
-  if (cached !== undefined) return cached;
-  const revision = messages.flatMap((message) => {
-    const turn = localAgentTurnsByRequestId[message.messageId];
-    return turn
-      ? [`${message.messageId}:${turn.id}:${turn.status}:${turn.completed}:${turn.assistantText.length}:${turn.error ?? ''}`]
-      : [];
-  }).join(',');
-  byTurnStore ??= new WeakMap();
-  byTurnStore.set(localAgentTurnsByRequestId, revision);
-  cloudTurnRevisionCache.set(messages, byTurnStore);
-  return revision;
-}
-
-function cloudReadIdsRevision(readIds: ReadonlySet<string>): string {
-  const cached = cloudReadIdsRevisionCache.get(readIds);
-  if (cached !== undefined) return cached;
-  const revision = [...readIds].sort().join(',');
-  cloudReadIdsRevisionCache.set(readIds, revision);
-  return revision;
 }
 
 function cloudMessageIsAtOrBeforeReadCursor(message: CloudMessage, cursor?: CloudGroupReadCursor | null): boolean {

@@ -1,7 +1,5 @@
-import type {
-  CanonicalMessageSourceRef,
-  CanonicalSessionState,
-} from '@/kordi-app/types';
+import type { CanonicalMessageSourceRef } from '@/features/canonical/canonicalMessageSources';
+import type { CanonicalSessionState } from '@/kordi-app/types';
 import {
   beginChatPerformanceSpan,
   chatPerformancePayloadBytes,

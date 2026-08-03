@@ -1,7 +1,17 @@
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
+import {
+  latestCloudReceiptAt,
+  upsertCloudMessage as upsertMessage,
+} from './cloudMessageMerge';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
+
+export {
+  cloudMessageAttachmentsEqual,
+  cloudMessagesEqual,
+  mergeCloudMessageMonotonicState,
+} from './cloudMessageMerge';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
 
@@ -138,92 +148,6 @@ function messagePeerId(accountId: string, message: CloudMessage, eventPeerId?: s
   if (message.fromAccountId === accountId) return message.toAccountId;
   if (message.toAccountId === accountId) return message.fromAccountId;
   return null;
-}
-
-function latestCloudReceiptAt(
-  current: string | null,
-  incoming: string | null,
-): string | null {
-  if (!current) return incoming;
-  if (!incoming) return current;
-  const currentMs = Date.parse(current);
-  const incomingMs = Date.parse(incoming);
-  if (Number.isFinite(currentMs) && Number.isFinite(incomingMs)) {
-    return incomingMs >= currentMs ? incoming : current;
-  }
-  return incoming.localeCompare(current) >= 0 ? incoming : current;
-}
-
-export function cloudMessageAttachmentsEqual(
-  left: CloudMessage['attachments'] = [],
-  right: CloudMessage['attachments'] = [],
-): boolean {
-  if ((left?.length ?? 0) !== (right?.length ?? 0)) return false;
-  return (left ?? []).every((attachment, index) => {
-    const other = (right ?? [])[index];
-    return Boolean(other)
-      && attachment.attachmentId === other.attachmentId
-      && (attachment.previewAttachmentId ?? null) === (other.previewAttachmentId ?? null)
-      && attachment.name === other.name
-      && attachment.kind === other.kind
-      && (attachment.mimeType ?? null) === (other.mimeType ?? null)
-      && (attachment.sizeBytes ?? null) === (other.sizeBytes ?? null)
-      && (attachment.downloadUrl ?? null) === (other.downloadUrl ?? null)
-      && (attachment.previewUrl ?? null) === (other.previewUrl ?? null)
-      && (attachment.localPath ?? null) === (other.localPath ?? null);
-  });
-}
-
-export function cloudMessagesEqual(
-  message: CloudMessage,
-  other: CloudMessage | undefined,
-): boolean {
-  if (!other) return false;
-  return message.messageId === other.messageId
-    && message.fromAccountId === other.fromAccountId
-    && message.toAccountId === other.toAccountId
-    && message.body === other.body
-    && message.createdAt === other.createdAt
-    && message.deliveredAt === other.deliveredAt
-    && message.readAt === other.readAt
-    && message.direction === other.direction
-    && (message.sessionId ?? null) === (other.sessionId ?? null)
-    && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
-}
-
-export function mergeCloudMessageMonotonicState(
-  current: CloudMessage,
-  incoming: CloudMessage,
-): CloudMessage {
-  const merged = {
-    ...current,
-    ...incoming,
-    attachments: incoming.attachments ?? current.attachments,
-    // Delivery and read receipts only move forward. Historical sync events can
-    // predate the authoritative latest-message snapshot and therefore carry
-    // null receipt values that must not make an already-read message unread.
-    deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
-    readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
-  };
-  return cloudMessagesEqual(current, merged) ? current : merged;
-}
-
-function upsertMessage(messages: CloudMessage[], nextMessage: CloudMessage): CloudMessage[] {
-  const index = messages.findIndex((message) => message.messageId === nextMessage.messageId);
-  if (index >= 0) {
-    const mergedMessage = mergeCloudMessageMonotonicState(messages[index]!, nextMessage);
-    if (mergedMessage === messages[index]) return messages;
-    const merged = messages.slice();
-    merged[index] = mergedMessage;
-    return merged.sort((left, right) => (
-      left.createdAt.localeCompare(right.createdAt)
-      || left.messageId.localeCompare(right.messageId)
-    ));
-  }
-  return [...messages, nextMessage].sort((left, right) => (
-    left.createdAt.localeCompare(right.createdAt)
-    || left.messageId.localeCompare(right.messageId)
-  ));
 }
 
 function payloadMessage(event: CloudSyncEvent): CloudMessage | null {

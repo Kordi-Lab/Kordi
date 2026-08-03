@@ -12,7 +12,7 @@ import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId,
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
-import { presenceStatusForAccount, type CloudPresenceStore } from '@/features/cloud/presence';
+import type { CloudPresenceStore } from '@/features/cloud/presence';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -53,6 +53,8 @@ import type {
 } from '@/kordi-app/types';
 import { isSelfReferenceName } from '@/lib/identityLabels';
 import { getInitials } from '@/kordi-app/utils';
+import { applyCloudPresenceToConversations } from './viewModels/cloudConversationPresence';
+import { liveTurnsViewModelSignature } from './viewModels/workspaceViewModelSignatures';
 
 function sanitizeRemotePeerName(
   ...candidates: Array<string | null | undefined>
@@ -239,63 +241,6 @@ export function pendingCloudCollaborationConversationForActiveId(activeConvId: s
     },
     avatarSeed: peerId,
   };
-}
-
-function cloudAccountIdFromParticipant(participant: { id?: string | null; humanId?: string | null; sourceIdentityId?: string | null }) {
-  const candidates = [participant.humanId, participant.sourceIdentityId, participant.id]
-    .map((value) => value?.trim() ?? '')
-    .filter(Boolean)
-    .flatMap((value) => [value, value.replace(/^human:/, '')]);
-  return candidates.find((value) => value.startsWith('acct_')) ?? null;
-}
-
-export function applyCloudPresenceToConversations(conversations: Conversation[], cloudPresence: CloudPresenceStore): Conversation[] {
-  if (Object.keys(cloudPresence).length === 0) return conversations;
-  return conversations.map((conversation) => {
-    const participants = conversation.canonicalParticipants;
-    if (!participants?.length) {
-      const accountId = cloudAccountIdFromParticipant({
-        humanId: conversation.collaborationTarget?.humanId,
-        sourceIdentityId: conversation.collaborationTarget?.nodeId,
-      });
-      if (!accountId || !cloudPresence[accountId]) return conversation;
-      const presenceStatus = presenceStatusForAccount(cloudPresence, accountId);
-      if (conversation.participantPresenceStatuses?.[accountId] === presenceStatus) return conversation;
-      return {
-        ...conversation,
-        participantPresenceStatuses: {
-          ...(conversation.participantPresenceStatuses ?? {}),
-          [accountId]: presenceStatus,
-        },
-      };
-    }
-    let changed = false;
-    const canonicalParticipants = participants.map((participant) => {
-      if (participant.kind !== 'human') return participant;
-      const accountId = cloudAccountIdFromParticipant(participant);
-      if (!accountId) return participant;
-      const presenceStatus = presenceStatusForAccount(cloudPresence, accountId);
-      if (participant.presenceStatus === presenceStatus) return participant;
-      changed = true;
-      return { ...participant, presenceStatus };
-    });
-    return changed ? { ...conversation, canonicalParticipants } : conversation;
-  });
-}
-
-function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSnapshot>) {
-  return Object.entries(liveTurns)
-    .map(([sessionId, turn]) => [
-      sessionId,
-      turn.id,
-      turn.status,
-      turn.completed ? 'completed' : 'running',
-      turn.succeeded ? 'succeeded' : 'pending',
-      turn.error ? 'error' : 'ok',
-      turn.tools.map((tool) => `${tool.id}:${tool.status}:${tool.isError ? 'error' : 'ok'}`).join(','),
-    ].join('\u0000'))
-    .sort()
-    .join('\u0001');
 }
 
 function canonicalTaskActivitiesForSession(

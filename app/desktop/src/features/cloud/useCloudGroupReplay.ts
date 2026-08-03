@@ -4,7 +4,7 @@ import {
 } from 'react';
 import {
   fetchExistingCanonicalMessageSources,
-} from '@/lib/desktop';
+} from '@/features/canonical/canonicalMessageSources';
 import type {
   CloudGroupControlEnvelope,
 } from './cloudGroupMessages';

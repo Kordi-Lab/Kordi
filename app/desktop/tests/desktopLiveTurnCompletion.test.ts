@@ -11,7 +11,7 @@ test('completed live turn installs the keyed transcript reply before removing th
   const body = source.slice(functionStart, functionEnd);
 
   const firstAppend = body.indexOf('setDesktopChatState((current) => {');
-  const firstCacheAppend = body.indexOf('appendMappedSessionMessageToCache(');
+  const firstCacheAppend = body.indexOf('appendSessionSourceMessage(');
   const completedMessageRemove = body.lastIndexOf('removeLiveTurnSnapshot(turn.sessionId, turn.id)');
   assert.notEqual(firstAppend, -1);
   assert.notEqual(firstCacheAppend, -1);

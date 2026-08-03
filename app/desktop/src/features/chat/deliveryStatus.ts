@@ -32,3 +32,10 @@ export function messageDeliveryVisual(status?: string | null): MessageDeliveryVi
   }
   return null;
 }
+
+export function shouldAnimateHumanMessageEntry(
+  isHumanMessage: boolean,
+  status?: string | null,
+): boolean {
+  return isHumanMessage && (status === 'sending' || status === 'pending_send');
+}

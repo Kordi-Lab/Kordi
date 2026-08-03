@@ -7,7 +7,6 @@ import type {
   CanonicalGroupMembershipDelta,
   CanonicalMessageDeliveryDelta,
   CanonicalMessagePage,
-  CanonicalMessageSourceRef,
   CanonicalProfileIdentityDelta,
   CanonicalReadCursorDelta,
   CanonicalSessionCatalog,
@@ -44,7 +43,7 @@ import {
   type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
 
-function isNativeDesktopShell() {
+export function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
@@ -74,7 +73,7 @@ function extractDesktopErrorMessage(error: unknown): string {
   return 'Desktop command failed';
 }
 
-async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
+export async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
   const { invoke } = await import('@tauri-apps/api/core');
   try {
     return await invoke<T>(command, args);
@@ -749,16 +748,6 @@ export async function fetchCanonicalSessionMessages(
     finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
     throw error;
   }
-}
-
-export async function fetchExistingCanonicalMessageSources(
-  sources: readonly CanonicalMessageSourceRef[],
-) {
-  if (!isNativeDesktopShell() || sources.length === 0) return [];
-  return invokeDesktop<CanonicalMessageSourceRef[]>(
-    'desktop_canonical_existing_message_sources',
-    { sources },
-  );
 }
 
 export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
