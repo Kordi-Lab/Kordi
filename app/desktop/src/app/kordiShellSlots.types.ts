@@ -100,6 +100,7 @@ export type AssembleKordiShellSlotsArgs = {
   localProfileAvatarSeed?: string | null;
   localProfileDisplayName?: string | null;
   localProfileImageUrl?: string | null;
+  handlePrefetchChatSession: (sessionId: string) => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
   handleStartChatWithPerson: (contact: Contact) => Promise<void>;
   handleStartChatWithAgent: (agent: Agent) => Promise<void>;
@@ -339,6 +340,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isDesktopChatLoading'
   | 'desktopChatError'
   | 'activeConvId'
+  | 'handlePrefetchChatSession'
   | 'handleSelectChatSession'
   | 'handleStartChatWithPerson'
   | 'handleStartChatWithAgent'

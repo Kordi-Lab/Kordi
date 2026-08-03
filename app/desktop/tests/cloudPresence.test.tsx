@@ -30,6 +30,55 @@ test('presence websocket event updates a single account', () => {
   assert.equal(next.acct_1?.status, 'online');
 });
 
+test('unchanged presence data preserves store identity', () => {
+  const current = {
+    acct_1: {
+      accountId: 'acct_1',
+      status: 'online' as const,
+      updatedAt: '2026-05-23T00:00:00Z',
+    },
+  };
+  assert.equal(applyPresenceSnapshot(current, {
+    accounts: [{
+      accountId: 'acct_1',
+      status: 'online',
+      updatedAt: '2026-05-23T00:00:00Z',
+    }],
+  }), current);
+  assert.equal(mergePresenceEvent(current, {
+    accountId: 'acct_1',
+    status: 'online',
+    updatedAt: '2026-05-23T00:00:00Z',
+  }), current);
+  assert.equal(applyPresenceSnapshot(current, {
+    accounts: [{
+      accountId: 'acct_1',
+      status: 'online',
+      updatedAt: '2026-05-23T00:05:00Z',
+    }],
+  }), current);
+  assert.equal(mergePresenceEvent(current, {
+    accountId: 'acct_1',
+    status: 'online',
+    updatedAt: '2026-05-23T00:05:00Z',
+  }), current);
+});
+
+test('presence updates without a timestamp preserve the prior timestamp', () => {
+  const current = {
+    acct_1: {
+      accountId: 'acct_1',
+      status: 'online' as const,
+      updatedAt: '2026-05-23T00:00:00Z',
+    },
+  };
+  assert.equal(mergePresenceEvent(current, {
+    accountId: 'acct_1',
+    status: 'online',
+    updatedAt: '',
+  }), current);
+});
+
 test('presence subject and payload parser recognize account changes', () => {
   assert.equal(shouldRefreshPresenceForWsSubject('kordi.events.presence.account.acct_1'), true);
   assert.equal(shouldRefreshPresenceForWsSubject('kordi.events.message.arrived.acct_1'), false);

@@ -13,6 +13,7 @@ export type CloudGroupReplayFailure = {
 export type CloudGroupReplayRequest<Row> = {
   entries: readonly CloudGroupReplayEntry<Row>[];
   apply: (row: Row) => Promise<void>;
+  onApplied?: () => void;
   onFailure?: (failure: CloudGroupReplayFailure) => void;
 };
 
@@ -101,6 +102,7 @@ export class CloudGroupReplayCoordinator<Row> {
       const request = this.pendingRequest;
       this.pendingRequest = null;
       if (request.generation !== this.generation) continue;
+      let appliedAny = false;
 
       for (const entry of request.entries) {
         if (request.generation !== this.generation) break;
@@ -113,6 +115,7 @@ export class CloudGroupReplayCoordinator<Row> {
           if (request.generation !== this.generation) break;
           this.completedKeys.add(entry.key);
           this.retryByKey.delete(entry.key);
+          appliedAny = true;
         } catch (error) {
           if (request.generation !== this.generation) break;
           const attempt = (retry?.attempt ?? 0) + 1;
@@ -126,6 +129,9 @@ export class CloudGroupReplayCoordinator<Row> {
           });
           request.onFailure?.({ key: entry.key, attempt, retryDelayMs, error });
         }
+      }
+      if (appliedAny && request.generation === this.generation) {
+        request.onApplied?.();
       }
     }
   }

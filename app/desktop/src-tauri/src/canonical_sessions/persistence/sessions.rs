@@ -29,6 +29,12 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
         request.metadata,
     );
     let status = validate_status(request.status, "active");
+    let created_by_identity_id = request.created_by_identity_id;
+    let primary_identity_id = clean_optional(request.primary_identity_id);
+    let project_id = clean_optional(request.project_id);
+    let project_name = clean_optional(request.project_name);
+    let relationship_identity_id = clean_optional(request.relationship_identity_id);
+    let participant_identity_ids = request.participant_identity_ids;
     let metadata = json_to_db(&metadata_value)?;
     let participant_role = if kind == "group" {
         "person"
@@ -37,8 +43,20 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
     };
     let now = now_ms();
 
-    conn.execute(
-        "INSERT INTO sessions(
+    let session_changed = existing_session.as_ref().is_none_or(|existing| {
+        existing.kind != kind
+            || existing.title != title
+            || existing.status != status
+            || existing.created_by_identity_id != created_by_identity_id
+            || existing.primary_identity_id != primary_identity_id
+            || existing.project_id != project_id
+            || existing.project_name != project_name
+            || existing.relationship_identity_id != relationship_identity_id
+            || existing.metadata != metadata_value
+    });
+    if session_changed {
+        conn.execute(
+            "INSERT INTO sessions(
              id, kind, title, status, created_by_identity_id, primary_identity_id, project_id,
              project_name, relationship_identity_id, metadata_json, created_at_ms, updated_at_ms, last_message_at_ms
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL)
@@ -53,22 +71,23 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
              relationship_identity_id = excluded.relationship_identity_id,
              metadata_json = excluded.metadata_json,
              updated_at_ms = excluded.updated_at_ms",
-        params![
-            id,
-            kind,
-            title,
-            status,
-            request.created_by_identity_id,
-            clean_optional(request.primary_identity_id),
-            clean_optional(request.project_id),
-            clean_optional(request.project_name),
-            clean_optional(request.relationship_identity_id),
-            metadata,
-            now,
-            now,
-        ],
-    )
-    .map_err(|err| err.to_string())?;
+            params![
+                id,
+                kind,
+                title,
+                status,
+                created_by_identity_id,
+                primary_identity_id,
+                project_id,
+                project_name,
+                relationship_identity_id,
+                metadata,
+                now,
+                now,
+            ],
+        )
+        .map_err(|err| err.to_string())?;
+    }
 
     let local_group_self_identity_id = if kind == "group" {
         local_profile_self_identity_id(conn)?
@@ -77,8 +96,8 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
     };
     let self_identity_id = local_group_self_identity_id
         .as_deref()
-        .unwrap_or(request.created_by_identity_id.as_str());
-    let created_by_role = if request.created_by_identity_id == self_identity_id {
+        .unwrap_or(created_by_identity_id.as_str());
+    let created_by_role = if created_by_identity_id == self_identity_id {
         "self"
     } else if kind == "group" {
         "admin"
@@ -88,14 +107,14 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
     upsert_participant(
         conn,
         &id,
-        &request.created_by_identity_id,
+        &created_by_identity_id,
         created_by_role,
-        Some(&request.created_by_identity_id),
+        Some(&created_by_identity_id),
         now,
     )?;
-    for participant in request.participant_identity_ids {
+    for participant in participant_identity_ids {
         let participant = participant.trim();
-        if participant.is_empty() || participant == request.created_by_identity_id {
+        if participant.is_empty() || participant == created_by_identity_id {
             continue;
         }
         let role = if participant == self_identity_id {
@@ -108,7 +127,7 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
             &id,
             participant,
             role,
-            Some(&request.created_by_identity_id),
+            Some(&created_by_identity_id),
             now,
         )?;
     }

@@ -64,6 +64,7 @@ export type KordiShellCompositionArgs = {
     | 'localProfileImageUrl'
   >;
   workspaceActions: ShellArgGroup<
+    | 'handlePrefetchChatSession'
     | 'handleSelectChatSession'
     | 'handleStartChatWithPerson'
     | 'handleStartChatWithAgent'

@@ -5,6 +5,11 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '@/kordi-app/types';
+import {
+  canonicalIdentitiesEqual,
+  canonicalMessagesEqual,
+  canonicalProfilesEqual,
+} from './canonicalEquality';
 
 function mapPreservingArray<T>(items: T[], mapItem: (item: T) => T): T[] {
   let changed = false;
@@ -72,7 +77,14 @@ export function applyCanonicalProfileIdentityDelta(
       ? identity
       : { ...identity, ownerIdentityId, metadata };
   };
-  const adoptedIdentity = rewriteIdentity(delta.identity);
+  const rewrittenAdoptedIdentity = rewriteIdentity(delta.identity);
+  const existingStableIdentity = state.identities.find(
+    (identity) => identity.id === stableIdentityId,
+  );
+  const adoptedIdentity = existingStableIdentity
+    && canonicalIdentitiesEqual(existingStableIdentity, rewrittenAdoptedIdentity)
+    ? existingStableIdentity
+    : rewrittenAdoptedIdentity;
   let identitiesChanged = false;
   let stableIdentityInserted = false;
   const identities: CanonicalSessionState['identities'] = [];
@@ -205,8 +217,11 @@ export function applyCanonicalProfileIdentityDelta(
     if (filteredPresence.length !== state.presence.length) presence = filteredPresence;
   }
 
+  const profile = canonicalProfilesEqual(state.profile, delta.profile)
+    ? state.profile
+    : delta.profile;
   if (
-    delta.profile === state.profile
+    profile === state.profile
     && nextIdentities === state.identities
     && sessions === state.sessions
     && nextParticipants === state.participants
@@ -218,7 +233,7 @@ export function applyCanonicalProfileIdentityDelta(
   }
   return {
     ...state,
-    profile: delta.profile,
+    profile,
     identities: nextIdentities,
     sessions,
     participants: nextParticipants,
@@ -278,17 +293,20 @@ export function mergeCanonicalMessageRow(
   if (!state || !row) return state;
   const existingIndex = state.messages.findIndex((message) => message.id === row.id);
   const messages = existingIndex >= 0
-    ? state.messages.map((message, index) => (index === existingIndex ? row : message))
+    ? canonicalMessagesEqual(state.messages[existingIndex], row)
+      ? state.messages
+      : state.messages.map((message, index) => (index === existingIndex ? row : message))
     : [...state.messages, row];
-  const sessions = state.sessions.map((session) => (
-    session.id === row.sessionId
-      ? {
-          ...session,
-          updatedAtMs: Math.max(session.updatedAtMs, row.updatedAtMs),
-          lastMessageAtMs: Math.max(session.lastMessageAtMs ?? 0, row.createdAtMs),
-        }
-      : session
-  ));
+  const sessions = mapPreservingArray(state.sessions, (session) => {
+    if (session.id !== row.sessionId) return session;
+    const updatedAtMs = Math.max(session.updatedAtMs, row.updatedAtMs);
+    const lastMessageAtMs = Math.max(session.lastMessageAtMs ?? 0, row.createdAtMs);
+    return updatedAtMs === session.updatedAtMs
+      && lastMessageAtMs === session.lastMessageAtMs
+      ? session
+      : { ...session, updatedAtMs, lastMessageAtMs };
+  });
+  if (messages === state.messages && sessions === state.sessions) return state;
   return { ...state, sessions, messages };
 }
 

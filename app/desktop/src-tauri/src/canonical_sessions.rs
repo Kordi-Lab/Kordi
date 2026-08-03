@@ -311,6 +311,14 @@ pub async fn desktop_canonical_session_messages(
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_existing_message_sources(
+    sources: Vec<CanonicalMessageSourceRef>,
+) -> Result<Vec<CanonicalMessageSourceRef>, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_existing_message_sources(sources))
+        .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_upsert_identity(
     request: UpsertCanonicalIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {

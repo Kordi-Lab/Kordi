@@ -199,6 +199,40 @@ test('canonical session state adapter preserves the store for functional no-op u
   assert.equal(next, store);
 });
 
+test('equivalent native catalog refresh preserves the complete store reference', () => {
+  const firstCatalog = catalog();
+  const store = mergeCanonicalCatalog(createCanonicalStore(), firstCatalog);
+  const replay = structuredClone(firstCatalog);
+
+  const next = mergeCanonicalCatalog(store, replay);
+
+  assert.equal(next, store);
+  assert.equal(next.catalog, store.catalog);
+  assert.equal(next.messagesBySessionId, store.messagesBySessionId);
+  assert.equal(next.hydrationBySessionId, store.hydrationBySessionId);
+});
+
+test('duplicate hydration and message page results preserve the store reference', () => {
+  let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
+  store = beginCanonicalSessionHydration(store, 'session:one');
+  assert.equal(beginCanonicalSessionHydration(store, 'session:one'), store);
+
+  const page: CanonicalMessagePage = {
+    sessionId: 'session:one',
+    messages: [
+      message('m1', 'session:one', 1),
+      message('m2', 'session:one', 2),
+      message('m3', 'session:one', 3),
+    ],
+    oldestSequenceNum: 1,
+    newestSequenceNum: 3,
+    hasOlder: false,
+  };
+  store = mergeCanonicalMessagePage(store, page);
+
+  assert.equal(mergeCanonicalMessagePage(store, structuredClone(page)), store);
+});
+
 test('product startup and Cloud replay no longer invoke the full canonical snapshot command', () => {
   const appSource = readKordiAppModelImplementationSource();
   const canonicalStoreSource = readFileSync(new URL('../src/app/useKordiCanonicalSessionStore.ts', import.meta.url), 'utf8');

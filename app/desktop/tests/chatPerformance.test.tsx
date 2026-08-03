@@ -99,3 +99,46 @@ test('Cloud index instrumentation records aggregate sizes without source values'
   assert.deepEqual(record?.metrics, { messageCount: 0, rowCount: 0, payloadBytes: 0 });
   assert.equal(JSON.stringify(record).includes('acct_private'), false);
 });
+
+test('repeated spans replace the browser performance measure instead of accumulating entries', () => {
+  globalThis.__KORDI_PERF_DIAGNOSTICS__ = true;
+  const originalPerformance = globalThis.performance;
+  const clearedNames: string[] = [];
+  const measuredNames: string[] = [];
+  let nowMs = 0;
+  Object.defineProperty(globalThis, 'performance', {
+    configurable: true,
+    value: {
+      now: () => {
+        nowMs += 1;
+        return nowMs;
+      },
+      clearMeasures: (name: string) => clearedNames.push(name),
+      measure: (name: string) => measuredNames.push(name),
+    } as unknown as Performance,
+  });
+  try {
+    finishChatPerformanceSpan(
+      beginChatPerformanceSpan('transcript-virtual-render'),
+      { visibleRowCount: 12 },
+    );
+    finishChatPerformanceSpan(
+      beginChatPerformanceSpan('transcript-virtual-render'),
+      { visibleRowCount: 13 },
+    );
+  } finally {
+    Object.defineProperty(globalThis, 'performance', {
+      configurable: true,
+      value: originalPerformance,
+    });
+  }
+
+  assert.deepEqual(clearedNames, [
+    'kordi:transcript-virtual-render',
+    'kordi:transcript-virtual-render',
+  ]);
+  assert.deepEqual(measuredNames, [
+    'kordi:transcript-virtual-render',
+    'kordi:transcript-virtual-render',
+  ]);
+});

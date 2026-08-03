@@ -468,6 +468,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_session_state,
             canonical_sessions::desktop_canonical_session_catalog,
             canonical_sessions::desktop_canonical_session_messages,
+            canonical_sessions::desktop_canonical_existing_message_sources,
             canonical_sessions::desktop_canonical_upsert_identity,
             canonical_sessions::desktop_canonical_adopt_cloud_profile_identity,
             canonical_sessions::desktop_canonical_upsert_identity_fast,

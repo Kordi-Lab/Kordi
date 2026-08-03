@@ -139,7 +139,10 @@ export function useKordiAppFoundation({
     setQueuedDesktopMessagesBySession,
     cachedChatSessionMessages,
     cachedProjectSessionMessages,
+    cachedDesktopSessionSourceMessages,
     localSessionUnreadCounts,
+    isDesktopSessionTranscriptCached,
+    preloadDesktopSessionTranscript,
     setVisibleLocalSessionId,
     refreshDesktopChat,
     watchDesktopLiveTurn,
@@ -371,7 +374,8 @@ export function useKordiAppFoundation({
     canonical: {
       canonicalStore, canonicalSessionState, setCanonicalSessionState,
       canonicalInitialRefreshSettled, canonicalInitialRefreshError,
-      resetCanonicalInitialRefresh, loadCanonicalSessionHistory,
+      resetCanonicalInitialRefresh, hydrateCanonicalSessionPage,
+      loadCanonicalSessionHistory,
       loadOlderCanonicalSessionMessages, refreshCanonicalState,
     },
     participants: {
@@ -397,7 +401,9 @@ export function useKordiAppFoundation({
       pendingUserChatMessage, setPendingUserChatMessage,
       queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession,
       cachedChatSessionMessages, cachedProjectSessionMessages,
-      localSessionUnreadCounts, setVisibleLocalSessionId,
+      cachedDesktopSessionSourceMessages,
+      localSessionUnreadCounts, isDesktopSessionTranscriptCached,
+      preloadDesktopSessionTranscript, setVisibleLocalSessionId,
       refreshDesktopChat, watchDesktopLiveTurn, mapDesktopMessages,
     },
     navigation: {

@@ -52,7 +52,7 @@ function now() {
 
 export function chatPerformanceDiagnosticsEnabled() {
   if (globalThis.__KORDI_PERF_DIAGNOSTICS__ === true) return true;
-  if (import.meta.env?.DEV || import.meta.env?.VITE_KORDI_PERF_DIAGNOSTICS === '1') return true;
+  if (import.meta.env?.VITE_KORDI_PERF_DIAGNOSTICS === '1') return true;
   if (cachedStorageOptIn !== null) return cachedStorageOptIn;
   try {
     cachedStorageOptIn = typeof window !== 'undefined'
@@ -92,7 +92,9 @@ function emit(record: ChatPerformanceRecord, startedAt: number, endedAt: number)
   records.push(record);
   if (records.length > MAX_BUFFERED_RECORDS) records.splice(0, records.length - MAX_BUFFERED_RECORDS);
   try {
-    performance.measure(`kordi:${record.name}`, {
+    const measureName = `kordi:${record.name}`;
+    performance.clearMeasures?.(measureName);
+    performance.measure(measureName, {
       start: Math.max(0, startedAt),
       end: Math.max(startedAt, endedAt),
       detail: record.metrics,

@@ -275,8 +275,8 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
   assert.match(pane, /findNavigationIndex=\{\(entry, messageId\)/, 'ChatSessionPane should resolve jump targets against loaded messages');
   assert.match(
     pane,
-    /const handleNavigationReady = useCallback\([\s\S]*navigateToTranscriptMessage\(messageId, scrollRef\)[\s\S]*\[scrollRef\],?\s*\);/,
-    'the shared pane should expose a stable mounted-target navigation callback',
+    /const handleNavigationReady = useCallback\([\s\S]*highlightTranscriptMessage\(messageId\)[\s\S]*\[\],?\s*\);/,
+    'the shared pane should highlight a target after the virtualizer performs the only scroll',
   );
   assert.match(
     pane,

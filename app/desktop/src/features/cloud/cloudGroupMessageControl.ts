@@ -11,6 +11,7 @@ import type {
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { cloudGroupAgentConversationId } from './cloudGroupMessages';
+import { cloudGroupCanonicalMessageSource } from './cloudMessageIndex';
 import type {
   CanonicalSessionStateSetter,
   CloudGroupControlContext,
@@ -104,10 +105,15 @@ export async function applyCloudGroupMessageControl({
   const ownAgentProcessingId = isOwnAgentResponseRoundTrip
     ? `msg:cloud-agent-processing:${(message.replyToMessageId || message.requestId || '').trim()}:${account.accountId}`
     : null;
-  const incomingSourceTransport = message.forkSnapshot
-    ? 'cloud-group-fork-snapshot'
-    : senderIsAgent ? 'cloud-group-agent' : 'cloud-group';
-  const incomingSourceEventId = `${incomingSourceTransport}:${cloudMessage.messageId}`;
+  const incomingSource = cloudGroupCanonicalMessageSource(cloudMessage, envelope);
+  if (!incomingSource) {
+    setCanonicalState(nextState);
+    return null;
+  }
+  const {
+    sourceTransport: incomingSourceTransport,
+    sourceEventId: incomingSourceEventId,
+  } = incomingSource;
   const existingCloudGroupMessages = [canonicalState, nextState].flatMap((state) => state.messages);
   const existingCloudGroupMessage = existingCloudGroupMessages.find((candidate) => (
     candidate.sourceTransport === incomingSourceTransport

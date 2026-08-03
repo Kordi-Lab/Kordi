@@ -12,9 +12,12 @@ import type {
   QueuedDesktopChatMessage,
 } from '../src/kordi-app/types';
 import {
+  appendDesktopSessionSourceMessageToCache,
   appendMappedSessionMessageToCache,
+  mergeDesktopSessionSourceMessagesCache,
   mergeLatestDesktopChatState,
   mergeMappedSessionMessagesCache,
+  pruneDesktopSessionCacheByKnownSessions,
   pruneDesktopLiveTurnsByKnownSessions,
   pruneLocalSessionUnreadCounts,
   pruneQueuedDesktopMessagesByKnownSessions,
@@ -215,6 +218,15 @@ test('prune refresh-scoped desktop stores keeps only known visible-safe records'
     }, knownSessionIds),
     { 'session-a': [queuedMessage()] },
   );
+
+  const cachedA = [desktopMessage('cached')];
+  assert.deepEqual(
+    pruneDesktopSessionCacheByKnownSessions({
+      'session-a': cachedA,
+      'session-gone': [desktopMessage('gone')],
+    }, knownSessionIds),
+    { 'session-a': cachedA },
+  );
 });
 
 test('mergeMappedSessionMessagesCache preserves longer cached transcript while a live turn is visible', () => {
@@ -253,5 +265,26 @@ test('completed turn appends to a hydrated cache even when that session is not t
   assert.equal(appended['session-a'], current['session-a']);
 
   const deduped = appendMappedSessionMessageToCache(appended, 'session-visible', failedReply);
+  assert.equal(deduped, appended);
+});
+
+test('raw desktop transcript cache stays stable during a shorter live snapshot and accepts the completed source row', () => {
+  const first = desktopMessage('one');
+  const streaming = { ...desktopMessage('streaming'), transcriptRenderId: 'turn-streaming' };
+  const existing = [first, streaming];
+
+  const preserved = mergeDesktopSessionSourceMessagesCache(
+    { 'session-a': existing },
+    'session-a',
+    [first],
+    true,
+  );
+  assert.equal(preserved['session-a'], existing);
+
+  const completed = { ...desktopMessage('complete'), transcriptRenderId: 'turn-complete' };
+  const appended = appendDesktopSessionSourceMessageToCache(preserved, 'session-a', completed);
+  assert.deepEqual(appended['session-a'], [...existing, completed]);
+
+  const deduped = appendDesktopSessionSourceMessageToCache(appended, 'session-a', structuredClone(completed));
   assert.equal(deduped, appended);
 });

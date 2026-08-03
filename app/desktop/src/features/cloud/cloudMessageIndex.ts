@@ -1,4 +1,7 @@
-import type { CanonicalSessionState } from '@/kordi-app/types';
+import type {
+  CanonicalMessageSourceRef,
+  CanonicalSessionState,
+} from '@/kordi-app/types';
 import {
   beginChatPerformanceSpan,
   chatPerformancePayloadBytes,
@@ -26,6 +29,8 @@ export type IndexedCloudGroupRow = {
 };
 
 export type CloudMessageIndex = {
+  sourceAccountId: string;
+  sourceMessagesByPeer: Record<string, CloudMessage[]>;
   allMessages: readonly CloudMessage[];
   byMessageId: ReadonlyMap<string, CloudMessage>;
   byPeerId: ReadonlyMap<string, readonly CloudMessage[]>;
@@ -135,13 +140,61 @@ export function cloudGroupReplayKeyForRow(row: IndexedCloudGroupRow) {
   return `${row.envelope.kind}:${row.envelope.groupId}:${row.wire.body}`;
 }
 
+export function cloudGroupCanonicalMessageSource(
+  wire: Pick<CloudMessage, 'messageId'>,
+  envelope: CloudGroupControlEnvelope,
+): CanonicalMessageSourceRef | null {
+  const message = envelope.message;
+  const messageId = wire.messageId.trim();
+  if (envelope.kind !== 'group-message' || !message || !messageId) return null;
+  const sourceTransport = message.forkSnapshot
+    ? 'cloud-group-fork-snapshot'
+    : message.senderKind === 'agent'
+      ? 'cloud-group-agent'
+      : 'cloud-group';
+  return {
+    sourceTransport,
+    sourceEventId: `${sourceTransport}:${messageId}`,
+  };
+}
+
+export function canonicalMessageSourceKey(source: CanonicalMessageSourceRef) {
+  return JSON.stringify([source.sourceTransport, source.sourceEventId]);
+}
+
+export function cloudGroupReplayRowsAfterDurableHistory(
+  rows: readonly IndexedCloudGroupRow[],
+  existingSourceKeys: ReadonlySet<string>,
+) {
+  const latestMessageRowByGroup = new Map<string, IndexedCloudGroupRow>();
+  for (const row of rows) {
+    if (cloudGroupCanonicalMessageSource(row.wire, row.envelope)) {
+      latestMessageRowByGroup.set(row.envelope.groupId, row);
+    }
+  }
+  return rows.filter((row) => {
+    const source = cloudGroupCanonicalMessageSource(row.wire, row.envelope);
+    if (!source || !existingSourceKeys.has(canonicalMessageSourceKey(source))) return true;
+    // One durable tail row per group still refreshes the compact session and
+    // participant shell. The historical message itself remains paged from
+    // SQLite and is not replayed into React memory.
+    return latestMessageRowByGroup.get(row.envelope.groupId) === row;
+  });
+}
+
 export function buildCloudMessageIndex(
   accountId: string | null | undefined,
   messagesByPeer: Record<string, CloudMessage[]>,
   options: CloudMessageIndexOptions = {},
 ): CloudMessageIndex {
-  const performanceSpan = beginChatPerformanceSpan('cloud-message-index');
   const localAccountId = cleanText(accountId);
+  if (
+    options.previousIndex?.sourceAccountId === localAccountId
+    && options.previousIndex.sourceMessagesByPeer === messagesByPeer
+  ) {
+    return options.previousIndex;
+  }
+  const performanceSpan = beginChatPerformanceSpan('cloud-message-index');
   const parseGroupControl = options.parseGroupControl ?? parseCloudGroupControl;
   const previousGroupRowByWireMessageId = options.previousIndex?.groupRowByWireMessageId;
   const uniqueByMessageId = new Map<string, CloudMessage>();
@@ -269,6 +322,8 @@ export function buildCloudMessageIndex(
   }
 
   const index = {
+    sourceAccountId: localAccountId,
+    sourceMessagesByPeer: messagesByPeer,
     allMessages: exposeArray(allMessages),
     byMessageId,
     byPeerId,

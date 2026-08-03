@@ -580,6 +580,11 @@ export type CanonicalMessagePage = {
   hasOlder: boolean;
 };
 
+export type CanonicalMessageSourceRef = {
+  sourceTransport: string;
+  sourceEventId: string;
+};
+
 export type CanonicalReadCursorDelta = {
   sessionId: string;
   identityId: string;

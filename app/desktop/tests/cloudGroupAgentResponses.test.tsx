@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cloudGroupAgentResponseTargetAccountIds, cloudGroupControlMessagesForAccount, cloudGroupLocalAgentRequestAlreadyHandled, cloudGroupMessageReadPeerIds, cloudGroupMessageReadTargets, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState, cloudGroupAgentOfflineNoticeRequest, cloudGroupAgentRequestingNoticeMessage } from '../src/features/cloud/cloudGroupMessages';
+import {
+  upsertCanonicalRequestIntoLocalState,
+} from '../src/features/cloud/cloudAgentRequestState';
+import type {
+  CanonicalSessionState,
+} from '../src/kordi-app/types';
 
 test('cloud group detects whether an offline candidate already sent an agent response', () => {
   assert.equal(cloudGroupAgentMentionHasResponse({
@@ -56,6 +62,58 @@ test('cloud group requesting notice uses the final response slot for smooth in-p
     requestId: 'msg_request',
     replyToMessageId: 'msg_request',
   });
+});
+
+test('a delayed local processing fallback cannot replace a completed group-agent reply', () => {
+  const stableId = 'msg:cloud-agent-processing:msg_request:acct_target';
+  const terminalMessage = {
+    id: stableId,
+    sessionId: 'session:group:one',
+    senderIdentityId: 'agent:cloud:acct_target',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'finished',
+    content: {
+      requestId: 'msg_request',
+      replyToMessageId: 'msg_request',
+      deliveryState: 'complete',
+    },
+    parentMessageId: 'msg_request',
+    status: 'received',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:wire_response',
+  } as const;
+  const state = {
+    messages: [terminalMessage],
+  } as unknown as CanonicalSessionState;
+  const fallback = cloudGroupAgentRequestingNoticeMessage({
+    sessionId: terminalMessage.sessionId,
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    createdAtMs: 3,
+  });
+
+  const next = upsertCanonicalRequestIntoLocalState(state, {
+    id: fallback.id,
+    sessionId: fallback.sessionId,
+    senderIdentityId: fallback.senderIdentityId,
+    senderRole: fallback.senderRole,
+    messageKind: fallback.messageKind,
+    contentText: fallback.contentText,
+    content: fallback.content,
+    parentMessageId: fallback.parentMessageId,
+    status: fallback.status,
+    createdAtMs: fallback.createdAtMs,
+    sourceTransport: fallback.sourceTransport,
+    sourceEventId: fallback.sourceEventId,
+  });
+
+  assert.equal(next, state);
+  assert.equal(next?.messages[0]?.contentText, 'finished');
 });
 
 test('cloud group offline notice replies as the mentioned agent and marks the turn failed', () => {

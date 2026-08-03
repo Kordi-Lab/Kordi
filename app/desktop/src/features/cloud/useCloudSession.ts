@@ -83,6 +83,19 @@ export function applyCloudSessionProfileUpdate(account: CloudAccount | null, pay
   };
 }
 
+export function cloudAccountsEqual(left: CloudAccount | null, right: CloudAccount | null): boolean {
+  return left === right || Boolean(
+    left
+    && right
+    && left.accountId === right.accountId
+    && left.displayName === right.displayName
+    && left.primaryEmail === right.primaryEmail
+    && left.avatarUrl === right.avatarUrl
+    && left.nodeId === right.nodeId
+    && left.passwordSet === right.passwordSet,
+  );
+}
+
 type CompleteCloudAuthResultOptions = {
   result: CloudAuthResult;
   currentAccountId: string | null;
@@ -134,10 +147,17 @@ export function useCloudSession({
   const accountRef = useRef<CloudAccount | null>(null);
 
   const setAuthenticated = useCallback((next: CloudAccount) => {
-    accountIdRef.current = next.accountId;
-    accountRef.current = next;
+    const stableAccount = cloudAccountsEqual(accountRef.current, next)
+      ? accountRef.current ?? next
+      : next;
+    accountIdRef.current = stableAccount.accountId;
+    accountRef.current = stableAccount;
     if (!mountedRef.current) return;
-    setAccount(next);
+    setAccount((current) => (
+      cloudAccountsEqual(current, stableAccount)
+        ? current
+        : stableAccount
+    ));
     setStatus('authenticated');
     setError(null);
   }, []);

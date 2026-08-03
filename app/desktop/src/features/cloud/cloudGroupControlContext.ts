@@ -35,10 +35,24 @@ export type CloudGroupMessageControlContext = CloudGroupControlContext & {
   mappedAttachments: MessageAttachment[];
 };
 
+export type CloudGroupSessionPreparation = {
+  signature: string;
+  localHumanIdentityId: string;
+  groupSpaceId: string;
+  participantByAccount: Map<string, CloudGroupParticipant>;
+  identityIdByAccount: Map<string, string>;
+};
+
+export type CloudGroupSessionPreparationCache = Map<
+  string,
+  CloudGroupSessionPreparation
+>;
+
 export type CloudGroupSessionRuntime = {
   account: CloudAccount | null;
   client: CloudAuthClient;
   profileCache: Map<string, CloudPublicProfile>;
+  sessionPreparationCache: CloudGroupSessionPreparationCache;
 };
 
 export type CloudGroupCanonicalRuntime = {

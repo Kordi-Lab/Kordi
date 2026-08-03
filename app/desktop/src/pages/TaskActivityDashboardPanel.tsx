@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { CheckCircle2, Circle, CornerDownLeft, FileText, XCircle } from 'lucide-react';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
+import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import type { ConversationParticipant, DesktopChatTurnSnapshot, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import type { ScheduledTask, ScheduledTaskRun } from '@/features/cloud/scheduledTasksClient';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';

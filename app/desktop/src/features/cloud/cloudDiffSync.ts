@@ -154,31 +154,73 @@ function latestCloudReceiptAt(
   return incoming.localeCompare(current) >= 0 ? incoming : current;
 }
 
+export function cloudMessageAttachmentsEqual(
+  left: CloudMessage['attachments'] = [],
+  right: CloudMessage['attachments'] = [],
+): boolean {
+  if ((left?.length ?? 0) !== (right?.length ?? 0)) return false;
+  return (left ?? []).every((attachment, index) => {
+    const other = (right ?? [])[index];
+    return Boolean(other)
+      && attachment.attachmentId === other.attachmentId
+      && (attachment.previewAttachmentId ?? null) === (other.previewAttachmentId ?? null)
+      && attachment.name === other.name
+      && attachment.kind === other.kind
+      && (attachment.mimeType ?? null) === (other.mimeType ?? null)
+      && (attachment.sizeBytes ?? null) === (other.sizeBytes ?? null)
+      && (attachment.downloadUrl ?? null) === (other.downloadUrl ?? null)
+      && (attachment.previewUrl ?? null) === (other.previewUrl ?? null)
+      && (attachment.localPath ?? null) === (other.localPath ?? null);
+  });
+}
+
+export function cloudMessagesEqual(
+  message: CloudMessage,
+  other: CloudMessage | undefined,
+): boolean {
+  if (!other) return false;
+  return message.messageId === other.messageId
+    && message.fromAccountId === other.fromAccountId
+    && message.toAccountId === other.toAccountId
+    && message.body === other.body
+    && message.createdAt === other.createdAt
+    && message.deliveredAt === other.deliveredAt
+    && message.readAt === other.readAt
+    && message.direction === other.direction
+    && (message.sessionId ?? null) === (other.sessionId ?? null)
+    && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
+}
+
 export function mergeCloudMessageMonotonicState(
   current: CloudMessage,
   incoming: CloudMessage,
 ): CloudMessage {
-  return {
+  const merged = {
     ...current,
     ...incoming,
+    attachments: incoming.attachments ?? current.attachments,
     // Delivery and read receipts only move forward. Historical sync events can
     // predate the authoritative latest-message snapshot and therefore carry
     // null receipt values that must not make an already-read message unread.
     deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
     readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
   };
+  return cloudMessagesEqual(current, merged) ? current : merged;
 }
 
 function upsertMessage(messages: CloudMessage[], nextMessage: CloudMessage): CloudMessage[] {
   const index = messages.findIndex((message) => message.messageId === nextMessage.messageId);
-  const merged = index >= 0
-    ? [
-      ...messages.slice(0, index),
-      mergeCloudMessageMonotonicState(messages[index]!, nextMessage),
-      ...messages.slice(index + 1),
-    ]
-    : [...messages, nextMessage];
-  return merged.sort((left, right) => (
+  if (index >= 0) {
+    const mergedMessage = mergeCloudMessageMonotonicState(messages[index]!, nextMessage);
+    if (mergedMessage === messages[index]) return messages;
+    const merged = messages.slice();
+    merged[index] = mergedMessage;
+    return merged.sort((left, right) => (
+      left.createdAt.localeCompare(right.createdAt)
+      || left.messageId.localeCompare(right.messageId)
+    ));
+  }
+  return [...messages, nextMessage].sort((left, right) => (
     left.createdAt.localeCompare(right.createdAt)
     || left.messageId.localeCompare(right.messageId)
   ));
@@ -222,11 +264,13 @@ export function removeCloudSessionMessages(
   const trimmedSessionId = sessionId.trim();
   if (!trimmedSessionId) return currentMessagesByPeer;
   const next: Record<string, CloudMessage[]> = {};
+  let changed = false;
   for (const [peerId, messages] of Object.entries(currentMessagesByPeer)) {
     const retained = messages.filter((message) => !messageMatchesSession(accountId, message, trimmedSessionId, peerId));
-    if (retained.length > 0) next[peerId] = retained;
+    if (retained.length !== messages.length) changed = true;
+    if (retained.length > 0) next[peerId] = retained.length === messages.length ? messages : retained;
   }
-  return next;
+  return changed ? next : currentMessagesByPeer;
 }
 
 function readReceiptPayload(event: CloudSyncEvent): { messageIds: string[]; readAt: string } | null {
@@ -282,10 +326,14 @@ export function applyCloudSyncEventsToMessagesByPeer(
         hiddenSessionIds.delete(key);
         deletedSessionIds.delete(key);
       }
-      next = {
-        ...next,
-        [peerId]: upsertMessage(next[peerId] ?? [], message),
-      };
+      const currentPeerMessages = next[peerId] ?? [];
+      const nextPeerMessages = upsertMessage(currentPeerMessages, message);
+      if (nextPeerMessages !== currentPeerMessages) {
+        next = {
+          ...next,
+          [peerId]: nextPeerMessages,
+        };
+      }
       continue;
     }
 
@@ -294,14 +342,21 @@ export function applyCloudSyncEventsToMessagesByPeer(
       const peerId = event.peerAccountId?.trim() ?? '';
       if (!receipt || !peerId || !(peerId in next)) continue;
       const ids = new Set(receipt.messageIds);
-      next = {
-        ...next,
-        [peerId]: next[peerId].map((message) => (
-          ids.has(message.messageId)
-            ? { ...message, deliveredAt: message.deliveredAt ?? receipt.readAt, readAt: receipt.readAt }
-            : message
-        )),
-      };
+      let changed = false;
+      const nextPeerMessages = next[peerId].map((message) => {
+        if (!ids.has(message.messageId)) return message;
+        const deliveredAt = message.deliveredAt ?? receipt.readAt;
+        const readAt = latestCloudReceiptAt(message.readAt, receipt.readAt);
+        if (message.deliveredAt === deliveredAt && message.readAt === readAt) return message;
+        changed = true;
+        return { ...message, deliveredAt, readAt };
+      });
+      if (changed) {
+        next = {
+          ...next,
+          [peerId]: nextPeerMessages,
+        };
+      }
     }
   }
   return next;

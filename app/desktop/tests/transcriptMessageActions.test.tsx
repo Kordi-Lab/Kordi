@@ -110,6 +110,7 @@ test('sent-message delivery glyph keeps one stable slot so status changes do not
   assert.match(markup, /aria-label="Sent"/);
   assert.match(markup, /opacity-100[^\"]*text-slate-400/);
   assert.match(markup, /opacity-0[^\"]*text-slate-400/);
+  assert.doesNotMatch(markup, /app-message-bubble-enter/);
   assert.doesNotMatch(markup, /app-message-delivery-clock-active/);
   assert.doesNotMatch(markup, /title="Sent"/);
 });
@@ -135,6 +136,7 @@ test('sending own message renders a Telegram-style clock with moving hands in th
   assert.match(markup, /app-message-delivery-clock-face/);
   assert.match(markup, /app-message-delivery-clock-hour-hand/);
   assert.match(markup, /app-message-delivery-clock-minute-hand/);
+  assert.match(markup, /app-message-bubble-enter/);
   assert.doesNotMatch(markup, /animate-pulse/);
   assert.doesNotMatch(markup, /lucide-loader-circle[^>]*animate-spin/);
 });

@@ -161,6 +161,7 @@ export function useKordiAppShellComposition({
       localProfileImageUrl: profile.localProfileImageUrl,
     },
     workspaceActions: {
+      handlePrefetchChatSession: sessions.handlePrefetchChatSession,
       handleSelectChatSession: sessions.handleSelectChatSession,
       handleStartChatWithPerson: starts.handleStartChatWithPerson,
       handleStartChatWithAgent: starts.handleStartChatWithAgent,

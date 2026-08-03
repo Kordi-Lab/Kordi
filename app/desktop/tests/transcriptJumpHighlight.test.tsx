@@ -10,16 +10,22 @@ function cssRule(css: string, selector: string) {
   return match[0];
 }
 
-test('jump-to-message highlight is integrated into the original bubble surface', () => {
+test('jump-to-message highlight is paint-only and does not resize the original bubble surface', () => {
   const shellCss = readDesktopShellCss();
   const rootRule = cssRule(shellCss, '.app-transcript-message-highlight');
+  const ownBubbleRule = cssRule(shellCss, '.app-transcript-message-highlight .app-chat-bubble-user');
+  const peerBubbleRule = cssRule(shellCss, '.app-transcript-message-highlight .app-chat-bubble-peer');
+  const shapeRule = cssRule(shellCss, '.app-transcript-message-highlight .app-message-bubble-shape-fill');
 
   assert.doesNotMatch(rootRule, /\boutline\s*:/);
   assert.doesNotMatch(rootRule, /\boutline-offset\s*:/);
-  assert.match(shellCss, /\.app-transcript-message-highlight\s+:where\(\.app-chat-bubble-user,\s*\.app-chat-bubble-peer,\s*\.app-live-assistant-answer-surface\)/);
-  assert.match(shellCss, /\.app-transcript-message-highlight\s+\.app-message-bubble-shape-fill/);
-  assert.match(shellCss, /@keyframes\s+app-transcript-message-glow/);
-  assert.match(shellCss, /prefers-reduced-motion:\s*reduce[\s\S]*\.app-transcript-message-highlight[\s\S]*animation:\s*none/);
+  for (const rule of [rootRule, ownBubbleRule, peerBubbleRule, shapeRule]) {
+    assert.doesNotMatch(rule, /\b(?:animation|filter|transform|width|height|padding|margin)\s*:/);
+  }
+  assert.match(shapeRule, /transition:[\s\S]*fill[\s\S]*stroke/);
+  assert.doesNotMatch(ownBubbleRule, /--app-message-bubble-shadow/);
+  assert.doesNotMatch(peerBubbleRule, /--app-message-bubble-shadow/);
+  assert.doesNotMatch(shellCss, /@keyframes\s+app-transcript-message-glow/);
 });
 
 test('jump-to-message highlight overrides the whole assistant response surface, not only the folded end fade', () => {

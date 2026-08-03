@@ -7,6 +7,7 @@ import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessag
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudAccountGenerationKey, cloudCollaborationPreviousStateForContext, suppressCloudCollaborationUnreadCounts } from '../src/features/cloud/useCloudCollaborationState';
+import { applyCloudAgentRuntimeRouteToState } from '../src/features/cloud/useCloudCollaborationReadModel';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -62,6 +63,25 @@ test('pending unread masks badges while preserving same-account cached transcrip
   assert.notEqual(masked, state);
   assert.equal(masked?.conversations[0]?.unreadCount, 0);
   assert.equal(masked?.conversations[0]?.messages, state.conversations[0]?.messages);
+});
+
+test('unchanged Cloud agent routing preserves collaboration state identity', () => {
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [message] },
+  });
+  assert.equal(applyCloudAgentRuntimeRouteToState(state, null), state);
+
+  const route = {
+    model: 'openai/gpt-5.6-sol',
+    authProvider: 'openai-codex',
+    authChoice: 'profile:chatgpt',
+    thinking: 'medium',
+  };
+  const routed = applyCloudAgentRuntimeRouteToState(state, route);
+  assert.notEqual(routed, state);
+  assert.equal(applyCloudAgentRuntimeRouteToState(routed, route), routed);
 });
 
 

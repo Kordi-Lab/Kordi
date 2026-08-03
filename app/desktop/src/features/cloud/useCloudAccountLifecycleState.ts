@@ -83,10 +83,10 @@ type CloudAccountUnreadStore = {
 type CloudAccountCollaborationStore = {
   stateRef: MutableRefObject<DesktopCollaborationState | null>;
   stateContextKeyRef: MutableRefObject<string | null>;
-  overrideContextKeyRef: MutableRefObject<string | null>;
   setOverride: Dispatch<
     SetStateAction<DesktopCollaborationState | null>
   >;
+  setOverrideContextKey: Dispatch<SetStateAction<string | null>>;
   setReadInboundMessageIdsByPeer: Dispatch<
     SetStateAction<Record<string, Set<string>>>
   >;
@@ -131,8 +131,8 @@ export function useCloudAccountLifecycleState({
   const {
     stateRef: collaborationStateRef,
     stateContextKeyRef: collaborationStateContextKeyRef,
-    overrideContextKeyRef: collaborationOverrideContextKeyRef,
     setOverride: setCollaborationOverride,
+    setOverrideContextKey: setCollaborationOverrideContextKey,
     setReadInboundMessageIdsByPeer,
     setLocalAgentTurnsByRequestId,
   } = collaboration;
@@ -282,8 +282,8 @@ export function useCloudAccountLifecycleState({
     setPublishedContextKey(null);
     collaborationStateRef.current = null;
     collaborationStateContextKeyRef.current = null;
-    collaborationOverrideContextKeyRef.current = null;
     setCollaborationOverride(null);
+    setCollaborationOverrideContextKey(null);
     setReadInboundMessageIdsByPeer({});
     setLocalAgentTurnsByRequestId({});
 
@@ -333,7 +333,6 @@ export function useCloudAccountLifecycleState({
   }, [
     account?.accountId,
     agentDefinitionsByIdRef,
-    collaborationOverrideContextKeyRef,
     collaborationStateContextKeyRef,
     collaborationStateRef,
     deletedSessionIdsRef,
@@ -350,6 +349,7 @@ export function useCloudAccountLifecycleState({
     sessionTitlesByIdRef,
     setAgentDefinitionsById,
     setCollaborationOverride,
+    setCollaborationOverrideContextKey,
     setDeletedSessionIds,
     setHiddenSessionIds,
     setLocalAgentTurnsByRequestId,

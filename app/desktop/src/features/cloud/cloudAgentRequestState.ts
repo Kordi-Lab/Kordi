@@ -110,6 +110,22 @@ export function upsertCanonicalRequestIntoLocalState(
   const createdAtMs = request.createdAtMs ?? Date.now();
   const existingIndex = current.messages.findIndex((message) => message.id === id);
   const existing = existingIndex >= 0 ? current.messages[existingIndex] : null;
+  if (
+    existing?.sourceTransport === 'cloud-group-agent'
+    && request.sourceTransport === 'cloud-group-agent-offline'
+  ) {
+    const content = objectContent(existing.content);
+    const deliveryState = cleanText(
+      typeof content.deliveryState === 'string'
+        ? content.deliveryState
+        : null,
+    ).toLowerCase();
+    const status = existing.status.trim().toLowerCase();
+    if (
+      !['sending', 'processing'].includes(status)
+      && !['sending', 'processing'].includes(deliveryState)
+    ) return current;
+  }
   const nextMessage: CanonicalSessionMessage = {
     id,
     sessionId: request.sessionId,

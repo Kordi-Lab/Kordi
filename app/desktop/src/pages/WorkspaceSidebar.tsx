@@ -77,6 +77,7 @@ export function WorkspaceSidebar({
     setChatSearch,
     desktopChatError,
     activeConvId,
+    onPrefetchChatSession,
     onSelectChatSession,
     onStartChatWithPerson,
     onStartChatWithAgent,
@@ -312,6 +313,7 @@ export function WorkspaceSidebar({
                       model={chatModel}
                       activeConvId={activeConvId}
                       contactActions={{
+                        onPrefetchChatSession,
                         onSelectChatSession,
                         onOpenSessionContextMenu: setSessionContextMenu,
                         onOpenGroupDetails: (space, anchor) => {

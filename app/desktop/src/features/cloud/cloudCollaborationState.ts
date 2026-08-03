@@ -65,6 +65,27 @@ const CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS = 10 * 60_000;
 const CLOUD_PERSON_RUNTIME = 'person';
 const CLOUD_AGENT_RUNTIME = 'kordi-desktop';
 const cloudConversationRevisionByObject = new WeakMap<DesktopCollaborationConversation, string>();
+type CloudSelfAgentSessionPartition = {
+  hasSessionScopedMessages: boolean;
+  messagesBySessionId: ReadonlyMap<string | null, readonly CloudMessage[]>;
+};
+const cloudSelfAgentSessionPartitionCache = new WeakMap<
+  readonly CloudMessage[],
+  CloudSelfAgentSessionPartition
+>();
+const cloudDirectPersonMessagesCache = new WeakMap<
+  readonly CloudMessage[],
+  Map<string, readonly CloudMessage[]>
+>();
+const cloudGroupControlMessageIdsCache = new WeakMap<
+  CloudMessageIndex,
+  ReadonlySet<string>
+>();
+const cloudTurnRevisionCache = new WeakMap<
+  readonly CloudMessage[],
+  WeakMap<Record<string, DesktopChatTurnSnapshot>, string>
+>();
+const cloudReadIdsRevisionCache = new WeakMap<ReadonlySet<string>, string>();
 
 export function isCloudCollaborationHostId(hostId: string | null | undefined): boolean {
   return hostId === CLOUD_HOST_SENTINEL;
@@ -194,7 +215,7 @@ function cloudMessageIsGroupControl(message: CloudMessage, groupControlMessageId
 }
 
 function cloudSelfAgentTitleFromMessages(
-  messages: CloudMessage[],
+  messages: readonly CloudMessage[],
   groupControlMessageIds?: ReadonlySet<string>,
 ): string | null {
   for (const message of [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt))) {
@@ -408,13 +429,76 @@ function isDirectCloudContact(contact: Contact): boolean {
 function cloudDirectPersonMessagesForPeer(
   account: CloudAccount,
   peerAccountId: string,
-  messages: CloudMessage[],
-): CloudMessage[] {
+  messages: readonly CloudMessage[],
+): readonly CloudMessage[] {
+  const cacheKey = `${account.accountId}\u0000${peerAccountId}`;
+  const cached = cloudDirectPersonMessagesCache.get(messages)?.get(cacheKey);
+  if (cached) return cached;
   const directSessionId = cloudDirectPersonSessionId(account.accountId, peerAccountId);
-  return messages.filter((message) => {
+  const directMessages = messages.filter((message) => {
     const sessionId = cleanCloudSessionId(message.sessionId);
     return !sessionId || sessionId === directSessionId;
   });
+  const cache = cloudDirectPersonMessagesCache.get(messages)
+    ?? new Map<string, readonly CloudMessage[]>();
+  cache.set(cacheKey, directMessages);
+  cloudDirectPersonMessagesCache.set(messages, cache);
+  return directMessages;
+}
+
+function cloudSelfAgentMessagesBySession(
+  messages: readonly CloudMessage[],
+): CloudSelfAgentSessionPartition {
+  const cached = cloudSelfAgentSessionPartitionCache.get(messages);
+  if (cached) return cached;
+  const mutable = new Map<string | null, CloudMessage[]>();
+  let hasSessionScopedMessages = false;
+  for (const message of messages) {
+    const sessionId = cleanCloudSessionId(message.sessionId);
+    if (sessionId) hasSessionScopedMessages = true;
+    const bucket = mutable.get(sessionId) ?? [];
+    bucket.push(message);
+    mutable.set(sessionId, bucket);
+  }
+  const messagesBySessionId = new Map<string | null, readonly CloudMessage[]>(mutable);
+  const partition = { hasSessionScopedMessages, messagesBySessionId };
+  cloudSelfAgentSessionPartitionCache.set(messages, partition);
+  return partition;
+}
+
+function cloudGroupControlMessageIds(index: CloudMessageIndex): ReadonlySet<string> {
+  const cached = cloudGroupControlMessageIdsCache.get(index);
+  if (cached) return cached;
+  const ids = new Set(index.groupRows.map((row) => row.wire.messageId));
+  cloudGroupControlMessageIdsCache.set(index, ids);
+  return ids;
+}
+
+function cloudTurnRevision(
+  messages: readonly CloudMessage[],
+  localAgentTurnsByRequestId: Record<string, DesktopChatTurnSnapshot>,
+): string {
+  let byTurnStore = cloudTurnRevisionCache.get(messages);
+  const cached = byTurnStore?.get(localAgentTurnsByRequestId);
+  if (cached !== undefined) return cached;
+  const revision = messages.flatMap((message) => {
+    const turn = localAgentTurnsByRequestId[message.messageId];
+    return turn
+      ? [`${message.messageId}:${turn.id}:${turn.status}:${turn.completed}:${turn.assistantText.length}:${turn.error ?? ''}`]
+      : [];
+  }).join(',');
+  byTurnStore ??= new WeakMap();
+  byTurnStore.set(localAgentTurnsByRequestId, revision);
+  cloudTurnRevisionCache.set(messages, byTurnStore);
+  return revision;
+}
+
+function cloudReadIdsRevision(readIds: ReadonlySet<string>): string {
+  const cached = cloudReadIdsRevisionCache.get(readIds);
+  if (cached !== undefined) return cached;
+  const revision = [...readIds].sort().join(',');
+  cloudReadIdsRevisionCache.set(readIds, revision);
+  return revision;
 }
 
 function cloudMessageIsAtOrBeforeReadCursor(message: CloudMessage, cursor?: CloudGroupReadCursor | null): boolean {
@@ -552,7 +636,7 @@ export function buildCloudCollaborationConversation({
 }: {
   account: CloudAccount;
   contact: Contact;
-  messages: CloudMessage[];
+  messages: readonly CloudMessage[];
   runtime?: string;
   readInboundMessageIds?: Set<string>;
   readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
@@ -856,7 +940,7 @@ export function buildCloudDesktopCollaborationState({
   suppressUnscopedSelfAgentConversation?: boolean;
 }): DesktopCollaborationState {
   const index = messageIndex ?? buildCloudMessageIndex(account.accountId, messagesByPeer);
-  const groupControlMessageIds = new Set(index.groupRows.map((row) => row.wire.messageId));
+  const groupControlMessageIds = cloudGroupControlMessageIds(index);
   const previousConversationById = new Map((previousState?.conversations ?? []).map((conversation) => [conversation.id, conversation]));
   const reuseConversation = (
     conversationId: string,
@@ -891,11 +975,7 @@ export function buildCloudDesktopCollaborationState({
         ? cloudDirectPersonSessionId(account.accountId, contact.sourceParticipantId || contact.id.replace(/^cloud:/, ''))
         : null);
     const readCursor = readCursorSessionId ? readCursorsBySessionId[readCursorSessionId] : null;
-    const readIds = [...(readInboundMessageIdsByPeer[contact.sourceParticipantId || contact.id.replace(/^cloud:/, '')] ?? [])].sort();
-    const turnRevision = messages.flatMap((message) => {
-      const turn = localAgentTurnsByRequestId[message.messageId];
-      return turn ? [`${message.messageId}:${turn.id}:${turn.status}:${turn.completed}:${turn.assistantText.length}:${turn.error ?? ''}`] : [];
-    });
+    const readIds = readInboundMessageIdsByPeer[contact.sourceParticipantId || contact.id.replace(/^cloud:/, '')];
     return [
       baseRevision,
       account.accountId,
@@ -913,9 +993,8 @@ export function buildCloudDesktopCollaborationState({
       title ?? '',
       readCursor?.lastReadMessageId ?? '',
       readCursor?.lastReadCreatedAtMs ?? '',
-      readIds.join(','),
-      messages.map((message) => message.messageId).join(','),
-      turnRevision.join(','),
+      readIds ? cloudReadIdsRevision(readIds) : '',
+      cloudTurnRevision(messages, localAgentTurnsByRequestId),
     ].join('\u0000');
   };
   const directContacts = contacts.filter(isDirectCloudContact);
@@ -934,7 +1013,7 @@ export function buildCloudDesktopCollaborationState({
   const conversations = conversationContacts
     .flatMap((contact) => {
       const peerId = contact.sourceParticipantId || contact.id.replace(/^cloud:/, '');
-      const messages = [...(messagesByPeer[peerId] ?? index.byPeerId.get(peerId) ?? [])];
+      const messages = messagesByPeer[peerId] ?? index.byPeerId.get(peerId) ?? [];
       const hasMessages = messages.length > 0;
       const isActivePeer = peerId === activePeerId;
       const isSelfPeer = peerId === account.accountId;
@@ -968,21 +1047,14 @@ export function buildCloudDesktopCollaborationState({
       const activeCloudSessionId = activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null;
       const agentConversation = (() => {
         if (isSelfPeer && hasMessages) {
-          const bySession = new Map<string | null, CloudMessage[]>();
-          const hasSessionScopedMessages = messages.some((cloudMessage) => Boolean(cleanCloudSessionId(cloudMessage.sessionId)));
-          for (const cloudMessage of messages) {
-            const sessionId = cleanCloudSessionId(cloudMessage.sessionId);
-            if (sessionId && hiddenCloudSessionIds.has(sessionId)) continue;
-            if ((hasSessionScopedMessages || suppressUnscopedSelfAgentConversation) && !sessionId) continue;
-            const bucket = bySession.get(sessionId) ?? [];
-            bucket.push(cloudMessage);
-            bySession.set(sessionId, bucket);
-          }
-          return [...bySession.entries()].map(([cloudSessionId, sessionMessages]) => {
+          const { hasSessionScopedMessages, messagesBySessionId } = cloudSelfAgentMessagesBySession(messages);
+          return [...messagesBySessionId.entries()].flatMap(([cloudSessionId, sessionMessages]) => {
+            if (cloudSessionId && hiddenCloudSessionIds.has(cloudSessionId)) return [];
+            if ((hasSessionScopedMessages || suppressUnscopedSelfAgentConversation) && !cloudSessionId) return [];
             const forceRead = isActivePeer && (!activeCloudSessionId || activeCloudSessionId === cloudSessionId);
             const cloudSessionTitle = cloudSessionId ? cloudSessionTitlesById[cloudSessionId] : null;
             const conversationId = cloudCollaborationConversationId(peerId, CLOUD_AGENT_RUNTIME, cloudSessionId);
-            return reuseConversation(
+            return [reuseConversation(
               conversationId,
               conversationRevision({
                 baseRevision: cloudSessionId
@@ -1008,7 +1080,7 @@ export function buildCloudDesktopCollaborationState({
                 cloudSessionTitle,
                 groupControlMessageIds,
               }),
-            );
+            )];
           });
         }
         return [];

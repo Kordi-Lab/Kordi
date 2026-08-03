@@ -1,4 +1,9 @@
-import { useMemo, useRef } from 'react';
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import { mapCollaborationConversationToViewModel } from '@/features/collaboration/transcript';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
@@ -23,6 +28,9 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isPro
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
 import { buildParticipantSpaces, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
 import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
+import {
+  createTranscriptReferenceStabilizer,
+} from '@/features/chat/transcriptReferenceStability';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
@@ -174,6 +182,7 @@ export function applyCanonicalHydrationPlaceholder(
   if (
     selectedConversation.desktopRuntimeBacked
     || selectedConversation.canonicalMessageCount === 0
+    || selectedConversation.messages.length > 0
     || (hydration !== 'cold' && hydration !== 'loading')
   ) {
     return selectedConversation;
@@ -318,6 +327,7 @@ type UseWorkspaceViewModelsArgs = {
   activeAgentId: string;
   cachedChatSessionMessages: Record<string, Message[]>;
   cachedProjectSessionMessages: Record<string, Message[]>;
+  cachedDesktopSessionSourceMessages?: Record<string, DesktopChatMessage[]>;
   localSessionUnreadCounts: Record<string, number>;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[], sessionContext?: { metadata?: unknown }) => Message[];
@@ -350,6 +360,7 @@ export function useWorkspaceViewModels({
   activeAgentId,
   cachedChatSessionMessages,
   cachedProjectSessionMessages,
+  cachedDesktopSessionSourceMessages = {},
   localSessionUnreadCounts,
   desktopLiveTurnsBySession,
   mapDesktopMessages,
@@ -359,6 +370,7 @@ export function useWorkspaceViewModels({
   cloudUnreadReady = true,
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
+  const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
       summaries: canonicalSessionSummaries,
@@ -469,7 +481,14 @@ export function useWorkspaceViewModels({
     return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
       const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
-      const cachedMessages = cachedChatSessionMessages[session.id];
+      const cachedSourceMessages = cachedDesktopSessionSourceMessages[session.id];
+      const cachedMessages = !isActiveSession && isVisibleSession && cachedSourceMessages
+        ? mapDesktopMessages(
+            session.id,
+            cachedSourceMessages,
+            { metadata: canonicalSessionMetadataById.get(session.id) },
+          )
+        : cachedChatSessionMessages[session.id];
       const activeMessages = isActiveSession
         ? preferLatestMessages(
             mapDesktopMessages(
@@ -528,7 +547,7 @@ export function useWorkspaceViewModels({
         _updatedAtMs: session.updatedAtMs,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
   const localAgentCollaborationReachoutConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -563,7 +582,7 @@ export function useWorkspaceViewModels({
 
   const hydratedChatConversations = useMemo(() => {
     if (!isNativeShell) {
-      return conversations;
+      return transcriptReferenceStabilizer.prepare(conversations);
     }
     const collaborationSourceConversations = canonicalReadModel ? collaborationChatConversations : visibleCollaborationChatConversations;
     const merged = [...collaborationSourceConversations, ...localChatConversations, ...transientChatConversations];
@@ -571,21 +590,21 @@ export function useWorkspaceViewModels({
     const hydrated = canonicalReadModel
       ? canonicalReadModel.buildChatConversations(merged, buildConversationPreview)
       : merged;
-    return [...hydrated]
+    const conversationsWithStableOrder = [...hydrated]
       .sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0))
       .map(({ _updatedAtMs, ...conversation }) => conversation);
-  }, [collaborationChatConversations, canonicalReadModel, conversations, isNativeShell, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
+    return transcriptReferenceStabilizer.prepare(conversationsWithStableOrder);
+  }, [collaborationChatConversations, canonicalReadModel, conversations, isNativeShell, localChatConversations, transcriptReferenceStabilizer, transientChatConversations, visibleCollaborationChatConversations]);
+  useLayoutEffect(() => {
+    transcriptReferenceStabilizer.commit(hydratedChatConversations.cache);
+  }, [hydratedChatConversations.cache, transcriptReferenceStabilizer]);
+  const stableHydratedChatConversations = hydratedChatConversations.conversations;
 
-  const chatConversations = useMemo(() => {
-    const hiddenIds = new Set([...hiddenSessionIds, ...localAgentCollaborationReachoutSessionIds]);
-    const visibleConversations = hiddenIds.size === 0
-      ? hydratedChatConversations
-      : hydratedChatConversations.filter((conversation) => {
-          const canonicalId = conversation.canonicalSessionId ?? conversation.id;
-          if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
-          return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
-        });
-    const withCloudPresence = applyCloudPresenceToConversations(visibleConversations, cloudPresence);
+  const decoratedChatConversations = useMemo(() => {
+    const withCloudPresence = applyCloudPresenceToConversations(
+      stableHydratedChatConversations,
+      cloudPresence,
+    );
     const withCloudActivity = withCloudPresence.map((conversation) => {
       const sessionId = conversation.canonicalSessionId ?? conversation.id;
       const cloudTaskActivities = cloudTaskActivitiesForSession(cloudSessionActivity, sessionId);
@@ -603,7 +622,25 @@ export function useWorkspaceViewModels({
       };
     });
     return hideRawConversationIds(withCloudActivity);
-  }, [activeConvId, cloudPresence, cloudSessionActivity, hiddenSessionIds, hydratedChatConversations, localAgentCollaborationReachoutSessionIds]);
+  }, [cloudPresence, cloudSessionActivity, stableHydratedChatConversations]);
+
+  const chatConversations = useMemo(() => {
+    const hiddenIds = new Set([
+      ...hiddenSessionIds,
+      ...localAgentCollaborationReachoutSessionIds,
+    ]);
+    if (hiddenIds.size === 0) return decoratedChatConversations;
+    return decoratedChatConversations.filter((conversation) => {
+      const canonicalId = conversation.canonicalSessionId ?? conversation.id;
+      if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
+      return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
+    });
+  }, [
+    activeConvId,
+    decoratedChatConversations,
+    hiddenSessionIds,
+    localAgentCollaborationReachoutSessionIds,
+  ]);
 
   const nativeChatPlaceholder = useMemo(
     () => ({
@@ -1083,6 +1120,8 @@ export function useWorkspaceViewModels({
         sessions: group.sessions.map(({ id: sessionId }) => {
           const desktopSession = desktopProject?.sessions.find((session) => session.id === sessionId);
           const canonicalSession = canonicalProjectSessionById.get(sessionId);
+          const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
+          const cachedSourceMessages = cachedDesktopSessionSourceMessages[sessionId];
           const baseMessages =
             desktopSession && desktopChatState?.activeSessionId === sessionId
               ? preferLatestMessages(
@@ -1095,6 +1134,12 @@ export function useWorkspaceViewModels({
                   Boolean(desktopLiveTurnsForViewModel[sessionId]),
                   desktopLiveTurnsForViewModel[sessionId],
                 )
+              : desktopSession && isVisibleSession && cachedSourceMessages
+                ? mapDesktopMessages(
+                    sessionId,
+                    cachedSourceMessages,
+                    { metadata: canonicalSession?.metadata },
+                  )
               : cachedProjectSessionMessages[sessionId]
                 ?? (desktopSession
                   ? [{ role: 'system' as const, text: desktopSession.draft ? 'Draft session' : 'Session ready', time: desktopSession.updatedAtLabel }]
@@ -1110,7 +1155,6 @@ export function useWorkspaceViewModels({
             ? canonicalParticipants.map((participant) => participant.name)
             : ['Me', 'My Kordi'];
 
-          const isVisibleSession = activeNav === 'projects' && activeProjectId === group.id && activeProjectSessionId === sessionId;
           const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[sessionId] ?? 0);
           const taskActivities = sessionTaskActivitiesById.get(sessionId) ?? [];
           const taskCount = buildTaskActivityDashboard({ messages }).tasks.length || (workspaceProject?.tasks ?? 0);
@@ -1138,7 +1182,7 @@ export function useWorkspaceViewModels({
         }),
       };
     });
-  }, [activeNav, activeProjectId, activeProjectSessionId, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
+  }, [activeNav, activeProjectId, activeProjectSessionId, cachedDesktopSessionSourceMessages, cachedProjectSessionMessages, canonicalReadModel, canonicalSessionState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, projectWorkspaces]);
 
   const filteredProjects = useMemo(() => {
     const normalizedSearch = projectSearch.trim().toLowerCase();

@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -76,6 +77,9 @@ import {
   cleanCloudText,
   cloudObjectContent,
 } from './cloudValue';
+import type {
+  CloudGroupSessionPreparationCache,
+} from './cloudGroupControlContext';
 
 export function cloudGroupAgentProcessingSlotForResponse(
   messages: CanonicalSessionMessage[],
@@ -276,10 +280,44 @@ export function useCloudGroupControlApplication({
   defaultRoute,
   reportWarning,
 }: CloudGroupControlApplicationProps) {
-  return useCallback(async (
+  const sessionPreparationCacheRef = useRef<{
+    accountId: string | null;
+    entries: CloudGroupSessionPreparationCache;
+  }>({ accountId: null, entries: new Map() });
+  const publishCanonicalState = useCallback<Dispatch<SetStateAction<CanonicalSessionState | null>>>(
+    (action) => {
+      const nextState = typeof action === 'function'
+        ? action(canonicalStateRef.current)
+        : action;
+      canonicalStateRef.current = nextState;
+    },
+    [canonicalStateRef],
+  );
+  const flushCanonicalState = useCallback(() => {
+    if (!setCanonicalState) return;
+    const nextState = canonicalStateRef.current;
+    setCanonicalState((currentState) => (
+      currentState === nextState ? currentState : nextState
+    ));
+  }, [canonicalStateRef, setCanonicalState]);
+  const publishCanonicalStateImmediately = useCallback<Dispatch<SetStateAction<CanonicalSessionState | null>>>(
+    (action) => {
+      publishCanonicalState(action);
+      flushCanonicalState();
+    },
+    [flushCanonicalState, publishCanonicalState],
+  );
+  const apply = useCallback(async (
     cloudMessage: CloudMessage,
     envelope: CloudGroupControlEnvelope,
   ) => {
+    const currentAccountId = account?.accountId ?? null;
+    if (sessionPreparationCacheRef.current.accountId !== currentAccountId) {
+      sessionPreparationCacheRef.current = {
+        accountId: currentAccountId,
+        entries: new Map(),
+      };
+    }
     // Canonical state stays behind a ref so replay does not rebuild this
     // callback after every canonical write and re-enter the replay effect.
     const sessionContext = await applyCloudGroupSessionControl({
@@ -289,10 +327,12 @@ export function useCloudGroupControlApplication({
         account,
         client,
         profileCache: profileCacheRef.current,
+        sessionPreparationCache:
+          sessionPreparationCacheRef.current.entries,
       },
       canonical: {
         getState: () => canonicalStateRef.current,
-        setState: setCanonicalState,
+        setState: publishCanonicalState,
       },
       stateOps: {
         objectContent: cloudObjectContent,
@@ -309,7 +349,7 @@ export function useCloudGroupControlApplication({
 
     const messageContext = await applyCloudGroupMessageControl({
       context: sessionContext,
-      setCanonicalState,
+      setCanonicalState: publishCanonicalState,
       stateOps: {
         objectContent: cloudObjectContent,
         cleanText: cleanCloudText,
@@ -331,7 +371,7 @@ export function useCloudGroupControlApplication({
 
     applyCloudGroupAgentControl({
       context: messageContext,
-      setCanonicalState,
+      setCanonicalState: publishCanonicalStateImmediately,
       runtime: {
         client,
         messageIndex: () => messageIndexRef.current,
@@ -386,6 +426,8 @@ export function useCloudGroupControlApplication({
     messageIndexRef,
     processedRequestIdsRef,
     profileCacheRef,
+    publishCanonicalState,
+    publishCanonicalStateImmediately,
     reportWarning,
     routesBySessionId,
     sessionActivityRef,
@@ -395,4 +437,5 @@ export function useCloudGroupControlApplication({
     syncDiff,
     turnIdsByRequestIdRef,
   ]);
+  return { apply, flushCanonicalState };
 }

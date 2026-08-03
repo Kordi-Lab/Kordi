@@ -80,6 +80,7 @@ export type WorkspaceSidebarChats = {
   initialSelectedParticipantSpaceId?: string | null;
   initialChatChannel?: ChatChannel;
   activeConvId: string;
+  onPrefetchChatSession?: (sessionId: string) => void;
   onSelectChatSession: (sessionId: string) => void;
   onStartChatWithPerson: (contact: Contact) => Promise<void> | void;
   onStartChatWithAgent: (agent: Agent) => Promise<void> | void;

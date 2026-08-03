@@ -7,6 +7,7 @@ import type {
   CanonicalGroupMembershipDelta,
   CanonicalMessageDeliveryDelta,
   CanonicalMessagePage,
+  CanonicalMessageSourceRef,
   CanonicalProfileIdentityDelta,
   CanonicalReadCursorDelta,
   CanonicalSessionCatalog,
@@ -748,6 +749,16 @@ export async function fetchCanonicalSessionMessages(
     finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
     throw error;
   }
+}
+
+export async function fetchExistingCanonicalMessageSources(
+  sources: readonly CanonicalMessageSourceRef[],
+) {
+  if (!isNativeDesktopShell() || sources.length === 0) return [];
+  return invokeDesktop<CanonicalMessageSourceRef[]>(
+    'desktop_canonical_existing_message_sources',
+    { sources },
+  );
 }
 
 export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {

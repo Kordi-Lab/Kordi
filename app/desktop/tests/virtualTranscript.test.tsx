@@ -141,6 +141,13 @@ function rows(prefix: string, start: number, count: number, height = 50): Row[] 
   }));
 }
 
+function virtualRowStart(node: HTMLElement) {
+  const transform = node.style.transform;
+  return Number.parseFloat(
+    transform.match(/translate(?:3d|Y)\([^,]*,?\s*([-\d.]+)px/)?.[1] ?? '0',
+  );
+}
+
 function transcript(props: {
   items: readonly Row[];
   sessionKey?: string;
@@ -224,6 +231,43 @@ test('equal-length session switches mount the new tail before paint', async () =
   assert.ok(mountedIds.includes('b999'));
 });
 
+test('session switches do not reuse message elements or measurements with matching item keys', async () => {
+  const firstSession = rows('shared-', 0, 8, 36);
+  const view = await render(transcript({ items: firstSession, sessionKey: 'session:a' }));
+  const previousTail = view.host.querySelector<HTMLElement>('[data-message-id="shared-7"]');
+  assert.ok(previousTail);
+
+  await view.rerender(transcript({
+    items: rows('shared-', 0, 8, 112),
+    sessionKey: 'session:b',
+  }));
+
+  const nextTail = view.host.querySelector<HTMLElement>('[data-message-id="shared-7"]');
+  assert.ok(nextTail);
+  assert.notEqual(nextTail, previousTail);
+  assert.equal(nextTail.dataset.testRowHeight, '112');
+});
+
+test('measured row positions update before the next React render', async () => {
+  const view = await render(transcript({
+    items: rows('measured-', 0, 8, 50),
+    sessionKey: 'measured-session',
+  }));
+  const firstMessage = view.host.querySelector<HTMLElement>('[data-message-id="measured-0"]');
+  const firstRow = firstMessage?.closest<HTMLElement>('[data-transcript-window-item]');
+  const secondRow = view.host.querySelector<HTMLElement>('[data-message-id="measured-1"]')
+    ?.closest<HTMLElement>('[data-transcript-window-item]');
+  assert.ok(firstMessage);
+  assert.ok(firstRow);
+  assert.ok(secondRow);
+
+  await act(async () => {
+    firstMessage.dataset.testRowHeight = '180';
+    assert.ok((triggerObservedResize?.(firstRow) ?? 0) > 0);
+    assert.equal(virtualRowStart(secondRow), 184);
+  });
+});
+
 test('a cold session aligns its tail when the first transcript page replaces loading copy', async () => {
   const view = await render(transcript({ items: [{ id: 'loading', height: 40 }], sessionKey: 'cold' }));
 
@@ -247,7 +291,7 @@ test('a two-row catalog preview hydrates into the chronological transcript tail'
   const mountedRows = [...view.host.querySelectorAll<HTMLElement>('[data-transcript-window-item]')]
     .map((node) => ({
       id: node.querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId ?? '',
-      start: Number.parseFloat(node.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0'),
+      start: virtualRowStart(node),
     }))
     .sort((left, right) => left.start - right.start);
   assert.ok(mountedRows.length > 0);
@@ -273,9 +317,7 @@ test('appending the latest message while pinned to the tail keeps the full row v
   const latestRow = view.host.querySelector<HTMLElement>('[data-message-id="message-20"]')
     ?.closest<HTMLElement>('[data-transcript-window-item]');
   assert.ok(latestRow, 'the appended latest row should be mounted');
-  const latestStart = Number.parseFloat(
-    latestRow.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0',
-  );
+  const latestStart = virtualRowStart(latestRow);
   assert.ok(
     latestStart + latestRow.offsetHeight <= viewport.scrollTop + viewport.clientHeight,
     `latest row ended at ${latestStart + latestRow.offsetHeight}px but the viewport ended at ${viewport.scrollTop + viewport.clientHeight}px`,
@@ -402,7 +444,7 @@ test('a 900px row is measured before following short rows are positioned', async
   const shortRow = view.host.querySelector<HTMLElement>('[data-message-id^="short-"]')
     ?.closest<HTMLElement>('[data-transcript-window-item]');
   assert.ok(shortRow);
-  const start = Number.parseFloat(shortRow.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+  const start = virtualRowStart(shortRow);
   assert.ok(start >= 900, `short row started at ${start}px`);
   assert.equal(view.host.querySelector('[data-transcript-window-spacer]'), null);
 });
@@ -417,12 +459,12 @@ test('prepending an older page preserves the first visible message and pixel off
 
   const before = [...view.host.querySelectorAll<HTMLElement>('[data-transcript-window-item]')]
     .find((node) => {
-      const start = Number.parseFloat(node.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+      const start = virtualRowStart(node);
       return start <= viewport.scrollTop && start + node.offsetHeight > viewport.scrollTop;
     });
   assert.ok(before);
   const anchorId = before.querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId;
-  const beforeStart = Number.parseFloat(before.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+  const beforeStart = virtualRowStart(before);
   const beforeOffset = beforeStart - viewport.scrollTop;
 
   await view.rerender(transcript({ items: [...rows('m', 0, 100), ...initial] }));
@@ -431,7 +473,7 @@ test('prepending an older page preserves the first visible message and pixel off
   assert.ok(after, `expected ${anchorId} to remain mounted at scrollTop ${viewport.scrollTop}; mounted ${[
     ...view.host.querySelectorAll<HTMLElement>('[data-message-id]'),
   ].map((node) => node.dataset.messageId).join(',')}`);
-  const afterStart = Number.parseFloat(after.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+  const afterStart = virtualRowStart(after);
   assert.ok(Math.abs((afterStart - viewport.scrollTop) - beforeOffset) < 1);
 });
 

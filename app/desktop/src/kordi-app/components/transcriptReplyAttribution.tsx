@@ -1,64 +1,10 @@
-import { useState, type RefObject } from 'react';
+import { useState } from 'react';
 import { ChevronDown, ChevronUp, CornerDownLeft } from 'lucide-react';
 
 import { replyStatusText } from '@/features/chat/replyAttribution';
+import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import { cn } from '@/lib/utils';
 import type { MessageReplySummary, MessageSourceReference } from '../types';
-
-export function transcriptMessageDomId(messageId: string) {
-  return `app-transcript-message-${messageId.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
-}
-
-function scrollTranscriptElementIntoContainer(target: Element, scrollContainer?: HTMLElement | null) {
-  if (!scrollContainer || !scrollContainer.contains(target)) return false;
-  if (typeof target.getBoundingClientRect !== 'function' || typeof scrollContainer.getBoundingClientRect !== 'function') return false;
-
-  const targetRect = target.getBoundingClientRect();
-  const containerRect = scrollContainer.getBoundingClientRect();
-  const nextTop = scrollContainer.scrollTop
-    + (targetRect.top - containerRect.top)
-    - (scrollContainer.clientHeight / 2)
-    + (targetRect.height / 2);
-
-  if (typeof scrollContainer.scrollTo === 'function') {
-    scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
-  } else {
-    scrollContainer.scrollTop = Math.max(0, nextTop);
-  }
-  return true;
-}
-
-export function navigateToTranscriptMessage(messageId: string, scrollRef?: RefObject<HTMLElement | null> | null) {
-  if (typeof document === 'undefined') return false;
-  const target = document.getElementById(transcriptMessageDomId(messageId));
-  if (!target) return false;
-  const visibleTarget = target.closest?.('[data-transcript-message-root]') ?? target;
-  const discoveredScrollContainer = visibleTarget.closest?.('.app-scroll-area') as HTMLElement | null | undefined;
-  if (!scrollTranscriptElementIntoContainer(visibleTarget, scrollRef?.current ?? discoveredScrollContainer ?? null)) {
-    visibleTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }
-  visibleTarget.classList.add('app-transcript-message-highlight');
-  window.setTimeout(() => visibleTarget.classList.remove('app-transcript-message-highlight'), 1500);
-  return true;
-}
-
-export function scrollTranscriptToBottom(scrollRef?: RefObject<HTMLElement | null> | null) {
-  const scrollContainer = scrollRef?.current;
-  if (!scrollContainer) return false;
-  if (typeof scrollContainer.scrollTo === 'function') {
-    scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
-  } else {
-    scrollContainer.scrollTop = scrollContainer.scrollHeight;
-  }
-  return true;
-}
-
-export function navigateToTranscriptMessageOrScrollBottom(
-  messageId: string,
-  scrollRef?: RefObject<HTMLElement | null> | null,
-) {
-  return navigateToTranscriptMessage(messageId, scrollRef) || scrollTranscriptToBottom(scrollRef);
-}
 
 function sourceQuoteText(sourceMessage: MessageSourceReference) {
   return sourceMessage.text.trim();

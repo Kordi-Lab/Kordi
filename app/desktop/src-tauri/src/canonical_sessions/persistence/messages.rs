@@ -187,16 +187,20 @@ fn upsert_message_in_transaction(
         return append_message_in_db(conn, request);
     };
 
-    if select_message(conn, &id)?.is_none() {
+    let existing_message = select_message(conn, &id)?;
+    if existing_message.is_none() {
         if let Some(existing_echo) = select_cloud_self_agent_existing_echo(conn, &request)? {
             return Ok(existing_echo);
         }
         return append_message_in_db(conn, request);
     }
 
-    let now = now_ms();
-    let created_at_ms = request.created_at_ms.unwrap_or(now);
-    let content = json_to_db(&request.content)?;
+    let existing_message = existing_message.expect("checked existing message");
+    let created_at_ms = request
+        .created_at_ms
+        .unwrap_or(existing_message.created_at_ms);
+    let content_value = request.content;
+    let content = json_to_db(&content_value)?;
     let content_hash = hash_hex(
         &format!(
             "{}|{}",
@@ -206,6 +210,35 @@ fn upsert_message_in_transaction(
         16,
     );
     let status = validate_status(request.status, "sent");
+    let parent_message_id = clean_optional(request.parent_message_id);
+    let delegated_exchange_id = clean_optional(request.delegated_exchange_id);
+    let source_transport = clean_optional(request.source_transport);
+    let source_event_id = clean_optional(request.source_event_id);
+    let existing_is_terminal_cloud_agent_response = existing_message.source_transport.as_deref()
+        == Some("cloud-group-agent")
+        && !matches!(existing_message.status.as_str(), "sending" | "processing");
+    let incoming_is_local_agent_fallback =
+        source_transport.as_deref() == Some("cloud-group-agent-offline");
+    if existing_is_terminal_cloud_agent_response && incoming_is_local_agent_fallback {
+        return Ok(existing_message);
+    }
+    if existing_message.session_id == request.session_id
+        && existing_message.sender_identity_id == request.sender_identity_id
+        && existing_message.sender_role == request.sender_role
+        && existing_message.message_kind == request.message_kind
+        && existing_message.content_text == request.content_text
+        && existing_message.content == content_value
+        && existing_message.status == status
+        && existing_message.created_at_ms == created_at_ms
+        && existing_message.parent_message_id == parent_message_id
+        && existing_message.delegated_exchange_id == delegated_exchange_id
+        && existing_message.content_hash.as_deref() == Some(content_hash.as_str())
+        && existing_message.source_transport == source_transport
+        && existing_message.source_event_id == source_event_id
+    {
+        return Ok(existing_message);
+    }
+    let now = now_ms();
 
     conn.execute(
         "UPDATE session_messages
@@ -233,10 +266,10 @@ fn upsert_message_in_transaction(
             created_at_ms,
             now,
             content_hash,
-            clean_optional(request.parent_message_id),
-            clean_optional(request.delegated_exchange_id),
-            clean_optional(request.source_transport),
-            clean_optional(request.source_event_id),
+            parent_message_id,
+            delegated_exchange_id,
+            source_transport,
+            source_event_id,
             id,
         ],
     )

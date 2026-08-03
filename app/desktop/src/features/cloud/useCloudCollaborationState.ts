@@ -1,5 +1,4 @@
 import {
-  useDebugValue,
   useMemo,
   useRef,
   useState,
@@ -7,7 +6,6 @@ import {
 import type {
   Dispatch,
   SetStateAction,
-  MutableRefObject,
 } from 'react';
 import type {
   DesktopChatMessageRoute,
@@ -85,7 +83,6 @@ import {
   useCloudGroupControlApplication,
 } from './useCloudGroupControlApplication';
 import {
-  cloudCollaborationPreviousStateForContext,
   useCloudCollaborationReadModel,
 } from './useCloudCollaborationReadModel';
 import {
@@ -231,34 +228,6 @@ function useCloudCollaborationMessageStore(
   };
 }
 
-function useCloudCollaborationReadModelInputs({
-  accountContextKey,
-  override,
-  overrideContextKeyRef,
-  stateRef,
-  stateContextKeyRef,
-}: {
-  accountContextKey: string | null;
-  override: DesktopCollaborationState | null;
-  overrideContextKeyRef: MutableRefObject<string | null>;
-  stateRef: MutableRefObject<DesktopCollaborationState | null>;
-  stateContextKeyRef: MutableRefObject<string | null>;
-}) {
-  useDebugValue(accountContextKey);
-  return {
-    previousState: cloudCollaborationPreviousStateForContext(
-      stateRef.current,
-      stateContextKeyRef.current,
-      accountContextKey,
-    ),
-    currentOverride: cloudCollaborationPreviousStateForContext(
-      override,
-      overrideContextKeyRef.current,
-      accountContextKey,
-    ),
-  };
-}
-
 function reportCloudAgentAvailabilityWarning(message: string, error: unknown) {
   console.warn(message, error);
 }
@@ -335,10 +304,11 @@ export function useCloudCollaborationState({
     collaboration: {
       override: cloudCollaborationOverride,
       setOverride: setCloudCollaborationOverride,
+      overrideContextKey: cloudCollaborationOverrideContextKey,
+      setOverrideContextKey:
+        setCloudCollaborationOverrideContextKey,
       stateRef: cloudCollaborationStateRef,
       stateContextKeyRef: cloudCollaborationStateContextKeyRef,
-      overrideContextKeyRef:
-        cloudCollaborationOverrideContextKeyRef,
     },
     agentRequests: {
       processedMentionIdsRef: processedCloudAgentMentionIdsRef,
@@ -454,7 +424,7 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  const applyCloudGroupControl = useCloudGroupControlApplication({
+  const cloudGroupControlApplication = useCloudGroupControlApplication({
     account,
     client,
     canonicalStateRef: canonicalSessionStateRef,
@@ -526,7 +496,9 @@ export function useCloudCollaborationState({
         : null,
     coordinator: cloudGroupReplayCoordinator,
     messageIndex: cloudMessageIndex,
-    applyControl: applyCloudGroupControl,
+    applyControl: cloudGroupControlApplication.apply,
+    flushCanonicalState:
+      cloudGroupControlApplication.flushCanonicalState,
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
@@ -614,17 +586,6 @@ export function useCloudCollaborationState({
   });
 
   const {
-    previousState: previousCloudCollaborationState,
-    currentOverride: currentCloudCollaborationOverride,
-  } = useCloudCollaborationReadModelInputs({
-    accountContextKey: cloudCollaborationAccountContextKey,
-    override: cloudCollaborationOverride,
-    overrideContextKeyRef:
-      cloudCollaborationOverrideContextKeyRef,
-    stateRef: cloudCollaborationStateRef,
-    stateContextKeyRef: cloudCollaborationStateContextKeyRef,
-  });
-  const {
     cloudCollaborationState,
     setCloudCollaborationState,
   } = useCloudCollaborationReadModel({
@@ -637,11 +598,11 @@ export function useCloudCollaborationState({
     hiddenSessionIds: cloudHiddenSessionIds,
     deletedSessionIds: cloudDeletedSessionIds,
     accountContextKey: cloudCollaborationAccountContextKey,
-    previousState: previousCloudCollaborationState,
-    currentOverride: currentCloudCollaborationOverride,
+    override: cloudCollaborationOverride,
     setOverride: setCloudCollaborationOverride,
-    overrideContextKeyRef:
-      cloudCollaborationOverrideContextKeyRef,
+    overrideContextKey: cloudCollaborationOverrideContextKey,
+    setOverrideContextKey:
+      setCloudCollaborationOverrideContextKey,
     stateRef: cloudCollaborationStateRef,
     stateContextKeyRef: cloudCollaborationStateContextKeyRef,
     localAgentTurnsByRequestId,

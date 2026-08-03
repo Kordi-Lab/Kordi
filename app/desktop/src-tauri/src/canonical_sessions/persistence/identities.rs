@@ -51,7 +51,35 @@ pub(in crate::canonical_sessions) fn upsert_identity_in_db(
         .filter(|value| !value.is_empty())
         .unwrap_or("local")
         .to_string();
-    let metadata = json_to_db(&request.metadata)?;
+    let owner_identity_id = clean_optional(request.owner_identity_id);
+    let source_host_id = clean_optional(request.source_host_id);
+    let bridge_node_id = clean_optional(request.bridge_node_id);
+    let human_id = clean_optional(request.human_id);
+    let agent_id = clean_optional(request.agent_id);
+    let requested_profile_image_url = clean_optional(request.profile_image_url);
+    let metadata_value = request.metadata;
+    let existing = select_identity(conn, &id)?;
+    let profile_image_url = requested_profile_image_url.clone().or_else(|| {
+        existing
+            .as_ref()
+            .and_then(|identity| identity.profile_image_url.clone())
+    });
+    if existing.as_ref().is_some_and(|identity| {
+        identity.kind == kind
+            && identity.display_name == display_name
+            && identity.owner_identity_id == owner_identity_id
+            && identity.source == source
+            && identity.source_host_id == source_host_id
+            && identity.bridge_node_id == bridge_node_id
+            && identity.human_id == human_id
+            && identity.agent_id == agent_id
+            && identity.avatar_key == avatar_key
+            && identity.profile_image_url == profile_image_url
+            && identity.metadata == metadata_value
+    }) {
+        return Ok(existing.expect("checked existing identity"));
+    }
+    let metadata = json_to_db(&metadata_value)?;
     let now = now_ms();
 
     conn.execute(
@@ -76,14 +104,14 @@ pub(in crate::canonical_sessions) fn upsert_identity_in_db(
             id,
             kind,
             display_name,
-            clean_optional(request.owner_identity_id),
+            owner_identity_id,
             source,
-            clean_optional(request.source_host_id),
-            clean_optional(request.bridge_node_id),
-            clean_optional(request.human_id),
-            clean_optional(request.agent_id),
+            source_host_id,
+            bridge_node_id,
+            human_id,
+            agent_id,
             avatar_key,
-            clean_optional(request.profile_image_url),
+            requested_profile_image_url,
             metadata,
             now,
             now,

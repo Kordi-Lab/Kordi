@@ -8,6 +8,8 @@ const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorks
 const appModelSource = readKordiAppModelImplementationSource;
 const canonicalStoreSource = () => readFileSync(new URL('../src/app/useKordiCanonicalSessionStore.ts', import.meta.url), 'utf8');
 const uiEffectsSource = () => readFileSync(new URL('../src/app/useKordiUiEffects.ts', import.meta.url), 'utf8');
+const agentSidebarRowsSource = () => readFileSync(new URL('../src/pages/workspaceSidebar.agentRows.tsx', import.meta.url), 'utf8');
+const contactSidebarRowsSource = () => readFileSync(new URL('../src/pages/workspaceSidebar.contactRows.tsx', import.meta.url), 'utf8');
 
 test('canonical session selection pages only the selected transcript and never refreshes full state', () => {
   const source = canonicalStoreSource();
@@ -36,6 +38,13 @@ test('canonical Cloud chat selection does not invoke native desktop chat reload'
   );
 });
 
+test('sidebar session intent warms authoritative transcript state before selection', () => {
+  for (const source of [agentSidebarRowsSource(), contactSidebarRowsSource()]) {
+    assert.match(source, /onPointerEnter=.*onPrefetchChatSession/);
+    assert.match(source, /onFocus=.*onPrefetchChatSession/);
+  }
+});
+
 test('chat session changes reset transcript auto-follow before message hydration', () => {
   const source = uiEffectsSource();
   assert.match(source, /shouldAutoFollowChatRef\.current\s*=\s*true/, 'session changes should re-enable follow-to-bottom');
@@ -61,8 +70,35 @@ test('canonical chat hydration is cached independently from active session selec
   assert.doesNotMatch(warmedDeps, /activeConvId/, 'switching sessions must not rebuild expensive canonical hydration');
 
   const visibleMemo = source.slice(visibleStart, source.indexOf('\n\n  const activeConv', visibleStart));
-  assert.match(visibleMemo, /hydratedChatConversations/, 'visible conversations should reuse warmed canonical hydration');
+  assert.match(visibleMemo, /decoratedChatConversations/, 'visible conversations should reuse warmed and decorated canonical hydration');
   assert.match(visibleMemo, /activeConvId/, 'only the cheap visibility layer should depend on active selection');
+});
+
+test('session selection does not redecorate or regroup the complete conversation list', () => {
+  const source = workspaceViewModelSource();
+  const decoratedStart = source.indexOf('const decoratedChatConversations = useMemo(() => {');
+  const visibleStart = source.indexOf('const chatConversations = useMemo(() => {', decoratedStart);
+  assert.notEqual(decoratedStart, -1, 'expected stable conversation decoration memo');
+  assert.notEqual(visibleStart, -1, 'expected selected-session visibility memo');
+
+  const decoratedMemo = source.slice(decoratedStart, visibleStart);
+  assert.match(decoratedMemo, /applyCloudPresenceToConversations/);
+  assert.match(decoratedMemo, /hideRawConversationIds/);
+  assert.doesNotMatch(decoratedMemo, /activeConvId/);
+
+  const visibleMemo = source.slice(
+    visibleStart,
+    source.indexOf('\n\n  const nativeChatPlaceholder', visibleStart),
+  );
+  assert.match(visibleMemo, /if \(hiddenIds\.size === 0\) return decoratedChatConversations/);
+  assert.doesNotMatch(visibleMemo, /applyCloudPresenceToConversations|hideRawConversationIds/);
+});
+
+test('canonical hydration status does not rebuild the complete session read model', () => {
+  const source = canonicalStoreSource();
+  assert.match(source, /const \{ catalog, messagesBySessionId \} = store/);
+  assert.match(source, /\}\), \[catalog, messagesBySessionId\]\)/);
+  assert.doesNotMatch(source, /canonicalStateFromStore\(store\), \[store\]/);
 });
 
 test('older canonical transcript pages use the oldest loaded sequence cursor', () => {

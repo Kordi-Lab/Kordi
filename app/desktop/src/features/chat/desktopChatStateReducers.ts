@@ -1,4 +1,10 @@
-import type { DesktopChatState, DesktopChatTurnSnapshot, Message, QueuedDesktopChatMessage } from '@/kordi-app/types';
+import type {
+  DesktopChatMessage,
+  DesktopChatState,
+  DesktopChatTurnSnapshot,
+  Message,
+  QueuedDesktopChatMessage,
+} from '@/kordi-app/types';
 
 function mergeSessionSummaries(
   current: DesktopChatState['sessions'],
@@ -152,6 +158,22 @@ export function pruneQueuedDesktopMessagesByKnownSessions(
   return changed ? next : current;
 }
 
+export function pruneDesktopSessionCacheByKnownSessions<T>(
+  current: Record<string, T[]>,
+  knownSessionIds: ReadonlySet<string>,
+) {
+  let changed = false;
+  const next: Record<string, T[]> = {};
+  for (const [sessionId, values] of Object.entries(current)) {
+    if (!knownSessionIds.has(sessionId)) {
+      changed = true;
+      continue;
+    }
+    next[sessionId] = values;
+  }
+  return changed ? next : current;
+}
+
 export function mergeMappedSessionMessagesCache(
   current: Record<string, Message[]>,
   sessionId: string,
@@ -170,6 +192,48 @@ export function mergeMappedSessionMessagesCache(
   return {
     ...current,
     [sessionId]: nextMessages,
+  };
+}
+
+export function mergeDesktopSessionSourceMessagesCache(
+  current: Record<string, DesktopChatMessage[]>,
+  sessionId: string,
+  sourceMessages: DesktopChatMessage[],
+  preserveExistingMessages: boolean,
+) {
+  const existingMessages = current[sessionId];
+  const nextMessages = preserveExistingMessages && existingMessages && existingMessages.length >= sourceMessages.length
+    ? existingMessages
+    : sourceMessages;
+
+  if (existingMessages === nextMessages) return current;
+  return {
+    ...current,
+    [sessionId]: nextMessages,
+  };
+}
+
+function desktopSourceMessageIdentity(message: DesktopChatMessage) {
+  return message.transcriptRenderId?.trim()
+    || message.entryId?.trim()
+    || [message.role, message.timestampMs, message.timeLabel, message.text].join('\u0000');
+}
+
+export function appendDesktopSessionSourceMessageToCache(
+  current: Record<string, DesktopChatMessage[]>,
+  sessionId: string,
+  message: DesktopChatMessage,
+) {
+  const existingMessages = current[sessionId];
+  if (!existingMessages) return current;
+  const messageIdentity = desktopSourceMessageIdentity(message);
+  if (existingMessages.some((existing) => desktopSourceMessageIdentity(existing) === messageIdentity)) {
+    return current;
+  }
+
+  return {
+    ...current,
+    [sessionId]: [...existingMessages, message],
   };
 }
 

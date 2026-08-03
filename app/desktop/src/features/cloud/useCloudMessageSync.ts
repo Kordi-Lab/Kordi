@@ -38,7 +38,11 @@ import {
 import { CloudSyncCoordinator } from './cloudSyncCoordinator';
 import { loadSession } from './session';
 
-export const CLOUD_MESSAGES_REFRESH_MS = 500;
+// Realtime messages normally arrive through the Cloud WebSocket. This interval
+// is only a repair path for a missed frame or a temporarily disconnected
+// socket, so polling it several times per second adds load without improving
+// the normal delivery path.
+export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
 const CLOUD_MESSAGE_SNAPSHOT_LIMIT = 500;
 
 type PendingCloudSyncRequest = {
@@ -189,7 +193,8 @@ export function useCloudMessageSync({
     );
     setMessages((current) => {
       const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
-      return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      if (cloudMessagesByPeerEqual(current, merged)) return current;
+      return merged;
     });
     if (settleUnreadReadiness) {
       markUnreadReadiness(
@@ -274,7 +279,8 @@ export function useCloudMessageSync({
     );
     setMessages((current) => {
       const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
-      return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      if (cloudMessagesByPeerEqual(current, merged)) return current;
+      return merged;
     });
     setActivity((current) => mergeCloudSessionActivity(current, sessionActivity));
     setForks((current) => (
@@ -404,6 +410,10 @@ export function useCloudMessageSync({
       });
     }
     const interval = window.setInterval(() => {
+      if (
+        typeof document !== 'undefined'
+        && document.visibilityState !== 'visible'
+      ) return;
       void syncCloudCollaborationDiff();
     }, CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);

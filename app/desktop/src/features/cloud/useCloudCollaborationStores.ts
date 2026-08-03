@@ -102,11 +102,13 @@ export function useCloudCollaborationStores({
   ] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [collaborationOverride, setCollaborationOverride] =
     useState<DesktopCollaborationState | null>(null);
+  const [
+    collaborationOverrideContextKey,
+    setCollaborationOverrideContextKey,
+  ] = useState<string | null>(null);
   const collaborationStateRef =
     useRef<DesktopCollaborationState | null>(null);
   const collaborationStateContextKeyRef =
-    useRef<string | null>(null);
-  const collaborationOverrideContextKeyRef =
     useRef<string | null>(null);
   const processedAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const agentTurnIdsByRequestIdRef =
@@ -131,8 +133,8 @@ export function useCloudCollaborationStores({
     collaboration: {
       stateRef: collaborationStateRef,
       stateContextKeyRef: collaborationStateContextKeyRef,
-      overrideContextKeyRef: collaborationOverrideContextKeyRef,
       setOverride: setCollaborationOverride,
+      setOverrideContextKey: setCollaborationOverrideContextKey,
       setReadInboundMessageIdsByPeer,
       setLocalAgentTurnsByRequestId,
     },
@@ -184,9 +186,10 @@ export function useCloudCollaborationStores({
     collaboration: {
       override: collaborationOverride,
       setOverride: setCollaborationOverride,
+      overrideContextKey: collaborationOverrideContextKey,
+      setOverrideContextKey: setCollaborationOverrideContextKey,
       stateRef: collaborationStateRef,
       stateContextKeyRef: collaborationStateContextKeyRef,
-      overrideContextKeyRef: collaborationOverrideContextKeyRef,
     },
     agentRequests: {
       processedMentionIdsRef: processedAgentMentionIdsRef,

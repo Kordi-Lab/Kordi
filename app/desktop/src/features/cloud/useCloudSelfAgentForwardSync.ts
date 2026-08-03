@@ -12,9 +12,11 @@ import type {
 import { encodeCloudAgentResponse } from './cloudAgentMessages';
 import {
   loadCloudSelfAgentForwardBaseline,
+  loadCloudSelfAgentForwardCutoff,
   loadCloudSelfAgentSyncLedger,
   planCloudSelfAgentSync,
   saveCloudSelfAgentForwardBaseline,
+  saveCloudSelfAgentForwardCutoff,
   saveCloudSelfAgentSyncLedger,
   seedCloudSelfAgentForwardSyncLedger,
 } from './cloudSelfAgentForwardSync';
@@ -66,11 +68,19 @@ export function useCloudSelfAgentForwardSync({
           );
         }
         saveCloudSelfAgentForwardBaseline(account.accountId);
+        saveCloudSelfAgentForwardCutoff(account.accountId);
         return;
       }
+      // Older app versions stored only a boolean baseline. Establish a
+      // timestamp boundary before planning so history that appears later via
+      // SQLite pagination is never mistaken for a newly-created live turn.
+      const forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
+        account.accountId,
+      ) ?? saveCloudSelfAgentForwardCutoff(account.accountId);
       const operations = planCloudSelfAgentSync(
         latestState,
         initialLedger,
+        { createdAfterMs: forwardCutoffMs },
       );
       if (operations.length === 0) return;
 

@@ -26,13 +26,14 @@ import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { transcriptSystemNoticeClassName } from '@/features/chat/transcriptLoadingNotice';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownContent } from './markdown';
 import { AttachmentPreview } from './transcriptAttachments';
-import { RequestReplyLine, SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
+import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
@@ -1212,6 +1213,10 @@ function MessageBubbleView({
       : 'app-chat-bubble-agent';
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
+  const animateMessageEntry = Boolean(
+    (isOwnHumanMessage || isPeerHumanMessage)
+      && (deliveryStatus === 'sending' || deliveryStatus === 'pending_send'),
+  );
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
   const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasText = msg.text.trim().length > 0;
@@ -1337,6 +1342,7 @@ function MessageBubbleView({
           'min-w-0',
           canOpenSenderProfile ? 'cursor-pointer' : '',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : 'shadow-sm',
+          animateMessageEntry && !hasOnlyImageAttachments ? 'app-message-bubble-enter' : '',
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
             ? hasOnlyImageAttachments

@@ -24,6 +24,17 @@ import {
 type SyncCloudCollaborationDiff =
   CloudMessageSyncController['syncCloudCollaborationDiff'];
 
+export const CLOUD_REALTIME_RECONNECT_INITIAL_MS = 1_000;
+export const CLOUD_REALTIME_RECONNECT_MAX_MS = 15_000;
+
+export function cloudRealtimeReconnectDelayMs(attempt: number): number {
+  const safeAttempt = Math.max(0, Math.floor(attempt));
+  return Math.min(
+    CLOUD_REALTIME_RECONNECT_INITIAL_MS * (2 ** safeAttempt),
+    CLOUD_REALTIME_RECONNECT_MAX_MS,
+  );
+}
+
 export function useCloudRealtimeMessages({
   account,
   mergeMessage,
@@ -83,34 +94,72 @@ export function useCloudRealtimeMessages({
     if (!cloudRealtimeWebSocketEnabled()) return;
     let ws: WebSocket | null = null;
     let cancelled = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer: number | null = null;
     const accountIdAtOpen = account.accountId;
 
+    const scheduleReconnect = () => {
+      if (cancelled || reconnectTimer !== null) return;
+      const delay = cloudRealtimeReconnectDelayMs(reconnectAttempt);
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void open();
+      }, delay);
+    };
+
     const open = async () => {
-      const session = await loadSession();
-      if (!session?.token || cancelled) return;
-      ws = new WebSocket(cloudWebSocketUrl(session.token));
-      ws.onmessage = (event) => {
-        try {
-          const action = decodeCloudRealtimeMessageFrame(
-            event.data,
-            accountIdAtOpen,
-          );
-          if (!action) return;
-          if (action.kind === 'message') {
-            mergeMessageRef.current(action.message);
-          }
+      try {
+        const session = await loadSession();
+        if (!session?.token || cancelled) return;
+        const socket = new WebSocket(cloudWebSocketUrl(session.token));
+        ws = socket;
+        socket.onopen = () => {
+          reconnectAttempt = 0;
           void syncCloudCollaborationDiffRef.current();
-        } catch (error) {
+        };
+        socket.onmessage = (event) => {
+          try {
+            const action = decodeCloudRealtimeMessageFrame(
+              event.data,
+              accountIdAtOpen,
+            );
+            if (!action) return;
+            if (action.kind === 'message') {
+              mergeMessageRef.current(action.message);
+            }
+            void syncCloudCollaborationDiffRef.current();
+          } catch (error) {
+            reportWarning(
+              '[cloud-collaboration-ws] frame parse failed',
+              error,
+            );
+          }
+        };
+        socket.onclose = () => {
+          if (ws === socket) ws = null;
+          scheduleReconnect();
+        };
+        socket.onerror = () => {
+          socket.close();
+        };
+      } catch (error) {
+        if (!cancelled) {
           reportWarning(
-            '[cloud-collaboration-ws] frame parse failed',
+            '[cloud-collaboration-ws] connection failed',
             error,
           );
+          scheduleReconnect();
         }
-      };
+      }
     };
     void open();
     return () => {
       cancelled = true;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       ws?.close();
     };
   }, [account, reportWarning]);

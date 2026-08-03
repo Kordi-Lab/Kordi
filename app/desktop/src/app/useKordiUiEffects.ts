@@ -295,13 +295,12 @@ export function useKordiUiEffects({
   }, [activeNav, chatSlashQuery, filteredChatSlashCommandsLength, projectSlashQuery, filteredProjectSlashCommandsLength, setChatSlashMenuIndex]);
 
   useEffect(() => {
-    if (!isNativeShell || !desktopAuthState) return;
+    if (!isNativeShell || !desktopAuthState || activeNav !== 'projects') return;
 
-    if (activeNav === 'projects' && isProjectDraftSessionId(activeProjectSessionId)) return;
+    if (isProjectDraftSessionId(activeProjectSessionId)) return;
 
-    const sessionId = activeNav === 'projects'
-      ? (activeProjectSessionId || desktopChatState?.activeSessionId)
-      : desktopChatState?.activeSessionId;
+    const sessionId = activeProjectSessionId;
+    if (!sessionId || sessionId === desktopChatState?.activeSessionId) return;
 
     void refreshDesktopChat(sessionId);
   }, [

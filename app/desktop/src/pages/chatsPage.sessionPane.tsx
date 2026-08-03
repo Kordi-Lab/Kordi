@@ -1,4 +1,9 @@
-import { useCallback, useMemo } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import type {
   Dispatch,
   ReactNode,
@@ -13,6 +18,7 @@ import {
 
 import { buildReplyAttribution } from '@/features/chat/replyAttribution';
 import { buildDesktopLiveTurnTranscriptMessage } from '@/features/chat/desktopLiveTurns';
+import { highlightTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import {
   transcriptWindowMessageIdentity,
@@ -22,9 +28,6 @@ import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import {
   MessageBubble,
 } from '@/kordi-app/components';
-import {
-  navigateToTranscriptMessage,
-} from '@/kordi-app/components/transcriptReplyAttribution';
 import type {
   ComposerQuoteState,
   Message,
@@ -272,13 +275,22 @@ export function ChatSessionPane({
     .join(',')}`;
   const handleNavigationReady = useCallback(
     (messageId: string) => {
-      navigateToTranscriptMessage(messageId, scrollRef);
+      highlightTranscriptMessage(messageId);
     },
-    [scrollRef],
+    [],
   );
+  const loadOlderMessagesRef = useRef(onLoadOlderMessages);
+  useLayoutEffect(() => {
+    loadOlderMessagesRef.current = onLoadOlderMessages;
+  }, [onLoadOlderMessages]);
+  const handleLoadOlderMessages = useCallback(
+    () => loadOlderMessagesRef.current?.(),
+    [],
+  );
+  const canLoadOlderMessages = Boolean(onLoadOlderMessages);
 
-  return (
-    <>
+  const transcriptViewport = useMemo(
+    () => (
       <VirtualTranscript
         items={transcriptEntries}
         sessionKey={sessionKey}
@@ -296,7 +308,7 @@ export function ChatSessionPane({
         }
         onNavigationReady={handleNavigationReady}
         hasOlder={hasOlderMessages}
-        onLoadOlder={onLoadOlderMessages}
+        onLoadOlder={canLoadOlderMessages ? handleLoadOlderMessages : undefined}
         getItemKey={(entry) =>
           transcriptMessageRenderKey(entry.message, entry.originalIndex)
         }
@@ -398,6 +410,64 @@ export function ChatSessionPane({
           </div>
         }
       />
+    ),
+    [
+      activeForkSourceSessionId,
+      activeForkSourceTitle,
+      canLoadOlderMessages,
+      densityMode,
+      emptyState,
+      forkSnapshotBoundaryIndex,
+      handleLoadOlderMessages,
+      handleNavigationReady,
+      hasOlderMessages,
+      isCompressionActive,
+      isMessageSelectable,
+      messageForksByEntryId,
+      navigationRequest,
+      onCancelQueuedMessage,
+      onEditQueuedMessage,
+      onForwardMessage,
+      onForkMessage,
+      onNavigateToMessage,
+      onNavigationHandled,
+      onOpenArtifact,
+      onOpenAuthSettings,
+      onOpenForkSession,
+      onOpenMessageDetail,
+      onOpenSenderProfile,
+      onOpenSource,
+      onReplyMessage,
+      onRequestCollaborationContact,
+      onRequestPinMessage,
+      onRequestUnpinMessage,
+      onRetryMessage,
+      onSelectMessage,
+      onSelectSession,
+      onSelectionDragEnd,
+      onSelectionDragEnter,
+      onSelectionDragStart,
+      onStopActiveTurn,
+      onStopCollaborationAgentRequest,
+      onToggleSelectedMessage,
+      onTranscriptScroll,
+      pinnedMessageId,
+      plainAgentResponse,
+      queuedMessages,
+      scrollClassName,
+      scrollRef,
+      selectedMessageIds,
+      selectionMode,
+      sessionKey,
+      transcriptEntries,
+      transcriptMessages,
+      transcriptTailKey,
+    ],
+  );
+
+  return (
+    <>
+      {transcriptViewport}
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <div className="px-5 pt-3">
           <div

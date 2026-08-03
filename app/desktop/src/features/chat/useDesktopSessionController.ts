@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
@@ -17,6 +17,7 @@ import {
   isLocalDraftChatConversationId,
   isProjectDraftSessionId,
 } from './draftSessions';
+import { commitDesktopSessionSelectionAfterTranscriptReady } from './desktopSessionSelection';
 
 type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
 
@@ -49,6 +50,9 @@ type UseDesktopSessionControllerArgs = {
   desktopSessionRenameDraft: string;
   selectProjectSession: (projectId: string, sessionId: string) => void;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
+  hydrateCanonicalSessionPage: (sessionId: string) => Promise<unknown>;
+  isDesktopSessionTranscriptCached: (sessionId: string) => boolean;
+  preloadDesktopSessionTranscript: (sessionId: string) => Promise<boolean>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
   setActiveConvId: Dispatch<SetStateAction<string>>;
   setPendingUserChatMessage: Dispatch<SetStateAction<{ text: string; time: string } | null>>;
@@ -70,6 +74,9 @@ export function useDesktopSessionController({
   desktopSessionRenameDraft,
   selectProjectSession,
   refreshDesktopChat,
+  hydrateCanonicalSessionPage,
+  isDesktopSessionTranscriptCached,
+  preloadDesktopSessionTranscript,
   shouldAutoFollowChatRef,
   setActiveConvId,
   setPendingUserChatMessage,
@@ -82,13 +89,32 @@ export function useDesktopSessionController({
   setIsEditingDesktopSessionTitle,
   onForkCreated,
 }: UseDesktopSessionControllerArgs) {
+  const selectionRequestIdRef = useRef(0);
+
+  const handlePrefetchChatSession = useCallback((sessionId: string) => {
+    if (!isNativeShell) return;
+    if (
+      isLegacyCanonicalCollaborationSessionId(sessionId)
+      || isCanonicalCloudSessionId(sessionId)
+    ) {
+      void hydrateCanonicalSessionPage(sessionId).catch(() => {});
+      return;
+    }
+    if (isLocalDraftChatConversationId(sessionId) || sessionId.startsWith('bridge:')) return;
+    void preloadDesktopSessionTranscript(sessionId).catch(() => {});
+  }, [hydrateCanonicalSessionPage, isNativeShell, preloadDesktopSessionTranscript]);
+
   const handleSelectChatSession = useCallback(async (sessionId: string) => {
+    const requestId = selectionRequestIdRef.current + 1;
+    selectionRequestIdRef.current = requestId;
     startSessionClickToFirstMessage(sessionId);
     shouldAutoFollowChatRef.current = true;
-    setActiveConvId(sessionId);
     setPendingUserChatMessage(null);
     setChatComposerAttachments([]);
-    if (!isNativeShell) return;
+    if (!isNativeShell) {
+      setActiveConvId(sessionId);
+      return;
+    }
 
     if (
       isLocalDraftChatConversationId(sessionId)
@@ -96,17 +122,28 @@ export function useDesktopSessionController({
       || isCanonicalCloudSessionId(sessionId)
       || sessionId.startsWith('bridge:')
     ) {
+      setActiveConvId(sessionId);
       setDesktopChatError(null);
       return;
     }
 
+    setDesktopChatError(null);
+    const didCommitSelection = await commitDesktopSessionSelectionAfterTranscriptReady({
+      sessionId,
+      isTranscriptCached: isDesktopSessionTranscriptCached,
+      preloadTranscript: preloadDesktopSessionTranscript,
+      isSelectionCurrent: () => selectionRequestIdRef.current === requestId,
+      selectSession: setActiveConvId,
+    });
+    if (!didCommitSelection) return;
     try {
-      setDesktopChatError(null);
       await refreshDesktopChat(sessionId);
     } catch (error) {
+      if (selectionRequestIdRef.current !== requestId) return;
+      setActiveConvId(sessionId);
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
     }
-  }, [isNativeShell, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [isDesktopSessionTranscriptCached, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleCreateChatSession = useCallback(async () => {
     if (!isNativeShell) return;
@@ -209,6 +246,7 @@ export function useDesktopSessionController({
   ]);
 
   return {
+    handlePrefetchChatSession,
     handleSelectChatSession,
     handleCreateChatSession,
     handleSelectProjectSession,

@@ -88,7 +88,11 @@ test('Cloud group control replay uses bounded coordinator retries', () => {
   assert.match(replayEffect, /coordinator\.request\(/);
   assert.match(
     replayEffect,
-    /entries: messageIndex\.replayRows\.map/,
+    /entries: replayRows\.map/,
+  );
+  assert.match(
+    replayEffect,
+    /fetchExistingCanonicalMessageSources\(uncheckedSources\)/,
   );
   assert.doesNotMatch(
     replayEffect,

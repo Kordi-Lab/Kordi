@@ -64,6 +64,7 @@ mod group_titles;
 mod identity_sessions;
 mod profile_adoption;
 mod profile_lifecycle;
+mod replay_idempotence;
 mod session_observation;
 mod session_titles;
 mod wire_identity;
