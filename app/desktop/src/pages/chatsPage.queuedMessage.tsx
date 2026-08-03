@@ -4,6 +4,7 @@ import {
   MessageBubbleShapeBackdrop,
   queuedMessageBubbleShapeClass,
 } from '@/features/chat/messageBubbleShape';
+import { MessageInlineContent } from '@/kordi-app/components/messageInlineContent';
 import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +44,7 @@ export function QueuedMessageBubble({
           </div>
           <div className="mt-0.5 flex items-center gap-2">
             <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5">
-              {message.text}
+              <MessageInlineContent text={message.text} />
             </div>
             <div
               className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center"

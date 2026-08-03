@@ -32,6 +32,7 @@ import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownContent } from './markdown';
+import { MessageInlineContent } from './messageInlineContent';
 import { AttachmentPreview } from './transcriptAttachments';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
@@ -43,7 +44,6 @@ import type {
   ConversationType,
   EditFilePreview,
   Message,
-  MessageMention,
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -153,68 +153,6 @@ function senderAccentStyle(label?: string | null): CSSProperties {
   }
   const hue = Math.abs(hash) % 360;
   return { '--app-message-sender-accent': `oklch(0.72 0.15 ${hue})` } as CSSProperties;
-}
-
-function mentionPill(label: string, key: string) {
-  return (
-    <span key={key} className="app-message-mention">
-      {label}
-    </span>
-  );
-}
-
-function isMentionBoundary(text: string, index: number, length: number) {
-  const before = text[index - 1] ?? '';
-  const after = text[index + length] ?? '';
-  return (!before || /\s/.test(before)) && (!after || /[\s:;,.!?—-]/.test(after));
-}
-
-function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
-  const labels = (mentions ?? [])
-    .map((mention) => mention.label.trim())
-    .filter(Boolean)
-    .sort((left, right) => right.length - left.length);
-
-  if (labels.length > 0) {
-    type Range = { start: number; end: number; label: string };
-    const ranges: Range[] = [];
-
-    const normalizedText = text.toLowerCase();
-    labels.forEach((label) => {
-      const needle = `@${label}`;
-      const normalizedNeedle = needle.toLowerCase();
-      let searchFrom = 0;
-      while (searchFrom < text.length) {
-        const start = normalizedText.indexOf(normalizedNeedle, searchFrom);
-        if (start === -1) break;
-        const end = start + needle.length;
-        const overlaps = ranges.some((range) => start < range.end && end > range.start);
-        if (!overlaps && isMentionBoundary(text, start, needle.length)) {
-          ranges.push({ start, end, label: needle });
-        }
-        searchFrom = end;
-      }
-    });
-
-    if (ranges.length > 0) {
-      const ordered = ranges.sort((left, right) => left.start - right.start);
-      const parts: ReactNode[] = [];
-      let cursor = 0;
-      ordered.forEach((range, index) => {
-        if (range.start > cursor) parts.push(text.slice(cursor, range.start));
-        parts.push(mentionPill(range.label, `${range.label}-${range.start}-${index}`));
-        cursor = range.end;
-      });
-      if (cursor < text.length) parts.push(text.slice(cursor));
-      return parts;
-    }
-  }
-
-  const legacyParts = text.split(/(@[\p{L}\p{N}]{1,64})/gu);
-  return legacyParts.map((part, index) => {
-    if (!part.startsWith('@')) return part;
-    return mentionPill(part, `${part}-${index}`);
-  });
 }
 
 function MessageDeliveryClockGlyph({ className, active }: { className?: string; active: boolean }) {
@@ -743,7 +681,7 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
         </div>
         {expanded && hasSummary ? (
           <div className="max-h-[26rem] overflow-y-auto border-t border-[color:var(--app-divider)] px-4 py-3 pr-5">
-            <MarkdownContent text={summary} tone="muted" className="text-[13px]" />
+            <MarkdownContent text={summary} tone="muted" className="text-[13px]" showLinkIcons />
           </div>
         ) : null}
       </div>
@@ -1041,7 +979,7 @@ function MessageBubbleView({
   if (msg.role === 'system') {
     return (
       <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
-        <div className={transcriptSystemNoticeClassName(msg)}>{msg.text}</div>
+        <div className={transcriptSystemNoticeClassName(msg)}><MessageInlineContent text={msg.text} /></div>
       </MessageContextMenuHost>
     );
   }
@@ -1053,7 +991,7 @@ function MessageBubbleView({
           <ArrowRightLeft className="h-4 w-4" />
           {msg.sender}
         </div>
-        <div className="text-sm">{msg.text}</div>
+        <div className="text-sm"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
         <div className="mt-2 text-xs text-muted-foreground">{msg.detail}</div>
         <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
@@ -1079,7 +1017,7 @@ function MessageBubbleView({
         </div>
         <div className="app-detail-sheet w-full max-w-[760px]">
           <div className="flex items-center justify-between px-3.5 py-3">
-            <div className="text-[14px] font-medium text-white/92">{msg.text}</div>
+            <div className="text-[14px] font-medium text-white/92"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
             <button className="app-button-quiet inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[12px] font-medium">
               <Undo2 className="h-3.5 w-3.5" />
               Undo
@@ -1390,7 +1328,7 @@ function MessageBubbleView({
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
               <span className="whitespace-pre-wrap break-words">
-                {renderTextWithMentionPills(msg.text, msg.mentions)}
+                <MessageInlineContent text={msg.text} mentions={msg.mentions} />
               </span>
               <span className={cn(
                 'app-message-footer app-message-compact-footer inline-flex translate-y-[1px] items-center whitespace-nowrap text-[9.5px] leading-none tabular-nums',
@@ -1414,7 +1352,7 @@ function MessageBubbleView({
                       : undefined}
                   />
                 ) : null}
-                {hasText ? <div className="whitespace-pre-wrap break-words">{renderTextWithMentionPills(msg.text, msg.mentions)}</div> : null}
+                {hasText ? <div className="whitespace-pre-wrap break-words"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div> : null}
               </div>
               {!hasOnlyImageAttachments ? (
                 <MessageFooter
@@ -1432,7 +1370,7 @@ function MessageBubbleView({
           <>
             <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
               {hasAttachments ? <AttachmentPreview msg={msg} imageDeliveryStatus={null} /> : null}
-              {hasText ? <MarkdownContent text={msg.text} /> : null}
+              {hasText ? <MarkdownContent text={msg.text} showLinkIcons /> : null}
             </div>
             {(msg.statusChips?.length || footerDetail) ? (
               <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>

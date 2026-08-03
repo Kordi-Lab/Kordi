@@ -2,10 +2,14 @@
   color: var(--app-markdown-link);
   font-weight: 500;
   text-decoration: none;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color 80ms ease-out;
 }
 
 .app-markdown-link:hover {
   color: var(--app-markdown-link-hover);
+  text-decoration-line: underline;
 }
 
 .app-markdown-link-muted {
@@ -16,6 +20,36 @@
   outline: 2px solid color-mix(in oklab, var(--app-markdown-link) 74%, transparent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+.app-message-link-site-icon {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 3px;
+  background: color-mix(in oklab, currentColor 7%, transparent);
+  color: color-mix(in oklab, currentColor 72%, var(--utility-muted-text));
+  vertical-align: -2px;
+}
+
+.app-message-link-site-icon img,
+.app-message-link-site-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.app-message-link-site-icon svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.9;
+}
+
+.app-message-link-site-icon[data-site-icon-state='ready'] {
+  background: transparent;
 }
 .app-agent-code-toolbar {
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
