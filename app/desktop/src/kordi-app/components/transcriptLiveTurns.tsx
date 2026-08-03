@@ -19,13 +19,13 @@ import {
   WrapText,
   Wrench,
 } from 'lucide-react';
-
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
+import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
-import { SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
+import { SourceMessageQuote } from './transcriptReplyAttribution';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';

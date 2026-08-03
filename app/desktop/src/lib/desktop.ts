@@ -43,7 +43,7 @@ import {
   type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
 
-function isNativeDesktopShell() {
+export function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
@@ -73,7 +73,7 @@ function extractDesktopErrorMessage(error: unknown): string {
   return 'Desktop command failed';
 }
 
-async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
+export async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
   const { invoke } = await import('@tauri-apps/api/core');
   try {
     return await invoke<T>(command, args);

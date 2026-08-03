@@ -190,10 +190,13 @@ export function syntheticParticipantSpaceId(session: CanonicalSessionState['sess
 }
 
 function firstMessageTitle(messages: Message[]) {
-  const visible = messages.filter((message) => !message.isForkSnapshot && message.role !== 'system');
-  for (const message of [...visible.filter((message) => message.role === 'user'), ...visible.filter((message) => message.role !== 'user')]) {
-    const title = deriveSessionTitle(message.text);
-    if (title) return title;
+  for (const preferredRole of ['user', 'other'] as const) {
+    for (const message of messages) {
+      if (message.isForkSnapshot || message.role === 'system') continue;
+      if (preferredRole === 'user' ? message.role !== 'user' : message.role === 'user') continue;
+      const title = deriveSessionTitle(message.text);
+      if (title) return title;
+    }
   }
   return null;
 }
@@ -222,6 +225,20 @@ export function sessionHasManualTitle(session: CanonicalSessionState['sessions']
 }
 
 export function sessionPrefersPersistedTitle(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind === 'group') {
+    if (sessionHasManualTitle(session)) return true;
+    const metadata = sessionMetadata(session);
+    const title = session.title.trim();
+    const groupName = stringValue(metadata.customName)?.trim() ?? '';
+    const groupSpaceId = stringValue(metadata.groupSpaceId)
+      ?? stringValue(metadata.groupId)
+      ?? '';
+    const isChildSession = Boolean(groupSpaceId)
+      && normalizeParticipantSpaceId(groupSpaceId) !== normalizeParticipantSpaceId(session.id);
+    return !isGenericSessionTitle(title)
+      && Boolean(title)
+      && (isChildSession || (Boolean(groupName) && title !== groupName));
+  }
   if (session.kind !== 'self-agent' && session.kind !== 'project') {
     return sessionHasManualTitle(session);
   }

@@ -26,6 +26,7 @@ export function useKordiAppRuntimeActions({
     canonical: {
       canonicalSessionState,
       setCanonicalSessionState,
+      hydrateCanonicalSessionPage,
       loadCanonicalSessionHistory,
       refreshCanonicalState,
     },
@@ -51,6 +52,8 @@ export function useKordiAppRuntimeActions({
       setPendingUserChatMessage,
       queuedDesktopMessagesBySession,
       setQueuedDesktopMessagesBySession,
+      isDesktopSessionTranscriptCached,
+      preloadDesktopSessionTranscript,
       refreshDesktopChat,
       watchDesktopLiveTurn,
     },
@@ -134,6 +137,7 @@ export function useKordiAppRuntimeActions({
   });
 
   const {
+    handlePrefetchChatSession,
     handleSelectChatSession,
     handleCreateChatSession,
     handleSelectProjectSession,
@@ -147,6 +151,9 @@ export function useKordiAppRuntimeActions({
     desktopSessionRenameDraft: sessionUi.desktopSessionRenameDraft,
     selectProjectSession,
     refreshDesktopChat,
+    hydrateCanonicalSessionPage,
+    isDesktopSessionTranscriptCached,
+    preloadDesktopSessionTranscript,
     shouldAutoFollowChatRef,
     setActiveConvId,
     setPendingUserChatMessage,
@@ -296,6 +303,7 @@ export function useKordiAppRuntimeActions({
       handleUpdateLocalAgentModelRouting,
     },
     sessions: {
+      handlePrefetchChatSession,
       handleSelectChatSession,
       handleCreateChatSession,
       handleSelectProjectSession,

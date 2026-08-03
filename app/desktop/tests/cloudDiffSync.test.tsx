@@ -70,22 +70,6 @@ test('session title sync events restore explicit source and revision metadata', 
   assert.equal(titles['session:self-agent:one']?.titleRevision, 3);
 });
 
-test('applyCloudSyncEventsToMessagesByPeer upserts messages idempotently by messageId', () => {
-  const event: CloudSyncEvent = {
-    eventId: '10',
-    eventType: 'message.upsert',
-    peerAccountId: 'acct_peer',
-    messageId: 'msg_1',
-    payload: { message: incoming },
-    occurredAt: '2026-05-13T00:00:00Z',
-  };
-
-  const once = applyCloudSyncEventsToMessagesByPeer('acct_me', {}, [event]);
-  const twice = applyCloudSyncEventsToMessagesByPeer('acct_me', once, [event]);
-
-  assert.deepEqual(twice, { acct_peer: [incoming] });
-});
-
 test('historical message upserts cannot regress authoritative delivery and read receipts', () => {
   const authoritative: CloudMessage = {
     ...incoming,

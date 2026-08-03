@@ -93,6 +93,26 @@ test('contact refresh preserves locally accepted contacts while the server snaps
   }), current);
 });
 
+test('equivalent contact refresh preserves contact and request array identities', () => {
+  const current = {
+    contacts: [summary()],
+    requests: [request({
+      direction: 'incoming',
+      fromAccountId: 'acct_request',
+      counterpart: summary({ accountId: 'acct_request' }),
+    })],
+  };
+  const refreshed = structuredClone(current);
+
+  const next = applyCloudContactsRefreshSnapshot(current, refreshed, {
+    startedMutationRevision: 1,
+    currentMutationRevision: 1,
+  });
+
+  assert.equal(next.contacts, current.contacts);
+  assert.equal(next.requests, current.requests);
+});
+
 test('accepted contact response identifies the peer and hello message for immediate local insert', () => {
   const accepted = request({ status: 'accepted', fromAccountId: 'acct_me', toAccountId: 'acct_peer' });
   const helloMessage = {

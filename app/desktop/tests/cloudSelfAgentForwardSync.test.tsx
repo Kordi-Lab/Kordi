@@ -215,6 +215,34 @@ test('cloud self-agent forward sync seeds existing local history but uploads con
   ]);
 });
 
+test('cloud self-agent forward sync ignores historical pages hydrated after the startup baseline', () => {
+  const state = {
+    sessions: [
+      { id: 'paged-self-session', kind: 'self-agent', title: 'Paged', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [
+      { id: 'paged-old-u1', sessionId: 'paged-self-session', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'old paged prompt', status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10 },
+      { id: 'paged-old-a1', sessionId: 'paged-self-session', senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'old paged answer', status: 'complete', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20 },
+      { id: 'live-u1', sessionId: 'paged-self-session', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'new prompt', status: 'sent', sequenceNum: 3, createdAtMs: 30, updatedAtMs: 30 },
+      { id: 'live-a1', sessionId: 'paged-self-session', senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'new answer', status: 'complete', sequenceNum: 4, createdAtMs: 40, updatedAtMs: 40 },
+    ] as CanonicalSessionMessage[],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  assert.deepEqual(planCloudSelfAgentSync(state, {}, {
+    createdAfterMs: 25,
+  }), [
+    { localMessageId: 'live-u1', sessionId: 'paged-self-session', role: 'user', text: 'new prompt', parentLocalMessageId: null, createdAtMs: 30 },
+    { localMessageId: 'live-a1', sessionId: 'paged-self-session', role: 'agent', text: 'new answer', parentLocalMessageId: 'live-u1', createdAtMs: 40 },
+  ]);
+});
+
 test('planCloudSelfAgentSync skips inherited fork snapshot rows but keeps new fork turns', () => {
   const forkSessionId = 'session:fork:abc123';
   const state = {

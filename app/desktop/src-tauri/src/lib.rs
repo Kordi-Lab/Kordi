@@ -433,7 +433,6 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 
 pub fn run() {
     system_proxy::install_native_proxy_environment();
-
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -468,6 +467,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_session_state,
             canonical_sessions::desktop_canonical_session_catalog,
             canonical_sessions::desktop_canonical_session_messages,
+            canonical_sessions::desktop_canonical_existing_message_sources,
             canonical_sessions::desktop_canonical_upsert_identity,
             canonical_sessions::desktop_canonical_adopt_cloud_profile_identity,
             canonical_sessions::desktop_canonical_upsert_identity_fast,

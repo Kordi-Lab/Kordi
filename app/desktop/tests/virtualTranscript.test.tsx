@@ -1,215 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-
-type Row = { id: string; height: number };
-
-let VirtualTranscript: typeof import('../src/features/chat/VirtualTranscript').VirtualTranscript;
-let root: Root | null = null;
-let triggerObservedResize: ((element: Element) => number) | null = null;
-
-function installDom() {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
-  const target = globalThis as typeof globalThis & Record<string, unknown>;
-  target.window = dom.window;
-  target.document = dom.window.document;
-  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
-  target.HTMLElement = dom.window.HTMLElement;
-  target.Element = dom.window.Element;
-  target.Node = dom.window.Node;
-  target.Event = dom.window.Event;
-  target.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
-  target.IS_REACT_ACT_ENVIRONMENT = true;
-  const requestAnimationFrame = (callback: FrameRequestCallback) => (
-    dom.window.setTimeout(() => callback(Date.now()), 0)
-  );
-  const cancelAnimationFrame = (id: number) => dom.window.clearTimeout(id);
-  target.requestAnimationFrame = requestAnimationFrame;
-  target.cancelAnimationFrame = cancelAnimationFrame;
-  dom.window.requestAnimationFrame = requestAnimationFrame;
-  dom.window.cancelAnimationFrame = cancelAnimationFrame;
-
-  Object.defineProperties(dom.window.HTMLElement.prototype, {
-    clientHeight: {
-      configurable: true,
-      get(this: HTMLElement) {
-        return Number.parseFloat(this.style.height) || 0;
-      },
-    },
-    clientWidth: {
-      configurable: true,
-      get() {
-        return 800;
-      },
-    },
-    offsetHeight: {
-      configurable: true,
-      get(this: HTMLElement) {
-        const measuredChild = this.querySelector<HTMLElement>('[data-test-row-height]');
-        return Number.parseFloat(this.dataset.testRowHeight ?? '')
-          || Number.parseFloat(this.style.height)
-          || Number.parseFloat(measuredChild?.dataset.testRowHeight ?? '')
-          || 0;
-      },
-    },
-    offsetWidth: {
-      configurable: true,
-      get() {
-        return 800;
-      },
-    },
-    scrollHeight: {
-      configurable: true,
-      get(this: HTMLElement) {
-        const container = this.querySelector<HTMLElement>('[data-virtual-transcript-size]');
-        const tail = this.querySelector<HTMLElement>('[data-test-transcript-tail]');
-        const contentHeight = (Number.parseFloat(container?.style.height ?? '') || 0)
-          + (tail?.offsetHeight ?? 0);
-        return Math.max(contentHeight, this.clientHeight);
-      },
-    },
-  });
-
-  dom.window.HTMLElement.prototype.scrollTo = function scrollTo(options?: ScrollToOptions | number, y?: number) {
-    const top = typeof options === 'number'
-      ? (typeof y === 'number' ? y : options)
-      : Number(options?.top ?? this.scrollTop);
-    this.scrollTop = Math.max(0, top);
-    this.dispatchEvent(new dom.window.Event('scroll'));
-  };
-
-  class DeterministicResizeObserver {
-    readonly callback: ResizeObserverCallback;
-    readonly observed = new Set<Element>();
-
-    constructor(callback: ResizeObserverCallback) {
-      this.callback = callback;
-      resizeObservers.add(this);
-    }
-
-    notify(element: Element) {
-      if (!this.observed.has(element) || !element.isConnected) return;
-      const targetElement = element as HTMLElement;
-      this.callback([{
-        target: element,
-        borderBoxSize: [{
-          blockSize: targetElement.offsetHeight,
-          inlineSize: targetElement.offsetWidth,
-        }],
-      } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-    }
-
-    observe(element: Element) {
-      this.observed.add(element);
-      queueMicrotask(() => {
-        this.notify(element);
-      });
-    }
-
-    unobserve(element: Element) {
-      this.observed.delete(element);
-    }
-
-    disconnect() {
-      this.observed.clear();
-      resizeObservers.delete(this);
-    }
-  }
-
-  const resizeObservers = new Set<DeterministicResizeObserver>();
-  triggerObservedResize = (element) => {
-    let notified = 0;
-    for (const observer of resizeObservers) {
-      if (!observer.observed.has(element)) continue;
-      observer.notify(element);
-      notified += 1;
-    }
-    return notified;
-  };
-
-  target.ResizeObserver = DeterministicResizeObserver;
-  (dom.window as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver = DeterministicResizeObserver as unknown as typeof ResizeObserver;
-}
-
-function rows(prefix: string, start: number, count: number, height = 50): Row[] {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `${prefix}${start + index}`,
-    height,
-  }));
-}
-
-function transcript(props: {
-  items: readonly Row[];
-  sessionKey?: string;
-  navigationRequest?: { id: string; nonce: number; sessionKey?: string } | null;
-  onNavigationReady?: (messageId: string) => void;
-  onNavigationHandled?: (request: { id: string; nonce: number; sessionKey: string }) => void;
-  hasOlder?: boolean;
-  onLoadOlder?: () => Promise<void> | void;
-  tailHeight?: number;
-  tailKey?: string;
-}) {
-  const sessionKey = props.sessionKey ?? 'session:one';
-  const navigationRequest = props.navigationRequest
-    ? { ...props.navigationRequest, sessionKey: props.navigationRequest.sessionKey ?? sessionKey }
-    : props.navigationRequest;
-  return (
-    <VirtualTranscript
-      items={props.items}
-      sessionKey={sessionKey}
-      getItemKey={(item) => item.id}
-      renderItem={(item) => (
-        <div data-message-id={item.id} data-test-row-height={item.height}>{item.id}</div>
-      )}
-      scrollStyle={{ height: 600 }}
-      navigationRequest={navigationRequest}
-      findNavigationIndex={(item, id) => item.id === id}
-      onNavigationReady={props.onNavigationReady}
-      onNavigationHandled={props.onNavigationHandled}
-      hasOlder={props.hasOlder}
-      onLoadOlder={props.onLoadOlder}
-      tailKey={props.tailKey}
-      tail={props.tailHeight ? (
-        <div data-test-transcript-tail data-test-row-height={props.tailHeight}>tail</div>
-      ) : null}
-    />
-  );
-}
-
-async function flush() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
-
-async function render(element: React.ReactNode) {
-  const host = document.createElement('div');
-  document.body.append(host);
-  root = createRoot(host);
-  await act(async () => root?.render(element));
-  await flush();
-  return {
-    host,
-    rerender: async (next: React.ReactNode) => {
-      await act(async () => root?.render(next));
-      await flush();
-    },
-  };
-}
+import {
+  cleanupVirtualTranscriptHarness,
+  flush,
+  installVirtualTranscriptHarness,
+  render,
+  rows,
+  transcript,
+  triggerObservedResize,
+  virtualRowStart,
+} from './support/virtualTranscriptHarness';
 
 test.before(async () => {
-  installDom();
-  ({ VirtualTranscript } = await import('../src/features/chat/VirtualTranscript'));
+  await installVirtualTranscriptHarness();
 });
 
 test.afterEach(async () => {
-  if (root) await act(async () => root?.unmount());
-  root = null;
-  document.body.innerHTML = '';
+  await cleanupVirtualTranscriptHarness();
 });
 
 test('equal-length session switches mount the new tail before paint', async () => {
@@ -222,6 +31,43 @@ test('equal-length session switches mount the new tail before paint', async () =
   assert.ok(mountedIds.length > 0);
   assert.ok(mountedIds.every((id) => id?.startsWith('b')));
   assert.ok(mountedIds.includes('b999'));
+});
+
+test('session switches do not reuse message elements or measurements with matching item keys', async () => {
+  const firstSession = rows('shared-', 0, 8, 36);
+  const view = await render(transcript({ items: firstSession, sessionKey: 'session:a' }));
+  const previousTail = view.host.querySelector<HTMLElement>('[data-message-id="shared-7"]');
+  assert.ok(previousTail);
+
+  await view.rerender(transcript({
+    items: rows('shared-', 0, 8, 112),
+    sessionKey: 'session:b',
+  }));
+
+  const nextTail = view.host.querySelector<HTMLElement>('[data-message-id="shared-7"]');
+  assert.ok(nextTail);
+  assert.notEqual(nextTail, previousTail);
+  assert.equal(nextTail.dataset.testRowHeight, '112');
+});
+
+test('measured row positions update before the next React render', async () => {
+  const view = await render(transcript({
+    items: rows('measured-', 0, 8, 50),
+    sessionKey: 'measured-session',
+  }));
+  const firstMessage = view.host.querySelector<HTMLElement>('[data-message-id="measured-0"]');
+  const firstRow = firstMessage?.closest<HTMLElement>('[data-transcript-window-item]');
+  const secondRow = view.host.querySelector<HTMLElement>('[data-message-id="measured-1"]')
+    ?.closest<HTMLElement>('[data-transcript-window-item]');
+  assert.ok(firstMessage);
+  assert.ok(firstRow);
+  assert.ok(secondRow);
+
+  await act(async () => {
+    firstMessage.dataset.testRowHeight = '180';
+    assert.ok((triggerObservedResize?.(firstRow) ?? 0) > 0);
+    assert.equal(virtualRowStart(secondRow), 184);
+  });
 });
 
 test('a cold session aligns its tail when the first transcript page replaces loading copy', async () => {
@@ -247,7 +93,7 @@ test('a two-row catalog preview hydrates into the chronological transcript tail'
   const mountedRows = [...view.host.querySelectorAll<HTMLElement>('[data-transcript-window-item]')]
     .map((node) => ({
       id: node.querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId ?? '',
-      start: Number.parseFloat(node.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0'),
+      start: virtualRowStart(node),
     }))
     .sort((left, right) => left.start - right.start);
   assert.ok(mountedRows.length > 0);
@@ -273,9 +119,7 @@ test('appending the latest message while pinned to the tail keeps the full row v
   const latestRow = view.host.querySelector<HTMLElement>('[data-message-id="message-20"]')
     ?.closest<HTMLElement>('[data-transcript-window-item]');
   assert.ok(latestRow, 'the appended latest row should be mounted');
-  const latestStart = Number.parseFloat(
-    latestRow.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0',
-  );
+  const latestStart = virtualRowStart(latestRow);
   assert.ok(
     latestStart + latestRow.offsetHeight <= viewport.scrollTop + viewport.clientHeight,
     `latest row ended at ${latestStart + latestRow.offsetHeight}px but the viewport ended at ${viewport.scrollTop + viewport.clientHeight}px`,
@@ -402,7 +246,7 @@ test('a 900px row is measured before following short rows are positioned', async
   const shortRow = view.host.querySelector<HTMLElement>('[data-message-id^="short-"]')
     ?.closest<HTMLElement>('[data-transcript-window-item]');
   assert.ok(shortRow);
-  const start = Number.parseFloat(shortRow.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+  const start = virtualRowStart(shortRow);
   assert.ok(start >= 900, `short row started at ${start}px`);
   assert.equal(view.host.querySelector('[data-transcript-window-spacer]'), null);
 });
@@ -417,12 +261,12 @@ test('prepending an older page preserves the first visible message and pixel off
 
   const before = [...view.host.querySelectorAll<HTMLElement>('[data-transcript-window-item]')]
     .find((node) => {
-      const start = Number.parseFloat(node.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+      const start = virtualRowStart(node);
       return start <= viewport.scrollTop && start + node.offsetHeight > viewport.scrollTop;
     });
   assert.ok(before);
   const anchorId = before.querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId;
-  const beforeStart = Number.parseFloat(before.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+  const beforeStart = virtualRowStart(before);
   const beforeOffset = beforeStart - viewport.scrollTop;
 
   await view.rerender(transcript({ items: [...rows('m', 0, 100), ...initial] }));
@@ -431,7 +275,7 @@ test('prepending an older page preserves the first visible message and pixel off
   assert.ok(after, `expected ${anchorId} to remain mounted at scrollTop ${viewport.scrollTop}; mounted ${[
     ...view.host.querySelectorAll<HTMLElement>('[data-message-id]'),
   ].map((node) => node.dataset.messageId).join(',')}`);
-  const afterStart = Number.parseFloat(after.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0');
+  const afterStart = virtualRowStart(after);
   assert.ok(Math.abs((afterStart - viewport.scrollTop) - beforeOffset) < 1);
 });
 

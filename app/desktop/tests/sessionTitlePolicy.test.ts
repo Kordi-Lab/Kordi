@@ -9,6 +9,7 @@ import {
   titleSourceFromMetadata,
 } from '../src/features/chat/sessionTitlePolicy';
 import {
+  sessionConversationDisplayTitle,
   sessionDisplayTitle,
   sessionPrefersPersistedTitle,
 } from '../src/features/canonical/readModel/conversationMapping';
@@ -120,4 +121,35 @@ test('authoritative manual titles survive even when their text resembles a greet
     title: 'New session',
     metadata: { sessionTitleSource: 'manual' },
   }), false);
+});
+
+test('meaningful persisted group titles remain stable while partial history hydrates', () => {
+  const groupSession = {
+    id: 'session:group:main',
+    kind: 'group',
+    title: 'main',
+    status: 'active',
+    createdByIdentityId: 'human:me',
+    createdAtMs: 1,
+    updatedAtMs: 2,
+    metadata: {
+      sessionTitleSource: 'auto',
+      customName: 'Research group',
+      groupSpaceId: 'group:space',
+    },
+  } as const;
+  const latestWindow = [{
+    role: 'user' as const,
+    text: '@Alice can you review this?',
+    timeLabel: '10:45',
+  }];
+
+  assert.equal(sessionPrefersPersistedTitle(groupSession), true);
+  assert.equal(sessionConversationDisplayTitle(
+    groupSession,
+    [],
+    latestWindow,
+    groupSession.title,
+    { preferFallback: sessionPrefersPersistedTitle(groupSession) },
+  ), 'main');
 });

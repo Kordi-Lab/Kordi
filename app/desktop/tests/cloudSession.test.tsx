@@ -14,6 +14,7 @@ import {
 } from '../src/features/cloud/session';
 import {
   applyCloudSessionProfileUpdate,
+  cloudAccountsEqual,
   shouldRefreshCloudSessionProfileForWsSubject,
 } from '../src/features/cloud/useCloudSession';
 
@@ -121,6 +122,20 @@ test('profile update payload patches the current cloud session account', () => {
     avatarUrl: 'data:image/png;base64,new',
   });
   assert.equal(applyCloudSessionProfileUpdate(account, { account_id: 'acct_2', display_name: 'Other' }), null);
+});
+
+test('cloud account refresh equality ignores object identity but detects visible changes', () => {
+  const account = {
+    accountId: 'acct_1',
+    displayName: 'Name',
+    primaryEmail: 'name@example.com',
+    avatarUrl: null,
+    nodeId: 'node_1',
+    passwordSet: true,
+  };
+
+  assert.equal(cloudAccountsEqual(account, { ...account }), true);
+  assert.equal(cloudAccountsEqual(account, { ...account, displayName: 'Changed' }), false);
 });
 
 test('clearSessionAndNotifySignedOut clears storage and broadcasts logout for other Cloud session hooks', async () => {

@@ -5,6 +5,10 @@ import type {
   CanonicalSessionState,
 } from '@/kordi-app/types';
 import { canonicalMessageCountsAsReadable } from './readModel/messageVisibility';
+import {
+  canonicalJsonValuesEqual,
+  canonicalMessagesEqual,
+} from './canonicalEquality';
 
 export type SessionHydrationState = 'cold' | 'loading' | 'ready' | 'error';
 
@@ -31,45 +35,97 @@ function compareCanonicalMessages(left: CanonicalSessionMessage, right: Canonica
 }
 
 function mergeMessages(
-  existing: readonly CanonicalSessionMessage[],
+  existing: CanonicalSessionMessage[],
   incoming: readonly CanonicalSessionMessage[],
 ) {
-  if (incoming.length === 0) return [...existing];
+  if (incoming.length === 0) return existing;
   const byId = new Map(existing.map((message) => [message.id, message]));
+  let changed = false;
   for (const message of incoming) {
     const previous = byId.get(message.id);
-    if (!previous || message.updatedAtMs >= previous.updatedAtMs) byId.set(message.id, message);
+    if (!previous) {
+      byId.set(message.id, message);
+      changed = true;
+      continue;
+    }
+    if (
+      message.updatedAtMs >= previous.updatedAtMs
+      && !canonicalMessagesEqual(previous, message)
+    ) {
+      byId.set(message.id, message);
+      changed = true;
+    }
   }
-  return [...byId.values()].sort(compareCanonicalMessages);
+  if (!changed) return existing;
+  const merged = [...byId.values()].sort(compareCanonicalMessages);
+  return merged.length === existing.length
+    && merged.every((message, index) => message === existing[index])
+    ? existing
+    : merged;
+}
+
+function recordsMatch<T>(
+  existing: Readonly<Record<string, T>>,
+  incoming: Readonly<Record<string, T>>,
+): boolean {
+  const existingKeys = Object.keys(existing);
+  const incomingKeys = Object.keys(incoming);
+  return existingKeys.length === incomingKeys.length
+    && incomingKeys.every((key) => existing[key] === incoming[key]);
 }
 
 export function mergeCanonicalCatalog(
   store: CanonicalStore,
   catalog: CanonicalSessionCatalog,
 ): CanonicalStore {
-  const sessionIds = new Set(catalog.sessions.map((session) => session.id));
+  const stableCatalog = store.catalog
+    && canonicalJsonValuesEqual(store.catalog, catalog)
+    ? store.catalog
+    : catalog;
+  const sessionIds = new Set(stableCatalog.sessions.map((session) => session.id));
   const messagesBySessionId: Record<string, CanonicalSessionMessage[]> = {};
   const hydrationBySessionId: Record<string, SessionHydrationState> = {};
   const hasOlderBySessionId: Record<string, boolean> = {};
-  const summaryBySessionId = new Map(catalog.summaries.map((summary) => [summary.sessionId, summary]));
+  const summaryBySessionId = new Map(stableCatalog.summaries.map((summary) => [summary.sessionId, summary]));
 
   for (const sessionId of sessionIds) {
     const previousMessages = store.messagesBySessionId[sessionId] ?? [];
     const latestMessage = summaryBySessionId.get(sessionId)?.latestMessage;
     messagesBySessionId[sessionId] = latestMessage
       ? mergeMessages(previousMessages, [latestMessage])
-      : [...previousMessages];
+      : previousMessages;
     hydrationBySessionId[sessionId] = store.hydrationBySessionId[sessionId] ?? 'cold';
     hasOlderBySessionId[sessionId] = Boolean(store.hasOlderBySessionId[sessionId])
       || ((summaryBySessionId.get(sessionId)?.messageCount ?? 0) > messagesBySessionId[sessionId].length);
   }
 
-  return { catalog, messagesBySessionId, hydrationBySessionId, hasOlderBySessionId };
+  const stableMessages = recordsMatch(store.messagesBySessionId, messagesBySessionId)
+    ? store.messagesBySessionId
+    : messagesBySessionId;
+  const stableHydration = recordsMatch(store.hydrationBySessionId, hydrationBySessionId)
+    ? store.hydrationBySessionId
+    : hydrationBySessionId;
+  const stableHasOlder = recordsMatch(store.hasOlderBySessionId, hasOlderBySessionId)
+    ? store.hasOlderBySessionId
+    : hasOlderBySessionId;
+  if (
+    stableCatalog === store.catalog
+    && stableMessages === store.messagesBySessionId
+    && stableHydration === store.hydrationBySessionId
+    && stableHasOlder === store.hasOlderBySessionId
+  ) return store;
+  return {
+    catalog: stableCatalog,
+    messagesBySessionId: stableMessages,
+    hydrationBySessionId: stableHydration,
+    hasOlderBySessionId: stableHasOlder,
+  };
 }
 
 export function beginCanonicalSessionHydration(store: CanonicalStore, sessionId: string): CanonicalStore {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return store;
+  if (store.hydrationBySessionId[normalizedSessionId] === 'loading') return store;
   return {
     ...store,
     hydrationBySessionId: {
@@ -82,6 +138,7 @@ export function beginCanonicalSessionHydration(store: CanonicalStore, sessionId:
 export function failCanonicalSessionHydration(store: CanonicalStore, sessionId: string): CanonicalStore {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return store;
+  if (store.hydrationBySessionId[normalizedSessionId] === 'error') return store;
   return {
     ...store,
     hydrationBySessionId: {
@@ -96,6 +153,11 @@ export function mergeCanonicalMessagePage(store: CanonicalStore, page: Canonical
   if (!sessionId) return store;
   const existing = store.messagesBySessionId[sessionId] ?? [];
   const messages = mergeMessages(existing, page.messages.filter((message) => message.sessionId === sessionId));
+  if (
+    messages === existing
+    && store.hydrationBySessionId[sessionId] === 'ready'
+    && store.hasOlderBySessionId[sessionId] === page.hasOlder
+  ) return store;
   return {
     ...store,
     messagesBySessionId: {
@@ -158,7 +220,12 @@ export function mergeCanonicalStateIntoStore(
   store: CanonicalStore,
   state: CanonicalSessionState | null,
 ): CanonicalStore {
-  if (!state) return createCanonicalStore();
+  if (!state) {
+    return store.catalog === null
+      && Object.keys(store.messagesBySessionId).length === 0
+      ? store
+      : createCanonicalStore();
+  }
   const messagesBySessionId = state.messages.reduce<Record<string, CanonicalSessionMessage[]>>((grouped, message) => {
     const sessionId = message.sessionId.trim();
     if (!sessionId) return grouped;
@@ -226,11 +293,24 @@ export function mergeCanonicalStateIntoStore(
     summaries,
   };
   const catalogMerged = mergeCanonicalCatalog(store, catalog);
+  const nextMessagesBySessionId = Object.fromEntries(
+    state.sessions.map((session) => {
+      const incoming = messagesBySessionId[session.id] ?? [];
+      const existing = catalogMerged.messagesBySessionId[session.id] ?? [];
+      const stable = existing.length === incoming.length
+        && existing.every((message, index) => (
+          canonicalMessagesEqual(message, incoming[index])
+        ))
+        ? existing
+        : incoming;
+      return [session.id, stable];
+    }),
+  );
+  if (recordsMatch(catalogMerged.messagesBySessionId, nextMessagesBySessionId)) {
+    return catalogMerged;
+  }
   return {
     ...catalogMerged,
-    messagesBySessionId: Object.fromEntries(state.sessions.map((session) => [
-      session.id,
-      messagesBySessionId[session.id] ?? catalogMerged.messagesBySessionId[session.id] ?? [],
-    ])),
+    messagesBySessionId: nextMessagesBySessionId,
   };
 }

@@ -100,6 +100,7 @@ export type AssembleKordiShellSlotsArgs = {
   localProfileAvatarSeed?: string | null;
   localProfileDisplayName?: string | null;
   localProfileImageUrl?: string | null;
+  handlePrefetchChatSession: (sessionId: string) => void;
   handleSelectChatSession: (sessionId: string) => Promise<void>;
   handleStartChatWithPerson: (contact: Contact) => Promise<void>;
   handleStartChatWithAgent: (agent: Agent) => Promise<void>;
@@ -117,7 +118,6 @@ export type AssembleKordiShellSlotsArgs = {
   handleCreateProject: (name: string, parentDir?: string) => Promise<void>;
   handleCreateProjectSession: () => Promise<void>;
   handleSelectProjectSession: (projectId: string, sessionId: string) => Promise<void>;
-
   filteredGroupedContacts: Array<{ id: ContactClass; label: string; items: Contact[] }>;
   isContactRequestsOpen: boolean;
   setIsContactRequestsOpen: Dispatch<SetStateAction<boolean>>;
@@ -319,7 +319,6 @@ export type AssembleKordiShellSlotsArgs = {
   handleCloseInlineAuthDialog: () => void;
   startWindowResize: (direction: 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => (event: ReactMouseEvent<HTMLDivElement>) => void;
 };
-
 export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isNativeShell'
   | 'isSingleWorkspacePage'
@@ -339,6 +338,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isDesktopChatLoading'
   | 'desktopChatError'
   | 'activeConvId'
+  | 'handlePrefetchChatSession'
   | 'handleSelectChatSession'
   | 'handleStartChatWithPerson'
   | 'handleStartChatWithAgent'

@@ -3,7 +3,7 @@ import { CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail } from '@/pages/RightDetailRail';
-import { navigateToTranscriptMessageOrScrollBottom } from '@/kordi-app/components/transcriptReplyAttribution';
+import { navigateToTranscriptMessageOrScrollBottom } from '@/features/chat/transcriptNavigation';
 
 import type { RightDetailShellArgs } from '@/app/kordiShellSlots.types';
 import type { DetailTab } from '@/kordi-app/types';

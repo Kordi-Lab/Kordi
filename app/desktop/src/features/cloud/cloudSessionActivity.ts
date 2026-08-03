@@ -10,6 +10,7 @@ import type {
   UpsertCloudArtifactActivityInput,
   UpsertCloudTaskActivityInput,
 } from './authClient';
+import { cloudSessionActivityEqual } from './cloudSessionActivityEquality';
 
 export type CloudSessionActivityStore = {
   tasksBySessionId: Record<string, CloudTaskActivity[]>;
@@ -159,6 +160,7 @@ function newerOrEqual(left: { updatedAt: string }, right: { updatedAt: string })
 }
 
 export function mergeCloudSessionActivity(current: CloudSessionActivityStore, incoming: CloudSessionActivityStore): CloudSessionActivityStore {
+  if (Object.is(current, incoming)) return current;
   const tasksBySessionId: Record<string, CloudTaskActivity[]> = { ...current.tasksBySessionId };
   for (const [sessionId, incomingTasks] of Object.entries(incoming.tasksBySessionId)) {
     const byTaskId = new Map((tasksBySessionId[sessionId] ?? []).map((task) => [task.taskId, task]));
@@ -178,7 +180,8 @@ export function mergeCloudSessionActivity(current: CloudSessionActivityStore, in
     }
     artifactsBySessionId[sessionId] = sortArtifacts([...byArtifactId.values()].filter((artifact) => !artifact.archivedAt));
   }
-  return { tasksBySessionId, artifactsBySessionId };
+  const merged = { tasksBySessionId, artifactsBySessionId };
+  return cloudSessionActivityEqual(current, merged) ? current : merged;
 }
 
 function participantFromCloud(value: unknown, fallbackAccountId: string): SessionTaskParticipant | null {

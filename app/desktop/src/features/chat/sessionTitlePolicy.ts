@@ -1,6 +1,9 @@
 export const SESSION_TITLE_POLICY_VERSION = 1;
 export const MAX_SESSION_TITLE_GRAPHEMES = 48;
 
+const SESSION_TITLE_CACHE_LIMIT = 512;
+const SESSION_TITLE_CACHE_MAX_SOURCE_LENGTH = 4_096;
+
 export type SessionTitleSource = 'placeholder' | 'auto' | 'imported' | 'external' | 'legacy' | 'manual';
 
 type SegmenterLike = {
@@ -13,13 +16,21 @@ type SegmenterConstructor = new (
 ) => SegmenterLike;
 
 const Segmenter = (Intl as unknown as { Segmenter?: SegmenterConstructor }).Segmenter;
+const graphemeSegmenter = Segmenter
+  ? new Segmenter(undefined, { granularity: 'grapheme' })
+  : null;
+const sessionTitleCache = new Map<string, string | null>();
 
 function graphemes(value: string) {
-  if (!Segmenter) return Array.from(value);
-  return Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(value), ({ segment }) => segment);
+  if (!graphemeSegmenter) return Array.from(value);
+  return Array.from(graphemeSegmenter.segment(value), ({ segment }) => segment);
 }
 
 function truncateTitle(value: string) {
+  // A UTF-16 string cannot contain more grapheme clusters than code units. Most
+  // titles are short, so avoid entering the comparatively expensive ICU
+  // segmenter unless truncation is actually possible.
+  if (value.length <= MAX_SESSION_TITLE_GRAPHEMES) return value;
   const segments = graphemes(value);
   if (segments.length <= MAX_SESSION_TITLE_GRAPHEMES) return value;
   return `${segments.slice(0, MAX_SESSION_TITLE_GRAPHEMES - 1).join('')}…`;
@@ -139,7 +150,7 @@ function capitalizeFirstAscii(value: string) {
   return /^[a-z]/u.test(value) ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
 }
 
-export function deriveSessionTitle(value: string): string | null {
+function deriveSessionTitleUncached(value: string): string | null {
   const withoutContext = withoutReplyAndCodeContext(value);
   if (isAttachmentBoilerplate(withoutContext)) return null;
   const cleaned = removeTransportNoise(withoutContext)
@@ -154,6 +165,27 @@ export function deriveSessionTitle(value: string): string | null {
   const concise = words.slice(0, 8).join(' ').trim();
   if (!concise || isLowInformationSessionSeed(concise)) return null;
   return truncateTitle(capitalizeFirstAscii(concise));
+}
+
+export function deriveSessionTitle(value: string): string | null {
+  if (value.length > SESSION_TITLE_CACHE_MAX_SOURCE_LENGTH) {
+    return deriveSessionTitleUncached(value);
+  }
+
+  if (sessionTitleCache.has(value)) {
+    const cached = sessionTitleCache.get(value) ?? null;
+    sessionTitleCache.delete(value);
+    sessionTitleCache.set(value, cached);
+    return cached;
+  }
+
+  const derived = deriveSessionTitleUncached(value);
+  sessionTitleCache.set(value, derived);
+  if (sessionTitleCache.size > SESSION_TITLE_CACHE_LIMIT) {
+    const oldest = sessionTitleCache.keys().next().value;
+    if (oldest !== undefined) sessionTitleCache.delete(oldest);
+  }
+  return derived;
 }
 
 export function attachmentSessionTitle(count: number, containsImage = false) {

@@ -73,6 +73,7 @@ export function WorkspaceChatLists({
             descriptor={descriptor}
             model={model}
             activeConvId={activeConvId}
+            onPrefetchChatSession={contactActions.onPrefetchChatSession}
             onSelectChatSession={contactActions.onSelectChatSession}
             onOpenSessionContextMenu={contactActions.onOpenSessionContextMenu}
           />

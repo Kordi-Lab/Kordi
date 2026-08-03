@@ -187,6 +187,12 @@ function existingCanonicalMessageMatchesCloudSelfAgent(
   return Math.abs(existing.createdAtMs - input.createdAtMs) <= 5_000;
 }
 
+export type CloudSelfAgentCanonicalSyncPlan = {
+  agentIdentityRequest: UpsertCanonicalIdentityRequest;
+  sessionRequests: OpenCanonicalSessionRequest[];
+  messageRequests: AppendCanonicalMessageRequest[];
+};
+
 export function planCloudSelfAgentCanonicalSync({
   account,
   messages,
@@ -203,11 +209,7 @@ export function planCloudSelfAgentCanonicalSync({
   cloudTitlesBySessionId?: Readonly<
     Record<string, CloudSessionTitle>
   >;
-}): {
-  agentIdentityRequest: UpsertCanonicalIdentityRequest;
-  sessionRequests: OpenCanonicalSessionRequest[];
-  messageRequests: AppendCanonicalMessageRequest[];
-} {
+}): CloudSelfAgentCanonicalSyncPlan {
   const localHumanIdentityId =
     state.profile.humanIdentityId?.trim()
     || `human:${account.accountId}`;

@@ -3,8 +3,8 @@ import type { RefObject } from 'react';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import { scrollTranscriptToBottom } from '@/features/chat/transcriptNavigation';
 import type { Conversation } from '@/kordi-app/types';
-import { scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 
 export function scheduleTranscriptScrollToBottom<T extends HTMLElement>(
   scrollRef: RefObject<T | null>,

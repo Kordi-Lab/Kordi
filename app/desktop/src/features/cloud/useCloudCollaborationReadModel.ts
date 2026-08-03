@@ -37,31 +37,41 @@ import type {
   CloudMessageIndex,
 } from './cloudMessageIndex';
 
-function applyCloudAgentRuntimeRouteToState(
+export function applyCloudAgentRuntimeRouteToState(
   state: DesktopCollaborationState | null,
   route: DesktopChatMessageRoute | null,
 ): DesktopCollaborationState | null {
   if (!state) return state;
-  return {
-    ...state,
-    hosts: state.hosts.map((host) => {
-      if (!isCloudCollaborationHostId(host.id)) return host;
+  const defaultModel = route?.model ?? null;
+  const defaultAuthProvider = route?.authProvider ?? null;
+  const defaultAuthChoice = route?.authChoice ?? null;
+  const thinking = route?.thinking ?? null;
+  let changed = false;
+  const hosts = state.hosts.map((host) => {
+    if (!isCloudCollaborationHostId(host.id)) return host;
+    let agentsChanged = false;
+    const agents = host.agents.map((agent) => {
+      if (agent.id !== 'cloud-local-agent') return agent;
+      if (
+        agent.defaultModel === defaultModel
+        && agent.defaultAuthProvider === defaultAuthProvider
+        && agent.defaultAuthChoice === defaultAuthChoice
+        && agent.thinking === thinking
+      ) return agent;
+      agentsChanged = true;
       return {
-        ...host,
-        agents: host.agents.map((agent) => (
-          agent.id === 'cloud-local-agent'
-            ? {
-                ...agent,
-                defaultModel: route?.model ?? null,
-                defaultAuthProvider: route?.authProvider ?? null,
-                defaultAuthChoice: route?.authChoice ?? null,
-                thinking: route?.thinking ?? null,
-              }
-            : agent
-        )),
+        ...agent,
+        defaultModel,
+        defaultAuthProvider,
+        defaultAuthChoice,
+        thinking,
       };
-    }),
-  };
+    });
+    if (!agentsChanged) return host;
+    changed = true;
+    return { ...host, agents };
+  });
+  return changed ? { ...state, hosts } : state;
 }
 
 export function cloudCollaborationPreviousStateForContext(
@@ -97,10 +107,10 @@ export function useCloudCollaborationReadModel({
   hiddenSessionIds,
   deletedSessionIds,
   accountContextKey,
-  previousState,
-  currentOverride,
+  override,
   setOverride,
-  overrideContextKeyRef,
+  overrideContextKey,
+  setOverrideContextKey,
   stateRef,
   stateContextKeyRef,
   localAgentTurnsByRequestId,
@@ -118,12 +128,12 @@ export function useCloudCollaborationReadModel({
   hiddenSessionIds: Set<string>;
   deletedSessionIds: Set<string>;
   accountContextKey: string | null;
-  previousState: DesktopCollaborationState | null;
-  currentOverride: DesktopCollaborationState | null;
+  override: DesktopCollaborationState | null;
   setOverride: Dispatch<
     SetStateAction<DesktopCollaborationState | null>
   >;
-  overrideContextKeyRef: MutableRefObject<string | null>;
+  overrideContextKey: string | null;
+  setOverrideContextKey: Dispatch<SetStateAction<string | null>>;
   stateRef: MutableRefObject<DesktopCollaborationState | null>;
   stateContextKeyRef: MutableRefObject<string | null>;
   localAgentTurnsByRequestId:
@@ -133,17 +143,14 @@ export function useCloudCollaborationReadModel({
   messagesByPeer: Record<string, CloudMessage[]>;
   readInboundMessageIdsByPeer: Record<string, Set<string>>;
 }) {
-  const cloudCollaborationState = useMemo(() => {
+  const baseCloudCollaborationState = useMemo(() => {
     if (!account) return null;
-    const activeRuntimeSessionId = cloudAgentRuntimeSessionId(
-      account.accountId,
-      activeConversationId,
+    const currentOverride = cloudCollaborationPreviousStateForContext(
+      override,
+      overrideContextKey,
+      accountContextKey,
     );
-    const activeRuntimeRoute = cloudAgentRuntimeRouteForSession(
-      routesBySessionId,
-      activeRuntimeSessionId,
-      defaultRoute,
-    );
+    if (currentOverride) return currentOverride;
     const canonicalSelfAgentSessions =
       (canonicalState?.sessions ?? []).filter(
         (session) => session.kind === 'self-agent',
@@ -185,19 +192,44 @@ export function useCloudCollaborationReadModel({
       contacts,
       messagesByPeer: visibleMessagesByPeer,
       messageIndex,
-      previousState,
       readInboundMessageIdsByPeer,
       readCursorsBySessionId:
         cloudGroupReadCursorsBySessionId(canonicalState),
-      activeConversationId,
       localAgentTurnsByRequestId,
-      localAgentRuntimeRoute: activeRuntimeRoute,
+      localAgentRuntimeRoute: null,
       cloudSessionTitlesById,
       hiddenCloudSessionIds,
       suppressUnscopedSelfAgentConversation,
     });
+    return generated;
+  }, [
+    account,
+    accountContextKey,
+    canonicalState,
+    contacts,
+    deletedSessionIds,
+    hiddenSessionIds,
+    localAgentTurnsByRequestId,
+    messageIndex,
+    messagesByPeer,
+    override,
+    overrideContextKey,
+    readInboundMessageIdsByPeer,
+  ]);
+
+  const cloudCollaborationState = useMemo(() => {
+    if (!account) return null;
+    const activeRuntimeSessionId = cloudAgentRuntimeSessionId(
+      account.accountId,
+      activeConversationId,
+    );
+    const activeRuntimeRoute = cloudAgentRuntimeRouteForSession(
+      routesBySessionId,
+      activeRuntimeSessionId,
+      defaultRoute,
+    );
     const routed = applyCloudAgentRuntimeRouteToState(
-      currentOverride ?? generated,
+      baseCloudCollaborationState,
       activeRuntimeRoute,
     );
     return initialMessagesSettled
@@ -206,18 +238,9 @@ export function useCloudCollaborationReadModel({
   }, [
     account,
     activeConversationId,
-    canonicalState,
-    contacts,
-    currentOverride,
+    baseCloudCollaborationState,
     defaultRoute,
-    deletedSessionIds,
-    hiddenSessionIds,
     initialMessagesSettled,
-    localAgentTurnsByRequestId,
-    messageIndex,
-    messagesByPeer,
-    previousState,
-    readInboundMessageIdsByPeer,
     routesBySessionId,
   ]);
 
@@ -242,12 +265,12 @@ export function useCloudCollaborationReadModel({
     const next = typeof action === 'function'
       ? action(current)
       : action;
-    overrideContextKeyRef.current = accountContextKey;
+    setOverrideContextKey(accountContextKey);
     setOverride(next);
   }, [
     accountContextKey,
-    overrideContextKeyRef,
     setOverride,
+    setOverrideContextKey,
     stateContextKeyRef,
     stateRef,
   ]);

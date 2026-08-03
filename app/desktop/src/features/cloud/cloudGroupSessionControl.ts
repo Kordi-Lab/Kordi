@@ -70,6 +70,46 @@ export type ApplyCloudGroupSessionControlInput = {
   stateOps: CloudGroupSessionStateOps;
 };
 
+export function cloudGroupSessionPreparationSignature(
+  envelope: CloudGroupControlEnvelope,
+  account: NonNullable<CloudGroupSessionRuntime['account']>,
+) {
+  const participantsByAccount = new Map<string, {
+    accountId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    role: string | null;
+  }>();
+  for (const participant of [
+    ...envelope.participants,
+    cloudGroupSelfParticipant(account, 'self'),
+    envelope.actor,
+  ]) {
+    const accountId = participant.accountId.trim();
+    if (!accountId || participantsByAccount.has(accountId)) continue;
+    participantsByAccount.set(accountId, {
+      accountId,
+      displayName: participant.displayName.trim(),
+      avatarUrl: participant.avatarUrl?.trim() || null,
+      role: participant.role?.trim() || null,
+    });
+  }
+  const participants = [...participantsByAccount.values()]
+    .sort((left, right) => left.accountId.localeCompare(right.accountId));
+  return JSON.stringify({
+    kind: envelope.kind,
+    groupId: envelope.groupId.trim(),
+    groupSpaceId: envelope.groupSpaceId?.trim() || envelope.groupId.trim(),
+    groupTitle: envelope.groupTitle?.trim() || null,
+    createdByAccountId: envelope.createdByAccountId.trim(),
+    participants,
+    sessionTitle: envelope.sessionTitle ?? null,
+    memberJoins: envelope.memberJoins ?? [],
+    memberLeaves: envelope.memberLeaves ?? [],
+    fork: envelope.fork ?? null,
+  });
+}
+
 export function resolveCloudGroupAdminSnapshot(input: {
   envelope: Pick<CloudGroupControlEnvelope, 'kind' | 'actor' | 'participants' | 'createdByAccountId'>;
   identityIdByAccount: ReadonlyMap<string, string>;
@@ -128,6 +168,29 @@ export async function applyCloudGroupSessionControl({
   if (!account || !canonicalState || !canonical.setState) return null;
   const localHumanIdentityId = canonicalState.profile.humanIdentityId?.trim();
   if (!localHumanIdentityId) return null;
+  if (envelope.kind !== 'group-message') {
+    runtime.sessionPreparationCache.delete(envelope.groupId);
+  }
+  const preparationSignature = cloudGroupSessionPreparationSignature(envelope, account);
+  const cachedPreparation = runtime.sessionPreparationCache.get(envelope.groupId);
+  if (
+    envelope.kind === 'group-message'
+    && cachedPreparation?.signature === preparationSignature
+    && cachedPreparation.localHumanIdentityId === localHumanIdentityId
+    && canonicalState.sessions.some((session) => session.id === envelope.groupId)
+  ) {
+    return {
+      account,
+      cloudMessage,
+      envelope,
+      canonicalState,
+      nextState: canonicalState,
+      localHumanIdentityId,
+      groupSpaceId: cachedPreparation.groupSpaceId,
+      participantByAccount: cachedPreparation.participantByAccount,
+      identityIdByAccount: cachedPreparation.identityIdByAccount,
+    };
+  }
 
   const rawParticipants = [envelope.actor, ...envelope.participants, cloudGroupSelfParticipant(account, 'self')];
   const profileAccountIds = [...new Set(
@@ -292,10 +355,11 @@ export async function applyCloudGroupSessionControl({
     } : {}),
     ...(forkMetadata ? { fork: forkMetadata } : {}),
   };
+  const persistedSessionTitle = stateOps.cleanText(envelopeSession?.title);
   const openResult = await openOrCreateCanonicalSessionFast({
     id: envelope.groupId,
     kind: 'group',
-    title: authorizedSessionTitle?.title ?? 'New chat',
+    title: authorizedSessionTitle?.title ?? (persistedSessionTitle || 'New chat'),
     status: 'active',
     createdByIdentityId,
     primaryIdentityId: null,
@@ -357,6 +421,15 @@ export async function applyCloudGroupSessionControl({
       sessionId: envelope.groupId,
       identityId: removedIdentityId,
       removedByIdentityId: actorIdentityId,
+    });
+  }
+  if (envelope.kind === 'group-message') {
+    runtime.sessionPreparationCache.set(envelope.groupId, {
+      signature: preparationSignature,
+      localHumanIdentityId,
+      groupSpaceId,
+      participantByAccount,
+      identityIdByAccount,
     });
   }
   if (envelope.kind !== 'group-message' || !envelope.message) {

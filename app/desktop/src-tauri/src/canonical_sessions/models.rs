@@ -56,6 +56,13 @@ pub struct CanonicalMessagePage {
     pub has_older: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalMessageSourceRef {
+    pub source_transport: String,
+    pub source_event_id: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CanonicalReadCursorDelta {

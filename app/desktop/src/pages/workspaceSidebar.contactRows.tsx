@@ -22,6 +22,7 @@ import type { SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 
 export type ContactSidebarRowActions = {
+  onPrefetchChatSession?: (sessionId: string) => void;
   onSelectChatSession: (sessionId: string) => void;
   onOpenSessionContextMenu: (target: SessionContextMenuTarget) => void;
   onOpenGroupDetails: (
@@ -89,6 +90,8 @@ function ParticipantSpaceSessionRow({
       data-session-message-count={sessionMessageCount}
       data-session-updated-at={sessionRowTimeLabel}
       data-session-fork-depth={visualDepth || undefined}
+      onPointerEnter={() => actions.onPrefetchChatSession?.(session.id)}
+      onFocus={() => actions.onPrefetchChatSession?.(session.id)}
       onClick={() => actions.onSelectChatSession(session.id)}
       onContextMenu={(event) => {
         const target = sessionContextMenuTargetForConversation(
@@ -250,6 +253,14 @@ function ParticipantSpaceRow({
           data-testid="participant-space-row"
           data-participant-space-toggle={isDirectHuman ? undefined : 'true'}
           aria-expanded={isDirectHuman ? undefined : isExpanded}
+          onPointerEnter={() => {
+            const primarySession = space.sessions[0];
+            if (primarySession) actions.onPrefetchChatSession?.(primarySession.id);
+          }}
+          onFocus={() => {
+            const primarySession = space.sessions[0];
+            if (primarySession) actions.onPrefetchChatSession?.(primarySession.id);
+          }}
           onClick={selectPrimarySession}
           className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
         >

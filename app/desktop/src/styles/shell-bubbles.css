@@ -46,12 +46,9 @@
   isolation: isolate;
   overflow: visible;
   background: transparent;
-  animation: app-message-bubble-enter var(--app-motion-base) var(--app-motion-ease) both;
-  transform-origin: bottom center;
   transition:
     color var(--app-motion-fast) var(--app-motion-ease),
-    opacity var(--app-motion-fast) var(--app-motion-ease),
-    transform var(--app-motion-base) var(--app-motion-ease);
+    opacity var(--app-motion-fast) var(--app-motion-ease);
 }
 
 .app-message-bubble > :not(.app-message-bubble-shape) {
@@ -122,6 +119,11 @@
   --app-message-bubble-shadow: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
 }
 
+.app-message-bubble-enter,
+.app-message-bubble-queued {
+  animation: app-message-bubble-enter var(--app-motion-base) var(--app-motion-ease) both;
+}
+
 @keyframes app-message-bubble-enter {
   from {
     opacity: 0;
@@ -145,7 +147,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-message-bubble {
+  .app-message-bubble,
+  .app-message-bubble-enter,
+  .app-message-bubble-queued {
     animation: none;
     transition: none;
   }

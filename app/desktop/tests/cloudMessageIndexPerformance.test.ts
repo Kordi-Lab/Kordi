@@ -4,6 +4,9 @@ import { test } from 'node:test';
 import { parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import {
   buildCloudMessageIndex,
+  canonicalMessageSourceKey,
+  cloudGroupCanonicalMessageSource,
+  cloudGroupReplayRowsAfterDurableHistory,
   patchCanonicalDeliverySummaries,
 } from '../src/features/cloud/cloudMessageIndex';
 import {
@@ -107,6 +110,46 @@ test('a one-row Cloud delta reuses parsed envelopes from the 20,000-row index', 
       `Expected existing row ${index} to retain its parsed envelope and object identity`,
     );
   }
+});
+
+test('an unchanged Cloud message store reuses the complete index by identity', () => {
+  const messagesByPeer = buildScaleCloudMessagesByPeer();
+  const previousIndex = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer);
+  let parseCalls = 0;
+  const nextIndex = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer, {
+    previousIndex,
+    parseGroupControl(body) {
+      parseCalls += 1;
+      return parseCloudGroupControl(body);
+    },
+  });
+
+  assert.equal(nextIndex, previousIndex);
+  assert.equal(parseCalls, 0);
+});
+
+test('durable Cloud group history keeps one compact preparation row per group', () => {
+  const messagesByPeer = buildScaleCloudMessagesByPeer();
+  const index = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer);
+  const existingSourceKeys = new Set(index.replayRows.flatMap((row) => {
+    const source = cloudGroupCanonicalMessageSource(row.wire, row.envelope);
+    return source ? [canonicalMessageSourceKey(source)] : [];
+  }));
+  const replayRows = cloudGroupReplayRowsAfterDurableHistory(
+    index.replayRows,
+    existingSourceKeys,
+  );
+  const messageGroupIds = new Set(index.replayRows.flatMap((row) => (
+    cloudGroupCanonicalMessageSource(row.wire, row.envelope)
+      ? [row.envelope.groupId]
+      : []
+  )));
+
+  assert.equal(replayRows.length, messageGroupIds.size);
+  assert.deepEqual(
+    new Set(replayRows.map((row) => row.envelope.groupId)),
+    messageGroupIds,
+  );
 });
 
 test('canonical delivery patch preserves state identity after summaries are applied', () => {

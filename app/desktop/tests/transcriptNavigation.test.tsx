@@ -1,7 +1,50 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { navigateToTranscriptMessage, navigateToTranscriptMessageOrScrollBottom, transcriptMessageDomId } from '../src/kordi-app/components/transcriptReplyAttribution';
+import { highlightTranscriptMessage, navigateToTranscriptMessage, navigateToTranscriptMessageOrScrollBottom, transcriptMessageDomId } from '../src/features/chat/transcriptNavigation';
+
+test('virtualized reply navigation highlights an already-centered row without scrolling it again', () => {
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+  let scrollCalls = 0;
+  let highlighted = false;
+  const target = {
+    scrollIntoView() {
+      scrollCalls += 1;
+    },
+    classList: {
+      add(value: string) {
+        highlighted = value === 'app-transcript-message-highlight';
+      },
+      remove(_value: string) {},
+    },
+  };
+  const fakeDocument = {
+    getElementById(id: string) {
+      return id === transcriptMessageDomId('virtualized-message') ? target : null;
+    },
+  } as unknown as Document;
+  const fakeWindow = {
+    setTimeout(_callback: TimerHandler, _timeout?: number) {
+      return 0;
+    },
+    clearTimeout(_timeout?: number) {},
+  } as unknown as Window & typeof globalThis;
+
+  try {
+    Object.defineProperty(globalThis, 'document', { value: fakeDocument, configurable: true });
+    Object.defineProperty(globalThis, 'window', { value: fakeWindow, configurable: true });
+
+    const didHighlight = highlightTranscriptMessage('virtualized-message');
+
+    assert.equal(didHighlight, true);
+    assert.equal(highlighted, true);
+    assert.equal(scrollCalls, 0);
+  } finally {
+    Object.defineProperty(globalThis, 'document', { value: originalDocument, configurable: true });
+    Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true });
+  }
+});
 
 test('task response navigation falls back to transcript bottom when live target is not mounted yet', () => {
   const originalDocument = globalThis.document;

@@ -8,6 +8,8 @@ const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX =
   'kordi.cloud.selfAgentSync.v2:';
 const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX =
   'kordi.cloud.selfAgentForwardBaseline.v1:';
+const CLOUD_SELF_AGENT_FORWARD_CUTOFF_PREFIX =
+  'kordi.cloud.selfAgentForwardCutoff.v1:';
 
 export type CloudSelfAgentSyncLedgerEntry = {
   cloudMessageId: string | null;
@@ -39,6 +41,10 @@ function selfAgentForwardBaselineKey(accountId: string): string {
   return `${CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX}${accountId}`;
 }
 
+function selfAgentForwardCutoffKey(accountId: string): string {
+  return `${CLOUD_SELF_AGENT_FORWARD_CUTOFF_PREFIX}${accountId}`;
+}
+
 export function loadCloudSelfAgentForwardBaseline(
   accountId: string,
 ): boolean {
@@ -58,6 +64,35 @@ export function saveCloudSelfAgentForwardBaseline(accountId: string): void {
   } catch {
     // Best effort. If persistence fails, this device may try again later.
   }
+}
+
+export function loadCloudSelfAgentForwardCutoff(
+  accountId: string,
+): number | null {
+  if (typeof window === 'undefined') return null;
+  const parsed = Number(window.localStorage.getItem(
+    selfAgentForwardCutoffKey(accountId),
+  ));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function saveCloudSelfAgentForwardCutoff(
+  accountId: string,
+  cutoffMs: number = Date.now(),
+): number {
+  const normalizedCutoff = Number.isFinite(cutoffMs) && cutoffMs > 0
+    ? Math.floor(cutoffMs)
+    : Date.now();
+  if (typeof window === 'undefined') return normalizedCutoff;
+  try {
+    window.localStorage.setItem(
+      selfAgentForwardCutoffKey(accountId),
+      String(normalizedCutoff),
+    );
+  } catch {
+    // Best effort. The caller still uses this boundary for the current run.
+  }
+  return normalizedCutoff;
 }
 
 export function loadCloudSelfAgentSyncLedger(
@@ -191,7 +226,10 @@ export function seedCloudSelfAgentForwardSyncLedger(
 export function planCloudSelfAgentSync(
   state: CanonicalSessionState,
   ledger: CloudSelfAgentSyncLedger,
-  options: { allowLocalBackfill?: boolean } = {},
+  options: {
+    allowLocalBackfill?: boolean;
+    createdAfterMs?: number | null;
+  } = {},
 ): CloudSelfAgentSyncOperation[] {
   if (options.allowLocalBackfill === false) return [];
   const selfAgentSessionIds = localSelfAgentSessionIds(state);
@@ -203,6 +241,10 @@ export function planCloudSelfAgentSync(
     if (
       !selfAgentSessionIds.has(message.sessionId)
       || !isTerminalSelfAgentMessage(message)
+    ) continue;
+    if (
+      options.createdAfterMs != null
+      && message.createdAtMs <= options.createdAfterMs
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
     const text = cleanText(message.contentText);

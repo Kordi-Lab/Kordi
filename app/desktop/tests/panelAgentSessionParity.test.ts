@@ -33,6 +33,7 @@ const chatsPageSource = () => [
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n');
 const chatSessionPaneSource = () => readFileSync(new URL('../src/pages/chatsPage.sessionPane.tsx', import.meta.url), 'utf8');
+const chatTranscriptViewportSource = () => readFileSync(new URL('../src/pages/chatsPage.transcriptViewport.tsx', import.meta.url), 'utf8');
 const queuedMessageSource = () => readFileSync(new URL('../src/pages/chatsPage.queuedMessage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
@@ -75,7 +76,7 @@ function chatSessionPaneBlock(): string {
   const source = chatSessionPaneSource();
   const start = source.indexOf('function ChatSessionPane');
   assert.notEqual(start, -1, 'missing shared ChatSessionPane implementation');
-  return source.slice(start);
+  return [source.slice(start), chatTranscriptViewportSource()].join('\n');
 }
 
 test('side-panel Agent chat renders the same reusable session pane as the main Agent chat', () => {
@@ -275,8 +276,8 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
   assert.match(pane, /findNavigationIndex=\{\(entry, messageId\)/, 'ChatSessionPane should resolve jump targets against loaded messages');
   assert.match(
     pane,
-    /const handleNavigationReady = useCallback\([\s\S]*navigateToTranscriptMessage\(messageId, scrollRef\)[\s\S]*\[scrollRef\],?\s*\);/,
-    'the shared pane should expose a stable mounted-target navigation callback',
+    /const handleNavigationReady = useCallback\([\s\S]*highlightTranscriptMessage\(messageId\)[\s\S]*\[\],?\s*\);/,
+    'the shared pane should highlight a target after the virtualizer performs the only scroll',
   );
   assert.match(
     pane,

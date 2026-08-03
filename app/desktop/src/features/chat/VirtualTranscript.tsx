@@ -53,6 +53,7 @@ export type VirtualTranscriptProps<Item> = {
 };
 
 const preserveMeasuredDisclosurePosition = () => false;
+const STABLE_DISCLOSURE_SETTLE_MS = 320;
 
 export function VirtualTranscript<Item>({
   items,
@@ -109,8 +110,9 @@ export function VirtualTranscript<Item>({
 
   const itemKeyAt = useCallback((index: number) => {
     const item = items[index];
-    return item === undefined ? `missing:${index}` : getItemKey(item, index);
-  }, [getItemKey, items]);
+    const itemKey = item === undefined ? `missing:${index}` : getItemKey(item, index);
+    return `${sessionKey.length}:${sessionKey}:${typeof itemKey}:${String(itemKey)}`;
+  }, [getItemKey, items, sessionKey]);
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -126,6 +128,8 @@ export function VirtualTranscript<Item>({
     gap,
     anchorTo: stableDisclosureActive ? 'start' : 'end',
     useFlushSync: false,
+    directDomUpdates: true,
+    directDomUpdatesMode: 'transform',
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = stableDisclosureActive
     ? preserveMeasuredDisclosurePosition
@@ -152,6 +156,12 @@ export function VirtualTranscript<Item>({
   const normalizedTailKey = String(tailKey ?? '');
   const totalSize = virtualizer.getTotalSize();
   const viewportSize = virtualizer.scrollRect?.height ?? 0;
+  const setSizeContainer = useCallback((node: HTMLDivElement | null) => {
+    virtualizer.containerRef(node);
+    // Commit the new extent before layout effects restore a prepend anchor;
+    // otherwise the browser can clamp that anchor against the previous size.
+    if (node) node.style.height = `${totalSize}px`;
+  }, [totalSize, virtualizer]);
 
   const cancelTailAlignment = useCallback(() => {
     tailAlignmentActiveRef.current = false;
@@ -174,11 +184,10 @@ export function VirtualTranscript<Item>({
     scrollTop: number;
   }) => {
     cancelStableDisclosureRelease();
-    let framesRemaining = 2;
+    const releaseAfter = Date.now() + STABLE_DISCLOSURE_SETTLE_MS;
     const release = () => {
       stableDisclosureReleaseFrameRef.current = null;
-      framesRemaining -= 1;
-      if (framesRemaining > 0) {
+      if (Date.now() < releaseAfter) {
         stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
       } else if (stableDisclosureAnchorRef.current === anchor) {
         stableDisclosureAnchorRef.current = null;
@@ -319,6 +328,14 @@ export function VirtualTranscript<Item>({
   }, [cancelStableDisclosureRelease, cancelTailAlignment, scheduleStableDisclosureRelease, sessionKey]);
 
   useLayoutEffect(() => {
+    const anchor = stableDisclosureAnchorRef.current;
+    if (!anchor || anchor.sessionKey === sessionKey) return;
+    cancelStableDisclosureRelease();
+    stableDisclosureAnchorRef.current = null;
+    setStableDisclosureActive(false);
+  }, [cancelStableDisclosureRelease, sessionKey]);
+
+  useLayoutEffect(() => {
     const aligned = alignedSessionRef.current;
     const stableDisclosureAnchor = stableDisclosureAnchorRef.current?.sessionKey === sessionKey
       ? stableDisclosureAnchorRef.current
@@ -447,9 +464,9 @@ export function VirtualTranscript<Item>({
     >
       {items.length > 0 ? (
         <div
+          ref={setSizeContainer}
           data-virtual-transcript-size="true"
           className="relative w-full"
-          style={{ height: totalSize }}
         >
           {virtualItems.map((virtualItem) => {
             const item = items[virtualItem.index];
@@ -461,7 +478,6 @@ export function VirtualTranscript<Item>({
                 data-index={virtualItem.index}
                 data-transcript-window-item="true"
                 className="absolute left-0 top-0 w-full"
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
                 {renderItem(item, virtualItem.index)}
               </div>

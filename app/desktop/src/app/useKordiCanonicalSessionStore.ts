@@ -72,7 +72,13 @@ export function useKordiCanonicalSessionStore({
     setStoreValue(next);
   }, []);
 
-  const state = useMemo(() => canonicalStateFromStore(store), [store]);
+  const { catalog, messagesBySessionId } = store;
+  const state = useMemo(() => canonicalStateFromStore({
+    catalog,
+    messagesBySessionId,
+    hydrationBySessionId: {},
+    hasOlderBySessionId: {},
+  }), [catalog, messagesBySessionId]);
   const setState = useCallback<Dispatch<
     SetStateAction<CanonicalSessionState | null>
   >>((action) => {

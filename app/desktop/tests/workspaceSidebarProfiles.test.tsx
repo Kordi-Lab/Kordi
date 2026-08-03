@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { applyCloudPresenceToConversations } from '../src/app/useWorkspaceViewModels';
+import { applyCloudPresenceToConversations } from '../src/app/viewModels/cloudConversationPresence';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import { CloudProfileLogoutAction, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import { conversation, baseSidebarProps } from './helpers/workspaceSidebarParticipantSpacesFixtures';

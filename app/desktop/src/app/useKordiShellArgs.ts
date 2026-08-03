@@ -44,6 +44,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         contactParticipantSpaces: args.contactParticipantSpaces,
         agentParticipantSpaces: args.agentParticipantSpaces,
         activeConvId: args.activeConvId,
+        handlePrefetchChatSession: args.handlePrefetchChatSession,
         handleSelectChatSession: args.handleSelectChatSession,
         handleStartChatWithPerson: args.handleStartChatWithPerson,
         handleStartChatWithAgent: args.handleStartChatWithAgent,

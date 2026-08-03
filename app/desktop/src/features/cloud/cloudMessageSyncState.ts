@@ -9,7 +9,10 @@ import {
   parseCloudGroupControl,
 } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
-import { mergeCloudMessageMonotonicState } from './cloudDiffSync';
+import {
+  cloudMessagesEqual,
+  mergeCloudMessageMonotonicState,
+} from './cloudDiffSync';
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
 
@@ -39,37 +42,6 @@ export function cloudBootstrapPeerIds(
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
-}
-
-function cloudMessageAttachmentsEqual(
-  left: CloudMessage['attachments'] = [],
-  right: CloudMessage['attachments'] = [],
-): boolean {
-  if ((left?.length ?? 0) !== (right?.length ?? 0)) return false;
-  return (left ?? []).every((attachment, index) => {
-    const other = (right ?? [])[index];
-    return Boolean(other)
-      && attachment.attachmentId === other.attachmentId
-      && attachment.name === other.name
-      && attachment.kind === other.kind
-      && (attachment.mimeType ?? null) === (other.mimeType ?? null)
-      && (attachment.sizeBytes ?? null) === (other.sizeBytes ?? null)
-      && (attachment.localPath ?? null) === (other.localPath ?? null);
-  });
-}
-
-function cloudMessagesEqual(message: CloudMessage, other: CloudMessage | undefined): boolean {
-  if (!other) return false;
-  return message.messageId === other.messageId
-    && message.fromAccountId === other.fromAccountId
-    && message.toAccountId === other.toAccountId
-    && message.body === other.body
-    && message.createdAt === other.createdAt
-    && message.deliveredAt === other.deliveredAt
-    && message.readAt === other.readAt
-    && message.direction === other.direction
-    && (message.sessionId ?? null) === (other.sessionId ?? null)
-    && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
 }
 
 function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[] = []): boolean {

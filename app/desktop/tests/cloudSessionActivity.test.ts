@@ -30,6 +30,20 @@ test('mergeCloudSessionActivity keeps newer task and artifact rows by session id
   assert.equal(merged.artifactsBySessionId['session:group:1']?.[0]?.artifactActivityId, 'artifact-new');
 });
 
+test('mergeCloudSessionActivity preserves identity for the same diff snapshot', () => {
+  const current = normalizeCloudSessionActivitySnapshot({
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    artifacts: [],
+  });
+  const repeatedSnapshot = normalizeCloudSessionActivitySnapshot({
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    artifacts: [],
+  });
+
+  assert.equal(mergeCloudSessionActivity(current, current), current);
+  assert.equal(mergeCloudSessionActivity(current, repeatedSnapshot), current);
+});
+
 test('cloud task rows adapt to SessionTaskActivity and artifact rows adapt to SessionArtifact', () => {
   const task = normalizeCloudSessionActivitySnapshot({
     tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review plan', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [{ accountId: 'acct_a', displayName: 'Alice' }], artifactIds: ['docs/plan.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:02:00Z', archivedAt: null }],

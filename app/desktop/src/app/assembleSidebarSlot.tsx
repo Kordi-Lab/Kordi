@@ -142,6 +142,7 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         contactParticipantSpaces: args.contactParticipantSpaces,
         agentParticipantSpaces: args.agentParticipantSpaces,
         activeConvId: args.activeConvId,
+        onPrefetchChatSession: args.handlePrefetchChatSession,
         onSelectChatSession: (sessionId) => {
           void args.handleSelectChatSession(sessionId);
         },

@@ -1,7 +1,17 @@
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
+import {
+  latestCloudReceiptAt,
+  upsertCloudMessage as upsertMessage,
+} from './cloudMessageMerge';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
+
+export {
+  cloudMessageAttachmentsEqual,
+  cloudMessagesEqual,
+  mergeCloudMessageMonotonicState,
+} from './cloudMessageMerge';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
 
@@ -140,50 +150,6 @@ function messagePeerId(accountId: string, message: CloudMessage, eventPeerId?: s
   return null;
 }
 
-function latestCloudReceiptAt(
-  current: string | null,
-  incoming: string | null,
-): string | null {
-  if (!current) return incoming;
-  if (!incoming) return current;
-  const currentMs = Date.parse(current);
-  const incomingMs = Date.parse(incoming);
-  if (Number.isFinite(currentMs) && Number.isFinite(incomingMs)) {
-    return incomingMs >= currentMs ? incoming : current;
-  }
-  return incoming.localeCompare(current) >= 0 ? incoming : current;
-}
-
-export function mergeCloudMessageMonotonicState(
-  current: CloudMessage,
-  incoming: CloudMessage,
-): CloudMessage {
-  return {
-    ...current,
-    ...incoming,
-    // Delivery and read receipts only move forward. Historical sync events can
-    // predate the authoritative latest-message snapshot and therefore carry
-    // null receipt values that must not make an already-read message unread.
-    deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
-    readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
-  };
-}
-
-function upsertMessage(messages: CloudMessage[], nextMessage: CloudMessage): CloudMessage[] {
-  const index = messages.findIndex((message) => message.messageId === nextMessage.messageId);
-  const merged = index >= 0
-    ? [
-      ...messages.slice(0, index),
-      mergeCloudMessageMonotonicState(messages[index]!, nextMessage),
-      ...messages.slice(index + 1),
-    ]
-    : [...messages, nextMessage];
-  return merged.sort((left, right) => (
-    left.createdAt.localeCompare(right.createdAt)
-    || left.messageId.localeCompare(right.messageId)
-  ));
-}
-
 function payloadMessage(event: CloudSyncEvent): CloudMessage | null {
   const payload = objectRecord(event.payload);
   return normalizeCloudMessage(payload?.message);
@@ -222,11 +188,13 @@ export function removeCloudSessionMessages(
   const trimmedSessionId = sessionId.trim();
   if (!trimmedSessionId) return currentMessagesByPeer;
   const next: Record<string, CloudMessage[]> = {};
+  let changed = false;
   for (const [peerId, messages] of Object.entries(currentMessagesByPeer)) {
     const retained = messages.filter((message) => !messageMatchesSession(accountId, message, trimmedSessionId, peerId));
-    if (retained.length > 0) next[peerId] = retained;
+    if (retained.length !== messages.length) changed = true;
+    if (retained.length > 0) next[peerId] = retained.length === messages.length ? messages : retained;
   }
-  return next;
+  return changed ? next : currentMessagesByPeer;
 }
 
 function readReceiptPayload(event: CloudSyncEvent): { messageIds: string[]; readAt: string } | null {
@@ -282,10 +250,14 @@ export function applyCloudSyncEventsToMessagesByPeer(
         hiddenSessionIds.delete(key);
         deletedSessionIds.delete(key);
       }
-      next = {
-        ...next,
-        [peerId]: upsertMessage(next[peerId] ?? [], message),
-      };
+      const currentPeerMessages = next[peerId] ?? [];
+      const nextPeerMessages = upsertMessage(currentPeerMessages, message);
+      if (nextPeerMessages !== currentPeerMessages) {
+        next = {
+          ...next,
+          [peerId]: nextPeerMessages,
+        };
+      }
       continue;
     }
 
@@ -294,14 +266,21 @@ export function applyCloudSyncEventsToMessagesByPeer(
       const peerId = event.peerAccountId?.trim() ?? '';
       if (!receipt || !peerId || !(peerId in next)) continue;
       const ids = new Set(receipt.messageIds);
-      next = {
-        ...next,
-        [peerId]: next[peerId].map((message) => (
-          ids.has(message.messageId)
-            ? { ...message, deliveredAt: message.deliveredAt ?? receipt.readAt, readAt: receipt.readAt }
-            : message
-        )),
-      };
+      let changed = false;
+      const nextPeerMessages = next[peerId].map((message) => {
+        if (!ids.has(message.messageId)) return message;
+        const deliveredAt = message.deliveredAt ?? receipt.readAt;
+        const readAt = latestCloudReceiptAt(message.readAt, receipt.readAt);
+        if (message.deliveredAt === deliveredAt && message.readAt === readAt) return message;
+        changed = true;
+        return { ...message, deliveredAt, readAt };
+      });
+      if (changed) {
+        next = {
+          ...next,
+          [peerId]: nextPeerMessages,
+        };
+      }
     }
   }
   return next;

@@ -38,6 +38,7 @@ function storeFor(accountId: string): CloudPresenceStoreState {
 }
 
 function publish(store: CloudPresenceStoreState, snapshot: CloudPresenceStore) {
+  if (Object.is(store.snapshot, snapshot)) return;
   store.snapshot = snapshot;
   for (const listener of store.listeners) listener();
 }

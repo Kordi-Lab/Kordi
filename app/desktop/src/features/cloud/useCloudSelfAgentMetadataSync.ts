@@ -24,6 +24,26 @@ function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
 
+export function reserveCloudSessionTitleUpload(
+  reservations: Map<string, string>,
+  sessionId: string,
+  signature: string,
+): boolean {
+  if (reservations.get(sessionId) === signature) return false;
+  reservations.set(sessionId, signature);
+  return true;
+}
+
+export function releaseCloudSessionTitleUpload(
+  reservations: Map<string, string>,
+  sessionId: string,
+  signature: string,
+): void {
+  if (reservations.get(sessionId) === signature) {
+    reservations.delete(sessionId);
+  }
+}
+
 export function useCloudSelfAgentMetadataSync({
   account,
   canonicalState,
@@ -225,13 +245,21 @@ export function useCloudSelfAgentMetadataSync({
 
     let cancelled = false;
     for (const upload of uploads) {
-      titleUploads.set(upload.sessionId, upload.signature);
+      reserveCloudSessionTitleUpload(
+        titleUploads,
+        upload.sessionId,
+        upload.signature,
+      );
     }
     void (async () => {
       const authSession = await loadSession();
       if (!authSession?.token) {
         for (const upload of uploads) {
-          titleUploads.delete(upload.sessionId);
+          releaseCloudSessionTitleUpload(
+            titleUploads,
+            upload.sessionId,
+            upload.signature,
+          );
         }
         return;
       }
@@ -245,40 +273,58 @@ export function useCloudSelfAgentMetadataSync({
           ),
         })),
       );
+      for (const [index, result] of results.entries()) {
+        if (result.status === 'fulfilled') continue;
+        const failedUpload = uploads[index];
+        if (!failedUpload) continue;
+        releaseCloudSessionTitleUpload(
+          titleUploads,
+          failedUpload.sessionId,
+          failedUpload.signature,
+        );
+      }
       if (cancelled) return;
       setTitlesBySessionId((current) => {
         let next = current;
-        for (const [index, result] of results.entries()) {
+        for (const result of results) {
           if (result.status === 'fulfilled') {
+            const existing = next[result.value.sessionTitle.sessionId];
+            if (
+              existing
+              && existing.title === result.value.sessionTitle.title
+              && existing.titleSource
+                === result.value.sessionTitle.titleSource
+              && existing.titleRevision
+                === result.value.sessionTitle.titleRevision
+              && existing.titlePolicyVersion
+                === result.value.sessionTitle.titlePolicyVersion
+              && existing.titleGeneratedFromMessageId
+                === result.value.sessionTitle.titleGeneratedFromMessageId
+              && existing.updatedAtMs
+                === result.value.sessionTitle.updatedAtMs
+              && existing.updatedByAccountId
+                === result.value.sessionTitle.updatedByAccountId
+            ) continue;
             next = {
               ...next,
               [result.value.sessionTitle.sessionId]:
                 result.value.sessionTitle,
             };
-          } else {
-            const failedUpload = uploads[index];
-            if (failedUpload) {
-              titleUploads.delete(failedUpload.sessionId);
-            }
           }
         }
         return next;
       });
     })().catch(() => {
       for (const upload of uploads) {
-        titleUploads.delete(upload.sessionId);
+        releaseCloudSessionTitleUpload(
+          titleUploads,
+          upload.sessionId,
+          upload.signature,
+        );
       }
     });
     return () => {
       cancelled = true;
-      for (const upload of uploads) {
-        if (
-          titleUploads.get(upload.sessionId)
-          === upload.signature
-        ) {
-          titleUploads.delete(upload.sessionId);
-        }
-      }
     };
   }, [
     account,

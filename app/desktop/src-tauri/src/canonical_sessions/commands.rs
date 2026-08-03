@@ -4,10 +4,12 @@ mod groups;
 mod lifecycle;
 
 #[cfg(test)]
+pub(super) use self::catalog::existing_message_sources_from_db;
+#[cfg(test)]
 pub(super) use self::catalog::load_state_from_db;
 pub(super) use self::catalog::{
-    desktop_canonical_session_catalog, desktop_canonical_session_messages,
-    desktop_canonical_session_state,
+    desktop_canonical_existing_message_sources, desktop_canonical_session_catalog,
+    desktop_canonical_session_messages, desktop_canonical_session_state,
 };
 #[cfg(test)]
 use self::catalog::{load_catalog_from_db, load_message_page_from_db};

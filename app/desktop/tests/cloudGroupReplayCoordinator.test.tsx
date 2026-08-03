@@ -63,6 +63,7 @@ test('CloudGroupReplayCoordinator backs off failures and retries after cooldown'
   const delays: number[] = [];
   const attempts: number[] = [];
   const failures: Array<{ attempt: number; retryDelayMs: number }> = [];
+  let appliedBatches = 0;
   const coordinator = new CloudGroupReplayCoordinator<Row>({
     now: () => nowMs,
     setTimer: (callback, delayMs) => {
@@ -78,8 +79,9 @@ test('CloudGroupReplayCoordinator backs off failures and retries after cooldown'
     entries: [{ key: 'broken', row: { id: 'broken' } }],
     apply: async () => {
       attempts.push(nowMs);
-      throw new Error('expected failure');
+      if (attempts.length === 1) throw new Error('expected failure');
     },
+    onApplied: () => { appliedBatches += 1; },
     onFailure: ({ attempt, retryDelayMs }) => failures.push({ attempt, retryDelayMs }),
   });
 
@@ -87,6 +89,7 @@ test('CloudGroupReplayCoordinator backs off failures and retries after cooldown'
   assert.deepEqual(attempts, [10_000]);
   assert.deepEqual(failures, [{ attempt: 1, retryDelayMs: 1_000 }]);
   assert.deepEqual(delays, [1_000]);
+  assert.equal(appliedBatches, 0);
 
   await request();
   assert.deepEqual(attempts, [10_000], 'a render-time repeat must not bypass cooldown');
@@ -98,10 +101,8 @@ test('CloudGroupReplayCoordinator backs off failures and retries after cooldown'
   await flushMicrotasks();
   await flushMicrotasks();
   assert.deepEqual(attempts, [10_000, 11_000]);
-  assert.deepEqual(failures, [
-    { attempt: 1, retryDelayMs: 1_000 },
-    { attempt: 2, retryDelayMs: 2_000 },
-  ]);
+  assert.deepEqual(failures, [{ attempt: 1, retryDelayMs: 1_000 }]);
+  assert.equal(appliedBatches, 1, 'a delayed successful retry must publish its batch');
   coordinator.dispose();
 });
 

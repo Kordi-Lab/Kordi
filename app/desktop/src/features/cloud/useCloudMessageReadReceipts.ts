@@ -101,8 +101,8 @@ export function useCloudMessageReadReceipts({
       groupReadTargets.peerIds.length > 0
       || groupReadTargets.sessionIds.length > 0
     ) {
-      setMessagesByPeer((current) =>
-        markCloudMessagesReadLocally(
+      setMessagesByPeer((current) => {
+        const next = markCloudMessagesReadLocally(
           current,
           account.accountId,
           {
@@ -110,8 +110,9 @@ export function useCloudMessageReadReceipts({
             groupRowByWireMessageId:
               messageIndex.groupRowByWireMessageId,
           },
-        )
-      );
+        );
+        return next;
+      });
 
       const canonicalReadSessionIds = [
         ...new Set(
@@ -191,13 +192,14 @@ export function useCloudMessageReadReceipts({
       })
       .then((result) => {
         if (result === null) return;
-        setMessagesByPeer((current) =>
-          markCloudMessagesReadLocally(
+        setMessagesByPeer((current) => {
+          const next = markCloudMessagesReadLocally(
             current,
             account.accountId,
             { peerIds: [peerId] },
-          )
-        );
+          );
+          return next;
+        });
         void sync();
       })
       .catch(() => {

@@ -33,7 +33,7 @@ import {
 } from '@/features/chat/messageForwarding';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
-import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
+import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/features/chat/transcriptNavigation';
 import type {
   CanonicalSessionState,
   ComposerQuoteState,
@@ -94,10 +94,6 @@ export function useKordiMessageActions({
     useState<ForwardDialogState | null>(null);
   const [messageSelection, setMessageSelection] =
     useState<MessageSelectionState | null>(null);
-  const [
-    messageSelectionConversationId,
-    setMessageSelectionConversationId,
-  ] = useState(activeConversation.id);
   const selectionDragRef = useRef<{
     conversationId: string;
     shouldSelect: boolean;
@@ -107,11 +103,6 @@ export function useKordiMessageActions({
     sendCloudCollaborationMessage,
     sendCloudGroupControl,
   } = cloudTransport;
-  if (messageSelectionConversationId !== activeConversation.id) {
-    setMessageSelectionConversationId(activeConversation.id);
-    setMessageSelection(null);
-  }
-
   const copyTextToClipboard = useCallback(async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
