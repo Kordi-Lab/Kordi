@@ -295,9 +295,9 @@ export function canonicalMessageRole(message: CanonicalSessionMessage, identity?
 export function canonicalMessageIsComplete(message: CanonicalSessionMessage, content: Record<string, unknown>) {
   const status = message.status.toLowerCase();
   const deliveryState = stringValue(content.deliveryState)?.toLowerCase();
-  return !['draft', 'sending', 'processing'].includes(status) && deliveryState !== 'processing';
+  return !['draft', 'sending', 'queued', 'processing'].includes(status)
+    && !['queued', 'processing'].includes(deliveryState ?? '');
 }
-
 export function canonicalUserStatusChip(message: CanonicalSessionMessage, content: Record<string, unknown>) {
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
   if (deliveryState) {
@@ -496,7 +496,7 @@ export function mapCanonicalMessage(
     : null;
   const pendingCollaborationAgentRequest = isAgentTurn
     && !completed
-    && deliveryState === 'processing'
+    && (deliveryState === 'queued' || deliveryState === 'processing')
     && sourceRequestId
     && (viewerOwnsAgent || viewerIsInitiator)
     ? message.sourceTransport?.startsWith('desktop-bridge') && sourceConversationId
@@ -540,7 +540,7 @@ export function mapCanonicalMessage(
     )
     : restoredDisplayText;
   const isProcessingAgentPlaceholder = isAgentTurn
-    && deliveryState === 'processing'
+    && (deliveryState === 'queued' || deliveryState === 'processing')
     && isProcessingPlaceholderText(rawDisplayText);
   const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
@@ -602,8 +602,8 @@ export function mapCanonicalMessage(
           id: `canonical-turn:${message.id}`,
           sessionId: message.sessionId,
           prompt: '',
-          status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'queued' : 'processing' : displayText.trim() ? 'writing' : 'typing'),
+          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: cancelled ? cancelledTurnText : displayText,
           thinkingText,
           tools: visibleTools,

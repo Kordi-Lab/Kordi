@@ -62,6 +62,7 @@ mod direct_message_sync;
 mod group_authority;
 mod group_titles;
 mod identity_sessions;
+mod message_lifecycle;
 mod profile_adoption;
 mod profile_lifecycle;
 mod replay_idempotence;

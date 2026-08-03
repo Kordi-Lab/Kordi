@@ -1017,28 +1017,6 @@ export function cloudGroupAgentOfflineNoticeRequest(input: {
   };
 }
 
-export function cloudGroupLocalAgentRequestAlreadyHandled(input: {
-  localAccountId: string;
-  requestMessageId: string;
-  messages?: CloudMessage[];
-  groupRows?: readonly IndexedCloudGroupRow[];
-}): boolean {
-  const localAccountId = cleanText(input.localAccountId);
-  const requestMessageId = cleanText(input.requestMessageId);
-  if (!localAccountId || !requestMessageId) return false;
-  const rows = input.groupRows ?? (input.messages ?? []).flatMap((wire) => {
-    const envelope = parseCloudGroupControl(wire.body);
-    return envelope ? [{ wire, envelope, canonicalMessageId: cleanText(envelope.message?.id) || null }] : [];
-  });
-  return rows.some(({ wire, envelope }) => {
-    if (wire.fromAccountId !== localAccountId) return false;
-    const groupMessage = envelope?.kind === 'group-message' ? envelope.message : null;
-    if (!groupMessage || groupMessage.senderAccountId !== localAccountId || groupMessage.senderKind !== 'agent') return false;
-    const linkedRequestId = cleanText(groupMessage.requestId) || cleanText(groupMessage.replyToMessageId);
-    return linkedRequestId === requestMessageId;
-  });
-}
-
 export function cloudGroupControlMessagesForAccount(input: {
   accountId: string;
   messages: CloudMessage[];

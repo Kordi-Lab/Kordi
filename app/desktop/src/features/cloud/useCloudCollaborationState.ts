@@ -61,9 +61,7 @@ import {
 import {
   useCloudCanonicalReconciliation,
 } from './useCloudCanonicalReconciliation';
-import {
-  useCloudGroupReplay,
-} from './useCloudGroupReplay';
+import { useRecoveredCloudGroupReplay } from './useRecoveredCloudGroupReplay';
 import {
   useCloudProviderAuthSnapshotSync,
 } from './useCloudProviderAuthSnapshotSync';
@@ -143,9 +141,12 @@ export {
   CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE,
   cloudAgentResponseExistsForRequest,
   cloudAgentRunStatusAlreadyOwnsRequest,
-  cloudFallbackClaimErrorIsRetryable,
   cloudGroupAgentResponseExistsForRequest,
 } from './cloudAgentRequestState';
+export {
+  cloudFallbackClaimErrorIsRetryable,
+  cloudFallbackClaimFailureDiagnostic,
+} from './cloudFallbackClaimDiagnostics';
 export {
   CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS,
   CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,
@@ -482,18 +483,13 @@ export function useCloudCollaborationState({
     },
   });
 
-  useCloudGroupReplay({
-    enabled: Boolean(
-      account
-      && canonicalSessionState?.profile.humanIdentityId
-      && setCanonicalSessionState
-      && initialMessagesSettled
-    ),
-    contextKey:
-      account
-      && canonicalSessionState?.profile.humanIdentityId
-        ? `${account.accountId}:${canonicalSessionState.profile.humanIdentityId}`
-        : null,
+  useRecoveredCloudGroupReplay({
+    account,
+    humanIdentityId: canonicalSessionState?.profile.humanIdentityId,
+    canonicalStateRef: canonicalSessionStateRef,
+    setCanonicalState: setCanonicalSessionState,
+    initialMessagesSettled,
+    processedRequestIdsRef: processedCloudAgentMentionIdsRef,
     coordinator: cloudGroupReplayCoordinator,
     messageIndex: cloudMessageIndex,
     applyControl: cloudGroupControlApplication.apply,

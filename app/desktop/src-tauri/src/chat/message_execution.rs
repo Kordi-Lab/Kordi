@@ -11,10 +11,9 @@ use super::{
     agent_builder, apply_desktop_chat_message_route, apply_desktop_turn_event,
     attach_cloud_scheduled_task_runtime_for_session, chat_cwd, desktop_task_tools_from_messages,
     ensure_loaded_or_create_explicit_session, ensure_provider_ready_for_send, now_millis,
-    prepare_desktop_session_for_send, prune_finished_turns, session_has_running_turn,
-    snapshot_turn, sync_completed_desktop_session_to_canonical, turn_snapshot_has_model_task_tools,
-    update_turn, DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnHandle,
-    DesktopChatTurnSnapshot,
+    prepare_desktop_session_for_send, reserve_turn_if_session_idle, snapshot_turn,
+    sync_completed_desktop_session_to_canonical, turn_snapshot_has_model_task_tools, update_turn,
+    DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnHandle, DesktopChatTurnSnapshot,
 };
 
 pub(super) struct StartMessageInput {
@@ -48,13 +47,13 @@ pub(super) async fn start_message(
     let cwd = chat_cwd()?;
     let target_session_id =
         ensure_loaded_or_create_explicit_session(manager, &cwd, session_id).await?;
-    prune_finished_turns(manager).await;
-    if session_has_running_turn(manager, &target_session_id).await {
-        return Err(
-            "This session already has a running task. Open another session to work concurrently."
-                .to_string(),
-        );
-    }
+    let session_handle = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Session is unavailable".to_string())?
+    };
 
     let turn_id = uuid::Uuid::new_v4().to_string();
     let snapshot = Arc::new(Mutex::new(DesktopChatTurnSnapshot {
@@ -76,24 +75,21 @@ pub(super) async fn start_message(
     }));
     let cancel = tokio_util::sync::CancellationToken::new();
 
+    if !reserve_turn_if_session_idle(
+        manager,
+        turn_id,
+        DesktopChatTurnHandle {
+            snapshot: snapshot.clone(),
+            cancel: cancel.clone(),
+        },
+    )
+    .await
     {
-        let mut turns = manager.turns.lock().await;
-        turns.insert(
-            turn_id,
-            DesktopChatTurnHandle {
-                snapshot: snapshot.clone(),
-                cancel: cancel.clone(),
-            },
+        return Err(
+            "This session already has a running task. Open another session to work concurrently."
+                .to_string(),
         );
     }
-
-    let session_handle = {
-        let sessions = manager.sessions.lock().await;
-        sessions
-            .get(&target_session_id)
-            .cloned()
-            .ok_or_else(|| "Session is unavailable".to_string())?
-    };
     let snapshot_for_task = snapshot.clone();
     let is_agent_builder_session = agent_builder::is_agent_builder_session_id(&target_session_id);
 

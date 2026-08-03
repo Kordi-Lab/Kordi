@@ -26,6 +26,14 @@ const readModelSource = () => readFileSync(
   'utf8',
 );
 
+const recoveredReplaySource = () => readFileSync(
+  new URL(
+    '../src/features/cloud/useRecoveredCloudGroupReplay.ts',
+    import.meta.url,
+  ),
+  'utf8',
+);
+
 test('Cloud cache stays interactive without becoming authoritative', () => {
   const source = `${collaborationSource()}\n${readModelSource()}`;
   const lifecycleSource = accountLifecycleSource();
@@ -62,7 +70,16 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
   assert.match(
     source,
-    /useCloudGroupReplay\(\{[\s\S]*enabled: Boolean\([\s\S]*canonicalSessionState\?\.profile\.humanIdentityId[\s\S]*setCanonicalSessionState[\s\S]*initialMessagesSettled/,
+    /useRecoveredCloudGroupReplay\(\{[\s\S]*canonicalSessionState\?\.profile\.humanIdentityId[\s\S]*setCanonicalSessionState[\s\S]*initialMessagesSettled/,
+  );
+  assert.match(
+    recoveredReplaySource(),
+    /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled[\s\S]*useCloudGroupReplay\(\{[\s\S]*recoverySettled/,
+  );
+  assert.match(
+    recoveredReplaySource(),
+    /processedRequestIdsRef,\s*reportWarning,\s*\}\);[\s\S]*messageIndex,\s*applyControl,\s*flushCanonicalState,\s*reportWarning,\s*\}\);/,
+    'recovery and replay must pass stable callbacks through during history hydration',
   );
 });
 

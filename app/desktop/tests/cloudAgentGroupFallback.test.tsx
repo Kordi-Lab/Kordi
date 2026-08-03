@@ -353,10 +353,27 @@ test('cloud group terminal envelopes replace a synced processing slot', () => {
   } as CanonicalSessionMessage;
 
   assert.equal(cloudGroupIncomingMessageAlreadyApplied(null, 'complete'), false);
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'queued'), true);
   assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'processing'), true);
   assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'complete'), false);
   assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'failed'), false);
   assert.equal(cloudGroupIncomingMessageAlreadyApplied(complete, 'complete'), true);
+
+  const failedFallback = {
+    ...processing,
+    contentText: '',
+    content: { requestId: 'msg_request', deliveryState: 'failed' },
+    status: 'failed',
+    sourceEventId: 'cloud-group-agent:cloudrunmsg_failed_wire',
+  } as CanonicalSessionMessage;
+  assert.equal(
+    cloudGroupIncomingMessageAlreadyApplied(failedFallback, 'complete'),
+    false,
+  );
+  assert.equal(
+    cloudGroupIncomingMessageAlreadyApplied(failedFallback, 'processing'),
+    true,
+  );
 });
 
 test('cloud agent cancel controls are hidden and show who cancelled the request', () => {

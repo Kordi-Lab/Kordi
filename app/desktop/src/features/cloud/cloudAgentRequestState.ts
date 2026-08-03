@@ -15,6 +15,10 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '@/kordi-app/types';
+import {
+  canApplyCloudAgentTurnTransition,
+  isTerminalCloudAgentTurn,
+} from '@/features/canonical/cloudAgentTurnLifecycle';
 
 export type CloudAgentRequestCandidate = {
   requestMessage: CanonicalSessionMessage;
@@ -146,6 +150,9 @@ export function upsertCanonicalRequestIntoLocalState(
     sourceTransport: request.sourceTransport ?? null,
     sourceEventId: request.sourceEventId ?? null,
   };
+  if (existing && !canApplyCloudAgentTurnTransition(existing, nextMessage)) {
+    return current;
+  }
   const messages = existingIndex >= 0
     ? current.messages.map((message, index) => (
       index === existingIndex ? nextMessage : message
@@ -248,7 +255,9 @@ export function cloudGroupPendingAgentRowMatches(
   const deliveryState = cleanText(
     typeof content.deliveryState === 'string' ? content.deliveryState : null,
   ).toLowerCase();
-  return status === 'processing'
+  return status === 'queued'
+    || status === 'processing'
+    || deliveryState === 'queued'
     || deliveryState === 'processing'
     || message.sourceTransport === 'cloud-group-agent-offline'
     || message.sourceEventId?.startsWith(
@@ -336,6 +345,7 @@ export function setCloudGroupRequestPlaceholderProcessing(
             ? content.deliveryState
             : null,
         ).toLowerCase();
+        if (isTerminalCloudAgentTurn(message)) return [message];
         if (
           message.status === 'processing'
           && deliveryState === 'processing'
@@ -357,6 +367,7 @@ export function setCloudGroupRequestPlaceholderProcessing(
         }];
       }
       if (cloudGroupAgentResponseMatches(message, candidate)) {
+        if (isTerminalCloudAgentTurn(message)) return [message];
         changed = true;
         return [];
       }
@@ -416,11 +427,13 @@ export function cloudGroupAgentResponseExistsForRequest({
   requestMessageId,
   messages = [],
   groupRows = [],
+  ignoreFailedCloudFallback = false,
 }: {
   localAccountId: string;
   requestMessageId: string;
   messages?: readonly CloudMessage[];
   groupRows?: readonly IndexedCloudGroupRow[];
+  ignoreFailedCloudFallback?: boolean;
 }): boolean {
   const trimmedLocalAccountId = localAccountId.trim();
   const trimmedRequestMessageId = requestMessageId.trim();
@@ -436,6 +449,11 @@ export function cloudGroupAgentResponseExistsForRequest({
     if (envelope.message.senderKind !== 'agent') return false;
     if (envelope.message.senderAccountId !== trimmedLocalAccountId) return false;
     if (envelope.message.deliveryState === 'processing') return false;
+    if (
+      ignoreFailedCloudFallback
+      && envelope.message.deliveryState === 'failed'
+      && envelope.message.id.startsWith('cloudrunmsg_')
+    ) return false;
     const linkedRequestId = cleanText(envelope.message.requestId)
       || cleanText(envelope.message.replyToMessageId);
     return linkedRequestId === trimmedRequestMessageId;
@@ -449,20 +467,6 @@ export function cloudAgentRunStatusAlreadyOwnsRequest(
     || status === 'leased'
     || status === 'running'
     || status === 'completed';
-}
-
-export function cloudFallbackClaimErrorIsRetryable(error: unknown): boolean {
-  const rawCode = typeof error === 'object' && error !== null && 'code' in error
-    ? (error as { code?: unknown }).code
-    : null;
-  const code = typeof rawCode === 'string'
-    ? rawCode.trim().toLowerCase()
-    : '';
-  return code === 'network_error'
-    || code === 'owner_online'
-    || code === 'agent_not_available'
-    || code === 'rate_limited'
-    || code === 'server_error';
 }
 
 export function cloudAgentRunAlreadyOwnsRequest(

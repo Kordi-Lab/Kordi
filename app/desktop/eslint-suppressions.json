@@ -749,11 +749,6 @@
       "count": 1
     }
   },
-  "tests/chatPerformance.test.tsx": {
-    "no-console": {
-      "count": 9
-    }
-  },
   "tests/chatsPageQuotePreview.test.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1

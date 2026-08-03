@@ -8,7 +8,7 @@ import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import { conversation, baseSidebarProps } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
-test('WorkspaceSidebar auto-expands the active My chats space with only the active session', () => {
+test('WorkspaceSidebar auto-expands an active space without replacing its other sessions', () => {
   const chatConversations = [
     conversation({
       id: 'session:group:wrong',
@@ -63,7 +63,48 @@ test('WorkspaceSidebar auto-expands the active My chats space with only the acti
   assert.match(markup, /My chats/);
   assert.match(markup, /aria-label="Expand My chats"/);
   assert.match(markup, /# Reviewer/);
-  assert.doesNotMatch(markup, /# Old note/);
+  assert.match(markup, /# Old note/);
+});
+
+test('WorkspaceSidebar auto-expanded group keeps every sibling session visible', () => {
+  const sharedParticipants = [
+    { id: 'human:me', name: 'Me', kind: 'human' as const, role: 'self' as const, source: 'local' as const, avatarKey: 'me' },
+    { id: 'human:alice', name: 'Alice', kind: 'human' as const, role: 'person' as const, source: 'bridge' as const, avatarKey: 'alice' },
+    { id: 'human:bob', name: 'Bob', kind: 'human' as const, role: 'person' as const, source: 'bridge' as const, avatarKey: 'bob' },
+  ];
+  const chatConversations = [
+    conversation({
+      id: 'session:group:testtest',
+      canonicalSessionId: 'session:group:testtest',
+      name: 'testtest',
+      subtitle: '7 messages',
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: sharedParticipants,
+      messages: [{ role: 'person', sender: 'Alice', text: 'testtest', time: '10:00' }],
+      _updatedAtMs: 2,
+    }),
+    conversation({
+      id: 'session:group:hiiiii',
+      canonicalSessionId: 'session:group:hiiiii',
+      name: 'hiiiii',
+      subtitle: '34 messages',
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: sharedParticipants,
+      messages: [{ role: 'person', sender: 'Bob', text: 'hiiiii', time: '09:00' }],
+      _updatedAtMs: 1,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: 'session:group:testtest',
+    initialSelectedParticipantSpaceId: null,
+  }) as never));
+
+  assert.match(markup, /# testtest/);
+  assert.match(markup, /# hiiiii/);
 });
 
 test('WorkspaceSidebar explicit expansion shows all sessions in the active My chats space', () => {

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
 const cloudDirectAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url), 'utf8');
-const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
+const cloudGroupAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
 
 test('desktop chat start message forwards visible scheduled-task session id to Tauri', () => {
   const source = desktopSource();
@@ -18,13 +18,13 @@ test('desktop chat start message forwards visible scheduled-task session id to T
 });
 
 test('cloud group agent scheduling uses the visible group session id, not the hidden runtime session id', () => {
-  const source = cloudGroupAgentControlSource();
-  const runtimeStart = source.indexOf('const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${envelope.groupId}`;');
-  const publishStart = source.indexOf('await policy.publishActivity', runtimeStart);
-  assert.ok(runtimeStart >= 0 && publishStart > runtimeStart, 'expected group cloud agent start block');
-  const block = source.slice(runtimeStart, publishStart);
+  const source = cloudGroupAgentExecutionSource();
+  const runtimeStart = source.indexOf('startedTurn = await startDesktopChatMessage(');
+  const turnStarted = source.indexOf('rememberLocalTurn(startedTurn);', runtimeStart);
+  assert.ok(runtimeStart >= 0 && turnStarted > runtimeStart, 'expected group cloud agent start block');
+  const block = source.slice(runtimeStart, turnStarted);
 
-  assert.match(block, /startDesktopChatMessage\([\s\S]*cloudVisibleTaskRecordsForSession\([\s\S]*envelope\.groupId\),\s*\n\s*envelope\.groupId,\s*\n\s*\)/);
+  assert.match(block, /startDesktopChatMessage\([\s\S]*cloudVisibleTaskRecordsForSession\([\s\S]*envelope\.groupId,\s*\n\s*\),\s*\n\s*envelope\.groupId,\s*\n\s*\)/);
 });
 
 test('direct contact agent scheduling uses the visible contact activity session id, not the hidden runtime session id', () => {

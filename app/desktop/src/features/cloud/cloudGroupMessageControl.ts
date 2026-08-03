@@ -61,6 +61,12 @@ export type ApplyCloudGroupMessageControlInput = {
   stateOps: CloudGroupMessageStateOps;
 };
 
+function isPendingAgentDeliveryState(
+  state: string | null,
+): state is 'queued' | 'processing' {
+  return state === 'queued' || state === 'processing';
+}
+
 export async function applyCloudGroupMessageControl({
   context,
   setCanonicalState,
@@ -197,7 +203,9 @@ export async function applyCloudGroupMessageControl({
     }
   }
 
-  const responseProcessingSlot = senderIsAgent && messageReplyToId && agentDeliveryState !== 'processing'
+  const responseProcessingSlot = senderIsAgent
+    && messageReplyToId
+    && !isPendingAgentDeliveryState(agentDeliveryState)
     ? [canonicalState, nextState]
         .map((state) => stateOps.processingSlot(
           state.messages,
@@ -220,7 +228,8 @@ export async function applyCloudGroupMessageControl({
     const stableAgentNoticeId = senderIsAgent && messageReplyToId
       ? `msg:cloud-agent-processing:${messageReplyToId}:${message.senderAccountId}`
       : null;
-    const terminalStableAgentNoticeId = stableAgentNoticeId && agentDeliveryState !== 'processing'
+    const terminalStableAgentNoticeId = stableAgentNoticeId
+      && !isPendingAgentDeliveryState(agentDeliveryState)
       ? stableAgentNoticeId
       : null;
     const existingStableRow = stableAgentNoticeId
@@ -245,13 +254,18 @@ export async function applyCloudGroupMessageControl({
           && existingStableRowDeliveryState === 'failed'
         )
       : false;
-    if (existingStableRowTerminalLocked && agentDeliveryState === 'processing') {
+    if (
+      existingStableRowTerminalLocked
+      && isPendingAgentDeliveryState(agentDeliveryState)
+    ) {
       setCanonicalState(nextState);
       return null;
     }
     const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
-    const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
-      ? 'processing'
+    const agentStatus = senderIsAgent && isPendingAgentDeliveryState(
+      agentDeliveryState,
+    )
+      ? agentDeliveryState
       : senderIsAgent && agentDeliveryState === 'failed'
         ? 'failed'
         : senderIsAgent && agentDeliveryState === 'cancelled'
@@ -297,7 +311,7 @@ export async function applyCloudGroupMessageControl({
     nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
     if (senderIsAgent && messageReplyToId) {
       const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${message.senderAccountId}`;
-      nextState = agentDeliveryState === 'processing'
+      nextState = isPendingAgentDeliveryState(agentDeliveryState)
         ? stateOps.removeOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState
         : stateOps.removePendingRows(nextState, messageReplyToId, message.senderAccountId) ?? nextState;
     }
@@ -308,7 +322,7 @@ export async function applyCloudGroupMessageControl({
     messageAlreadyExists
     && senderIsAgent
     && messageReplyToId
-    && agentDeliveryState !== 'processing'
+    && !isPendingAgentDeliveryState(agentDeliveryState)
   ) {
     const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${message.senderAccountId}`;
     const cleanedState = stateOps.removePendingRows(nextState, messageReplyToId, message.senderAccountId)

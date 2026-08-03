@@ -71,7 +71,9 @@ export function cloudGroupAgentProcessingMessageForRequest(
         ? content.deliveryState
         : null,
     ).toLowerCase();
-    return message.status === 'processing'
+    return message.status === 'queued'
+      || message.status === 'processing'
+      || deliveryState === 'queued'
       || deliveryState === 'processing';
   }) ?? null;
 }

@@ -21,6 +21,7 @@ import {
   promptTextForCloudAgentMention,
 } from '../src/features/cloud/cloudAgentMessages';
 import {
+  cloudGroupAgentRuntimeSessionId,
   cloudAgentRuntimeRouteForSession,
   cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
@@ -90,6 +91,21 @@ test('cloud agent runtime ids map current cloud conversations to local runtime s
   assert.equal(
     cloudAgentRuntimeSessionId('acct_me', 'session:group:cloud-room'),
     `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:session:group:cloud-room`,
+  );
+});
+
+test('group runtime ids isolate hosted targets without changing the default agent history', () => {
+  assert.equal(
+    cloudGroupAgentRuntimeSessionId('acct_me', 'session:group:cloud-room'),
+    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:session:group:cloud-room`,
+  );
+  assert.equal(
+    cloudGroupAgentRuntimeSessionId(
+      'acct_me',
+      'session:group:cloud-room',
+      'cloud_agent_project_driver',
+    ),
+    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:session:group:cloud-room:cloud_agent_project_driver`,
   );
 });
 

@@ -10,6 +10,7 @@ import {
   canonicalMessagesEqual,
   canonicalProfilesEqual,
 } from './canonicalEquality';
+import { canApplyCloudAgentTurnTransition } from './cloudAgentTurnLifecycle';
 
 function mapPreservingArray<T>(items: T[], mapItem: (item: T) => T): T[] {
   let changed = false;
@@ -292,6 +293,17 @@ export function mergeCanonicalMessageRow(
 ): CanonicalSessionState | null {
   if (!state || !row) return state;
   const existingIndex = state.messages.findIndex((message) => message.id === row.id);
+  const existing = existingIndex >= 0 ? state.messages[existingIndex] : null;
+  if (
+    existing
+    && (
+      existing.messageKind === 'agent-turn'
+      || row.messageKind === 'agent-turn'
+    )
+    && !canApplyCloudAgentTurnTransition(existing, row)
+  ) {
+    return state;
+  }
   const messages = existingIndex >= 0
     ? canonicalMessagesEqual(state.messages[existingIndex], row)
       ? state.messages
@@ -321,10 +333,20 @@ export function mergeCanonicalMessageDeliveryDelta(
   let messages = state.messages;
   if (index >= 0) {
     const previous = state.messages[index];
-    if (delta.updatedAtMs >= previous.updatedAtMs) {
-      const previousContent = previous.content && typeof previous.content === 'object' && !Array.isArray(previous.content)
-        ? previous.content as Record<string, unknown>
-        : null;
+    const previousContent = previous.content && typeof previous.content === 'object' && !Array.isArray(previous.content)
+      ? previous.content as Record<string, unknown>
+      : null;
+    const incomingLifecycleRow: CanonicalSessionMessage = {
+      ...previous,
+      status: delta.status,
+      content: {
+        ...(previousContent ?? {}),
+        deliveryState: delta.deliveryState,
+      },
+    };
+    const canApplyLifecycle = previous.messageKind !== 'agent-turn'
+      || canApplyCloudAgentTurnTransition(previous, incomingLifecycleRow);
+    if (delta.updatedAtMs >= previous.updatedAtMs && canApplyLifecycle) {
       const arraysEqual = (value: unknown, expected: string[]) => (
         Array.isArray(value)
         && value.length === expected.length

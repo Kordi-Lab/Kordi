@@ -6,6 +6,7 @@ import {
   upsertCloudMessage as upsertMessage,
 } from './cloudMessageMerge';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
+import { cloudSyncCursorRequiresFallback } from './cloudSyncCursorProgress';
 
 export {
   cloudMessageAttachmentsEqual,
@@ -485,14 +486,6 @@ export type SyncCloudDiffOnceResult = {
   hasMore: boolean;
 };
 
-function cursorWentBackwards(previous: string, next: string): boolean {
-  try {
-    return BigInt(next) < BigInt(previous);
-  } catch {
-    return true;
-  }
-}
-
 export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<SyncCloudDiffOnceResult> {
   const storage = input.cursorStorage ?? browserLocalStorage();
   const previousCursor = loadCloudSyncCursor(input.accountId, storage);
@@ -506,7 +499,7 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   }
 
   const nextCursor = normalizeCursor(response.cursor);
-  if (cursorWentBackwards(previousCursor, nextCursor)) {
+  if (cloudSyncCursorRequiresFallback(previousCursor, nextCursor, Boolean(response.hasMore))) {
     return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, sessionTitlesById: input.sessionTitlesById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
