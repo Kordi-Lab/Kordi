@@ -18,7 +18,6 @@ import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
-import { scheduleTranscriptNavigationReveal } from '@/features/chat/transcriptNavigationReadiness';
 import {
   beginChatPerformanceSpan,
   completeSessionClickToFirstMessage,
@@ -42,7 +41,7 @@ export type VirtualTranscriptProps<Item> = {
   onScroll?: (event: UIEvent<HTMLDivElement>) => void;
   navigationRequest?: VirtualTranscriptNavigationRequest | null;
   findNavigationIndex?: (item: Item, messageId: string, index: number) => boolean;
-  onNavigationReady?: (messageId: string) => boolean | void;
+  onNavigationReady?: (messageId: string) => void;
   onNavigationHandled?: (request: VirtualTranscriptNavigationRequest) => void;
   hasOlder?: boolean;
   onLoadOlder?: () => Promise<void> | void;
@@ -426,13 +425,12 @@ export function VirtualTranscript<Item>({
     if (handledNavigationRequestRef.current === requestIdentity) return undefined;
     cancelTailAlignment();
     virtualizer.scrollToIndex(navigationTargetIndex, { align: 'center' });
-    return scheduleTranscriptNavigationReveal({
-      reveal: () => onNavigationReady?.(request.id),
-      onSettled: () => {
-        handledNavigationRequestRef.current = requestIdentity;
-        onNavigationHandled?.(request);
-      },
+    const frameId = window.requestAnimationFrame(() => {
+      handledNavigationRequestRef.current = requestIdentity;
+      onNavigationReady?.(request.id);
+      onNavigationHandled?.(request);
     });
+    return () => window.cancelAnimationFrame(frameId);
   }, [cancelTailAlignment, navigationTargetIndex, onNavigationHandled, onNavigationReady, scopedNavigationRequest, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();

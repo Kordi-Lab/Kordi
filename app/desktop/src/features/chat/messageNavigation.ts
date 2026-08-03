@@ -14,7 +14,7 @@ function messageVisibleId(message: Message) {
 }
 
 function messageIdCandidates(message: Message) {
-  return [message.id, message.entryId, message.turn?.id, ...(message.replyAliasIds ?? [])]
+  return [message.id, message.entryId, message.turn?.id]
     .map(clean)
     .filter(Boolean);
 }
@@ -22,12 +22,6 @@ function messageIdCandidates(message: Message) {
 function messageSenderMatchesSource(message: Message, source: MessageSourceReference) {
   const sourceSender = comparableText(source.senderLabel);
   if (!sourceSender) return true;
-  if (
-    (sourceSender === 'me' || sourceSender === 'you')
-    && (message.isOwnMessage ?? message.role === 'user')
-  ) {
-    return true;
-  }
   const candidateSenders = [message.sender, message.sourceSenderLabel, message.messageAction?.source.senderLabel]
     .map(comparableText)
     .filter(Boolean);

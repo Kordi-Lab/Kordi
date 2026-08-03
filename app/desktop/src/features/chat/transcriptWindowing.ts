@@ -20,6 +20,5 @@ export function transcriptWindowMessageMatchesId(
   return message.id === messageId
     || message.entryId === messageId
     || message.turn?.id === messageId
-    || message.replyAliasIds?.includes(messageId)
     || `transcript-message:${fallbackIndex}` === messageId;
 }

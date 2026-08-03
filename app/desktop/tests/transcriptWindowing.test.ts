@@ -36,7 +36,6 @@ test('jump matching covers message, entry, runtime, and fallback ids', () => {
   assert.equal(transcriptWindowMessageMatchesId(target, 'message:1', 4), true);
   assert.equal(transcriptWindowMessageMatchesId(target, 'entry:1', 4), true);
   assert.equal(transcriptWindowMessageMatchesId(target, 'turn:1', 4), true);
-  assert.equal(transcriptWindowMessageMatchesId(message({ replyAliasIds: ['reply:1'] }), 'reply:1', 4), true);
   assert.equal(transcriptWindowMessageMatchesId(message(), 'transcript-message:4', 4), true);
 });
 
