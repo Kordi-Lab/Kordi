@@ -1533,7 +1533,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
     <button
       onClick={onSelect}
       aria-current={active ? 'true' : undefined}
-      className="app-contact-row app-list-item flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left text-white transition"
+      className="app-contact-row app-list-item flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left text-white transition-none"
     >
       <IdentityAvatar
         kind={contactAvatarKind(contact)}
@@ -1579,8 +1579,8 @@ export function ContactRequestRow({
   return (
     <div
       className={cn(
-        'rounded-2xl px-3 py-3 transition',
-        active ? 'app-list-item-active text-white' : 'app-list-item bg-transparent text-white',
+        'app-contact-request-item px-3 py-3 text-white transition-none',
+        active && 'app-contact-request-item-active',
       )}
     >
       <div className="flex items-start gap-3">

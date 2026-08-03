@@ -5,7 +5,7 @@ import type { CanonicalSessionMessage } from '../src/kordi-app/types';
 import { sessionChatActivityAtMs } from '../src/features/canonical/readModel/conversationMapping';
 import { formatDesktopLastActiveLabel } from '../src/lib/time';
 
-test('formatDesktopLastActiveLabel uses 24h time for same local day and exact date for older local days', () => {
+test('formatDesktopLastActiveLabel uses 24h time today and a compact day/month within the current year', () => {
   const now = new Date('2026-05-14T06:30:00.000Z');
 
   assert.equal(
@@ -14,7 +14,11 @@ test('formatDesktopLastActiveLabel uses 24h time for same local day and exact da
   );
   assert.equal(
     formatDesktopLastActiveLabel(new Date('2026-05-13T23:30:00.000Z'), { now, timeZone: 'UTC' }),
-    '2026-05-13',
+    '13/05',
+  );
+  assert.equal(
+    formatDesktopLastActiveLabel(new Date('2025-07-23T23:30:00.000Z'), { now, timeZone: 'UTC' }),
+    '23/07/2025',
   );
 });
 
@@ -27,7 +31,20 @@ test('formatDesktopLastActiveLabel compares calendar days in the viewer timezone
   );
   assert.equal(
     formatDesktopLastActiveLabel(new Date('2026-05-13T06:30:00.000Z'), { now, timeZone: 'America/Los_Angeles' }),
-    '2026-05-12',
+    '12/05',
+  );
+});
+
+test('formatDesktopLastActiveLabel decides whether to show the year in the viewer timezone', () => {
+  const now = new Date('2026-01-01T01:00:00.000Z');
+
+  assert.equal(
+    formatDesktopLastActiveLabel(new Date('2025-12-31T23:30:00.000Z'), { now, timeZone: 'UTC' }),
+    '31/12/2025',
+  );
+  assert.equal(
+    formatDesktopLastActiveLabel(new Date('2025-12-30T23:30:00.000Z'), { now, timeZone: 'America/Los_Angeles' }),
+    '30/12',
   );
 });
 

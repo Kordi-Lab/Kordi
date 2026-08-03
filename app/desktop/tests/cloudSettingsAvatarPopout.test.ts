@@ -84,6 +84,7 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const authPage = readSource('kordi-app/auth/AuthPage.tsx');
   const providerList = readSource('kordi-app/auth/AuthProviderList.tsx');
+  const shellPages = readDesktopShellCss();
 
   assert.match(modal, /showSettingsHeader=\{false\}/);
   assert.match(modal, /settingsLayoutMode="fluid"/);
@@ -99,6 +100,9 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
   assert.doesNotMatch(providerList, /app-auth-provider-row[^\n]*bg-white/);
   assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*border-y/);
   assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*rounded-\[22px\]/);
+  assert.match(providerList, /app-auth-provider-count text-\[11px\]/);
+  assert.doesNotMatch(providerList, /app-auth-provider-count[^\n]*(?:rounded|border|bg-)/);
+  assert.doesNotMatch(shellPages, /app-auth-provider-count\s*\{[^}]*(?:background|border)/s);
 });
 
 test('profile modal is distilled to one avatar and no cloud explanation copy', () => {
@@ -110,6 +114,19 @@ test('profile modal is distilled to one avatar and no cloud explanation copy', (
   assert.doesNotMatch(modal, /Cloud account/);
   assert.doesNotMatch(modal, /Cloud identity/);
   assert.doesNotMatch(profileControl, />Cloud account</);
+});
+
+test('profile display name uses the scoped flat form treatment in both themes', () => {
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const shellCss = readDesktopShellCss();
+
+  assert.match(modal, /app-input-shell app-flat-input app-cloud-account-profile-name-input/);
+  assert.match(modal, /aria-invalid=\{isDisplayNameInvalid \|\| undefined\}/);
+  assert.match(modal, /aria-describedby=\{profileError \? profileErrorId : undefined\}/);
+  assert.match(shellCss, /\.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
+  assert.match(shellCss, /\.kordi-app\.theme-light \.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
+  assert.match(shellCss, /\.kordi-app \.app-transient-surface \.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);
+  assert.match(shellCss, /\.app-input-shell\.app-flat-input:focus-within\s*\{[^}]*outline:\s*2px solid/s);
 });
 
 test('account popover keeps account id compact and removes redundant profile row', () => {

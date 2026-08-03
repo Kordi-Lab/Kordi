@@ -65,9 +65,15 @@ export function formatDesktopLastActiveLabel(value: Date | number, options: Desk
   const date = toDate(value);
   const now = options.now ? toDate(options.now) : new Date();
   const timeZone = options.timeZone;
-  return formatDesktopDate(date, { timeZone }) === formatDesktopDate(now, { timeZone })
-    ? formatDesktopClockTime(date, { timeZone })
-    : formatDesktopDate(date, { timeZone });
+  const dateLabel = formatDesktopDate(date, { timeZone });
+  const nowLabel = formatDesktopDate(now, { timeZone });
+  if (dateLabel === nowLabel) return formatDesktopClockTime(date, { timeZone });
+
+  const [year, month, day] = dateLabel.split('-');
+  const [currentYear] = nowLabel.split('-');
+  return year === currentYear
+    ? `${day}/${month}`
+    : `${day}/${month}/${year}`;
 }
 
 export function formatDesktopDateTime(value: Date | number, options: { timeZone?: string } = {}) {
