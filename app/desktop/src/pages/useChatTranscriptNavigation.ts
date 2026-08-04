@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 
-import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
+import { resolveTranscriptNavigationIdsForSource } from '@/features/chat/messageNavigation';
 import type {
   Conversation,
   Message,
@@ -22,6 +22,26 @@ type UseChatTranscriptNavigationInput = {
     onShowMessages: () => void;
   };
 };
+
+function navigationIds(
+  messageId: string,
+  sourceMessage: MessageSourceReference | undefined,
+  messages: readonly Message[],
+) {
+  const fallbackId = messageId.trim();
+  if (!sourceMessage) {
+    return {
+      id: fallbackId,
+      lookupIds: fallbackId ? [fallbackId] : [],
+    };
+  }
+  const resolved = resolveTranscriptNavigationIdsForSource(sourceMessage, messages);
+  if (resolved.id) return resolved;
+  return {
+    id: fallbackId,
+    lookupIds: fallbackId ? [fallbackId] : [],
+  };
+}
 
 export function useChatTranscriptNavigation({
   main,
@@ -48,12 +68,12 @@ export function useChatTranscriptNavigation({
     sourceMessage?: MessageSourceReference,
   ) => {
     if (!main.conversation) return;
-    const targetMessageId = sourceMessage
-      ? resolveTranscriptMessageIdForSource(sourceMessage, main.messages)
-      : messageId;
+    const target = navigationIds(messageId, sourceMessage, main.messages);
+    if (!target.id) return;
     nonceRef.current += 1;
     setMainRequest({
-      id: targetMessageId || messageId,
+      id: target.id,
+      lookupIds: target.lookupIds,
       nonce: nonceRef.current,
       sessionKey: main.conversation.id,
     });
@@ -64,13 +84,13 @@ export function useChatTranscriptNavigation({
     sourceMessage?: MessageSourceReference,
   ) => {
     if (!companion.conversation) return;
-    const targetMessageId = sourceMessage
-      ? resolveTranscriptMessageIdForSource(sourceMessage, companion.messages)
-      : messageId;
+    const target = navigationIds(messageId, sourceMessage, companion.messages);
+    if (!target.id) return;
     nonceRef.current += 1;
     companion.onShowMessages();
     setCompanionRequest({
-      id: targetMessageId || messageId,
+      id: target.id,
+      lookupIds: target.lookupIds,
       nonce: nonceRef.current,
       sessionKey: companion.conversation.id,
     });

@@ -1,7 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Split } from 'lucide-react';
 
-import { highlightTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
@@ -112,10 +111,6 @@ export function useChatTranscriptViewport({
     onSelectionDragEnd,
   } = selection;
 
-  const handleNavigationReady = useCallback(
-    (messageId: string) => highlightTranscriptMessage(messageId),
-    [],
-  );
   const loadOlderMessagesRef = useRef(onLoadOlderMessages);
   useLayoutEffect(() => {
     loadOlderMessagesRef.current = onLoadOlderMessages;
@@ -137,7 +132,6 @@ export function useChatTranscriptViewport({
         messageId,
         entry.originalIndex,
       )}
-      onNavigationReady={handleNavigationReady}
       hasOlder={hasOlderMessages}
       onLoadOlder={canLoadOlderMessages ? handleLoadOlderMessages : undefined}
       getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
@@ -218,7 +212,6 @@ export function useChatTranscriptViewport({
     emptyState,
     forkSnapshotBoundaryIndex,
     handleLoadOlderMessages,
-    handleNavigationReady,
     hasOlderMessages,
     isCompressionActive,
     isMessageSelectable,

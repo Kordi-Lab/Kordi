@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -19,16 +18,17 @@ import {
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
 import {
+  TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
+  useVirtualTranscriptNavigation,
+  type VirtualTranscriptNavigationRequest,
+} from '@/features/chat/useVirtualTranscriptNavigation';
+import {
   beginChatPerformanceSpan,
   completeSessionClickToFirstMessage,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
 
-export type VirtualTranscriptNavigationRequest = {
-  id: string;
-  nonce: number;
-  sessionKey: string;
-};
+export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
 
 export type VirtualTranscriptProps<Item> = {
   items: readonly Item[];
@@ -101,7 +101,6 @@ export function VirtualTranscript<Item>({
     scrollTop: number;
   } | null>(null);
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
-  const handledNavigationRequestRef = useRef<string | null>(null);
 
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
     internalScrollRef.current = node;
@@ -135,21 +134,10 @@ export function VirtualTranscript<Item>({
     ? preserveMeasuredDisclosurePosition
     : undefined;
 
-  const scopedNavigationRequest = navigationRequest?.sessionKey === sessionKey
-    ? navigationRequest
-    : null;
   const pagingEnabled = hasOlder && Boolean(onLoadOlder);
   const olderLoadScopeRef = useRef({ sessionKey, pagingEnabled });
   const committedOlderLoadScopeRef = useRef({ sessionKey, pagingEnabled });
   olderLoadScopeRef.current = { sessionKey, pagingEnabled };
-
-  const navigationTargetIndex = useMemo(() => {
-    const id = scopedNavigationRequest?.id.trim() ?? '';
-    if (!id) return -1;
-    return items.findIndex((item, index) => (
-      findNavigationIndex?.(item, id, index) ?? String(getItemKey(item, index)) === id
-    ));
-  }, [findNavigationIndex, getItemKey, items, scopedNavigationRequest?.id]);
 
   const oldestItemKey = items.length > 0 ? String(getItemKey(items[0]!, 0)) : 'empty';
   const newestItemKey = items.length > 0 ? String(getItemKey(items[items.length - 1]!, items.length - 1)) : 'empty';
@@ -286,13 +274,6 @@ export function VirtualTranscript<Item>({
     return request;
   }, [onLoadOlder, pagingEnabled, sessionKey]);
 
-  useEffect(() => {
-    const request = scopedNavigationRequest;
-    if (!request || navigationTargetIndex >= 0 || !hasOlder || !onLoadOlder) return;
-    const signature = `${request.sessionKey}:${request.nonce}:${request.id}:${items.length}:${oldestItemKey}`;
-    void requestOlder(signature);
-  }, [hasOlder, items.length, navigationTargetIndex, oldestItemKey, onLoadOlder, requestOlder, scopedNavigationRequest]);
-
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
     const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
@@ -418,22 +399,34 @@ export function VirtualTranscript<Item>({
     }
   }, [cancelTailAlignment, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
-  useLayoutEffect(() => {
-    const request = scopedNavigationRequest;
-    if (!request || navigationTargetIndex < 0) return undefined;
-    const requestIdentity = JSON.stringify([request.sessionKey, request.nonce, request.id.trim()]);
-    if (handledNavigationRequestRef.current === requestIdentity) return undefined;
-    cancelTailAlignment();
-    virtualizer.scrollToIndex(navigationTargetIndex, { align: 'center' });
-    const frameId = window.requestAnimationFrame(() => {
-      handledNavigationRequestRef.current = requestIdentity;
-      onNavigationReady?.(request.id);
-      onNavigationHandled?.(request);
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [cancelTailAlignment, navigationTargetIndex, onNavigationHandled, onNavigationReady, scopedNavigationRequest, virtualizer]);
-
   const virtualItems = virtualizer.getVirtualItems();
+  const scrollToNavigationIndex = useCallback((index: number) => {
+    virtualizer.scrollToIndex(index, { align: 'center' });
+  }, [virtualizer]);
+  const {
+    navigationTargetIndex,
+    pendingNavigationRequest,
+    pendingNavigationTargetIndex,
+  } = useVirtualTranscriptNavigation({
+    items,
+    sessionKey,
+    navigationRequest,
+    findNavigationIndex,
+    getItemKey,
+    virtualItems,
+    scrollRef: internalScrollRef,
+    cancelTailAlignment,
+    scrollToIndex: scrollToNavigationIndex,
+    onNavigationHandled,
+    onNavigationReady,
+  });
+
+  useEffect(() => {
+    const request = pendingNavigationRequest;
+    if (!request || pendingNavigationTargetIndex >= 0 || !hasOlder || !onLoadOlder) return;
+    const signature = `${request.sessionKey}:${request.nonce}:${request.id}:${items.length}:${oldestItemKey}`;
+    void requestOlder(signature);
+  }, [hasOlder, items.length, oldestItemKey, onLoadOlder, pendingNavigationRequest, pendingNavigationTargetIndex, requestOlder]);
 
   useLayoutEffect(() => {
     finishChatPerformanceSpan(renderPerformanceSpan, {
@@ -477,7 +470,11 @@ export function VirtualTranscript<Item>({
                 ref={virtualizer.measureElement}
                 data-index={virtualItem.index}
                 data-transcript-window-item="true"
-                className="absolute left-0 top-0 w-full"
+                className={`absolute left-0 top-0 w-full${
+                  virtualItem.index === navigationTargetIndex
+                    ? ` ${TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS}`
+                    : ''
+                }`}
               >
                 {renderItem(item, virtualItem.index)}
               </div>

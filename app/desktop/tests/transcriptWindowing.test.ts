@@ -32,10 +32,17 @@ test('transcript message identity prefers stable persisted and runtime ids', () 
 });
 
 test('jump matching covers message, entry, runtime, and fallback ids', () => {
-  const target = message({ id: 'message:1', entryId: 'entry:1', turn: { id: 'turn:1' } as Message['turn'] });
+  const target = message({
+    id: 'message:1',
+    entryId: 'entry:1',
+    replyAliasIds: ['reply:1'],
+    turn: { id: 'turn:1', transcriptEntryId: 'turn-entry:1' } as Message['turn'],
+  });
   assert.equal(transcriptWindowMessageMatchesId(target, 'message:1', 4), true);
   assert.equal(transcriptWindowMessageMatchesId(target, 'entry:1', 4), true);
   assert.equal(transcriptWindowMessageMatchesId(target, 'turn:1', 4), true);
+  assert.equal(transcriptWindowMessageMatchesId(target, 'turn-entry:1', 4), true);
+  assert.equal(transcriptWindowMessageMatchesId(target, 'reply:1', 4), true);
   assert.equal(transcriptWindowMessageMatchesId(message(), 'transcript-message:4', 4), true);
 });
 

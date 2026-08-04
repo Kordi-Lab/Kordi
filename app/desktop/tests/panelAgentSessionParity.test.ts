@@ -41,6 +41,7 @@ const appModelSource = readKordiAppModelImplementationSource;
 const collaborationNavigationActionsSource = () => readFileSync(new URL('../src/app/useKordiCollaborationNavigationActions.ts', import.meta.url), 'utf8');
 const queuedMessageActionsSource = () => readFileSync(new URL('../src/app/useKordiQueuedMessageActions.ts', import.meta.url), 'utf8');
 const virtualTranscriptSource = () => readFileSync(new URL('../src/features/chat/VirtualTranscript.tsx', import.meta.url), 'utf8');
+const virtualTranscriptNavigationSource = () => readFileSync(new URL('../src/features/chat/useVirtualTranscriptNavigation.ts', import.meta.url), 'utf8');
 
 function blockBetween(source: string, startNeedle: string, endNeedle: string): string {
   const start = source.indexOf(startNeedle);
@@ -271,22 +272,23 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
   const source = chatsPageSource();
   const pane = chatSessionPaneBlock();
   const virtual = virtualTranscriptSource();
+  const navigation = virtualTranscriptNavigationSource();
 
   assert.match(source, /type TranscriptNavigationRequest/, 'jumps into windowed transcripts should use an explicit navigation request');
   assert.match(pane, /findNavigationIndex=\{\(entry, messageId\)/, 'ChatSessionPane should resolve jump targets against loaded messages');
   assert.match(
-    pane,
-    /const handleNavigationReady = useCallback\([\s\S]*highlightTranscriptMessage\(messageId\)[\s\S]*\[\],?\s*\);/,
-    'the shared pane should highlight a target after the virtualizer performs the only scroll',
+    navigation,
+    /pendingTargetMounted[\s\S]*target\.classList\.contains\(TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS\)[\s\S]*onNavigationHandled\?\.\(pendingRequest\)/,
+    'the virtualizer should acknowledge only after the highlighted target commits',
   );
   assert.match(
-    pane,
-    /onNavigationReady=\{handleNavigationReady\}/,
-    'the mounted target should retain highlighting and centered navigation',
+    virtual,
+    /virtualItem\.index === navigationTargetIndex[\s\S]*TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS/,
+    'the mounted virtual row should own the route-back highlight',
   );
-  assert.match(virtual, /if \(!request \|\| navigationTargetIndex >= 0 \|\| !hasOlder \|\| !onLoadOlder\) return;/, 'already-loaded targets should not fetch older pages');
+  assert.match(virtual, /if \(!request \|\| pendingNavigationTargetIndex >= 0 \|\| !hasOlder \|\| !onLoadOlder\) return;/, 'already-loaded targets should not fetch older pages');
   assert.match(virtual, /void requestOlder\(signature\)/, 'missing targets should request older pages');
-  assert.match(virtual, /virtualizer\.scrollToIndex\(navigationTargetIndex/, 'found targets should move into the mounted range');
+  assert.match(navigation, /scrollToIndex\(pendingTargetIndex\)/, 'found targets should move into the mounted range');
   assert.match(source, /setMainRequest\(\{[\s\S]*sessionKey: main\.conversation\.id,?[\s\S]*\}\)/, 'main navigation requests should retain their source session');
   assert.match(source, /setCompanionRequest\(\{[\s\S]*sessionKey: companion\.conversation\.id,?[\s\S]*\}\)/, 'companion navigation requests should retain their source session');
   assert.match(source, /onNavigationHandled: models\.navigation\.acknowledge/, 'main navigation should acknowledge the exact handled request');
