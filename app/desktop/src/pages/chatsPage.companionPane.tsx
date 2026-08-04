@@ -16,6 +16,7 @@ type CompanionPaneProps = {
   destination: ChatDestination;
   header: ReactNode;
   detailPage: ReactNode;
+  messagesLoading?: boolean;
   sessionPane: Omit<SessionPaneProps, 'viewport'> & {
     viewport: Omit<SessionPaneProps['viewport'], 'composer'>;
   };
@@ -29,6 +30,7 @@ export function CompanionPane({
   destination,
   header,
   detailPage,
+  messagesLoading = false,
   sessionPane,
   composerShell,
   composer,
@@ -47,6 +49,7 @@ export function CompanionPane({
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           role="tabpanel"
           aria-labelledby="chat-companion-messages-tab"
+          aria-busy={messagesLoading || undefined}
           data-chat-destination-page="messages"
           data-chat-destination-scope="companion"
         >

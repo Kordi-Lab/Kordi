@@ -193,6 +193,7 @@ export type ChatsPageRuntime = {
   ) => Promise<void>;
   onRetryChatMessage?: (message: Message) => void;
   onSelectSession?: (sessionId: string) => void;
+  onPrefetchChatSession?: (sessionId: string) => Promise<boolean>;
   onSendChatMessage: (
     draftOverride?: string,
     targetSessionId?: string,

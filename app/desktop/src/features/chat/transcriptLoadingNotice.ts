@@ -19,6 +19,6 @@ const SYSTEM_NOTICE_BASE_CLASS = 'app-system-notice-text max-w-[min(100%,34rem)]
 
 export function transcriptSystemNoticeClassName(message: Message): string {
   return isTranscriptLoadingNotice(message)
-    ? `${SYSTEM_NOTICE_BASE_CLASS} app-transcript-loading-notice`
+    ? `${SYSTEM_NOTICE_BASE_CLASS} app-transcript-loading-notice inline-flex items-center gap-1.5`
     : SYSTEM_NOTICE_BASE_CLASS;
 }

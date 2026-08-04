@@ -612,7 +612,7 @@ export function existingBlankSessionIdForParticipantSpace(space: ParticipantSpac
   const blankSession = [...space.sessions]
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs)
     .find(isBlankParticipantSpaceSession);
-  return blankSession?.canonicalSessionId ?? blankSession?.id ?? null;
+  return cleanText(space.reusableBlankSessionId) || blankSession?.canonicalSessionId || blankSession?.id || null;
 }
 
 export function participantSpaceCanonicalSessionIds(space: ParticipantSpaceViewModel) {

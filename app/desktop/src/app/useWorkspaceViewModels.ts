@@ -9,7 +9,6 @@ import { mapCollaborationConversationToViewModel } from '@/features/collaboratio
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
@@ -26,7 +25,7 @@ import { createCanonicalSessionReadModel } from '@/features/canonical/sessionRea
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
-import { buildParticipantSpaces, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
+import { buildParticipantSpaces, collapseBlankConversationShells, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
 import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import {
   createTranscriptReferenceStabilizer,
@@ -51,34 +50,13 @@ import type {
   SessionStatusIndicator,
   SessionTaskActivity,
 } from '@/kordi-app/types';
-import { isSelfReferenceName } from '@/lib/identityLabels';
 import { getInitials } from '@/kordi-app/utils';
 import { applyCloudPresenceToConversations } from './viewModels/cloudConversationPresence';
+import {
+  collaborationProfileImageUrl,
+  sanitizeRemotePeerName,
+} from './viewModels/collaborationLabels';
 import { liveTurnsViewModelSignature } from './viewModels/workspaceViewModelSignatures';
-
-function sanitizeRemotePeerName(
-  ...candidates: Array<string | null | undefined>
-): string {
-  for (const candidate of candidates) {
-    const trimmed = candidate?.trim();
-    if (trimmed && !isSelfReferenceName(trimmed)) return trimmed;
-  }
-  // All candidates were self-references or empty; return the first non-empty raw value as a
-  // last resort so the contact still renders something stable.
-  for (const candidate of candidates) {
-    const trimmed = candidate?.trim();
-    if (trimmed) return trimmed;
-  }
-  return 'Kordi user';
-}
-
-function collaborationProfileImageUrl(value: string | null | undefined): string | null {
-  const normalized = cloudAvatarImageUrl(value);
-  if (normalized) return normalized;
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
-  return trimmed;
-}
 import {
   collaborationPeerIsApprovedContact,
   buildConversationPreview,
@@ -91,6 +69,8 @@ import {
   visibleCollaborationPeople,
   collaborationPeerIsReachableAgent,
 } from './viewModels/helpers';
+
+const EMPTY_DESKTOP_SESSION_IDS: ReadonlySet<string> = new Set();
 
 function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
   const id = identityId?.trim();
@@ -273,6 +253,7 @@ type UseWorkspaceViewModelsArgs = {
   cachedChatSessionMessages: Record<string, Message[]>;
   cachedProjectSessionMessages: Record<string, Message[]>;
   cachedDesktopSessionSourceMessages?: Record<string, DesktopChatMessage[]>;
+  hydratedDesktopSessionIds?: ReadonlySet<string>;
   localSessionUnreadCounts: Record<string, number>;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[], sessionContext?: { metadata?: unknown }) => Message[];
@@ -306,6 +287,7 @@ export function useWorkspaceViewModels({
   cachedChatSessionMessages,
   cachedProjectSessionMessages,
   cachedDesktopSessionSourceMessages = {},
+  hydratedDesktopSessionIds = EMPTY_DESKTOP_SESSION_IDS,
   localSessionUnreadCounts,
   desktopLiveTurnsBySession,
   mapDesktopMessages,
@@ -463,7 +445,7 @@ export function useWorkspaceViewModels({
         canonicalSessionId: session.id,
         localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
         desktopRuntimeBacked: true,
-        desktopRuntimeTranscriptLoaded: isActiveSession || Boolean(cachedMessages),
+        desktopRuntimeTranscriptLoaded: hydratedDesktopSessionIds.has(session.id),
         name: session.title,
         type: 'owned-agent' as const,
         subtitle: buildConversationPreview(messages, session.subtitle),
@@ -492,7 +474,7 @@ export function useWorkspaceViewModels({
         _updatedAtMs: session.updatedAtMs,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, hydratedDesktopSessionIds, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
   const localAgentCollaborationReachoutConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -568,21 +550,25 @@ export function useWorkspaceViewModels({
     });
     return hideRawConversationIds(withCloudActivity);
   }, [cloudPresence, cloudSessionActivity, stableHydratedChatConversations]);
+  const blankShellCollapsedChatConversations = useMemo(
+    () => collapseBlankConversationShells(decoratedChatConversations),
+    [decoratedChatConversations],
+  );
 
   const chatConversations = useMemo(() => {
     const hiddenIds = new Set([
       ...hiddenSessionIds,
       ...localAgentCollaborationReachoutSessionIds,
     ]);
-    if (hiddenIds.size === 0) return decoratedChatConversations;
-    return decoratedChatConversations.filter((conversation) => {
+    if (hiddenIds.size === 0) return blankShellCollapsedChatConversations;
+    return blankShellCollapsedChatConversations.filter((conversation) => {
       const canonicalId = conversation.canonicalSessionId ?? conversation.id;
       if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
       return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
     });
   }, [
     activeConvId,
-    decoratedChatConversations,
+    blankShellCollapsedChatConversations,
     hiddenSessionIds,
     localAgentCollaborationReachoutSessionIds,
   ]);

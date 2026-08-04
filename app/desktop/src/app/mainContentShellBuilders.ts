@@ -130,6 +130,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onCreateAgentSession: args.handleCreateSideAgentSession,
     onForkChatMessage: args.handleForkChatMessage,
     onSelectSession: args.handleSelectChatSession,
+    onPrefetchChatSession: args.handlePrefetchChatSession,
     },
     auth: {
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),

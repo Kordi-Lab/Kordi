@@ -70,7 +70,7 @@ test('canonical chat hydration is cached independently from active session selec
   assert.doesNotMatch(warmedDeps, /activeConvId/, 'switching sessions must not rebuild expensive canonical hydration');
 
   const visibleMemo = source.slice(visibleStart, source.indexOf('\n\n  const activeConv', visibleStart));
-  assert.match(visibleMemo, /decoratedChatConversations/, 'visible conversations should reuse warmed and decorated canonical hydration');
+  assert.match(visibleMemo, /blankShellCollapsedChatConversations/, 'visible conversations should reuse the stable decorated and blank-collapsed list');
   assert.match(visibleMemo, /activeConvId/, 'only the cheap visibility layer should depend on active selection');
 });
 
@@ -90,7 +90,8 @@ test('session selection does not redecorate or regroup the complete conversation
     visibleStart,
     source.indexOf('\n\n  const nativeChatPlaceholder', visibleStart),
   );
-  assert.match(visibleMemo, /if \(hiddenIds\.size === 0\) return decoratedChatConversations/);
+  assert.match(visibleMemo, /if \(hiddenIds\.size === 0\) return blankShellCollapsedChatConversations/);
+  assert.match(decoratedMemo, /collapseBlankConversationShells\(decoratedChatConversations\)/);
   assert.doesNotMatch(visibleMemo, /applyCloudPresenceToConversations|hideRawConversationIds/);
 });
 

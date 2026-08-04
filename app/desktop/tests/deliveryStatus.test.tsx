@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { canonicalUserStatusChip } from '../src/features/canonical/readModel/messageMapping';
 import { messageDeliveryVisual } from '../src/features/chat/deliveryStatus';
-import { shouldShowCollaborationSendFailureNotice } from '../src/features/chat/messageActions/chatMessages';
+import { shouldShowCollaborationSendFailureNotice } from '../src/features/chat/messageActions/collaborationSendLifecycle';
 
 test('messageDeliveryVisual maps sent and delivered to a single gray check', () => {
   assert.deepEqual(messageDeliveryVisual('sent'), {

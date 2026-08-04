@@ -1,7 +1,8 @@
-import { GripVertical } from 'lucide-react';
+import { GripVertical, RefreshCw } from 'lucide-react';
 
 import { localOwnedAgentSenderLabel } from '@/app/viewModels/helpers';
 import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
+import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
 import type {
   DesktopChatTurnSnapshot,
@@ -96,6 +97,11 @@ export function ChatCompanionWorkspace({
 
   const canonicalHistorySessionId =
     canonicalHistorySessionIdForConversation(conversation);
+  const transcriptMessages = session.transcript.isLoading
+    ? [transcriptLoadingNotice()]
+    : session.transcript.loadError
+      ? []
+      : presentation.messages;
   const destinationPage = destinations.value !== 'messages' ? (
     <CompanionDestinationPage
       conversation={conversation}
@@ -148,12 +154,15 @@ export function ChatCompanionWorkspace({
         />
       )}
       detailPage={destinationPage}
+      messagesLoading={session.transcript.isLoading}
       sessionPane={{
         presentation: {
           liveTurn: presentation.liveTurn,
           liveTurnSender: localOwnedAgentSenderLabel(conversation),
           shouldRenderLiveTurn: Boolean(
-            presentation.liveTurn && !presentation.liveTurn.completed,
+            !session.transcript.isLoading
+              && presentation.liveTurn
+              && !presentation.liveTurn.completed,
           ),
           densityMode: chatTranscriptDensityMode(conversation),
           inferLatestHumanReplyTarget:
@@ -191,7 +200,7 @@ export function ChatCompanionWorkspace({
         selection: {},
         viewport: {
           sessionKey: conversation.id,
-          messages: presentation.messages,
+          messages: transcriptMessages,
           scrollRef: session.refs.transcriptScroll,
           scrollClassName:
             'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5',
@@ -215,9 +224,26 @@ export function ChatCompanionWorkspace({
           onEditQueuedMessage: transcript.onEditQueuedMessage,
           onCancelQueuedMessage: transcript.onCancelQueuedMessage,
           emptyState: (
-            <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
-              No messages in this side chat yet.
-            </div>
+            session.transcript.loadError ? (
+              <div
+                className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-2 px-4 text-center text-[12px] text-[color:var(--utility-muted-text)]"
+                role="alert"
+              >
+                <span>{session.transcript.loadError}</span>
+                <button
+                  type="button"
+                  className="app-button-quiet inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium"
+                  onClick={session.transcript.retry}
+                >
+                  <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
+                No messages in this side chat yet.
+              </div>
+            )
           ),
         },
       }}

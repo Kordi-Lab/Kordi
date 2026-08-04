@@ -16,7 +16,7 @@ import {
   retryAttachmentItemsFromMessage,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
-import { failedCanonicalGroupMessageRequest } from '../src/features/chat/messageActions/chatMessages';
+import { failedCanonicalGroupMessageRequest } from '../src/features/chat/messageActions/collaborationSendLifecycle';
 import type { CanonicalSessionState, DesktopChatState } from '../src/kordi-app/types';
 
 const imageAttachment = {

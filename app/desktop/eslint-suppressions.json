@@ -155,9 +155,6 @@
     }
   },
   "src/features/chat/messageActions/chatMessages.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 10
-    },
     "react-hooks/exhaustive-deps": {
       "count": 3
     }

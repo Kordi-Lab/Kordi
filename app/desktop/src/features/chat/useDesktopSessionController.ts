@@ -91,17 +91,21 @@ export function useDesktopSessionController({
 }: UseDesktopSessionControllerArgs) {
   const selectionRequestIdRef = useRef(0);
 
-  const handlePrefetchChatSession = useCallback((sessionId: string) => {
-    if (!isNativeShell) return;
-    if (
-      isLegacyCanonicalCollaborationSessionId(sessionId)
-      || isCanonicalCloudSessionId(sessionId)
-    ) {
-      void hydrateCanonicalSessionPage(sessionId).catch(() => {});
-      return;
+  const handlePrefetchChatSession = useCallback(async (sessionId: string) => {
+    if (!isNativeShell) return true;
+    try {
+      if (
+        isLegacyCanonicalCollaborationSessionId(sessionId)
+        || isCanonicalCloudSessionId(sessionId)
+      ) {
+        await hydrateCanonicalSessionPage(sessionId);
+        return true;
+      }
+      if (isLocalDraftChatConversationId(sessionId) || sessionId.startsWith('bridge:')) return true;
+      return await preloadDesktopSessionTranscript(sessionId);
+    } catch {
+      return false;
     }
-    if (isLocalDraftChatConversationId(sessionId) || sessionId.startsWith('bridge:')) return;
-    void preloadDesktopSessionTranscript(sessionId).catch(() => {});
   }, [hydrateCanonicalSessionPage, isNativeShell, preloadDesktopSessionTranscript]);
 
   const handleSelectChatSession = useCallback(async (sessionId: string) => {

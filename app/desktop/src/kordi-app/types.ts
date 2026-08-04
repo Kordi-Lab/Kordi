@@ -230,12 +230,10 @@ export type ParticipantSpaceViewModel = {
   sessions: ParticipantSpaceSessionViewModel[];
   groupCreatorIdentityId?: string | null;
   groupAdminIdentityIds?: string[];
-  /**
-   * Every persisted session that carries membership for this logical group.
-   * This includes hidden legacy empty shells so member/admin actions can keep
-   * their state consistent without showing those shells as chat sessions.
-   */
+  /** All persisted membership sessions, including hidden legacy empty shells. */
   membershipSessionIds?: string[];
+  /** Hidden persisted blank continuation that can be reused instead of creating another shell. */
+  reusableBlankSessionId?: string | null;
 };
 
 export type Contact = {

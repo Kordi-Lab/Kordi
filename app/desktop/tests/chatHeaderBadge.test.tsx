@@ -410,9 +410,10 @@ test('ask agent from an active agent chat creates a fresh side session instead o
   assert.match(pageSource, /return create\(initialPrompt\)/);
   assert.match(
     appModelSource,
-    /activeDesktopSessionId:\s*(?:chat\.)?desktopChatState\?\.activeSessionId \?\? null/,
+    /mainConversationId:\s*conversations\.activeConv\.id/,
   );
-  assert.match(sideAgentActionsSource, /activeDesktopSessionId[\s\S]*\? \{ \.\.\.nextState, activeSessionId: activeDesktopSessionId \}/);
+  assert.match(sideAgentActionsSource, /setDesktopChatState\(nextState\)/);
+  assert.doesNotMatch(sideAgentActionsSource, /\{ \.\.\.nextState, activeSessionId:/);
 });
 
 test('ask agent new session action switches the side panel to the created agent session', () => {
@@ -443,7 +444,7 @@ test('chat companion composer sends with Enter and keeps modified Enter for line
   assert.match(source, /title=\{`Send to \$\{conversation\.name\}`\}/);
 });
 
-test('ask agent side transcript renders the same live turn and tool UI as My agent chat', () => {
+test('ask agent side transcript renders live turns after authoritative history is ready', () => {
   const source = readChatsPageImplementationSource();
 
   assert.match(source, /const rawCompanionTranscriptLiveTurn = companionConversation\?\.previewLiveTurn \?\? undefined/);
@@ -451,7 +452,7 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
   assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
   assert.match(source, /buildReplyAttribution\(\s*messages,\s*shouldRenderLiveTurn \? liveTurn : null/s);
   assert.match(source, /sessionPane=\{\{[\s\S]*liveTurn: presentation\.liveTurn/);
-  assert.match(source, /shouldRenderLiveTurn: Boolean\(\s*presentation\.liveTurn && !presentation\.liveTurn\.completed/s);
+  assert.match(source, /shouldRenderLiveTurn: Boolean\(\s*!session\.transcript\.isLoading\s*&& presentation\.liveTurn\s*&& !presentation\.liveTurn\.completed/s);
 });
 
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {

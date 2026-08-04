@@ -110,6 +110,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         chatConversations: args.chatConversations,
         handleCreateChatSession: args.handleCreateChatSession,
         handleCreateSideAgentSession: args.handleCreateSideAgentSession,
+        handlePrefetchChatSession: args.handlePrefetchChatSession,
         handleSelectChatSession: args.handleSelectChatSession,
         handleRenameChatSession: args.handleRenameChatSession,
         handleStartChatWithPerson: args.handleStartChatWithPerson,

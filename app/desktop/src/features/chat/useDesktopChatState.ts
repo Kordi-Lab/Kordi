@@ -63,9 +63,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   const [localSessionUnreadCounts, setLocalSessionUnreadCounts] = useState<Record<string, number>>({});
   const [desktopTurnRenderAliases] = useState(createDesktopTurnRenderAliasRegistry);
   const {
-    cachedChatSessionMessages,
-    cachedProjectSessionMessages,
-    cachedDesktopSessionSourceMessages,
+    cachedChatSessionMessages, cachedProjectSessionMessages,
+    cachedDesktopSessionSourceMessages, hydratedDesktopSessionIds,
     mergeSessionTranscript,
     replaceSessionTranscript,
     appendSessionSourceMessage,
@@ -513,9 +512,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     setPendingUserChatMessage,
     queuedDesktopMessagesBySession,
     setQueuedDesktopMessagesBySession,
-    cachedChatSessionMessages,
-    cachedProjectSessionMessages,
-    cachedDesktopSessionSourceMessages,
+    cachedChatSessionMessages, cachedProjectSessionMessages,
+    cachedDesktopSessionSourceMessages, hydratedDesktopSessionIds,
     localSessionUnreadCounts,
     setLocalSessionUnreadCounts,
     incrementUnreadForSession,

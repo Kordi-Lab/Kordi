@@ -451,6 +451,7 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
       activeAgentId: '',
       cachedChatSessionMessages: {},
       cachedProjectSessionMessages: {},
+      hydratedDesktopSessionIds: new Set(['local-runtime-session']),
       localSessionUnreadCounts: {},
       desktopLiveTurnsBySession: {},
       mapDesktopMessages: (_sessionId, messages) => messages.map((message) => ({

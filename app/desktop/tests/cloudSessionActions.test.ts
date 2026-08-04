@@ -7,8 +7,8 @@ import { buildCanonicalIndexes } from '../src/features/canonical/readModel/index
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import {
   canonicalNoProviderFailedAgentMessageRequest,
-  shouldUseNoProviderSelfAgentShortcut,
 } from '../src/features/chat/messageActions/chatMessages';
+import { shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/localAgentSessionTarget';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
