@@ -107,7 +107,9 @@ contains a support form for questions, product issues, and feedback.
 Support form submissions are written to Postgres before email delivery is
 attempted. A background worker retries failed notifications without requiring
 the desktop to remain open. Production sends those notifications to
-`trykordi@gmail.com` through Gmail SMTP with STARTTLS.
+`shuyhere@gmail.com` through Gmail SMTP with STARTTLS. The support agent
+owner remains the locked `trykordi@gmail.com` system account; outbound mail
+credentials and the notification inbox are configured independently.
 
 Never use a Google account password for SMTP and never place mail credentials
 in a manifest, shell history, desktop environment, or repository. Enable

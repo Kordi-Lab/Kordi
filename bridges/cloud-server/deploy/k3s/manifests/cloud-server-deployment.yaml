@@ -178,7 +178,7 @@ spec:
             - name: KORDI_SUPPORT_OWNER_EMAIL
               value: "trykordi@gmail.com"
             - name: KORDI_SUPPORT_INBOX
-              value: "trykordi@gmail.com"
+              value: "shuyhere@gmail.com"
             - name: KORDI_SUPPORT_AGENT_NAME
               value: "Kordi Support"
             - name: KORDI_SUPPORT_AGENT_SUBTITLE
@@ -188,9 +188,9 @@ spec:
             - name: KORDI_SUPPORT_SMTP_PORT
               value: "587"
             - name: KORDI_SUPPORT_SMTP_USERNAME
-              value: "trykordi@gmail.com"
+              value: "shuyhere@gmail.com"
             - name: KORDI_SUPPORT_SMTP_FROM
-              value: "Kordi Support <trykordi@gmail.com>"
+              value: "Kordi Support <shuyhere@gmail.com>"
             - name: KORDI_SUPPORT_SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
