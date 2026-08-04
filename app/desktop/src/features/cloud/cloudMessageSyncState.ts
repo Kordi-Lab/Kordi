@@ -13,6 +13,7 @@ import {
   cloudMessagesEqual,
   mergeCloudMessageMonotonicState,
 } from './cloudDiffSync';
+import { latestCloudReceiptAt } from './cloudMessageMerge';
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
 
@@ -95,6 +96,61 @@ export function mergeCloudMessagesByPeerSnapshot(
     }
   }
   return changed ? merged : current;
+}
+
+export function mergeCloudPeerReadCursors(
+  current: Readonly<Record<string, string | null | undefined>>,
+  incoming: Readonly<Record<string, string | null | undefined>>,
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const peerId of uniqueSortedPeerIds([
+    ...Object.keys(current),
+    ...Object.keys(incoming),
+  ])) {
+    const readAt = latestCloudReceiptAt(
+      cleanText(current[peerId]),
+      cleanText(incoming[peerId]),
+    );
+    if (readAt) merged[peerId] = readAt;
+  }
+  return merged;
+}
+
+export function reconcileCloudPeerReadCursors(
+  current: Record<string, CloudMessage[]>,
+  accountId: string,
+  readAtByPeer: Readonly<Record<string, string | null | undefined>>,
+): Record<string, CloudMessage[]> {
+  const localAccountId = cleanText(accountId);
+  if (!localAccountId) return current;
+  let changed = false;
+  const next: Record<string, CloudMessage[]> = {};
+  for (const [peerId, messages] of Object.entries(current)) {
+    const peerReadAt = cleanText(readAtByPeer[peerId]);
+    const peerReadAtMs = Date.parse(peerReadAt);
+    if (!peerReadAt || !Number.isFinite(peerReadAtMs)) {
+      next[peerId] = messages;
+      continue;
+    }
+    let nextMessages: CloudMessage[] | null = null;
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      const createdAtMs = Date.parse(message.createdAt);
+      if (
+        message.fromAccountId !== peerId
+        || message.toAccountId !== localAccountId
+        || !Number.isFinite(createdAtMs)
+        || createdAtMs > peerReadAtMs
+      ) continue;
+      const readAt = latestCloudReceiptAt(message.readAt, peerReadAt);
+      if (readAt === message.readAt) continue;
+      nextMessages ??= messages.slice();
+      nextMessages[index] = { ...message, readAt };
+      changed = true;
+    }
+    next[peerId] = nextMessages ?? messages;
+  }
+  return changed ? next : current;
 }
 
 export function markCloudMessagesReadLocally(

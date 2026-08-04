@@ -69,6 +69,18 @@ async fn cloud_sync_returns_read_receipt_events() {
         .unwrap();
     assert_eq!(read_resp.status(), StatusCode::NO_CONTENT);
 
+    let reader_list_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={account_id}"),
+            &peer_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(reader_list_resp.status(), StatusCode::OK);
+    let reader_list = read_json(reader_list_resp).await;
+    assert!(reader_list["peerReadAt"].as_str().is_some());
+
     let sync_resp = router
         .oneshot(get_with_token("/v1/cloud/sync?cursor=0", &token))
         .await

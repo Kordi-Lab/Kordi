@@ -198,6 +198,7 @@ function useCloudCollaborationMessageStore(
     useState<Record<string, CloudMessage[]>>({});
   const cacheAccountRef = useRef<string | null>(null);
   const hydratedCacheAccountRef = useRef<string | null>(null);
+  const peerReadAtByPeerRef = useRef<Record<string, string>>({});
   const belongsToCurrentAccount = Boolean(
     account?.accountId
       && cacheAccountRef.current === account.accountId,
@@ -226,6 +227,7 @@ function useCloudCollaborationMessageStore(
     indexRef,
     cacheAccountRef,
     hydratedCacheAccountRef,
+    peerReadAtByPeerRef,
   };
 }
 

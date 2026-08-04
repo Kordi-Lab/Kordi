@@ -602,6 +602,36 @@ test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
   assert.deepEqual(JSON.parse(calls[0].init?.body as string), { peerAccountId: 'acct_peer' });
 });
 
+test('listMessageSnapshot exposes the durable peer read cursor', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    messages: [{
+      messageId: 'msg_1',
+      fromAccountId: 'acct_peer',
+      toAccountId: 'acct_me',
+      body: 'already read',
+      createdAt: '2026-05-11T10:00:00Z',
+      deliveredAt: '2026-05-11T10:00:01Z',
+      readAt: '2026-05-11T10:00:02Z',
+      direction: 'incoming',
+    }],
+    peerReadAt: '2026-05-11T10:30:00Z',
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const snapshot = await client.listMessageSnapshot(
+    'kordi_cs_xyz',
+    'acct_peer',
+    500,
+  );
+
+  assert.equal(
+    calls[0].url,
+    'http://srv/v1/cloud/messages?peerAccountId=acct_peer&limit=500',
+  );
+  assert.equal(snapshot.peerReadAt, '2026-05-11T10:30:00Z');
+  assert.deepEqual(snapshot.messages[0]?.attachments, []);
+});
+
 test('markSessionMessagesRead posts session id to cloud session read route', async () => {
   const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });

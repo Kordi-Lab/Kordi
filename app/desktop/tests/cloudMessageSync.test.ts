@@ -18,7 +18,9 @@ import {
   createAccountScopedSingleFlight,
   loadCloudMessagesByPeerUntilStable,
   markCloudMessagesReadLocally,
+  mergeCloudPeerReadCursors,
   mergeCloudMessagesByPeerSnapshot,
+  reconcileCloudPeerReadCursors,
   shouldRefreshCloudForVisibility,
   shouldRunCloudFocusRefresh,
   transitionCloudUnreadReadiness,
@@ -74,7 +76,7 @@ test('cloud startup snapshots latest messages before catch-up and publishes afte
   );
   assert.match(
     source,
-    /client\.listMessages\(session\.token, peerId, CLOUD_MESSAGE_SNAPSHOT_LIMIT\)/,
+    /client\.listMessageSnapshot\([\s\S]*session\.token,[\s\S]*peerId,[\s\S]*CLOUD_MESSAGE_SNAPSHOT_LIMIT/,
   );
   assert.match(
     source,
@@ -130,7 +132,7 @@ test('cloud message bootstrap keeps attachments metadata-only', () => {
   assert.notEqual(end, -1);
   const bootstrap = source.slice(start, end);
 
-  assert.match(bootstrap, /client\.listMessages/);
+  assert.match(bootstrap, /client\.listMessageSnapshot/);
   assert.doesNotMatch(bootstrap, /resolveCloudMessageAttachments|downloadAttachmentContent/);
 });
 
@@ -311,6 +313,63 @@ test('cloud message snapshot merges cannot clear established read receipts', () 
 
   assert.equal(merged.acct_peer?.[0]?.deliveredAt, authoritative.deliveredAt);
   assert.equal(merged.acct_peer?.[0]?.readAt, authoritative.readAt);
+});
+
+test('peer read cursors reconcile stale cached messages outside the snapshot window', () => {
+  const readCursor = '2026-05-11T10:30:00Z';
+  const staleCachedMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_cached_before_window',
+    createdAt: '2026-05-11T09:00:00Z',
+    readAt: null,
+  };
+  const newerUnreadMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_after_cursor',
+    createdAt: '2026-05-11T11:00:00Z',
+    readAt: null,
+  };
+  const outgoingMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_outgoing',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    direction: 'outgoing',
+    createdAt: '2026-05-11T09:30:00Z',
+  };
+  const current = {
+    acct_peer: [
+      staleCachedMessage,
+      outgoingMessage,
+      newerUnreadMessage,
+    ],
+  };
+
+  const reconciled = reconcileCloudPeerReadCursors(
+    current,
+    'acct_me',
+    { acct_peer: readCursor },
+  );
+
+  assert.equal(reconciled.acct_peer?.[0]?.readAt, readCursor);
+  assert.equal(reconciled.acct_peer?.[1], outgoingMessage);
+  assert.equal(reconciled.acct_peer?.[2], newerUnreadMessage);
+});
+
+test('peer read cursor snapshots merge monotonically', () => {
+  assert.deepEqual(
+    mergeCloudPeerReadCursors(
+      { acct_peer: '2026-05-11T10:30:00Z' },
+      {
+        acct_peer: '2026-05-11T10:00:00Z',
+        acct_other: '2026-05-11T11:00:00Z',
+      },
+    ),
+    {
+      acct_other: '2026-05-11T11:00:00Z',
+      acct_peer: '2026-05-11T10:30:00Z',
+    },
+  );
 });
 
 test('cloud message snapshot merges preserve unchanged peer and message identities', () => {

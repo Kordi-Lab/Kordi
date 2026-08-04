@@ -169,6 +169,11 @@ export type CloudMessage = {
   attachments?: CloudMessageAttachment[];
 };
 
+export type CloudMessageSnapshot = {
+  messages: CloudMessage[];
+  peerReadAt: string | null;
+};
+
 export type CloudSyncEventType = 'message.upsert' | 'message.read' | string;
 
 export type CloudSyncEvent = {
@@ -1145,9 +1150,20 @@ export class CloudAuthClient {
     peerAccountId: string,
     limit?: number,
   ): Promise<CloudMessage[]> {
+    return (await this.listMessageSnapshot(token, peerAccountId, limit)).messages;
+  }
+
+  async listMessageSnapshot(
+    token: string,
+    peerAccountId: string,
+    limit?: number,
+  ): Promise<CloudMessageSnapshot> {
     const params = new URLSearchParams({ peerAccountId });
     if (limit !== undefined) params.set('limit', String(limit));
-    const response = await this.send<{ messages: CloudMessage[] }>(
+    const response = await this.send<{
+      messages: CloudMessage[];
+      peerReadAt?: string | null;
+    }>(
       `/v1/cloud/messages?${params.toString()}`,
       {
         method: 'GET',
@@ -1155,7 +1171,15 @@ export class CloudAuthClient {
       },
       'Could not load messages.',
     );
-    return (response?.messages ?? []).map((message) => ({ ...message, attachments: message.attachments ?? [] }));
+    return {
+      messages: (response?.messages ?? []).map((message) => ({
+        ...message,
+        attachments: message.attachments ?? [],
+      })),
+      peerReadAt: typeof response?.peerReadAt === 'string'
+        ? response.peerReadAt
+        : null,
+    };
   }
 }
 

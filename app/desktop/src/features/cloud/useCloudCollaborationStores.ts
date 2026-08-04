@@ -45,6 +45,7 @@ export type CloudCollaborationMessageStore = {
   indexRef: MutableRefObject<CloudMessageIndex>;
   cacheAccountRef: MutableRefObject<string | null>;
   hydratedCacheAccountRef: MutableRefObject<string | null>;
+  peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
 };
 
 export function useCloudCollaborationStores({
@@ -78,6 +79,7 @@ export function useCloudCollaborationStores({
     indexRef: messageIndexRef,
     cacheAccountRef: messagesCacheAccountRef,
     hydratedCacheAccountRef: hydratedMessagesCacheAccountRef,
+    peerReadAtByPeerRef,
   } = messageStore;
   const [unreadReadiness, setUnreadReadiness] =
     useState<CloudUnreadReadinessSnapshot>(() => ({
@@ -125,6 +127,7 @@ export function useCloudCollaborationStores({
       indexRef: messageIndexRef,
       cacheAccountRef: messagesCacheAccountRef,
       hydratedCacheAccountRef: hydratedMessagesCacheAccountRef,
+      peerReadAtByPeerRef,
     },
     unread: {
       setReadiness: setUnreadReadiness,
@@ -168,6 +171,7 @@ export function useCloudCollaborationStores({
       belongsToCurrentAccount: messagesBelongToCurrentAccount,
       index: messageIndex,
       indexRef: messageIndexRef,
+      peerReadAtByPeerRef,
     },
     unread: {
       readiness: unreadReadiness,
