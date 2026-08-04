@@ -56,6 +56,10 @@ import {
   collaborationProfileImageUrl,
   sanitizeRemotePeerName,
 } from './viewModels/collaborationLabels';
+import {
+  activeConversationForSelection,
+  applyCanonicalHydrationPlaceholder,
+} from './viewModels/conversationSelection';
 import { liveTurnsViewModelSignature } from './viewModels/workspaceViewModelSignatures';
 import {
   collaborationPeerIsApprovedContact,
@@ -92,6 +96,12 @@ function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | und
 }
 
 export { findCollaborationProjectForWorkspace } from './viewModels/helpers';
+export {
+  activeConversationForSelection,
+  applyCanonicalHydrationPlaceholder,
+  pendingCanonicalCloudConversationForActiveId,
+  pendingCloudCollaborationConversationForActiveId,
+} from './viewModels/conversationSelection';
 
 export function collaborationChatConversationRoutesToLocalAgentPage(
   conversation: Pick<DesktopCollaborationConversation, 'hostId' | 'outreach' | 'identity' | 'projectId'>,
@@ -110,117 +120,6 @@ export function collaborationChatConversationIsVisible(
   conversation: Pick<DesktopCollaborationConversation, 'outreach'>,
 ) {
   return !conversation.outreach?.parentSessionId;
-}
-
-export function activeConversationForSelection(
-  activeConvId: string,
-  chatConversations: Conversation[],
-  options: {
-    isNativeShell: boolean;
-    nativeChatPlaceholder: Conversation;
-    fallbackConversation?: Conversation;
-  },
-): Conversation {
-  if (options.isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
-    return options.nativeChatPlaceholder;
-  }
-  const activeCloudSessionId = isCloudCollaborationConversationId(activeConvId)
-    ? cloudSessionIdFromConversationId(activeConvId)
-    : null;
-  const selectedConversation = chatConversations.find((conversation) => conversation.id === activeConvId)
-    ?? chatConversations.find((conversation) => conversation.canonicalSessionId === activeConvId)
-    ?? (activeCloudSessionId
-      ? chatConversations.find((conversation) => conversation.id === activeCloudSessionId || conversation.canonicalSessionId === activeCloudSessionId)
-      : undefined);
-  if (selectedConversation) {
-    const selectedCanonicalId = selectedConversation.canonicalSessionId ?? selectedConversation.id;
-    if (
-      isCanonicalCloudSessionId(selectedCanonicalId)
-      && selectedConversation.messages.length === 0
-      && selectedConversation.canonicalMessageCount !== 0
-    ) {
-      const pending = pendingCanonicalCloudConversationForActiveId(selectedCanonicalId);
-      return pending ? {
-        ...selectedConversation,
-        subtitle: selectedConversation.subtitle || pending.subtitle,
-        messages: pending.messages,
-      } : selectedConversation;
-    }
-    return selectedConversation;
-  }
-  const pendingCloudConversation = pendingCloudCollaborationConversationForActiveId(activeConvId);
-  if (pendingCloudConversation) return pendingCloudConversation;
-  const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);
-  if (pendingCanonicalCloudConversation) return pendingCanonicalCloudConversation;
-  return chatConversations[0] ?? (options.isNativeShell ? options.nativeChatPlaceholder : options.fallbackConversation ?? options.nativeChatPlaceholder);
-}
-
-export function applyCanonicalHydrationPlaceholder(
-  selectedConversation: Conversation,
-  hydration: SessionHydrationState | undefined,
-): Conversation {
-  // A zero catalog count is authoritative for the current snapshot. Hydration may
-  // still check for newer rows, but it should not turn a real empty chat into copy.
-  if (
-    selectedConversation.desktopRuntimeBacked
-    || selectedConversation.canonicalMessageCount === 0
-    || selectedConversation.messages.length > 0
-    || (hydration !== 'cold' && hydration !== 'loading')
-  ) {
-    return selectedConversation;
-  }
-  return {
-    ...selectedConversation,
-    messages: [transcriptLoadingNotice()],
-  };
-}
-
-export function pendingCanonicalCloudConversationForActiveId(activeConvId: string): Conversation | null {
-  const sessionId = activeConvId.trim();
-  if (!isCanonicalCloudSessionId(sessionId)) return null;
-  const isGroup = sessionId.startsWith('session:group:');
-  return {
-    id: sessionId,
-    canonicalSessionId: sessionId,
-    name: isGroup ? 'Opening group chat…' : 'Opening Cloud chat…',
-    type: isGroup ? 'owned-agent' : 'person',
-    subtitle: '',
-    unread: 0,
-    collaborationSources: ['Cloud'],
-    trust: 'Cloud',
-    directness: isGroup ? 'Group chat' : 'Person chat',
-    participants: ['Me'],
-    messages: [transcriptLoadingNotice()],
-  };
-}
-
-export function pendingCloudCollaborationConversationForActiveId(activeConvId: string): Conversation | null {
-  if (!isCloudCollaborationConversationId(activeConvId)) return null;
-  const peerId = cloudPeerAccountIdFromConversationId(activeConvId);
-  if (!peerId) return null;
-  return {
-    id: activeConvId,
-    canonicalSessionId: undefined,
-    name: peerId,
-    type: 'person',
-    subtitle: '',
-    unread: 0,
-    collaborationSources: ['Cloud'],
-    trust: 'Cloud',
-    directness: 'Person chat',
-    participants: ['Me', peerId],
-    messages: [transcriptLoadingNotice('Opening chat with this person…')],
-    collaborationTarget: {
-      hostId: 'cloud',
-      nodeId: peerId,
-      displayName: peerId,
-      ownerName: peerId,
-      runtime: 'person',
-      humanId: peerId,
-      agentId: null,
-    },
-    avatarSeed: peerId,
-  };
 }
 
 function canonicalTaskActivitiesForSession(

@@ -139,6 +139,7 @@ export function useKordiAppMutationActions({
     startChatWithAgent: handleStartChatWithAgent,
   } = useKordiChatStartActions({
     canonicalState: canonicalSessionState,
+    cloudAccountId: cloudSession.account?.accountId,
     conversations: chatConversations,
     isNativeShell,
     createOwnedAgentSession: runtime.sessions.handleCreateChatSession,

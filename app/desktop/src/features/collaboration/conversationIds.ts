@@ -105,6 +105,18 @@ export function cloudSystemAgentSessionId(
   return `${SYSTEM_AGENT_SESSION_PREFIX}${encodeURIComponent(localAccountId.trim())}:${encodeURIComponent(agentId.trim())}`;
 }
 
+export function cloudSystemAgentConversationId(
+  localAccountId: string,
+  ownerAccountId: string,
+  agentId: string,
+): string {
+  return cloudCollaborationConversationId(
+    ownerAccountId,
+    'agent',
+    cloudSystemAgentSessionId(localAccountId, agentId),
+  );
+}
+
 export function isCloudSystemAgentSessionId(
   sessionId: string | null | undefined,
 ): boolean {

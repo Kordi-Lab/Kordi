@@ -5,6 +5,7 @@ import {
 } from 'react';
 
 import { cloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
+import { cloudSystemAgentConversationId } from '@/features/collaboration/conversationIds';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { ComposerDraftState } from '@/features/chat/composerDrafts';
@@ -48,6 +49,7 @@ type CollaborationPersonTarget = {
 
 type UseKordiChatStartActionsArgs = {
   canonicalState: CanonicalSessionState | null;
+  cloudAccountId?: string | null;
   conversations: Conversation[];
   isNativeShell: boolean;
   createOwnedAgentSession: () => Promise<void>;
@@ -70,6 +72,7 @@ type UseKordiChatStartActionsArgs = {
 
 export function useKordiChatStartActions({
   canonicalState,
+  cloudAccountId,
   conversations,
   isNativeShell,
   createOwnedAgentSession,
@@ -107,13 +110,20 @@ export function useKordiChatStartActions({
       contact.sourceHostId === CLOUD_HOST_SENTINEL
       && contact.sourceParticipantId
     ) {
-      const systemAgentConversation = contact.systemContact && contact.sourceAgentId
-        ? conversations.find((conversation) => (
-            conversation.collaborationTarget?.agentId === contact.sourceAgentId
-            && conversation.collaborationTarget?.humanId === contact.sourceParticipantId
-          ))
-        : null;
-      selectNewSession(systemAgentConversation?.id ?? cloudCollaborationConversationId(
+      if (contact.systemContact && contact.sourceAgentId) {
+        const accountId = cloudAccountId?.trim();
+        if (!accountId) {
+          setDesktopError(`${contact.name || 'Kordi Support'} is still loading. Try again.`);
+          return;
+        }
+        selectNewSession(cloudSystemAgentConversationId(
+          accountId,
+          contact.sourceParticipantId,
+          contact.sourceAgentId,
+        ));
+        return;
+      }
+      selectNewSession(cloudCollaborationConversationId(
         contact.sourceParticipantId,
         contact.sourceRuntime ?? 'person',
       ));
@@ -175,6 +185,7 @@ export function useKordiChatStartActions({
     selectNewSession(sessionId);
   }, [
     canonicalState?.profile.humanIdentityId,
+    cloudAccountId,
     conversations,
     isNativeShell,
     selectNewSession,

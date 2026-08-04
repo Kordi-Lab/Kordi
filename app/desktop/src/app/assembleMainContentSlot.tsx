@@ -68,6 +68,11 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           args.setContactOverlayMode(null);
           if (!contact.sourceHostId || !contact.sourceParticipantId) return;
 
+          if (contact.systemContact) {
+            void args.handleStartChatWithPerson(contact);
+            return;
+          }
+
           if (contact.sourceHostId === CLOUD_HOST_SENTINEL) {
             void args.handleOpenCollaborationConversation(
               contact.sourceHostId,

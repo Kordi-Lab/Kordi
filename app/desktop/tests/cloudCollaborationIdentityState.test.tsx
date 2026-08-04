@@ -6,6 +6,7 @@ import {
   buildCloudDesktopCollaborationState,
   cloudCollaborationConversationId,
   cloudDirectPersonSessionId,
+  cloudSystemAgentConversationId,
   cloudMessageToCollaborationMessage,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdFromConversationId,
@@ -249,6 +250,10 @@ test('Cloud collaboration ids are neutral while legacy Bridge ids remain readabl
   );
   assert.equal(cloudDirectPersonSessionId('acct_me', 'acct_peer'), 'session:direct-person:acct_me:acct_peer');
   assert.equal(cloudDirectPersonSessionId('acct_peer', 'acct_me'), 'session:direct-person:acct_me:acct_peer');
+  assert.equal(
+    cloudSystemAgentConversationId('acct_me', 'acct_support', 'cloud_agent_kordi_support'),
+    'cloud:conversation:acct_support:agent:session:session%3Adirect-system-agent%3Aacct_me%3Acloud_agent_kordi_support',
+  );
   assert.equal(cloudPeerAccountIdFromConversationId('cloud:conversation:acct_peer:person'), 'acct_peer');
   assert.equal(cloudSessionIdFromConversationId('cloud:conversation:acct_peer:agent:session:session%3Aself'), 'session:self');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer:person'), 'acct_peer');
