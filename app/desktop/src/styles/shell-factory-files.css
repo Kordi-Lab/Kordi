@@ -1,7 +1,7 @@
 .app-agent-studio-files-layout {
   display: grid;
-  grid-template-columns: 176px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(156px, 172px) minmax(0, 1fr);
+  gap: 12px;
   min-height: 360px;
 }
 
@@ -19,7 +19,7 @@
 .app-agent-studio-file-list {
   display: grid;
   align-content: start;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -27,20 +27,22 @@
 
 .app-agent-studio-file-list button {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  padding: 7px 8px;
-  border-radius: 10px;
+  gap: 7px;
+  min-height: 36px;
+  padding: 5px 6px;
+  border-radius: 6px;
   color: var(--utility-muted-text);
   text-align: left;
 }
 
 .app-agent-studio-file-validity {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
   color: var(--agent-studio-success);
-  font-size: var(--agent-studio-type-caption);
-  font-weight: 650;
 }
 
 .app-agent-studio-file-validity.is-error {
@@ -63,6 +65,7 @@
 
 .app-agent-studio-file-list strong {
   font-size: var(--agent-studio-type-body);
+  font-weight: 500;
 }
 
 .app-agent-studio-file-list small {
@@ -76,7 +79,8 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--app-code-bg);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--app-code-bg) 54%, transparent);
 }
 
 .app-agent-studio-file-toolbar {
@@ -84,10 +88,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 52px;
-  padding: 8px 10px;
+  min-height: 40px;
+  padding: 6px 8px;
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
-  background: color-mix(in oklab, var(--app-control-bg) 52%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 32%, transparent);
 }
 
 .app-agent-studio-file-toolbar strong,
@@ -96,6 +100,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-agent-studio-file-saved {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-top: 0 !important;
+  color: var(--utility-muted-text);
 }
 
 .app-agent-studio-file-toolbar strong {
@@ -120,13 +133,13 @@
   border: 0;
   outline: 0;
   resize: none;
-  padding: 13px;
+  padding: 12px;
   background: transparent;
   color: color-mix(in oklab, var(--utility-foreground) 88%, var(--utility-muted-text));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--agent-studio-type-caption);
-  line-height: 1.6;
-  white-space: pre-wrap;
+  font-size: var(--agent-studio-type-secondary);
+  line-height: 1.55;
+  white-space: pre;
 }
 
 .app-agent-studio-file-feedback,
@@ -144,33 +157,36 @@
 .app-agent-studio-simple-list {
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
-  border-radius: 13px;
+  border-radius: 8px;
 }
 
 .app-agent-studio-run-checks {
   display: grid;
-  gap: 8px;
+  gap: 0;
   max-width: 760px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
+  border-radius: 8px;
 }
 
 .app-agent-studio-run-check {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: start;
-  gap: 10px;
-  padding: 13px;
-  border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
-  border-radius: 13px;
-  background: color-mix(in oklab, var(--app-card-bg) 42%, transparent);
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 48%, transparent);
+}
+
+.app-agent-studio-run-check:last-child {
+  border-bottom: 0;
 }
 
 .app-agent-studio-run-check > span {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 16px;
+  height: 16px;
   place-items: center;
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--app-control-bg) 72%, transparent);
   color: var(--utility-muted-text);
 }
 
@@ -192,12 +208,10 @@
 }
 
 .app-agent-studio-run-check.is-success > span {
-  background: color-mix(in oklab, var(--agent-studio-success) 13%, transparent);
   color: var(--agent-studio-success);
 }
 
 .app-agent-studio-run-check.is-error > span {
-  background: color-mix(in oklab, var(--agent-studio-danger) 11%, transparent);
   color: var(--agent-studio-danger);
 }
 
@@ -206,10 +220,10 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  min-height: 62px;
-  padding: 9px 11px;
+  min-height: 44px;
+  padding: 7px 9px;
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 48%, transparent);
   color: var(--utility-muted-text);
   text-align: left;
@@ -244,7 +258,7 @@
   display: grid;
   justify-items: center;
   gap: 7px;
-  min-height: 230px;
+  min-height: 180px;
   align-content: center;
   color: var(--utility-muted-text);
   text-align: center;

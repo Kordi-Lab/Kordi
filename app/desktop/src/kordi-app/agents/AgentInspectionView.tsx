@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, FileText, LockKeyhole, Settings2 } from 'lucide-react';
+import { Bot, ChevronRight, FileText, Settings2 } from 'lucide-react';
 
 import type { Agent } from '../types';
 
@@ -32,7 +32,7 @@ export function AgentInspectionView({
   if (!agent) {
     return (
       <main className="app-agent-studio-main">
-        <div className="app-skill-library-state"><Bot className="h-5 w-5" /><strong>No agent selected</strong><span>Choose an agent to inspect its published configuration.</span></div>
+        <div className="app-skill-library-state"><Bot className="h-5 w-5" /><strong>No agent selected</strong><span>Choose an agent to inspect.</span></div>
       </main>
     );
   }
@@ -56,7 +56,6 @@ export function AgentInspectionView({
         <button type="button" className="app-button-quiet app-agent-studio-button is-primary" onClick={() => onEditInBuild(agent)}>Edit in Build</button>
       </header>
       <div className="app-factory-inspect-scroll app-scroll-area">
-        <div className="app-factory-readonly-note"><LockKeyhole className="h-4 w-4" /><span>This page shows the published agent. Changes are made in its private Build conversation.</span></div>
         <ReadOnlySection title="Profile">
           <dl className="app-factory-inspect-grid">
             <div><dt>Status</dt><dd>{agent.status}</dd></div>
@@ -66,7 +65,7 @@ export function AgentInspectionView({
           </dl>
         </ReadOnlySection>
         <ReadOnlySection title="Instructions" action={{ label: 'Change in Build', onClick: () => onEditInBuild(agent) }}>
-          <p className="app-factory-inspect-copy">{agent.systemPrompt.trim() || 'No published system instructions.'}</p>
+          <p className="app-factory-inspect-copy">{agent.systemPrompt.trim() || 'No instructions.'}</p>
         </ReadOnlySection>
         <ReadOnlySection title="Model and reasoning" action={{ label: 'Change in Build', onClick: () => onEditInBuild(agent) }}>
           <dl className="app-factory-inspect-grid">
@@ -77,10 +76,10 @@ export function AgentInspectionView({
           </dl>
         </ReadOnlySection>
         <ReadOnlySection title="Capabilities" action={{ label: 'Manage in Build', onClick: () => onEditInBuild(agent) }}>
-          {capabilities.length > 0 ? <div className="app-factory-capability-list">{capabilities.map((capability) => <div key={`${capability.kind}:${capability.name}`}><Settings2 className="h-4 w-4" /><span><strong>{capability.name}</strong><small>{capability.kind}</small></span></div>)}</div> : <p className="app-factory-inspect-empty">No published capabilities.</p>}
+          {capabilities.length > 0 ? <div className="app-factory-capability-list">{capabilities.map((capability) => <div key={`${capability.kind}:${capability.name}`}><Settings2 className="h-4 w-4" /><span><strong>{capability.name}</strong><small>{capability.kind}</small></span></div>)}</div> : <p className="app-factory-inspect-empty">No capabilities.</p>}
         </ReadOnlySection>
-        <ReadOnlySection title="Published files">
-          {agent.identityFiles.length > 0 ? <div className="app-factory-file-list">{agent.identityFiles.map((path) => <div key={path}><FileText className="h-4 w-4" /><span>{path}</span></div>)}</div> : <p className="app-factory-inspect-empty">No published files are exposed by this agent.</p>}
+        <ReadOnlySection title="Files">
+          {agent.identityFiles.length > 0 ? <div className="app-factory-file-list">{agent.identityFiles.map((path) => <div key={path}><FileText className="h-4 w-4" /><span>{path}</span></div>)}</div> : <p className="app-factory-inspect-empty">No files.</p>}
         </ReadOnlySection>
       </div>
     </main>

@@ -46,6 +46,64 @@ fn factory_target_parsing_preserves_legacy_agent_ids() {
 }
 
 #[test]
+fn untouched_creation_builds_stay_out_of_the_catalog() {
+    for target_key in [
+        "create-agent",
+        "account:user-1:create-skill",
+        "device:create:tool:build-1",
+        "account:user-1:create:plugin:build-2",
+    ] {
+        let metadata = DesktopAgentBuilderMetadata {
+            draft_id: uuid::Uuid::new_v4().to_string(),
+            target_key: target_key.to_string(),
+            session_id: "session:agent-builder:new".to_string(),
+            status: "draft".to_string(),
+            created_at_ms: 10,
+            updated_at_ms: 10,
+        };
+        assert!(is_untouched_creation(&metadata), "{target_key}");
+    }
+
+    let started = DesktopAgentBuilderMetadata {
+        draft_id: uuid::Uuid::new_v4().to_string(),
+        target_key: "account:user-1:create:skill:build-1".to_string(),
+        session_id: "session:agent-builder:started".to_string(),
+        status: "draft".to_string(),
+        created_at_ms: 10,
+        updated_at_ms: 11,
+    };
+    assert!(!is_untouched_creation(&started));
+}
+
+#[test]
+fn build_catalog_collapses_scoped_and_legacy_associations() {
+    let legacy = DesktopAgentBuilderSummary {
+        draft_id: "legacy-draft".to_string(),
+        target_key: "agent:cloud-agent:agent-1".to_string(),
+        session_id: "session:agent-builder:legacy".to_string(),
+        artifact_kind: "agent".to_string(),
+        name: "Agent one".to_string(),
+        lifecycle: "draft".to_string(),
+        updated_at_ms: 10,
+        available: true,
+    };
+    let scoped = DesktopAgentBuilderSummary {
+        draft_id: "scoped-draft".to_string(),
+        target_key: "account:user-1:agent:cloud-agent:agent-1".to_string(),
+        session_id: "session:agent-builder:scoped".to_string(),
+        artifact_kind: "agent".to_string(),
+        name: "Agent one".to_string(),
+        lifecycle: "draft".to_string(),
+        updated_at_ms: 20,
+        available: true,
+    };
+
+    let summaries = deduplicate_builder_summaries([legacy, scoped]);
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].draft_id, "scoped-draft");
+}
+
+#[test]
 fn frontmatter_name_requires_frontmatter() {
     assert_eq!(
         frontmatter_name("---\nname: repo-review\ndescription: Test\n---\n"),

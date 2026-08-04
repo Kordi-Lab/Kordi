@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Blocks, Bot, Hammer, Plus, Puzzle, Search, Wrench } from 'lucide-react';
+import { Blocks, Bot, Globe2, Hammer, Plus, Puzzle, Search, Wrench } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { DesktopAgentBuilderSummary, DesktopSkillLibraryEntry } from '@/lib/desktop';
@@ -23,11 +23,6 @@ function artifactLabel(kind: string) {
   return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
-function buildStatus(summary: DesktopAgentBuilderSummary) {
-  if (!summary.available) return 'Needs recovery';
-  return summary.lifecycle === 'published' ? 'Published' : 'Private draft';
-}
-
 export function AgentStudioRail({
   agents,
   activeAgentId,
@@ -38,6 +33,7 @@ export function AgentStudioRail({
   selectedLibraryId,
   section,
   librarySection,
+  libraryCommunity,
   canCreateAgent,
   onSectionChange,
   onLibrarySectionChange,
@@ -55,6 +51,7 @@ export function AgentStudioRail({
   selectedLibraryId: string | null;
   section: FactorySection;
   librarySection: FactoryLibrarySection;
+  libraryCommunity: boolean;
   canCreateAgent: boolean;
   onSectionChange: (section: FactorySection) => void;
   onLibrarySectionChange: (section: FactoryLibrarySection) => void;
@@ -69,7 +66,7 @@ export function AgentStudioRail({
   const createMenuSummaryRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const scrollPositionsRef = useRef<Record<string, number>>({});
-  const viewKey = section === 'library' ? `${section}:${librarySection}` : section;
+  const viewKey = section === 'library' ? `${section}:${librarySection}:${libraryCommunity ? 'community' : 'installed'}` : section;
   const query = queries[viewKey] ?? '';
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
@@ -196,7 +193,7 @@ export function AgentStudioRail({
             })}
           </div>
         ) : null}
-        <label className="app-agent-studio-rail-search">
+        {section === 'library' && librarySection === 'skill' && libraryCommunity ? null : <label className="app-agent-studio-rail-search">
           <Search className="h-4 w-4" />
           <input
             value={query}
@@ -204,23 +201,19 @@ export function AgentStudioRail({
             placeholder={section === 'build' ? 'Search builds' : section === 'agents' ? 'Search agents' : `Search ${librarySection}s`}
             aria-label={section === 'build' ? 'Search builds' : section === 'agents' ? 'Search agents' : `Search ${librarySection}s`}
           />
-        </label>
+        </label>}
       </header>
       <div
         ref={listRef}
         className="app-agent-studio-agent-list app-scroll-area is-agent-list"
         onScroll={(event) => { scrollPositionsRef.current[viewKey] = event.currentTarget.scrollTop; }}
       >
-        {section === 'build' ? filteredBuilds.map((build) => {
-          const Icon = ARTIFACT_ICONS[(build.artifactKind in ARTIFACT_ICONS ? build.artifactKind : 'agent') as FactoryArtifactKind];
-          return (
-            <button key={build.sessionId} type="button" aria-current={activeBuildSessionId === build.sessionId ? 'true' : undefined} className={cn('app-agent-studio-agent-row', activeBuildSessionId === build.sessionId && 'app-session-row-active')} onClick={() => onOpenBuild(build)}>
-              <span className="app-agent-studio-draft-avatar"><Icon className="h-4 w-4" /></span>
-              <span className="min-w-0"><strong>{build.name}</strong><small>{artifactLabel(build.artifactKind)} · {buildStatus(build)}</small></span>
-              {!build.available ? <span className="app-agent-studio-agent-state is-warning">Recover</span> : null}
-            </button>
-          );
-        }) : null}
+        {section === 'build' ? filteredBuilds.map((build) => (
+          <button key={build.sessionId} type="button" aria-current={activeBuildSessionId === build.sessionId ? 'true' : undefined} className={cn('app-agent-studio-agent-row is-compact', activeBuildSessionId === build.sessionId && 'app-session-row-active')} onClick={() => onOpenBuild(build)}>
+            <strong>{build.name}</strong>
+            <span className={cn('app-agent-studio-agent-state', !build.available && 'is-warning')}>{build.available ? artifactLabel(build.artifactKind) : 'Recover'}</span>
+          </button>
+        )) : null}
         {section === 'agents' ? filteredAgents.map((agent) => {
           const capabilityCount = agent.loadedSkills.length + agent.loadedTools.length + agent.loadedPlugins.length;
           return (
@@ -231,18 +224,21 @@ export function AgentStudioRail({
             </button>
           );
         }) : null}
-        {section === 'library' ? filteredLibrary.map((artifact) => {
-          const Icon = ARTIFACT_ICONS[artifact.kind];
-          return (
-            <button key={artifact.id} type="button" aria-current={artifact.id === selectedLibraryId ? 'true' : undefined} className={cn('app-agent-studio-agent-row', artifact.id === selectedLibraryId && 'app-session-row-active')} onClick={() => onOpenLibraryArtifact(artifact.kind, artifact.id)}>
-              <span className="app-agent-studio-draft-avatar"><Icon className="h-4 w-4" /></span>
-              <span className="min-w-0"><strong>{artifact.name}</strong><small>{artifact.status}</small></span>
-            </button>
-          );
-        }) : null}
+        {section === 'library' && librarySection === 'skill' && libraryCommunity ? (
+          <div className="app-factory-community-rail-note">
+            <Globe2 className="h-5 w-5" />
+            <strong>Community skills</strong>
+          </div>
+        ) : null}
+        {section === 'library' && !(librarySection === 'skill' && libraryCommunity) ? filteredLibrary.map((artifact) => (
+          <button key={artifact.id} type="button" aria-current={artifact.id === selectedLibraryId ? 'true' : undefined} className={cn('app-agent-studio-agent-row is-compact', artifact.id === selectedLibraryId && 'app-session-row-active')} onClick={() => onOpenLibraryArtifact(artifact.kind, artifact.id)}>
+            <strong>{artifact.name}</strong>
+            <span className="app-agent-studio-agent-state">{artifact.status}</span>
+          </button>
+        )) : null}
         {section === 'build' && filteredBuilds.length === 0 ? <div className="app-agent-studio-rail-empty"><Hammer className="mx-auto mb-2 h-4 w-4" />Start a build with the + button.</div> : null}
         {section === 'agents' && filteredAgents.length === 0 ? <div className="app-agent-studio-rail-empty">No agents match this search.</div> : null}
-        {section === 'library' && filteredLibrary.length === 0 ? <div className="app-agent-studio-rail-empty">No {librarySection}s match this search.</div> : null}
+        {section === 'library' && !(librarySection === 'skill' && libraryCommunity) && filteredLibrary.length === 0 ? <div className="app-agent-studio-rail-empty">No {librarySection}s match this search.</div> : null}
       </div>
     </aside>
   );

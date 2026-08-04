@@ -78,6 +78,7 @@ function railProps(overrides: Partial<React.ComponentProps<typeof AgentStudioRai
     selectedLibraryId: null,
     section: 'build',
     librarySection: 'skill',
+    libraryCommunity: false,
     canCreateAgent: true,
     onSectionChange: () => undefined,
     onLibrarySectionChange: () => undefined,
@@ -143,6 +144,28 @@ test('Factory rail exposes Build, Agent, Lib and all chat-first artifact kinds',
   assert.match(html, /Lib <span>1<\/span>/);
   assert.match(html, /Search agents/);
   assert.doesNotMatch(html, /Factory runtime connected/);
+});
+
+test('Factory build rows stay compact and omit decorative icons and private-draft copy', () => {
+  const html = renderToStaticMarkup(
+    <AgentStudioRail {...railProps({
+      section: 'build',
+      builds: [{
+        draftId: 'draft:one',
+        targetKey: 'target:one',
+        sessionId: 'session:one',
+        artifactKind: 'agent',
+        name: 'Research helper',
+        lifecycle: 'draft',
+        updatedAtMs: 1,
+        available: true,
+      }],
+    })} />,
+  );
+
+  assert.match(html, /app-agent-studio-agent-row is-compact/);
+  assert.match(html, /<strong>Research helper<\/strong><span class="app-agent-studio-agent-state">Agent<\/span>/);
+  assert.doesNotMatch(html, /Private draft|app-agent-studio-draft-avatar/);
 });
 
 test('Factory plus menu stays fully inside the narrow rail', () => {
@@ -251,15 +274,33 @@ test('Lib exposes independent Skill, Tool, and Plugin counts with stable selecti
   assert.match(html, /app-session-row-active/);
   assert.match(html, /aria-current="true"/);
   assert.match(html, /Enabled/);
+  assert.match(html, /<strong>repository-review<\/strong><span class="app-agent-studio-agent-state">Enabled<\/span>/);
+  assert.doesNotMatch(html, /app-agent-studio-draft-avatar/);
 });
 
 test('Factory rail keys search and scroll return context independently for each peer view', () => {
   const source = readFileSync(new URL('../src/kordi-app/agents/AgentStudioRail.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /const \[queries, setQueries\] = useState<Record<string, string>>\(\{\}\);/);
-  assert.match(source, /const viewKey = section === 'library' \? `\$\{section\}:\$\{librarySection\}` : section;/);
+  assert.match(source, /const viewKey = section === 'library' \? `\$\{section\}:\$\{librarySection\}:\$\{libraryCommunity \? 'community' : 'installed'\}` : section;/);
   assert.match(source, /setQueries\(\(current\) => \(\{ \.\.\.current, \[viewKey\]: event\.currentTarget\.value \}\)\)/);
   assert.equal(source.match(/scrollPositionsRef\.current\[viewKey\]/g)?.length, 2);
+});
+
+test('Community discovery owns its search pane without duplicating the installed-skill search', () => {
+  const html = renderToStaticMarkup(
+    <AgentStudioRail {...railProps({
+      skills: [builtSkill],
+      section: 'library',
+      librarySection: 'skill',
+      libraryCommunity: true,
+    })} />,
+  );
+
+  assert.match(html, /Community skills/);
+  assert.doesNotMatch(html, /Search trusted catalogs/);
+  assert.doesNotMatch(html, /Search skills/);
+  assert.doesNotMatch(html, /repository-review/);
 });
 
 test('Skill Library keeps install state and explicit add-to-agent action visible', () => {

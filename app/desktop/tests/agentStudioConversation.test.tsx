@@ -144,6 +144,7 @@ test('new Factory builds offer plain-language creation prompts', () => {
 
   assert.match(html, /I want to create an agent that helps me with…/);
   assert.match(html, /Give this agent clear boundaries for…/);
+  assert.doesNotMatch(html, /Tell me what you want to build|nothing goes live until you approve/);
 
   const skillHtml = renderToStaticMarkup(
     <AgentStudioConversation
@@ -162,6 +163,7 @@ test('new Factory builds offer plain-language creation prompts', () => {
   );
   assert.match(skillHtml, /I want to create a skill for…/);
   assert.match(skillHtml, /Define the inputs and outputs for this skill/);
+  assert.doesNotMatch(skillHtml, /Tell me what you want to build|nothing goes live until you approve/);
 });
 
 test('Factory suggestions fill the composer and disappear only after the first send', async () => {

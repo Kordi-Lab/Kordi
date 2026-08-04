@@ -17,7 +17,7 @@
   align-self: stretch;
   color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-secondary);
-  font-weight: 640;
+  font-weight: 600;
 }
 
 .app-skill-library-mode button::after {
@@ -75,7 +75,7 @@
 
 .app-skill-library-title-row h3 {
   font-size: var(--agent-studio-type-subheading);
-  font-weight: 710;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 
@@ -111,7 +111,7 @@
 
 .app-skill-library-facts dd {
   color: var(--utility-muted-text);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .app-skill-library-actions {
@@ -163,7 +163,7 @@
 .app-skill-agent-picker-heading strong {
   color: var(--utility-foreground);
   font-size: var(--agent-studio-type-secondary);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .app-skill-agent-picker-heading span {
@@ -209,7 +209,7 @@
 
 .app-skill-agent-picker-list strong {
   font-size: var(--agent-studio-type-secondary);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .app-skill-agent-picker-list small {
@@ -224,7 +224,7 @@
   gap: 4px;
   color: var(--agent-studio-success);
   font-size: var(--agent-studio-type-caption);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .app-skill-agent-picker-error {
@@ -264,7 +264,7 @@
   border-radius: 8px;
   background: color-mix(in oklab, var(--app-control-bg) 68%, transparent);
   color: var(--utility-foreground);
-  font-weight: 640;
+  font-weight: 600;
 }
 
 .app-skill-library-confirm button.is-danger {
@@ -291,7 +291,7 @@
   padding: 5px 8px 8px;
   color: color-mix(in oklab, var(--utility-muted-text) 72%, transparent);
   font-size: var(--agent-studio-type-caption);
-  font-weight: 680;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

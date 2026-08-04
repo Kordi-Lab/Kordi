@@ -16,7 +16,7 @@ import { AgentInspectionView } from './AgentInspectionView';
 import { AgentStudioConversation } from './AgentStudioConversation';
 import { AgentStudioRail } from './AgentStudioRail';
 import { AgentStudioWorkspace } from './AgentStudioWorkspace';
-import { CapabilityLibraryView } from './CapabilityLibraryView';
+import { CapabilityLibraryView, type FactorySkillLibraryMode } from './CapabilityLibraryView';
 import {
   agentBuilderTargetKey,
   agentStudioConfigChanges,
@@ -222,6 +222,7 @@ export function AgentsPage({
 }: AgentsPageProps) {
   const [factorySection, setFactorySection] = useState<FactorySection>('agents');
   const [librarySection, setLibrarySection] = useState<FactoryLibrarySection>('skill');
+  const [librarySkillMode, setLibrarySkillMode] = useState<FactorySkillLibraryMode>('installed');
   const [selectedLibraryIds, setSelectedLibraryIds] = useState<Partial<Record<FactoryLibrarySection, string>>>({});
   const [buildRoute, setBuildRoute] = useState<FactoryBuildRoute | null>(null);
   const [buildSeed, setBuildSeed] = useState<DesktopAgentBuilderSeed>({});
@@ -230,6 +231,7 @@ export function AgentsPage({
   const [routingToBuild, setRoutingToBuild] = useState(false);
   const [builderGeneration, setBuilderGeneration] = useState(0);
   const [accessDraftByAgentId, setAccessDraftByAgentId] = useState<Record<string, CloudAgentAccessScope>>({});
+  const [publishedAccessByAgentId, setPublishedAccessByAgentId] = useState<Record<string, CloudAgentAccessScope>>({});
   const [routingDraftByAgentId, setRoutingDraftByAgentId] = useState<Record<string, AgentModelRoutingDraft>>({});
   const [publishing, setPublishing] = useState(false);
   const [publishFeedback, setPublishFeedback] = useState<AgentSaveFeedback | null>(null);
@@ -237,10 +239,16 @@ export function AgentsPage({
   const buildingStandaloneArtifact = Boolean(buildRoute && routeKind !== 'agent');
   const creating = Boolean(buildRoute && (buildRoute.artifactId === null || buildingStandaloneArtifact));
   const creatingSkill = routeKind === 'skill' && creating;
-  const inspectedAgent = activeAgent ?? agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
-  const selectedAgent = buildRoute?.artifactKind === 'agent' && buildRoute.artifactId
+  const inspectedAgentSource = activeAgent ?? agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
+  const inspectedAgent = inspectedAgentSource && publishedAccessByAgentId[inspectedAgentSource.id]
+    ? { ...inspectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[inspectedAgentSource.id] }
+    : inspectedAgentSource;
+  const selectedAgentSource = buildRoute?.artifactKind === 'agent' && buildRoute.artifactId
     ? agents.find((agent) => agent.id === buildRoute.artifactId)
     : undefined;
+  const selectedAgent = selectedAgentSource && publishedAccessByAgentId[selectedAgentSource.id]
+    ? { ...selectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[selectedAgentSource.id] }
+    : selectedAgentSource;
   const creatorAgent = agents.find((agent) => agent.id === 'desktop:local-agent')
     ?? agents.find((agent) => agent.name.trim().toLocaleLowerCase() === 'kordi' && !agent.cloudAgentId)
     ?? agents.find((agent) => agent.isOwned && !agent.cloudAgentId)
@@ -440,15 +448,19 @@ export function AgentsPage({
     } else if (canToggleRuntimeSkills) kinds.add('skill');
     return kinds;
   }, [buildingStandaloneArtifact, canToggleRuntimeSkills, creating, hasLocalConfig, routeKind, selectedAgent?.cloudAgentId]);
-  const selectedAccessScope = selectedAgent?.cloudAgentId
-    ? accessDraftByAgentId[selectedAgent.id]
-      ?? (builder.status?.draft?.access === 'participant-conversations' ? 'participant_conversations' : null)
+  const builderAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
+    ? 'participant_conversations'
+    : 'private';
+  const publishedAccessScope: CloudAgentAccessScope = selectedAgent
+    ? publishedAccessByAgentId[selectedAgent.id]
       ?? selectedAgent.cloudAgentAccessScope
-      ?? 'private'
+      ?? (builder.status?.lifecycle === 'published' ? builderAccessScope : 'private')
+    : 'private';
+  const selectedAccessScope = selectedAgent
+    ? accessDraftByAgentId[selectedAgent.id] ?? builderAccessScope
     : 'private';
   const accessChanged = Boolean(
-    selectedAgent?.cloudAgentId
-      && selectedAccessScope !== (selectedAgent.cloudAgentAccessScope ?? 'private'),
+    selectedAgent && selectedAccessScope !== publishedAccessScope,
   );
   const builderDraft = builder.status?.draft;
   const cloudDefinitionChanges = selectedAgent?.cloudAgentId && builderDraft ? [
@@ -687,6 +699,14 @@ export function AgentsPage({
           change.key !== 'skills' || !canToggleRuntimeSkills
         ));
         if (hasFileBackedChange) await saveAgentConfig(selectedAgent, 'all', activeAgentConfig);
+        if (accessChanged) {
+          setPublishedAccessByAgentId((current) => ({ ...current, [selectedAgent.id]: selectedAccessScope }));
+          setAccessDraftByAgentId((current) => {
+            const next = { ...current };
+            delete next[selectedAgent.id];
+            return next;
+          });
+        }
         markAgentDraftPublished(selectedAgent, activeAgentConfig, 'Published Factory runtime changes');
       }
       await builder.markPublished();
@@ -724,8 +744,8 @@ export function AgentsPage({
     await refreshBuilds();
   };
 
-  const updateCloudAccess = (scope: CloudAgentAccessScope) => {
-    if (!selectedAgent?.cloudAgentId || !onUpdateCloudAgent) return;
+  const updateAgentAccess = (scope: CloudAgentAccessScope) => {
+    if (!selectedAgent) return;
     setAccessDraftByAgentId((current) => ({ ...current, [selectedAgent.id]: scope }));
     void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
     setPublishFeedback({ tone: 'info', text: 'Access change added to the reviewable draft.' });
@@ -942,6 +962,7 @@ export function AgentsPage({
           selectedLibraryId={selectedLibraryId}
           section={factorySection}
           librarySection={librarySection}
+          libraryCommunity={librarySection === 'skill' && librarySkillMode === 'community'}
           canCreateAgent={Boolean(onCreateCloudAgent)}
           onSectionChange={openFactorySection}
           onLibrarySectionChange={setLibrarySection}
@@ -961,6 +982,10 @@ export function AgentsPage({
             kind={librarySection}
             artifact={selectedLibraryArtifact}
             skill={selectedSkill}
+            skillMode={librarySkillMode}
+            installedSkills={skillLibrary.skills}
+            onSkillModeChange={setLibrarySkillMode}
+            onCommunityInstalled={async () => { await skillLibrary.refresh(); }}
             onEditInBuild={(artifact) => void editLibraryArtifactInBuild(artifact)}
           />
         ) : null}
@@ -970,7 +995,6 @@ export function AgentsPage({
               <header className="app-factory-build-context">
                 <button type="button" className="app-button-quiet app-agent-studio-icon-button" onClick={returnFromBuild} aria-label="Return to inspection"><ArrowLeft className="h-4 w-4" /></button>
                 <div className="min-w-0"><strong>{displayName}</strong><span>{routeKind.charAt(0).toUpperCase() + routeKind.slice(1)} · {buildState}</span></div>
-                <code aria-label="Factory build route">Factory / Build / {builder.status?.sessionId ?? buildRoute.sessionId ?? 'new'}</code>
               </header>
               {builder.sessionUnavailable ? (
                 <div className="app-factory-recovery" role="alert">
@@ -1047,7 +1071,7 @@ export function AgentsPage({
               chatModelOptions={chatModelOptions}
               composerProviderOptions={composerProviderOptions}
               onUpdateModelRouting={canStageRouting ? stageModelRouting : undefined}
-              onUpdateCloudAccess={updateCloudAccess}
+              onUpdateAgentAccess={updateAgentAccess}
               activeDetail={activeDetail}
               activeFilePreview={activeFilePreview}
               activeFileDraft={activeFileDraft}

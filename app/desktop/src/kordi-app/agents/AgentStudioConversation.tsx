@@ -103,21 +103,6 @@ function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: 
   };
 }
 
-function welcomeMessage(creating: boolean, targetName: string): Message {
-  return {
-    id: 'agent-builder-welcome',
-    role: 'owned-agent',
-    sender: 'Kordi Factory',
-    sourceSenderLabel: 'Kordi Factory',
-    senderType: 'agent',
-    senderAvatarSeed: 'kordi-factory',
-    text: creating
-      ? 'Tell me what you want to build. I can assemble an agent, skill, tool setup, workflow, or supporting files in this private workspace, then validate the result before anything goes live.'
-      : `Tell me what you want to build or change around ${targetName}. I can update its prompt, skills, tools, workflows, and files in a private workspace; nothing goes live until you approve it.`,
-    time: '',
-  };
-}
-
 export function AgentStudioConversation({
   targetName,
   creating,
@@ -427,7 +412,6 @@ export function AgentStudioConversation({
   return (
     <section className="app-agent-studio-conversation" aria-label="Kordi Factory conversation">
       <div ref={scrollRef} className="app-agent-studio-messages app-agent-studio-native-transcript" aria-live="polite">
-        {messages.length === 0 && !showOptimistic ? <MessageBubble msg={welcomeMessage(creating, targetName)} densityMode="agent-compact" plainAgentResponse /> : null}
         {messages.map((message) => <MessageBubble key={message.id} msg={message} densityMode="agent-compact" plainAgentResponse onOpenAuthSettings={onOpenAuthSettings} />)}
         {showOptimistic && (optimisticPrompt || optimisticAttachments.length > 0) ? (
           <MessageBubble

@@ -1,7 +1,7 @@
 use kordi_cli::skill_library::SkillLibraryEntry;
-use std::fs;
 #[cfg(test)]
 use std::path::Path;
+use std::{collections::BTreeMap, fs};
 use tauri::State;
 
 use super::{now_millis, DesktopChatManager, DesktopSessionHandle};
@@ -179,6 +179,38 @@ fn summary_from_metadata(metadata: &DesktopAgentBuilderMetadata) -> DesktopAgent
     }
 }
 
+fn is_creation_target(target_key: &str) -> bool {
+    let target = unscoped_target(target_key);
+    target.starts_with("create:")
+        || ["agent", "skill", "tool", "plugin"]
+            .iter()
+            .any(|kind| target == format!("create-{kind}"))
+}
+
+fn is_untouched_creation(metadata: &DesktopAgentBuilderMetadata) -> bool {
+    metadata.status == "draft"
+        && metadata.updated_at_ms <= metadata.created_at_ms
+        && is_creation_target(&metadata.target_key)
+}
+
+fn deduplicate_builder_summaries(
+    summaries: impl IntoIterator<Item = DesktopAgentBuilderSummary>,
+) -> Vec<DesktopAgentBuilderSummary> {
+    let mut summaries_by_target = BTreeMap::<String, DesktopAgentBuilderSummary>::new();
+    for summary in summaries {
+        let identity = unscoped_target(&summary.target_key).to_string();
+        let replace = summaries_by_target.get(&identity).is_none_or(|current| {
+            (summary.available, summary.updated_at_ms) > (current.available, current.updated_at_ms)
+        });
+        if replace {
+            summaries_by_target.insert(identity, summary);
+        }
+    }
+    let mut summaries = summaries_by_target.into_values().collect::<Vec<_>>();
+    summaries.sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
+    summaries
+}
+
 async fn open_builder_metadata(
     manager: &DesktopChatManager,
     mut metadata: DesktopAgentBuilderMetadata,
@@ -212,29 +244,27 @@ async fn open_builder_metadata(
 #[tauri::command]
 pub async fn desktop_agent_builder_list() -> Result<Vec<DesktopAgentBuilderSummary>, String> {
     let _mutation_guard = builder_mutation_lock().lock().await;
-    let mut summaries = all_builder_associations()?
+    let summaries = all_builder_associations()?
         .into_iter()
-        .map(|(target_key, association, metadata)| {
-            metadata.map_or_else(
-                || {
-                    let artifact_kind = artifact_kind_from_target(&target_key);
-                    DesktopAgentBuilderSummary {
-                        draft_id: association.draft_id,
-                        session_id: association.session_id,
-                        name: fallback_name_from_target(&target_key, &artifact_kind),
-                        target_key,
-                        artifact_kind,
-                        lifecycle: "unavailable".to_string(),
-                        updated_at_ms: association.updated_at_ms,
-                        available: false,
-                    }
-                },
-                |metadata| summary_from_metadata(&metadata),
-            )
+        .filter_map(|(target_key, association, metadata)| match metadata {
+            Some(metadata) if is_untouched_creation(&metadata) => None,
+            Some(metadata) => Some(summary_from_metadata(&metadata)),
+            None => {
+                let artifact_kind = artifact_kind_from_target(&target_key);
+                Some(DesktopAgentBuilderSummary {
+                    draft_id: association.draft_id,
+                    session_id: association.session_id,
+                    name: fallback_name_from_target(&target_key, &artifact_kind),
+                    target_key,
+                    artifact_kind,
+                    lifecycle: "unavailable".to_string(),
+                    updated_at_ms: association.updated_at_ms,
+                    available: false,
+                })
+            }
         })
         .collect::<Vec<_>>();
-    summaries.sort_by(|left, right| right.updated_at_ms.cmp(&left.updated_at_ms));
-    Ok(summaries)
+    Ok(deduplicate_builder_summaries(summaries))
 }
 
 #[tauri::command]
