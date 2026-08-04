@@ -36,7 +36,10 @@ import {
   MessageSelectionBar,
 } from '@/pages/chatsPage.composerPrimitives';
 import { COLLABORATION_ROUTING_NOTICE_EXIT_MS } from '@/pages/chatsPage.constants';
-import { shouldUseCompactModelRouteMenu } from '@/pages/chatsPage.header';
+import {
+  canConfigureConversationModelRoute,
+  shouldUseCompactModelRouteMenu,
+} from '@/pages/chatsPage.header';
 import type {
   ChatsPageComposer,
   ChatsPageRuntime,
@@ -125,7 +128,9 @@ export function MainComposer({
     chatModelOptions,
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
-  const useCompactRouteMenu = shouldUseCompactModelRouteMenu(conversation);
+  const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
+  const useCompactRouteMenu = canConfigureModelRoute
+    && shouldUseCompactModelRouteMenu(conversation);
 
   return (
     <div className="shrink-0 px-5 pb-4 pt-3">
@@ -350,7 +355,8 @@ export function MainComposer({
                   cacheText={localRouting.cacheText}
                 />
               ) : null}
-            {localRouting.paneKind === 'agent'
+            {canConfigureModelRoute
+              && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
                 <ComposerModelControls
@@ -380,7 +386,8 @@ export function MainComposer({
                     : undefined}
                   compact={display.showCompanionPane}
                 />
-              ) : collaborationRouting.enabled
+              ) : canConfigureModelRoute
+                && collaborationRouting.enabled
                 && !useCompactRouteMenu
                 && collaborationRouting.model ? (
                   <CollaborationRoutingControls

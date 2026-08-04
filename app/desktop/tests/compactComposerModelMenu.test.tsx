@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { CompactComposerModelMenu } from '../src/kordi-app/components/composer';
 import { shouldUseCompactModelRouteMenu } from '../src/pages/ChatsPage';
+import { canConfigureConversationModelRoute } from '../src/pages/chatsPage.header';
 import type { Conversation } from '../src/kordi-app/types';
 
 const providerOptions = [
@@ -145,6 +146,39 @@ test('compact model route menu is scoped to group and human contact chats', () =
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'external-agent', directness: 'agent thread' })), false);
 });
 
+test('Kordi Support keeps its server-owned model route locked', () => {
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    id: 'cloud:conversation:acct_kordi_support:agent',
+  })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    canonicalSessionId: 'session:direct-system-agent:acct_me:cloud_agent_kordi_support',
+  })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    collaborationTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_kordi_support',
+      agentId: 'cloud_agent_kordi_support',
+    },
+  })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    identity: {
+      sourceHostId: 'cloud',
+      localHumanId: 'acct_me',
+      localHumanName: 'Me',
+      remoteAgentId: 'cloud_agent_kordi_support',
+    },
+  })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({ supportTicketEnabled: true })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({ supportTicketEnabled: false })), true);
+  assert.equal(canConfigureConversationModelRoute(conversation({})), true);
+
+  const source = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const canConfigureModelRoute = canConfigureConversationModelRoute\(conversation\)/);
+  assert.match(source, /canConfigureModelRoute[\s\S]*<CompactComposerModelMenu/);
+  assert.match(source, /canConfigureModelRoute[\s\S]*<ComposerModelControls/);
+  assert.match(source, /canConfigureModelRoute[\s\S]*<CollaborationRoutingControls/);
+});
+
 test('compact menu stages changes until explicit save', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   assert.match(source, /const \[stagedProviderValue, setStagedProviderValue\] = useState/);
@@ -181,7 +215,7 @@ test('ChatsPage places compact model route control before attachment and keeps e
 
 test('ChatsPage shows compact model route for group/contact chats even without a bridge routing agent', () => {
   const source = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
-  assert.match(source, /const useCompactRouteMenu = shouldUseCompactModelRouteMenu\(conversation\)/);
+  assert.match(source, /const useCompactRouteMenu = canConfigureModelRoute[\s\S]*shouldUseCompactModelRouteMenu\(conversation\)/);
   assert.match(source, /\{useCompactRouteMenu \? \(/);
   assert.doesNotMatch(source, /useCompactRouteMenu && \(!collaborationRouting\.enabled \|\| collaborationRouting\.model\)/);
 });
