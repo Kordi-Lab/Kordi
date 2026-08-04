@@ -110,6 +110,9 @@ test('Kordi Factory conversation uses the normal transcript identity and attachm
   assert.match(html, /https:\/\/coordinar\.io\/profile\/avatar\.png/);
   assert.match(html, /Make the instructions more concise/);
   assert.match(html, /aria-label="Add attachment"/);
+  assert.match(html, /data-composer-attachment-add-trigger="true"/);
+  assert.match(html, /lucide-plus/);
+  assert.doesNotMatch(html, /lucide-paperclip/);
   assert.match(html, /ChatGPT account/);
   assert.match(html, /GPT Test/);
   assert.match(html, /Medium/);
@@ -172,6 +175,9 @@ test('Factory suggestions fill the composer and disappear only after the first s
     const suggestion = Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
       .find((button) => button.textContent === 'Review this agent for skills it does not need');
     assert.ok(suggestion);
+    const attachmentTrigger = host.querySelector<HTMLButtonElement>('[data-composer-attachment-add-trigger="true"]');
+    assert.ok(attachmentTrigger);
+    assert.equal(attachmentTrigger.disabled, true);
 
     await act(async () => {
       suggestion.dispatchEvent(new installed.dom.window.MouseEvent('click', {

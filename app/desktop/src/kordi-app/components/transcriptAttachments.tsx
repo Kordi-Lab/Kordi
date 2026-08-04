@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { Check, CheckCheck, Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide-react';
+import { Check, CheckCheck, Download, ExternalLink, Image, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
@@ -14,6 +14,7 @@ import {
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import type { Message, MessageAttachment } from '../types';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
@@ -617,43 +618,6 @@ function AttachmentImageDeliveryOverlay({ status, time, foregroundTone, onRetry 
   );
 }
 
-function AttachmentSendingIndicator({ className }: { className?: string }) {
-  return (
-    <div
-      data-attachment-sending-indicator="true"
-      className={cn('pointer-events-none absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-medium text-white/92 shadow-lg shadow-black/20 backdrop-blur-md', className)}
-      aria-label="Sending attachment"
-    >
-      <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
-      <span>Sending…</span>
-    </div>
-  );
-}
-
-function AttachmentFileCard({ attachment, index, isSending = false }: { attachment: MessageAttachment; index: number; isSending?: boolean }) {
-  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
-  const label = [attachment.formatLabel || (isArchiveAttachment(attachment) ? 'ARCHIVE' : 'FILE'), sizeLabel]
-    .filter(Boolean)
-    .join(' • ');
-  const Icon = attachment.kind === 'image' ? Image : FileText;
-
-  return (
-    <div key={`${attachment.name}-${index}`} data-attachment-file-card="true" className="relative flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[12px] font-medium text-white/92">{attachment.name}</div>
-        <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-          {label || 'FILE'}
-        </div>
-      </div>
-      <AttachmentActions attachment={attachment} />
-      {isSending ? <AttachmentSendingIndicator /> : null}
-    </div>
-  );
-}
-
 function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   return (
     <div
@@ -1023,9 +987,13 @@ export function AttachmentPreview({
           </div>
         ) : null}
         {downloadableAttachments.length > 0 ? (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col items-start gap-1.5">
             {downloadableAttachments.map((attachment, index) => (
-              <AttachmentFileCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} isSending={isSending} />
+              <TranscriptFileAttachmentLink
+                key={`${attachment.name}-${index}`}
+                attachment={attachment}
+                isSending={isSending}
+              />
             ))}
           </div>
         ) : null}

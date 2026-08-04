@@ -63,6 +63,28 @@
   color-scheme: light;
 }
 
+/* Attachment menu geometry follows the composer, while its compact type scale
+ * remains explicit and independent from the available composer width. */
+.app-transient-surface.app-composer-attachment-add-menu {
+  border: 0 !important;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.24) !important;
+}
+
+.app-transient-surface.app-composer-attachment-add-menu.app-compact-model-menu-light {
+  box-shadow: 0 8px 26px rgb(15 23 42 / 0.08) !important;
+}
+
+.app-composer-attachment-add-menu-label {
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.app-composer-attachment-add-menu-action {
+  min-height: 28px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .app-composer-model-menu-layer .app-composer-popover-item,
 .app-composer-model-menu-layer .app-composer-popover-item.app-composer-popover-item-active {
   background: transparent;

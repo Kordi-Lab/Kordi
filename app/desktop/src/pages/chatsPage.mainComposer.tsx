@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Paperclip, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
@@ -17,6 +17,10 @@ import {
   ComposerSlashMenu,
   type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
+import {
+  ComposerAttachmentAddMenu,
+  ComposerAttachmentList,
+} from '@/kordi-app/components/composerAttachments';
 import type {
   Conversation,
   DesktopChatContextWindowStatus,
@@ -28,7 +32,6 @@ import {
   type CollaborationRoutingPatch,
 } from '@/pages/chatsPage.collaborationRoutingControls';
 import {
-  ComposerAttachmentList,
   ComposerQuotePreview,
   MessageSelectionBar,
 } from '@/pages/chatsPage.composerPrimitives';
@@ -193,8 +196,8 @@ export function MainComposer({
               <ComposerQuotePreview quote={activeChatQuote} onClear={onClearChatQuote} />
             ) : null}
             <ComposerAttachmentList
-              chatComposerAttachments={chatComposerAttachments}
-              removeChatComposerAttachment={removeChatComposerAttachment}
+              attachments={chatComposerAttachments}
+              onRemove={removeChatComposerAttachment}
             />
             <textarea
               rows={1}
@@ -331,16 +334,7 @@ export function MainComposer({
                 onSave={collaborationRouting.onSaveCompact}
               />
             ) : null}
-            <Button
-              size="icon"
-              variant="quiet"
-              className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
-              onClick={() => chatAttachmentInputRef.current?.click()}
-              title="Add attachment"
-              aria-label="Add attachment"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
+            <ComposerAttachmentAddMenu inputRef={chatAttachmentInputRef} />
           </div>
           <div
             className={cn(
