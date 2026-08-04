@@ -205,7 +205,7 @@ test('the locked Kordi Support contact routes reporting through its chat', () =>
   });
 
   assert.match(markup, />Kordi Support</);
-  assert.match(markup, /src="\/favicon\.png"/);
+  assert.match(markup, /src="\/kordi-support-avatar\.svg"/);
   assert.match(markup, />Message</);
   assert.doesNotMatch(markup, />Submit a request</);
   assert.doesNotMatch(markup, />Delete contact</);

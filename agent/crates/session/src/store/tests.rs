@@ -1,6 +1,7 @@
 use super::*;
 use chrono::{TimeZone, Utc};
 use kordi_core::types::*;
+use std::sync::{Arc, Barrier};
 
 fn make_user_entry(parent: Option<&str>) -> SessionEntry {
     make_user_entry_at(parent, Utc::now())
@@ -41,6 +42,43 @@ fn make_assistant_entry(parent: Option<&str>) -> SessionEntry {
             timestamp: Utc::now().timestamp_millis(),
         }),
     }
+}
+
+#[test]
+fn concurrent_file_opens_initialize_each_schema_version_once() {
+    let temp_dir = tempfile::tempdir().expect("temporary session store");
+    let database_path = Arc::new(temp_dir.path().join("sessions.db"));
+    let worker_count = 12;
+    let start = Arc::new(Barrier::new(worker_count));
+    let mut workers = Vec::with_capacity(worker_count);
+
+    for _ in 0..worker_count {
+        let database_path = Arc::clone(&database_path);
+        let start = Arc::clone(&start);
+        workers.push(std::thread::spawn(move || {
+            start.wait();
+            let connection = open_db(database_path.as_ref())?;
+            drop(connection);
+            Ok::<(), anyhow::Error>(())
+        }));
+    }
+
+    for worker in workers {
+        worker
+            .join()
+            .expect("session store initializer thread")
+            .expect("concurrent schema initialization");
+    }
+
+    let connection = open_db(database_path.as_ref()).expect("reopen initialized session store");
+    let versions = connection
+        .prepare("SELECT version FROM schema_version ORDER BY version")
+        .expect("prepare schema version query")
+        .query_map([], |row| row.get::<_, i32>(0))
+        .expect("query schema versions")
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .expect("collect schema versions");
+    assert_eq!(versions, (1..=10).collect::<Vec<_>>());
 }
 
 #[test]

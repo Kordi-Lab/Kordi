@@ -49,6 +49,7 @@ import type { useChatPins } from '@/pages/useChatPins';
 import type { useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
 import type { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
 import { SupportConversationEmptyState } from '@/features/support/SupportReportDialog';
+import { SupportReportSubmissionProvider } from '@/features/support/SupportReportSubmissionContext';
 
 type ChatMainWorkspaceProps = {
   layout: ChatsPageLayout;
@@ -102,6 +103,12 @@ export function ChatMainWorkspace({
   const localConfigTargetSessionId =
     localAgentComposerConfigTargetSessionId(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
+  const supportReportSessionId = activeConv.supportTicketEnabled
+    ? canonicalHistorySessionId ?? activeConv.id
+    : undefined;
+  const submitSupportReport = activeConv.supportTicketEnabled
+    ? models.senderProfiles.submitSupportRequest
+    : undefined;
   const shouldRenderLiveTurn = Boolean(
     presentation.liveTurn && !presentation.liveTurn.completed,
   );
@@ -160,11 +167,11 @@ export function ChatMainWorkspace({
               void companion.open();
             },
           }}
-          supportReport={activeConv.supportTicketEnabled
-            && models.senderProfiles.submitSupportRequest
+          supportReport={supportReportSessionId
+            && submitSupportReport
             ? {
-                sessionId: canonicalHistorySessionId ?? activeConv.id,
-                onSubmit: models.senderProfiles.submitSupportRequest,
+                sessionId: supportReportSessionId,
+                onSubmit: submitSupportReport,
               }
             : undefined}
         />
@@ -201,7 +208,11 @@ export function ChatMainWorkspace({
               />
             ) : null}
 
-            <ChatSessionPane
+            <SupportReportSubmissionProvider
+              sessionId={supportReportSessionId}
+              onSubmit={submitSupportReport}
+            >
+              <ChatSessionPane
               presentation={{
                 liveTurn: presentation.liveTurn,
                 liveTurnSender,
@@ -341,7 +352,8 @@ export function ChatMainWorkspace({
                   </ChatComposerShell>
                 ),
               }}
-            />
+              />
+            </SupportReportSubmissionProvider>
           </div>
         ) : (
           <div
