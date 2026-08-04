@@ -4,6 +4,7 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { scrollTranscriptToBottom } from '@/features/chat/transcriptNavigation';
+import { isKordiSupportConversation } from '@/features/support/supportIdentity';
 import type { Conversation } from '@/kordi-app/types';
 
 export function scheduleTranscriptScrollToBottom<T extends HTMLElement>(
@@ -66,9 +67,17 @@ export function shouldUseCompactModelRouteMenu(
 }
 
 export function canConfigureConversationModelRoute(
-  conversation: Pick<Conversation, 'supportTicketEnabled'>,
+  conversation: Pick<
+    Conversation,
+    | 'id'
+    | 'canonicalSessionId'
+    | 'supportTicketEnabled'
+    | 'collaborationTarget'
+    | 'identity'
+    | 'canonicalParticipants'
+  >,
 ): boolean {
-  return conversation.supportTicketEnabled !== true;
+  return !isKordiSupportConversation(conversation);
 }
 
 export function localAgentComposerConfigTargetSessionId(

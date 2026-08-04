@@ -147,6 +147,27 @@ test('compact model route menu is scoped to group and human contact chats', () =
 });
 
 test('Kordi Support keeps its server-owned model route locked', () => {
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    id: 'cloud:conversation:acct_kordi_support:agent',
+  })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    canonicalSessionId: 'session:direct-system-agent:acct_me:cloud_agent_kordi_support',
+  })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    collaborationTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_kordi_support',
+      agentId: 'cloud_agent_kordi_support',
+    },
+  })), false);
+  assert.equal(canConfigureConversationModelRoute(conversation({
+    identity: {
+      sourceHostId: 'cloud',
+      localHumanId: 'acct_me',
+      localHumanName: 'Me',
+      remoteAgentId: 'cloud_agent_kordi_support',
+    },
+  })), false);
   assert.equal(canConfigureConversationModelRoute(conversation({ supportTicketEnabled: true })), false);
   assert.equal(canConfigureConversationModelRoute(conversation({ supportTicketEnabled: false })), true);
   assert.equal(canConfigureConversationModelRoute(conversation({})), true);
