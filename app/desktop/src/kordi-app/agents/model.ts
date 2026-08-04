@@ -48,9 +48,34 @@ export type AgentStudioConfigDraft = AgentConfigDraft & {
 
 export type AgentStudioCapabilityKind = 'skill' | 'tool' | 'plugin';
 
-export type FactoryArtifactKind = 'agent' | 'skill';
+export type FactoryArtifactKind = 'agent' | 'skill' | 'tool' | 'plugin';
 
-export type FactorySection = 'builds' | 'skills';
+export type FactorySection = 'build' | 'agents' | 'library';
+
+export type FactoryLibrarySection = 'skill' | 'tool' | 'plugin';
+
+export type FactoryReturnContext = {
+  section: Exclude<FactorySection, 'build'>;
+  librarySection?: FactoryLibrarySection;
+  selectedId: string | null;
+};
+
+export type FactoryBuildRoute = {
+  targetKey: string;
+  sessionId: string | null;
+  artifactKind: FactoryArtifactKind;
+  artifactId: string | null;
+  returnContext: FactoryReturnContext | null;
+};
+
+export type FactoryLibraryArtifact = {
+  id: string;
+  kind: FactoryLibrarySection;
+  name: string;
+  description: string;
+  status: string;
+  usedBy: string[];
+};
 
 export function agentBuilderTargetKey(accountId: string | null | undefined, target: string) {
   const normalizedAccountId = accountId?.trim();
@@ -58,6 +83,54 @@ export function agentBuilderTargetKey(accountId: string | null | undefined, targ
     ? `account:${encodeURIComponent(normalizedAccountId)}`
     : 'device';
   return `${scope}:${target}`;
+}
+
+export function factoryArtifactTargetKey(
+  accountId: string | null | undefined,
+  kind: FactoryArtifactKind,
+  artifactId: string,
+) {
+  return agentBuilderTargetKey(accountId, `${kind}:${encodeURIComponent(artifactId)}`);
+}
+
+export function createFactoryBuildTargetKey(
+  accountId: string | null | undefined,
+  kind: FactoryArtifactKind,
+  buildId: string,
+) {
+  return agentBuilderTargetKey(accountId, `create:${kind}:${encodeURIComponent(buildId)}`);
+}
+
+function unscopedFactoryTarget(targetKey: string) {
+  if (targetKey.startsWith('device:')) return targetKey.slice('device:'.length);
+  if (!targetKey.startsWith('account:')) return targetKey;
+  const accountSeparator = targetKey.indexOf(':', 'account:'.length);
+  return accountSeparator >= 0 ? targetKey.slice(accountSeparator + 1) : targetKey;
+}
+
+export function factoryArtifactIdentityFromTarget(targetKey: string) {
+  const target = unscopedFactoryTarget(targetKey);
+  for (const kind of ['agent', 'skill', 'tool', 'plugin'] as const) {
+    const marker = `${kind}:`;
+    if (target.startsWith(marker)) {
+      const encodedId = target.slice(marker.length);
+      try {
+        return { kind, id: decodeURIComponent(encodedId) };
+      } catch {
+        return { kind, id: encodedId };
+      }
+    }
+  }
+  return null;
+}
+
+export function factoryBuildIdentityFromTarget(targetKey: string) {
+  const target = unscopedFactoryTarget(targetKey);
+  for (const kind of ['agent', 'skill', 'tool', 'plugin'] as const) {
+    if (target.startsWith(`create:${kind}:`)) return { kind, artifactId: null };
+  }
+  const artifact = factoryArtifactIdentityFromTarget(targetKey);
+  return artifact ? { kind: artifact.kind, artifactId: artifact.id } : null;
 }
 
 export type AgentStudioTab = 'blueprint' | 'capabilities' | 'files' | 'runs' | 'history';
@@ -70,7 +143,7 @@ export function skillLibraryFileDisplay(path: string) {
 }
 
 export function visibleAgentStudioTabIds(creating: boolean, artifactKind: FactoryArtifactKind): AgentStudioTab[] {
-  if (creating && artifactKind === 'skill') return ['files', 'runs', 'history'];
+  if (creating && artifactKind !== 'agent') return ['files', 'runs', 'history'];
   return ['blueprint', 'capabilities', 'runs', 'history'];
 }
 

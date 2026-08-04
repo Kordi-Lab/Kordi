@@ -26,6 +26,26 @@ fn clean_slug_produces_safe_skill_names() {
 }
 
 #[test]
+fn factory_target_parsing_preserves_legacy_agent_ids() {
+    assert_eq!(
+        artifact_kind_from_target("device:agent:agent:kordi"),
+        "agent"
+    );
+    assert_eq!(
+        fallback_name_from_target("device:agent:agent:kordi", "agent"),
+        "agent:kordi"
+    );
+    assert_eq!(
+        artifact_kind_from_target("account:user-1:create:plugin:build-1"),
+        "plugin"
+    );
+    assert_eq!(
+        fallback_name_from_target("account:user-1:create:plugin:build-1", "plugin"),
+        "build 1"
+    );
+}
+
+#[test]
 fn frontmatter_name_requires_frontmatter() {
     assert_eq!(
         frontmatter_name("---\nname: repo-review\ndescription: Test\n---\n"),
@@ -216,4 +236,62 @@ fn legacy_drafts_migrate_into_a_metadata_isolated_workspace() {
         .is_file());
     assert!(!resources_root(&container).starts_with(&workspace));
     let _ = fs::remove_dir_all(container);
+}
+
+#[test]
+fn artifact_association_stays_on_the_exact_session_and_reports_missing_storage() {
+    let root = std::env::temp_dir().join(format!(
+        "kordi-builder-association-test-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&root).expect("create association root");
+    let target_key = "account:test:agent:agent-1";
+    let published = DesktopAgentBuilderMetadata {
+        draft_id: uuid::Uuid::new_v4().to_string(),
+        target_key: target_key.to_string(),
+        session_id: "session:agent-builder:published".to_string(),
+        status: "published".to_string(),
+        created_at_ms: 10,
+        updated_at_ms: 20,
+    };
+    let draft = DesktopAgentBuilderMetadata {
+        draft_id: uuid::Uuid::new_v4().to_string(),
+        target_key: target_key.to_string(),
+        session_id: "session:agent-builder:draft".to_string(),
+        status: "draft".to_string(),
+        created_at_ms: 30,
+        updated_at_ms: 40,
+    };
+    for metadata in [&published, &draft] {
+        let container = root.join(&metadata.draft_id);
+        fs::create_dir_all(&container).expect("create draft container");
+        write_json(&metadata_path(&container), metadata).expect("write builder metadata");
+    }
+
+    let first = resolve_builder_in(&root, target_key)
+        .expect("resolve legacy association")
+        .expect("associated builder");
+    assert_eq!(first.session_id, draft.session_id);
+
+    let newer = DesktopAgentBuilderMetadata {
+        draft_id: uuid::Uuid::new_v4().to_string(),
+        target_key: target_key.to_string(),
+        session_id: "session:agent-builder:newer-but-unrelated".to_string(),
+        status: "draft".to_string(),
+        created_at_ms: 50,
+        updated_at_ms: 60,
+    };
+    let newer_container = root.join(&newer.draft_id);
+    fs::create_dir_all(&newer_container).expect("create newer container");
+    write_json(&metadata_path(&newer_container), &newer).expect("write newer metadata");
+    let still_exact = resolve_builder_in(&root, target_key)
+        .expect("resolve persisted association")
+        .expect("associated builder");
+    assert_eq!(still_exact.session_id, draft.session_id);
+
+    fs::remove_dir_all(root.join(&draft.draft_id)).expect("remove associated draft");
+    let error =
+        resolve_builder_in(&root, target_key).expect_err("missing session must be explicit");
+    assert!(error.contains("unavailable"));
+    let _ = fs::remove_dir_all(root);
 }

@@ -106,25 +106,19 @@
     grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .app-agent-studio-compact-switcher {
-    display: flex;
-  }
-
   .app-agent-studio-body {
-    display: block;
-    position: relative;
-    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .app-agent-studio-conversation,
   .app-agent-studio-workspace {
-    position: absolute;
-    inset: 0;
-  }
-
-  .app-agent-studio-body[data-compact-pane='conversation'] .app-agent-studio-workspace,
-  .app-agent-studio-body[data-compact-pane='workspace'] .app-agent-studio-conversation {
-    display: none;
+    position: relative;
+    inset: auto;
+    flex: 0 0 auto;
+    min-height: 640px;
   }
 
   .app-agent-studio-conversation {
@@ -140,10 +134,29 @@
 @container agents-page (max-width: 760px) {
   .app-agent-studio-shell {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(170px, 32vh) minmax(0, 1fr);
     border-radius: 0;
   }
 
   .app-agent-studio-rail {
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 74%, transparent);
+  }
+
+  .app-agent-studio-rail-head {
+    gap: 9px;
+    padding: 10px 12px 9px;
+  }
+
+  .app-agent-studio-agent-list {
+    padding-block: 4px;
+  }
+
+  .app-agent-studio-agent-row {
+    min-height: 48px;
+  }
+
+  .app-factory-build-context code {
     display: none;
   }
 
@@ -171,6 +184,14 @@
   .app-agent-studio-header {
     min-height: 62px;
     padding: 9px 12px;
+  }
+
+  .app-factory-inspect-scroll {
+    padding: 16px 14px 38px;
+  }
+
+  .app-factory-inspect-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .app-agent-studio-files-layout {

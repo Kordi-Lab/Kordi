@@ -270,6 +270,10 @@
   color: var(--agent-studio-accent);
 }
 
+.app-agent-studio-agent-state.is-warning {
+  color: var(--agent-studio-danger);
+}
+
 .app-agent-studio-draft-avatar {
   display: grid;
   width: 36px;
@@ -367,12 +371,39 @@
 
 .app-factory-rail-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
   border: 1px solid color-mix(in oklab, var(--app-control-border) 62%, transparent);
   border-radius: 10px;
   background: color-mix(in oklab, var(--app-control-bg) 34%, transparent);
+}
+
+.app-factory-library-switch {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.app-factory-library-switch button {
+  flex: 1 0 auto;
+  min-height: 28px;
+  padding: 0 6px;
+  border-radius: 7px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+  font-weight: 620;
+}
+
+.app-factory-library-switch button.is-active {
+  background: var(--agent-studio-accent-soft);
+  color: var(--agent-studio-accent);
+}
+
+.app-factory-library-switch button span {
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .app-factory-rail-switch button {

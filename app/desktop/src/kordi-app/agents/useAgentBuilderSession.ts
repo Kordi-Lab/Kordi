@@ -8,7 +8,10 @@ import {
   fetchDesktopChatTurnState,
   markDesktopAgentBuilderPublished,
   openDesktopAgentBuilder,
+  openDesktopAgentBuilderSession,
   readDesktopAgentBuilderFile,
+  recoverDesktopAgentBuilder,
+  retargetDesktopAgentBuilder,
   startDesktopChatMessage,
   testDesktopAgentBuilderDraft,
   updateDesktopAgentBuilderDraft,
@@ -43,13 +46,17 @@ function wait(milliseconds: number) {
 
 export function useAgentBuilderSession({
   targetKey,
+  sessionId,
   seed,
   seedKey,
+  onSessionResolved,
   enabled = true,
 }: {
   targetKey: string;
+  sessionId?: string | null;
   seed: DesktopAgentBuilderSeed;
   seedKey: string;
+  onSessionResolved?: (status: DesktopAgentBuilderStatus) => void;
   enabled?: boolean;
 }) {
   const [status, setStatus] = useState<DesktopAgentBuilderStatus | null>(null);
@@ -61,10 +68,16 @@ export function useAgentBuilderSession({
   const [testing, setTesting] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionUnavailable, setSessionUnavailable] = useState(false);
   const generationRef = useRef(0);
   const statusRef = useRef<DesktopAgentBuilderStatus | null>(null);
   const updateQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const pendingUpdatesRef = useRef(0);
+  const onSessionResolvedRef = useRef(onSessionResolved);
+
+  useEffect(() => {
+    onSessionResolvedRef.current = onSessionResolved;
+  }, [onSessionResolved]);
 
   const commitStatus = useCallback((next: DesktopAgentBuilderStatus | null) => {
     statusRef.current = next;
@@ -83,12 +96,21 @@ export function useAgentBuilderSession({
   }, [commitStatus, status]);
 
   useEffect(() => {
+    if (
+      enabled
+      && sessionId
+      && statusRef.current?.sessionId === sessionId
+      && statusRef.current.targetKey === targetKey
+    ) {
+      return undefined;
+    }
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     setActiveTurn(null);
     setOptimisticPrompt(null);
     setOptimisticAttachments([]);
     setError(null);
+    setSessionUnavailable(false);
     statusRef.current = null;
     updateQueueRef.current = Promise.resolve();
     pendingUpdatesRef.current = 0;
@@ -103,15 +125,21 @@ export function useAgentBuilderSession({
     }
 
     setOpening(true);
-    void openDesktopAgentBuilder(targetKey, seed)
+    const opening = sessionId
+      ? openDesktopAgentBuilderSession(targetKey, sessionId, seed)
+      : openDesktopAgentBuilder(targetKey, seed);
+    void opening
       .then((result) => {
         if (!result || generationRef.current !== generation) return;
         commitStatus(result.status);
         setDetail(result.session);
+        onSessionResolvedRef.current?.(result.status);
       })
       .catch((openError) => {
         if (generationRef.current !== generation) return;
-        setError(errorMessage(openError, 'Unable to open Kordi Factory.'));
+        const message = errorMessage(openError, 'Unable to open Kordi Factory.');
+        setError(message);
+        setSessionUnavailable(message.includes('Recover') || message.includes('unavailable'));
         commitStatus(null);
         setDetail(null);
       })
@@ -122,7 +150,39 @@ export function useAgentBuilderSession({
     return () => {
       if (generationRef.current === generation) generationRef.current += 1;
     };
-  }, [commitStatus, enabled, seedKey, targetKey]);
+  }, [commitStatus, enabled, seedKey, sessionId, targetKey]);
+
+  const recover = useCallback(async () => {
+    const generation = generationRef.current;
+    setOpening(true);
+    setError(null);
+    setSessionUnavailable(false);
+    try {
+      const result = await recoverDesktopAgentBuilder(targetKey, seed);
+      if (!result || generationRef.current !== generation) return null;
+      commitStatus(result.status);
+      setDetail(result.session);
+      onSessionResolvedRef.current?.(result.status);
+      return result.status;
+    } catch (recoverError) {
+      if (generationRef.current !== generation) return null;
+      setError(errorMessage(recoverError, 'Unable to recover this Factory build.'));
+      setSessionUnavailable(true);
+      return null;
+    } finally {
+      if (generationRef.current === generation) setOpening(false);
+    }
+  }, [commitStatus, seed, targetKey]);
+
+  const retarget = useCallback(async (nextTargetKey: string) => {
+    await updateQueueRef.current;
+    const currentStatus = statusRef.current;
+    if (!currentStatus) return null;
+    const next = await retargetDesktopAgentBuilder(currentStatus.draftId, nextTargetKey);
+    commitStatus(next);
+    onSessionResolvedRef.current?.(next);
+    return next;
+  }, [commitStatus]);
 
   const send = useCallback(async (
     rawText: string,
@@ -328,6 +388,7 @@ export function useAgentBuilderSession({
     testing,
     updating,
     error,
+    sessionUnavailable,
     send,
     stop,
     refresh,
@@ -337,5 +398,7 @@ export function useAgentBuilderSession({
     readFile,
     writeFile,
     discard,
+    recover,
+    retarget,
   };
 }

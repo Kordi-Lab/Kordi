@@ -67,6 +67,28 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   };
 }
 
+function railProps(overrides: Partial<React.ComponentProps<typeof AgentStudioRail>> = {}): React.ComponentProps<typeof AgentStudioRail> {
+  return {
+    agents: [],
+    activeAgentId: '',
+    builds: [],
+    activeBuildSessionId: null,
+    skills: [],
+    libraryArtifacts: { tool: [], plugin: [] },
+    selectedLibraryId: null,
+    section: 'build',
+    librarySection: 'skill',
+    canCreateAgent: true,
+    onSectionChange: () => undefined,
+    onLibrarySectionChange: () => undefined,
+    onOpenBuild: () => undefined,
+    onOpenAgent: () => undefined,
+    onOpenLibraryArtifact: () => undefined,
+    onCreateArtifact: () => undefined,
+    ...overrides,
+  };
+}
+
 function installDom() {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     pretendToBeVisual: true,
@@ -107,30 +129,19 @@ test('skill file rows do not repeat a root filename as their subtitle', () => {
   assert.doesNotMatch(source, /Editable Factory skill|Read only/);
 });
 
-test('Factory plus menu offers separate real agent and skill builds', () => {
+test('Factory rail exposes Build, Agent, Lib and all chat-first artifact kinds', () => {
   const html = renderToStaticMarkup(
-    <AgentStudioRail
-      agents={[]}
-      activeAgentId=""
-      creatingKind={null}
-      agentConfigs={{}}
-      skills={[builtSkill]}
-      selectedSkillId={null}
-      section="builds"
-      canCreateAgent
-      onSectionChange={() => undefined}
-      onOpenAgent={() => undefined}
-      onOpenSkill={() => undefined}
-      onCreateArtifact={() => undefined}
-    />,
+    <AgentStudioRail {...railProps({ skills: [builtSkill], section: 'agents' })} />,
   );
 
-  assert.match(html, /Build agent/);
-  assert.match(html, /Build skill/);
-  assert.match(html, />Agents<\/button>/);
-  assert.match(html, /Skills <span>1<\/span>/);
+  assert.match(html, /New agent/);
+  assert.match(html, /New skill/);
+  assert.match(html, /New tool/);
+  assert.match(html, /New plugin/);
+  assert.match(html, />Build<\/button>/);
+  assert.match(html, /Agent <span>0<\/span>/);
+  assert.match(html, /Lib <span>1<\/span>/);
   assert.match(html, /Search agents/);
-  assert.doesNotMatch(html, />Builds<\/button>/);
   assert.doesNotMatch(html, /Factory runtime connected/);
 });
 
@@ -152,20 +163,7 @@ test('Factory plus menu dismisses outside and restores trigger focus on Escape',
 
   try {
     await act(async () => root?.render(
-      <AgentStudioRail
-        agents={[]}
-        activeAgentId=""
-        creatingKind={null}
-        agentConfigs={{}}
-        skills={[builtSkill]}
-        selectedSkillId={null}
-        section="builds"
-        canCreateAgent
-        onSectionChange={() => undefined}
-        onOpenAgent={() => undefined}
-        onOpenSkill={() => undefined}
-        onCreateArtifact={() => undefined}
-      />,
+      <AgentStudioRail {...railProps({ skills: [builtSkill] })} />,
     ));
 
     const details = host.querySelector<HTMLDetailsElement>('.app-factory-create-menu');
@@ -216,20 +214,7 @@ test('Factory plus menu dismisses outside and restores trigger focus on Escape',
 
 test('Factory agent selection spans the full rail while content stays aligned', () => {
   const html = renderToStaticMarkup(
-    <AgentStudioRail
-      agents={[agent()]}
-      activeAgentId="agent:kordi"
-      creatingKind={null}
-      agentConfigs={{}}
-      skills={[]}
-      selectedSkillId={null}
-      section="builds"
-      canCreateAgent
-      onSectionChange={() => undefined}
-      onOpenAgent={() => undefined}
-      onOpenSkill={() => undefined}
-      onCreateArtifact={() => undefined}
-    />,
+    <AgentStudioRail {...railProps({ agents: [agent()], activeAgentId: 'agent:kordi', section: 'agents' })} />,
   );
   const css = readDesktopShellCss();
 
@@ -245,38 +230,36 @@ test('Factory agent selection spans the full rail while content stays aligned', 
   );
 });
 
-test('Skill Library rail is compact, indexed, and leaves enable state to the detail controls', () => {
+test('Lib exposes independent Skill, Tool, and Plugin counts with stable selection', () => {
   const html = renderToStaticMarkup(
-    <AgentStudioRail
-      agents={[]}
-      activeAgentId=""
-      creatingKind={null}
-      agentConfigs={{}}
-      skills={[{ ...builtSkill, enabled: true }]}
-      selectedSkillId={builtSkill.id}
-      section="skills"
-      canCreateAgent
-      onSectionChange={() => undefined}
-      onOpenAgent={() => undefined}
-      onOpenSkill={() => undefined}
-      onCreateArtifact={() => undefined}
-    />,
+    <AgentStudioRail {...railProps({
+      skills: [{ ...builtSkill, enabled: true }],
+      selectedLibraryId: builtSkill.id,
+      section: 'library',
+      librarySection: 'skill',
+      libraryArtifacts: {
+        tool: [{ id: 'tool:read', kind: 'tool', name: 'read', description: '', status: 'Available', usedBy: [] }],
+        plugin: [{ id: 'plugin:github', kind: 'plugin', name: 'github', description: '', status: 'Available', usedBy: [] }],
+      },
+    })} />,
   );
 
   assert.match(html, /repository-review/);
-  assert.match(html, /app-agent-studio-agent-row app-list-item is-skill/);
+  assert.match(html, /Skills <span>1<\/span>/);
+  assert.match(html, /Tools <span>1<\/span>/);
+  assert.match(html, /Plugins <span>1<\/span>/);
   assert.match(html, /app-session-row-active/);
   assert.match(html, /aria-current="true"/);
-  assert.doesNotMatch(html, /app-list-item-active/);
-  assert.match(html, /aria-label="Skills alphabetical index"/);
-  assert.equal((html.match(/aria-label="Jump to [A-Z] skills"/g) ?? []).length, 26);
-  assert.match(html, /aria-label="Jump to A skills" disabled=""/);
-  assert.match(html, /aria-label="Jump to R skills"/);
-  assert.doesNotMatch(html, /aria-label="Jump to R skills" disabled=""/);
-  assert.match(html, /data-skill-initial="R"/);
-  assert.doesNotMatch(html, /app-agent-studio-skill-avatar/);
-  assert.doesNotMatch(html, />On<|>Off</);
-  assert.doesNotMatch(html, /global skill|settings:external|Community/);
+  assert.match(html, /Enabled/);
+});
+
+test('Factory rail keys search and scroll return context independently for each peer view', () => {
+  const source = readFileSync(new URL('../src/kordi-app/agents/AgentStudioRail.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /const \[queries, setQueries\] = useState<Record<string, string>>\(\{\}\);/);
+  assert.match(source, /const viewKey = section === 'library' \? `\$\{section\}:\$\{librarySection\}` : section;/);
+  assert.match(source, /setQueries\(\(current\) => \(\{ \.\.\.current, \[viewKey\]: event\.currentTarget\.value \}\)\)/);
+  assert.equal(source.match(/scrollPositionsRef\.current\[viewKey\]/g)?.length, 2);
 });
 
 test('Skill Library keeps install state and explicit add-to-agent action visible', () => {

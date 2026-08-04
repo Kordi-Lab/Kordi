@@ -939,8 +939,8 @@ export function AgentStudioWorkspace({
   onReadBuilderFile?: (path: string) => Promise<string>;
   onWriteBuilderFile?: (path: string, content: string) => Promise<unknown>;
 }) {
-  const skillBuild = creating && artifactKind === 'skill';
-  const [tab, setTab] = useState<AgentStudioTab>(skillBuild ? 'files' : 'blueprint');
+  const standaloneBuild = creating && artifactKind !== 'agent';
+  const [tab, setTab] = useState<AgentStudioTab>(standaloneBuild ? 'files' : 'blueprint');
   const [routingOpen, setRoutingOpen] = useState(false);
   const visibleTabIds = visibleAgentStudioTabIds(creating, artifactKind);
   const visibleTabs = TABS.filter(({ id }) => visibleTabIds.includes(id));
@@ -1034,10 +1034,10 @@ export function AgentStudioWorkspace({
         ) : null}
       </div>
       </fieldset>
-      {(changes.length > 0 || creating && creationDraft) ? (
+      {builderStatus?.lifecycle !== 'published' && (changes.length > 0 || creating && creationDraft) ? (
         <div className="app-agent-studio-workspace-footer">
-          <span>{skillBuild ? 'New skill build' : creating ? 'New Factory build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
-          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? (skillBuild ? 'Installing…' : 'Publishing…') : skillBuild ? 'Install skill' : creating ? 'Create agent' : 'Publish'}</button></div>
+          <span>{standaloneBuild ? `${artifactKind[0]?.toUpperCase()}${artifactKind.slice(1)} draft` : creating ? 'New agent build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
+          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? 'Publishing…' : artifactKind === 'skill' ? 'Publish skill' : artifactKind === 'tool' ? 'Publish tool' : artifactKind === 'plugin' ? 'Publish plugin' : creating ? 'Create agent' : 'Publish'}</button></div>
         </div>
       ) : null}
     </section>
