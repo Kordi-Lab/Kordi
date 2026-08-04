@@ -8,7 +8,7 @@ import {
 import { mapCollaborationConversationToViewModel } from '@/features/collaboration/transcript';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudCollaborationConversationId, isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
+import { isCloudCollaborationHostId } from '@/features/cloud/cloudCollaborationState';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
@@ -26,7 +26,6 @@ import type { SessionHydrationState } from '@/features/canonical/canonicalStore'
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
 import { buildParticipantSpaces, collapseBlankConversationShells, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
-import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import {
   createTranscriptReferenceStabilizer,
 } from '@/features/chat/transcriptReferenceStability';
@@ -67,7 +66,6 @@ import {
   buildOutreachInlineMessages,
   buildSessionStatusIndicator,
   canonicalProjectDisplayName,
-  canonicalProjectRoot,
   preferLatestMessages,
   hideRawConversationIds,
   visibleCollaborationPeople,
@@ -165,7 +163,7 @@ type UseWorkspaceViewModelsArgs = {
 
 export function useWorkspaceViewModels({
   isNativeShell,
-  isDesktopChatLoading,
+  isDesktopChatLoading: _isDesktopChatLoading,
   desktopChatState,
   desktopCollaborationState,
   canonicalSessionState,

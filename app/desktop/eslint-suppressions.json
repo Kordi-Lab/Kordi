@@ -80,9 +80,6 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 2
-    },
     "react-hooks/exhaustive-deps": {
       "count": 1
     },
