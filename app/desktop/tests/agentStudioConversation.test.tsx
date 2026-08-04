@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
@@ -71,6 +72,16 @@ function builderSession(messages: DesktopChatMessage[] = [{
     messages,
   };
 }
+
+test('Kordi Factory optimistic messages use the shared 24-hour desktop clock', () => {
+  const source = readFileSync(
+    new URL('../src/kordi-app/agents/AgentStudioConversation.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /time: formatDesktopClockTime\(new Date\(\)\)/);
+  assert.doesNotMatch(source, /toLocaleTimeString/);
+});
 
 test('Kordi Factory conversation uses the normal transcript identity and attachment controls', () => {
   const html = renderToStaticMarkup(
