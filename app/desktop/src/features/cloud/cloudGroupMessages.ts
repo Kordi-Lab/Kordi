@@ -16,7 +16,7 @@ import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttac
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
-import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;

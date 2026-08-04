@@ -232,11 +232,20 @@ pub(super) async fn finalize_request_acceptance(
 
 pub(super) fn account_to_summary(account: AccountResponse) -> ContactSummary {
     ContactSummary {
+        contact_id: None,
+        contact_kind: None,
         account_id: account.account_id,
         display_name: account.display_name,
+        subtitle: None,
         avatar_url: account.avatar_url,
         node_id: account.node_id,
         created_at: String::new(),
+        locked: false,
+        target_cloud_agent_id: None,
+        target_cloud_agent_name: None,
+        target_cloud_agent_owner_account_id: None,
+        target_cloud_agent_owner_name: None,
+        support_ticket_enabled: false,
     }
 }
 

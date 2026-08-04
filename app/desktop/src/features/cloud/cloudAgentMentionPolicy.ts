@@ -22,7 +22,7 @@ import {
   cloudAgentResponseExistsForRequest,
   type CloudAgentRequestCandidate,
 } from './cloudAgentRequestState';
-import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 

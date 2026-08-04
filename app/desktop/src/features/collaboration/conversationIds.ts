@@ -1,8 +1,9 @@
-import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
+import { CLOUD_HOST_SENTINEL } from '@/features/cloud/cloudContactMapping';
 
 const CLOUD_CONVERSATION_PREFIX = 'cloud:conversation:';
 const LEGACY_CLOUD_CONVERSATION_PREFIX = `bridge:${CLOUD_HOST_SENTINEL}:`;
 const SESSION_SUFFIX = ':session:';
+const SYSTEM_AGENT_SESSION_PREFIX = 'session:direct-system-agent:';
 
 function decodeIdPart(value: string): string | null {
   try {
@@ -95,4 +96,41 @@ export function cloudDirectPersonSessionId(
     .filter(Boolean)
     .sort()
     .join(':')}`;
+}
+
+export function cloudSystemAgentSessionId(
+  localAccountId: string,
+  agentId: string,
+): string {
+  return `${SYSTEM_AGENT_SESSION_PREFIX}${encodeURIComponent(localAccountId.trim())}:${encodeURIComponent(agentId.trim())}`;
+}
+
+export function cloudSystemAgentConversationId(
+  localAccountId: string,
+  ownerAccountId: string,
+  agentId: string,
+): string {
+  return cloudCollaborationConversationId(
+    ownerAccountId,
+    'agent',
+    cloudSystemAgentSessionId(localAccountId, agentId),
+  );
+}
+
+export function isCloudSystemAgentSessionId(
+  sessionId: string | null | undefined,
+): boolean {
+  return Boolean(sessionId?.trim().startsWith(SYSTEM_AGENT_SESSION_PREFIX));
+}
+
+export function cloudSystemAgentIdFromSessionId(
+  sessionId: string | null | undefined,
+): string | null {
+  const normalizedSessionId = sessionId?.trim() ?? '';
+  if (!normalizedSessionId.startsWith(SYSTEM_AGENT_SESSION_PREFIX)) return null;
+  const encodedParts = normalizedSessionId
+    .slice(SYSTEM_AGENT_SESSION_PREFIX.length)
+    .split(':');
+  if (encodedParts.length !== 2) return null;
+  return decodeIdPart(encodedParts[1] ?? '');
 }

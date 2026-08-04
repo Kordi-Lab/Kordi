@@ -12,6 +12,7 @@ use crate::attachments::S3Config;
 use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimiterError};
 use crate::events::{EventBus, EventBusError};
 use crate::pg::{init_pool, PgPoolError};
+use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
 use crate::updates::store::{
     MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
 };
@@ -21,6 +22,7 @@ pub struct ServerState {
     events: EventBus,
     s3: Option<S3Config>,
     release_store: Option<ReleaseCatalogStore>,
+    support: Option<SupportService>,
 }
 
 impl ServerState {
@@ -30,6 +32,7 @@ impl ServerState {
             events,
             s3: None,
             release_store: None,
+            support: None,
         }
     }
 
@@ -40,6 +43,11 @@ impl ServerState {
 
     pub fn with_release_store(mut self, release_store: ReleaseCatalogStore) -> Self {
         self.release_store = Some(release_store);
+        self
+    }
+
+    pub fn with_support(mut self, support: SupportService) -> Self {
+        self.support = Some(support);
         self
     }
 
@@ -57,6 +65,10 @@ impl ServerState {
 
     pub fn release_store(&self) -> Option<&ReleaseCatalogStore> {
         self.release_store.as_ref()
+    }
+
+    pub fn support(&self) -> Option<&SupportService> {
+        self.support.as_ref()
     }
 }
 
@@ -89,6 +101,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
         .merge(crate::scheduled_tasks::routes::routes(state.clone()))
+        .merge(crate::support::routes(state.clone()))
         .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)
         .route("/health", axum::routing::get(health))
@@ -104,6 +117,7 @@ pub enum RunError {
     Pool(PgPoolError),
     Events(EventBusError),
     RateLimiter(RateLimiterError),
+    Support(SupportConfigError),
     Bind(std::io::Error),
     Serve(std::io::Error),
 }
@@ -114,6 +128,7 @@ impl std::fmt::Display for RunError {
             Self::Pool(err) => write!(f, "{err}"),
             Self::Events(err) => write!(f, "{err}"),
             Self::RateLimiter(err) => write!(f, "{err}"),
+            Self::Support(err) => write!(f, "configure support: {err}"),
             Self::Bind(err) => write!(f, "bind: {err}"),
             Self::Serve(err) => write!(f, "serve: {err}"),
         }
@@ -183,6 +198,18 @@ pub async fn run(
         }
     };
     let mut state = ServerState::new(pool, events);
+    if let Some(pending) = PendingSupportConfig::from_env().map_err(RunError::Support)? {
+        let support_config = crate::support::bootstrap_support_agent(state.db_pool(), pending)
+            .await
+            .map_err(RunError::Support)?;
+        println!(
+            "Kordi support contact configured for {}",
+            support_config.owner_email
+        );
+        state = state.with_support(SupportService::new(support_config));
+    } else {
+        println!("Kordi support contact is disabled");
+    }
     if let Some(s3) = S3Config::from_env() {
         println!(
             "Kordi cloud server attachment store at {} (bucket={})",
@@ -213,6 +240,7 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
+    crate::support::spawn_ticket_worker(state.clone());
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     let sweeper_state = state.clone();
     tokio::spawn(async move {

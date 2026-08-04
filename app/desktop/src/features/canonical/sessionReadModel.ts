@@ -14,6 +14,11 @@ import {
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
+import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
+import {
+  KORDI_SUPPORT_AVATAR_URL,
+  KORDI_SUPPORT_NAME,
+} from '@/features/support/supportIdentity';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
@@ -31,38 +36,7 @@ import {
   syntheticParticipantSpaceId,
 } from './readModel/conversationMapping';
 import type { ConversationSubtitleBuilder } from './readModel/conversationMapping';
-
-type CanonicalConversationLike = {
-  id: string;
-  _updatedAtMs?: number;
-  canonicalSessionId?: string;
-  canonicalStoragePath?: string;
-  canonicalParticipantCount?: number;
-  canonicalMessageCount?: number;
-  canonicalDelegatedExchangeCount?: number;
-  taskActivities?: SessionTaskActivity[];
-  canonicalContextSnapshotCount?: number;
-  canonicalPresenceSummary?: string;
-  desktopRuntimeBacked?: boolean;
-  desktopRuntimeTranscriptLoaded?: boolean;
-  canonicalParticipants?: ConversationParticipant[];
-  collaborationTarget?: ConversationCollaborationTarget | null;
-  collaborationUnreadByParentSessionId?: Record<string, number>;
-  collaborationSources: string[];
-  trust: string;
-  outreach?: { parentSessionId?: string | null } | null;
-  participantSpaceId?: string | null;
-  directness?: string | null;
-  statusIndicator?: Conversation['statusIndicator'];
-  updatedAtLabel?: string;
-  unread?: number;
-  forkedFromSessionId?: string | null;
-  forkedFromMessageId?: string | null;
-  name: string;
-  subtitle: string;
-  participants: string[];
-  messages: Message[];
-};
+import type { CanonicalConversationLike } from './readModel/conversationTypes';
 
 function messageResponseText(message: Message) {
   return message.turn?.assistantText.trim()
@@ -572,23 +546,29 @@ export function createCanonicalSessionReadModel(
       const session = indexes.sessionById.get(sessionId);
       if (!session) return conversation;
 
+      const isSupportContact = Boolean(conversation.supportTicketEnabled);
       const isLegacyCollaborationPersonSession = session.kind === 'direct-person' && isLegacyCanonicalCollaborationSessionId(sessionId);
       const isLegacyCollaborationSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
-      const messages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
+      const hydratedMessages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
         ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
         : (isLegacyCollaborationPersonSession || isLegacyCollaborationSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
           ? canonicalMessages
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
+      const messages = isSupportContact ? normalizeSupportContactMessages(hydratedMessages) : hydratedMessages;
       const rawCanonicalParticipants = this.participantDetails(sessionId);
       const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
-      const participants = canonicalParticipants.length > 0
+      const participants = isSupportContact
+        ? ['Me', KORDI_SUPPORT_NAME]
+        : canonicalParticipants.length > 0
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
-      const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionPrefersPersistedTitle(session) });
+      const displayTitle = isSupportContact
+        ? KORDI_SUPPORT_NAME
+        : sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionPrefersPersistedTitle(session) });
       const latestTime = formatDesktopLastActiveLabel(sessionActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
       const directLegacyCollaborationTarget = conversation.collaborationTarget ?? syntheticCollaborationTarget(session, rawCanonicalParticipants);
@@ -636,7 +616,13 @@ export function createCanonicalSessionReadModel(
         collaborationSources: inheritedLegacyCollaborationTarget ? ['Cloud'] : conversation.collaborationSources,
         trust: inheritedLegacyCollaborationTarget ? 'Cloud' : conversation.trust,
         participants,
-        canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
+        profileImageUrl: isSupportContact
+          ? KORDI_SUPPORT_AVATAR_URL
+          : conversation.profileImageUrl,
+        participantProfileImageUrls: isSupportContact
+          ? { [KORDI_SUPPORT_NAME]: KORDI_SUPPORT_AVATAR_URL }
+          : conversation.participantProfileImageUrls,
+        canonicalParticipants: !isSupportContact && canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
         metadata: canonicalMetadata,
         directness: session.kind === 'group' ? 'Group chat' : isChatCreatedDirectAgent ? 'Agent chat' : conversation.directness,
@@ -645,7 +631,9 @@ export function createCanonicalSessionReadModel(
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,
         collaborationTarget: collaborationTarget,
         taskActivities,
-        canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
+        canonicalParticipantCount: isSupportContact
+          ? participants.length
+          : canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: summaryBySessionId.get(sessionId)?.messageCount
           ?? indexes.rawMessageCountBySessionId.get(sessionId)
           ?? 0,

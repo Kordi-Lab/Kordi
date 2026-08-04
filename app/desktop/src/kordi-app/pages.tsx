@@ -3,9 +3,9 @@ import { ChevronDown, ChevronRight, LoaderCircle, Plus, Search, Trash2, UserPlus
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { ContactRequestRow, ContactRow } from './components';
 import { IdentityAvatar } from './components/IdentityAvatar';
+import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus } from './contactPresentation';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
@@ -35,28 +35,6 @@ type ContactsPageProps = {
   onMessageContact?: (contact: Contact) => void;
   onRemoveContact?: (contact: Contact) => Promise<void> | void;
 };
-
-function normalizedContactText(value: string | null | undefined) {
-  return (value ?? '').trim().toLowerCase();
-}
-
-export function contactPresenceStatus(contact: Contact): string | null {
-  const directPresence = contact.presenceStatus?.trim().toLowerCase();
-  if (directPresence === 'online') return 'online';
-  if (directPresence) return 'offline';
-  return null;
-}
-
-export function contactDetailBodyText(contact: Contact): string {
-  const detail = contact.detail.trim();
-  if (!detail) return '';
-  const visibleIdentifiers = new Set([
-    normalizedContactText(contact.name),
-    normalizedContactText(contact.subtitle),
-    normalizedContactText(contact.sourceParticipantId),
-  ].filter(Boolean));
-  return visibleIdentifiers.has(normalizedContactText(detail)) ? '' : detail;
-}
 
 export function ContactsPage({
   filteredGroupedContacts,
@@ -205,10 +183,7 @@ export function ContactsPage({
 
   const canRemoveActiveContact = Boolean(
     onRemoveContact
-      && activeContact.sourceHostId
-      && activeContact.sourceParticipantId
-      && !isCollaborationSelfContactId(activeContact.id)
-      && activeContact.classType !== 'my-agents',
+      && contactCanBeRemoved(activeContact),
   );
 
   const submitRemoveContact = async () => {

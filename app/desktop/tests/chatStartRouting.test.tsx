@@ -361,6 +361,27 @@ test('external agent contact Message starts an agent session instead of routing 
   assert.deepEqual(calls, ['overlay:null', 'startAgent:host-1:node-shared:agent-bob']);
 });
 
+test('built-in support Message uses the stable system-contact chat route', () => {
+  const calls: string[] = [];
+  const element = assembleMainContentSlot(baseShellArgs(calls) as never) as never as {
+    props: { contactsPageProps: { onMessageContact: (contact: Record<string, unknown>) => void } };
+  };
+
+  element.props.contactsPageProps.onMessageContact({
+    id: 'cloud-contact:cloud-system:kordi-support',
+    classType: 'other-users-agents',
+    sourceAgentId: 'cloud_agent_kordi_support',
+    sourceParticipantId: 'acct_kordi_support',
+    sourceHostId: 'cloud',
+    name: 'Kordi Support',
+    owner: 'Kordi',
+    sourceRuntime: 'kordi-desktop',
+    systemContact: true,
+  });
+
+  assert.deepEqual(calls, ['overlay:null', 'startChatWithPerson']);
+});
+
 
 
 test('chat transcript contact-request hint calls Add contact for the active bridge person', async () => {

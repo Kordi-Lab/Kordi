@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ContactRow } from '../src/kordi-app/components/transcript';
 import { ContactsPage } from '../src/kordi-app/pages';
 import { cloudRequestToContactRequest } from '../src/features/cloud/useCloudContacts';
+import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
 import type { Contact, ContactRequest } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -179,6 +180,35 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
 
   assert.equal(mapped.avatarName, '111');
   assert.equal(mapped.profileImageUrl, 'data:image/png;base64,avatar-111');
+});
+
+test('the locked Kordi Support contact routes reporting through its chat', () => {
+  const markup = renderContactsPage([], {
+    activeContact: contact({
+      id: 'cloud-contact:cloud-system:kordi-support',
+      name: 'Kordi Support',
+      entityType: 'user',
+      classType: 'other-users',
+      subtitle: 'Ask questions or suggest improvements',
+      detail: 'Ask questions or suggest improvements',
+      sourceHostId: 'cloud',
+      sourceParticipantId: 'acct_support',
+      sourceAgentId: 'cloud_agent_kordi_support',
+      systemContact: true,
+      locked: true,
+      supportTicketEnabled: true,
+      profileImageUrl: KORDI_SUPPORT_AVATAR_URL,
+    }),
+    contactOverlayMode: 'contact',
+    onMessageContact: () => undefined,
+    onRemoveContact: () => undefined,
+  });
+
+  assert.match(markup, />Kordi Support</);
+  assert.match(markup, /src="\/favicon\.png"/);
+  assert.match(markup, />Message</);
+  assert.doesNotMatch(markup, />Submit a request</);
+  assert.doesNotMatch(markup, />Delete contact</);
 });
 
 test('active contact rows stay visually neutral until hover', () => {

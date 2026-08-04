@@ -7,6 +7,9 @@ import {
   normalizeCloudMessageSnapshot,
   type CloudMessageSnapshotResponse,
 } from './cloudMessageSnapshot';
+import type { CloudContactSummary } from './cloudContactTypes';
+
+export type { CloudContactSummary } from './cloudContactTypes';
 
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
@@ -79,14 +82,6 @@ export type CloudPublicProfile = {
   nodeId: string | null;
   isContact: boolean;
   isSelf: boolean;
-};
-
-export type CloudContactSummary = {
-  accountId: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-  nodeId: string | null;
-  createdAt: string;
 };
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';
@@ -173,7 +168,7 @@ export type CloudMessage = {
   attachments?: CloudMessageAttachment[];
 };
 
-export type CloudSyncEventType = 'message.upsert' | 'message.read' | string;
+export type CloudSyncEventType = string;
 
 export type CloudSyncEvent = {
   eventId: string;
@@ -221,8 +216,8 @@ export type CloudArtifactActivity = {
   artifactId: string;
   name: string;
   path: string;
-  kind: 'code' | 'document' | 'file' | string;
-  category: 'artifact' | 'related' | 'memory' | string;
+  kind: string;
+  category: string;
   summary: string | null;
   createdByAccountId: string;
   sourceMessageId: string | null;
@@ -315,7 +310,7 @@ export type CloudAgentRunClaimInput = {
   targetCloudAgentId?: string | null;
 };
 
-export type CloudAgentRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+export type CloudAgentRunStatus = string;
 
 export type CloudAgentRun = {
   runId: string;
@@ -536,6 +531,10 @@ export class CloudAuthClient {
       throw buildError(response.status, body, fallbackMessage);
     }
     return body as TResponse;
+  }
+
+  request<TResponse>(path: string, init: RequestInit, fallbackMessage: string): Promise<TResponse> {
+    return this.send<TResponse>(path, init, fallbackMessage);
   }
 
   async signup(input: {

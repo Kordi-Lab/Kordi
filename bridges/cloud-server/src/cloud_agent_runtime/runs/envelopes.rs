@@ -179,6 +179,49 @@ pub(super) fn direct_message_envelope(body: &str) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct DirectCloudAgentTarget {
+    pub(super) agent_id: String,
+    pub(super) owner_account_id: String,
+    pub(super) owner_name: Option<String>,
+}
+
+pub(super) fn direct_cloud_agent_target(body: &str) -> Option<DirectCloudAgentTarget> {
+    let envelope = direct_message_envelope(body)?;
+    if envelope
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_i64)
+        != Some(1)
+        || envelope.get("kind").and_then(serde_json::Value::as_str) != Some("message")
+    {
+        return None;
+    }
+    let agent_id = envelope
+        .get("targetCloudAgentId")?
+        .as_str()?
+        .trim()
+        .to_string();
+    let owner_account_id = envelope
+        .get("targetCloudAgentOwnerAccountId")?
+        .as_str()?
+        .trim()
+        .to_string();
+    if !agent_id.starts_with("cloud_agent_") || owner_account_id.is_empty() {
+        return None;
+    }
+    let owner_name = envelope
+        .get("targetCloudAgentOwnerName")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    Some(DirectCloudAgentTarget {
+        agent_id,
+        owner_account_id,
+        owner_name,
+    })
+}
+
 pub(super) fn encode_cloud_agent_response_body_with_state(
     request_message_id: &str,
     response_text: &str,
@@ -239,4 +282,40 @@ pub(super) async fn latest_cloud_group_envelope_for_session(
         let envelope = parse_cloud_group_envelope(&body)?;
         (envelope.kind == "group-message" && !envelope.participants.is_empty()).then_some(envelope)
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn direct_body(value: serde_json::Value) -> String {
+        format!(
+            "{CLOUD_DIRECT_MESSAGE_PREFIX}{}",
+            URL_SAFE_NO_PAD.encode(value.to_string())
+        )
+    }
+
+    #[test]
+    fn direct_agent_target_requires_the_canonical_message_envelope() {
+        let valid = direct_body(serde_json::json!({
+            "schemaVersion": 1,
+            "kind": "message",
+            "text": "Help",
+            "targetCloudAgentId": "cloud_agent_kordi_support",
+            "targetCloudAgentOwnerAccountId": "acct_support",
+            "targetCloudAgentOwnerName": "Kordi",
+        }));
+        let target = direct_cloud_agent_target(&valid).expect("valid direct target");
+        assert_eq!(target.agent_id, "cloud_agent_kordi_support");
+        assert_eq!(target.owner_account_id, "acct_support");
+        assert_eq!(target.owner_name.as_deref(), Some("Kordi"));
+
+        let wrong_kind = direct_body(serde_json::json!({
+            "schemaVersion": 1,
+            "kind": "agent-response",
+            "targetCloudAgentId": "cloud_agent_kordi_support",
+            "targetCloudAgentOwnerAccountId": "acct_support",
+        }));
+        assert!(direct_cloud_agent_target(&wrong_kind).is_none());
+    }
 }

@@ -144,7 +144,9 @@ verify_product_origin() {
     local label="$2"
     local headers
     local origin_host
-    local -a resolve_args=()
+    # Keep the array non-empty for Bash 3.2 (the macOS system shell), where
+    # expanding an empty local array under `set -u` raises an unbound error.
+    local -a resolve_args=(--connect-timeout 20)
     local status
     headers="$(mktemp)"
     trap 'rm -f "${headers}"' RETURN

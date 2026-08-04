@@ -51,6 +51,9 @@ pub(super) async fn send_message(
     };
 
     let pool = state.db_pool();
+    let support_prompt = state.support().and_then(|service| {
+        crate::support::message_targets_support_agent(&body, &peer, service.config())
+    });
 
     let mut attachments = Vec::new();
     for input in &req.attachments {
@@ -138,7 +141,11 @@ pub(super) async fn send_message(
             );
         }
     };
-    if !is_self_message && mutual.is_none() && cloud_message_requires_accepted_contact(&body) {
+    if !is_self_message
+        && mutual.is_none()
+        && support_prompt.is_none()
+        && cloud_message_requires_accepted_contact(&body)
+    {
         return err(
             "not_a_contact",
             "You can only message accepted contacts.",
@@ -261,6 +268,30 @@ pub(super) async fn send_message(
                 })
                 .await;
         });
+
+        if let (Some(prompt), Some(service), Some(session_id)) = (
+            support_prompt,
+            state.support().cloned(),
+            summary.session_id.clone(),
+        ) {
+            let pool = state.db_pool().clone();
+            let input = ClaimRunRequest {
+                request_message_id: summary.message_id.clone(),
+                session_id,
+                owner_account_id: service.config().owner_account_id.clone(),
+                requester_account_id: session.account_id.clone(),
+                prompt,
+                idempotency_key: format!("kordi-support:{}", summary.message_id),
+            };
+            tokio::spawn(async move {
+                if let Err(error) = claim_run(&pool, &input).await {
+                    eprintln!(
+                        "[support] queue hosted response for {}: {error}",
+                        input.request_message_id
+                    );
+                }
+            });
+        }
     }
 
     (

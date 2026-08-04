@@ -97,6 +97,50 @@ Health check:
 curl https://kordi.ai/health
 ```
 
+## Built-in Kordi Support contact
+
+When `KORDI_SUPPORT_ENABLED=true`, the server prepends one locked, system-owned
+`Kordi Support` agent to every signed-in user's contact list. Direct messages
+to that exact agent are queued for the hosted runner. The contact detail also
+contains a support form for questions, product issues, and feedback.
+
+Support form submissions are written to Postgres before email delivery is
+attempted. A background worker retries failed notifications without requiring
+the desktop to remain open. Production sends those notifications to
+`shuyhere@gmail.com` through Gmail SMTP with STARTTLS. The support agent
+owner remains the locked `trykordi@gmail.com` system account; outbound mail
+credentials and the notification inbox are configured independently.
+
+Never use a Google account password for SMTP and never place mail credentials
+in a manifest, shell history, desktop environment, or repository. Enable
+two-step verification on the mailbox, create a dedicated Gmail app password,
+then create the Kubernetes Secret from a trusted operator shell:
+
+```bash
+read -s -p "Gmail app password: " KORDI_SUPPORT_GMAIL_APP_PASSWORD
+echo
+kubectl -n kordi-cloud create secret generic kordi-support-smtp \
+  --from-literal=app-password="$KORDI_SUPPORT_GMAIL_APP_PASSWORD" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset KORDI_SUPPORT_GMAIL_APP_PASSWORD
+```
+
+The hosted support chat also requires the support-owner account to have a
+current provider-auth snapshot. Sign in to Kordi as `trykordi@gmail.com`,
+connect the intended model provider, and confirm the snapshot reaches the
+hosted server before enabling live support traffic. The system agent is
+created and locked by the server; it is intentionally hidden from normal
+Factory edit/archive routes.
+
+Verify without printing any secret values:
+
+```bash
+kubectl -n kordi-cloud get secret kordi-support-smtp
+kubectl -n kordi-cloud rollout status deployment/kordi-cloud-server --timeout=180s
+kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m \
+  | grep -E 'Kordi support|support tickets'
+```
+
 The production origin is a compatibility contract with released desktop
 clients. Both `kordi.ai` and the legacy `coordinar.io` origin must serve
 `/v1/cloud/*`, `/health`, and `/updates/*` directly. A marketing-site redirect

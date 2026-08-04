@@ -55,6 +55,7 @@ test('pending Cloud contact selection keeps active conversation on Cloud instead
   assert.equal(conversation?.id, 'bridge:cloud:acct_peer:person');
   assert.equal(conversation?.collaborationTarget?.hostId, 'cloud');
   assert.equal(conversation?.collaborationTarget?.nodeId, 'acct_peer');
+  assert.equal(conversation?.name, 'Opening contact…');
   assert.equal(conversation?.collaborationSources.includes('Cloud'), true);
   assert.equal(conversation?.subtitle, '');
   assert.equal(conversation?.messages.length, 1);

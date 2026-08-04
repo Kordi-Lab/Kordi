@@ -7,14 +7,15 @@ import {
   COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
   COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/collaboration/messages';
-import { isCollaborationAgentRuntime, isCollaborationPersonRuntime } from '@/features/collaboration/runtime';
+import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
   collaborationTimestampIsExpired,
   historicalCollaborationProcessingPlaceholderIds,
   isCollaborationAgentResponseDirection,
 } from '@/features/collaboration/collaborationProcessingState';
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
+import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
+import { KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
 type CollaborationConversationViewModel = Conversation & {
@@ -23,23 +24,6 @@ type CollaborationConversationViewModel = Conversation & {
 
 function collaborationHostLabel(host?: DesktopCollaborationHost | null) {
   return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Cloud';
-}
-
-function collaborationProfileImageUrl(value: string | null | undefined): string | null {
-  const normalized = cloudAvatarImageUrl(value);
-  if (normalized) return normalized;
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
-  return trimmed;
-}
-
-function isCollaborationConversationPersonChat(conversation: DesktopCollaborationConversation) {
-  return isCollaborationPersonRuntime(conversation.peerRuntime)
-    || Boolean(
-      conversation.peerOwnerName
-        && conversation.peerDisplayName
-        && conversation.peerOwnerName.trim() === conversation.peerDisplayName.trim(),
-    );
 }
 
 function collaborationOutboundStatusChip(deliveryState: string | null | undefined, agentHasBegunReply: boolean) {
@@ -243,6 +227,7 @@ export function mapCollaborationConversationToViewModel(
   nowMs: number = Date.now(),
 ): CollaborationConversationViewModel {
   const hostLabel = collaborationHostLabel(host);
+  const isSupportContact = Boolean(conversation.supportTicketEnabled);
   const isPersonChat = isCollaborationConversationPersonChat(conversation);
   const isCloudSelfAgent = conversation.hostId === 'cloud'
     && conversation.peerNodeId === conversation.identity?.localHumanId
@@ -283,9 +268,13 @@ export function mapCollaborationConversationToViewModel(
   const localAgentSourceLabel = localCollaborationAgentLabel.trim().toLowerCase() === 'my kordi'
     ? realAgentLabelForOwner(localHumanSourceLabel, localCollaborationAgentLabel)
     : localCollaborationAgentLabel;
-  const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
-  const remoteHumanSourceLabel = conversation.identity?.remoteHumanName?.trim() || remoteHumanLabel;
   const remoteAgentLabel = conversation.identity?.remoteAgentName?.trim() || conversation.peerDisplayName || conversation.title;
+  const remoteHumanLabel = isSupportContact
+    ? remoteAgentLabel
+    : conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
+  const remoteHumanSourceLabel = isSupportContact
+    ? remoteAgentLabel
+    : conversation.identity?.remoteHumanName?.trim() || remoteHumanLabel;
   const remoteAgentSourceLabel = remoteAgentLabel.trim().toLowerCase() === 'my kordi'
     ? realAgentLabelForOwner(remoteHumanSourceLabel, remoteAgentLabel)
     : remoteAgentLabel;
@@ -296,7 +285,9 @@ export function mapCollaborationConversationToViewModel(
   const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isCloudSelfAgent ? localAgentAvatarSeed : isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
   const localHumanProfileImageUrl = collaborationProfileImageUrl(host?.profileImageUrl);
-  const remoteHumanProfileImageUrl = collaborationProfileImageUrl(peer?.profileImageUrl);
+  const remoteHumanProfileImageUrl = isSupportContact
+    ? KORDI_SUPPORT_AVATAR_URL
+    : collaborationProfileImageUrl(peer?.profileImageUrl);
   const participantAvatarSeeds: Record<string, string> = {
     You: localHumanAvatarSeed,
     [localHumanLabel]: localHumanAvatarSeed,
@@ -398,7 +389,7 @@ export function mapCollaborationConversationToViewModel(
     const isLiveAgentReply = (isRemoteAgentResponse || isLocalAgentResponse) && normalizedDeliveryState === 'processing';
 
     if (isRemoteAgentResponse || isLocalAgentResponse) {
-      const responseSender = message.sender?.trim()
+      const responseSender = (isSupportContact && isRemoteAgentResponse ? remoteAgentLabel : message.sender?.trim())
         || (isRemoteAgentResponse ? remoteAgentLabel : localCollaborationAgentLabel);
       const responseCancelled = isCancelledCollaborationState(message.deliveryState);
       const responseFailed = isFailedCollaborationState(message.deliveryState);
@@ -412,6 +403,9 @@ export function mapCollaborationConversationToViewModel(
         isOwnMessage: false,
         showSenderMeta: true,
         senderAvatarSeed: isRemoteAgentResponse ? remoteAgentAvatarSeed : localAgentAvatarSeed,
+        senderProfileImageUrl: isSupportContact && isRemoteAgentResponse
+          ? KORDI_SUPPORT_AVATAR_URL
+          : null,
         text: '',
         time: message.timeLabel,
         replyToMessageId,
@@ -555,11 +549,11 @@ export function mapCollaborationConversationToViewModel(
     humanId: conversation.identity?.remoteHumanId,
     agentId: conversation.identity?.remoteAgentId,
   };
-
   return {
     id: conversation.id,
+    supportTicketEnabled: Boolean(conversation.supportTicketEnabled),
     canonicalSessionId: conversation.canonicalSessionId,
-    name: conversation.title,
+    name: isSupportContact ? remoteAgentLabel : conversation.title,
     type: isCloudSelfAgent ? 'owned-agent' : isAgent ? 'external-agent' : 'person',
     subtitle: outreachPrefix
       ? `${outreachPrefix}${conversation.projectName ? ` • ${conversation.projectName}` : ''} • ${conversation.subtitle || conversation.outreach?.requestText || 'Waiting for reply'}`
@@ -572,14 +566,18 @@ export function mapCollaborationConversationToViewModel(
     directness: isCloudSelfAgent ? 'Agent chat' : outreachPrefix ?? (isPersonChat ? 'Person chat' : 'Agent chat'),
     participants: isCloudSelfAgent
       ? ['Me', localCollaborationAgentLabel]
-      : isAgent
-        ? ['Me', remoteHumanLabel, remoteAgentLabel]
-        : ['Me', conversation.peerOwnerName || conversation.title],
+      : isSupportContact
+        ? ['Me', remoteAgentLabel]
+        : isAgent
+          ? ['Me', remoteHumanLabel, remoteAgentLabel]
+          : ['Me', conversation.peerOwnerName || conversation.title],
     updatedAtLabel: conversation.updatedAtLabel,
     outreach: conversation.outreach,
     identity: conversation.identity,
     avatarSeed: conversationAvatarSeed,
-    profileImageUrl: isAgent ? null : remoteHumanProfileImageUrl,
+    profileImageUrl: isSupportContact
+      ? KORDI_SUPPORT_AVATAR_URL
+      : isAgent ? null : remoteHumanProfileImageUrl,
     participantAvatarSeeds,
     participantProfileImageUrls,
     collaborationTarget: collaborationTarget,

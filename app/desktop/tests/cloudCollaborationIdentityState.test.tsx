@@ -6,9 +6,11 @@ import {
   buildCloudDesktopCollaborationState,
   cloudCollaborationConversationId,
   cloudDirectPersonSessionId,
+  cloudSystemAgentConversationId,
   cloudMessageToCollaborationMessage,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdFromConversationId,
+  cloudSystemAgentSessionId,
   isCloudCollaborationConversationId,
 } from '../src/features/cloud/cloudCollaborationState';
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
@@ -16,6 +18,10 @@ import { cloudGroupForkPayloadFromSessionMetadata } from '../src/features/cloud/
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
+import { buildParticipantSpaces, filterParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
+import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -246,6 +252,10 @@ test('Cloud collaboration ids are neutral while legacy Bridge ids remain readabl
   );
   assert.equal(cloudDirectPersonSessionId('acct_me', 'acct_peer'), 'session:direct-person:acct_me:acct_peer');
   assert.equal(cloudDirectPersonSessionId('acct_peer', 'acct_me'), 'session:direct-person:acct_me:acct_peer');
+  assert.equal(
+    cloudSystemAgentConversationId('acct_me', 'acct_support', 'cloud_agent_kordi_support'),
+    'cloud:conversation:acct_support:agent:session:session%3Adirect-system-agent%3Aacct_me%3Acloud_agent_kordi_support',
+  );
   assert.equal(cloudPeerAccountIdFromConversationId('cloud:conversation:acct_peer:person'), 'acct_peer');
   assert.equal(cloudSessionIdFromConversationId('cloud:conversation:acct_peer:agent:session:session%3Aself'), 'session:self');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer:person'), 'acct_peer');
@@ -253,4 +263,127 @@ test('Cloud collaboration ids are neutral while legacy Bridge ids remain readabl
   assert.equal(cloudSessionIdFromConversationId('bridge:cloud:acct_peer:session:session%3Aself'), 'session:self');
   assert.equal(isCloudCollaborationConversationId('bridge:cloud:acct_peer:person'), true);
   assert.equal(isCloudCollaborationConversationId('bridge:local:node:person'), false);
+});
+
+test('the built-in support agent keeps a stable thread separate from its owner human', () => {
+  const supportOwner = cloudContactToContact({
+    accountId: 'acct_support',
+    displayName: 'Support Owner',
+    avatarUrl: null,
+    nodeId: null,
+    createdAt: '2026-08-04T00:00:00Z',
+  });
+  const supportAgent = cloudContactToContact({
+    contactId: 'cloud-system:kordi-support',
+    contactKind: 'system_agent',
+    accountId: 'acct_support',
+    displayName: 'Kordi Support',
+    subtitle: 'Ask questions or suggest improvements',
+    avatarUrl: null,
+    nodeId: null,
+    createdAt: '2026-08-04T00:00:00Z',
+    locked: true,
+    targetCloudAgentId: 'cloud_agent_kordi_support',
+    targetCloudAgentName: 'Kordi Support',
+    targetCloudAgentOwnerAccountId: 'acct_support',
+    targetCloudAgentOwnerName: 'Kordi',
+    supportTicketEnabled: true,
+  });
+  const supportSessionId = cloudSystemAgentSessionId(account.accountId, 'cloud_agent_kordi_support');
+  const request: CloudMessage = {
+    messageId: 'msg_support_request',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_support',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: 'How do groups work?',
+      targetCloudAgentId: 'cloud_agent_kordi_support',
+      targetCloudAgentName: 'Kordi Support',
+      targetCloudAgentOwnerAccountId: 'acct_support',
+      targetCloudAgentOwnerName: 'Kordi',
+    }),
+    sessionId: supportSessionId,
+    createdAt: '2026-08-04T10:00:00Z',
+    deliveredAt: '2026-08-04T10:00:00Z',
+    readAt: null,
+    direction: 'outgoing',
+    attachments: [],
+  };
+  const response: CloudMessage = {
+    messageId: 'msg_support_response',
+    fromAccountId: 'acct_support',
+    toAccountId: account.accountId,
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'Open the group, then choose a session.' }),
+    sessionId: supportSessionId,
+    createdAt: '2026-08-04T10:00:01Z',
+    deliveredAt: '2026-08-04T10:00:01Z',
+    readAt: null,
+    direction: 'incoming',
+    attachments: [],
+  };
+  const humanMessage: CloudMessage = {
+    messageId: 'msg_support_owner_human',
+    fromAccountId: 'acct_support',
+    toAccountId: account.accountId,
+    body: 'A normal message from the account owner',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_support'),
+    createdAt: '2026-08-04T10:00:02Z',
+    deliveredAt: '2026-08-04T10:00:02Z',
+    readAt: null,
+    direction: 'incoming',
+    attachments: [],
+  };
+
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [supportAgent, supportOwner],
+    messagesByPeer: { acct_support: [request, response, humanMessage] },
+    readInboundMessageIdsByPeer: {},
+    activeConversationId: null,
+    localAgentTurnsByRequestId: {},
+    localAgentRuntimeRoute: null,
+    cloudSessionTitlesById: {},
+    hiddenCloudSessionIds: new Set(),
+    suppressUnscopedSelfAgentConversation: false,
+  });
+  const supportConversation = state.conversations.find((conversation) => (
+    conversation.identity?.remoteAgentId === 'cloud_agent_kordi_support'
+  ));
+  const ownerConversation = state.conversations.find((conversation) => (
+    conversation.peerRuntime === 'person' && conversation.peerNodeId === 'acct_support'
+  ));
+
+  assert.ok(supportConversation);
+  assert.equal(supportConversation.supportTicketEnabled, true);
+  assert.equal(supportConversation.canonicalSessionId, supportSessionId);
+  assert.deepEqual(supportConversation.messages.map((entry) => entry.id), [
+    'msg_support_request',
+    'msg_support_response',
+  ]);
+  const supportView = mapCollaborationConversationToViewModel(
+    supportConversation,
+    state.hosts[0],
+    'Kordi',
+  );
+  assert.equal(supportView.name, 'Kordi Support');
+  assert.equal(supportView.type, 'person');
+  assert.equal(supportView.directness, 'Person chat');
+  assert.deepEqual(supportView.participants, ['Me', 'Kordi Support']);
+  assert.equal(supportView.messages[1]?.sender, 'Kordi Support');
+  assert.equal(supportView.messages[1]?.role, 'external-agent');
+  assert.equal(supportView.collaborationTarget?.runtime, 'kordi-desktop');
+  assert.equal(supportView.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
+  assert.equal(supportView.profileImageUrl, KORDI_SUPPORT_AVATAR_URL);
+  assert.equal(supportView.participantProfileImageUrls?.['Kordi Support'], KORDI_SUPPORT_AVATAR_URL);
+  assert.equal(supportView.messages[1]?.senderProfileImageUrl, KORDI_SUPPORT_AVATAR_URL);
+  const supportSpaces = buildParticipantSpaces([supportView]);
+  assert.deepEqual(filterParticipantSpaces(supportSpaces, '', 'contact').map((space) => space.title), ['Kordi Support']);
+  assert.deepEqual(filterParticipantSpaces(supportSpaces, '', 'agent'), []);
+  assert.ok(ownerConversation);
+  assert.deepEqual(ownerConversation.messages.map((entry) => entry.id), ['msg_support_owner_human']);
+  assert.equal(
+    state.hosts[0]?.visiblePeers.filter((entry) => entry.agentId === 'cloud_agent_kordi_support').length,
+    1,
+  );
 });

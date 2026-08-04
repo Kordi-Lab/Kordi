@@ -3,6 +3,7 @@ import { Check, Copy } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { ExternalMessageLink } from './messageInlineContent';
+import { MarkdownTable } from './markdownTable';
 import {
   bareHttpUrlStartPattern,
   safeExternalHttpHref,
@@ -646,37 +647,6 @@ function MarkdownListView({
   );
 }
 
-function MarkdownTable({ headers, rows, showLinkIcons = false }: { headers: string[]; rows: string[][]; showLinkIcons?: boolean }) {
-  return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-white/8 bg-[color:var(--app-control-bg)]">
-      <div className="overflow-x-auto overscroll-x-contain px-1 py-1">
-        <table className="min-w-full w-max border-collapse text-left text-sm text-slate-100">
-        <thead className="bg-white/[0.05] text-slate-300">
-          <tr>
-            {headers.map((header, index) => (
-              <th key={`header-${index}`} className="border-b border-white/8 px-3 py-2 font-medium">
-                {renderInlineMarkdown(header, 'default', showLinkIcons)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr key={`row-${rowIndex}`} className="border-b border-white/6 last:border-b-0">
-              {headers.map((_, cellIndex) => (
-                <td key={`cell-${rowIndex}-${cellIndex}`} className="align-top px-3 py-2 text-slate-200">
-                  {renderInlineMarkdown(row[cellIndex] ?? '', 'default', showLinkIcons)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 function MarkdownContent({
   text,
   className,
@@ -730,7 +700,14 @@ function MarkdownContent({
           );
         }
         if (block.type === 'table') {
-          return <MarkdownTable key={`table-${index}`} headers={block.headers} rows={block.rows} showLinkIcons={showLinkIcons} />;
+          return (
+            <MarkdownTable
+              key={`table-${index}`}
+              headers={block.headers}
+              rows={block.rows}
+              renderCell={(value) => renderInlineMarkdown(value, 'default', showLinkIcons)}
+            />
+          );
         }
         return (
           <p key={`paragraph-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', tone === 'muted' ? 'app-markdown-muted-copy text-slate-400' : 'text-slate-100')}>

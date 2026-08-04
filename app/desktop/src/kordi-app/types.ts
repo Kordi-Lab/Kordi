@@ -15,6 +15,8 @@ import type {
   SessionStatusIndicator,
 } from './types/message';
 
+export type { Contact, ContactClass } from './types/contact';
+
 export type {
   CollaborationAgentRequestControl,
   ComposerQuoteState,
@@ -45,7 +47,6 @@ export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'settings';
 export type ChatChannel = 'contact' | 'agent';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';
-export type ContactClass = 'my-agents' | 'other-users-agents' | 'other-users';
 export type ResizeDirection =
   | 'left'
   | 'right'
@@ -134,6 +135,8 @@ export type SessionTaskActivity = {
 
 export type Conversation = {
   id: string;
+  /** This server-owned conversation can submit a reviewed Kordi Support report. */
+  supportTicketEnabled?: boolean;
   /** UI-only session draft. It must not be written to canonical storage before the first send. */
   transientDraft?: boolean;
   /** Internal activity timestamp used while composing workspace view models. */
@@ -234,30 +237,6 @@ export type ParticipantSpaceViewModel = {
   membershipSessionIds?: string[];
   /** Hidden persisted blank continuation that can be reused instead of creating another shell. */
   reusableBlankSessionId?: string | null;
-};
-
-export type Contact = {
-  id: string;
-  name: string;
-  initials: string;
-  classType: ContactClass;
-  entityType: string;
-  subtitle: string;
-  collaborationSources: string[];
-  status: string;
-  discoverableOn: string[];
-  detail: string;
-  owner: string;
-  sourceHostId?: string;
-  sourceParticipantId?: string;
-  sourceRuntime?: string;
-  sourceHumanId?: string | null;
-  sourceAgentId?: string | null;
-  contactStatus?: string | null;
-  contactRequestDirection?: string | null;
-  avatarSeed?: string | null;
-  profileImageUrl?: string | null;
-  presenceStatus?: 'online' | 'offline' | string | null;
 };
 
 export type ContactRequest = {
@@ -1045,6 +1024,7 @@ export type DesktopCollaborationIdentitySnapshot = {
 
 export type DesktopCollaborationConversation = {
   id: string;
+  supportTicketEnabled?: boolean;
   canonicalSessionId: string;
   hostId: string;
   peerNodeId: string;

@@ -214,6 +214,13 @@
   color: var(--app-transient-disabled-text);
 }
 
+/* Report footer actions are secondary decisions, not large composer actions. */
+.app-transient-surface .app-support-report-action {
+  min-height: 1.75rem;
+  font-size: 0.625rem;
+  line-height: 0.875rem;
+}
+
 .app-transient-surface .app-transient-flat-action-danger {
   color: var(--app-transient-danger-text);
 }

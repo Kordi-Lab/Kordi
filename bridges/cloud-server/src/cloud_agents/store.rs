@@ -241,7 +241,7 @@ pub async fn list_agent_definitions(
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, created_at, updated_at, archived_at
          FROM cloud_agent_definitions
-         WHERE owner_account_id = $1 AND status = 'active'
+         WHERE owner_account_id = $1 AND status = 'active' AND is_system_managed = FALSE
          ORDER BY updated_at DESC, agent_id ASC",
     )
     .bind(owner_account_id)
@@ -273,6 +273,7 @@ pub async fn list_shared_agent_summaries(
          WHERE a.owner_account_id = ANY($1)
            AND a.status = $2
            AND a.access_scope = $3
+           AND a.is_system_managed = FALSE
          ORDER BY a.updated_at DESC, a.agent_id ASC",
     )
     .bind(&owners)
@@ -354,6 +355,7 @@ pub async fn update_agent_definition(
              boundaries_json = $10, resources_json = $11, skills_json = $12, model_routing_json = $13,
              updated_at = $14
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = $3
+           AND is_system_managed = FALSE
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, created_at, updated_at, archived_at",
@@ -400,6 +402,7 @@ pub async fn archive_agent_definition(
         "UPDATE cloud_agent_definitions
          SET status = $4, archived_at = $3, updated_at = $3
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = 'active'
+           AND is_system_managed = FALSE
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, created_at, updated_at, archived_at",
@@ -435,7 +438,7 @@ async fn get_agent_definition(
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, created_at, updated_at, archived_at
          FROM cloud_agent_definitions
-         WHERE owner_account_id = $1 AND agent_id = $2",
+         WHERE owner_account_id = $1 AND agent_id = $2 AND is_system_managed = FALSE",
     )
     .bind(owner_account_id)
     .bind(agent_id)
