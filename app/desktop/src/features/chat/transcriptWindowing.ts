@@ -1,4 +1,5 @@
 import type { Message } from '@/kordi-app/types';
+import { transcriptMessageNavigationIds } from './transcriptMessageIdentity';
 
 export const TRANSCRIPT_WINDOW_OVERSCAN = 12;
 export const TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT = 74;
@@ -17,8 +18,6 @@ export function transcriptWindowMessageMatchesId(
   fallbackIndex: number,
 ) {
   if (!message || !messageId) return false;
-  return message.id === messageId
-    || message.entryId === messageId
-    || message.turn?.id === messageId
+  return transcriptMessageNavigationIds(message).includes(messageId)
     || `transcript-message:${fallbackIndex}` === messageId;
 }

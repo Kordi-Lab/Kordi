@@ -2,7 +2,7 @@ import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
-type Row = { id: string; height: number };
+type Row = { id: string; height: number; aliases?: string[] };
 
 let VirtualTranscript: typeof import('../../src/features/chat/VirtualTranscript').VirtualTranscript;
 let root: Root | null = null;
@@ -150,7 +150,7 @@ export function virtualRowStart(node: HTMLElement) {
 export function transcript(props: {
   items: readonly Row[];
   sessionKey?: string;
-  navigationRequest?: { id: string; nonce: number; sessionKey?: string } | null;
+  navigationRequest?: { id: string; nonce: number; sessionKey?: string; lookupIds?: string[] } | null;
   onNavigationReady?: (messageId: string) => void;
   onNavigationHandled?: (request: { id: string; nonce: number; sessionKey: string }) => void;
   hasOlder?: boolean;
@@ -172,7 +172,7 @@ export function transcript(props: {
       )}
       scrollStyle={{ height: 600 }}
       navigationRequest={navigationRequest}
-      findNavigationIndex={(item, id) => item.id === id}
+      findNavigationIndex={(item, id) => item.id === id || Boolean(item.aliases?.includes(id))}
       onNavigationReady={props.onNavigationReady}
       onNavigationHandled={props.onNavigationHandled}
       hasOlder={props.hasOlder}

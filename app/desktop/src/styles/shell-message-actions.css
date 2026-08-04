@@ -315,6 +315,14 @@
   --app-message-bubble-stroke: color-mix(in oklab, var(--app-transcript-highlight-accent) 52%, transparent);
 }
 
+/* The light-theme own-bubble rule has greater specificity than the shared state
+ * rule above. Keep this paint-only state override theme-scoped so route-back
+ * highlighting wins without changing the bubble's geometry. */
+.kordi-app.theme-light .app-transcript-message-highlight .app-chat-bubble-user {
+  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-bubble-user-bg) 86%, var(--app-transcript-highlight-accent));
+  --app-message-bubble-stroke: color-mix(in oklab, var(--app-transcript-highlight-accent) 46%, transparent);
+}
+
 .app-transcript-message-highlight .app-message-bubble-shape-fill {
   transition:
     fill var(--app-motion-fast) var(--app-motion-ease),
