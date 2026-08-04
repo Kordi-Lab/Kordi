@@ -135,6 +135,8 @@ export type SessionTaskActivity = {
 
 export type Conversation = {
   id: string;
+  /** This server-owned conversation can submit a reviewed Kordi Support report. */
+  supportTicketEnabled?: boolean;
   /** UI-only session draft. It must not be written to canonical storage before the first send. */
   transientDraft?: boolean;
   /** Internal activity timestamp used while composing workspace view models. */
@@ -1022,6 +1024,7 @@ export type DesktopCollaborationIdentitySnapshot = {
 
 export type DesktopCollaborationConversation = {
   id: string;
+  supportTicketEnabled?: boolean;
   canonicalSessionId: string;
   hostId: string;
   peerNodeId: string;

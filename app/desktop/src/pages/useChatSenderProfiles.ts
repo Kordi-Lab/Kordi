@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
+import type { CloudSupportTicketInput } from '@/features/cloud/supportClient';
 import type {
   Contact,
   Conversation,
@@ -38,6 +39,7 @@ export function useChatSenderProfiles({
 }: UseChatSenderProfilesInput) {
   const normalizedCloudAccount = cloudAccount ?? null;
   const cloudContacts = useCloudContacts(normalizedCloudAccount);
+  const submitCloudSupportRequest = cloudContacts.submitSupportRequest;
   const [storedState, setStoredState] = useState<SenderProfileState>({
     pageConversationId: activeConversation.id,
     target: null,
@@ -85,6 +87,10 @@ export function useChatSenderProfiles({
     });
     await onMessageContact(contact);
   }, [activeConversation.id, onMessageContact]);
+  const submitSupportRequest = useCallback(
+    (input: CloudSupportTicketInput) => submitCloudSupportRequest(input),
+    [submitCloudSupportRequest],
+  );
 
   return {
     target: state.target,
@@ -95,6 +101,9 @@ export function useChatSenderProfiles({
         )
       : undefined,
     messageContact: onMessageContact ? messageContact : undefined,
+    submitSupportRequest: normalizedCloudAccount
+      ? submitSupportRequest
+      : undefined,
     openActive,
     openCompanion,
     close: () => setStoredState({

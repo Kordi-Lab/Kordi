@@ -48,6 +48,7 @@ import type { useChatHeaderModel } from '@/pages/useChatHeaderModel';
 import type { useChatPins } from '@/pages/useChatPins';
 import type { useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
 import type { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
+import { SupportConversationEmptyState } from '@/features/support/SupportReportDialog';
 
 type ChatMainWorkspaceProps = {
   layout: ChatsPageLayout;
@@ -159,6 +160,13 @@ export function ChatMainWorkspace({
               void companion.open();
             },
           }}
+          supportReport={activeConv.supportTicketEnabled
+            && models.senderProfiles.submitSupportRequest
+            ? {
+                sessionId: canonicalHistorySessionId ?? activeConv.id,
+                onSubmit: models.senderProfiles.submitSupportRequest,
+              }
+            : undefined}
         />
 
         {models.destinations.value === 'messages' ? (
@@ -262,7 +270,9 @@ export function ChatMainWorkspace({
                     : undefined,
                 emptyState: models.header.isStarting
                   ? <SessionStartingState />
-                  : null,
+                  : activeConv.supportTicketEnabled
+                    ? <SupportConversationEmptyState />
+                    : null,
                 navigationRequest: models.navigation.request,
                 onNavigationHandled: models.navigation.acknowledge,
                 onTranscriptScroll: transcript.onTranscriptScroll,

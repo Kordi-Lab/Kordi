@@ -710,6 +710,7 @@ export function buildCloudCollaborationConversation({
   } : null;
   return {
     id: conversationId,
+    supportTicketEnabled: Boolean(contact.supportTicketEnabled),
     canonicalSessionId: normalizedCloudSessionId ?? (isPerson && !isSelfPeer ? cloudDirectPersonSessionId(account.accountId, peerAccountId) : conversationId),
     hostId: CLOUD_HOST_SENTINEL,
     peerNodeId: peerAccountId,
@@ -839,6 +840,7 @@ export function buildCloudDesktopCollaborationState({
       contact.name,
       contact.owner,
       contact.systemContact ? 'system' : 'contact',
+      contact.supportTicketEnabled ? 'support-ticket' : '',
       contact.sourceAgentId ?? '',
       contact.profileImageUrl ?? '',
       contact.avatarSeed ?? '',

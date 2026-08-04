@@ -181,7 +181,7 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
   assert.equal(mapped.profileImageUrl, 'data:image/png;base64,avatar-111');
 });
 
-test('the locked Kordi Support contact exposes chat and a structured request form', () => {
+test('the locked Kordi Support contact routes reporting through its chat', () => {
   const markup = renderContactsPage([], {
     activeContact: contact({
       id: 'cloud-contact:cloud-system:kordi-support',
@@ -200,19 +200,11 @@ test('the locked Kordi Support contact exposes chat and a structured request for
     contactOverlayMode: 'contact',
     onMessageContact: () => undefined,
     onRemoveContact: () => undefined,
-    onSubmitSupportRequest: async () => ({
-      ticketId: 'support_123',
-      status: 'received',
-      createdAt: '2026-08-04T00:00:00Z',
-    }),
   });
 
   assert.match(markup, />Kordi Support</);
   assert.match(markup, />Message</);
-  assert.match(markup, />Submit a request</);
-  assert.match(markup, />Question</);
-  assert.match(markup, />Issue</);
-  assert.match(markup, />Feedback</);
+  assert.doesNotMatch(markup, />Submit a request</);
   assert.doesNotMatch(markup, />Delete contact</);
 });
 

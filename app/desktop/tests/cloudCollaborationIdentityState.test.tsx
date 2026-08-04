@@ -348,6 +348,7 @@ test('the built-in support agent keeps a stable thread separate from its owner h
   ));
 
   assert.ok(supportConversation);
+  assert.equal(supportConversation.supportTicketEnabled, true);
   assert.equal(supportConversation.canonicalSessionId, supportSessionId);
   assert.deepEqual(supportConversation.messages.map((entry) => entry.id), [
     'msg_support_request',

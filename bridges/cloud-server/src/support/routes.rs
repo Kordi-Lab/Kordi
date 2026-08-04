@@ -30,7 +30,15 @@ struct CreateSupportTicketRequest {
     description: String,
     session_id: Option<String>,
     diagnostics: Option<SupportDiagnostics>,
+    consent: SupportSubmissionConsent,
     client_submission_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupportSubmissionConsent {
+    report_submission: bool,
+    diagnostics: bool,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -127,6 +135,38 @@ fn clean_diagnostic(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn support_ticket_metadata(
+    consent: &SupportSubmissionConsent,
+    diagnostics: Option<SupportDiagnostics>,
+) -> Result<serde_json::Value, String> {
+    if !consent.report_submission {
+        return Err("Confirm permission before sending this report.".to_string());
+    }
+    if diagnostics.is_some() && !consent.diagnostics {
+        return Err(
+            "Diagnostic details require separate permission before they can be sent.".to_string(),
+        );
+    }
+
+    let diagnostics = diagnostics.unwrap_or_default();
+    Ok(json!({
+        "consent": {
+            "reportSubmission": true,
+            "diagnostics": consent.diagnostics,
+            "conversationTranscript": false,
+        },
+        "values": if consent.diagnostics {
+            json!({
+                "appVersion": clean_diagnostic(diagnostics.app_version),
+                "platform": clean_diagnostic(diagnostics.platform),
+                "osVersion": clean_diagnostic(diagnostics.os_version),
+            })
+        } else {
+            serde_json::Value::Null
+        },
+    }))
+}
+
 async fn create_support_ticket(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -194,12 +234,16 @@ async fn create_support_ticket(
             return error("invalid_support_ticket", &message, StatusCode::BAD_REQUEST);
         }
     };
-    let diagnostics = input.diagnostics.unwrap_or_default();
-    let diagnostics = json!({
-        "appVersion": clean_diagnostic(diagnostics.app_version),
-        "platform": clean_diagnostic(diagnostics.platform),
-        "osVersion": clean_diagnostic(diagnostics.os_version),
-    });
+    let diagnostics = match support_ticket_metadata(&input.consent, input.diagnostics) {
+        Ok(value) => value,
+        Err(message) => {
+            return error(
+                "support_consent_required",
+                &message,
+                StatusCode::BAD_REQUEST,
+            );
+        }
+    };
 
     let ticket = match create_ticket(
         state.db_pool(),
@@ -247,7 +291,10 @@ async fn create_support_ticket(
 
 #[cfg(test)]
 mod tests {
-    use super::{clean_diagnostic, clean_required, clean_subject};
+    use super::{
+        clean_diagnostic, clean_required, clean_subject, support_ticket_metadata,
+        SupportDiagnostics, SupportSubmissionConsent,
+    };
 
     #[test]
     fn ticket_text_is_trimmed_and_bounded() {
@@ -273,5 +320,61 @@ mod tests {
             "Group reply delay"
         );
         assert!(clean_subject("Injected\nBcc: attacker@example.com").is_err());
+    }
+
+    #[test]
+    fn report_submission_requires_explicit_permission() {
+        let result = support_ticket_metadata(
+            &SupportSubmissionConsent {
+                report_submission: false,
+                diagnostics: false,
+            },
+            None,
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            "Confirm permission before sending this report."
+        );
+    }
+
+    #[test]
+    fn diagnostics_require_separate_permission() {
+        let result = support_ticket_metadata(
+            &SupportSubmissionConsent {
+                report_submission: true,
+                diagnostics: false,
+            },
+            Some(SupportDiagnostics {
+                platform: Some("desktop".into()),
+                ..SupportDiagnostics::default()
+            }),
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            "Diagnostic details require separate permission before they can be sent."
+        );
+    }
+
+    #[test]
+    fn approved_metadata_records_scope_without_a_transcript() {
+        let metadata = support_ticket_metadata(
+            &SupportSubmissionConsent {
+                report_submission: true,
+                diagnostics: true,
+            },
+            Some(SupportDiagnostics {
+                app_version: Some(" 0.0.1-beta.10 ".into()),
+                platform: Some("desktop".into()),
+                os_version: Some("macOS".into()),
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(metadata["consent"]["reportSubmission"], true);
+        assert_eq!(metadata["consent"]["diagnostics"], true);
+        assert_eq!(metadata["consent"]["conversationTranscript"], false);
+        assert_eq!(metadata["values"]["appVersion"], "0.0.1-beta.10");
     }
 }

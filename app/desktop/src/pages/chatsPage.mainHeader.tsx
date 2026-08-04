@@ -4,6 +4,11 @@ import { Button } from '@/components/ui/button';
 import type { Conversation } from '@/kordi-app/types';
 import { SessionDestinationTabs } from '@/pages/chatsPage.destinations';
 import type { ChatDestination } from '@/pages/chatsPage.destinationModel';
+import { SupportReportAction } from '@/features/support/SupportReportDialog';
+import type {
+  CloudSupportTicketInput,
+  CloudSupportTicketResult,
+} from '@/features/cloud/supportClient';
 
 type MainHeaderRename = {
   enabled: boolean;
@@ -41,6 +46,10 @@ type MainHeaderProps = {
   };
   rename: MainHeaderRename;
   companion: MainHeaderCompanion;
+  supportReport?: {
+    sessionId: string;
+    onSubmit: (input: CloudSupportTicketInput) => Promise<CloudSupportTicketResult>;
+  };
 };
 
 export function MainChatHeader({
@@ -49,6 +58,7 @@ export function MainChatHeader({
   metadata,
   rename,
   companion,
+  supportReport,
 }: MainHeaderProps) {
   return (
     <div className="app-page-header relative flex min-h-[84px] shrink-0 items-start justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 pb-8 pt-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
@@ -161,6 +171,12 @@ export function MainChatHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2 self-start">
+        {supportReport ? (
+          <SupportReportAction
+            sessionId={supportReport.sessionId}
+            onSubmit={supportReport.onSubmit}
+          />
+        ) : null}
         {companion.canOpen && !companion.isOpen ? (
           <Button
             type="button"

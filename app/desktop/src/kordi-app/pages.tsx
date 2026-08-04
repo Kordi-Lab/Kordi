@@ -5,7 +5,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { ContactRequestRow, ContactRow } from './components';
 import { IdentityAvatar } from './components/IdentityAvatar';
-import { SupportRequestForm, type SupportRequestInput, type SupportRequestResult } from './components/SupportRequestForm';
 import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus } from './contactPresentation';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
@@ -35,7 +34,6 @@ type ContactsPageProps = {
   getStatusBadgeClass: (value: string) => string;
   onMessageContact?: (contact: Contact) => void;
   onRemoveContact?: (contact: Contact) => Promise<void> | void;
-  onSubmitSupportRequest?: (input: SupportRequestInput) => Promise<SupportRequestResult>;
 };
 
 export function ContactsPage({
@@ -61,7 +59,6 @@ export function ContactsPage({
   onCloseOverlay,
   onMessageContact,
   onRemoveContact,
-  onSubmitSupportRequest,
 }: ContactsPageProps) {
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
   const [contactNodeId, setContactNodeId] = useState('');
@@ -534,9 +531,6 @@ export function ContactsPage({
                         </Button>
                       ) : null}
                     </div>
-                    {activeContact.supportTicketEnabled && onSubmitSupportRequest ? (
-                      <SupportRequestForm key={activeContact.id} onSubmit={onSubmitSupportRequest} />
-                    ) : null}
                     {canRemoveActiveContact ? (
                       <div className={cn('app-error-text mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'app-transient-muted')} aria-live="polite">
                         {removeContactState === 'error'

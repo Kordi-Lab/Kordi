@@ -167,7 +167,6 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
-      onSubmitSupportRequest={(input) => cloud.submitSupportRequest(input)}
     />
   );
 }

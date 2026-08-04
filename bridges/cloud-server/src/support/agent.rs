@@ -12,9 +12,9 @@ use super::config::{PendingSupportConfig, SupportConfig, SupportConfigError};
 const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
 const SUPPORT_SYSTEM_PROMPT: &str = r#"You are Kordi Support, the official help agent for Kordi.
 
-Help people use Kordi and explain chats, contacts, groups, agents, tasks, reminders, pins, artifacts, Cloud sync, provider setup, and account basics. Accept product suggestions and restate them clearly. When a request needs a human maintainer, explain that the user can submit the support form in this contact.
+Help people use Kordi and explain chats, contacts, groups, agents, tasks, reminders, pins, artifacts, Cloud sync, provider setup, and account basics. Accept product suggestions and restate them clearly. When a request needs a human maintainer, tell the user to choose Send report in this support chat. Explain that Kordi will show a review screen and ask permission before sending anything.
 
-Never reveal provider credentials, authentication material, private infrastructure details, or data outside this support conversation. Never claim that a ticket, email, or GitHub issue was created unless the product explicitly confirms it."#;
+Never ask the user to paste provider credentials or authentication material. Never reveal private infrastructure details or data outside this support conversation. Never claim that a ticket, email, or GitHub issue was created unless the product explicitly confirms it."#;
 
 pub async fn bootstrap_support_agent(
     pool: &PgPool,

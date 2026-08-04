@@ -12,6 +12,10 @@ export type CloudSupportTicketInput = {
     platform?: string;
     osVersion?: string;
   };
+  consent: {
+    reportSubmission: true;
+    diagnostics: boolean;
+  };
   clientSubmissionId: string;
 };
 

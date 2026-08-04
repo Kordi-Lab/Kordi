@@ -43,8 +43,19 @@ impl SupportMailer {
             "[Kordi {category}] {} ({})",
             ticket.subject, ticket.ticket_id
         );
+        let diagnostics_approved = ticket
+            .diagnostics
+            .pointer("/consent/diagnostics")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let diagnostic_values = ticket
+            .diagnostics
+            .get("values")
+            .filter(|value| !value.is_null())
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
         let body = format!(
-            "Kordi support request\n\nTicket: {}\nCategory: {}\nAccount: {}\nUser: {}\nEmail: {}\nSession: {}\nCreated: {}\n\n{}\n\nDiagnostics:\n{}",
+            "Kordi support request\n\nTicket: {}\nCategory: {}\nAccount: {}\nUser: {}\nEmail: {}\nSupport session: {}\nCreated: {}\n\nPermission\n- Report submission: approved\n- Limited diagnostics: {}\n- Conversation transcript: not included\n- Files and provider credentials: not included\n\nReport\n{}\n\nLimited diagnostics\n{}",
             ticket.ticket_id,
             ticket.category,
             ticket.account_id,
@@ -52,8 +63,13 @@ impl SupportMailer {
             ticket.primary_email.as_deref().unwrap_or("Not provided"),
             ticket.session_id.as_deref().unwrap_or("Not provided"),
             ticket.created_at,
+            if diagnostics_approved {
+                "approved"
+            } else {
+                "not approved"
+            },
             ticket.description,
-            serde_json::to_string_pretty(&ticket.diagnostics).unwrap_or_else(|_| "{}".into()),
+            serde_json::to_string_pretty(&diagnostic_values).unwrap_or_else(|_| "{}".into()),
         );
         let message = Message::builder()
             .from(self.from.clone())

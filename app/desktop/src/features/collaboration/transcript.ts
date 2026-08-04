@@ -555,9 +555,9 @@ export function mapCollaborationConversationToViewModel(
     humanId: conversation.identity?.remoteHumanId,
     agentId: conversation.identity?.remoteAgentId,
   };
-
   return {
     id: conversation.id,
+    supportTicketEnabled: Boolean(conversation.supportTicketEnabled),
     canonicalSessionId: conversation.canonicalSessionId,
     name: conversation.title,
     type: isCloudSelfAgent ? 'owned-agent' : isAgent ? 'external-agent' : 'person',

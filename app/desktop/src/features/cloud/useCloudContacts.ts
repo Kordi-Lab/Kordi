@@ -52,7 +52,7 @@ export type UseCloudContactsResult = {
   lookupProfile(accountId: string): Promise<CloudPublicProfile | null>;
   acceptRequest(requestId: string): Promise<void>;
   rejectRequest(requestId: string): Promise<void>;
-  submitSupportRequest(input: CloudSupportTicketInput): Promise<CloudSupportTicketResult>;
+  submitSupportRequest: (input: CloudSupportTicketInput) => Promise<CloudSupportTicketResult>;
 };
 
 const REFRESH_INTERVAL_MS = 15_000;
