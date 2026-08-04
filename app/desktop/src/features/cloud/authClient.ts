@@ -1,9 +1,13 @@
 // Cloud-edition auth HTTP client. Talks to the cloud server's /v1/cloud/* routes.
 // Stays a pure TS module: no React, no Tauri imports — easy to test with a fetch stub.
 
-// Production sessions must not silently fall back to a localhost transport.
-// Local tunnels/dev servers remain available by explicitly setting
-// VITE_KORDI_CLOUD_API_BASE.
+// Production sessions never silently fall back to localhost; local tunnels remain
+// available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
+import {
+  normalizeCloudMessageSnapshot,
+  type CloudMessageSnapshotResponse,
+} from './cloudMessageSnapshot';
+
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
 
@@ -167,11 +171,6 @@ export type CloudMessage = {
   direction: CloudMessageDirection;
   sessionId?: string | null;
   attachments?: CloudMessageAttachment[];
-};
-
-export type CloudMessageSnapshot = {
-  messages: CloudMessage[];
-  peerReadAt: string | null;
 };
 
 export type CloudSyncEventType = 'message.upsert' | 'message.read' | string;
@@ -1145,25 +1144,10 @@ export class CloudAuthClient {
     return response ?? { cursor, hasMore: false, events: [] };
   }
 
-  async listMessages(
-    token: string,
-    peerAccountId: string,
-    limit?: number,
-  ): Promise<CloudMessage[]> {
-    return (await this.listMessageSnapshot(token, peerAccountId, limit)).messages;
-  }
-
-  async listMessageSnapshot(
-    token: string,
-    peerAccountId: string,
-    limit?: number,
-  ): Promise<CloudMessageSnapshot> {
+  async listMessageSnapshot(token: string, peerAccountId: string, limit?: number) {
     const params = new URLSearchParams({ peerAccountId });
     if (limit !== undefined) params.set('limit', String(limit));
-    const response = await this.send<{
-      messages: CloudMessage[];
-      peerReadAt?: string | null;
-    }>(
+    const response = await this.send<CloudMessageSnapshotResponse>(
       `/v1/cloud/messages?${params.toString()}`,
       {
         method: 'GET',
@@ -1171,15 +1155,7 @@ export class CloudAuthClient {
       },
       'Could not load messages.',
     );
-    return {
-      messages: (response?.messages ?? []).map((message) => ({
-        ...message,
-        attachments: message.attachments ?? [],
-      })),
-      peerReadAt: typeof response?.peerReadAt === 'string'
-        ? response.peerReadAt
-        : null,
-    };
+    return normalizeCloudMessageSnapshot(response);
   }
 }
 

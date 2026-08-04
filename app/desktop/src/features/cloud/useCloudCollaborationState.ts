@@ -194,15 +194,12 @@ const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
 function useCloudCollaborationMessageStore(
   account: CloudAccount | null,
 ): CloudCollaborationMessageStore {
-  const [messagesByPeer, setMessagesByPeer] =
-    useState<Record<string, CloudMessage[]>>({});
+  const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
   const cacheAccountRef = useRef<string | null>(null);
   const hydratedCacheAccountRef = useRef<string | null>(null);
   const peerReadAtByPeerRef = useRef<Record<string, string>>({});
-  const belongsToCurrentAccount = Boolean(
-    account?.accountId
-      && cacheAccountRef.current === account.accountId,
-  );
+  const belongsToCurrentAccount = Boolean(account?.accountId
+    && cacheAccountRef.current === account.accountId);
   const currentAccountMessagesByPeer = belongsToCurrentAccount
     ? messagesByPeer
     : EMPTY_CLOUD_MESSAGES_BY_PEER;

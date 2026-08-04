@@ -52,7 +52,8 @@ export async function loadCloudGroupAgentTargetMessages(
 ): Promise<CloudMessage[]> {
   return (await Promise.all(
     targetAccountIds.map((targetAccountId) => runtime.client
-      .listMessages(token, targetAccountId, 100)
+      .listMessageSnapshot(token, targetAccountId, 100)
+      .then((snapshot) => snapshot.messages)
       .catch(() => [])),
   )).flat();
 }
