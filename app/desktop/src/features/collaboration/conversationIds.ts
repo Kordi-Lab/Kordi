@@ -3,6 +3,7 @@ import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 const CLOUD_CONVERSATION_PREFIX = 'cloud:conversation:';
 const LEGACY_CLOUD_CONVERSATION_PREFIX = `bridge:${CLOUD_HOST_SENTINEL}:`;
 const SESSION_SUFFIX = ':session:';
+const SYSTEM_AGENT_SESSION_PREFIX = 'session:direct-system-agent:';
 
 function decodeIdPart(value: string): string | null {
   try {
@@ -95,4 +96,17 @@ export function cloudDirectPersonSessionId(
     .filter(Boolean)
     .sort()
     .join(':')}`;
+}
+
+export function cloudSystemAgentSessionId(
+  localAccountId: string,
+  agentId: string,
+): string {
+  return `${SYSTEM_AGENT_SESSION_PREFIX}${encodeURIComponent(localAccountId.trim())}:${encodeURIComponent(agentId.trim())}`;
+}
+
+export function isCloudSystemAgentSessionId(
+  sessionId: string | null | undefined,
+): boolean {
+  return Boolean(sessionId?.trim().startsWith(SYSTEM_AGENT_SESSION_PREFIX));
 }

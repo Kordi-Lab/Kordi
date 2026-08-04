@@ -116,18 +116,31 @@ pub(super) async fn list_contacts(
         }
     };
 
-    let contacts = rows
+    let mut contacts = rows
         .into_iter()
         .map(
             |(account_id, display_name, avatar_url, created_at)| ContactSummary {
+                contact_id: None,
+                contact_kind: None,
                 account_id,
                 display_name,
+                subtitle: None,
                 avatar_url,
                 node_id: None,
                 created_at,
+                locked: false,
+                target_cloud_agent_id: None,
+                target_cloud_agent_name: None,
+                target_cloud_agent_owner_account_id: None,
+                target_cloud_agent_owner_name: None,
+                support_ticket_enabled: false,
             },
         )
-        .collect();
+        .collect::<Vec<_>>();
+
+    if let Some(service) = state.support() {
+        contacts.insert(0, crate::support::support_contact(service.config()));
+    }
 
     Json(ContactsListResponse { contacts }).into_response()
 }

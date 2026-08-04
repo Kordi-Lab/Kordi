@@ -192,6 +192,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud session title metadata",
         sql: include_str!("../../migrations/0033_cloud_session_titles.sql"),
     },
+    EmbeddedMigration {
+        version: 34,
+        description: "global support agent and durable support tickets",
+        sql: include_str!("../../migrations/0034_global_support.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

@@ -107,9 +107,15 @@ export function useKordiChatStartActions({
       contact.sourceHostId === CLOUD_HOST_SENTINEL
       && contact.sourceParticipantId
     ) {
-      selectNewSession(cloudCollaborationConversationId(
+      const systemAgentConversation = contact.systemContact && contact.sourceAgentId
+        ? conversations.find((conversation) => (
+            conversation.collaborationTarget?.agentId === contact.sourceAgentId
+            && conversation.collaborationTarget?.humanId === contact.sourceParticipantId
+          ))
+        : null;
+      selectNewSession(systemAgentConversation?.id ?? cloudCollaborationConversationId(
         contact.sourceParticipantId,
-        'person',
+        contact.sourceRuntime ?? 'person',
       ));
       return;
     }

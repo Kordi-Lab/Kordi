@@ -16,7 +16,7 @@ import { useCloudPresence } from './useCloudPresence';
 import type { CloudAccount } from './authClient';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { ContactsPage } from '@/kordi-app/pages';
-import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
+import type { Contact, ContactRequest } from '@/kordi-app/types';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -43,34 +43,52 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
           (contact.name + ' ' + contact.subtitle + ' ' + (contact.sourceParticipantId ?? '')).toLowerCase().includes(search),
         )
       : cloud.contacts;
-    return dedupeContactsByCloudAccount(matches).map((contact) => {
+    return dedupeCloudContacts(matches).map((contact) => {
       const accountId = cloudAccountIdForContact(contact);
-      return { ...contact, presenceStatus: presence.statusForAccount(accountId) };
+      return {
+        ...contact,
+        presenceStatus: contact.systemContact ? 'online' : presence.statusForAccount(accountId),
+      };
     });
   }, [contactsPageProps.contactSearch, cloud.contacts, presence]);
 
+  const systemAgentContacts = useMemo(
+    () => visibleCloudContacts.filter((contact) => contact.classType === 'other-users-agents'),
+    [visibleCloudContacts],
+  );
+  const personContacts = useMemo(
+    () => visibleCloudContacts.filter((contact) => contact.classType === 'other-users'),
+    [visibleCloudContacts],
+  );
+
   const filteredGroupedContacts = useMemo(() => {
-    // Cloud contacts should be one row per human account. Do not merge the
-    // Collaboration-derived person/agent rows from the local view model, otherwise the
-    // Contacts page shows the same person twice and also exposes local/remote
-    // agent runtime rows ("My agent", "other users' agents") as contacts.
+    // Hosted contacts replace collaboration-derived rows. Human accounts stay
+    // flat while server-owned agents receive their own stable entry.
     const groups = contactsPageProps.filteredGroupedContacts
       .filter((group) => group.id !== 'my-agents' && group.id !== 'other-users-agents')
       .map((group) =>
         group.id === 'other-users'
-          ? { ...group, items: visibleCloudContacts }
+          ? { ...group, items: personContacts }
           : group,
       );
     const hasOtherUsers = groups.some((group) => group.id === 'other-users');
-    if (!hasOtherUsers && visibleCloudContacts.length > 0) {
+    if (!hasOtherUsers && personContacts.length > 0) {
       groups.push({
-        id: 'other-users' as ContactClass,
+        id: 'other-users',
         label: 'Other users',
-        items: visibleCloudContacts,
+        items: personContacts,
+      });
+    }
+    const hasSystemAgents = groups.some((group) => group.id === 'other-users-agents');
+    if (!hasSystemAgents && systemAgentContacts.length > 0) {
+      groups.unshift({
+        id: 'other-users-agents',
+        label: 'Kordi',
+        items: systemAgentContacts,
       });
     }
     return groups;
-  }, [contactsPageProps.filteredGroupedContacts, visibleCloudContacts]);
+  }, [contactsPageProps.filteredGroupedContacts, personContacts, systemAgentContacts]);
 
   const onAcceptRequest = async (request: ContactRequest) => {
     const requestId = request.sourceRequestId;
@@ -107,7 +125,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       displayName: profile.displayName,
       avatarUrl: profile.avatarUrl,
       isSelf: profile.accountId === account.accountId,
-      isContact: cloud.contacts.some((contact) => cloudAccountIdForContact(contact) === profile.accountId),
+      isContact: cloud.contacts.some((contact) => !contact.systemContact && cloudAccountIdForContact(contact) === profile.accountId),
       isRequestPending: hasOutgoingPendingRequestForAccount(cloud.requests, profile.accountId),
     };
   };
@@ -149,6 +167,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
+      onSubmitSupportRequest={(input) => cloud.submitSupportRequest(input)}
     />
   );
 }
@@ -219,11 +238,13 @@ function cloudAccountToSelfContact(account: CloudAccount): Contact {
   };
 }
 
-function dedupeContactsByCloudAccount(items: Contact[]): Contact[] {
+function dedupeCloudContacts(items: Contact[]): Contact[] {
   const seen = new Set<string>();
   const out: Contact[] = [];
   for (const item of items) {
-    const key = item.sourceParticipantId || item.sourceHumanId || item.id;
+    const key = item.systemContact
+      ? item.id
+      : item.sourceParticipantId || item.sourceHumanId || item.id;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);

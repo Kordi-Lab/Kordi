@@ -113,6 +113,31 @@ test('equivalent contact refresh preserves contact and request array identities'
   assert.equal(next.requests, current.requests);
 });
 
+test('a system agent and its owner human remain distinct contacts', () => {
+  const human = summary({ accountId: 'acct_support', displayName: 'Support owner' });
+  const systemAgent = summary({
+    contactId: 'cloud-system:kordi-support',
+    contactKind: 'system_agent',
+    accountId: 'acct_support',
+    displayName: 'Kordi Support',
+    targetCloudAgentId: 'cloud_agent_kordi_support',
+    locked: true,
+    supportTicketEnabled: true,
+  });
+
+  const next = applyCloudContactsRefreshSnapshot(
+    { contacts: [human], requests: [] },
+    { contacts: [systemAgent, human], requests: [] },
+    { startedMutationRevision: 1, currentMutationRevision: 1 },
+  );
+
+  assert.equal(next.contacts.length, 2);
+  assert.deepEqual(next.contacts.map((contact) => contact.contactId ?? contact.accountId), [
+    'acct_support',
+    'cloud-system:kordi-support',
+  ]);
+});
+
 test('accepted contact response identifies the peer and hello message for immediate local insert', () => {
   const accepted = request({ status: 'accepted', fromAccountId: 'acct_me', toAccountId: 'acct_peer' });
   const helloMessage = {

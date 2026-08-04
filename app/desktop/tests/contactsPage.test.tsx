@@ -181,6 +181,41 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
   assert.equal(mapped.profileImageUrl, 'data:image/png;base64,avatar-111');
 });
 
+test('the locked Kordi Support contact exposes chat and a structured request form', () => {
+  const markup = renderContactsPage([], {
+    activeContact: contact({
+      id: 'cloud-contact:cloud-system:kordi-support',
+      name: 'Kordi Support',
+      entityType: 'agent',
+      classType: 'other-users-agents',
+      subtitle: 'Ask questions or suggest improvements',
+      detail: 'Ask questions or suggest improvements',
+      sourceHostId: 'cloud',
+      sourceParticipantId: 'acct_support',
+      sourceAgentId: 'cloud_agent_kordi_support',
+      systemContact: true,
+      locked: true,
+      supportTicketEnabled: true,
+    }),
+    contactOverlayMode: 'contact',
+    onMessageContact: () => undefined,
+    onRemoveContact: () => undefined,
+    onSubmitSupportRequest: async () => ({
+      ticketId: 'support_123',
+      status: 'received',
+      createdAt: '2026-08-04T00:00:00Z',
+    }),
+  });
+
+  assert.match(markup, />Kordi Support</);
+  assert.match(markup, />Message</);
+  assert.match(markup, />Submit a request</);
+  assert.match(markup, />Question</);
+  assert.match(markup, />Issue</);
+  assert.match(markup, />Feedback</);
+  assert.doesNotMatch(markup, />Delete contact</);
+});
+
 test('active contact rows stay visually neutral until hover', () => {
   const markup = renderToStaticMarkup(createElement(ContactRow, {
     contact: contact({ id: 'cloud:acct_peer', name: 'Jiaxin Pei', subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e' }),

@@ -3,7 +3,7 @@
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use super::envelopes::cloud_group_request_envelope_for_run;
+use super::envelopes::{cloud_group_request_envelope_for_run, direct_cloud_agent_target};
 use super::{ClaimRunRequest, RunResult};
 
 pub async fn requester_can_target_owner(
@@ -35,40 +35,52 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> Result<Option<SharedCloudAgentTarget>, sqlx_core::Error> {
-    let Some(envelope) =
+    if let Some(envelope) =
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
             .await?
-    else {
+    {
+        if let Some(message) = envelope.message {
+            if let Some(agent_id) = message
+                .target_cloud_agent_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+            {
+                let owner_account_id = message
+                    .target_cloud_agent_owner_account_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or(&input.owner_account_id)
+                    .to_string();
+                return Ok(Some(SharedCloudAgentTarget {
+                    agent_id,
+                    owner_account_id,
+                    owner_name: message
+                        .target_cloud_agent_owner_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToString::to_string),
+                }));
+            }
+        }
+    }
+
+    let row: Option<(String,)> =
+        query_as("SELECT body FROM cloud_messages WHERE message_id = $1 AND session_id = $2")
+            .bind(&input.request_message_id)
+            .bind(&input.session_id)
+            .fetch_optional(pool)
+            .await?;
+    let Some(target) = row.and_then(|(body,)| direct_cloud_agent_target(&body)) else {
         return Ok(None);
     };
-    let Some(message) = envelope.message else {
-        return Ok(None);
-    };
-    let Some(agent_id) = message
-        .target_cloud_agent_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-    else {
-        return Ok(None);
-    };
-    let owner_account_id = message
-        .target_cloud_agent_owner_account_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(&input.owner_account_id)
-        .to_string();
     Ok(Some(SharedCloudAgentTarget {
-        agent_id,
-        owner_account_id,
-        owner_name: message
-            .target_cloud_agent_owner_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string),
+        agent_id: target.agent_id,
+        owner_account_id: target.owner_account_id,
+        owner_name: target.owner_name,
     }))
 }
 

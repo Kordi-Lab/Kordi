@@ -45,6 +45,7 @@ use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
     SESSION_TOKEN_PREFIX,
 };
+use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use crate::server::ServerState;
 
 mod contact_acceptance;

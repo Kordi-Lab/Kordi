@@ -213,9 +213,6 @@
     }
   },
   "src/features/cloud/CloudContactsAdapter.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "react-refresh/only-export-components": {
       "count": 1
     }
@@ -226,11 +223,6 @@
     },
     "react-hooks/set-state-in-effect": {
       "count": 1
-    }
-  },
-  "src/features/cloud/authClient.ts": {
-    "@typescript-eslint/no-redundant-type-constituents": {
-      "count": 14
     }
   },
   "src/features/cloud/cloudAgentMessages.ts": {
@@ -632,14 +624,11 @@
     },
     "react-hooks/set-state-in-effect": {
       "count": 1
-    },
-    "react-refresh/only-export-components": {
-      "count": 2
     }
   },
   "src/kordi-app/types.ts": {
     "@typescript-eslint/no-redundant-type-constituents": {
-      "count": 128
+      "count": 126
     }
   },
   "src/kordi-app/types/message.ts": {

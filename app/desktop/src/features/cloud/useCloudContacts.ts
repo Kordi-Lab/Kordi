@@ -19,14 +19,26 @@ import {
   type CloudMessage,
   type CloudPublicProfile,
 } from './authClient';
+import { cloudContactSummaryKey } from './cloudContactTypes';
+import {
+  CLOUD_HOST_SENTINEL,
+  cloudContactInitials,
+  cloudContactToContact,
+} from './cloudContactMapping';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import {
   applyCloudContactsRefreshSnapshot,
   type CloudContactsSnapshot,
 } from './cloudContactsSnapshot';
 import { loadSession } from './session';
+import {
+  createCloudSupportTicket,
+  type CloudSupportTicketInput,
+  type CloudSupportTicketResult,
+} from './supportClient';
 
 export { applyCloudContactsRefreshSnapshot } from './cloudContactsSnapshot';
+export { CLOUD_HOST_SENTINEL, cloudContactToContact, isCloudContact } from './cloudContactMapping';
 export type { CloudContactsSnapshot } from './cloudContactsSnapshot';
 
 export type UseCloudContactsResult = {
@@ -40,6 +52,7 @@ export type UseCloudContactsResult = {
   lookupProfile(accountId: string): Promise<CloudPublicProfile | null>;
   acceptRequest(requestId: string): Promise<void>;
   rejectRequest(requestId: string): Promise<void>;
+  submitSupportRequest(input: CloudSupportTicketInput): Promise<CloudSupportTicketResult>;
 };
 
 const REFRESH_INTERVAL_MS = 15_000;
@@ -98,9 +111,10 @@ export function mergeCloudContactSummarySnapshot(
   snapshot: CloudContactsSnapshot,
   contact: CloudContactSummary,
 ): CloudContactsSnapshot {
-  const existing = snapshot.contacts.find((item) => item.accountId === contact.accountId);
+  const contactKey = cloudContactSummaryKey(contact);
+  const existing = snapshot.contacts.find((item) => cloudContactSummaryKey(item) === contactKey);
   const contacts = existing
-    ? snapshot.contacts.map((item) => (item.accountId === contact.accountId ? { ...item, ...contact } : item))
+    ? snapshot.contacts.map((item) => (cloudContactSummaryKey(item) === contactKey ? { ...item, ...contact } : item))
     : [contact, ...snapshot.contacts];
   return { ...snapshot, contacts };
 }
@@ -425,6 +439,16 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     [client, store],
   );
 
+  const submitSupportRequest = useCallback(
+    async (input: CloudSupportTicketInput) => {
+      if (!store) throw new Error('Not signed in.');
+      const session = await loadSession();
+      if (!session?.token) throw new Error('Not signed in.');
+      return createCloudSupportTicket(client, session.token, input);
+    },
+    [client, store],
+  );
+
   const mappedContacts = useMemo<Contact[]>(
     () => snapshot.contacts.map((row) => cloudContactToContact(row)),
     [snapshot.contacts],
@@ -445,39 +469,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     lookupProfile,
     acceptRequest,
     rejectRequest,
-  };
-}
-
-export const CLOUD_HOST_SENTINEL = 'cloud';
-
-export function isCloudContact(contact: Contact): boolean {
-  return contact.id.startsWith('cloud:')
-    || contact.sourceHostId === CLOUD_HOST_SENTINEL
-    || contact.discoverableOn.includes(CLOUD_HOST_SENTINEL);
-}
-
-export function cloudContactToContact(row: CloudContactSummary): Contact {
-  const name = row.displayName ?? row.accountId;
-  return {
-    id: `cloud:${row.accountId}`,
-    name,
-    initials: deriveInitials(name),
-    classType: 'other-users',
-    entityType: 'user',
-    subtitle: row.accountId,
-    collaborationSources: [CLOUD_HOST_SENTINEL],
-    status: 'online',
-    discoverableOn: [CLOUD_HOST_SENTINEL],
-    detail: row.accountId,
-    owner: name,
-    sourceHostId: CLOUD_HOST_SENTINEL,
-    sourceParticipantId: row.accountId,
-    sourceRuntime: 'person',
-    sourceHumanId: row.accountId,
-    contactStatus: 'accepted',
-    contactRequestDirection: 'outgoing',
-    avatarSeed: cloudAvatarSeedForAccount(row.accountId, row.avatarUrl),
-    profileImageUrl: cloudAvatarImageUrl(row.avatarUrl),
+    submitSupportRequest,
   };
 }
 
@@ -495,7 +487,7 @@ export function cloudRequestToContactRequest(row: CloudContactRequest): ContactR
     : `Request sent to ${counterpartName}`;
   return {
     id: `cloud:${row.requestId}`,
-    initials: deriveInitials(counterpartName),
+    initials: cloudContactInitials(counterpartName),
     title,
     detail: row.message ?? counterpartId,
     time: row.createdAt,
@@ -510,12 +502,4 @@ export function cloudRequestToContactRequest(row: CloudContactRequest): ContactR
     status: row.status,
     direction: row.direction,
   };
-}
-
-function deriveInitials(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return trimmed.slice(0, 2).toUpperCase();
 }

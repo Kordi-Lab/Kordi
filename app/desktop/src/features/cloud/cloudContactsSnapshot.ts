@@ -5,6 +5,10 @@ export type CloudContactsSnapshot = {
   requests: CloudContactRequest[];
 };
 
+function cloudContactSummaryKey(contact: CloudContactSummary): string {
+  return contact.contactId?.trim() || `account:${contact.accountId}`;
+}
+
 export function applyCloudContactsRefreshSnapshot(
   current: CloudContactsSnapshot,
   refreshed: CloudContactsSnapshot,
@@ -13,16 +17,19 @@ export function applyCloudContactsRefreshSnapshot(
   if (revisions.startedMutationRevision !== revisions.currentMutationRevision) return current;
 
   const contactsByAccountId = new Map<string, CloudContactSummary>();
-  for (const contact of current.contacts) contactsByAccountId.set(contact.accountId, contact);
+  for (const contact of current.contacts) contactsByAccountId.set(cloudContactSummaryKey(contact), contact);
   for (const contact of refreshed.contacts) {
-    const existing = contactsByAccountId.get(contact.accountId);
+    const key = cloudContactSummaryKey(contact);
+    const existing = contactsByAccountId.get(key);
     contactsByAccountId.set(
-      contact.accountId,
+      key,
       existing && cloudContactSummariesEqual(existing, contact) ? existing : contact,
     );
   }
   const contacts = [...contactsByAccountId.values()];
-  const acceptedAccountIds = new Set(contacts.map((contact) => contact.accountId));
+  const acceptedAccountIds = new Set(contacts
+    .filter((contact) => contact.contactKind !== 'system_agent')
+    .map((contact) => contact.accountId));
   const currentRequestsById = new Map(
     current.requests.map((request) => [request.requestId, request]),
   );
@@ -42,11 +49,20 @@ export function applyCloudContactsRefreshSnapshot(
 }
 
 function cloudContactSummariesEqual(left: CloudContactSummary, right: CloudContactSummary): boolean {
-  return left.accountId === right.accountId
+  return left.contactId === right.contactId
+    && left.contactKind === right.contactKind
+    && left.accountId === right.accountId
     && left.displayName === right.displayName
+    && left.subtitle === right.subtitle
     && left.avatarUrl === right.avatarUrl
     && left.nodeId === right.nodeId
-    && left.createdAt === right.createdAt;
+    && left.createdAt === right.createdAt
+    && left.locked === right.locked
+    && left.targetCloudAgentId === right.targetCloudAgentId
+    && left.targetCloudAgentName === right.targetCloudAgentName
+    && left.targetCloudAgentOwnerAccountId === right.targetCloudAgentOwnerAccountId
+    && left.targetCloudAgentOwnerName === right.targetCloudAgentOwnerName
+    && left.supportTicketEnabled === right.supportTicketEnabled;
 }
 
 function cloudContactRequestsEqual(left: CloudContactRequest, right: CloudContactRequest): boolean {

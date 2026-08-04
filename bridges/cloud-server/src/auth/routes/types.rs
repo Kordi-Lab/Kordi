@@ -110,16 +110,42 @@ pub struct AddContactRequest {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ContactSummary {
+    #[serde(rename = "contactId", skip_serializing_if = "Option::is_none")]
+    pub contact_id: Option<String>,
+    #[serde(rename = "contactKind", skip_serializing_if = "Option::is_none")]
+    pub contact_kind: Option<String>,
     #[serde(rename = "accountId")]
     pub account_id: String,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
     #[serde(rename = "nodeId")]
     pub node_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
+    pub locked: bool,
+    #[serde(rename = "targetCloudAgentId", skip_serializing_if = "Option::is_none")]
+    pub target_cloud_agent_id: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub target_cloud_agent_name: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentOwnerAccountId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub target_cloud_agent_owner_account_id: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentOwnerName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub target_cloud_agent_owner_name: Option<String>,
+    #[serde(rename = "supportTicketEnabled")]
+    pub support_ticket_enabled: bool,
 }
 
 #[derive(Debug, Serialize)]

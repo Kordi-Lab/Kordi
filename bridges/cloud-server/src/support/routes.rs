@@ -1,0 +1,277 @@
+use std::sync::Arc;
+
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::middleware;
+use axum::response::{IntoResponse, Response};
+use axum::routing::post;
+use axum::{Extension, Json, Router};
+use chrono::{Duration, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sqlx_core::query_as::query_as;
+
+use crate::auth::routes::{cloud_session_middleware, CloudSession};
+use crate::server::ServerState;
+
+use super::tickets::{create_ticket, NewSupportTicket};
+
+const SUBJECT_MAX_CHARS: usize = 160;
+const DESCRIPTION_MAX_CHARS: usize = 12_000;
+const SESSION_ID_MAX_CHARS: usize = 512;
+const SUBMISSION_ID_MAX_CHARS: usize = 128;
+const MAX_TICKETS_PER_HOUR: i64 = 5;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateSupportTicketRequest {
+    category: String,
+    subject: String,
+    description: String,
+    session_id: Option<String>,
+    diagnostics: Option<SupportDiagnostics>,
+    client_submission_id: String,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupportDiagnostics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    app_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    os_version: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupportTicketResponse {
+    ticket_id: String,
+    status: String,
+    created_at: String,
+}
+
+pub fn routes(state: Arc<ServerState>) -> Router {
+    Router::new()
+        .route("/v1/cloud/support/tickets", post(create_support_ticket))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            cloud_session_middleware,
+        ))
+        .with_state(state)
+}
+
+fn error(code: &str, message: &str, status: StatusCode) -> Response {
+    (
+        status,
+        Json(json!({ "errorCode": code, "message": message })),
+    )
+        .into_response()
+}
+
+fn clean_required(value: &str, field: &str, max_chars: usize) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{field} is required."));
+    }
+    if trimmed.chars().count() > max_chars {
+        return Err(format!("{field} is too long."));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn clean_optional(value: Option<&str>, max_chars: usize) -> Result<Option<String>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > max_chars {
+        return Err("sessionId is too long.".to_string());
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn clean_subject(value: &str) -> Result<String, String> {
+    let subject = clean_required(value, "subject", SUBJECT_MAX_CHARS)?;
+    if subject.chars().any(char::is_control) {
+        return Err("subject contains unsupported characters.".to_string());
+    }
+    Ok(subject)
+}
+
+async fn account_ticket_limit_reached(
+    state: &ServerState,
+    account_id: &str,
+    client_submission_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    let since = (Utc::now() - Duration::hours(1)).to_rfc3339();
+    let (count,): (i64,) = query_as(
+        "SELECT COUNT(*) FROM cloud_support_tickets
+         WHERE account_id = $1 AND created_at >= $2 AND client_submission_id <> $3",
+    )
+    .bind(account_id)
+    .bind(since)
+    .bind(client_submission_id)
+    .fetch_one(state.db_pool())
+    .await?;
+    Ok(count >= MAX_TICKETS_PER_HOUR)
+}
+
+fn clean_diagnostic(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().chars().take(160).collect::<String>())
+        .filter(|value| !value.is_empty())
+}
+
+async fn create_support_ticket(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(input): Json<CreateSupportTicketRequest>,
+) -> Response {
+    let Some(service) = state.support().cloned() else {
+        return error(
+            "support_unavailable",
+            "Kordi Support is not configured on this server.",
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
+    };
+    let category = input.category.trim().to_ascii_lowercase();
+    if !matches!(category.as_str(), "question" | "issue" | "feedback") {
+        return error(
+            "invalid_support_ticket",
+            "category must be question, issue, or feedback.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let subject = match clean_subject(&input.subject) {
+        Ok(value) => value,
+        Err(message) => {
+            return error("invalid_support_ticket", &message, StatusCode::BAD_REQUEST);
+        }
+    };
+    let description = match clean_required(&input.description, "description", DESCRIPTION_MAX_CHARS)
+    {
+        Ok(value) => value,
+        Err(message) => {
+            return error("invalid_support_ticket", &message, StatusCode::BAD_REQUEST);
+        }
+    };
+    let client_submission_id = match clean_required(
+        &input.client_submission_id,
+        "clientSubmissionId",
+        SUBMISSION_ID_MAX_CHARS,
+    ) {
+        Ok(value) => value,
+        Err(message) => {
+            return error("invalid_support_ticket", &message, StatusCode::BAD_REQUEST);
+        }
+    };
+    match account_ticket_limit_reached(&state, &session.account_id, &client_submission_id).await {
+        Ok(false) => {}
+        Ok(true) => {
+            return error(
+                "support_rate_limited",
+                "Too many support requests. Please wait before trying again.",
+                StatusCode::TOO_MANY_REQUESTS,
+            );
+        }
+        Err(error_value) => {
+            eprintln!("[support] check ticket limit: {error_value}");
+            return error(
+                "server_error",
+                "Could not validate the support request.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+    let session_id = match clean_optional(input.session_id.as_deref(), SESSION_ID_MAX_CHARS) {
+        Ok(value) => value,
+        Err(message) => {
+            return error("invalid_support_ticket", &message, StatusCode::BAD_REQUEST);
+        }
+    };
+    let diagnostics = input.diagnostics.unwrap_or_default();
+    let diagnostics = json!({
+        "appVersion": clean_diagnostic(diagnostics.app_version),
+        "platform": clean_diagnostic(diagnostics.platform),
+        "osVersion": clean_diagnostic(diagnostics.os_version),
+    });
+
+    let ticket = match create_ticket(
+        state.db_pool(),
+        NewSupportTicket {
+            account_id: &session.account_id,
+            category: &category,
+            subject: &subject,
+            description: &description,
+            session_id: session_id.as_deref(),
+            diagnostics,
+            client_submission_id: &client_submission_id,
+        },
+    )
+    .await
+    {
+        Ok(ticket) => ticket,
+        Err(error_value) => {
+            eprintln!("[support] persist ticket: {error_value}");
+            return error(
+                "server_error",
+                "Could not save the support request.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    if service.mail_delivery_enabled() && ticket.notification_status != "sent" {
+        let state = state.clone();
+        let ticket_id = ticket.ticket_id.clone();
+        tokio::spawn(async move {
+            service.deliver_ticket(state.db_pool(), &ticket_id).await;
+        });
+    }
+
+    (
+        StatusCode::CREATED,
+        Json(SupportTicketResponse {
+            ticket_id: ticket.ticket_id,
+            status: "received".to_string(),
+            created_at: ticket.created_at,
+        }),
+    )
+        .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clean_diagnostic, clean_required, clean_subject};
+
+    #[test]
+    fn ticket_text_is_trimmed_and_bounded() {
+        assert_eq!(clean_required("  Help  ", "subject", 20).unwrap(), "Help");
+        assert!(clean_required("   ", "subject", 20).is_err());
+        assert!(clean_required("too long", "subject", 3).is_err());
+    }
+
+    #[test]
+    fn diagnostics_are_bounded_before_storage() {
+        assert_eq!(
+            clean_diagnostic(Some(" macOS ".into())).as_deref(),
+            Some("macOS")
+        );
+        assert_eq!(clean_diagnostic(Some(" ".into())), None);
+        assert_eq!(clean_diagnostic(Some("x".repeat(200))).unwrap().len(), 160);
+    }
+
+    #[test]
+    fn ticket_subject_rejects_header_control_characters() {
+        assert_eq!(
+            clean_subject("  Group reply delay  ").unwrap(),
+            "Group reply delay"
+        );
+        assert!(clean_subject("Injected\nBcc: attacker@example.com").is_err());
+    }
+}

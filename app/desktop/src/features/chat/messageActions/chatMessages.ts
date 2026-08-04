@@ -81,6 +81,7 @@ import type {
 } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
+import { resolveDirectHostedAgentTarget } from './directHostedAgentTarget';
 
 async function persistCanonicalGroupMessageFailure(
   prepared: PreparedCanonicalUserMessage | null,
@@ -1643,12 +1644,11 @@ export function useChatMessageActions({
         if (appendedOptimisticCollaborationMessage) {
           setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
         }
-        const directHostedAgentTarget = targetCloudAgentId ? {
-          targetCloudAgentId,
-          targetCloudAgentName: mentionedTarget?.displayLabel ?? null,
-          targetCloudAgentOwnerAccountId: mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null,
-          targetCloudAgentOwnerName: mentionedTarget?.peer.ownerName ?? null,
-        } : null;
+        const directHostedAgentTarget = resolveDirectHostedAgentTarget({
+          mentionedAgentId: targetCloudAgentId,
+          mentionedTarget,
+          activeTarget: activeConvCollaborationTarget,
+        });
         const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget);
         const cloudBody = shouldEncodeDirectEnvelope
           ? encodeCloudDirectMessageEnvelope({
