@@ -5,6 +5,7 @@ import {
   activeConversationForSelection,
   pendingCloudCollaborationConversationForActiveId,
 } from '../src/app/viewModels/conversationSelection';
+import { resolveDirectHostedAgentTarget } from '../src/features/chat/messageActions/directHostedAgentTarget';
 import type { Conversation } from '../src/kordi-app/types';
 
 function supportConversation(): Conversation {
@@ -45,12 +46,35 @@ test('legacy unscoped support selection resolves to the named support session', 
   assert.equal(selected.name, 'Kordi Support');
 });
 
-test('pending Cloud agent selection never exposes its backing account id as a title', () => {
+test('legacy pending support selection preserves its product identity and direct route', () => {
   const conversation = pendingCloudCollaborationConversationForActiveId(
     'cloud:conversation:acct_kordi_support:agent',
   );
 
-  assert.equal(conversation?.name, 'Opening agent chat…');
-  assert.notEqual(conversation?.name, 'acct_kordi_support');
+  assert.equal(conversation?.name, 'Kordi Support');
+  assert.equal(conversation?.subtitle, 'Ask questions or suggest improvements');
+  assert.equal(conversation?.supportTicketEnabled, true);
   assert.equal(conversation?.collaborationTarget?.runtime, 'kordi-desktop');
+  assert.equal(conversation?.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
+  assert.deepEqual(resolveDirectHostedAgentTarget({
+    mentionedAgentId: null,
+    mentionedTarget: null,
+    activeTarget: conversation?.collaborationTarget,
+  }), {
+    targetCloudAgentId: 'cloud_agent_kordi_support',
+    targetCloudAgentName: 'Kordi Support',
+    targetCloudAgentOwnerAccountId: 'acct_kordi_support',
+    targetCloudAgentOwnerName: 'Kordi',
+  });
+});
+
+test('scoped pending support selection recovers the support target from its session id', () => {
+  const conversation = pendingCloudCollaborationConversationForActiveId(
+    'cloud:conversation:acct_support_owner:agent:session:session%3Adirect-system-agent%3Aacct_me%3Acloud_agent_kordi_support',
+  );
+
+  assert.equal(conversation?.name, 'Kordi Support');
+  assert.equal(conversation?.supportTicketEnabled, true);
+  assert.equal(conversation?.collaborationTarget?.nodeId, 'acct_support_owner');
+  assert.equal(conversation?.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
 });

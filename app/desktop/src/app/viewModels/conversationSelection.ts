@@ -2,12 +2,19 @@ import type { SessionHydrationState } from '@/features/canonical/canonicalStore'
 import { isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
+import { cloudSystemAgentIdFromSessionId } from '@/features/collaboration/conversationIds';
 import {
   cloudConversationKindFromConversationId,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdFromConversationId,
   isCloudCollaborationConversationId,
 } from '@/features/cloud/cloudCollaborationState';
+import {
+  KORDI_SUPPORT_ACCOUNT_ID,
+  KORDI_SUPPORT_AGENT_ID,
+  KORDI_SUPPORT_NAME,
+  KORDI_SUPPORT_SUBTITLE,
+} from '@/features/support/supportIdentity';
 import type { Conversation } from '@/kordi-app/types';
 
 type ActiveConversationSelectionOptions = {
@@ -137,27 +144,37 @@ export function pendingCloudCollaborationConversationForActiveId(
   const peerId = cloudPeerAccountIdFromConversationId(activeConvId);
   if (!peerId) return null;
   const isAgent = cloudConversationKindFromConversationId(activeConvId) === 'agent';
+  const cloudSessionId = cloudSessionIdFromConversationId(activeConvId);
+  const systemAgentId = cloudSystemAgentIdFromSessionId(cloudSessionId);
+  const isKordiSupport = isAgent && (
+    systemAgentId === KORDI_SUPPORT_AGENT_ID
+    || (!cloudSessionId && peerId === KORDI_SUPPORT_ACCOUNT_ID)
+  );
   const loadingLabel = isAgent ? 'Opening agent chat…' : 'Opening chat with this contact…';
+  const displayName = isKordiSupport
+    ? KORDI_SUPPORT_NAME
+    : isAgent ? 'Opening agent chat…' : 'Opening contact…';
   return {
     id: activeConvId,
     canonicalSessionId: undefined,
-    name: isAgent ? 'Opening agent chat…' : 'Opening contact…',
+    name: displayName,
     type: isAgent ? 'external-agent' : 'person',
-    subtitle: '',
+    subtitle: isKordiSupport ? KORDI_SUPPORT_SUBTITLE : '',
     unread: 0,
     collaborationSources: ['Cloud'],
     trust: 'Cloud',
     directness: isAgent ? 'Agent chat' : 'Person chat',
-    participants: ['Me'],
-    messages: [transcriptLoadingNotice(loadingLabel)],
+    participants: isKordiSupport ? ['Me', KORDI_SUPPORT_NAME] : ['Me'],
+    messages: [transcriptLoadingNotice(isKordiSupport ? undefined : loadingLabel)],
+    supportTicketEnabled: isKordiSupport,
     collaborationTarget: {
       hostId: 'cloud',
       nodeId: peerId,
-      displayName: isAgent ? 'Agent' : 'Contact',
+      displayName: isKordiSupport ? KORDI_SUPPORT_NAME : isAgent ? 'Agent' : 'Contact',
       ownerName: isAgent ? 'Kordi' : 'Contact',
       runtime: isAgent ? 'kordi-desktop' : 'person',
       humanId: peerId,
-      agentId: isAgent ? 'pending-cloud-agent' : null,
+      agentId: isAgent ? systemAgentId ?? (isKordiSupport ? KORDI_SUPPORT_AGENT_ID : 'pending-cloud-agent') : null,
     },
     avatarSeed: peerId,
   };

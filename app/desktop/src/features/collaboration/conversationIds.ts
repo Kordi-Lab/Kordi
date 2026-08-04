@@ -122,3 +122,15 @@ export function isCloudSystemAgentSessionId(
 ): boolean {
   return Boolean(sessionId?.trim().startsWith(SYSTEM_AGENT_SESSION_PREFIX));
 }
+
+export function cloudSystemAgentIdFromSessionId(
+  sessionId: string | null | undefined,
+): string | null {
+  const normalizedSessionId = sessionId?.trim() ?? '';
+  if (!normalizedSessionId.startsWith(SYSTEM_AGENT_SESSION_PREFIX)) return null;
+  const encodedParts = normalizedSessionId
+    .slice(SYSTEM_AGENT_SESSION_PREFIX.length)
+    .split(':');
+  if (encodedParts.length !== 2) return null;
+  return decodeIdPart(encodedParts[1] ?? '');
+}

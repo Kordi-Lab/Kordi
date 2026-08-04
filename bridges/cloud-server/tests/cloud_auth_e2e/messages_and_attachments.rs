@@ -1,6 +1,85 @@
 use super::*;
 
 #[tokio::test]
+async fn support_agent_accepts_messages_without_a_contact_relationship() {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use kordi_cloud_server::support::{
+        bootstrap_support_agent, PendingSupportConfig, SupportService,
+    };
+
+    let Some(pool) = try_pool().await else { return };
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let support_agent_id = format!("cloud_agent_kordi_support_{suffix}");
+    let support_config = bootstrap_support_agent(
+        &pool,
+        PendingSupportConfig {
+            owner_account_id: format!("acct_kordi_support_{suffix}"),
+            owner_email: unique_email("support-owner"),
+            agent_id: support_agent_id.clone(),
+            name: "Kordi Support".into(),
+            subtitle: "Ask questions or suggest improvements".into(),
+            inbox: unique_email("support-inbox"),
+            default_model: Some("gpt-5.6-luna".into()),
+            default_auth_provider: Some("openai-codex".into()),
+            default_auth_choice: Some("local-active-oauth".into()),
+        },
+    )
+    .await
+    .unwrap();
+    let support_owner_account_id = support_config.owner_account_id.clone();
+    let state = Arc::new(
+        ServerState::new(pool.clone(), EventBus::noop())
+            .with_support(SupportService::new(support_config)),
+    );
+    let router = fast_router(state);
+    let (requester_token, requester_account_id) =
+        signup_account(&router, "support-requester").await;
+
+    let contact_count: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2",
+    )
+    .bind(&requester_account_id)
+    .bind(&support_owner_account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(contact_count.0, 0);
+
+    let envelope = json!({
+        "schemaVersion": 1,
+        "kind": "message",
+        "text": "How do I use Kordi groups?",
+        "targetCloudAgentId": support_agent_id,
+        "targetCloudAgentName": "Kordi Support",
+        "targetCloudAgentOwnerAccountId": support_owner_account_id,
+        "targetCloudAgentOwnerName": "Kordi",
+    });
+    let body = format!(
+        "kordi-cloud-message:{}",
+        URL_SAFE_NO_PAD.encode(envelope.to_string()),
+    );
+    let session_id =
+        format!("session:direct-system-agent:{requester_account_id}:{support_agent_id}",);
+    let response = router
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &requester_token,
+            json!({
+                "peerAccountId": support_owner_account_id,
+                "body": body,
+                "sessionId": session_id,
+            }),
+        ))
+        .await
+        .unwrap();
+    let status = response.status();
+    let response_body = read_json(response).await;
+
+    assert_eq!(status, StatusCode::CREATED, "got body {response_body}");
+    assert_eq!(response_body["message"]["sessionId"], session_id);
+}
+
+#[tokio::test]
 async fn cloud_self_messages_are_private_to_the_signed_in_account() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("self-message");
