@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
+import { SupportReportPermissionCard } from '@/features/support/SupportReportPermissionCard';
+import {
+  parseSupportReportProposal,
+  supportReportDisplayText,
+} from '@/features/support/supportReport';
+import { useSupportReportSubmission } from '@/features/support/supportReportSubmission';
 import { cn } from '@/lib/utils';
 import { MarkdownContent } from './markdown';
 
@@ -30,7 +36,15 @@ export function FoldableAssistantAnswer({
   tone?: 'default' | 'cancelled';
 }) {
   const [expanded, setExpanded] = useState(false);
-  const foldInfo = useMemo(() => assistantAnswerFoldInfo(text), [text]);
+  const supportSubmission = useSupportReportSubmission();
+  const reportProposal = useMemo(
+    () => supportSubmission ? parseSupportReportProposal(text) : null,
+    [supportSubmission, text],
+  );
+  const visibleText = supportSubmission
+    ? reportProposal?.displayText ?? supportReportDisplayText(text)
+    : text;
+  const foldInfo = useMemo(() => assistantAnswerFoldInfo(visibleText), [visibleText]);
   const shouldFold = foldable && foldInfo.shouldFold;
   const folded = shouldFold && !expanded;
   const cancelled = tone === 'cancelled';
@@ -42,7 +56,7 @@ export function FoldableAssistantAnswer({
     )}>
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
         <MarkdownContent
-          text={text}
+          text={visibleText}
           showLinkIcons
           className={cn(
             'app-live-assistant-answer-markdown',
@@ -65,6 +79,9 @@ export function FoldableAssistantAnswer({
           </button>
           <span className="app-fold-reveal-line" aria-hidden="true" />
         </div>
+      ) : null}
+      {reportProposal ? (
+        <SupportReportPermissionCard proposal={reportProposal} />
       ) : null}
     </div>
   );

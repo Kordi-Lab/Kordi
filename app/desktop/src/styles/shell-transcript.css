@@ -22,6 +22,26 @@
   border-radius: 4px;
 }
 
+.app-markdown-result-status[data-status-tone='success'] {
+  background: color-mix(in oklab, oklch(72% 0.12 156) 13%, transparent);
+  color: oklch(78% 0.1 156);
+}
+
+.app-markdown-result-status[data-status-tone='danger'] {
+  background: color-mix(in oklab, var(--app-transient-danger-text) 10%, transparent);
+  color: var(--app-transient-danger-text);
+}
+
+.app-markdown-result-status[data-status-tone='neutral'] {
+  background: var(--app-control-bg);
+  color: var(--utility-muted-text);
+}
+
+.kordi-app.theme-light .app-markdown-result-status[data-status-tone='success'] {
+  background: color-mix(in oklab, oklch(48% 0.12 156) 10%, transparent);
+  color: oklch(43% 0.11 156);
+}
+
 .app-message-link-site-icon {
   display: inline-grid;
   width: 14px;

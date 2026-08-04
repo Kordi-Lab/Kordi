@@ -79,7 +79,25 @@ test('keeps wide markdown tables contained inside message responses', () => {
 
   assert.match(html, /aria-label="Scrollable table"/);
   assert.match(html, /max-w-full overflow-x-auto/);
-  assert.match(html, /min-w-\[30rem\] table-fixed/);
+  assert.match(html, /min-w-\[34rem\] table-auto/);
   assert.match(html, /\[overflow-wrap:anywhere\]/);
   assert.doesNotMatch(html, /w-max/);
+});
+
+test('renders step result tables as compact labeled report rows', () => {
+  const markdown = [
+    '| Step | Action | Expected Result | Actual Result | Status |',
+    '| --- | --- | --- | --- | --- |',
+    '| 1 | Send a support request | The agent confirms receipt | Kordi Support replied | Pass |',
+  ].join('\n');
+
+  const html = renderToStaticMarkup(createElement(MarkdownContent, { text: markdown }));
+
+  assert.match(html, /aria-label="Result steps"/);
+  assert.match(html, />Step 1</);
+  assert.match(html, /data-status-tone="success"/);
+  assert.match(html, />Expected Result</);
+  assert.match(html, />Actual Result</);
+  assert.doesNotMatch(html, /aria-label="Scrollable table"/);
+  assert.doesNotMatch(html, /<table/);
 });
