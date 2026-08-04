@@ -1,0 +1,434 @@
+.app-factory-build-main {
+  min-height: 0;
+}
+
+.app-factory-build-context {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 66%, transparent);
+}
+
+.app-factory-build-context strong,
+.app-factory-build-context span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-factory-build-context strong {
+  font-size: var(--agent-studio-type-body);
+  font-weight: 600;
+}
+
+.app-factory-build-context span {
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-factory-recovery {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  width: min(560px, calc(100% - 32px));
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 36px 20px;
+  text-align: center;
+}
+
+.app-factory-recovery > svg {
+  color: var(--agent-studio-danger);
+}
+
+.app-factory-recovery h2,
+.app-factory-recovery p {
+  margin: 0;
+}
+
+.app-factory-recovery h2 {
+  font-size: var(--agent-studio-type-subheading);
+}
+
+.app-factory-recovery p {
+  max-width: 58ch;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-body);
+  line-height: 1.55;
+}
+
+.app-factory-recovery > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.app-factory-inspect-main {
+  min-height: 0;
+}
+
+.app-factory-skill-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 224px;
+  min-width: 0;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 58%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--app-control-bg) 36%, transparent);
+}
+
+.app-factory-skill-mode button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.app-factory-skill-mode button.is-active {
+  background: color-mix(in oklab, var(--app-control-active) 74%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-factory-skill-mode button span {
+  margin-left: 3px;
+  color: color-mix(in oklab, currentColor 66%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-factory-library-detail {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: minmax(280px, 0.72fr) minmax(420px, 1.28fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-factory-library-overview {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px clamp(18px, 2vw, 26px) 36px;
+  border-right: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+}
+
+.app-factory-library-overview section {
+  padding: 16px 0;
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+}
+
+.app-factory-library-overview section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.app-factory-library-overview h3,
+.app-factory-library-overview p,
+.app-factory-library-overview dl,
+.app-factory-library-overview dt,
+.app-factory-library-overview dd {
+  margin: 0;
+}
+
+.app-factory-library-overview h3 {
+  margin-bottom: 8px;
+  font-size: var(--agent-studio-type-body);
+  font-weight: 600;
+}
+
+.app-factory-library-overview p {
+  color: color-mix(in oklab, var(--utility-foreground) 88%, var(--utility-muted-text));
+  font-size: var(--agent-studio-type-body);
+  line-height: 1.65;
+}
+
+.app-factory-library-overview dl {
+  display: grid;
+  gap: 10px;
+}
+
+.app-factory-library-overview dl > div {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.7fr) minmax(0, 1.3fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.app-factory-library-overview dt {
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-factory-library-overview dd {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow-wrap: anywhere;
+  font-size: var(--agent-studio-type-secondary);
+}
+
+.app-factory-library-overview dd svg {
+  flex: 0 0 auto;
+  color: var(--agent-studio-success);
+}
+
+.app-factory-library-preview {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: color-mix(in oklab, var(--app-card-bg) 28%, var(--utility-background));
+}
+
+.app-factory-library-file-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 9px 12px;
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 54%, transparent);
+  scrollbar-width: thin;
+}
+
+.app-factory-library-file-tabs button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 31px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 0 9px;
+  border-radius: 8px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-factory-library-file-tabs button:hover,
+.app-factory-library-file-tabs button.is-active {
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-factory-library-file-tabs button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-factory-library-code {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--app-code-bg);
+}
+
+.app-factory-library-code pre {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 18px 20px 36px;
+  color: var(--utility-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78125rem;
+  line-height: 1.65;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.app-factory-library-definition {
+  display: grid;
+  width: min(560px, calc(100% - 40px));
+  align-content: start;
+  justify-items: start;
+  gap: 12px;
+  margin: clamp(24px, 5vh, 48px) auto;
+  padding: 0;
+}
+
+.app-factory-library-definition > svg {
+  width: 16px;
+  height: 16px;
+  color: var(--utility-muted-text);
+}
+
+.app-factory-library-definition strong,
+.app-factory-library-definition span {
+  display: block;
+}
+
+.app-factory-library-definition strong {
+  font-size: var(--agent-studio-type-subheading);
+}
+
+.app-factory-library-definition span,
+.app-factory-library-definition p {
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-secondary);
+}
+
+.app-factory-library-definition p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.app-factory-library-definition code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-factory-community-main .app-skill-community {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.app-factory-inspect-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px clamp(18px, 3vw, 36px) 40px;
+}
+
+.app-factory-inspect-section {
+  max-width: 920px;
+  padding: 18px 0 22px;
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 68%, transparent);
+}
+
+.app-factory-inspect-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.app-factory-inspect-section h3 {
+  margin: 0;
+  font-size: var(--agent-studio-type-subheading);
+  font-weight: 600;
+}
+
+.app-factory-inspect-section > header button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 3px;
+  color: var(--agent-studio-accent);
+  font-size: var(--agent-studio-type-secondary);
+  font-weight: 600;
+}
+
+.app-factory-inspect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 28px;
+  margin: 0;
+}
+
+.app-factory-inspect-grid div {
+  min-width: 0;
+}
+
+.app-factory-inspect-grid dt,
+.app-factory-inspect-grid dd {
+  margin: 0;
+}
+
+.app-factory-inspect-grid dt {
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-factory-inspect-grid dd {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: var(--agent-studio-type-body);
+}
+
+.app-factory-inspect-copy {
+  max-width: 75ch;
+  margin: 0;
+  font-size: var(--agent-studio-type-body);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.app-factory-inspect-empty {
+  margin: 0;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-body);
+}
+
+.app-factory-capability-list,
+.app-factory-file-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px 20px;
+}
+
+.app-factory-capability-list > div,
+.app-factory-file-list > div {
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-factory-capability-list svg,
+.app-factory-file-list svg {
+  flex: 0 0 auto;
+  color: var(--utility-muted-text);
+}
+
+.app-factory-capability-list strong,
+.app-factory-capability-list small {
+  display: block;
+}
+
+.app-factory-capability-list strong,
+.app-factory-file-list span {
+  overflow: hidden;
+  font-size: var(--agent-studio-type-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-factory-capability-list small {
+  margin-top: 2px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
+.app-skill-library-files.is-readonly {
+  min-height: 360px;
+  border: 1px solid color-mix(in oklab, var(--app-divider) 70%, transparent);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.app-skill-library-files.is-readonly .app-skill-library-editor > header span {
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}

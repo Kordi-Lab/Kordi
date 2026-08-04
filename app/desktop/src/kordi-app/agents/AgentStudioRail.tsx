@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Blocks, Bot, Globe2, Hammer, Plus, Puzzle, Search, Wrench } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { DesktopAgentBuilderSummary, DesktopSkillLibraryEntry } from '@/lib/desktop';
+import type { DesktopSkillLibraryEntry } from '@/lib/desktop';
+import type { DesktopAgentBuilderSummary } from '@/lib/desktopAgentBuilderCatalog';
 import { IdentityAvatar } from '../components/IdentityAvatar';
 import type { Agent } from '../types';
 import type {

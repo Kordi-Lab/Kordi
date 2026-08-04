@@ -3,6 +3,7 @@ mod canonical_sessions;
 mod chat;
 mod cloud_account_paths;
 mod cloud_oauth_loopback;
+mod cloud_presence;
 mod cloud_session;
 mod project;
 mod remote_image;
@@ -74,6 +75,7 @@ fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
 
 use auth::DesktopAuthManager;
 use chat::DesktopChatManager;
+use cloud_presence::publish_stored_offline_on_exit;
 use tauri::Manager;
 use workspace::DesktopWorkspaceStatus;
 
@@ -85,10 +87,6 @@ fn should_hide_window_instead_of_close(label: &str) -> bool {
 
 fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bool {
     cfg!(target_os = "macos") && !has_visible_windows
-}
-
-fn should_publish_presence_offline_on_exit() -> bool {
-    true
 }
 
 const DEFAULT_CLOUD_API_BASE_URL: &str = "https://kordi.ai";
@@ -192,62 +190,13 @@ fn cloud_api_base_url_from_env() -> Result<String, String> {
     )
 }
 
-fn cloud_presence_offline_url(base_url: &str) -> String {
-    format!(
-        "{}/v1/cloud/presence/offline",
-        base_url.trim().trim_end_matches('/')
-    )
-}
-
-fn publish_cloud_presence_offline(token: &str, base_url: &str) -> Result<(), String> {
-    let url = cloud_presence_offline_url(base_url);
-    let response = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_millis(1500))
-        .build()
-        .map_err(|err| err.to_string())?
-        .post(url)
-        .bearer_auth(token)
-        .send()
-        .map_err(|err| err.to_string())?;
-    if response.status().is_success() {
-        Ok(())
-    } else {
-        Err(format!("presence_offline_failed: {}", response.status()))
-    }
-}
-
-fn publish_stored_cloud_presence_offline_on_exit() {
-    if !should_publish_presence_offline_on_exit() {
-        return;
-    }
-    let session = match cloud_session::cloud_session_load() {
-        Ok(Some(session)) => session,
-        Ok(None) => return,
-        Err(err) => {
-            eprintln!("[kordi] Unable to load Cloud session for presence offline: {err}");
-            return;
-        }
-    };
-    let base_url = match cloud_api_base_url_from_env() {
-        Ok(value) => value,
-        Err(err) => {
-            eprintln!("[kordi] Unable to publish Cloud presence offline on quit: {err}");
-            return;
-        }
-    };
-    let token = session.token;
-    if let Err(err) = publish_cloud_presence_offline(&token, &base_url) {
-        eprintln!("[kordi] Unable to publish Cloud presence offline on quit: {err}");
-    }
-}
-
 #[cfg(test)]
 mod window_lifecycle_tests {
     use super::{
-        cloud_presence_offline_url, is_cloud_edition_context, resolve_cloud_api_base_url,
-        should_hide_window_instead_of_close, should_publish_presence_offline_on_exit,
+        is_cloud_edition_context, resolve_cloud_api_base_url, should_hide_window_instead_of_close,
         should_show_main_window_on_reopen, DEFAULT_CLOUD_API_BASE_URL,
     };
+    use crate::cloud_presence::{offline_url, should_publish_offline_on_exit};
 
     #[test]
     fn macos_main_window_close_hides_instead_of_quitting() {
@@ -263,17 +212,17 @@ mod window_lifecycle_tests {
 
     #[test]
     fn explicit_app_exit_publishes_presence_offline() {
-        assert!(should_publish_presence_offline_on_exit());
+        assert!(should_publish_offline_on_exit());
     }
 
     #[test]
     fn native_presence_offline_url_uses_cloud_api_base() {
         assert_eq!(
-            cloud_presence_offline_url("http://127.0.0.1:17081/"),
+            offline_url("http://127.0.0.1:17081/"),
             "http://127.0.0.1:17081/v1/cloud/presence/offline"
         );
         assert_eq!(
-            cloud_presence_offline_url(DEFAULT_CLOUD_API_BASE_URL),
+            offline_url(DEFAULT_CLOUD_API_BASE_URL),
             "https://kordi.ai/v1/cloud/presence/offline"
         );
     }
@@ -535,12 +484,12 @@ pub fn run() {
             chat::desktop_chat_state,
             chat::desktop_chat_session_detail,
             chat::desktop_shape_agent_draft,
-            chat::agent_builder::desktop_agent_builder_list,
-            chat::agent_builder::desktop_agent_builder_resolve,
-            chat::agent_builder::desktop_agent_builder_open,
-            chat::agent_builder::desktop_agent_builder_open_session,
-            chat::agent_builder::desktop_agent_builder_recover,
-            chat::agent_builder::desktop_agent_builder_retarget,
+            chat::agent_builder::catalog::desktop_agent_builder_list,
+            chat::agent_builder::catalog::desktop_agent_builder_resolve,
+            chat::agent_builder::catalog::desktop_agent_builder_open,
+            chat::agent_builder::catalog::desktop_agent_builder_open_session,
+            chat::agent_builder::catalog::desktop_agent_builder_recover,
+            chat::agent_builder::catalog::desktop_agent_builder_retarget,
             chat::agent_builder::desktop_agent_builder_status,
             chat::agent_builder::desktop_agent_builder_read_file,
             chat::agent_builder::desktop_agent_builder_write_file,
@@ -588,7 +537,7 @@ pub fn run() {
 
     app.run(|app_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
-            publish_stored_cloud_presence_offline_on_exit();
+            publish_stored_offline_on_exit();
         }
         tauri::RunEvent::WindowEvent {
             label,
@@ -622,5 +571,5 @@ pub fn run() {
     // macOS application Quit can bypass browser page lifecycle events. Run one
     // final native best-effort publish after Tauri's event loop returns so
     // explicit Quit does not wait for heartbeat timeout.
-    publish_stored_cloud_presence_offline_on_exit();
+    publish_stored_offline_on_exit();
 }

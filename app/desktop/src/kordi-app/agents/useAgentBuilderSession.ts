@@ -8,10 +8,7 @@ import {
   fetchDesktopChatTurnState,
   markDesktopAgentBuilderPublished,
   openDesktopAgentBuilder,
-  openDesktopAgentBuilderSession,
   readDesktopAgentBuilderFile,
-  recoverDesktopAgentBuilder,
-  retargetDesktopAgentBuilder,
   startDesktopChatMessage,
   testDesktopAgentBuilderDraft,
   updateDesktopAgentBuilderDraft,
@@ -21,6 +18,11 @@ import {
   type DesktopAgentBuilderStatus,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
+import {
+  openDesktopAgentBuilderSession,
+  recoverDesktopAgentBuilder,
+  retargetDesktopAgentBuilder,
+} from '@/lib/desktopAgentBuilderCatalog';
 import type { DesktopChatSessionDetail, DesktopChatTurnSnapshot } from '../types';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 

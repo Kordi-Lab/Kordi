@@ -684,12 +684,10 @@ function BuilderDraftFilesView({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedDisplay = skillLibraryFileDisplay(selectedPath);
-
   useEffect(() => {
     if (files.some((file) => file.path === selectedPath)) return;
     setSelectedPath(files[0]?.path ?? 'agent.json');
   }, [files, selectedPath]);
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -730,22 +728,18 @@ function BuilderDraftFilesView({
         <div className="app-agent-studio-file-list">
           {files.map((file) => {
             const display = skillLibraryFileDisplay(file.path);
-            return (
-              <button key={file.path} type="button" className={cn(selectedPath === file.path && 'is-active')} aria-label={`${file.path}${file.valid ? '' : ', needs attention'}`} onClick={() => setSelectedPath(file.path)}>
-                <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                <span><strong>{display.name}</strong>{display.parent ? <small>{display.parent}</small> : null}</span>
-                {!file.valid ? <span className="app-agent-studio-file-validity is-error" title="Needs attention"><X className="h-3 w-3" /></span> : null}
-              </button>
-            );
+            return <button key={file.path} type="button" className={cn(selectedPath === file.path && 'is-active')} aria-label={`${file.path}${file.valid ? '' : ', needs attention'}`} onClick={() => setSelectedPath(file.path)}>
+              <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+              <span><strong>{display.name}</strong>{display.parent ? <small>{display.parent}</small> : null}</span>
+              {!file.valid ? <span className="app-agent-studio-file-validity is-error" title="Needs attention"><X className="h-3 w-3" /></span> : null}
+            </button>;
           })}
         </div>
         <section className="app-agent-studio-file-editor">
           <div className="app-agent-studio-file-toolbar">
             <div className="min-w-0"><strong>{selectedDisplay.name}</strong>{selectedDisplay.parent ? <span>{selectedDisplay.parent}</span> : null}</div>
             {!loading && (saving || content !== savedContent) ? (
-              <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={saving}>
-                {saving ? 'Saving…' : 'Save'}
-              </button>
+              <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
             ) : !loading ? <span className="app-agent-studio-file-saved"><Check className="h-3 w-3" />Saved</span> : null}
           </div>
           {error ? <div className="app-agent-studio-file-feedback is-error">{error}</div> : null}
