@@ -35,26 +35,34 @@ After each change, briefly list the files changed and tell the user whether the 
 const AGENT_CREATOR_SKILL: &str = include_str!("agent_builder_resources/agent-creator/SKILL.md");
 const SKILL_CREATOR_SKILL: &str = include_str!("agent_builder_resources/skill-creator/SKILL.md");
 
+pub mod catalog;
 mod models;
 
+#[cfg(test)]
+use self::catalog::{
+    artifact_kind_from_target, deduplicate_builder_summaries, fallback_name_from_target,
+    is_untouched_creation,
+};
 use self::models::DesktopAgentBuilderMetadata;
 #[cfg(test)]
 use self::models::DesktopAgentBuilderSkillFile;
 pub use self::models::{
     DesktopAgentBuilderDraft, DesktopAgentBuilderFileStatus, DesktopAgentBuilderOpenResult,
     DesktopAgentBuilderSeed, DesktopAgentBuilderSkillDraft, DesktopAgentBuilderSkillSeed,
-    DesktopAgentBuilderStatus, DesktopAgentBuilderTestReport, DesktopAgentBuilderValidation,
+    DesktopAgentBuilderStatus, DesktopAgentBuilderSummary, DesktopAgentBuilderTestReport,
+    DesktopAgentBuilderValidation,
 };
 
 mod storage;
 
-#[cfg(test)]
-use self::storage::resources_root;
 use self::storage::{
-    builder_mutation_lock, container_for_draft, draft_container, drafts_root, find_active_draft,
-    load_metadata, new_metadata, read_test_report, test_report_path, workspace_for_draft,
-    write_json, write_metadata,
+    all_builder_associations, associate_builder, builder_mutation_lock, container_for_draft,
+    draft_container, drafts_root, load_metadata, new_metadata, read_test_report,
+    remove_builder_association, resolve_builder, retarget_builder, test_report_path,
+    workspace_for_draft, write_json, write_metadata,
 };
+#[cfg(test)]
+use self::storage::{metadata_path, resolve_builder_in, resources_root};
 
 mod validation;
 
@@ -101,41 +109,6 @@ fn status_from_metadata(
         validation,
         test_report,
         publish_ready,
-    })
-}
-
-#[tauri::command]
-pub async fn desktop_agent_builder_open(
-    manager: State<'_, DesktopChatManager>,
-    target_key: String,
-    seed: Option<DesktopAgentBuilderSeed>,
-) -> Result<DesktopAgentBuilderOpenResult, String> {
-    let _mutation_guard = builder_mutation_lock().lock().await;
-    let target_key = target_key.trim();
-    if target_key.is_empty() || target_key.len() > 240 {
-        return Err("Kordi Factory target is invalid".to_string());
-    }
-    fs::create_dir_all(drafts_root())
-        .map_err(|error| format!("Unable to create Kordi Factory storage: {error}"))?;
-
-    let metadata = find_active_draft(target_key).unwrap_or_else(|| new_metadata(target_key));
-    let container = container_for_draft(&metadata.draft_id)?;
-    let workspace = workspace_for_draft(&metadata.draft_id)?;
-    fs::create_dir_all(&container)
-        .map_err(|error| format!("Unable to create Kordi Factory draft: {error}"))?;
-    migrate_legacy_workspace(&container, &workspace)?;
-    materialize_builder_skills(&container)?;
-    materialize_seed(&workspace, seed.as_ref())?;
-    write_metadata(&workspace, &metadata)?;
-    let handle = load_or_create_runtime(manager.inner(), &metadata, &workspace).await?;
-    let session = handle
-        .lock()
-        .await
-        .detail()
-        .map_err(|error| error.to_string())?;
-    Ok(DesktopAgentBuilderOpenResult {
-        status: status_from_metadata(&metadata)?,
-        session,
     })
 }
 
@@ -293,6 +266,7 @@ pub async fn desktop_agent_builder_discard(
     metadata.status = "discarded".to_string();
     metadata.updated_at_ms = now_millis();
     write_metadata(&workspace, &metadata)?;
+    remove_builder_association(&metadata)?;
     manager.sessions.lock().await.remove(&metadata.session_id);
     kordi_cli::desktop_runtime::delete_session_forever(&metadata.session_id)
         .map_err(|error| error.to_string())

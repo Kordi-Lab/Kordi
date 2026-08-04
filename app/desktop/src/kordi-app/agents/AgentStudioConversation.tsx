@@ -103,24 +103,10 @@ function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: 
   };
 }
 
-function welcomeMessage(creating: boolean, targetName: string): Message {
-  return {
-    id: 'agent-builder-welcome',
-    role: 'owned-agent',
-    sender: 'Kordi Factory',
-    sourceSenderLabel: 'Kordi Factory',
-    senderType: 'agent',
-    senderAvatarSeed: 'kordi-factory',
-    text: creating
-      ? 'Tell me what you want to build. I can assemble an agent, skill, tool setup, workflow, or supporting files in this private workspace, then validate the result before anything goes live.'
-      : `Tell me what you want to build or change around ${targetName}. I can update its prompt, skills, tools, workflows, and files in a private workspace; nothing goes live until you approve it.`,
-    time: '',
-  };
-}
-
 export function AgentStudioConversation({
   targetName,
   creating,
+  artifactKind = 'agent',
   localProfileAvatarSeed,
   localProfileDisplayName,
   localProfileImageUrl,
@@ -139,6 +125,7 @@ export function AgentStudioConversation({
 }: {
   targetName: string;
   creating: boolean;
+  artifactKind?: 'agent' | 'skill' | 'tool' | 'plugin';
   localProfileAvatarSeed?: string | null;
   localProfileDisplayName?: string | null;
   localProfileImageUrl?: string | null;
@@ -178,11 +165,17 @@ export function AgentStudioConversation({
   } | null>(null);
   const busy = opening || Boolean(activeTurn && !activeTurn.completed);
   const suggestions = creating
-    ? [
-        'I want to create an agent that helps me with…',
-        'I want to create a skill for…',
-        'I want to automate…',
-      ]
+    ? artifactKind === 'agent'
+      ? [
+          'I want to create an agent that helps me with…',
+          'Give this agent clear boundaries for…',
+          'Suggest only the capabilities this agent needs',
+        ]
+      : [
+          `I want to create a ${artifactKind} for…`,
+          `Define the inputs and outputs for this ${artifactKind}`,
+          `Review this ${artifactKind} for unnecessary access`,
+        ]
     : [
         'I want this agent to help me with…',
         'Review this agent for skills it does not need',
@@ -419,7 +412,6 @@ export function AgentStudioConversation({
   return (
     <section className="app-agent-studio-conversation" aria-label="Kordi Factory conversation">
       <div ref={scrollRef} className="app-agent-studio-messages app-agent-studio-native-transcript" aria-live="polite">
-        {messages.length === 0 && !showOptimistic ? <MessageBubble msg={welcomeMessage(creating, targetName)} densityMode="agent-compact" plainAgentResponse /> : null}
         {messages.map((message) => <MessageBubble key={message.id} msg={message} densityMode="agent-compact" plainAgentResponse onOpenAuthSettings={onOpenAuthSettings} />)}
         {showOptimistic && (optimisticPrompt || optimisticAttachments.length > 0) ? (
           <MessageBubble
@@ -508,7 +500,7 @@ export function AgentStudioConversation({
                 }
               }}
               className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={creating ? 'Describe what you want Kordi Factory to build…' : `Ask Kordi Factory to build or refine ${targetName}…`}
+              placeholder={creating ? 'Describe what you want Kordi Factory to build or change…' : `Ask Kordi Factory to build or refine ${targetName}…`}
               aria-label="Message Kordi Factory"
             />
             {attachmentError ? <div className="pt-1 text-[11px] text-rose-500" role="alert">{attachmentError}</div> : null}

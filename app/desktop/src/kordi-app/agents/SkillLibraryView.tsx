@@ -455,7 +455,7 @@ function InstalledSkillView({
   );
 }
 
-function CommunitySkillView({
+export function CommunitySkillView({
   skills,
   agentTargets,
   onInstalled,
@@ -604,7 +604,7 @@ function CommunitySkillView({
         <label className="app-agent-studio-search"><Search className="h-4 w-4" /><input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={`Search ${provider === 'clawhub' ? 'ClawHub' : 'Skills.sh'}`} /></label>
         <div className="app-skill-community-result-list">
           {searching ? <div className="app-skill-community-hint"><LoaderCircle className="h-4 w-4 animate-spin" />Searching community skills…</div> : null}
-          {!searching && query.trim().length < 2 ? <div className="app-skill-community-hint"><Globe2 className="h-5 w-5" />Search by task, tool, or workflow.</div> : null}
+          {!searching && query.trim().length < 2 ? <div className="app-skill-community-hint"><Globe2 className="h-4 w-4" />Search by task, tool, or workflow.</div> : null}
           {!searching && query.trim().length >= 2 && results.length === 0 && !error ? <div className="app-skill-community-hint">No matching skills found.</div> : null}
           {results.map((skill) => (
             <button key={skill.id} type="button" className={cn(selected?.id === skill.id && 'is-active')} onClick={() => void openResult(skill)}>
@@ -620,7 +620,7 @@ function CommunitySkillView({
         {detailLoading ? <SkillLibraryState loading title="Inspecting community skill" detail="Loading its manifest, files, and available security report." /> : detail ? (
           <>
             <header className="app-skill-community-preview-head">
-              <div><div className="app-skill-community-kicker">{detail.skill.owner ?? detail.skill.provider}</div><h3>{detail.skill.name}</h3><p>{detail.skill.description || 'No description provided.'}</p></div>
+              <div><h3>{detail.skill.name}</h3><p>{detail.skill.description || 'No description provided.'}</p><span className="app-skill-community-source">{detail.skill.owner ?? communityProviderLabel(detail.skill.provider)}</span></div>
               <a className="app-button-quiet app-agent-studio-icon-button" href={detail.skill.sourceUrl} target="_blank" rel="noreferrer" aria-label="Open community source" onClick={(event) => { event.preventDefault(); void openDesktopExternalUrl(detail.skill.sourceUrl); }}><ExternalLink className="h-4 w-4" /></a>
             </header>
             <div className={cn('app-skill-community-security', detail.securityStatus === 'clean' || detail.securityStatus === 'pass' ? 'is-clean' : 'is-warning')}>
@@ -651,7 +651,7 @@ function CommunitySkillView({
 function SkillLibraryState({ loading = false, title, detail }: { loading?: boolean; title: string; detail: string }) {
   return (
     <div className="app-skill-library-state">
-      {loading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Puzzle className="h-5 w-5" />}
+      {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Puzzle className="h-4 w-4" />}
       <strong>{title}</strong>
       <span>{detail}</span>
     </div>

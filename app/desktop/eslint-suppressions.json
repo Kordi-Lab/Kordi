@@ -428,9 +428,6 @@
   "src/kordi-app/agents/AgentsPage.tsx": {
     "react-hooks/exhaustive-deps": {
       "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 2
     }
   },
   "src/kordi-app/agents/SkillLibraryView.tsx": {

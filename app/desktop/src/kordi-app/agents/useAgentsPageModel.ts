@@ -227,9 +227,13 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     }));
   };
 
-  const saveAgentConfig = async (agent: Agent, section: 'prompt' | 'skills' | 'tools' | 'plugins' | 'all') => {
+  const saveAgentConfig = async (
+    agent: Agent,
+    section: 'prompt' | 'skills' | 'tools' | 'plugins' | 'all',
+    draftOverride?: AgentStudioConfigDraft,
+  ) => {
     const configPath = getAgentConfigPath(agent);
-    const draft = agentConfigs[agent.id] ?? buildAgentStudioDraft(agent);
+    const draft = draftOverride ?? agentConfigs[agent.id] ?? buildAgentStudioDraft(agent);
     const persisted = persistedAgentConfigs[agent.id] ?? buildPersistedAgentConfig(agent);
 
     if (!canUseNativeFileAccess || !configPath || !isRepoFilePath(configPath)) {

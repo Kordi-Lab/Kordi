@@ -39,16 +39,16 @@
 .app-agent-studio-capability-list {
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);
-  border-radius: 13px;
+  border-radius: 8px;
 }
 
 .app-agent-studio-capability-row {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  min-height: 56px;
-  padding: 8px 12px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 48%, transparent);
 }
 
@@ -58,30 +58,18 @@
 
 .app-agent-studio-capability-icon {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 16px;
+  height: 16px;
   place-items: center;
-  border-radius: 9px;
-  background: color-mix(in oklab, var(--agent-studio-accent) 10%, transparent);
-  color: var(--agent-studio-accent);
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, var(--utility-foreground));
 }
 
 .app-agent-studio-capability-icon.is-tool {
-  background: color-mix(in oklab, oklch(74% 0.1 74) 11%, transparent);
-  color: oklch(74% 0.1 74);
-}
-
-.kordi-app.theme-light .app-agent-studio-capability-icon.is-tool {
-  color: oklch(49% 0.105 74);
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, var(--utility-foreground));
 }
 
 .app-agent-studio-capability-icon.is-plugin {
-  background: color-mix(in oklab, oklch(70% 0.1 310) 11%, transparent);
-  color: oklch(70% 0.1 310);
-}
-
-.kordi-app.theme-light .app-agent-studio-capability-icon.is-plugin {
-  color: oklch(48% 0.105 310);
+  color: color-mix(in oklab, var(--utility-muted-text) 84%, var(--utility-foreground));
 }
 
 .app-agent-studio-capability-name {
@@ -94,7 +82,7 @@
   display: block;
   overflow: hidden;
   font-size: var(--agent-studio-type-body);
-  font-weight: 660;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

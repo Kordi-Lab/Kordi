@@ -18,9 +18,11 @@
 @import './styles/shell-sidebar.css';
 @import './styles/shell-pages.css';
 @import './styles/shell-factory-foundation.css';
+@import './styles/shell-factory-rail.css';
 @import './styles/shell-factory-skills.css';
 @import './styles/shell-factory-community.css';
 @import './styles/shell-factory-conversation.css';
+@import './styles/shell-factory-routes.css';
 @import './styles/shell-factory-composer.css';
 @import './styles/shell-factory-capabilities.css';
 @import './styles/shell-factory-files.css';

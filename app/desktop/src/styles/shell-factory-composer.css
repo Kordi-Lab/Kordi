@@ -112,7 +112,7 @@
 .app-agent-studio-view-head h3 {
   margin: 0;
   font-size: var(--agent-studio-type-subheading);
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -0.025em;
 }
 
@@ -147,7 +147,7 @@
   gap: 7px;
   color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-secondary);
-  font-weight: 590;
+  font-weight: 500;
 }
 
 .app-agent-studio-blueprint-label svg {
@@ -179,7 +179,7 @@
 .app-agent-studio-blueprint-value {
   overflow: hidden;
   font-size: var(--agent-studio-type-body);
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -245,7 +245,7 @@
 
 .app-agent-studio-access-menu button.is-selected {
   color: var(--utility-foreground);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .app-agent-studio-access-menu-check {

@@ -25,7 +25,7 @@ import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
-import { cloudAgentAccessDescription, cloudAgentAccessLabel, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
+import { cloudAgentAccessDescription, cloudAgentAccessLabel, skillLibraryFileDisplay, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
 
@@ -68,7 +68,7 @@ function cleanCapabilityName(raw: string) {
 function EmptyWorkspaceState({ icon: Icon, title, detail }: { icon: typeof FileText; title: string; detail: string }) {
   return (
     <div className="app-agent-studio-empty">
-      <Icon className="h-6 w-6" />
+      <Icon className="h-4 w-4" />
       <strong>{title}</strong>
       <span>{detail}</span>
     </div>
@@ -221,13 +221,13 @@ function BlueprintView({
           <div className="app-agent-studio-blueprint-label"><LockKeyhole className="h-4 w-4" />Access</div>
           <div className="min-w-0">
             <div className="app-agent-studio-blueprint-value">
-              {creating || agent?.cloudAgentId ? cloudAgentAccessLabel(accessScope) : 'Local runtime'}
+              {cloudAgentAccessLabel(accessScope)}
             </div>
             <div className="app-agent-studio-blueprint-detail">
-              {creating || agent?.cloudAgentId ? cloudAgentAccessDescription(accessScope) : 'Access follows the connected collaboration runtime.'}
+              {cloudAgentAccessDescription(accessScope)}
             </div>
           </div>
-          {creating || agent?.cloudAgentId ? (
+          {creating || agent ? (
             <div className="app-agent-studio-access-control" ref={accessControlRef}>
               <button
                 ref={accessTriggerRef}
@@ -523,7 +523,7 @@ export function CapabilitiesView({
           const editable = editableKinds.has(item.kind);
           return (
             <div key={`${item.kind}:${item.name}`} className="app-agent-studio-capability-row">
-              <span className={cn('app-agent-studio-capability-icon', `is-${item.kind}`)}><Icon className="h-4 w-4" /></span>
+              <span className={cn('app-agent-studio-capability-icon', `is-${item.kind}`)}><Icon className="h-3.5 w-3.5" /></span>
               <div className="app-agent-studio-capability-copy">
                 <div className="app-agent-studio-capability-name"><strong>{item.name}</strong></div>
                 <p title={item.description}>{item.description}</p>
@@ -683,12 +683,11 @@ function BuilderDraftFilesView({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const selectedDisplay = skillLibraryFileDisplay(selectedPath);
   useEffect(() => {
     if (files.some((file) => file.path === selectedPath)) return;
     setSelectedPath(files[0]?.path ?? 'agent.json');
   }, [files, selectedPath]);
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -727,20 +726,21 @@ function BuilderDraftFilesView({
       <WorkspaceHeading title="Draft files" />
       <div className="app-agent-studio-files-layout">
         <div className="app-agent-studio-file-list">
-          {files.map((file) => (
-            <button key={file.path} type="button" className={cn(selectedPath === file.path && 'is-active')} onClick={() => setSelectedPath(file.path)}>
-              {file.kind === 'skill' ? <Puzzle className="h-4 w-4" /> : file.kind === 'prompt' ? <FileCode2 className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-              <span><strong>{file.path.split('/').pop()}</strong><small>{file.path}</small></span>
-              <span className={cn('app-agent-studio-file-validity', !file.valid && 'is-error')}>{file.valid ? 'Valid' : 'Fix'}</span>
-            </button>
-          ))}
+          {files.map((file) => {
+            const display = skillLibraryFileDisplay(file.path);
+            return <button key={file.path} type="button" className={cn(selectedPath === file.path && 'is-active')} aria-label={`${file.path}${file.valid ? '' : ', needs attention'}`} onClick={() => setSelectedPath(file.path)}>
+              <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+              <span><strong>{display.name}</strong>{display.parent ? <small>{display.parent}</small> : null}</span>
+              {!file.valid ? <span className="app-agent-studio-file-validity is-error" title="Needs attention"><X className="h-3 w-3" /></span> : null}
+            </button>;
+          })}
         </div>
         <section className="app-agent-studio-file-editor">
           <div className="app-agent-studio-file-toolbar">
-            <div className="min-w-0"><strong>{selectedPath.split('/').pop()}</strong><span>{selectedPath}</span></div>
-            <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={loading || saving || content === savedContent}>
-              {saving ? 'Saving…' : 'Save file'}
-            </button>
+            <div className="min-w-0"><strong>{selectedDisplay.name}</strong>{selectedDisplay.parent ? <span>{selectedDisplay.parent}</span> : null}</div>
+            {!loading && (saving || content !== savedContent) ? (
+              <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            ) : !loading ? <span className="app-agent-studio-file-saved"><Check className="h-3 w-3" />Saved</span> : null}
           </div>
           {error ? <div className="app-agent-studio-file-feedback is-error">{error}</div> : null}
           {loading ? <div className="app-agent-studio-runtime-note"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Loading draft file…</div> : (
@@ -778,11 +778,11 @@ function RunsView({
         />
         <div className="app-agent-studio-run-checks">
           <section className={cn('app-agent-studio-run-check', builderStatus.validation.valid ? 'is-success' : 'is-error')}>
-            <span>{builderStatus.validation.valid ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}</span>
+            <span>{builderStatus.validation.valid ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}</span>
             <div><strong>{builderStatus.validation.valid ? 'Files are valid' : 'Draft needs attention'}</strong><p>{builderStatus.validation.valid ? `${builderStatus.validation.files.length} draft files passed structural validation.` : builderStatus.validation.errors.join(' ')}</p></div>
           </section>
           <section className={cn('app-agent-studio-run-check', reportIsCurrent && builderStatus.testReport?.passed ? 'is-success' : builderStatus.testReport && reportIsCurrent ? 'is-error' : '')}>
-            <span>{builderTesting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : reportIsCurrent && builderStatus.testReport?.passed ? <Check className="h-4 w-4" /> : <Activity className="h-4 w-4" />}</span>
+            <span>{builderTesting ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : reportIsCurrent && builderStatus.testReport?.passed ? <Check className="h-3.5 w-3.5" /> : <Activity className="h-3.5 w-3.5" />}</span>
             <div><strong>{builderTesting ? 'Testing the candidate runtime' : reportIsCurrent ? builderStatus.testReport?.passed ? 'Runtime test passed' : 'Runtime test failed' : 'Runtime test required'}</strong><p>{builderTesting ? 'Kordi is starting a disposable session with the candidate prompt and skills.' : reportIsCurrent ? builderStatus.testReport?.summary : 'Run a new test after every file change.'}</p></div>
           </section>
         </div>
@@ -857,7 +857,7 @@ export function AgentStudioWorkspace({
   chatModelOptions = [],
   composerProviderOptions = [],
   onUpdateModelRouting,
-  onUpdateCloudAccess,
+  onUpdateAgentAccess,
   activeDetail,
   activeFilePreview,
   activeFileDraft,
@@ -919,7 +919,7 @@ export function AgentStudioWorkspace({
       thinking?: string | null;
     },
   ) => Promise<void> | void;
-  onUpdateCloudAccess?: (scope: CloudAgentAccessScope) => void;
+  onUpdateAgentAccess?: (scope: CloudAgentAccessScope) => void;
   activeDetail: DetailTarget;
   activeFilePreview: FilePreviewState;
   activeFileDraft: string;
@@ -939,8 +939,8 @@ export function AgentStudioWorkspace({
   onReadBuilderFile?: (path: string) => Promise<string>;
   onWriteBuilderFile?: (path: string, content: string) => Promise<unknown>;
 }) {
-  const skillBuild = creating && artifactKind === 'skill';
-  const [tab, setTab] = useState<AgentStudioTab>(skillBuild ? 'files' : 'blueprint');
+  const standaloneBuild = creating && artifactKind !== 'agent';
+  const [tab, setTab] = useState<AgentStudioTab>(standaloneBuild ? 'files' : 'blueprint');
   const [routingOpen, setRoutingOpen] = useState(false);
   const visibleTabIds = visibleAgentStudioTabIds(creating, artifactKind);
   const visibleTabs = TABS.filter(({ id }) => visibleTabIds.includes(id));
@@ -948,7 +948,7 @@ export function AgentStudioWorkspace({
   const accessScope = creating ? creationAccessScope : agentAccessScope;
   const setAccessScope = (scope: CloudAgentAccessScope) => {
     if (creating) onCreationAccessScopeChange(scope);
-    else onUpdateCloudAccess?.(scope);
+    else onUpdateAgentAccess?.(scope);
   };
 
   return (
@@ -1034,10 +1034,10 @@ export function AgentStudioWorkspace({
         ) : null}
       </div>
       </fieldset>
-      {(changes.length > 0 || creating && creationDraft) ? (
+      {builderStatus?.lifecycle !== 'published' && (changes.length > 0 || creating && creationDraft) ? (
         <div className="app-agent-studio-workspace-footer">
-          <span>{skillBuild ? 'New skill build' : creating ? 'New Factory build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
-          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? (skillBuild ? 'Installing…' : 'Publishing…') : skillBuild ? 'Install skill' : creating ? 'Create agent' : 'Publish'}</button></div>
+          <span>{standaloneBuild ? `${artifactKind[0]?.toUpperCase()}${artifactKind.slice(1)} draft` : creating ? 'New agent build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
+          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? 'Publishing…' : artifactKind === 'skill' ? 'Publish skill' : artifactKind === 'tool' ? 'Publish tool' : artifactKind === 'plugin' ? 'Publish plugin' : creating ? 'Create agent' : 'Publish'}</button></div>
         </div>
       ) : null}
     </section>

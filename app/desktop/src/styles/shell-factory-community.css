@@ -9,10 +9,10 @@
 .app-skill-community-results {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 7px;
   min-width: 0;
   min-height: 0;
-  padding: 12px 10px;
+  padding: 10px 8px;
   border-right: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
 }
 
@@ -30,7 +30,7 @@
   border-radius: 7px;
   color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-caption);
-  font-weight: 640;
+  font-weight: 600;
 }
 
 .app-skill-community-provider button.is-active {
@@ -49,10 +49,10 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 54px;
-  margin-bottom: 2px;
-  padding: 7px 8px;
-  border-radius: 10px;
+  min-height: 42px;
+  margin-bottom: 1px;
+  padding: 5px 7px;
+  border-radius: 7px;
   color: var(--utility-muted-text);
   text-align: left;
 }
@@ -100,7 +100,7 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 20px 22px;
+  padding: 16px 18px;
 }
 
 .app-skill-community-preview-head {
@@ -118,7 +118,7 @@
 .app-skill-community-preview-head h3 {
   margin-top: 3px;
   font-size: var(--agent-studio-type-heading);
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -0.03em;
 }
 
@@ -130,10 +130,12 @@
   line-height: 1.55;
 }
 
-.app-skill-community-kicker {
-  color: var(--agent-studio-accent);
+.app-skill-community-source {
+  display: block;
+  margin-top: 9px;
+  color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-caption);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .app-skill-community-security {

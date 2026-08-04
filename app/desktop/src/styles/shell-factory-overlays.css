@@ -55,7 +55,7 @@
 .app-agent-studio-field > span {
   color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-secondary);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .app-agent-studio-field input,
@@ -103,28 +103,22 @@
 
 @container agents-page (max-width: 1120px) {
   .app-agent-studio-shell {
-    grid-template-columns: 220px minmax(0, 1fr);
-  }
-
-  .app-agent-studio-compact-switcher {
-    display: flex;
+    grid-template-columns: 252px minmax(0, 1fr);
   }
 
   .app-agent-studio-body {
-    display: block;
-    position: relative;
-    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .app-agent-studio-conversation,
   .app-agent-studio-workspace {
-    position: absolute;
-    inset: 0;
-  }
-
-  .app-agent-studio-body[data-compact-pane='conversation'] .app-agent-studio-workspace,
-  .app-agent-studio-body[data-compact-pane='workspace'] .app-agent-studio-conversation {
-    display: none;
+    position: relative;
+    inset: auto;
+    flex: 0 0 auto;
+    min-height: 640px;
   }
 
   .app-agent-studio-conversation {
@@ -132,7 +126,11 @@
   }
 
   .app-skill-community {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    grid-template-columns: minmax(248px, 290px) minmax(0, 1fr);
+  }
+
+  .app-factory-library-detail {
+    grid-template-columns: minmax(260px, 0.78fr) minmax(380px, 1.22fr);
   }
 
 }
@@ -140,11 +138,30 @@
 @container agents-page (max-width: 760px) {
   .app-agent-studio-shell {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(170px, 32vh) minmax(0, 1fr);
     border-radius: 0;
   }
 
   .app-agent-studio-rail {
-    display: none;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 74%, transparent);
+  }
+
+  .app-agent-studio-rail-head {
+    gap: 9px;
+    padding: 10px 12px 9px;
+  }
+
+  .app-agent-studio-agent-list {
+    padding-block: 4px;
+  }
+
+  .app-agent-studio-agent-row {
+    min-height: 48px;
+  }
+
+  .app-agent-studio-agent-row.is-compact {
+    min-height: 40px;
   }
 
   .app-skill-library-files,
@@ -173,6 +190,18 @@
     padding: 9px 12px;
   }
 
+  .app-factory-library-overview {
+    padding-inline: 20px;
+  }
+
+  .app-factory-inspect-scroll {
+    padding: 16px 14px 38px;
+  }
+
+  .app-factory-inspect-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .app-agent-studio-files-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -197,6 +226,43 @@
 
   .app-agent-studio-header h2 {
     max-width: 150px;
+  }
+
+  .app-factory-inspect-main > .app-agent-studio-header,
+  .app-factory-community-main > .app-agent-studio-header {
+    flex-wrap: wrap;
+    padding-block: 10px;
+  }
+
+  .app-agent-studio-header-actions {
+    width: 100%;
+  }
+
+  .app-factory-skill-mode {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .app-factory-library-detail {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .app-factory-library-overview {
+    flex: 0 0 auto;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+  }
+
+  .app-factory-library-preview {
+    flex: 0 0 540px;
+    min-height: 540px;
+  }
+
+  .app-factory-library-definition {
+    margin-block: 24px;
   }
 
   .app-agent-studio-status-pill {

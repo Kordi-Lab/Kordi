@@ -1,135 +1,54 @@
-import { useEffect, useMemo, useState } from 'react';
-import { MoreHorizontal, PanelRight, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import {
   installDesktopAgentBuilderSkill,
-  openDesktopAgentBuilder,
-  updateDesktopAgentBuilderDraft,
   type DesktopAgentBuilderDraft,
   type DesktopAgentBuilderSeed,
   type DesktopAgentBuilderStatus,
-  type DesktopSkillLibraryEntry,
 } from '@/lib/desktop';
+import {
+  fetchDesktopAgentBuilderList,
+  type DesktopAgentBuilderSummary,
+} from '@/lib/desktopAgentBuilderCatalog';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import type { Agent } from '../types';
-import { AgentDeleteConfirmDialog, archiveAgentFromMenu } from './AgentDetailPane';
+import { AgentInspectionView } from './AgentInspectionView';
 import { AgentStudioConversation } from './AgentStudioConversation';
 import { AgentStudioRail } from './AgentStudioRail';
 import { AgentStudioWorkspace } from './AgentStudioWorkspace';
-import { SkillLibraryView } from './SkillLibraryView';
-import { agentBuilderTargetKey, cloudAgentAccessLabel, getAgentConfigPath, isRepoFilePath, type AgentSaveFeedback, type AgentStudioCapabilityKind, type FactoryArtifactKind, type FactorySection } from './model';
+import { CapabilityLibraryView, type FactorySkillLibraryMode } from './CapabilityLibraryView';
+import {
+  agentBuilderSkillSlug,
+  modelRoutingForAgent,
+  resourcesForCreate,
+  sameModelRouting,
+  shapeDraftFromBuilder,
+  type AgentModelRoutingDraft,
+} from './factoryAgentUtils';
+import {
+  agentBuilderTargetKey,
+  agentStudioConfigChanges,
+  cloudAgentAccessLabel,
+  factoryArtifactTargetKey,
+  factoryBuildIdentityFromTarget,
+  getAgentConfigPath,
+  isRepoFilePath,
+  type AgentSaveFeedback,
+  type AgentStudioCapabilityKind,
+  type FactoryBuildRoute,
+  type FactoryLibraryArtifact,
+  type FactoryLibrarySection,
+  type FactorySection,
+} from './model';
 import type { AgentsPageProps } from './model';
-import { type ShapeAgentDraft } from './shapeAgentDraft';
+import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { useAgentBuilderSession } from './useAgentBuilderSession';
 import { useAgentsPageModel } from './useAgentsPageModel';
+import { useFactoryBuildRouting } from './useFactoryBuildRouting';
 import { useSkillLibrary } from './useSkillLibrary';
-
-function resourcesForCreate(creatorAgent?: Agent | null) {
-  const creatorResource = creatorAgent ? [{
-    kind: 'creator-agent',
-    value: creatorAgent.id,
-    title: creatorAgent.name,
-    summary: `${creatorAgent.loadedTools.length} tools and ${creatorAgent.loadedSkills.length} skills available during shaping`,
-  }] : [];
-  return creatorResource;
-}
-
-function shapeDraftFromBuilder(draft: DesktopAgentBuilderDraft): ShapeAgentDraft {
-  return {
-    name: draft.name,
-    role: draft.role,
-    description: draft.description,
-    systemPrompt: draft.systemPrompt,
-    sourceSummary: draft.sourceSummary,
-    boundaries: draft.boundaries,
-    skills: draft.skills.map((skill) => ({ ...skill })),
-  };
-}
 
 function isNativeDesktopShell() {
   return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
-}
-
-function agentBuilderSkillSlug(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
-}
-
-function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed {
-  return {
-    name: agent?.name ?? 'Agent',
-    role: agent?.role ?? '',
-    description: agent?.cloudAgentDescription ?? agent?.cloudAgentSourceSummary ?? agent?.role ?? '',
-    sourceSummary: agent?.cloudAgentSourceSummary ?? '',
-    boundaries: agent?.cloudAgentBoundaries ?? [],
-    systemPrompt: agent?.systemPrompt ?? '',
-    access: agent?.cloudAgentAccessScope === 'participant_conversations' ? 'participant-conversations' : 'only-me',
-    provider: agent?.defaultAuthProvider ?? null,
-    model: agent?.defaultModel ?? null,
-    thinking: agent?.defaultThinking ?? null,
-    tools: agent?.loadedTools ?? [],
-    plugins: agent?.loadedPlugins ?? [],
-    skills: (agent?.cloudAgentSkills ?? agent?.loadedSkills.map((name) => ({ name, description: '' })) ?? []).map((skill) => ({
-      name: skill.name,
-      description: skill.description ?? '',
-      content: 'content' in skill && typeof skill.content === 'string' ? skill.content : null,
-    })),
-  };
-}
-
-function draftWithLibrarySkill(draft: DesktopAgentBuilderDraft, skill: DesktopSkillLibraryEntry, skillMd: string) {
-  const normalizedName = agentBuilderSkillSlug(skill.name);
-  const content = skillMd.trim() || [
-    '---',
-    `name: ${normalizedName}`,
-    `description: "${skill.description.replace(/"/g, '\\"')}"`,
-    '---',
-    '',
-    `# ${skill.name}`,
-  ].join('\n');
-  return {
-    ...draft,
-    skills: [
-      ...draft.skills.filter((entry) => entry.name !== normalizedName),
-      {
-        name: normalizedName,
-        description: skill.description,
-        path: `skills/${normalizedName}/SKILL.md`,
-        content,
-      },
-    ].sort((left, right) => left.name.localeCompare(right.name)),
-  };
-}
-
-type AgentModelRoutingDraft = {
-  defaultModel?: string | null;
-  defaultAuthProvider?: string | null;
-  defaultAuthChoice?: string | null;
-  fallbackModel?: string | null;
-  fallbackAuthProvider?: string | null;
-  fallbackAuthChoice?: string | null;
-  thinking?: string | null;
-};
-
-function modelRoutingForAgent(agent?: Agent): AgentModelRoutingDraft {
-  return {
-    defaultModel: agent?.defaultModel || null,
-    defaultAuthProvider: agent?.defaultAuthProvider ?? null,
-    defaultAuthChoice: agent?.defaultAuthChoice ?? null,
-    fallbackModel: agent?.fallbackModel ?? null,
-    fallbackAuthProvider: agent?.fallbackAuthProvider ?? null,
-    fallbackAuthChoice: agent?.fallbackAuthChoice ?? null,
-    thinking: agent?.defaultThinking ?? null,
-  };
-}
-
-function sameModelRouting(left: AgentModelRoutingDraft, right: AgentModelRoutingDraft) {
-  return (Object.keys(modelRoutingForAgent()) as Array<keyof AgentModelRoutingDraft>)
-    .every((key) => (left[key] ?? null) === (right[key] ?? null));
 }
 
 export function AgentsPage({
@@ -148,36 +67,43 @@ export function AgentsPage({
   onOpenAuthSettings,
   onCreateCloudAgent,
   onUpdateCloudAgent,
-  onArchiveCloudAgent,
   onSetAgentSkillEnabled,
 }: AgentsPageProps) {
-  const [creatingKind, setCreatingKind] = useState<FactoryArtifactKind | null>(null);
-  const [factorySection, setFactorySection] = useState<FactorySection>('builds');
-  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
-  const [creationDraft, setCreationDraft] = useState<ShapeAgentDraft | null>(null);
+  const [factorySection, setFactorySection] = useState<FactorySection>('agents');
+  const [librarySection, setLibrarySection] = useState<FactoryLibrarySection>('skill');
+  const [librarySkillMode, setLibrarySkillMode] = useState<FactorySkillLibraryMode>('installed');
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<Partial<Record<FactoryLibrarySection, string>>>({});
+  const [buildRoute, setBuildRoute] = useState<FactoryBuildRoute | null>(null);
+  const [buildSeed, setBuildSeed] = useState<DesktopAgentBuilderSeed>({});
+  const [builds, setBuilds] = useState<DesktopAgentBuilderSummary[]>([]);
+  const [buildListLoading, setBuildListLoading] = useState(true);
   const [builderGeneration, setBuilderGeneration] = useState(0);
-  const [creationAccessScope, setCreationAccessScope] = useState<CloudAgentAccessScope>('private');
   const [accessDraftByAgentId, setAccessDraftByAgentId] = useState<Record<string, CloudAgentAccessScope>>({});
+  const [publishedAccessByAgentId, setPublishedAccessByAgentId] = useState<Record<string, CloudAgentAccessScope>>({});
   const [routingDraftByAgentId, setRoutingDraftByAgentId] = useState<Record<string, AgentModelRoutingDraft>>({});
-  const [compactPane, setCompactPane] = useState<'conversation' | 'workspace'>('conversation');
   const [publishing, setPublishing] = useState(false);
   const [publishFeedback, setPublishFeedback] = useState<AgentSaveFeedback | null>(null);
-  const [archiveConfirmAgent, setArchiveConfirmAgent] = useState<Agent | null>(null);
-  const [archiveDeleting, setArchiveDeleting] = useState(false);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
-  const creating = creatingKind !== null;
-  const creatingSkill = creatingKind === 'skill';
-  const selectedAgent = creating
-    ? undefined
-    : activeAgent ?? agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
+  const routeKind = buildRoute?.artifactKind ?? 'agent';
+  const buildingStandaloneArtifact = Boolean(buildRoute && routeKind !== 'agent');
+  const creating = Boolean(buildRoute && (buildRoute.artifactId === null || buildingStandaloneArtifact));
+  const creatingSkill = routeKind === 'skill' && creating;
+  const inspectedAgentSource = activeAgent ?? agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
+  const inspectedAgent = inspectedAgentSource && publishedAccessByAgentId[inspectedAgentSource.id]
+    ? { ...inspectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[inspectedAgentSource.id] }
+    : inspectedAgentSource;
+  const selectedAgentSource = buildRoute?.artifactKind === 'agent' && buildRoute.artifactId
+    ? agents.find((agent) => agent.id === buildRoute.artifactId)
+    : undefined;
+  const selectedAgent = selectedAgentSource && publishedAccessByAgentId[selectedAgentSource.id]
+    ? { ...selectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[selectedAgentSource.id] }
+    : selectedAgentSource;
   const creatorAgent = agents.find((agent) => agent.id === 'desktop:local-agent')
     ?? agents.find((agent) => agent.name.trim().toLocaleLowerCase() === 'kordi' && !agent.cloudAgentId)
     ?? agents.find((agent) => agent.isOwned && !agent.cloudAgentId)
     ?? null;
   const skillLibrary = useSkillLibrary();
   const {
-    agentConfigs,
-    activeAgentConfig,
+    activeAgentConfig: modelActiveAgentConfig,
     activePersistedConfig,
     activeDetail,
     activeSaveFeedback,
@@ -189,7 +115,7 @@ export function AgentsPage({
     availableSkills,
     availableTools,
     availablePlugins,
-    activeDraftChanges,
+    activeDraftChanges: modelActiveDraftChanges,
     resetAgentDraft,
     saveAgentConfig,
     markAgentDraftPublished,
@@ -198,7 +124,6 @@ export function AgentsPage({
     openPromptDetail,
     startFileEditing,
     cancelFileEditing,
-    replaceAgentDraft,
     updateActiveFileDraft,
   } = useAgentsPageModel(agents, selectedAgent);
   const capabilitySkillCatalog = useMemo(() => {
@@ -216,77 +141,157 @@ export function AgentsPage({
     };
   }, [availableSkills, skillLibrary.skills]);
 
-  useEffect(() => {
-    setPublishFeedback(null);
-    setCompactPane('conversation');
-  }, [creating, selectedAgent?.id]);
-
-  const builderTargetKey = agentBuilderTargetKey(
+  const libraryArtifacts = useMemo<Record<'tool' | 'plugin', FactoryLibraryArtifact[]>>(() => {
+    const buildArtifacts = (kind: 'tool' | 'plugin') => builds
+      .filter((build) => build.available && build.lifecycle === 'published' && build.artifactKind === kind)
+      .map((build) => ({
+        id: factoryBuildIdentityFromTarget(build.targetKey)?.artifactId ?? `${kind}:${build.name}`,
+        name: build.name,
+      }));
+    const entriesFor = (kind: 'tool' | 'plugin', runtimeNames: string[]) => {
+      const namesById = new Map(runtimeNames.map((name) => [`${kind}:${name}`, name]));
+      buildArtifacts(kind).forEach((artifact) => namesById.set(artifact.id, artifact.name));
+      return Array.from(namesById, ([id, name]) => {
+        const usedBy = agents
+          .filter((agent) => (kind === 'tool' ? agent.loadedTools : agent.loadedPlugins).includes(name))
+          .map((agent) => agent.name);
+        const factoryPublished = builds.some((build) => (
+          build.lifecycle === 'published'
+            && build.artifactKind === kind
+            && factoryBuildIdentityFromTarget(build.targetKey)?.artifactId === id
+        ));
+        return {
+          id,
+          kind,
+          name,
+          description: factoryPublished
+            ? `Published Kordi Factory ${kind} definition.`
+            : `${kind === 'tool' ? 'Runtime tool' : 'Plugin'} used by ${usedBy.length} agent${usedBy.length === 1 ? '' : 's'}.`,
+          status: factoryPublished ? 'Published' : 'Available',
+          usedBy,
+        };
+      }).sort((left, right) => left.name.localeCompare(right.name));
+    };
+    return {
+      tool: entriesFor('tool', availableTools),
+      plugin: entriesFor('plugin', availablePlugins),
+    };
+  }, [agents, availablePlugins, availableTools, builds]);
+  const selectedLibraryId = selectedLibraryIds[librarySection] ?? (
+    librarySection === 'skill'
+      ? skillLibrary.skills[0]?.id
+      : libraryArtifacts[librarySection][0]?.id
+  ) ?? null;
+  const selectedSkill = librarySection === 'skill'
+    ? skillLibrary.skills.find((skill) => skill.id === selectedLibraryId) ?? null
+    : null;
+  const selectedLibraryArtifact = useMemo<FactoryLibraryArtifact | null>(() => {
+    if (librarySection === 'skill') {
+      if (!selectedSkill) return null;
+      return {
+        id: selectedSkill.id,
+        kind: 'skill',
+        name: selectedSkill.name,
+        description: selectedSkill.description,
+        status: selectedSkill.enabled ? 'Enabled' : 'Disabled',
+        usedBy: agents.filter((agent) => agent.loadedSkills.includes(selectedSkill.name)).map((agent) => agent.name),
+      };
+    }
+    return libraryArtifacts[librarySection].find((artifact) => artifact.id === selectedLibraryId) ?? null;
+  }, [agents, libraryArtifacts, librarySection, selectedLibraryId, selectedSkill]);
+  const {
+    editAgentInBuild,
+    editLibraryArtifactInBuild,
+    openBuildSummary,
+    routingToBuild,
+    startFactoryBuild,
+  } = useFactoryBuildRouting({
+    agents,
+    builds,
+    buildRoute,
+    canCreateAgent: Boolean(onCreateCloudAgent),
     cloudAccountId,
-    creating ? `create-${creatingKind}` : selectedAgent ? `agent:${selectedAgent.id}` : 'agent:none',
-  );
-  const builderSeed = useMemo<DesktopAgentBuilderSeed>(() => creatingSkill ? {
-    name: 'New skill build',
-    role: 'Reusable Kordi skill',
-    description: 'A private Factory workspace for one reusable skill.',
-    systemPrompt: 'Build and maintain one focused, reusable Kordi skill. Keep its scope narrow, instructions actionable, and permissions minimal.',
-    access: 'only-me',
-    tools: [],
-    plugins: [],
-    skills: [{
-      name: 'new-skill',
-      description: 'Describe when this skill should be used.',
-      content: [
-        '---',
-        'name: new-skill',
-        'description: "Describe when this skill should be used."',
-        '---',
-        '',
-        '# New skill',
-        '',
-        'Describe the focused workflow this skill should guide.',
-      ].join('\n'),
-    }],
-  } : creating ? {
-    name: 'New agent',
-    role: 'Kordi agent',
-    description: '',
-    systemPrompt: '',
-    access: 'only-me',
-    tools: [],
-    plugins: [],
-    skills: [],
-  } : agentBuilderSeedForAgent(selectedAgent), [creating, creatingSkill, selectedAgent]);
-  const builderSeedKey = `${builderGeneration}:${JSON.stringify(builderSeed)}`;
-  const builder = useAgentBuilderSession({
-    targetKey: builderTargetKey,
-    seed: builderSeed,
-    seedKey: builderSeedKey,
-    enabled: creating || Boolean(selectedAgent),
+    factorySection,
+    inspectedAgent,
+    libraryArtifacts,
+    librarySection,
+    selectedLibraryId,
+    skills: skillLibrary.skills,
+    setBuilds,
+    setBuildRoute,
+    setBuildSeed,
+    setBuilderGeneration,
+    setFactorySection,
+    setPublishFeedback,
   });
 
+  const refreshBuilds = useCallback(async () => {
+    setBuildListLoading(true);
+    try {
+      const next = await fetchDesktopAgentBuilderList();
+      setBuilds(next);
+      return next;
+    } catch {
+      return [];
+    } finally {
+      setBuildListLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const draft = builder.status?.draft;
-    if (!draft) return;
-    if (creating) {
-      setCreationDraft(shapeDraftFromBuilder(draft));
-      setCreationAccessScope(draft.access === 'participant-conversations' ? 'participant_conversations' : 'private');
-      return;
-    }
-    if (!selectedAgent) return;
-    replaceAgentDraft(selectedAgent.id, {
-      systemPrompt: draft.systemPrompt,
-      loadedSkills: draft.skills.map((skill) => skill.name),
-      loadedTools: draft.tools,
-      loadedPlugins: draft.plugins,
-    });
-    if (selectedAgent.cloudAgentId) {
-      setAccessDraftByAgentId((current) => ({
+    let cancelled = false;
+    void fetchDesktopAgentBuilderList()
+      .then((next) => { if (!cancelled) setBuilds(next); })
+      .finally(() => { if (!cancelled) setBuildListLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const builderTargetKey = buildRoute?.targetKey ?? agentBuilderTargetKey(cloudAccountId, 'inactive');
+  const builderSeed = buildSeed;
+  const builderSeedKey = `${builderGeneration}:${JSON.stringify(builderSeed)}`;
+  const handleBuilderSessionResolved = useCallback((nextStatus: DesktopAgentBuilderStatus) => {
+    setBuildRoute((current) => {
+      if (!current) return current;
+      const belongsToCurrentRoute = current.targetKey === nextStatus.targetKey
+        || current.sessionId === nextStatus.sessionId
+        || current.sessionId === null;
+      if (!belongsToCurrentRoute) return current;
+      if (current.targetKey === nextStatus.targetKey && current.sessionId === nextStatus.sessionId) return current;
+      return {
         ...current,
-        [selectedAgent.id]: draft.access === 'participant-conversations' ? 'participant_conversations' : 'private',
-      }));
-    }
-  }, [builder.status?.validation.fingerprint, creating, replaceAgentDraft, selectedAgent?.cloudAgentId, selectedAgent?.id]);
+        targetKey: nextStatus.targetKey,
+        sessionId: nextStatus.sessionId,
+      };
+    });
+  }, []);
+  const builder = useAgentBuilderSession({
+    targetKey: builderTargetKey,
+    sessionId: buildRoute?.sessionId,
+    seed: builderSeed,
+    seedKey: builderSeedKey,
+    onSessionResolved: handleBuilderSessionResolved,
+    enabled: factorySection === 'build' && Boolean(buildRoute),
+  });
+  const creationDraft = creating && builder.status?.draft
+    ? shapeDraftFromBuilder(builder.status.draft)
+    : null;
+  const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
+    ? 'participant_conversations'
+    : 'private';
+  const activeAgentConfig = selectedAgent && builder.status?.draft ? {
+    systemPrompt: builder.status.draft.systemPrompt,
+    loadedSkills: builder.status.draft.skills.map((skill) => skill.name),
+    loadedTools: builder.status.draft.tools,
+    loadedPlugins: builder.status.draft.plugins,
+  } : modelActiveAgentConfig;
+  const activeDraftChanges = activeAgentConfig && activePersistedConfig
+    ? agentStudioConfigChanges(activeAgentConfig, activePersistedConfig)
+    : modelActiveDraftChanges;
+
+  useEffect(() => {
+    if (!builder.status) return;
+    void fetchDesktopAgentBuilderList().then(setBuilds).catch(() => undefined);
+  }, [builder.status?.lifecycle, builder.status?.sessionId, builder.status?.validation.fingerprint]);
 
   const selectedConfigPath = selectedAgent ? getAgentConfigPath(selectedAgent) : null;
   const hasLocalConfig = Boolean(
@@ -300,48 +305,35 @@ export function AgentsPage({
       && (selectedAgent.id === 'desktop:local-agent' || selectedAgent.isCollaborationActive)
       && onSetAgentSkillEnabled,
   );
-  const skillAgentTargets = useMemo(() => agents
-    .filter((agent) => {
-      if (!agent.isOwned) return false;
-      if (agent.cloudAgentId) return Boolean(onUpdateCloudAgent);
-      const configPath = getAgentConfigPath(agent);
-      const hasWritableConfig = Boolean(
-        isNativeDesktopShell() && configPath && isRepoFilePath(configPath),
-      );
-      const canToggleActiveRuntime = Boolean(
-        (agent.id === 'desktop:local-agent' || agent.isCollaborationActive) && onSetAgentSkillEnabled,
-      );
-      return hasWritableConfig || canToggleActiveRuntime;
-    })
-    .map((agent) => ({
-      id: agent.id,
-      name: agent.name,
-      role: agent.role,
-      avatarSeed: agent.avatarSeed,
-      profileImageUrl: agent.profileImageUrl,
-      loadedSkills: agentConfigs[agent.id]?.loadedSkills ?? agent.loadedSkills,
-    })), [agentConfigs, agents, onSetAgentSkillEnabled, onUpdateCloudAgent]);
   const canEditPrompt = Boolean(builder.status?.draft);
   const editableCapabilityKinds = useMemo(() => {
     const kinds = new Set<AgentStudioCapabilityKind>();
-    if (creatingSkill) {
-      kinds.add('skill');
+    if (buildingStandaloneArtifact) {
+      kinds.add(routeKind as AgentStudioCapabilityKind);
     } else if (creating || selectedAgent?.cloudAgentId) {
       kinds.add('skill');
       kinds.add('tool');
+      kinds.add('plugin');
     } else if (hasLocalConfig) {
       kinds.add('skill');
       kinds.add('tool');
       kinds.add('plugin');
     } else if (canToggleRuntimeSkills) kinds.add('skill');
     return kinds;
-  }, [canToggleRuntimeSkills, creating, creatingSkill, hasLocalConfig, selectedAgent?.cloudAgentId]);
-  const selectedAccessScope = selectedAgent?.cloudAgentId
-    ? accessDraftByAgentId[selectedAgent.id] ?? selectedAgent.cloudAgentAccessScope ?? 'private'
+  }, [buildingStandaloneArtifact, canToggleRuntimeSkills, creating, hasLocalConfig, routeKind, selectedAgent?.cloudAgentId]);
+  const builderAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
+    ? 'participant_conversations'
+    : 'private';
+  const publishedAccessScope: CloudAgentAccessScope = selectedAgent
+    ? publishedAccessByAgentId[selectedAgent.id]
+      ?? selectedAgent.cloudAgentAccessScope
+      ?? (builder.status?.lifecycle === 'published' ? builderAccessScope : 'private')
+    : 'private';
+  const selectedAccessScope = selectedAgent
+    ? accessDraftByAgentId[selectedAgent.id] ?? builderAccessScope
     : 'private';
   const accessChanged = Boolean(
-    selectedAgent?.cloudAgentId
-      && selectedAccessScope !== (selectedAgent.cloudAgentAccessScope ?? 'private'),
+    selectedAgent && selectedAccessScope !== publishedAccessScope,
   );
   const builderDraft = builder.status?.draft;
   const cloudDefinitionChanges = selectedAgent?.cloudAgentId && builderDraft ? [
@@ -352,7 +344,13 @@ export function AgentsPage({
     JSON.stringify(builderDraft.boundaries) !== JSON.stringify(selectedAgent.cloudAgentBoundaries ?? []) ? { key: 'definition' as const, label: 'Agent boundaries updated', detail: `${builderDraft.boundaries.length} configured` } : null,
   ].filter((change): change is NonNullable<typeof change> => Boolean(change)) : [];
   const publishedRouting = modelRoutingForAgent(selectedAgent);
-  const selectedRouting = selectedAgent ? routingDraftByAgentId[selectedAgent.id] ?? publishedRouting : publishedRouting;
+  const builderRouting = builder.status?.draft ? {
+    ...publishedRouting,
+    defaultModel: builder.status.draft.model,
+    defaultAuthProvider: builder.status.draft.provider,
+    thinking: builder.status.draft.thinking,
+  } : publishedRouting;
+  const selectedRouting = selectedAgent ? routingDraftByAgentId[selectedAgent.id] ?? builderRouting : publishedRouting;
   const routingChanged = Boolean(selectedAgent && !sameModelRouting(selectedRouting, publishedRouting));
   const studioChangesWithDefinition = [...activeDraftChanges, ...cloudDefinitionChanges];
   const studioChangesWithAccess = accessChanged
@@ -368,7 +366,9 @@ export function AgentsPage({
     || (builder.activeTurn && !builder.activeTurn.completed)
     || !builder.status?.publishReady
     || (creating
-      ? !creationDraft || (creatingSkill ? !builder.status?.draft?.skills[0] : !onCreateCloudAgent)
+      ? !creationDraft || (creatingSkill
+        ? !builder.status?.draft?.skills[0]
+        : routeKind === 'agent' && !onCreateCloudAgent)
       : !selectedAgent || !activeAgentConfig || studioChanges.length === 0)
     || (!creating && selectedAgent && !selectedAgent.cloudAgentId && activeDraftChanges.some((change) => (
       change.key === 'skills' ? !canToggleRuntimeSkills && !hasLocalConfig : !hasLocalConfig
@@ -454,6 +454,8 @@ export function AgentsPage({
       tone: 'info',
       text: creatingSkill
         ? 'Installing the reviewed skill…'
+        : routeKind === 'tool' || routeKind === 'plugin'
+          ? `Publishing the ${routeKind} definition…`
         : creating
           ? 'Creating the Cloud Agent…'
           : `Publishing ${selectedAgent?.name ?? 'agent'}…`,
@@ -470,13 +472,27 @@ export function AgentsPage({
             'global',
             status.validation.fingerprint,
           );
+          const targetKey = factoryArtifactTargetKey(cloudAccountId, 'skill', installed.id);
+          await builder.retarget(targetKey);
           await builder.markPublished();
           await skillLibrary.refresh();
-          setCreationDraft(null);
-          setCreatingKind(null);
-          setSelectedSkillId(installed.id);
-          setFactorySection('skills');
-          setPublishFeedback({ tone: 'success', text: `${installed.name} was installed disabled. Review it in Skill Library before enabling it.` });
+          setBuildRoute((current) => current ? { ...current, targetKey, artifactKind: 'skill', artifactId: installed.id } : current);
+          setSelectedLibraryIds((current) => ({ ...current, skill: installed.id }));
+          setPublishFeedback({ tone: 'success', text: `${installed.name} was published to Lib and remains disabled until it is managed in Build.` });
+          return;
+        }
+        if (routeKind === 'tool' || routeKind === 'plugin') {
+          const status = builder.status;
+          const name = routeKind === 'tool' ? status?.draft?.tools[0] : status?.draft?.plugins[0];
+          if (!status || !name) throw new Error(`The Factory draft does not contain a ${routeKind} definition.`);
+          const artifactId = `${routeKind}:${name}`;
+          const targetKey = factoryArtifactTargetKey(cloudAccountId, routeKind, artifactId);
+          await builder.retarget(targetKey);
+          await builder.markPublished();
+          setBuildRoute((current) => current ? { ...current, targetKey, artifactKind: routeKind, artifactId } : current);
+          setSelectedLibraryIds((current) => ({ ...current, [routeKind]: artifactId }));
+          await refreshBuilds();
+          setPublishFeedback({ tone: 'success', text: `${name} was published to Lib.` });
           return;
         }
         if (!creationDraft || !onCreateCloudAgent) return;
@@ -498,9 +514,10 @@ export function AgentsPage({
             plugins: builder.status?.draft?.plugins ?? [],
           },
         });
+        const targetKey = factoryArtifactTargetKey(cloudAccountId, 'agent', created.id);
+        await builder.retarget(targetKey);
         await builder.markPublished();
-        setCreationDraft(null);
-        setCreatingKind(null);
+        setBuildRoute((current) => current ? { ...current, targetKey, artifactKind: 'agent', artifactId: created.id } : current);
         onOpenAgent(created.id);
         setPublishFeedback({ tone: 'success', text: `${created.name} was created and is ready.` });
         return;
@@ -554,7 +571,15 @@ export function AgentsPage({
         const hasFileBackedChange = activeDraftChanges.some((change) => (
           change.key !== 'skills' || !canToggleRuntimeSkills
         ));
-        if (hasFileBackedChange) await saveAgentConfig(selectedAgent, 'all');
+        if (hasFileBackedChange) await saveAgentConfig(selectedAgent, 'all', activeAgentConfig);
+        if (accessChanged) {
+          setPublishedAccessByAgentId((current) => ({ ...current, [selectedAgent.id]: selectedAccessScope }));
+          setAccessDraftByAgentId((current) => {
+            const next = { ...current };
+            delete next[selectedAgent.id];
+            return next;
+          });
+        }
         markAgentDraftPublished(selectedAgent, activeAgentConfig, 'Published Factory runtime changes');
       }
       await builder.markPublished();
@@ -569,12 +594,6 @@ export function AgentsPage({
   const discard = async () => {
     const discarded = await builder.discard();
     if (!discarded) return;
-    if (creating) {
-      setCreationDraft(null);
-      setBuilderGeneration((current) => current + 1);
-      setPublishFeedback({ tone: 'info', text: 'New Factory build discarded.' });
-      return;
-    }
     if (selectedAgent) resetAgentDraft(selectedAgent);
     if (selectedAgent) {
       setAccessDraftByAgentId((current) => {
@@ -588,12 +607,18 @@ export function AgentsPage({
         return next;
       });
     }
-    setBuilderGeneration((current) => current + 1);
-    setPublishFeedback({ tone: 'info', text: 'Unpublished changes discarded.' });
+    const returnContext = buildRoute?.returnContext;
+    setBuildRoute(null);
+    setFactorySection(returnContext?.section ?? 'agents');
+    if (returnContext?.section === 'library' && returnContext.librarySection) {
+      setLibrarySection(returnContext.librarySection);
+      if (returnContext.selectedId) setSelectedLibraryIds((current) => ({ ...current, [returnContext.librarySection!]: returnContext.selectedId! }));
+    }
+    await refreshBuilds();
   };
 
-  const updateCloudAccess = (scope: CloudAgentAccessScope) => {
-    if (!selectedAgent?.cloudAgentId || !onUpdateCloudAgent) return;
+  const updateAgentAccess = (scope: CloudAgentAccessScope) => {
+    if (!selectedAgent) return;
     setAccessDraftByAgentId((current) => ({ ...current, [selectedAgent.id]: scope }));
     void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
     setPublishFeedback({ tone: 'info', text: 'Access change added to the reviewable draft.' });
@@ -611,91 +636,19 @@ export function AgentsPage({
     setPublishFeedback({ tone: 'info', text: 'Model routing change added to the reviewable draft.' });
   };
 
-  const startFactoryBuild = (kind: FactoryArtifactKind) => {
-    if (kind === 'agent' && !onCreateCloudAgent) return;
-    if (creatingKind !== kind) {
-      setCreationDraft(null);
-      setBuilderGeneration((current) => current + 1);
-    }
-    setCreatingKind(kind);
-    setFactorySection('builds');
-    setPublishFeedback(null);
-  };
-
   const openFactorySection = (section: FactorySection) => {
     setFactorySection(section);
-    if (section === 'skills' && !selectedSkillId && skillLibrary.skills[0]) {
-      setSelectedSkillId(skillLibrary.skills[0].id);
-    }
   };
 
-  const addLibrarySkillToAgent = async (targetAgentId: string, skill: DesktopSkillLibraryEntry, skillMd: string) => {
-    const targetAgent = agents.find((agent) => agent.id === targetAgentId);
-    if (!targetAgent || !skillAgentTargets.some((candidate) => candidate.id === targetAgentId)) {
-      throw new Error('Choose an agent that can publish skill changes.');
-    }
-
-    const isOpenTarget = !creating && selectedAgent?.id === targetAgent.id;
-    let result: DesktopAgentBuilderStatus | null = null;
-    if (isOpenTarget && builder.status?.draft && builder.status.lifecycle === 'draft' && !builder.opening) {
-      result = await builder.updateDraft((draft) => draftWithLibrarySkill(draft, skill, skillMd));
-      if (!result) throw new Error(`Kordi could not update ${targetAgent.name}'s draft.`);
-    } else {
-      const opened = await openDesktopAgentBuilder(
-        agentBuilderTargetKey(cloudAccountId, `agent:${targetAgent.id}`),
-        agentBuilderSeedForAgent(targetAgent),
-      );
-      if (!opened?.status.draft || opened.status.lifecycle !== 'draft') {
-        throw new Error(`Kordi could not open ${targetAgent.name}'s private draft.`);
-      }
-      result = await updateDesktopAgentBuilderDraft(
-        opened.status.draftId,
-        draftWithLibrarySkill(opened.status.draft, skill, skillMd),
-        opened.status.validation.fingerprint,
-      );
-      if (isOpenTarget) setBuilderGeneration((current) => current + 1);
-    }
-
-    if (!result?.draft) throw new Error(`Kordi could not save ${targetAgent.name}'s private draft.`);
-    replaceAgentDraft(targetAgent.id, {
-      systemPrompt: result.draft.systemPrompt,
-      loadedSkills: result.draft.skills.map((entry) => entry.name),
-      loadedTools: result.draft.tools,
-      loadedPlugins: result.draft.plugins,
-    });
-    setPublishFeedback({ tone: 'info', text: `${skill.name} was added to ${targetAgent.name}'s private draft. Publish that agent to apply it.` });
-  };
-
-  const handleCommunityInstalled = async (installed: DesktopSkillLibraryEntry) => {
-    const next = await skillLibrary.refresh();
-    const reloaded = next.find((skill) => skill.id === installed.id) ?? installed;
-    setSelectedSkillId(reloaded.id);
-  };
-
-  const removeLibrarySkill = async (skill: DesktopSkillLibraryEntry) => {
-    const removed = await skillLibrary.remove(skill);
-    if (!removed) return false;
-    if (selectedSkillId === skill.id) {
-      setSelectedSkillId(skillLibrary.skills.find((candidate) => candidate.id !== skill.id)?.id ?? null);
-    }
-    return true;
-  };
-
-  const confirmArchive = async () => {
-    if (!archiveConfirmAgent || archiveDeleting) return;
-    setArchiveDeleting(true);
-    setArchiveError(null);
-    const archived = await archiveAgentFromMenu({ agent: archiveConfirmAgent, onArchiveCloudAgent });
-    if (archived) setArchiveConfirmAgent(null);
-    else setArchiveError('Kordi could not delete this agent. Please try again.');
-    setArchiveDeleting(false);
-  };
-
-  const displayName = creatingSkill
+  const displayName = routeKind === 'skill'
     ? builder.status?.draft?.skills[0]?.name ?? 'New skill'
-    : creating
-      ? creationDraft?.name ?? 'New agent'
-      : selectedAgent?.name ?? 'Kordi Factory';
+    : routeKind === 'tool'
+      ? builder.status?.draft?.tools[0] ?? creationDraft?.name ?? 'New tool'
+      : routeKind === 'plugin'
+        ? builder.status?.draft?.plugins[0] ?? creationDraft?.name ?? 'New plugin'
+        : creating
+          ? creationDraft?.name ?? 'New agent'
+          : selectedAgent?.name ?? 'Kordi Factory';
   const routedAgent = selectedAgent ? {
     ...selectedAgent,
     defaultModel: selectedRouting.defaultModel ?? selectedAgent.defaultModel,
@@ -711,6 +664,26 @@ export function AgentsPage({
       && chatModelOptions?.length
       && (selectedAgent.cloudAgentId ? onUpdateCloudAgent : selectedAgent.isOwned && onUpdateAgentModelRouting),
   );
+  const buildState = builder.opening
+    ? 'Loading'
+    : builder.status?.lifecycle === 'published'
+      ? 'Published'
+      : !builder.status?.draft || !builder.status.validation.valid
+        ? 'Needs setup'
+        : !builder.status.testReport || builder.status.testReport.fingerprint !== builder.status.validation.fingerprint || !builder.status.testReport.passed
+          ? 'Needs testing'
+          : builder.status.publishReady
+            ? 'Ready to publish'
+            : 'Private draft';
+  const returnFromBuild = () => {
+    const context = buildRoute?.returnContext;
+    setFactorySection(context?.section ?? 'agents');
+    if (context?.section === 'agents' && context.selectedId) onOpenAgent(context.selectedId);
+    if (context?.section === 'library' && context.librarySection) {
+      setLibrarySection(context.librarySection);
+      if (context.selectedId) setSelectedLibraryIds((current) => ({ ...current, [context.librarySection!]: context.selectedId! }));
+    }
+  };
 
   return (
     <div className="app-agents-page app-agent-studio-page flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -718,49 +691,59 @@ export function AgentsPage({
         <AgentStudioRail
           agents={agents}
           activeAgentId={activeAgentId}
-          creatingKind={creatingKind}
-          agentConfigs={agentConfigs}
+          builds={builds}
+          activeBuildSessionId={builder.status?.sessionId ?? buildRoute?.sessionId ?? null}
           skills={skillLibrary.skills}
-          selectedSkillId={selectedSkillId}
+          libraryArtifacts={libraryArtifacts}
+          selectedLibraryId={selectedLibraryId}
           section={factorySection}
+          librarySection={librarySection}
+          libraryCommunity={librarySection === 'skill' && librarySkillMode === 'community'}
           canCreateAgent={Boolean(onCreateCloudAgent)}
           onSectionChange={openFactorySection}
-          onOpenAgent={(agentId) => { setCreatingKind(null); setFactorySection('builds'); onOpenAgent(agentId); }}
-          onOpenSkill={(skillId) => { setSelectedSkillId(skillId); setFactorySection('skills'); }}
+          onLibrarySectionChange={setLibrarySection}
+          onOpenBuild={(summary) => { void openBuildSummary(summary); }}
+          onOpenAgent={(agentId) => { setFactorySection('agents'); onOpenAgent(agentId); }}
+          onOpenLibraryArtifact={(kind, artifactId) => {
+            setLibrarySection(kind);
+            setSelectedLibraryIds((current) => ({ ...current, [kind]: artifactId }));
+            setFactorySection('library');
+          }}
           onCreateArtifact={startFactoryBuild}
         />
-        {factorySection === 'skills' ? (
-          <SkillLibraryView
-            skills={skillLibrary.skills}
-            selectedSkillId={selectedSkillId}
-            loading={skillLibrary.loading}
-            error={skillLibrary.error}
-            mutatingSkillId={skillLibrary.mutatingSkillId}
-            agentTargets={skillAgentTargets}
-            onSelectSkill={setSelectedSkillId}
-            onRefresh={skillLibrary.refresh}
-            onSetEnabled={skillLibrary.setEnabled}
-            onRemove={removeLibrarySkill}
-            onInstalled={handleCommunityInstalled}
-            onAddToAgent={addLibrarySkillToAgent}
+        {factorySection === 'agents' ? <AgentInspectionView agent={inspectedAgent} onEditInBuild={(agent) => void editAgentInBuild(agent)} /> : null}
+        {factorySection === 'library' ? (
+          <CapabilityLibraryView
+            key={`${librarySection}:${selectedLibraryId ?? 'none'}`}
+            kind={librarySection}
+            artifact={selectedLibraryArtifact}
+            skill={selectedSkill}
+            skillMode={librarySkillMode}
+            installedSkills={skillLibrary.skills}
+            onSkillModeChange={setLibrarySkillMode}
+            onCommunityInstalled={async () => { await skillLibrary.refresh(); }}
+            onEditInBuild={(artifact) => void editLibraryArtifactInBuild(artifact)}
           />
-        ) : <main className="app-agent-studio-main">
-          {!creating && selectedAgent?.cloudAgentId && onArchiveCloudAgent ? (
-            <div className="app-agent-studio-header-actions is-floating">
-              <details className="relative">
-                <summary className="app-button-quiet app-agent-studio-icon-button" aria-label="More agent actions"><MoreHorizontal className="h-4 w-4" /></summary>
-                <div className="app-agent-studio-actions-menu"><button type="button" onClick={() => setArchiveConfirmAgent(selectedAgent)}>Delete agent</button></div>
-              </details>
-            </div>
-          ) : null}
-          <div className="app-agent-studio-compact-switcher" role="group" aria-label="Factory pane">
-            <button type="button" className={cn(compactPane === 'conversation' && 'is-active')} onClick={() => setCompactPane('conversation')}><Sparkles className="h-3.5 w-3.5" />Conversation</button>
-            <button type="button" className={cn(compactPane === 'workspace' && 'is-active')} onClick={() => setCompactPane('workspace')}><PanelRight className="h-3.5 w-3.5" />Workspace</button>
-          </div>
-          <div className="app-agent-studio-body" data-compact-pane={compactPane}>
+        ) : null}
+        {factorySection === 'build' ? <main className="app-agent-studio-main app-factory-build-main">
+          {buildRoute ? (
+            <>
+              <header className="app-factory-build-context">
+                <button type="button" className="app-button-quiet app-agent-studio-icon-button" onClick={returnFromBuild} aria-label="Return to inspection"><ArrowLeft className="h-4 w-4" /></button>
+                <div className="min-w-0"><strong>{displayName}</strong><span>{routeKind.charAt(0).toUpperCase() + routeKind.slice(1)} · {buildState}</span></div>
+              </header>
+              {builder.sessionUnavailable ? (
+                <div className="app-factory-recovery" role="alert">
+                  <AlertTriangle className="h-5 w-5" />
+                  <h2>Build session unavailable</h2>
+                  <p>{builder.error ?? 'The saved conversation cannot be opened.'} The published {routeKind} remains unchanged.</p>
+                  <div><button type="button" className="app-button-quiet app-agent-studio-button" onClick={returnFromBuild}>Cancel</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary" onClick={() => void builder.recover()}>Recover from published {routeKind}</button></div>
+                </div>
+              ) : <div className="app-agent-studio-body">
             <AgentStudioConversation
               targetName={displayName}
               creating={creating}
+              artifactKind={routeKind}
               localProfileAvatarSeed={localProfileAvatarSeed}
               localProfileDisplayName={localProfileDisplayName}
               localProfileImageUrl={localProfileImageUrl}
@@ -778,15 +761,14 @@ export function AgentsPage({
               onOpenAuthSettings={onOpenAuthSettings}
             />
             <AgentStudioWorkspace
-              key={creating ? `create-${creatingKind}` : selectedAgent?.id ?? 'no-agent'}
+              key={buildRoute.targetKey}
               agent={routedAgent}
               creating={creating}
-              artifactKind={creatingKind ?? 'agent'}
+              artifactKind={routeKind}
               creationDraft={creationDraft}
               creationAccessScope={creationAccessScope}
               agentAccessScope={selectedAccessScope}
               onCreationAccessScopeChange={(scope) => {
-                setCreationAccessScope(scope);
                 void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
               }}
               config={activeAgentConfig}
@@ -825,7 +807,7 @@ export function AgentsPage({
               chatModelOptions={chatModelOptions}
               composerProviderOptions={composerProviderOptions}
               onUpdateModelRouting={canStageRouting ? stageModelRouting : undefined}
-              onUpdateCloudAccess={updateCloudAccess}
+              onUpdateAgentAccess={updateAgentAccess}
               activeDetail={activeDetail}
               activeFilePreview={activeFilePreview}
               activeFileDraft={activeFileDraft}
@@ -845,18 +827,14 @@ export function AgentsPage({
               onReadBuilderFile={builder.readFile}
               onWriteBuilderFile={builder.writeFile}
             />
-          </div>
-        </main>}
+              </div>}
+            </>
+          ) : (
+            <div className="app-skill-library-state"><strong>{buildListLoading ? 'Loading builds…' : 'No build selected'}</strong><span>Choose a recent conversation or use + to start one.</span></div>
+          )}
+        </main> : null}
       </div>
-      {archiveConfirmAgent ? (
-        <AgentDeleteConfirmDialog
-          agent={archiveConfirmAgent}
-          isDeleting={archiveDeleting}
-          error={archiveError}
-          onCancel={() => { if (!archiveDeleting) setArchiveConfirmAgent(null); }}
-          onConfirm={() => void confirmArchive()}
-        />
-      ) : null}
+      {routingToBuild ? <div className="sr-only" role="status" aria-live="polite">Opening the exact Factory build conversation…</div> : null}
     </div>
   );
 }

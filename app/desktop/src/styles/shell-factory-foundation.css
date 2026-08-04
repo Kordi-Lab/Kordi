@@ -5,11 +5,11 @@
   --agent-studio-accent-soft: color-mix(in oklab, var(--agent-studio-accent) 14%, transparent);
   --agent-studio-success: oklch(72% 0.12 156);
   --agent-studio-danger: oklch(72% 0.14 25);
-  --agent-studio-type-caption: 0.75rem;
-  --agent-studio-type-secondary: 0.8125rem;
-  --agent-studio-type-body: 0.875rem;
-  --agent-studio-type-subheading: 1rem;
-  --agent-studio-type-heading: 1.25rem;
+  --agent-studio-type-caption: 0.6875rem;
+  --agent-studio-type-secondary: 0.75rem;
+  --agent-studio-type-body: 0.8125rem;
+  --agent-studio-type-subheading: 0.8125rem;
+  --agent-studio-type-heading: 1rem;
   width: 100%;
   height: 100%;
   position: relative;
@@ -31,7 +31,7 @@
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: clamp(228px, 15vw, 264px) minmax(0, 1fr);
+  grid-template-columns: clamp(264px, 18vw, 292px) minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -54,16 +54,16 @@
 
 .app-agent-studio-rail-head {
   display: grid;
-  gap: 16px;
-  padding: 19px 16px 14px;
+  gap: 12px;
+  padding: 18px 14px 13px;
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 58%, transparent);
 }
 
 .app-agent-studio-rail-head h1 {
   margin: 0;
   font-size: var(--agent-studio-type-heading);
-  font-weight: 720;
-  letter-spacing: -0.035em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .app-agent-studio-rail-add,
@@ -158,7 +158,7 @@
   border-radius: 4px;
   color: color-mix(in oklab, var(--agent-studio-accent) 72%, var(--utility-muted-text));
   font-size: 0.6875rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -204,7 +204,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 58px;
+  min-height: 54px;
   margin: 0 0 3px;
   padding: 9px 8px;
   border: 1px solid transparent;
@@ -220,6 +220,7 @@
   padding-inline: 16px;
   border-radius: 0;
 }
+
 
 .app-agent-studio-agent-row:not(.app-session-row-active):hover {
   background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
@@ -248,7 +249,7 @@
 
 .app-agent-studio-agent-row strong {
   font-size: var(--agent-studio-type-body);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .app-agent-studio-agent-row small {
@@ -270,13 +271,15 @@
   color: var(--agent-studio-accent);
 }
 
+
 .app-agent-studio-draft-avatar {
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border: 1px dashed color-mix(in oklab, var(--agent-studio-accent) 54%, var(--app-divider));
-  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--agent-studio-accent) 22%, var(--app-divider));
+  border-radius: 10px;
+  background: var(--agent-studio-accent-soft);
   color: var(--agent-studio-accent);
 }
 
@@ -356,7 +359,7 @@
 .app-factory-create-menu-panel strong {
   color: var(--utility-foreground);
   font-size: var(--agent-studio-type-secondary);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .app-factory-create-menu-panel small {
@@ -367,7 +370,7 @@
 
 .app-factory-rail-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
   border: 1px solid color-mix(in oklab, var(--app-control-border) 62%, transparent);
@@ -375,12 +378,13 @@
   background: color-mix(in oklab, var(--app-control-bg) 34%, transparent);
 }
 
+
 .app-factory-rail-switch button {
-  min-height: 28px;
+  min-height: 32px;
   border-radius: 7px;
   color: var(--utility-muted-text);
-  font-size: var(--agent-studio-type-caption);
-  font-weight: 640;
+  font-size: var(--agent-studio-type-secondary);
+  font-weight: 600;
 }
 
 .app-factory-rail-switch button.is-active {
@@ -394,10 +398,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+
 .app-agent-studio-skill-avatar {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid color-mix(in oklab, var(--app-divider) 76%, transparent);
@@ -411,9 +416,10 @@
 }
 
 .app-agent-studio-skill-avatar.is-large {
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
 }
+
 
 .app-agent-studio-agent-state.is-enabled,
 .app-agent-studio-state-pill.is-enabled {

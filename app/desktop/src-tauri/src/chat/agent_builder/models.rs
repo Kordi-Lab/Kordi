@@ -2,6 +2,7 @@
 
 use kordi_cli::desktop_runtime::DesktopChatSessionDetail;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +54,31 @@ pub(super) struct DesktopAgentBuilderMetadata {
     pub(super) status: String,
     pub(super) created_at_ms: i64,
     pub(super) updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopAgentBuilderAssociation {
+    pub(super) draft_id: String,
+    pub(super) session_id: String,
+    pub(super) updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopAgentBuilderAssociationIndex {
+    pub(super) version: u32,
+    #[serde(default)]
+    pub(super) associations: BTreeMap<String, DesktopAgentBuilderAssociation>,
+}
+
+impl Default for DesktopAgentBuilderAssociationIndex {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            associations: BTreeMap::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -172,4 +198,17 @@ pub struct DesktopAgentBuilderStatus {
 pub struct DesktopAgentBuilderOpenResult {
     pub status: DesktopAgentBuilderStatus,
     pub session: DesktopChatSessionDetail,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopAgentBuilderSummary {
+    pub draft_id: String,
+    pub target_key: String,
+    pub session_id: String,
+    pub artifact_kind: String,
+    pub name: String,
+    pub lifecycle: String,
+    pub updated_at_ms: i64,
+    pub available: bool,
 }
