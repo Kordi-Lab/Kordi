@@ -134,6 +134,7 @@ export function ChatCompanionWorkspace({
             onDragStart: layoutModel.onDragStart,
             onDragEnd: layoutModel.onDragEnd,
             onToggleActions: session.menu.toggleActions,
+            onCloseActions: session.menu.closeActions,
             onCloseSessionList: session.menu.closeSessionList,
             onOpenSessionList: session.menu.openSessionList,
             onSwitchConversation: session.actions.switchConversation,

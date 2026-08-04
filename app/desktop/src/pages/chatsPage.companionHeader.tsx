@@ -1,4 +1,4 @@
-import type { DragEventHandler } from 'react';
+import { useEffect, useRef, type DragEventHandler } from 'react';
 import {
   ChevronDown,
   ChevronLeft,
@@ -26,6 +26,7 @@ type CompanionHeaderActions = {
   onDragStart: DragEventHandler<HTMLElement>;
   onDragEnd: DragEventHandler<HTMLElement>;
   onToggleActions: () => void;
+  onCloseActions: () => void;
   onCloseSessionList: () => void;
   onOpenSessionList: () => void;
   onSwitchConversation: (conversationId: string) => void;
@@ -51,6 +52,34 @@ export function CompanionHeader({
   menu,
   actions,
 }: CompanionHeaderProps) {
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const actionsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const { onCloseActions } = actions;
+
+  useEffect(() => {
+    if (!menu.actionsOpen || typeof document === 'undefined') return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && controlsRef.current?.contains(target)) return;
+      onCloseActions();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseActions();
+      queueMicrotask(() => actionsTriggerRef.current?.focus());
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [menu.actionsOpen, onCloseActions]);
+
   return (
     <div
       className="app-page-header relative z-40 flex min-h-[84px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 pb-8 pt-2.5 active:cursor-grabbing"
@@ -69,6 +98,7 @@ export function CompanionHeader({
         </div>
       </div>
       <div
+        ref={controlsRef}
         className="relative flex shrink-0 items-center gap-0.5"
         draggable={false}
         onDragStart={(event) => event.preventDefault()}
@@ -77,10 +107,12 @@ export function CompanionHeader({
         data-side-chat-controls="true"
       >
         <button
+          ref={actionsTriggerRef}
           type="button"
           className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 opacity-70 hover:opacity-100"
           title="Side chat options"
           aria-label="Side chat options"
+          aria-expanded={menu.actionsOpen}
           onClick={actions.onToggleActions}
         >
           <Ellipsis className="h-3.5 w-3.5" />
@@ -128,7 +160,10 @@ export function CompanionHeader({
                     className="app-transient-row flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition"
                     title="New chat"
                     aria-label="New chat"
-                    onClick={actions.onCreateSession}
+                    onClick={() => {
+                      actions.onCloseActions();
+                      actions.onCreateSession();
+                    }}
                   >
                     <SquarePen className="h-4 w-4 shrink-0" aria-hidden="true" />
                     <span className="truncate">New chat</span>

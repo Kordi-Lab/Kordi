@@ -246,6 +246,15 @@ export function useChatCompanionSession({
         actionsOpen: !current.actionsOpen,
         sessionListOpen: false,
       })),
+      closeActions: () => updateState((current) => (
+        !current.actionsOpen && !current.sessionListOpen
+          ? current
+          : {
+              ...current,
+              actionsOpen: false,
+              sessionListOpen: false,
+            }
+      )),
       closeSessionList: () => updateState((current) => ({
         ...current,
         sessionListOpen: false,
