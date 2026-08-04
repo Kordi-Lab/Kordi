@@ -19,10 +19,6 @@ export function filterGroupForkSessionsFromSpaces(
     .filter((space) => space.sessions.length > 0);
 }
 
-const LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX = 'session:bridge:';
-const LOCAL_RUNTIME_SESSION_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export function participantSpaceSessionRowTitle(title: string) {
   const trimmed = title.trim();
   if (!trimmed) return '# Untitled session';
@@ -84,18 +80,6 @@ function sessionActionIdForConversation(conversation: ConversationItem) {
   return sessionId;
 }
 
-function canMoveConversationToProject(
-  conversation: ConversationItem,
-  sessionId: string,
-) {
-  return (
-    conversation.type === 'owned-agent'
-    && sessionId === conversation.id.trim()
-    && LOCAL_RUNTIME_SESSION_ID_PATTERN.test(sessionId)
-    && !sessionId.startsWith(LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX)
-  );
-}
-
 export function sessionContextMenuTargetForConversation(
   conversation: ConversationItem,
   x: number,
@@ -110,7 +94,6 @@ export function sessionContextMenuTargetForConversation(
     sessionName: conversation.name,
     x,
     y,
-    canMoveToProject: canMoveConversationToProject(conversation, sessionId),
     ...(options.canRename === false ? { canRename: false } : {}),
   };
 }

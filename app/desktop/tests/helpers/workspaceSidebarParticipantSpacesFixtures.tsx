@@ -166,7 +166,6 @@ export function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onRemoveChatGroupMember: () => {},
     onSetChatGroupAdmin: () => {},
     onDeleteChatSession: () => {},
-    onMoveChatSessionToProject: () => {},
     onCreateProjectFromFolder: () => {},
     onCreateProject: () => {},
     runtimeProjects: [],

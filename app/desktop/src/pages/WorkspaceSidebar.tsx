@@ -13,7 +13,6 @@ import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 import {
   DeleteSessionDialog,
-  MoveSessionDialog,
   ProjectCreateDialog,
   RenameSessionDialog,
   SessionContextMenu,
@@ -92,12 +91,10 @@ export function WorkspaceSidebar({
     onRemoveChatGroupMember,
     onSetChatGroupAdmin,
     onDeleteChatSession,
-    onMoveChatSessionToProject,
   } = chats;
   const {
     onCreateProjectFromFolder,
     onCreateProject,
-    runtimeProjects,
   } = projects;
   const {
     displayedContacts,
@@ -114,8 +111,6 @@ export function WorkspaceSidebar({
   const [removeSessionTarget, setRemoveSessionTarget] =
     useState<SessionActionTarget | null>(null);
   const [renameSessionTarget, setRenameSessionTarget] =
-    useState<SessionActionTarget | null>(null);
-  const [moveSessionTarget, setMoveSessionTarget] =
     useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] =
     useState(false);
@@ -153,7 +148,6 @@ export function WorkspaceSidebar({
 
   const closeSessionDialogs = () => {
     setRemoveSessionTarget(null);
-    setMoveSessionTarget(null);
     setRenameSessionTarget(null);
   };
 
@@ -352,7 +346,6 @@ export function WorkspaceSidebar({
           target={sessionContextMenu}
           onClose={() => setSessionContextMenu(null)}
           onRename={setRenameSessionTarget}
-          onMove={setMoveSessionTarget}
           onDelete={setRemoveSessionTarget}
         />
       ) : null}
@@ -370,15 +363,6 @@ export function WorkspaceSidebar({
           onConfirm={onDeleteChatSession}
         />
       ) : null}
-      {moveSessionTarget ? (
-        <MoveSessionDialog
-          target={moveSessionTarget}
-          projects={runtimeProjects}
-          onCancel={closeSessionDialogs}
-          onMoveToProject={onMoveChatSessionToProject}
-        />
-      ) : null}
-
       <ChatCreateDialog
         key={isChatCreateDialogOpen ? chatCreateInitialMode : 'closed'}
         isOpen={isChatCreateDialogOpen}

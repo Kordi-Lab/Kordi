@@ -104,7 +104,6 @@ export type WorkspaceSidebarChats = {
     isAdmin: boolean,
   ) => Promise<void> | void;
   onDeleteChatSession: (sessionId: string) => void | Promise<void>;
-  onMoveChatSessionToProject: (sessionId: string, projectRoot: string) => void;
   isCollaborationSyncing: boolean;
 };
 
