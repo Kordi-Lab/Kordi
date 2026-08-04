@@ -1,4 +1,5 @@
 import type { Contact } from '@/kordi-app/types';
+import { KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 
 import type { CloudContactSummary } from './cloudContactTypes';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
@@ -14,13 +15,16 @@ export function isCloudContact(contact: Contact): boolean {
 export function cloudContactToContact(row: CloudContactSummary): Contact {
   const name = row.displayName ?? row.accountId;
   const isSystemAgent = row.contactKind === 'system_agent' && Boolean(row.targetCloudAgentId?.trim());
+  const isSupportContact = isSystemAgent && Boolean(row.supportTicketEnabled);
+  const classType = isSystemAgent && !isSupportContact ? 'other-users-agents' : 'other-users';
+  const entityType = isSystemAgent && !isSupportContact ? 'agent' : 'user';
   const contactId = row.contactId?.trim();
   return {
     id: contactId ? `cloud-contact:${contactId}` : `cloud:${row.accountId}`,
     name,
     initials: cloudContactInitials(name),
-    classType: isSystemAgent ? 'other-users-agents' : 'other-users',
-    entityType: isSystemAgent ? 'agent' : 'user',
+    classType,
+    entityType,
     subtitle: row.subtitle?.trim() || (isSystemAgent ? 'Official Kordi agent' : row.accountId),
     collaborationSources: [CLOUD_HOST_SENTINEL],
     status: 'online',
@@ -35,7 +39,9 @@ export function cloudContactToContact(row: CloudContactSummary): Contact {
     contactStatus: 'accepted',
     contactRequestDirection: 'outgoing',
     avatarSeed: cloudAvatarSeedForAccount(row.accountId, row.avatarUrl),
-    profileImageUrl: cloudAvatarImageUrl(row.avatarUrl),
+    profileImageUrl: isSupportContact
+      ? KORDI_SUPPORT_AVATAR_URL
+      : cloudAvatarImageUrl(row.avatarUrl),
     systemContact: isSystemAgent,
     locked: Boolean(row.locked),
     supportTicketEnabled: Boolean(row.supportTicketEnabled),

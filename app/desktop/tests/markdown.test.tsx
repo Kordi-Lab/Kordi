@@ -67,3 +67,19 @@ test('renders indented fenced code blocks without hanging', () => {
   assert.match(html, /After/);
   assert.match(html, /ok/);
 });
+
+test('keeps wide markdown tables contained inside message responses', () => {
+  const markdown = [
+    '| Step | Action | Expected result |',
+    '| --- | --- | --- |',
+    '| 1 | Send a support request with a long description | The response remains readable without clipping |',
+  ].join('\n');
+
+  const html = renderToStaticMarkup(createElement(MarkdownContent, { text: markdown }));
+
+  assert.match(html, /aria-label="Scrollable table"/);
+  assert.match(html, /max-w-full overflow-x-auto/);
+  assert.match(html, /min-w-\[30rem\] table-fixed/);
+  assert.match(html, /\[overflow-wrap:anywhere\]/);
+  assert.doesNotMatch(html, /w-max/);
+});

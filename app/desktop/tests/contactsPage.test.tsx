@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ContactRow } from '../src/kordi-app/components/transcript';
 import { ContactsPage } from '../src/kordi-app/pages';
 import { cloudRequestToContactRequest } from '../src/features/cloud/useCloudContacts';
+import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
 import type { Contact, ContactRequest } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -186,8 +187,8 @@ test('the locked Kordi Support contact routes reporting through its chat', () =>
     activeContact: contact({
       id: 'cloud-contact:cloud-system:kordi-support',
       name: 'Kordi Support',
-      entityType: 'agent',
-      classType: 'other-users-agents',
+      entityType: 'user',
+      classType: 'other-users',
       subtitle: 'Ask questions or suggest improvements',
       detail: 'Ask questions or suggest improvements',
       sourceHostId: 'cloud',
@@ -196,6 +197,7 @@ test('the locked Kordi Support contact routes reporting through its chat', () =>
       systemContact: true,
       locked: true,
       supportTicketEnabled: true,
+      profileImageUrl: KORDI_SUPPORT_AVATAR_URL,
     }),
     contactOverlayMode: 'contact',
     onMessageContact: () => undefined,
@@ -203,6 +205,7 @@ test('the locked Kordi Support contact routes reporting through its chat', () =>
   });
 
   assert.match(markup, />Kordi Support</);
+  assert.match(markup, /src="\/favicon\.png"/);
   assert.match(markup, />Message</);
   assert.doesNotMatch(markup, />Submit a request</);
   assert.doesNotMatch(markup, />Delete contact</);

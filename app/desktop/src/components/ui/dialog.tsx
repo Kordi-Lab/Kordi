@@ -5,6 +5,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
 
@@ -165,14 +166,15 @@ export function AppDialog({
   const isPopover = presentation === 'popover';
   const popoverGeometry = isPopover ? dialogPopoverGeometry(anchorRect) : null;
 
-  return (
+  const dialog = (
     <div
       className={cn(
         isPopover
           ? 'fixed inset-0 z-40 bg-transparent'
-          : 'app-transient-overlay app-overlay fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-[8px]',
+          : 'app-transient-overlay app-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain p-4 backdrop-blur-[8px]',
         backdropClassName,
       )}
+      data-app-dialog-backdrop="true"
       data-dialog-presentation={presentation}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !dismissDisabled) onDismiss();
@@ -208,6 +210,13 @@ export function AppDialog({
       </div>
     </div>
   );
+
+  // Dialogs can be opened from headers and animated transcript containers.
+  // Portaling keeps fixed positioning relative to the app window instead of a
+  // transformed ancestor, which otherwise clips tall dialogs above the titlebar.
+  return isPopover || typeof document === 'undefined'
+    ? dialog
+    : createPortal(dialog, document.body);
 }
 
 export function AppDialogTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {

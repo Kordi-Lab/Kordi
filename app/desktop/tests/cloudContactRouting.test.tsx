@@ -8,6 +8,7 @@ import {
   isPendingIncomingCloudContactRequest,
 } from '../src/features/cloud/useCloudContacts';
 import type { Contact } from '../src/kordi-app/types';
+import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
 
 function localBridgeContact(overrides: Partial<Contact> = {}): Contact {
   return {
@@ -88,12 +89,13 @@ test('the built-in support contact maps to one locked hosted-agent identity', ()
   });
 
   assert.equal(support.id, 'cloud-contact:cloud-system:kordi-support');
-  assert.equal(support.classType, 'other-users-agents');
-  assert.equal(support.entityType, 'agent');
+  assert.equal(support.classType, 'other-users');
+  assert.equal(support.entityType, 'user');
   assert.equal(support.sourceRuntime, 'kordi-desktop');
   assert.equal(support.sourceAgentId, 'cloud_agent_kordi_support');
   assert.equal(support.sourceParticipantId, 'acct_kordi_support');
   assert.equal(support.systemContact, true);
   assert.equal(support.locked, true);
   assert.equal(support.supportTicketEnabled, true);
+  assert.equal(support.profileImageUrl, KORDI_SUPPORT_AVATAR_URL);
 });

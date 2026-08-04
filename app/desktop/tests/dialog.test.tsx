@@ -64,7 +64,12 @@ test('AppDialog traps focus, dismisses with Escape, and restores the opener', as
       );
     });
 
-    const buttons = Array.from(host.querySelectorAll('button'));
+    const dialog = document.querySelector('[role="dialog"]');
+    assert.ok(dialog);
+    assert.equal(host.childElementCount, 0);
+    assert.equal(dialog.closest('body'), document.body);
+
+    const buttons = Array.from(dialog.querySelectorAll('button'));
     assert.equal(document.activeElement, buttons[0]);
 
     buttons[0]?.dispatchEvent(new installed.dom.window.KeyboardEvent('keydown', {
@@ -120,7 +125,7 @@ test('AppDialog blocks light dismiss while an action is busy', async () => {
       );
     });
 
-    const backdrop = host.firstElementChild;
+    const backdrop = document.querySelector('[data-app-dialog-backdrop="true"]');
     assert.equal(backdrop?.querySelector('[role="dialog"]')?.getAttribute('aria-busy'), 'true');
     backdrop?.dispatchEvent(new installed.dom.window.MouseEvent('mousedown', {
       bubbles: true,
@@ -161,10 +166,12 @@ test('DeleteSessionDialog keeps loading and failure feedback inside the popout',
       );
     });
 
-    const buttons = Array.from(host.querySelectorAll('button'));
+    const dialog = document.querySelector('[role="dialog"]');
+    assert.ok(dialog);
+    assert.equal(host.contains(dialog), true);
+    const buttons = Array.from(dialog.querySelectorAll('button'));
     await act(async () => buttons[1]?.click());
 
-    const dialog = host.querySelector('[role="dialog"]');
     assert.equal(dialog?.getAttribute('aria-busy'), 'true');
     assert.match(buttons[1]?.textContent ?? '', /Removing…/);
     assert.equal(buttons[0]?.hasAttribute('disabled'), true);
@@ -174,7 +181,7 @@ test('DeleteSessionDialog keeps loading and failure feedback inside the popout',
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     });
 
-    const alert = host.querySelector('[role="alert"]');
+    const alert = dialog.querySelector('[role="alert"]');
     assert.equal(alert?.textContent, 'Could not remove chat: network unavailable');
     assert.doesNotMatch(alert?.getAttribute('class') ?? '', /\bbg-|\bborder|\brounded/);
     assert.match(buttons[1]?.textContent ?? '', /Try again/);

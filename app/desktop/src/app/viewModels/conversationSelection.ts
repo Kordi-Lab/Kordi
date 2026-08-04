@@ -12,6 +12,7 @@ import {
 import {
   KORDI_SUPPORT_ACCOUNT_ID,
   KORDI_SUPPORT_AGENT_ID,
+  KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
   KORDI_SUPPORT_SUBTITLE,
 } from '@/features/support/supportIdentity';
@@ -158,12 +159,12 @@ export function pendingCloudCollaborationConversationForActiveId(
     id: activeConvId,
     canonicalSessionId: undefined,
     name: displayName,
-    type: isAgent ? 'external-agent' : 'person',
+    type: isKordiSupport ? 'person' : isAgent ? 'external-agent' : 'person',
     subtitle: isKordiSupport ? KORDI_SUPPORT_SUBTITLE : '',
     unread: 0,
     collaborationSources: ['Cloud'],
     trust: 'Cloud',
-    directness: isAgent ? 'Agent chat' : 'Person chat',
+    directness: isKordiSupport ? 'Person chat' : isAgent ? 'Agent chat' : 'Person chat',
     participants: isKordiSupport ? ['Me', KORDI_SUPPORT_NAME] : ['Me'],
     messages: [transcriptLoadingNotice(isKordiSupport ? undefined : loadingLabel)],
     supportTicketEnabled: isKordiSupport,
@@ -177,5 +178,6 @@ export function pendingCloudCollaborationConversationForActiveId(
       agentId: isAgent ? systemAgentId ?? (isKordiSupport ? KORDI_SUPPORT_AGENT_ID : 'pending-cloud-agent') : null,
     },
     avatarSeed: peerId,
+    profileImageUrl: isKordiSupport ? KORDI_SUPPORT_AVATAR_URL : null,
   };
 }

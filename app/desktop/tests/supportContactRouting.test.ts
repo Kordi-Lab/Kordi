@@ -7,18 +7,19 @@ import {
 } from '../src/app/viewModels/conversationSelection';
 import { resolveDirectHostedAgentTarget } from '../src/features/chat/messageActions/directHostedAgentTarget';
 import type { Conversation } from '../src/kordi-app/types';
+import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
 
 function supportConversation(): Conversation {
   return {
     id: 'cloud:conversation:acct_kordi_support:agent:session:session%3Adirect-system-agent%3Aacct_me%3Acloud_agent_kordi_support',
     canonicalSessionId: 'session:direct-system-agent:acct_me:cloud_agent_kordi_support',
     name: 'Kordi Support',
-    type: 'external-agent',
+    type: 'person',
     subtitle: 'Ask questions or suggest improvements',
     unread: 0,
     collaborationSources: ['Cloud'],
     trust: 'Cloud',
-    directness: 'Agent chat',
+    directness: 'Person chat',
     participants: ['Me', 'Kordi Support'],
     messages: [],
     supportTicketEnabled: true,
@@ -53,7 +54,10 @@ test('legacy pending support selection preserves its product identity and direct
 
   assert.equal(conversation?.name, 'Kordi Support');
   assert.equal(conversation?.subtitle, 'Ask questions or suggest improvements');
+  assert.equal(conversation?.type, 'person');
+  assert.equal(conversation?.directness, 'Person chat');
   assert.equal(conversation?.supportTicketEnabled, true);
+  assert.equal(conversation?.profileImageUrl, KORDI_SUPPORT_AVATAR_URL);
   assert.equal(conversation?.collaborationTarget?.runtime, 'kordi-desktop');
   assert.equal(conversation?.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
   assert.deepEqual(resolveDirectHostedAgentTarget({

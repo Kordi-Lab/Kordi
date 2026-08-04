@@ -18,8 +18,10 @@ import { cloudGroupForkPayloadFromSessionMetadata } from '../src/features/cloud/
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
+import { buildParticipantSpaces, filterParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -359,6 +361,25 @@ test('the built-in support agent keeps a stable thread separate from its owner h
     'msg_support_request',
     'msg_support_response',
   ]);
+  const supportView = mapCollaborationConversationToViewModel(
+    supportConversation,
+    state.hosts[0],
+    'Kordi',
+  );
+  assert.equal(supportView.name, 'Kordi Support');
+  assert.equal(supportView.type, 'person');
+  assert.equal(supportView.directness, 'Person chat');
+  assert.deepEqual(supportView.participants, ['Me', 'Kordi Support']);
+  assert.equal(supportView.messages[1]?.sender, 'Kordi Support');
+  assert.equal(supportView.messages[1]?.role, 'external-agent');
+  assert.equal(supportView.collaborationTarget?.runtime, 'kordi-desktop');
+  assert.equal(supportView.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
+  assert.equal(supportView.profileImageUrl, KORDI_SUPPORT_AVATAR_URL);
+  assert.equal(supportView.participantProfileImageUrls?.['Kordi Support'], KORDI_SUPPORT_AVATAR_URL);
+  assert.equal(supportView.messages[1]?.senderProfileImageUrl, KORDI_SUPPORT_AVATAR_URL);
+  const supportSpaces = buildParticipantSpaces([supportView]);
+  assert.deepEqual(filterParticipantSpaces(supportSpaces, '', 'contact').map((space) => space.title), ['Kordi Support']);
+  assert.deepEqual(filterParticipantSpaces(supportSpaces, '', 'agent'), []);
   assert.ok(ownerConversation);
   assert.deepEqual(ownerConversation.messages.map((entry) => entry.id), ['msg_support_owner_human']);
   assert.equal(

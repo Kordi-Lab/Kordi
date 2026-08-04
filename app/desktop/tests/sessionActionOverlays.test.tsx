@@ -17,7 +17,7 @@ function dialogPanelClass(markup: string) {
 }
 
 function dialogLayerClass(markup: string, presentation: 'modal' | 'popover') {
-  const match = markup.match(new RegExp(`<div class="([^"]*)" data-dialog-presentation="${presentation}"`));
+  const match = markup.match(new RegExp(`<div class="([^"]*)"[^>]*data-dialog-presentation="${presentation}"`));
   assert.ok(match, `expected a ${presentation} dialog layer`);
   return match[1];
 }
