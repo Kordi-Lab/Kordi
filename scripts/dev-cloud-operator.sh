@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+allowlist_file="$repo_root/deploy/dev/operator-github-allowlist.txt"
+api_base="${KORDI_OPERATOR_CLOUD_API_BASE:-}"
+
+if [[ -n "${1:-}" && "${1:-}" != --* ]]; then
+  api_base="$1"
+  shift
+fi
 if [[ "${1:-}" == "--" ]]; then
   shift
 fi
-
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-allowlist_file="$repo_root/deploy/dev/operator-github-allowlist.txt"
-api_base="${1:-${KORDI_OPERATOR_CLOUD_API_BASE:-}}"
 
 if [[ "${KORDI_OPERATOR_DEBUG_ACKNOWLEDGED:-}" != "1" ]]; then
   echo "[kordi-operator] Set KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 to confirm this run may access real hosted data." >&2
@@ -67,4 +71,8 @@ unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET
 
 echo "[kordi-operator] Verified allowlisted GitHub account @$github_login."
 echo "[kordi-operator] Connecting the desktop to the approved remote API; database credentials remain server-side."
+if [[ $# -gt 0 ]]; then
+  echo "[kordi-operator] Launching an isolated desktop profile."
+  exec pnpm --dir "$repo_root/app/desktop" tauri:dev:profile -- "$@"
+fi
 exec pnpm --dir "$repo_root/app/desktop" tauri:dev:cloud
