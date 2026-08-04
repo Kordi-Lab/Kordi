@@ -154,5 +154,28 @@ pub(super) async fn list_messages(
         )
         .collect();
 
-    Json(MessageListResponse { messages }).into_response()
+    let peer_read_at: Option<String> = match query_as::<_, (String,)>(
+        "SELECT read_at FROM cloud_read_cursors \
+         WHERE account_id = $1 AND scope_kind = 'peer' AND scope_id = $2",
+    )
+    .bind(&session.account_id)
+    .bind(&peer)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(row) => row.map(|(read_at,)| read_at),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not load read cursor.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    Json(MessageListResponse {
+        messages,
+        peer_read_at,
+    })
+    .into_response()
 }

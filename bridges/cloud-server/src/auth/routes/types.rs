@@ -245,6 +245,11 @@ pub struct MessageSummary {
 #[derive(Debug, Serialize)]
 pub struct MessageListResponse {
     pub messages: Vec<MessageSummary>,
+    /// Durable peer-level read boundary for the caller. The desktop keeps
+    /// older history in its local cache than this endpoint returns, so it
+    /// needs the cursor to reconcile cached rows outside the response window.
+    #[serde(rename = "peerReadAt")]
+    pub peer_read_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

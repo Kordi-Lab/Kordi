@@ -21,7 +21,9 @@ import {
   cloudMessagesByPeerEqual,
   cloudUnreadReadinessContextKey,
   loadCloudMessagesByPeerUntilStable,
+  mergeCloudPeerReadCursors,
   mergeCloudMessagesByPeerSnapshot,
+  reconcileCloudPeerReadCursors,
   transitionCloudUnreadReadiness,
   type CloudUnreadReadinessSnapshot,
   type CloudUnreadReadinessStatus,
@@ -57,7 +59,9 @@ type CloudSyncStore<T> = {
 };
 
 export type CloudMessageSyncStores = {
-  messages: CloudSyncStore<Record<string, CloudMessage[]>>;
+  messages: CloudSyncStore<Record<string, CloudMessage[]>> & {
+    peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
+  };
   activity: CloudSyncStore<CloudSessionActivityStore>;
   forks: CloudSyncStore<Record<string, CloudSessionForkSummary>>;
   pins: CloudSyncStore<CloudSessionPinsById>;
@@ -109,7 +113,11 @@ export function useCloudMessageSync({
   setUnreadReadiness,
   refreshCloudAgents,
 }: UseCloudMessageSyncInput): CloudMessageSyncController {
-  const { stateRef: messagesRef, setState: setMessages } = stores.messages;
+  const {
+    stateRef: messagesRef,
+    setState: setMessages,
+    peerReadAtByPeerRef,
+  } = stores.messages;
   const { stateRef: activityRef, setState: setActivity } = stores.activity;
   const { stateRef: forksRef, setState: setForks } = stores.forks;
   const { stateRef: pinsRef, setState: setPins } = stores.pins;
@@ -181,23 +189,44 @@ export function useCloudMessageSync({
       return;
     }
 
+    const fetchedPeerReadAtByPeer: Record<string, string | null> = {};
     const loaded = await loadCloudMessagesByPeerUntilStable({
       accountId: account.accountId,
       initialPeerIds,
       existingMessagesByPeer: messagesRef.current,
-      listMessages: async (peerId) => (
-        await client.listMessages(session.token, peerId, CLOUD_MESSAGE_SNAPSHOT_LIMIT)
-      ).map(cloudMessageMetadataOnly),
+      listMessages: async (peerId) => {
+        const snapshot = await client.listMessageSnapshot(
+          session.token,
+          peerId,
+          CLOUD_MESSAGE_SNAPSHOT_LIMIT,
+        );
+        fetchedPeerReadAtByPeer[peerId] = snapshot.peerReadAt;
+        return snapshot.messages.map(cloudMessageMetadataOnly);
+      },
     });
 
     if (cancelledRef.current || !coordinator.isCurrentGeneration(generation)) return;
+    peerReadAtByPeerRef.current = mergeCloudPeerReadCursors(
+      peerReadAtByPeerRef.current,
+      fetchedPeerReadAtByPeer,
+    );
+    const reconcileReadState = (
+      current: Record<string, CloudMessage[]>,
+    ) => reconcileCloudPeerReadCursors(
+      current,
+      account.accountId,
+      peerReadAtByPeerRef.current,
+    );
     messagesRef.current = mergeCloudMessagesByPeerSnapshot(
-      messagesRef.current,
+      reconcileReadState(messagesRef.current),
       loaded.messagesByPeer,
     );
     if (publishMessages) {
       setMessages((current) => {
-        const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
+        const merged = mergeCloudMessagesByPeerSnapshot(
+          reconcileReadState(current),
+          loaded.messagesByPeer,
+        );
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
     }
@@ -216,6 +245,7 @@ export function useCloudMessageSync({
     coordinator,
     markUnreadReadiness,
     messagesRef,
+    peerReadAtByPeerRef,
     setMessages,
   ]);
 

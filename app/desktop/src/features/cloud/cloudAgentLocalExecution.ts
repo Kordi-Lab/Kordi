@@ -204,7 +204,9 @@ export async function cloudAgentResponsePublicationIsBlocked({
   requestMessageId: string;
 }): Promise<boolean> {
   const [latestMessages, fallbackRunOwnsRequest] = await Promise.all([
-    client.listMessages(token, peerId, 100).catch(() => fallbackMessages),
+    client.listMessageSnapshot(token, peerId, 100)
+      .then((snapshot) => snapshot.messages)
+      .catch(() => fallbackMessages),
     cloudFallbackRunAlreadyOwnsRequest({ client, token, requestMessageId }),
   ] as const);
   return fallbackRunOwnsRequest

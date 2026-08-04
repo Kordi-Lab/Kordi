@@ -108,7 +108,10 @@ export function useCloudConversation(
     setLoading(true);
     setError(null);
     try {
-      const list = await client.listMessages(session.token, peerAccountId);
+      const { messages: list } = await client.listMessageSnapshot(
+        session.token,
+        peerAccountId,
+      );
       const resolvedList = list.map((message) => ({
         ...message,
         attachments: message.attachments?.length

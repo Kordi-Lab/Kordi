@@ -74,7 +74,7 @@ test('cloud startup snapshots latest messages before catch-up and publishes afte
   );
   assert.match(
     source,
-    /client\.listMessages\(session\.token, peerId, CLOUD_MESSAGE_SNAPSHOT_LIMIT\)/,
+    /client\.listMessageSnapshot\([\s\S]*session\.token,[\s\S]*peerId,[\s\S]*CLOUD_MESSAGE_SNAPSHOT_LIMIT/,
   );
   assert.match(
     source,
@@ -130,7 +130,7 @@ test('cloud message bootstrap keeps attachments metadata-only', () => {
   assert.notEqual(end, -1);
   const bootstrap = source.slice(start, end);
 
-  assert.match(bootstrap, /client\.listMessages/);
+  assert.match(bootstrap, /client\.listMessageSnapshot/);
   assert.doesNotMatch(bootstrap, /resolveCloudMessageAttachments|downloadAttachmentContent/);
 });
 

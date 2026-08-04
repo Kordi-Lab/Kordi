@@ -1,9 +1,13 @@
 // Cloud-edition auth HTTP client. Talks to the cloud server's /v1/cloud/* routes.
 // Stays a pure TS module: no React, no Tauri imports — easy to test with a fetch stub.
 
-// Production sessions must not silently fall back to a localhost transport.
-// Local tunnels/dev servers remain available by explicitly setting
-// VITE_KORDI_CLOUD_API_BASE.
+// Production sessions never silently fall back to localhost; local tunnels remain
+// available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
+import {
+  normalizeCloudMessageSnapshot,
+  type CloudMessageSnapshotResponse,
+} from './cloudMessageSnapshot';
+
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
 
@@ -1140,14 +1144,10 @@ export class CloudAuthClient {
     return response ?? { cursor, hasMore: false, events: [] };
   }
 
-  async listMessages(
-    token: string,
-    peerAccountId: string,
-    limit?: number,
-  ): Promise<CloudMessage[]> {
+  async listMessageSnapshot(token: string, peerAccountId: string, limit?: number) {
     const params = new URLSearchParams({ peerAccountId });
     if (limit !== undefined) params.set('limit', String(limit));
-    const response = await this.send<{ messages: CloudMessage[] }>(
+    const response = await this.send<CloudMessageSnapshotResponse>(
       `/v1/cloud/messages?${params.toString()}`,
       {
         method: 'GET',
@@ -1155,7 +1155,7 @@ export class CloudAuthClient {
       },
       'Could not load messages.',
     );
-    return (response?.messages ?? []).map((message) => ({ ...message, attachments: message.attachments ?? [] }));
+    return normalizeCloudMessageSnapshot(response);
   }
 }
 

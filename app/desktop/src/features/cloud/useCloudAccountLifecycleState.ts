@@ -51,6 +51,7 @@ import {
   cloudMessagesByPeerEqual,
   cloudUnreadReadinessContextKey,
   mergeCloudMessagesByPeerSnapshot,
+  reconcileCloudPeerReadCursors,
   type CloudUnreadReadinessSnapshot,
 } from './cloudMessageSyncState';
 import {
@@ -71,6 +72,7 @@ type CloudAccountMessageStore = {
   indexRef: MutableRefObject<CloudMessageIndex>;
   cacheAccountRef: MutableRefObject<string | null>;
   hydratedCacheAccountRef: MutableRefObject<string | null>;
+  peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
 };
 
 type CloudAccountUnreadStore = {
@@ -123,6 +125,7 @@ export function useCloudAccountLifecycleState({
     indexRef: messageIndexRef,
     cacheAccountRef: messagesCacheAccountRef,
     hydratedCacheAccountRef,
+    peerReadAtByPeerRef,
   } = messages;
   const {
     setReadiness: setUnreadReadiness,
@@ -271,6 +274,7 @@ export function useCloudAccountLifecycleState({
     groupReplayCoordinator.changeAccount(accountId);
     messagesCacheAccountRef.current = accountId;
     hydratedCacheAccountRef.current = null;
+    peerReadAtByPeerRef.current = {};
     messagesByPeerRef.current = {};
     setMessagesByPeer({});
     setUnreadReadiness({
@@ -296,8 +300,13 @@ export function useCloudAccountLifecycleState({
             || messagesCacheAccountRef.current !== accountId
           ) return;
           setMessagesByPeer((current) => {
+            const reconciledCached = reconcileCloudPeerReadCursors(
+              cached,
+              accountId,
+              peerReadAtByPeerRef.current,
+            );
             const merged =
-              mergeCloudMessagesByPeerSnapshot(cached, current);
+              mergeCloudMessagesByPeerSnapshot(reconciledCached, current);
             return cloudMessagesByPeerEqual(current, merged)
               ? current
               : merged;
@@ -340,6 +349,7 @@ export function useCloudAccountLifecycleState({
     groupSessionTitleBackfillsRef,
     hiddenSessionIdsRef,
     hydratedCacheAccountRef,
+    peerReadAtByPeerRef,
     messageCache,
     messagesByPeerRef,
     messagesCacheAccountRef,
