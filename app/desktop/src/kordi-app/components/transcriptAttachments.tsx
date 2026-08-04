@@ -176,14 +176,22 @@ function formatAttachmentSize(sizeBytes?: number | null) {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' | 'original' }) {
+function AttachmentActions({
+  attachment,
+  variant = 'icon',
+  isSending = false,
+}: {
+  attachment: MessageAttachment;
+  variant?: 'icon' | 'link' | 'menu' | 'original';
+  isSending?: boolean;
+}) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
   const canOpen = Boolean(((downloadedPath ?? attachment.localPath) && isNativeShell()));
 
-  if (!canDownload && !canOpen) {
+  if (!canDownload && !canOpen && variant !== 'link') {
     return null;
   }
 
@@ -236,6 +244,51 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
     } finally {
       setIsDownloading(false);
     }
+  }
+
+  if (variant === 'link') {
+    const isActionable = canDownload || canOpen;
+    const linkContent = (
+      <>
+        <FileText className="h-3 w-3 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+        <span className="truncate">{attachment.name}</span>
+      </>
+    );
+
+    return (
+      <div
+        data-attachment-file-link="true"
+        className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-[11px]"
+      >
+        {isActionable ? (
+          <button
+            type="button"
+            onClick={() => void (canOpen ? handleOpen() : handleDownload())}
+            disabled={isDownloading}
+            className="app-markdown-link inline-flex max-w-full items-center gap-1 bg-transparent p-0 text-left font-medium disabled:cursor-wait disabled:opacity-65"
+            aria-label={`${canOpen ? 'Open' : 'Download'} ${attachment.name}`}
+            title={`${canOpen ? 'Open' : 'Download'} ${attachment.name}`}
+          >
+            {linkContent}
+          </button>
+        ) : (
+          <span className="inline-flex max-w-full items-center gap-1 text-[color:var(--utility-muted-text)]">
+            {linkContent}
+          </span>
+        )}
+        {isSending ? <AttachmentSendingIndicator /> : null}
+        {isDownloading ? (
+          <span className="inline-flex items-center gap-1 text-[10px] text-[color:var(--utility-muted-text)]">
+            <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
+            Downloading…
+          </span>
+        ) : null}
+        {downloadedPath && !isDownloading ? (
+          <span className="text-[10px] text-[color:var(--utility-muted-text)]">Downloaded</span>
+        ) : null}
+        {error ? <span className="app-error-text text-[10px] text-rose-400">{error}</span> : null}
+      </div>
+    );
   }
 
   if (variant === 'original') {
@@ -617,11 +670,11 @@ function AttachmentImageDeliveryOverlay({ status, time, foregroundTone, onRetry 
   );
 }
 
-function AttachmentSendingIndicator({ className }: { className?: string }) {
+function AttachmentSendingIndicator() {
   return (
     <div
       data-attachment-sending-indicator="true"
-      className={cn('pointer-events-none absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-medium text-white/92 shadow-lg shadow-black/20 backdrop-blur-md', className)}
+      className="pointer-events-none inline-flex items-center gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]"
       aria-label="Sending attachment"
     >
       <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
@@ -630,28 +683,8 @@ function AttachmentSendingIndicator({ className }: { className?: string }) {
   );
 }
 
-function AttachmentFileCard({ attachment, index, isSending = false }: { attachment: MessageAttachment; index: number; isSending?: boolean }) {
-  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
-  const label = [attachment.formatLabel || (isArchiveAttachment(attachment) ? 'ARCHIVE' : 'FILE'), sizeLabel]
-    .filter(Boolean)
-    .join(' • ');
-  const Icon = attachment.kind === 'image' ? Image : FileText;
-
-  return (
-    <div key={`${attachment.name}-${index}`} data-attachment-file-card="true" className="relative flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[12px] font-medium text-white/92">{attachment.name}</div>
-        <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-          {label || 'FILE'}
-        </div>
-      </div>
-      <AttachmentActions attachment={attachment} />
-      {isSending ? <AttachmentSendingIndicator /> : null}
-    </div>
-  );
+function AttachmentFileLink({ attachment, isSending = false }: { attachment: MessageAttachment; isSending?: boolean }) {
+  return <AttachmentActions attachment={attachment} variant="link" isSending={isSending} />;
 }
 
 function AttachmentImageLoadingSurface({ className }: { className?: string }) {
@@ -1023,9 +1056,9 @@ export function AttachmentPreview({
           </div>
         ) : null}
         {downloadableAttachments.length > 0 ? (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col items-start gap-1.5">
             {downloadableAttachments.map((attachment, index) => (
-              <AttachmentFileCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} isSending={isSending} />
+              <AttachmentFileLink key={`${attachment.name}-${index}`} attachment={attachment} isSending={isSending} />
             ))}
           </div>
         ) : null}

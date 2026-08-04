@@ -438,6 +438,10 @@ test('image delivery styling adapts to image pixels without adding status chrome
 test('sending file attachments show the same progress indicator', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: fileMessage }));
 
+  assert.match(markup, /data-attachment-file-link="true"/);
+  assert.match(markup, /app-markdown-link/);
+  assert.match(markup, />notes\.pdf</);
+  assert.doesNotMatch(markup, /data-attachment-file-card=/);
   assert.match(markup, /data-attachment-sending-indicator="true"/);
   assert.match(markup, /Sending…/);
   assert.match(markup, /animate-spin/);

@@ -175,7 +175,7 @@ test('compact model route menu dismisses when users click outside or press escap
 
 test('ChatsPage places compact model route control before attachment and keeps explicit agent controls', () => {
   const source = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
-  assert.match(source, /<CompactComposerModelMenu[\s\S]*<Button[\s\S]*title="Add attachment"/);
+  assert.match(source, /<CompactComposerModelMenu[\s\S]*<ComposerAttachmentAddMenu/);
   assert.match(source, /!useCompactRouteMenu[\s\S]*<ComposerModelControls/);
 });
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Image as ImageIcon, LoaderCircle, Paperclip, Send, StopCircle, X } from 'lucide-react';
+import { LoaderCircle, Send, StopCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
@@ -21,6 +21,10 @@ import {
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '../components';
+import {
+  ComposerAttachmentAddMenu,
+  ComposerAttachmentList,
+} from '../components/composerAttachments';
 import { getLocalProfileAvatarSeed } from '../components/IdentityAvatar';
 import type { ComposerScope, ComposerSelectorType, DesktopChatSessionDetail, DesktopChatTurnSnapshot, Message } from '../types';
 
@@ -475,27 +479,7 @@ export function AgentStudioConversation({
               attachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
             )}
           >
-            {attachments.length > 0 ? (
-              <div className="mb-1 flex flex-wrap items-center gap-1.5" aria-label="Attached files">
-                {attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-2.5 text-[11px] text-[color:var(--utility-foreground)]"
-                  >
-                    {attachment.kind === 'image' ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-300" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-slate-300" />}
-                    <span className="max-w-[220px] truncate leading-none">{attachment.name}</span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${attachment.name}`}
-                      className="text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
-                      onClick={() => removeAttachment(attachment.id)}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+            <ComposerAttachmentList attachments={attachments} onRemove={removeAttachment} />
             <textarea
               ref={composerInputRef}
               rows={1}
@@ -531,18 +515,10 @@ export function AgentStudioConversation({
           </div>
           <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-              <Button
-                type="button"
-                size="icon"
-                variant="quiet"
-                className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
-                aria-label="Add attachment"
-                title="Add attachment"
+              <ComposerAttachmentAddMenu
+                inputRef={attachmentInputRef}
                 disabled={busy || opening || !sessionId}
-                onClick={() => attachmentInputRef.current?.click()}
-              >
-                <Paperclip className="h-4 w-4" />
-              </Button>
+              />
             </div>
             <div className="flex min-w-0 shrink items-center gap-2 overflow-visible">
               <ComposerRuntimeStatus contextStatus={detail?.contextWindowStatus} />

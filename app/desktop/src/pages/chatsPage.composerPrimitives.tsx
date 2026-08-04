@@ -1,4 +1,4 @@
-import { Copy, FileText, Image as ImageIcon, Send, X } from 'lucide-react';
+import { Copy, Send, X } from 'lucide-react';
 
 import type { ChatsPageComposer } from '@/pages/chatsPage.types';
 
@@ -84,44 +84,6 @@ export function ComposerQuotePreview({
       >
         <X className="h-3.5 w-3.5" />
       </button>
-    </div>
-  );
-}
-
-type ComposerAttachmentListProps = Pick<
-  ChatsPageComposer,
-  'chatComposerAttachments' | 'removeChatComposerAttachment'
->;
-
-export function ComposerAttachmentList({
-  chatComposerAttachments,
-  removeChatComposerAttachment,
-}: ComposerAttachmentListProps) {
-  if (chatComposerAttachments.length === 0) return null;
-
-  return (
-    <div className="mb-1 flex flex-wrap items-center gap-1.5">
-      {chatComposerAttachments.map((attachment) => (
-        <div
-          key={attachment.id}
-          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-2.5 text-[11px] text-[color:var(--utility-foreground)]"
-        >
-          {attachment.kind === 'image' ? (
-            <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-          ) : (
-            <FileText className="h-3.5 w-3.5 shrink-0 text-slate-300" />
-          )}
-          <span className="max-w-[220px] truncate leading-none">{attachment.name}</span>
-          <button
-            type="button"
-            onClick={() => removeChatComposerAttachment(attachment.id)}
-            className="app-button-quiet grid h-5 w-5 place-items-center rounded-full p-0"
-            aria-label={`Remove ${attachment.name}`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ))}
     </div>
   );
 }

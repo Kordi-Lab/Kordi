@@ -1,12 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  FileText,
-  Image as ImageIcon,
-  Paperclip,
-  Send,
-  X,
-} from 'lucide-react';
+import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
@@ -20,6 +14,10 @@ import {
   ComposerModelControls,
   ComposerRuntimeStatus,
 } from '@/kordi-app/components';
+import {
+  ComposerAttachmentAddMenu,
+  ComposerAttachmentList,
+} from '@/kordi-app/components/composerAttachments';
 import type {
   Conversation,
   DesktopChatContextWindowStatus,
@@ -152,29 +150,10 @@ export function CompanionComposer({
                 event.currentTarget.value = '';
               }}
             />
-            {chatComposerAttachments.length > 0 ? (
-              <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                {chatComposerAttachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-2.5 text-[11px] text-[color:var(--utility-foreground)]"
-                  >
-                    {attachment.kind === 'image'
-                      ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-                      : <FileText className="h-3.5 w-3.5 shrink-0 text-slate-300" />}
-                    <span className="max-w-[220px] truncate leading-none">{attachment.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeChatComposerAttachment(attachment.id)}
-                      className="text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
-                      aria-label={`Remove ${attachment.name}`}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+            <ComposerAttachmentList
+              attachments={chatComposerAttachments}
+              onRemove={removeChatComposerAttachment}
+            />
             <textarea
               rows={1}
               value={draftText}
@@ -231,17 +210,10 @@ export function CompanionComposer({
         </AnimatePresence>
         <div data-companion-send-row="true" className="app-composer-meta mt-2 flex flex-nowrap items-center justify-between gap-3 pt-2.5">
           <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-            <Button
-              size="icon"
-              variant="quiet"
-              className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
-              onClick={() => attachmentInputRef.current?.click()}
-              title="Add attachment"
-              aria-label="Add attachment"
+            <ComposerAttachmentAddMenu
+              inputRef={attachmentInputRef}
               data-companion-attachment-control="true"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
+            />
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
             {localRouting.enabled && localRouting.selection && localRouting.configTarget ? (
