@@ -14,6 +14,7 @@ import {
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
+import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
 import {
   KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
@@ -35,57 +36,7 @@ import {
   syntheticParticipantSpaceId,
 } from './readModel/conversationMapping';
 import type { ConversationSubtitleBuilder } from './readModel/conversationMapping';
-
-type CanonicalConversationLike = {
-  id: string;
-  supportTicketEnabled?: boolean;
-  _updatedAtMs?: number;
-  canonicalSessionId?: string;
-  canonicalStoragePath?: string;
-  canonicalParticipantCount?: number;
-  canonicalMessageCount?: number;
-  canonicalDelegatedExchangeCount?: number;
-  taskActivities?: SessionTaskActivity[];
-  canonicalContextSnapshotCount?: number;
-  canonicalPresenceSummary?: string;
-  desktopRuntimeBacked?: boolean;
-  desktopRuntimeTranscriptLoaded?: boolean;
-  canonicalParticipants?: ConversationParticipant[];
-  collaborationTarget?: ConversationCollaborationTarget | null;
-  collaborationUnreadByParentSessionId?: Record<string, number>;
-  collaborationSources: string[];
-  trust: string;
-  outreach?: { parentSessionId?: string | null } | null;
-  participantSpaceId?: string | null;
-  directness?: string | null;
-  statusIndicator?: Conversation['statusIndicator'];
-  updatedAtLabel?: string;
-  unread?: number;
-  forkedFromSessionId?: string | null;
-  forkedFromMessageId?: string | null;
-  profileImageUrl?: string | null;
-  participantProfileImageUrls?: Record<string, string | null>;
-  name: string;
-  subtitle: string;
-  participants: string[];
-  messages: Message[];
-};
-
-function supportContactMessages(messages: Message[]) {
-  return messages.map((message) => {
-    if (message.role !== 'owned-agent' && message.role !== 'external-agent') return message;
-    return {
-      ...message,
-      role: 'external-agent' as const,
-      sender: KORDI_SUPPORT_NAME,
-      sourceSenderLabel: KORDI_SUPPORT_NAME,
-      senderType: 'agent' as const,
-      senderProfileImageUrl: KORDI_SUPPORT_AVATAR_URL,
-      isOwnMessage: false,
-      showSenderMeta: true,
-    };
-  });
-}
+import type { CanonicalConversationLike } from './readModel/conversationTypes';
 
 function messageResponseText(message: Message) {
   return message.turn?.assistantText.trim()
@@ -607,7 +558,7 @@ export function createCanonicalSessionReadModel(
           ? canonicalMessages
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
-      const messages = isSupportContact ? supportContactMessages(hydratedMessages) : hydratedMessages;
+      const messages = isSupportContact ? normalizeSupportContactMessages(hydratedMessages) : hydratedMessages;
       const rawCanonicalParticipants = this.participantDetails(sessionId);
       const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
       const participants = isSupportContact

@@ -1,7 +1,4 @@
-import {
-  CLOUD_PIXEL_AVATAR_URL_PREFIX,
-  cloudAvatarImageUrl,
-} from '@/features/cloud/avatar';
+export { collaborationProfileImageUrl } from '@/features/collaboration/conversationPresentation';
 import { isSelfReferenceName } from '@/lib/identityLabels';
 
 export function sanitizeRemotePeerName(
@@ -16,14 +13,4 @@ export function sanitizeRemotePeerName(
     if (trimmed) return trimmed;
   }
   return 'Kordi user';
-}
-
-export function collaborationProfileImageUrl(
-  value: string | null | undefined,
-): string | null {
-  const normalized = cloudAvatarImageUrl(value);
-  if (normalized) return normalized;
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
-  return trimmed;
 }

@@ -7,14 +7,14 @@ import {
   COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
   COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/collaboration/messages';
-import { isCollaborationAgentRuntime, isCollaborationPersonRuntime } from '@/features/collaboration/runtime';
+import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
   collaborationTimestampIsExpired,
   historicalCollaborationProcessingPlaceholderIds,
   isCollaborationAgentResponseDirection,
 } from '@/features/collaboration/collaborationProcessingState';
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
+import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
 import { KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
@@ -24,24 +24,6 @@ type CollaborationConversationViewModel = Conversation & {
 
 function collaborationHostLabel(host?: DesktopCollaborationHost | null) {
   return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Cloud';
-}
-
-function collaborationProfileImageUrl(value: string | null | undefined): string | null {
-  const normalized = cloudAvatarImageUrl(value);
-  if (normalized) return normalized;
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
-  return trimmed;
-}
-
-function isCollaborationConversationPersonChat(conversation: DesktopCollaborationConversation) {
-  return Boolean(conversation.supportTicketEnabled)
-    || isCollaborationPersonRuntime(conversation.peerRuntime)
-    || Boolean(
-      conversation.peerOwnerName
-        && conversation.peerDisplayName
-        && conversation.peerOwnerName.trim() === conversation.peerDisplayName.trim(),
-    );
 }
 
 function collaborationOutboundStatusChip(deliveryState: string | null | undefined, agentHasBegunReply: boolean) {
