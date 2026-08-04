@@ -58,7 +58,7 @@ import {
   parseCloudAgentResponse,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
-import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import {
   cloudDirectMessageAction,
   cloudDirectMessageDisplayText,

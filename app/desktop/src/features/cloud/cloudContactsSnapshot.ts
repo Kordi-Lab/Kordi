@@ -1,13 +1,10 @@
 import type { CloudContactRequest, CloudContactSummary } from './authClient';
+import { cloudContactSummaryKey } from './cloudContactTypes';
 
 export type CloudContactsSnapshot = {
   contacts: CloudContactSummary[];
   requests: CloudContactRequest[];
 };
-
-function cloudContactSummaryKey(contact: CloudContactSummary): string {
-  return contact.contactId?.trim() || `account:${contact.accountId}`;
-}
 
 export function applyCloudContactsRefreshSnapshot(
   current: CloudContactsSnapshot,

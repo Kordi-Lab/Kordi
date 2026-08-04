@@ -1,4 +1,4 @@
-import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
+import { CLOUD_HOST_SENTINEL } from '@/features/cloud/cloudContactMapping';
 
 const CLOUD_CONVERSATION_PREFIX = 'cloud:conversation:';
 const LEGACY_CLOUD_CONVERSATION_PREFIX = `bridge:${CLOUD_HOST_SENTINEL}:`;

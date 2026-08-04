@@ -1,4 +1,4 @@
-import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 
 export type CloudCollaborationTargetRef = {
   hostId?: string | null;
