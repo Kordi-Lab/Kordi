@@ -12,6 +12,7 @@ import {
   storeDesktopChatAttachmentPath,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
+import { formatDesktopClockTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import {
   ComposerModelControls,
@@ -65,10 +66,6 @@ function builderRouteFromDetail(
   };
 }
 
-function timeLabel() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
 function attachmentFormatLabel(name: string, mimeType?: string) {
   return name.split('.').pop()?.trim().toUpperCase()
     || mimeType?.split('/').pop()?.trim().toUpperCase()
@@ -99,7 +96,7 @@ function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: 
       localPath: attachment.path,
       sizeBytes: attachment.sizeBytes,
     })),
-    time: timeLabel(),
+    time: formatDesktopClockTime(new Date()),
   };
 }
 
