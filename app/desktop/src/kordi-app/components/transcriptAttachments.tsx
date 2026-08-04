@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { Check, CheckCheck, Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide-react';
+import { Check, CheckCheck, Download, ExternalLink, Image, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
@@ -14,6 +14,7 @@ import {
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import type { Message, MessageAttachment } from '../types';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
@@ -176,22 +177,14 @@ function formatAttachmentSize(sizeBytes?: number | null) {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function AttachmentActions({
-  attachment,
-  variant = 'icon',
-  isSending = false,
-}: {
-  attachment: MessageAttachment;
-  variant?: 'icon' | 'link' | 'menu' | 'original';
-  isSending?: boolean;
-}) {
+function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' | 'original' }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
   const canOpen = Boolean(((downloadedPath ?? attachment.localPath) && isNativeShell()));
 
-  if (!canDownload && !canOpen && variant !== 'link') {
+  if (!canDownload && !canOpen) {
     return null;
   }
 
@@ -244,51 +237,6 @@ function AttachmentActions({
     } finally {
       setIsDownloading(false);
     }
-  }
-
-  if (variant === 'link') {
-    const isActionable = canDownload || canOpen;
-    const linkContent = (
-      <>
-        <FileText className="h-3 w-3 shrink-0" strokeWidth={1.8} aria-hidden="true" />
-        <span className="truncate">{attachment.name}</span>
-      </>
-    );
-
-    return (
-      <div
-        data-attachment-file-link="true"
-        className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-[11px]"
-      >
-        {isActionable ? (
-          <button
-            type="button"
-            onClick={() => void (canOpen ? handleOpen() : handleDownload())}
-            disabled={isDownloading}
-            className="app-markdown-link inline-flex max-w-full items-center gap-1 bg-transparent p-0 text-left font-medium disabled:cursor-wait disabled:opacity-65"
-            aria-label={`${canOpen ? 'Open' : 'Download'} ${attachment.name}`}
-            title={`${canOpen ? 'Open' : 'Download'} ${attachment.name}`}
-          >
-            {linkContent}
-          </button>
-        ) : (
-          <span className="inline-flex max-w-full items-center gap-1 text-[color:var(--utility-muted-text)]">
-            {linkContent}
-          </span>
-        )}
-        {isSending ? <AttachmentSendingIndicator /> : null}
-        {isDownloading ? (
-          <span className="inline-flex items-center gap-1 text-[10px] text-[color:var(--utility-muted-text)]">
-            <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
-            Downloading…
-          </span>
-        ) : null}
-        {downloadedPath && !isDownloading ? (
-          <span className="text-[10px] text-[color:var(--utility-muted-text)]">Downloaded</span>
-        ) : null}
-        {error ? <span className="app-error-text text-[10px] text-rose-400">{error}</span> : null}
-      </div>
-    );
   }
 
   if (variant === 'original') {
@@ -670,23 +618,6 @@ function AttachmentImageDeliveryOverlay({ status, time, foregroundTone, onRetry 
   );
 }
 
-function AttachmentSendingIndicator() {
-  return (
-    <div
-      data-attachment-sending-indicator="true"
-      className="pointer-events-none inline-flex items-center gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]"
-      aria-label="Sending attachment"
-    >
-      <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
-      <span>Sending…</span>
-    </div>
-  );
-}
-
-function AttachmentFileLink({ attachment, isSending = false }: { attachment: MessageAttachment; isSending?: boolean }) {
-  return <AttachmentActions attachment={attachment} variant="link" isSending={isSending} />;
-}
-
 function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   return (
     <div
@@ -1058,7 +989,11 @@ export function AttachmentPreview({
         {downloadableAttachments.length > 0 ? (
           <div className="flex flex-col items-start gap-1.5">
             {downloadableAttachments.map((attachment, index) => (
-              <AttachmentFileLink key={`${attachment.name}-${index}`} attachment={attachment} isSending={isSending} />
+              <TranscriptFileAttachmentLink
+                key={`${attachment.name}-${index}`}
+                attachment={attachment}
+                isSending={isSending}
+              />
             ))}
           </div>
         ) : null}
