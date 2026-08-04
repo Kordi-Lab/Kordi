@@ -196,6 +196,7 @@ spec:
                 secretKeyRef:
                   name: kordi-support-smtp
                   key: app-password
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health
