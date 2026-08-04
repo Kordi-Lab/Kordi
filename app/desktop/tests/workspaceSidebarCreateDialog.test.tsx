@@ -191,6 +191,5 @@ test('participant-space direct sessions expose remove-chat context menu targets'
     sessionName: 'Lunch planning',
     x: 42,
     y: 84,
-    canMoveToProject: false,
   });
 });

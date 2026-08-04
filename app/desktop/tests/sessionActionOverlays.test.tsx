@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   DeleteSessionDialog,
-  MoveSessionDialog,
   ProjectCreateDialog,
   RenameSessionDialog,
   SessionContextMenu,
@@ -33,7 +32,6 @@ test('SessionContextMenu offers Remove chat without a separate Not show here act
     target: { sessionId: 'session:one', sessionName: 'Trip planning', x: 120, y: 120 },
     onClose: () => {},
     onRename: () => {},
-    onMove: () => {},
     onDelete: () => {},
   }));
 
@@ -42,7 +40,7 @@ test('SessionContextMenu offers Remove chat without a separate Not show here act
   assert.match(markup, /Remove chat…/);
 });
 
-test('SessionContextMenu keeps ordinary actions flat at rest', () => {
+test('SessionContextMenu keeps available actions flat and omits the removed project action', () => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: { innerWidth: 1024, innerHeight: 768 },
@@ -54,17 +52,15 @@ test('SessionContextMenu keeps ordinary actions flat at rest', () => {
       sessionName: 'Trip planning',
       x: 120,
       y: 120,
-      canMoveToProject: true,
     },
     onClose: () => {},
     onRename: () => {},
-    onMove: () => {},
     onDelete: () => {},
   }));
 
   assert.match(markup, /app-transient-flat-action[^>]*>Rename…</);
-  assert.match(markup, /app-transient-flat-action[^>]*>Move to project…</);
   assert.match(markup, /app-transient-row app-transient-row-danger[^>]*>Remove chat…</);
+  assert.doesNotMatch(markup, /Move to project/);
   assert.doesNotMatch(markup, /app-transient-row[^>]*>Rename…</);
 });
 
@@ -84,7 +80,6 @@ test('SessionContextMenu hides rename for a non-admin group member', () => {
     },
     onClose: () => {},
     onRename: () => {},
-    onMove: () => {},
     onDelete: () => {},
   }));
 
@@ -146,25 +141,17 @@ test('DeleteSessionDialog keeps the confirmation concise and exposes semantic ac
   assert.doesNotMatch(removeMarkup, /Trip planning/);
 });
 
-test('larger session action forms share the semantic modal frame and standard action row', () => {
-  const moveMarkup = renderToStaticMarkup(createElement(MoveSessionDialog, {
-    target: { sessionId: 'session:one', sessionName: 'Trip planning' },
-    projects: [],
-    onCancel: () => {},
-    onMoveToProject: () => {},
-  }));
+test('ProjectCreateDialog uses the semantic modal frame and standard action row', () => {
   const createMarkup = renderToStaticMarkup(createElement(ProjectCreateDialog, {
     onCancel: () => {},
     onCreateFromFolder: () => {},
     onCreateNew: () => {},
   }));
 
-  for (const markup of [moveMarkup, createMarkup]) {
-    assert.match(markup, /data-dialog-presentation="modal"/);
-    assert.match(markup, /role="dialog"/);
-    assert.match(markup, /aria-modal="true"/);
-    assert.match(dialogPanelClass(markup), /app-modal-panel/);
-    assert.match(markup, /app-button-quiet/);
-    assert.match(markup, /app-button-primary/);
-  }
+  assert.match(createMarkup, /data-dialog-presentation="modal"/);
+  assert.match(createMarkup, /role="dialog"/);
+  assert.match(createMarkup, /aria-modal="true"/);
+  assert.match(dialogPanelClass(createMarkup), /app-modal-panel/);
+  assert.match(createMarkup, /app-button-quiet/);
+  assert.match(createMarkup, /app-button-primary/);
 });

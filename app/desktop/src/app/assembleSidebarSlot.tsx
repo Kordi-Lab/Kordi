@@ -165,9 +165,6 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         onDeleteChatSession: (sessionId) => {
           void args.handleDeleteChatSession(sessionId);
         },
-        onMoveChatSessionToProject: (sessionId, projectRoot) => {
-          void args.handleMoveChatSessionToProject(sessionId, projectRoot);
-        },
         isCollaborationSyncing: args.isCollaborationSyncing,
       }}
       projects={{
