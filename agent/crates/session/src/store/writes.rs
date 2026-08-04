@@ -15,8 +15,10 @@ pub(super) fn open_db(path: &std::path::Path) -> Result<Connection> {
         std::fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(path)?;
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+    conn.busy_timeout(schema::SQLITE_BUSY_TIMEOUT)?;
+    conn.execute_batch("PRAGMA foreign_keys=ON;")?;
     schema::init_schema(&conn)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL;")?;
     Ok(conn)
 }
 

@@ -1,8 +1,9 @@
 use anyhow::Result;
 use rusqlite::Connection;
+use std::time::Duration;
 
-#[cfg(test)]
 const CURRENT_VERSION: i32 = 10;
+pub(crate) const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -190,6 +191,35 @@ WHERE name IS NULL
 
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
+    conn.busy_timeout(SQLITE_BUSY_TIMEOUT)?;
+
+    // Opening an already-migrated database is the hot path. Avoid taking a
+    // write lock unless this connection can see pending schema work.
+    if get_version(conn) >= CURRENT_VERSION {
+        return Ok(());
+    }
+
+    // Multiple desktop startup paths may open a brand-new session database at
+    // the same time. Serialize the complete read-migrate-record sequence so a
+    // second connection re-checks the version after the first one commits.
+    conn.execute_batch("BEGIN IMMEDIATE;")?;
+    let result = apply_pending_migrations(conn);
+    match result {
+        Ok(()) => {
+            if let Err(error) = conn.execute_batch("COMMIT;") {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(error.into());
+            }
+            Ok(())
+        }
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            Err(error)
+        }
+    }
+}
+
+fn apply_pending_migrations(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
 
     if current < 1 {
