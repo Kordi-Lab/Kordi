@@ -65,6 +65,12 @@ export function shouldUseCompactModelRouteMenu(
   return type === 'person' || type === 'group' || directness.includes('group');
 }
 
+export function canConfigureConversationModelRoute(
+  conversation: Pick<Conversation, 'supportTicketEnabled'>,
+): boolean {
+  return conversation.supportTicketEnabled !== true;
+}
+
 export function localAgentComposerConfigTargetSessionId(
   conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>,
 ): string | null {
