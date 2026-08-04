@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { shouldAppendOptimisticCollaborationMessage } from '../src/features/chat/messageActions/chatMessages';
+import { shouldAppendOptimisticCollaborationMessage } from '../src/features/chat/messageActions/collaborationSendLifecycle';
 import { cloudSessionIdForCollaborationSend } from '../src/features/cloud/cloudCollaborationState';
 
 test('direct Cloud contact sends use an optimistic row so attachments preview immediately', () => {

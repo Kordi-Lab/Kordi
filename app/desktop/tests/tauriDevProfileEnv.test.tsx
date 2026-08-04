@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { buildBeforeDevCommand } from '../scripts/tauri-dev-env.mjs';
+
+const appShellFrameSource = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
 
 test('buildBeforeDevCommand does not forward removed edition env into the Vite dev server command', () => {
   const command = buildBeforeDevCommand({
@@ -88,4 +91,11 @@ test('buildBeforeDevCommand permits production only for acknowledged operator ru
   });
   assert.match(command, /VITE_KORDI_DEV_PROFILE='operator'/);
   assert.match(command, /VITE_KORDI_PRODUCTION_DEBUG_ACK='1'/);
+});
+
+test('named development profiles render a visible in-window instance label', () => {
+  assert.match(appShellFrameSource, /if \(!import\.meta\.env\.DEV\) return null;/);
+  assert.match(appShellFrameSource, /VITE_KORDI_WINDOW_TITLE/);
+  assert.match(appShellFrameSource, /Preview · \{instanceLabel\}/);
+  assert.match(appShellFrameSource, /aria-label=\{`Preview instance: \$\{instanceLabel\}`\}/);
 });

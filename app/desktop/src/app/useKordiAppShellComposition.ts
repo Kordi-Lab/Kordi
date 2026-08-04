@@ -91,7 +91,10 @@ export function useKordiAppShellComposition({
     createSideAgentSession: handleCreateSideAgentSession,
     setComposerTextForSession: setChatComposerTextForSession,
   } = useKordiSideAgentSessionActions({
-    activeDesktopSessionId: chat.desktopChatState?.activeSessionId ?? null,
+    desktopChatState: chat.desktopChatState,
+    desktopLiveTurnsBySession: chat.desktopLiveTurnsBySession,
+    queuedDesktopMessagesBySession: chat.queuedDesktopMessagesBySession,
+    mainConversationId: conversations.activeConv.id,
     isNativeShell: environment.isNativeShell,
     setComposerDrafts: ui.composerUi.setComposerDrafts,
     setDesktopChatError: chat.setDesktopChatError,

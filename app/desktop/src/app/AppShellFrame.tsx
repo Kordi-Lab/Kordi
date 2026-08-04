@@ -28,6 +28,13 @@ type AppShellFrameProps = {
   windowResizeHandles?: ReactNode;
 };
 
+function previewInstanceLabel() {
+  if (!import.meta.env.DEV) return null;
+  const configuredTitle = (import.meta.env as { VITE_KORDI_WINDOW_TITLE?: string })
+    .VITE_KORDI_WINDOW_TITLE?.trim();
+  return configuredTitle && configuredTitle !== 'Kordi' ? configuredTitle : null;
+}
+
 export function AppShellFrame({
   rootThemeClass,
   isNativeShell,
@@ -50,6 +57,7 @@ export function AppShellFrame({
   messageForwardDialog,
   windowResizeHandles,
 }: AppShellFrameProps) {
+  const instanceLabel = previewInstanceLabel();
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     if (!shouldStartNativeWindowDrag({
       isNativeShell,
@@ -90,6 +98,11 @@ export function AppShellFrame({
             : { width: `${windowSize.width}px`, height: `${windowSize.height}px` }
         }
       >
+        {instanceLabel ? (
+          <div className="app-preview-instance-label" aria-label={`Preview instance: ${instanceLabel}`}>
+            Preview · {instanceLabel}
+          </div>
+        ) : null}
         {isNativeShell ? (
           <>
             <div

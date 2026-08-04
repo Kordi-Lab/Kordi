@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import type { Conversation } from '@/kordi-app/types';
+import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import type {
   ChatsPageComposer,
   ChatsPageRuntime,
@@ -39,6 +40,7 @@ type UseChatCompanionSessionInput = {
   setComposerTextForSession: ChatsPageComposer['setChatComposerTextForSession'];
   onSendChatMessage: ChatsPageRuntime['onSendChatMessage'];
   onCreateAgentSession: ChatsPageRuntime['onCreateAgentSession'];
+  onPrefetchChatSession: ChatsPageRuntime['onPrefetchChatSession'];
 };
 
 function emptyState(pageConversationId: string): CompanionSessionState {
@@ -97,6 +99,7 @@ export function useChatCompanionSession({
   setComposerTextForSession,
   onSendChatMessage,
   onCreateAgentSession,
+  onPrefetchChatSession,
 }: UseChatCompanionSessionInput) {
   const candidates = useMemo(
     () => chatCompanionCandidates(activeConversation, conversations),
@@ -113,6 +116,8 @@ export function useChatCompanionSession({
   const [storedState, setStoredState] = useState<CompanionSessionState>(
     () => emptyState(activeConversation.id),
   );
+  const [transcriptLoadFailureSessionId, setTranscriptLoadFailureSessionId] = useState<string | null>(null);
+  const [transcriptLoadAttempt, setTranscriptLoadAttempt] = useState(0);
   const [trackedCandidateKey, setTrackedCandidateKey] = useState(candidateKey);
   const state = normalizeStateForCandidates(
     storedState,
@@ -140,7 +145,24 @@ export function useChatCompanionSession({
     state.openConversationId,
     candidates,
   );
+  const conversationId = conversation?.id ?? null;
+  const transcriptNeedsLoading = Boolean(
+    conversation?.desktopRuntimeBacked
+      && conversation.desktopRuntimeTranscriptLoaded !== true
+      && !isLocalDraftChatConversationId(conversation.id),
+  );
   const draftText = conversation ? state.drafts[conversation.id] ?? '' : '';
+
+  useEffect(() => {
+    if (!conversationId || !transcriptNeedsLoading || !onPrefetchChatSession) return;
+    let cancelled = false;
+    void onPrefetchChatSession(conversationId).then((loaded) => {
+      if (!cancelled && !loaded) setTranscriptLoadFailureSessionId(conversationId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, onPrefetchChatSession, transcriptLoadAttempt, transcriptNeedsLoading]);
 
   const updateState = (
     update: (current: CompanionSessionState) => CompanionSessionState,
@@ -166,6 +188,9 @@ export function useChatCompanionSession({
     target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
   };
   const activate = (conversationId: string, initialPrompt = '') => {
+    setTranscriptLoadFailureSessionId((current) => (
+      current === conversationId ? null : current
+    ));
     updateState((current) => ({
       ...current,
       selectedConversationId: conversationId,
@@ -233,6 +258,20 @@ export function useChatCompanionSession({
     suggested,
     draftText,
     canOpen: Boolean(suggested || (activePaneKind === 'agent' && onCreateAgentSession)),
+    transcript: {
+      isLoading: transcriptNeedsLoading
+        && transcriptLoadFailureSessionId !== conversationId,
+      loadError: transcriptNeedsLoading
+        && transcriptLoadFailureSessionId === conversationId
+        ? 'Couldn’t load chat history.'
+        : null,
+      retry: () => {
+        setTranscriptLoadFailureSessionId((current) => (
+          current === conversationId ? null : current
+        ));
+        setTranscriptLoadAttempt((current) => current + 1);
+      },
+    },
     refs: {
       transcriptScroll: transcriptScrollRef,
       attachmentInput: attachmentInputRef,

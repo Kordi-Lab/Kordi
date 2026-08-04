@@ -53,6 +53,9 @@ test('renders transcript loading once as neutral text without a notice backgroun
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /app-transcript-loading-notice/);
+  assert.match(markup, /role="status"/);
+  assert.match(markup, /aria-live="polite"/);
+  assert.match(markup, /animate-spin/);
   assert.match(markup, /text-\[color:var\(--utility-muted-text\)\]/);
   assert.doesNotMatch(markup, /bg-muted|rounded-full|\bborder\b/);
 });

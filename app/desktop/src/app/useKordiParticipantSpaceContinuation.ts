@@ -78,9 +78,7 @@ export function useKordiParticipantSpaceContinuation({
       return;
     }
 
-    const existingBlankSessionId = space.kind === 'group'
-      ? null
-      : existingBlankSessionIdForParticipantSpace(space);
+    const existingBlankSessionId = existingBlankSessionIdForParticipantSpace(space);
     if (existingBlankSessionId) {
       selectNewSession(existingBlankSessionId);
       return;

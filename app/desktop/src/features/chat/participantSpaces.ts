@@ -12,43 +12,23 @@ import {
   groupParticipantStableKey,
   sharedGroupCustomTitle,
 } from './groupTitle';
+import {
+  conversationHasUserContent,
+  isBlankSessionLabel,
+  isPersistedBlankGroupContinuationConversation,
+  latestParticipantSpaceMessageText,
+  safePreviewText,
+} from './participantConversationState';
+
+export {
+  isBlankConversation,
+  isPersistedBlankGroupContinuationConversation,
+} from './participantConversationState';
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
 function cleanOptionalText(value?: string | null) {
   return value?.trim() ?? '';
-}
-
-function isRawSessionIdText(value: string) {
-  const text = value.trim();
-  return text.startsWith('session:')
-    || text.startsWith('bridge:')
-    || text.startsWith('canonical:')
-    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
-}
-
-function safePreviewText(value: string | undefined | null) {
-  const text = value?.trim() ?? '';
-  return text && !isRawSessionIdText(text) ? text : '';
-}
-
-function latestMessageText(conversation: Conversation) {
-  const latest = conversation.messages[conversation.messages.length - 1];
-  return safePreviewText(latest?.text)
-    || safePreviewText(latest?.turn?.assistantText)
-    || safePreviewText(conversation.subtitle)
-    || safePreviewText(conversation.name);
-}
-
-function isBlankSessionLabel(value: string | undefined | null) {
-  const text = value?.trim() ?? '';
-  return !text || /^(#\s*)?(new chat|new session|untitled session)$/i.test(text);
-}
-
-function conversationHasUserContent(conversation: Conversation) {
-  if (typeof conversation.canonicalMessageCount === 'number' && conversation.canonicalMessageCount > 0) return true;
-  if (conversation.queuedMessages?.length) return true;
-  return conversation.messages.some((message) => message.role !== 'system' && message.text.trim().length > 0);
 }
 
 export function isBlankParticipantSpaceSession(session: ParticipantSpaceSessionViewModel) {
@@ -58,28 +38,45 @@ export function isBlankParticipantSpaceSession(session: ParticipantSpaceSessionV
 }
 
 export function isPersistedBlankGroupContinuation(session: ParticipantSpaceSessionViewModel) {
-  if (session.conversation.transientDraft || !isBlankParticipantSpaceSession(session)) return false;
-  const metadata = metadataRecord(session.conversation.metadata);
-  const sessionId = cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id);
-  const groupSpaceId = normalizeGroupSpaceId(
-    metadataStringValue(metadata, 'groupSpaceId')
-      || metadataStringValue(metadata, 'groupId'),
-  );
-  const continuedFromSessionId = metadataStringValue(metadata, 'continuedFromSessionId');
-  const continuedFromSpaceId = metadataStringValue(metadata, 'continuedFromSpaceId');
-  return Boolean(continuedFromSessionId || continuedFromSpaceId || (groupSpaceId && groupSpaceId !== sessionId));
+  return isPersistedBlankGroupContinuationConversation(session.conversation);
 }
 
-function blankAgentSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
-  if (conversationHasUserContent(session.conversation) || session.conversation.type !== 'owned-agent') return null;
-  const metadata = metadataRecord(session.conversation.metadata);
-  const agent = nonSelfAgents(allDisplayParticipants(session.conversation))[0];
+function blankAgentConversationCollapseKey(conversation: Conversation) {
+  if (conversationHasUserContent(conversation) || conversation.type !== 'owned-agent') return null;
+  const metadata = metadataRecord(conversation.metadata);
+  const agent = nonSelfAgents(allDisplayParticipants(conversation))[0];
+  const title = cleanOptionalText(conversation.name).toLowerCase();
+  const agentName = cleanOptionalText(agent?.name).toLowerCase();
+  if (!isBlankSessionLabel(title) && (!agentName || title !== agentName)) return null;
   const agentKey = metadataStringValue(metadata, 'agentId')
     || agent?.id
     || agent?.agentId
-    || cleanOptionalText(session.title)
-    || cleanOptionalText(session.conversation.name);
+    || cleanOptionalText(conversation.name);
   return agentKey ? `agent:${agentKey}` : null;
+}
+
+function blankAgentSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
+  return blankAgentConversationCollapseKey(session.conversation);
+}
+
+export function collapseBlankConversationShells(
+  conversations: Conversation[],
+) {
+  const preferredBlankAgentIdByKey = new Map<string, string>();
+  for (const conversation of conversations) {
+    const key = blankAgentConversationCollapseKey(conversation);
+    if (!key) continue;
+    const id = cleanOptionalText(conversation.canonicalSessionId) || conversation.id;
+    if (!preferredBlankAgentIdByKey.has(key)) {
+      preferredBlankAgentIdByKey.set(key, id);
+    }
+  }
+  return conversations.filter((conversation) => {
+    const id = cleanOptionalText(conversation.canonicalSessionId) || conversation.id;
+    const key = blankAgentConversationCollapseKey(conversation);
+    if (!key) return true;
+    return preferredBlankAgentIdByKey.get(key) === id;
+  });
 }
 
 function blankSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
@@ -337,7 +334,7 @@ function buildSession(conversation: Conversation, updatedAtMs: number): Particip
     id: conversation.id,
     canonicalSessionId: conversation.canonicalSessionId,
     title: conversation.name,
-    preview: latestMessageText(conversation),
+    preview: latestParticipantSpaceMessageText(conversation),
     unread: Math.max(0, conversation.unread ?? 0),
     updatedAtLabel: conversation.updatedAtLabel,
     updatedAtMs,
@@ -574,6 +571,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
           ? sortedSessions.filter((session) => !isPersistedBlankGroupContinuation(session))
           : sortedSessions,
       );
+      const reusableBlankSession = sortedSessions.find(isBlankParticipantSpaceSession);
       const latest = sessions[0];
       return {
         id,
@@ -592,6 +590,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
         groupCreatorIdentityId,
         groupAdminIdentityIds,
         membershipSessionIds,
+        reusableBlankSessionId: reusableBlankSession?.canonicalSessionId ?? reusableBlankSession?.id ?? null,
       } satisfies ParticipantSpaceViewModel;
     })
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));

@@ -27,7 +27,6 @@ import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/feature
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
-import { transcriptSystemNoticeClassName } from '@/features/chat/transcriptLoadingNotice';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
@@ -36,6 +35,7 @@ import { MessageInlineContent } from './messageInlineContent';
 import { AttachmentPreview } from './transcriptAttachments';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
+import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
@@ -979,7 +979,7 @@ function MessageBubbleView({
   if (msg.role === 'system') {
     return (
       <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
-        <div className={transcriptSystemNoticeClassName(msg)}><MessageInlineContent text={msg.text} /></div>
+        <TranscriptSystemNoticeContent message={msg}><MessageInlineContent text={msg.text} /></TranscriptSystemNoticeContent>
       </MessageContextMenuHost>
     );
   }

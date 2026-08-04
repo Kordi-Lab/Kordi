@@ -101,6 +101,7 @@ export function ChatsPage({
     isDesktopChatSending,
     onMessageContact,
     onForkChatMessage,
+    onPrefetchChatSession,
     onSendChatMessage,
     onCreateAgentSession,
   } = runtime;
@@ -130,6 +131,7 @@ export function ChatsPage({
     setComposerTextForSession: setChatComposerTextForSession,
     onSendChatMessage,
     onCreateAgentSession,
+    onPrefetchChatSession,
   });
   const companionConversation = companionSession.conversation;
   const suggestedSideAgentConversation = companionSession.suggested;
