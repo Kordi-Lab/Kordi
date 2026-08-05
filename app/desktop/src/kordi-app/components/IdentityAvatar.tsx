@@ -230,8 +230,6 @@ function AgentIdenticonAvatar({ seed, className }: { seed: string; className?: s
           opacity={cell.opacity}
         />
       ))}
-      <circle cx="32" cy="32" r="31.5" fill="none" stroke="#ffffff" strokeOpacity="0.18" />
-      <circle cx="32" cy="32" r="31.5" fill="none" stroke="#0d1117" strokeOpacity="0.16" />
     </svg>
   );
 }
@@ -271,14 +269,12 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
   return (
     <span className={cn('relative inline-flex shrink-0 rounded-full', className)}>
       <Avatar
-        className="h-full w-full rounded-full bg-slate-900/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+        className="h-full w-full rounded-full bg-transparent"
         aria-label={label}
         data-avatar-kind={kind}
         data-avatar-state={avatarState}
       >
-        {displayImageUrl ? (
-          <div className="absolute inset-0 bg-slate-800/60" aria-hidden="true" />
-        ) : isRemoteImagePending ? (
+        {displayImageUrl ? null : isRemoteImagePending ? (
           <span
             className="block h-full w-full bg-slate-300/55 dark:bg-slate-700/55"
             aria-hidden="true"

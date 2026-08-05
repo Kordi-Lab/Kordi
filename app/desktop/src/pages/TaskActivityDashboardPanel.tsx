@@ -191,7 +191,7 @@ function TaskTargetAvatars({ participants }: { participants: TaskTargetParticipa
           avatarKey={participant.avatarKey}
           imageUrl={participant.profileImageUrl}
           name={participant.name}
-          className="h-7 w-7 border-2 border-[color:var(--app-panel-bg)]"
+          className="h-7 w-7"
           generatedClassName="scale-105"
         />
       ))}
