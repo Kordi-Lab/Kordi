@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
@@ -8,7 +8,6 @@ import {
   cloudGroupTargetAccountIds,
   shouldRouteMentionThroughCloudGroup,
 } from '@/features/cloud/cloudGroupMessages';
-import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import type {
   AppendCanonicalMessageRequest,
@@ -19,7 +18,6 @@ import type {
   Message,
   DesktopChatState,
   DesktopCollaborationState,
-  DesktopCollaborationSessionParticipant,
   DesktopChatTurnSnapshot,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
@@ -81,7 +79,32 @@ import type {
 } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
-import { resolveDirectHostedAgentTarget } from './directHostedAgentTarget';
+import {
+  collaborationDirectSessionParticipants,
+  collaborationGroupSessionParticipants,
+  collaborationGroupSessionSendTargets,
+  collaborationGroupSessionSpaceId,
+  isCollaborationGroupSession,
+  shouldUseCollaborationConversationRouting,
+} from './collaborationRouting';
+import {
+  resolvedCloudConversationIdForCollaborationSend,
+  resolveDirectHostedAgentTarget,
+  resolveLockedKordiSupportCloudConversationId,
+  resolveLockedKordiSupportAgentTarget,
+} from './directHostedAgentTarget';
+
+export {
+  collaborationGroupMentionRelayTargets,
+  collaborationGroupSessionParticipants,
+  collaborationGroupSessionSendTargets,
+  collaborationGroupSessionSpaceId,
+  collaborationLocalAgentMentionCanRelay,
+  collaborationLocalAgentRelayTargets,
+  collaborationSessionOutreachTarget,
+  isCollaborationGroupSession,
+  shouldUseCollaborationConversationRouting,
+} from './collaborationRouting';
 
 async function persistCanonicalGroupMessageFailure(
   prepared: PreparedCanonicalUserMessage | null,
@@ -384,131 +407,6 @@ function cleanText(value?: string | null) {
   return value?.trim() || null;
 }
 
-function collaborationTargetIsAgent(target?: ConversationCollaborationTarget | null) {
-  const runtime = cleanText(target?.runtime);
-  return Boolean(cleanText(target?.agentId) || (runtime && isCollaborationAgentRuntime(runtime)));
-}
-
-export function collaborationSessionOutreachTarget(target: ConversationCollaborationTarget) {
-  const targetIsAgent = collaborationTargetIsAgent(target);
-  const displayName = cleanText(target.displayName) ?? cleanText(target.ownerName);
-  const ownerName = cleanText(target.ownerName) ?? (targetIsAgent ? null : displayName);
-  return {
-    targetKind: targetIsAgent ? 'agent' as const : 'person' as const,
-    targetRuntime: targetIsAgent ? (cleanText(target.runtime) ?? 'kordi-desktop') : 'person',
-    targetDisplayName: displayName,
-    targetOwnerName: ownerName,
-    targetHumanId: targetIsAgent ? null : cleanText(target.humanId),
-    targetAgentId: targetIsAgent ? cleanText(target.agentId) : null,
-  };
-}
-
-function participantIsSelf(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
-  return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
-}
-
-export function isCollaborationGroupSession(conversation?: {
-  canonicalSessionId?: string | null;
-  participantSpaceId?: string | null;
-  directness?: string | null;
-  canonicalParticipants?: Conversation['canonicalParticipants'];
-} | null) {
-  if (!conversation) return false;
-  if (conversation.canonicalSessionId?.startsWith('session:group:')) return true;
-  if (conversation.participantSpaceId?.startsWith('group:')) return true;
-  if (/\bgroup\b/i.test(conversation.directness ?? '')) return true;
-  const humanCount = (conversation.canonicalParticipants ?? [])
-    .filter((participant) => participant.kind === 'human' && !participantIsSelf(participant))
-    .length;
-  return humanCount > 1;
-}
-
-export function collaborationGroupSessionSpaceId(conversation?: {
-  canonicalSessionId?: string | null;
-  participantSpaceId?: string | null;
-} | null) {
-  const participantSpaceId = cleanText(conversation?.participantSpaceId);
-  if (participantSpaceId) {
-    return participantSpaceId.startsWith('group:') ? participantSpaceId.slice('group:'.length) : participantSpaceId;
-  }
-  return cleanText(conversation?.canonicalSessionId);
-}
-
-function asSelfCollaborationNodeIdSet(value?: ReadonlySet<string> | Iterable<string | null | undefined> | null) {
-  if (!value) return new Set<string>();
-  if (value instanceof Set) return value;
-  const result = new Set<string>();
-  for (const entry of value) {
-    const cleaned = cleanText(entry);
-    if (cleaned) result.add(cleaned);
-  }
-  return result;
-}
-
-export function collaborationGroupSessionSendTargets(
-  conversation: Pick<Conversation, 'canonicalParticipants'>,
-  fallbackTarget?: ConversationCollaborationTarget | null,
-  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
-) {
-  const targets = new Map<string, ConversationCollaborationTarget>();
-  const fallbackHostId = cleanText(fallbackTarget?.hostId);
-  const selfNodeIdSet = asSelfCollaborationNodeIdSet(selfCollaborationNodeIds);
-
-  for (const participant of conversation.canonicalParticipants ?? []) {
-    if (participant.kind !== 'human' || participantIsSelf(participant)) continue;
-    const nodeId = cleanText(participant.sourceIdentityId);
-    if (nodeId && selfNodeIdSet.has(nodeId)) continue;
-    const hostId = cleanText(participant.sourceHostId) ?? fallbackHostId;
-    if (!nodeId || !hostId) continue;
-    targets.set(`${hostId}:${nodeId}:${cleanText(participant.humanId) ?? ''}`, {
-      hostId,
-      nodeId,
-      displayName: cleanText(participant.name),
-      ownerName: cleanText(participant.ownerName) ?? cleanText(participant.name),
-      runtime: 'person',
-      humanId: cleanText(participant.humanId),
-      agentId: null,
-    });
-  }
-
-  if (targets.size === 0
-    && fallbackTarget?.hostId
-    && fallbackTarget.nodeId
-    && !selfNodeIdSet.has(fallbackTarget.nodeId)
-  ) {
-    targets.set(`${fallbackTarget.hostId}:${fallbackTarget.nodeId}:${fallbackTarget.humanId ?? ''}`, {
-      ...fallbackTarget,
-      runtime: 'person',
-      agentId: null,
-    });
-  }
-
-  return [...targets.values()];
-}
-
-export function shouldUseCollaborationConversationRouting({
-  activeConversationUsesCollaboration,
-  activeConvCollaborationTarget,
-  activeGroupSessionScope,
-  selfCollaborationNodeIds,
-}: {
-  activeConversationUsesCollaboration: boolean;
-  activeConvCollaborationTarget?: ConversationCollaborationTarget | null;
-  activeGroupSessionScope?: (Pick<Conversation, 'canonicalParticipants'> & {
-    canonicalSessionId?: string | null;
-    participantSpaceId?: string | null;
-    directness?: string | null;
-  }) | null;
-  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null;
-}) {
-  return activeConversationUsesCollaboration
-    || Boolean(activeConvCollaborationTarget)
-    || Boolean(
-      isCollaborationGroupSession(activeGroupSessionScope)
-      && collaborationGroupSessionSendTargets(activeGroupSessionScope ?? {}, activeConvCollaborationTarget, selfCollaborationNodeIds).length > 0,
-    );
-}
-
 export function activeLocalTurnShouldDelayChatSend({
   activeConversationUsesCollaborationRouting,
   activeConvId,
@@ -599,130 +497,10 @@ export function restoredSelfAgentContextMessages(messages: readonly Message[]): 
   });
 }
 
-export function collaborationLocalAgentMentionCanRelay({
-  activeGroupSessionIsGroup,
-  activeConvCollaborationTarget,
-  hasLocalAgentMention,
-}: {
-  activeGroupSessionIsGroup: boolean;
-  activeConvCollaborationTarget?: ConversationCollaborationTarget | null;
-  hasLocalAgentMention: boolean;
-}) {
-  return Boolean(hasLocalAgentMention && (activeGroupSessionIsGroup || activeConvCollaborationTarget));
-}
-
-export function collaborationLocalAgentRelayTargets(
-  conversation: { canonicalParticipants?: Conversation['canonicalParticipants']; directness?: string | null },
-  fallbackTarget?: ConversationCollaborationTarget | null,
-  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
-) {
-  if (isCollaborationGroupSession(conversation)) {
-    return collaborationGroupSessionSendTargets(conversation, fallbackTarget, selfCollaborationNodeIds);
-  }
-  if (!fallbackTarget?.hostId || !fallbackTarget.nodeId) return [];
-  const selfNodeIdSet = asSelfCollaborationNodeIdSet(selfCollaborationNodeIds);
-  if (selfNodeIdSet.has(fallbackTarget.nodeId)) return [];
-  return [{ ...fallbackTarget, runtime: 'person', agentId: null }];
-}
-
-export function collaborationGroupMentionRelayTargets(
-  conversation: Pick<Conversation, 'canonicalParticipants'> & { directness?: string | null },
-  mentionedTarget?: { peer?: { nodeId?: string | null; humanId?: string | null } | null } | null,
-  fallbackTarget?: ConversationCollaborationTarget | null,
-  selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null,
-) {
-  if (!isCollaborationGroupSession(conversation)) return [];
-  const mentionedNodeId = cleanText(mentionedTarget?.peer?.nodeId);
-  const mentionedHumanId = cleanText(mentionedTarget?.peer?.humanId);
-  return collaborationGroupSessionSendTargets(conversation, fallbackTarget, selfCollaborationNodeIds).filter((target) => {
-    if (mentionedHumanId && target.humanId === mentionedHumanId) return false;
-    if (mentionedNodeId && target.nodeId === mentionedNodeId) return false;
-    return true;
-  });
-}
-
-function isSelfReferencePeerLabel(value: string | null | undefined) {
-  const trimmed = value?.trim().toLowerCase() ?? '';
-  return trimmed === 'me' || trimmed === 'you';
-}
-
-export function collaborationGroupSessionParticipants(
-  conversation: Pick<Conversation, 'canonicalParticipants'>,
-  options: { selfPublicName?: string | null } = {},
-): DesktopCollaborationSessionParticipant[] {
-  const selfPublicName = cleanText(options.selfPublicName ?? undefined);
-  const participants = new Map<string, DesktopCollaborationSessionParticipant>();
-  for (const participant of conversation.canonicalParticipants ?? []) {
-    if (participant.kind !== 'human') continue;
-    const rawDisplayName = cleanText(participant.name);
-    if (!rawDisplayName) continue;
-    const sourceIdentityId = cleanText(participant.sourceIdentityId);
-    const humanId = cleanText(participant.humanId);
-    const isSelf = participantIsSelf(participant);
-    if (isSelf && !sourceIdentityId && !humanId) continue;
-    // Don't broadcast self-reference labels like "Me"/"You" to other peers — those collide on
-    // the receiver side and end up rendered as "Me" for every group member.
-    const displayName = isSelf && isSelfReferencePeerLabel(rawDisplayName) && selfPublicName
-      ? selfPublicName
-      : rawDisplayName;
-    participants.set(participant.id || `${sourceIdentityId ?? ''}:${humanId ?? ''}:${displayName}`, {
-      identityId: cleanText(participant.id),
-      displayName,
-      kind: 'human',
-      role: isSelf ? 'self' : (cleanText(participant.role) ?? 'person'),
-      sourceIdentityId,
-      humanId,
-      runtime: 'person',
-    });
-  }
-  return [...participants.values()];
-}
-
-function collaborationDirectSessionParticipants(
-  conversation: Pick<Conversation, 'canonicalParticipants'>,
-  activeCollaborationHost: DesktopCollaborationState['hosts'][number] | null | undefined,
-  activeTarget: ConversationCollaborationTarget | null | undefined,
-  options: { selfPublicName?: string | null } = {},
-): DesktopCollaborationSessionParticipant[] {
-  const canonicalParticipants = collaborationGroupSessionParticipants(conversation, options);
-  if (canonicalParticipants.length > 0) return canonicalParticipants;
-
-  const participants: DesktopCollaborationSessionParticipant[] = [];
-  const selfDisplayName = cleanText(options.selfPublicName) || cleanText(activeCollaborationHost?.ownerName) || cleanText(activeCollaborationHost?.displayName) || 'Me';
-  const selfNodeId = cleanText(activeCollaborationHost?.nodeId);
-  const selfHumanId = cleanText(activeCollaborationHost?.humanId);
-  if (selfNodeId || selfHumanId) {
-    participants.push({
-      identityId: selfHumanId ? `human:${selfHumanId}` : null,
-      displayName: selfDisplayName,
-      kind: 'human',
-      role: 'self',
-      sourceIdentityId: selfNodeId,
-      humanId: selfHumanId,
-      runtime: 'person',
-    });
-  }
-
-  const targetNodeId = cleanText(activeTarget?.nodeId);
-  const targetHumanId = cleanText(activeTarget?.humanId);
-  const targetDisplayName = cleanText(activeTarget?.ownerName) || cleanText(activeTarget?.displayName) || targetHumanId || targetNodeId;
-  if (targetDisplayName && (targetNodeId || targetHumanId)) {
-    participants.push({
-      identityId: targetHumanId ? `human:${targetHumanId}` : null,
-      displayName: targetDisplayName,
-      kind: 'human',
-      role: 'person',
-      sourceIdentityId: targetNodeId,
-      humanId: targetHumanId,
-      runtime: 'person',
-    });
-  }
-  return participants;
-}
-
 export function useChatMessageActions({
   activeConversationUsesCollaboration,
   activeConvCollaborationTarget,
+  activeConvSupportTicketEnabled,
   activeConvCanonicalSessionId,
   activeConvId,
   activeConvMessages,
@@ -763,6 +541,32 @@ export function useChatMessageActions({
   shouldAutoFollowChatRef,
   watchDesktopLiveTurn,
 }: UseChatMessageActionsArgs) {
+  const resolvedActiveCloudConversationId =
+    resolvedCloudConversationIdForCollaborationSend(
+      activeConvId,
+      activeConvCanonicalSessionId,
+      activeConvCollaborationTarget?.nodeId,
+    );
+  const lockedSupportAgentTarget = useMemo(() => (
+    resolveLockedKordiSupportAgentTarget({
+      conversationId: activeConvId,
+      resolvedConversationId: resolvedActiveCloudConversationId,
+      canonicalSessionId: activeConvCanonicalSessionId,
+      supportTicketEnabled: activeConvSupportTicketEnabled,
+      activeTarget: activeConvCollaborationTarget,
+    })
+  ), [
+    activeConvCanonicalSessionId,
+    activeConvCollaborationTarget,
+    activeConvId,
+    activeConvSupportTicketEnabled,
+    resolvedActiveCloudConversationId,
+  ]);
+  const activeCloudConversationId = resolveLockedKordiSupportCloudConversationId({
+    resolvedConversationId: resolvedActiveCloudConversationId,
+    canonicalSessionId: activeConvCanonicalSessionId,
+    lockedTarget: lockedSupportAgentTarget,
+  }) ?? resolvedActiveCloudConversationId;
   const queuedDesktopMessagesBySessionRef = useRef(queuedDesktopMessagesBySession);
   const flushQueuedDesktopMessagesForSessionRef = useRef<(sessionId: string) => void>(() => {});
 
@@ -1313,6 +1117,7 @@ export function useChatMessageActions({
       activeConvCollaborationTarget,
       activeGroupSessionScope,
       selfCollaborationNodeIds: localCollaborationNodeIds,
+      forceCollaborationRouting: Boolean(lockedSupportAgentTarget),
     });
     const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? collaborationGroupSessionSpaceId(activeGroupSessionScope) : null;
     const activeCollaborationHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
@@ -1415,7 +1220,7 @@ export function useChatMessageActions({
 
       if (
         activeConversationUsesCollaborationRouting
-        && isCloudCollaborationConversationId(activeConvId)
+        && isCloudCollaborationConversationId(activeCloudConversationId)
         && sendCloudCollaborationMessage
         && setCloudCollaborationState
       ) {
@@ -1425,12 +1230,26 @@ export function useChatMessageActions({
           setDesktopChatError(null);
           setCloudCollaborationState((current) => markOptimisticCollaborationMessageSending(
             current,
-            activeConvId,
+            activeCloudConversationId,
             retryMessageId,
           ));
+          const retryDirectHostedAgentTarget = resolveDirectHostedAgentTarget({
+            mentionedAgentId: null,
+            mentionedTarget: null,
+            activeTarget: activeConvCollaborationTarget,
+            lockedTarget: lockedSupportAgentTarget,
+          });
+          const retryCloudBody = retryDirectHostedAgentTarget
+            ? encodeCloudDirectMessageEnvelope({
+                schemaVersion: 1,
+                kind: 'message',
+                text,
+                ...retryDirectHostedAgentTarget,
+              })
+            : text;
           await sendCloudCollaborationMessage(
-            activeConvId,
-            text,
+            activeCloudConversationId,
+            retryCloudBody,
             retryAttachments,
             { clientMessageId: retryMessageId },
           );
@@ -1439,7 +1258,7 @@ export function useChatMessageActions({
           const failureDetail = collaborationSendFailureDetail(error, 'Unable to retry message');
           setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(
             current,
-            activeConvId,
+            activeCloudConversationId,
             retryMessageId,
             failureDetail,
           ));
@@ -1626,14 +1445,14 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeConvId)) {
+    if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeCloudConversationId)) {
       if (!sendCloudCollaborationMessage || !setCloudCollaborationState) {
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = `cloud-pending-${Date.now()}`;
-      const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeConvId);
+      const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -1642,12 +1461,13 @@ export function useChatMessageActions({
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         if (appendedOptimisticCollaborationMessage) {
-          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
+          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeCloudConversationId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
         }
         const directHostedAgentTarget = resolveDirectHostedAgentTarget({
           mentionedAgentId: targetCloudAgentId,
           mentionedTarget,
           activeTarget: activeConvCollaborationTarget,
+          lockedTarget: lockedSupportAgentTarget,
         });
         const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget);
         const cloudBody = shouldEncodeDirectEnvelope
@@ -1660,23 +1480,28 @@ export function useChatMessageActions({
             })
           : text;
         await sendCloudCollaborationMessage(
-          activeConvId,
+          activeCloudConversationId,
           cloudBody,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
         );
-        if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeConvId)) {
+        if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeCloudConversationId)) {
           setCloudCollaborationState(null);
         }
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
         if (appendedOptimisticCollaborationMessage) {
-          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
+          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, activeCloudConversationId, optimisticMessageId, failureDetail));
         }
         setDesktopChatError(failureDetail);
       } finally {
         setIsDesktopChatSending(false);
       }
+      return;
+    }
+
+    if (lockedSupportAgentTarget) {
+      setDesktopChatError('Kordi Support is still loading. Try again in a moment.');
       return;
     }
 
@@ -2001,10 +1826,13 @@ export function useChatMessageActions({
   }, [
     activeConversationUsesCollaboration,
     activeConvCollaborationTarget,
+    activeConvSupportTicketEnabled,
     activeConvCanonicalSessionId,
     activeConvId,
+    activeCloudConversationId,
     activeConvMessages,
     activeConvMentionScope,
+    lockedSupportAgentTarget,
     sharedCloudAgents,
     resolveSharedCloudAgentsForMention,
     activeChatQuote,

@@ -24,6 +24,8 @@ When the user asks to create, submit, or report an issue, question, or feedback 
 
 Use category "issue", "question", or "feedback". The JSON must be valid and must not contain Markdown fences. Do not explain the machine-readable block. The desktop app converts it into an Approve or Decline permission card. Never claim that drafting this block sent anything; only the desktop app can confirm submission after the user approves it.
 
+You can prepare a support ticket from this chat. Never tell the user that you cannot create a ticket or that they must open a separate support form. Preparing the report is not permission to submit it: always emit the report block and let the desktop approval card request permission.
+
 Never ask the user to paste provider credentials or authentication material. Never include chat history, files, diagnostics, credentials, secrets, or unrelated conversation data in a report draft. Never reveal private infrastructure details or data outside this support conversation. Never claim that a ticket, email, or GitHub issue was created unless the product explicitly confirms it."#;
 
 pub async fn bootstrap_support_agent(
@@ -210,6 +212,9 @@ mod tests {
         assert!(SUPPORT_SYSTEM_PROMPT.contains("Ask whether the user wants to send"));
         assert!(SUPPORT_SYSTEM_PROMPT.contains("<kordi-support-report>"));
         assert!(SUPPORT_SYSTEM_PROMPT.contains("Approve or Decline permission card"));
+        assert!(
+            SUPPORT_SYSTEM_PROMPT.contains("Never tell the user that you cannot create a ticket")
+        );
         assert!(
             SUPPORT_SYSTEM_PROMPT.contains("Never claim that drafting this block sent anything")
         );

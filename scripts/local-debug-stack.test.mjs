@@ -100,6 +100,57 @@ test('operator debug is allowlisted to the staged core GitHub account', () => {
   assert.deepEqual(allowlist, ['shuyhere']);
 });
 
+test('isolated desktop profiles initialize native Cloud account storage', () => {
+  const profile = `storage-test-${process.pid}`;
+  const port = '1499';
+  const scriptPath = join(repoRoot, 'app', 'desktop', 'scripts', 'tauri-dev-profile.mjs');
+  const generatedConfigPath = join(
+    repoRoot,
+    'app',
+    'desktop',
+    'src-tauri',
+    '.tauri-dev',
+    `${profile}-${port}.json`,
+  );
+  const env = {
+    ...process.env,
+    VITE_KORDI_CLOUD_API_BASE: 'http://127.0.0.1:17081',
+    VITE_KORDI_DEV_PROFILE: 'community',
+  };
+
+  try {
+    const generated = spawnSync(
+      process.execPath,
+      [scriptPath, '--dry-run', '--profile', profile, '--port', port],
+      { cwd: repoRoot, env, encoding: 'utf8' },
+    );
+    assert.equal(generated.status, 0, generated.stderr);
+    assert.match(
+      generated.stdout,
+      new RegExp(`"identifier": "io\\.kordi\\.cloud\\.${profile}"`),
+    );
+
+    const rejected = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--dry-run',
+        '--profile',
+        profile,
+        '--port',
+        port,
+        '--identifier',
+        `io.kordi.desktop.${profile}`,
+      ],
+      { cwd: repoRoot, env, encoding: 'utf8' },
+    );
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /must use io\.kordi\.cloud/i);
+  } finally {
+    rmSync(generatedConfigPath, { force: true });
+  }
+});
+
 test('operator debug launcher rejects other GitHub accounts and exports no database credentials', () => {
   const tempRoot = mkdtempSync(join(tmpdir(), 'kordi-operator-test-'));
   const binDir = join(tempRoot, 'bin');

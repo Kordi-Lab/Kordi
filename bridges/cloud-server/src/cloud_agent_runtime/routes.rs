@@ -6,7 +6,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Extension, Json, Router};
 use chrono::Utc;
-use serde_json::json;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::cloud_agent_runtime::artifacts::{
@@ -19,10 +18,11 @@ use crate::cloud_agent_runtime::provider_auth::{
     RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
-    claim_has_shared_cloud_agent_target, claim_run, complete_run, fail_run, lease_canary_run,
-    lease_next_run, lookup_run_for_request, mark_run_running, requester_can_target_owner,
+    claim_has_shared_cloud_agent_target, claim_run, complete_run, error_response, fail_run,
+    lease_canary_run, lease_next_run, lookup_run_for_request, mark_run_running,
+    requester_can_target_owner, run_error_response, runner_unauthorized,
     validate_shared_cloud_agent_claim, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
-    RunError, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
+    RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::presence::{account_presence_status, presence_timeout, AccountPresenceStatus};
 use crate::server::ServerState;
@@ -76,17 +76,6 @@ pub fn routes(state: Arc<ServerState>) -> Router {
     user_routes.merge(runner_routes)
 }
 
-fn error_response(error_code: &'static str, message: &'static str, status: StatusCode) -> Response {
-    (
-        status,
-        Json(json!({
-            "errorCode": error_code,
-            "message": message,
-        })),
-    )
-        .into_response()
-}
-
 fn runner_authorized(headers: &HeaderMap) -> bool {
     let Ok(expected) = std::env::var("KORDI_CLOUD_RUNNER_TOKEN") else {
         return false;
@@ -105,36 +94,6 @@ fn runner_authorized(headers: &HeaderMap) -> bool {
 
 pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
     runner_authorized(headers)
-}
-
-fn runner_unauthorized() -> Response {
-    error_response(
-        "invalid_runner_token",
-        "Missing or invalid Cloud runner token.",
-        StatusCode::UNAUTHORIZED,
-    )
-}
-
-fn run_error_response(
-    context: &'static str,
-    persistence_message: &'static str,
-    error: RunError,
-) -> Response {
-    match error {
-        RunError::NotFound => error_response(
-            "agent_run_not_found",
-            "Cloud agent run was not found for this runner.",
-            StatusCode::NOT_FOUND,
-        ),
-        RunError::Persistence(source) => {
-            eprintln!("[cloud_agent_runtime] {context}: {source}");
-            error_response(
-                "server_error",
-                persistence_message,
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    }
 }
 
 async fn lease_runner_run(
@@ -232,6 +191,9 @@ async fn fail_runner_run(
         &runner_id,
         &input.error_code(),
         &input.message,
+        state
+            .support()
+            .map(|service| service.config().agent_id.as_str()),
     )
     .await
     {

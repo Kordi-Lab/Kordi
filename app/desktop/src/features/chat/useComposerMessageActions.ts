@@ -50,6 +50,7 @@ export function useComposerMessageActions({
     activeConvCanonicalSessionId,
     activeConvMessages,
     activeConvCollaborationTarget,
+    activeConvSupportTicketEnabled,
     activeConvMentionScope,
     sharedCloudAgents,
     resolveSharedCloudAgentsForMention,
@@ -181,6 +182,7 @@ export function useComposerMessageActions({
   const { handleSendChatMessage, handleRetryChatMessage } = useChatMessageActions({
     activeConversationUsesCollaboration,
     activeConvCollaborationTarget,
+    activeConvSupportTicketEnabled,
     activeConvCanonicalSessionId,
     activeConvId,
     activeConvMessages,

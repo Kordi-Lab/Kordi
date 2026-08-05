@@ -27,6 +27,7 @@ use envelopes::{
     cloud_group_response_body, parse_cloud_group_envelope, CloudGroupEnvelope, CloudGroupMessage,
     CloudGroupParticipant,
 };
+pub(crate) use errors::{error_response, run_error_response, runner_unauthorized};
 pub use errors::{RunError, RunResult};
 pub use leases::{
     lease_canary_run, lease_next_run, mark_run_running, RunnerLeaseResponse, RunnerRunEnvelope,

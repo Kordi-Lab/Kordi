@@ -202,6 +202,7 @@ export function useKordiAppRuntimeActions({
       activeConvCanonicalSessionId: activeConv.canonicalSessionId,
       activeConvMessages: activeConv.messages,
       activeConvCollaborationTarget: activeConv.collaborationTarget,
+      activeConvSupportTicketEnabled: activeConv.supportTicketEnabled,
       activeConvMentionScope,
       sharedCloudAgents: mentionableCloudAgents,
       resolveSharedCloudAgentsForMention,

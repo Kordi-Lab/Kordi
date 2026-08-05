@@ -80,6 +80,22 @@ The launcher fails closed unless all of these are true:
 
 Do not add community contributors to this allowlist to work around the normal production guard. Use the isolated backend or an approved staging API instead.
 
+### If a preview reports `app_data_dir_unavailable`
+
+This error is a local native-launch configuration failure, not evidence of account-data loss or a hosted-backend outage. Tauri resolves the application data directory during native startup. An isolated preview that uses an `io.kordi.desktop.*` identifier is treated as a non-Cloud bundle, so Cloud account storage is not initialized before the renderer asks for it.
+
+Always launch an operator preview through the approved wrapper. Isolated profile identifiers must be `io.kordi.cloud` or begin with `io.kordi.cloud.`. The profile launcher now chooses that namespace by default and rejects desktop-style overrides:
+
+```bash
+KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
+  pnpm dev:cloud:operator -- "<APPROVED_REMOTE_API_BASE>" \
+  --port <LOCAL_PORT> \
+  --profile <PREVIEW_NAME> \
+  --title "<PREVIEW_TITLE>"
+```
+
+Do not add `--identifier io.kordi.desktop.<name>`. If this error appears, quit that preview and relaunch it with the wrapper; do not delete the account database, cache, or application-data directory. A corrected identifier intentionally gives the isolated preview its own Cloud application-data directory, so a fresh sign-in may be required once.
+
 ## Internal/operator local tunnel debug pipeline
 
 Use this path only when an operator explicitly asks you to test against a private hosted backend through a local tunnel. Keep all real operator hostnames, projects, account names, private IPs, and credentials out of commits, PRs, screenshots, and shared logs.

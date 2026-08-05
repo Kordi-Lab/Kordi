@@ -15,13 +15,13 @@ import {
   isCollaborationAgentResponseDirection,
 } from '@/features/collaboration/collaborationProcessingState';
 import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
-import { KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
+import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
+import { isKordiSupportConversation, KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
 type CollaborationConversationViewModel = Conversation & {
   _updatedAtMs?: number;
 };
-
 function collaborationHostLabel(host?: DesktopCollaborationHost | null) {
   return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Cloud';
 }
@@ -227,8 +227,8 @@ export function mapCollaborationConversationToViewModel(
   nowMs: number = Date.now(),
 ): CollaborationConversationViewModel {
   const hostLabel = collaborationHostLabel(host);
-  const isSupportContact = Boolean(conversation.supportTicketEnabled);
-  const isPersonChat = isCollaborationConversationPersonChat(conversation);
+  const isSupportContact = isKordiSupportConversation(conversation);
+  const isPersonChat = isSupportContact || isCollaborationConversationPersonChat(conversation);
   const isCloudSelfAgent = conversation.hostId === 'cloud'
     && conversation.peerNodeId === conversation.identity?.localHumanId
     && conversation.identity?.remoteAgentId === conversation.identity?.localAgentId;
@@ -501,7 +501,7 @@ export function mapCollaborationConversationToViewModel(
     return [mappedMessage];
   });
 
-  if (((isAgent && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
+  if ((((isAgent || isSupportContact) && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
     const outreachRequestId = conversation.outreach?.sourceRequestId?.trim();
     const requestMessageIds = [...requestMessageIdByRequestId.values()];
     const replyToMessageId = outreachRequestId
@@ -551,7 +551,7 @@ export function mapCollaborationConversationToViewModel(
   };
   return {
     id: conversation.id,
-    supportTicketEnabled: Boolean(conversation.supportTicketEnabled),
+    supportTicketEnabled: isSupportContact,
     canonicalSessionId: conversation.canonicalSessionId,
     name: isSupportContact ? remoteAgentLabel : conversation.title,
     type: isCloudSelfAgent ? 'owned-agent' : isAgent ? 'external-agent' : 'person',
@@ -582,7 +582,7 @@ export function mapCollaborationConversationToViewModel(
     participantProfileImageUrls,
     collaborationTarget: collaborationTarget,
     collaborationUnreadByParentSessionId: collaborationUnreadByParentSessionId(conversation),
-    messages,
+    messages: isSupportContact ? normalizeSupportContactMessages(messages) : messages,
     _updatedAtMs: conversation.updatedAtMs,
   };
 }

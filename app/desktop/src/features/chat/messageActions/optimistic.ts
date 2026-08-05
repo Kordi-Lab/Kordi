@@ -171,12 +171,14 @@ export function appendOptimisticCollaborationMessage(
   const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
   const nextConversations = current.conversations.map((conversation) => {
     if (conversation.id !== conversationId) return conversation;
+    const expectsAgentReply = Boolean(conversation.supportTicketEnabled)
+      || isCollaborationAgentRuntime(conversation.peerRuntime);
     return {
       ...conversation,
       subtitle: subtitleText,
       updatedAtMs: timestampMs,
       updatedAtLabel: sentAt,
-      awaitingReply: isCollaborationAgentRuntime(conversation.peerRuntime),
+      awaitingReply: expectsAgentReply,
       messages: [
         ...conversation.messages,
         {
@@ -186,6 +188,7 @@ export function appendOptimisticCollaborationMessage(
           text,
           timeLabel: sentAt,
           timestampMs,
+          requestId: expectsAgentReply ? optimisticMessageId : null,
           deliveryState: 'sending',
           attachments: toOptimisticAttachments(attachments),
           messageAction: quoteAction,

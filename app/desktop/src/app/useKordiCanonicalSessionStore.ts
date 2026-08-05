@@ -35,6 +35,56 @@ import {
   stripDerivedCloudUnreadCounts,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
+import {
+  cloudPeerAccountIdFromConversationId,
+  cloudSessionIdFromConversationId,
+  isCloudCollaborationConversationId,
+} from '@/features/collaboration/conversationIds';
+import {
+  KORDI_SUPPORT_ACCOUNT_ID,
+  KORDI_SUPPORT_AGENT_ID,
+} from '@/features/support/supportIdentity';
+
+export function resolveCanonicalPageSessionId(
+  candidate: string | null | undefined,
+  catalogSessionIds: ReadonlySet<string>,
+  conversations: DesktopCollaborationState['conversations'] = [],
+) {
+  const id = candidate?.trim() ?? '';
+  if (!id) return null;
+  if (catalogSessionIds.has(id)) return id;
+  const matchedConversation = conversations.find((conversation) => (
+    conversation.id === id
+    || conversation.canonicalSessionId === id
+  ));
+  const matchedSessionId = matchedConversation?.canonicalSessionId?.trim();
+  if (matchedSessionId && catalogSessionIds.has(matchedSessionId)) {
+    return matchedSessionId;
+  }
+  if (
+    !isCloudCollaborationConversationId(id)
+    || cloudSessionIdFromConversationId(id)
+  ) {
+    return null;
+  }
+  const peerAccountId = cloudPeerAccountIdFromConversationId(id);
+  const exactSupportConversation = conversations.find((conversation) => (
+    conversation.supportTicketEnabled
+    && conversation.peerNodeId === peerAccountId
+  ));
+  const legacySupportConversation = exactSupportConversation
+    ?? (peerAccountId === KORDI_SUPPORT_ACCOUNT_ID
+      ? conversations.find((conversation) => (
+          conversation.supportTicketEnabled
+          && conversation.identity?.remoteAgentId === KORDI_SUPPORT_AGENT_ID
+        ))
+      : undefined);
+  const legacySupportSessionId = legacySupportConversation?.canonicalSessionId?.trim();
+  return legacySupportSessionId
+    && catalogSessionIds.has(legacySupportSessionId)
+    ? legacySupportSessionId
+    : null;
+}
 
 export function useKordiCanonicalSessionStore({
   accountId,
@@ -288,20 +338,13 @@ export function useKordiCanonicalPageHydration({
     const catalogSessionIds = new Set(
       store.catalog?.sessions.map((session) => session.id) ?? [],
     );
-    const resolve = (candidate: string | null | undefined) => {
-      const id = candidate?.trim() ?? '';
-      if (!id) return null;
-      if (catalogSessionIds.has(id)) return id;
-      const collaborationSessionId =
-        collaborationState?.conversations.find((conversation) => (
-          conversation.id === id
-          || conversation.canonicalSessionId === id
-        ))?.canonicalSessionId?.trim();
-      return collaborationSessionId
-        && catalogSessionIds.has(collaborationSessionId)
-        ? collaborationSessionId
-        : null;
-    };
+    const resolve = (candidate: string | null | undefined) => (
+      resolveCanonicalPageSessionId(
+        candidate,
+        catalogSessionIds,
+        collaborationState?.conversations,
+      )
+    );
     return uniqueStrings([
       resolve(activeConversationId) ?? '',
       resolve(activeProjectSessionId) ?? '',

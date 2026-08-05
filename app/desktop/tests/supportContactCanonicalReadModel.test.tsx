@@ -11,8 +11,39 @@ import {
   KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
 } from '../src/features/support/supportIdentity';
+import { normalizeSupportContactMessages } from '../src/features/support/supportConversationPresentation';
 
 const sessionId = 'session:direct-agent:acct_me:cloud_agent_kordi_support';
+
+test('support presentation hides stale local provider failures only', () => {
+  const messages = normalizeSupportContactMessages([
+    {
+      id: 'provider-failure',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      text: 'No provider configured yet.',
+      detail: 'Open authentication',
+      time: '12:46',
+    },
+    {
+      id: 'support-answer',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      text: 'Kordi Support is ready.',
+      time: '12:47',
+    },
+    {
+      id: 'user-question',
+      role: 'user',
+      sender: 'Me',
+      text: 'Why does another chat say no provider configured?',
+      time: '12:48',
+    },
+  ]);
+
+  assert.deepEqual(messages.map((message) => message.id), ['support-answer', 'user-question']);
+  assert.equal(messages[0]?.sender, KORDI_SUPPORT_NAME);
+});
 
 test('canonical hydration preserves the fixed Kordi Support contact identity', () => {
   const readModel = createCanonicalSessionReadModel({
@@ -119,4 +150,83 @@ test('canonical hydration preserves the fixed Kordi Support contact identity', (
   const spaces = buildParticipantSpaces([conversation as never]);
   assert.equal(filterParticipantSpaces(spaces, '', 'contact')[0]?.title, KORDI_SUPPORT_NAME);
   assert.equal(filterParticipantSpaces(spaces, '', 'agent').length, 0);
+});
+
+test('canonical hydration keeps runtime Kordi Support visible before its session materializes', () => {
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [],
+    sessions: [],
+    participants: [],
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as never);
+
+  const runtimeSupportConversation = {
+    id: `cloud:conversation:acct_real_support_owner:agent:session:${encodeURIComponent('session:direct-system-agent:acct_me:cloud_agent_kordi_support')}`,
+    supportTicketEnabled: true,
+    canonicalSessionId: 'session:direct-system-agent:acct_me:cloud_agent_kordi_support',
+    name: KORDI_SUPPORT_NAME,
+    type: 'external-agent',
+    subtitle: 'Hi! How can I help?',
+    unread: 0,
+    collaborationSources: ['Cloud'],
+    trust: 'Cloud',
+    directness: 'Agent chat',
+    participants: ['Me', KORDI_SUPPORT_NAME],
+    collaborationTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_real_support_owner',
+      displayName: KORDI_SUPPORT_NAME,
+      runtime: 'kordi-desktop',
+      agentId: KORDI_SUPPORT_AGENT_ID,
+    },
+    messages: [
+      { id: 'runtime:greeting', role: 'user', sender: 'Me', text: 'hi', time: '11:35' },
+      {
+        id: 'runtime:greeting-response',
+        role: 'external-agent',
+        sender: KORDI_SUPPORT_NAME,
+        text: '',
+        time: '11:35',
+        turn: {
+          id: 'turn:greeting-response',
+          sessionId: 'session:direct-system-agent:acct_me:cloud_agent_kordi_support',
+          prompt: '',
+          status: 'complete',
+          message: 'Complete',
+          assistantText: 'Hi! How can I help?',
+          thinkingText: '',
+          tools: [],
+          completed: true,
+          succeeded: true,
+          error: null,
+        },
+      },
+    ],
+  };
+
+  const conversations = readModel?.buildChatConversations(
+    [runtimeSupportConversation as never],
+    (messages, fallback) => messages.at(-1)?.turn?.assistantText || messages.at(-1)?.text || fallback || '',
+  ) ?? [];
+
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0]?.id, runtimeSupportConversation.id);
+  assert.equal(conversations[0]?.name, KORDI_SUPPORT_NAME);
+  assert.deepEqual(
+    conversations[0]?.messages.map((message) => message.turn?.assistantText || message.text),
+    ['hi', 'Hi! How can I help?'],
+  );
 });

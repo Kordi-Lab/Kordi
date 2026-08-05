@@ -52,11 +52,12 @@ test('direct cloud first sends and retries share the same idempotency key', () =
   const source = chatMessagesSource();
   assert.match(
     source,
-    /sendCloudCollaborationMessage\(\s*activeConvId,\s*text,\s*retryAttachments,\s*\{ clientMessageId: retryMessageId \},/,
+    /const retryCloudBody = retryDirectHostedAgentTarget[\s\S]*?encodeCloudDirectMessageEnvelope\([\s\S]*?: text;[\s\S]*?sendCloudCollaborationMessage\(\s*activeCloudConversationId,\s*retryCloudBody,\s*retryAttachments,\s*\{ clientMessageId: retryMessageId \},/,
+    'direct retries must preserve the idempotency key and re-encode hosted-agent routing metadata',
   );
   assert.match(
     source,
-    /sendCloudCollaborationMessage\(\s*activeConvId,\s*cloudBody,\s*chatComposerAttachments,\s*\{ clientMessageId: optimisticMessageId \},/,
+    /sendCloudCollaborationMessage\(\s*activeCloudConversationId,\s*cloudBody,\s*chatComposerAttachments,\s*\{ clientMessageId: optimisticMessageId \},/,
   );
 
   const directMessagingSource = cloudDirectMessagingSource();

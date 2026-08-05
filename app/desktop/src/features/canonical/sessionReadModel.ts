@@ -16,6 +16,7 @@ import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessage
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
 import {
+  isKordiSupportConversation,
   KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
 } from '@/features/support/supportIdentity';
@@ -371,9 +372,7 @@ function shouldKeepRuntimeChatConversationExtra(
     return true;
   }
 
-  if (conversation.transientDraft) {
-    return true;
-  }
+  if (conversation.transientDraft || isKordiSupportConversation(conversation)) return true;
 
   const sessionId = conversation.canonicalSessionId ?? conversation.id;
   if (indexes.sessionById.has(sessionId)) {
@@ -546,7 +545,7 @@ export function createCanonicalSessionReadModel(
       const session = indexes.sessionById.get(sessionId);
       if (!session) return conversation;
 
-      const isSupportContact = Boolean(conversation.supportTicketEnabled);
+      const isSupportContact = isKordiSupportConversation(conversation);
       const isLegacyCollaborationPersonSession = session.kind === 'direct-person' && isLegacyCanonicalCollaborationSessionId(sessionId);
       const isLegacyCollaborationSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { appendOptimisticCollaborationMessage } from '../src/features/chat/messageActions/optimistic';
 import { COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS } from '../src/features/collaboration/collaborationProcessingState';
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
-import type { DesktopCollaborationConversation } from '../src/kordi-app/types';
+import { KORDI_SUPPORT_ACCOUNT_ID, KORDI_SUPPORT_AGENT_ID, KORDI_SUPPORT_NAME } from '../src/features/support/supportIdentity';
+import type { DesktopCollaborationConversation, DesktopCollaborationState } from '../src/kordi-app/types';
 
 function conversation(
   overrides: Partial<DesktopCollaborationConversation> = {},
@@ -83,4 +85,112 @@ test('bridge transcript keeps a fresh processing response visible', () => {
   );
 
   assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), true);
+});
+
+test('Kordi Support shows processing immediately after an optimistic send', () => {
+  const supportConversationId = `bridge:cloud:${KORDI_SUPPORT_ACCOUNT_ID}:person`;
+  const state: DesktopCollaborationState = {
+    activeHostId: 'cloud',
+    hosts: [],
+    conversations: [conversation({
+      id: supportConversationId,
+      canonicalSessionId: `session:bridge:agents:${KORDI_SUPPORT_AGENT_ID}`,
+      peerNodeId: KORDI_SUPPORT_ACCOUNT_ID,
+      peerDisplayName: KORDI_SUPPORT_NAME,
+      peerOwnerName: KORDI_SUPPORT_NAME,
+      peerRuntime: 'kordi-desktop',
+      title: KORDI_SUPPORT_NAME,
+      subtitle: 'Ask questions or suggest improvements',
+      supportTicketEnabled: true,
+      awaitingReply: false,
+      messages: [],
+    })],
+  };
+
+  const next = appendOptimisticCollaborationMessage(
+    state,
+    supportConversationId,
+    'Which model are you using?',
+    '07:42',
+    'support-request-1',
+  );
+  const optimisticConversation = next?.conversations[0];
+  assert.ok(optimisticConversation);
+  assert.equal(optimisticConversation.awaitingReply, true);
+  assert.equal(optimisticConversation.messages[0]?.requestId, 'support-request-1');
+
+  const view = mapCollaborationConversationToViewModel(
+    optimisticConversation,
+    undefined,
+    'My Kordi',
+  );
+  const processingTurn = view.messages.find((message) => message.turn?.status === 'processing');
+
+  assert.equal(view.type, 'person');
+  assert.equal(processingTurn?.sender, KORDI_SUPPORT_NAME);
+  assert.equal(processingTurn?.turn?.message, 'Processing…');
+  assert.equal(
+    processingTurn?.replyToMessageId,
+    `collaboration-message:${supportConversationId}:support-request-1`,
+  );
+});
+
+test('Kordi Support identity suppresses stale user-provider failures before canonical hydration', () => {
+  const requestId = 'support-request-stale-auth';
+  const view = mapCollaborationConversationToViewModel(
+    conversation({
+      id: `cloud:conversation:acct_real_support_owner:agent:session:session%3Adirect-system-agent%3Aacct_me%3A${KORDI_SUPPORT_AGENT_ID}`,
+      canonicalSessionId: `session:direct-system-agent:acct_me:${KORDI_SUPPORT_AGENT_ID}`,
+      peerNodeId: 'acct_real_support_owner',
+      peerDisplayName: KORDI_SUPPORT_NAME,
+      peerOwnerName: 'Kordi',
+      peerRuntime: 'kordi-desktop',
+      title: KORDI_SUPPORT_NAME,
+      subtitle: 'Ask questions or suggest improvements',
+      supportTicketEnabled: false,
+      awaitingReply: false,
+      identity: {
+        sourceHostId: 'cloud',
+        localHumanId: 'acct_me',
+        localHumanName: 'Me',
+        localAgentId: 'cloud-local-agent',
+        localAgentName: 'My Kordi',
+        localAgentNodeId: 'acct_me',
+        remoteHumanId: 'acct_real_support_owner',
+        remoteHumanName: 'Kordi',
+        remoteHumanNodeId: 'acct_real_support_owner',
+        remoteAgentId: KORDI_SUPPORT_AGENT_ID,
+        remoteAgentName: KORDI_SUPPORT_NAME,
+        remoteAgentNodeId: 'acct_real_support_owner',
+        remoteAgentRuntime: 'kordi-desktop',
+      },
+      messages: [{
+        id: 'support-request-message',
+        direction: 'outbound',
+        sender: 'Me',
+        text: 'hi',
+        timeLabel: '13:30',
+        timestampMs: 1,
+        requestId,
+        deliveryState: 'sent',
+        outreach: null,
+      }, {
+        id: 'support-stale-auth-failure',
+        direction: 'inbound-response',
+        sender: KORDI_SUPPORT_NAME,
+        text: 'No provider configured yet.',
+        timeLabel: '13:30',
+        timestampMs: 2,
+        requestId,
+        deliveryState: 'failed',
+        outreach: null,
+      }],
+    }),
+    undefined,
+    'My Kordi',
+  );
+
+  assert.equal(view.name, KORDI_SUPPORT_NAME);
+  assert.equal(view.supportTicketEnabled, true);
+  assert.deepEqual(view.messages.map((message) => message.text), ['hi']);
 });
