@@ -347,7 +347,7 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
               seed={participant.avatarSeed ?? participant.id}
               name={participant.name}
               imageUrl={participant.profileImageUrl}
-              className="h-4.5 w-4.5 border border-white"
+              className="h-4.5 w-4.5"
             />
           ))}
         </span>

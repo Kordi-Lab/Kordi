@@ -113,6 +113,26 @@ test('IdentityAvatar can render an offline presence light without visible status
   assert.doesNotMatch(html, />Offline</);
 });
 
+test('IdentityAvatar renders avatars edge to edge without decorative boundaries', () => {
+  const agentHtml = renderToStaticMarkup(createElement(IdentityAvatar, {
+    kind: 'agent',
+    seed: 'agent_plain',
+    name: 'Plain agent',
+  }));
+  const imageHtml = renderToStaticMarkup(createElement(IdentityAvatar, {
+    kind: 'human',
+    seed: 'human_image',
+    name: 'Image human',
+    imageUrl: 'https://images.test/human.png',
+  }));
+
+  assert.doesNotMatch(agentHtml, /shadow-\[inset_/);
+  assert.doesNotMatch(agentHtml, /<circle/);
+  assert.match(agentHtml, /bg-transparent/);
+  assert.doesNotMatch(imageHtml, /bg-slate-800\/60/);
+  assert.doesNotMatch(imageHtml, /border|ring-|shadow-/);
+});
+
 test('presence light styling is a small flat inset dot without a chunky frame', () => {
   const css = readDesktopShellCss();
   const presenceRule = css.match(/\.app-presence-light\s*{(?<body>[^}]*)}/s)?.groups?.body ?? '';
