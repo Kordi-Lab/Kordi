@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
-import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
+import {
+  isCloudCollaborationConversationId,
+  resolvedCloudConversationIdForCollaborationSend,
+} from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
   cloudGroupMessageSessionId,
@@ -81,7 +84,11 @@ import type {
 } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
-import { resolveDirectHostedAgentTarget } from './directHostedAgentTarget';
+import {
+  resolveDirectHostedAgentTarget,
+  resolveLockedKordiSupportCloudConversationId,
+  resolveLockedKordiSupportAgentTarget,
+} from './directHostedAgentTarget';
 
 async function persistCanonicalGroupMessageFailure(
   prepared: PreparedCanonicalUserMessage | null,
@@ -491,6 +498,7 @@ export function shouldUseCollaborationConversationRouting({
   activeConvCollaborationTarget,
   activeGroupSessionScope,
   selfCollaborationNodeIds,
+  forceCollaborationRouting = false,
 }: {
   activeConversationUsesCollaboration: boolean;
   activeConvCollaborationTarget?: ConversationCollaborationTarget | null;
@@ -500,8 +508,10 @@ export function shouldUseCollaborationConversationRouting({
     directness?: string | null;
   }) | null;
   selfCollaborationNodeIds?: ReadonlySet<string> | Iterable<string | null | undefined> | null;
+  forceCollaborationRouting?: boolean;
 }) {
-  return activeConversationUsesCollaboration
+  return forceCollaborationRouting
+    || activeConversationUsesCollaboration
     || Boolean(activeConvCollaborationTarget)
     || Boolean(
       isCollaborationGroupSession(activeGroupSessionScope)
@@ -723,6 +733,7 @@ function collaborationDirectSessionParticipants(
 export function useChatMessageActions({
   activeConversationUsesCollaboration,
   activeConvCollaborationTarget,
+  activeConvSupportTicketEnabled,
   activeConvCanonicalSessionId,
   activeConvId,
   activeConvMessages,
@@ -763,6 +774,32 @@ export function useChatMessageActions({
   shouldAutoFollowChatRef,
   watchDesktopLiveTurn,
 }: UseChatMessageActionsArgs) {
+  const resolvedActiveCloudConversationId =
+    resolvedCloudConversationIdForCollaborationSend(
+      activeConvId,
+      activeConvCanonicalSessionId,
+      activeConvCollaborationTarget?.nodeId,
+    );
+  const lockedSupportAgentTarget = useMemo(() => (
+    resolveLockedKordiSupportAgentTarget({
+      conversationId: activeConvId,
+      resolvedConversationId: resolvedActiveCloudConversationId,
+      canonicalSessionId: activeConvCanonicalSessionId,
+      supportTicketEnabled: activeConvSupportTicketEnabled,
+      activeTarget: activeConvCollaborationTarget,
+    })
+  ), [
+    activeConvCanonicalSessionId,
+    activeConvCollaborationTarget,
+    activeConvId,
+    activeConvSupportTicketEnabled,
+    resolvedActiveCloudConversationId,
+  ]);
+  const activeCloudConversationId = resolveLockedKordiSupportCloudConversationId({
+    resolvedConversationId: resolvedActiveCloudConversationId,
+    canonicalSessionId: activeConvCanonicalSessionId,
+    lockedTarget: lockedSupportAgentTarget,
+  }) ?? resolvedActiveCloudConversationId;
   const queuedDesktopMessagesBySessionRef = useRef(queuedDesktopMessagesBySession);
   const flushQueuedDesktopMessagesForSessionRef = useRef<(sessionId: string) => void>(() => {});
 
@@ -1313,6 +1350,7 @@ export function useChatMessageActions({
       activeConvCollaborationTarget,
       activeGroupSessionScope,
       selfCollaborationNodeIds: localCollaborationNodeIds,
+      forceCollaborationRouting: Boolean(lockedSupportAgentTarget),
     });
     const activeGroupSessionSpaceId = activeGroupSessionIsGroup ? collaborationGroupSessionSpaceId(activeGroupSessionScope) : null;
     const activeCollaborationHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
@@ -1415,7 +1453,7 @@ export function useChatMessageActions({
 
       if (
         activeConversationUsesCollaborationRouting
-        && isCloudCollaborationConversationId(activeConvId)
+        && isCloudCollaborationConversationId(activeCloudConversationId)
         && sendCloudCollaborationMessage
         && setCloudCollaborationState
       ) {
@@ -1425,12 +1463,26 @@ export function useChatMessageActions({
           setDesktopChatError(null);
           setCloudCollaborationState((current) => markOptimisticCollaborationMessageSending(
             current,
-            activeConvId,
+            activeCloudConversationId,
             retryMessageId,
           ));
+          const retryDirectHostedAgentTarget = resolveDirectHostedAgentTarget({
+            mentionedAgentId: null,
+            mentionedTarget: null,
+            activeTarget: activeConvCollaborationTarget,
+            lockedTarget: lockedSupportAgentTarget,
+          });
+          const retryCloudBody = retryDirectHostedAgentTarget
+            ? encodeCloudDirectMessageEnvelope({
+                schemaVersion: 1,
+                kind: 'message',
+                text,
+                ...retryDirectHostedAgentTarget,
+              })
+            : text;
           await sendCloudCollaborationMessage(
-            activeConvId,
-            text,
+            activeCloudConversationId,
+            retryCloudBody,
             retryAttachments,
             { clientMessageId: retryMessageId },
           );
@@ -1439,7 +1491,7 @@ export function useChatMessageActions({
           const failureDetail = collaborationSendFailureDetail(error, 'Unable to retry message');
           setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(
             current,
-            activeConvId,
+            activeCloudConversationId,
             retryMessageId,
             failureDetail,
           ));
@@ -1626,14 +1678,14 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeConvId)) {
+    if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeCloudConversationId)) {
       if (!sendCloudCollaborationMessage || !setCloudCollaborationState) {
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = `cloud-pending-${Date.now()}`;
-      const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeConvId);
+      const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -1642,12 +1694,13 @@ export function useChatMessageActions({
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         if (appendedOptimisticCollaborationMessage) {
-          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
+          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeCloudConversationId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
         }
         const directHostedAgentTarget = resolveDirectHostedAgentTarget({
           mentionedAgentId: targetCloudAgentId,
           mentionedTarget,
           activeTarget: activeConvCollaborationTarget,
+          lockedTarget: lockedSupportAgentTarget,
         });
         const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget);
         const cloudBody = shouldEncodeDirectEnvelope
@@ -1660,23 +1713,28 @@ export function useChatMessageActions({
             })
           : text;
         await sendCloudCollaborationMessage(
-          activeConvId,
+          activeCloudConversationId,
           cloudBody,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
         );
-        if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeConvId)) {
+        if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeCloudConversationId)) {
           setCloudCollaborationState(null);
         }
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
         if (appendedOptimisticCollaborationMessage) {
-          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
+          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, activeCloudConversationId, optimisticMessageId, failureDetail));
         }
         setDesktopChatError(failureDetail);
       } finally {
         setIsDesktopChatSending(false);
       }
+      return;
+    }
+
+    if (lockedSupportAgentTarget) {
+      setDesktopChatError('Kordi Support is still loading. Try again in a moment.');
       return;
     }
 
@@ -2001,10 +2059,13 @@ export function useChatMessageActions({
   }, [
     activeConversationUsesCollaboration,
     activeConvCollaborationTarget,
+    activeConvSupportTicketEnabled,
     activeConvCanonicalSessionId,
     activeConvId,
+    activeCloudConversationId,
     activeConvMessages,
     activeConvMentionScope,
+    lockedSupportAgentTarget,
     sharedCloudAgents,
     resolveSharedCloudAgentsForMention,
     activeChatQuote,

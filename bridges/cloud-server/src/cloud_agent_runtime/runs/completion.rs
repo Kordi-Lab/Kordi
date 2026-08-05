@@ -70,8 +70,11 @@ impl FailRunRequest {
     }
 }
 
-fn cloud_agent_failure_response_text(error_code: &str) -> &'static str {
+fn cloud_agent_failure_response_text(error_code: &str, is_support_agent: bool) -> &'static str {
     match error_code {
+        "missing_provider_auth" if is_support_agent => {
+            "Kordi Support is temporarily unavailable. Try again shortly."
+        }
         "missing_provider_auth" => "No provider configured yet.",
         "model_provider_error" => {
             "Cloud fallback could not complete this request because the configured provider/model failed."
@@ -83,10 +86,14 @@ fn cloud_agent_failure_response_text(error_code: &str) -> &'static str {
     }
 }
 
-fn encode_failed_cloud_agent_response_body(request_message_id: &str, error_code: &str) -> String {
+fn encode_failed_cloud_agent_response_body(
+    request_message_id: &str,
+    error_code: &str,
+    is_support_agent: bool,
+) -> String {
     encode_cloud_agent_response_body_with_state(
         request_message_id,
-        cloud_agent_failure_response_text(error_code),
+        cloud_agent_failure_response_text(error_code, is_support_agent),
         "failed",
     )
 }
@@ -248,9 +255,10 @@ pub async fn fail_run(
     runner_id: &str,
     error_code: &str,
     message: &str,
+    support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
-    let existing: Option<(String, String, String, String, Option<String>)> = query_as(
-        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
+    let existing: Option<(String, String, String, String, Option<String>, Option<String>)> = query_as(
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id, target_agent_id \
          FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
     )
@@ -258,13 +266,22 @@ pub async fn fail_run(
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    let Some((owner_account_id, requester_account_id, session_id, request_message_id, _message_id)) =
-        existing
+    let Some((
+        owner_account_id,
+        requester_account_id,
+        session_id,
+        request_message_id,
+        _message_id,
+        target_agent_id,
+    )) = existing
     else {
         return Err(RunError::NotFound);
     };
-    let failure_text = cloud_agent_failure_response_text(error_code);
-    let response_body = encode_failed_cloud_agent_response_body(&request_message_id, error_code);
+    let is_support_agent = support_agent_id
+        .is_some_and(|support_agent_id| target_agent_id.as_deref() == Some(support_agent_id));
+    let failure_text = cloud_agent_failure_response_text(error_code, is_support_agent);
+    let response_body =
+        encode_failed_cloud_agent_response_body(&request_message_id, error_code, is_support_agent);
     let mut direct_response_sync_event: Option<String> = None;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
         if let Some(message_id) = ensure_scheduled_direct_person_response_message(
@@ -383,5 +400,22 @@ pub async fn fail_run(
             runner_response_from_row(pool, row).await
         }
         None => Err(RunError::NotFound),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cloud_agent_failure_response_text;
+
+    #[test]
+    fn support_auth_failure_never_asks_the_user_to_configure_a_provider() {
+        assert_eq!(
+            cloud_agent_failure_response_text("missing_provider_auth", true),
+            "Kordi Support is temporarily unavailable. Try again shortly."
+        );
+        assert_eq!(
+            cloud_agent_failure_response_text("missing_provider_auth", false),
+            "No provider configured yet."
+        );
     }
 }

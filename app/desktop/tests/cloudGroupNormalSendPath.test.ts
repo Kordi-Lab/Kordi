@@ -40,7 +40,7 @@ test('active composer sends prefer Cloud group routing before direct Cloud bridg
   const normalSendStart = bridgeRoutingSection.indexOf('if (activeLocalTurnShouldDelayChatSend({');
   assert.notEqual(normalSendStart, -1, 'expected normal send path after retry handling');
   const normalSendSection = bridgeRoutingSection.slice(normalSendStart);
-  const directCloudBranch = normalSendSection.indexOf('if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeConvId))');
+  const directCloudBranch = normalSendSection.indexOf('if (activeConversationUsesCollaborationRouting && isCloudCollaborationConversationId(activeCloudConversationId))');
   const mentionGroupBranch = normalSendSection.indexOf('if (activeConversationUsesCollaborationRouting && shouldRouteMentionThroughCloudGroup({');
   const plainGroupSend = normalSendSection.indexOf("kind: 'group-message'", mentionGroupBranch + 1);
 

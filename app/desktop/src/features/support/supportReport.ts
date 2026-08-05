@@ -33,6 +33,9 @@ const SUPPORT_REPORT_BLOCK_PATTERN = /<kordi-support-report>\s*([\s\S]*?)\s*<\/k
 const SUPPORT_REPORT_BLOCK_START_PATTERN = /<kordi-support-report>/i;
 const SUPPORT_REPORT_HEADING_PATTERN = /^\s{0,3}#{1,6}\s+(?:test\s+)?(?:issue\s+ticket|support\s+report)\s*$/im;
 const SUPPORT_REPORT_TRAILING_INSTRUCTION_PATTERN = /\n+\s*To submit this[\s\S]*$/i;
+const SUPPORT_REPORT_LEGACY_REFUSAL_PATTERN = /(?:^|\n+)\s*I\s+can(?:not|['’]t)\s+(?:create|submit|send)(?:\s+or\s+(?:create|confirm|submit|send))?\s+(?:an?\s+)?(?:support|issue)\s+(?:ticket|report)[\s\S]*$/i;
+const SUPPORT_REPORT_LEGACY_QUOTED_SUBMISSION_PATTERN = /\bTo\s+(?:send|submit)\s+[“"]([^”"]+)[”"]\s+to\s+(?:an?\s+)?(?:human\s+)?maintainer/i;
+const SUPPORT_REPORT_LEGACY_FORM_REDIRECT_PATTERN = /(?:^|\n+)\s*(?:If\s+you\s+intended\s+this\s+as\s+(?:a\s+)?support\s+report,\s*)?please\s+(?:submit|send)\s+(?:it|this|the\s+(?:ticket|report))\s+(?:through|using|via)\s+(?:the\s+)?support\s+form[\s\S]*$/i;
 
 function cleanProposalDraft(value: unknown): SupportReportDraft | null {
   if (!value || typeof value !== 'object') return null;
@@ -96,8 +99,74 @@ function markdownProposal(text: string): SupportReportProposal | null {
   return draft ? { displayText: text.trim(), draft } : null;
 }
 
+function firstMarkdownBlockquote(text: string) {
+  const lines = text.split(/\r?\n/);
+  const quoted: string[] = [];
+  let collecting = false;
+
+  for (const line of lines) {
+    const match = line.match(/^\s*>\s?(.*)$/);
+    if (match) {
+      collecting = true;
+      quoted.push(match[1]);
+      continue;
+    }
+    if (collecting) break;
+  }
+
+  return quoted
+    .join('\n')
+    .trim()
+    .replace(/^[*_]{1,3}\s*/, '')
+    .replace(/\s*[*_]{1,3}$/, '')
+    .trim();
+}
+
+function fallbackProposalSubject(description: string) {
+  const firstSentence = description.split(/(?<=[.!?])\s+/u)[0] ?? description;
+  const mainClause = firstSentence.split(/,\s+(?:as|because|since|whereas|which|while)\b/i)[0]
+    ?? firstSentence;
+  const concise = mainClause
+    .replace(/^please\s+/i, '')
+    .replace(/[.!?]+$/, '')
+    .trim();
+  if (!concise) return '';
+  return concise.charAt(0).toUpperCase() + concise.slice(1);
+}
+
+function legacyNarrativeProposal(text: string): SupportReportProposal | null {
+  const mentionsTicket = /\b(?:support|issue)\s+(?:ticket|report)\b/i.test(text);
+  const mentionsSubmission = /\b(?:maintainers?|support\s+form|send|submit)\b/i.test(text);
+  const framesDraft = /\b(?:clearer\s+version|draft|feedback|rephrase|restate|rewrite|suggestion)\b/i
+    .test(text);
+  const isLegacyRefusal = SUPPORT_REPORT_LEGACY_REFUSAL_PATTERN.test(text);
+  if (!mentionsTicket || !mentionsSubmission || (!framesDraft && !isLegacyRefusal)) return null;
+
+  const description = firstMarkdownBlockquote(text)
+    || text.match(SUPPORT_REPORT_LEGACY_QUOTED_SUBMISSION_PATTERN)?.[1]?.trim()
+    || '';
+  const subject = fallbackProposalSubject(description);
+  if (!subject || !description) return null;
+
+  const category: CloudSupportTicketCategory = /\b(?:feedback|suggestion)\b/i.test(text)
+    ? 'feedback'
+    : 'issue';
+  const draft = cleanProposalDraft({ category, subject, description });
+  if (!draft) return null;
+
+  const displayText = text
+    .replace(SUPPORT_REPORT_LEGACY_REFUSAL_PATTERN, '')
+    .replace(SUPPORT_REPORT_LEGACY_FORM_REDIRECT_PATTERN, '')
+    .trim();
+  return {
+    displayText: displayText
+      || 'I drafted this support request. Review it below before anything is sent.',
+    draft,
+  };
+}
+
 export function parseSupportReportProposal(text: string): SupportReportProposal | null {
-  return structuredProposal(text) ?? markdownProposal(text);
+  return structuredProposal(text) ?? markdownProposal(text) ?? legacyNarrativeProposal(text);
 }
 
 export function supportReportDisplayText(text: string) {

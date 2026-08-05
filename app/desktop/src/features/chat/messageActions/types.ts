@@ -33,6 +33,7 @@ export type UseChatMessageActionsArgs = Pick<
   ComposerConversationContext,
   | 'activeConversationUsesCollaboration'
   | 'activeConvCollaborationTarget'
+  | 'activeConvSupportTicketEnabled'
   | 'activeConvCanonicalSessionId'
   | 'activeConvId'
   | 'activeConvMessages'

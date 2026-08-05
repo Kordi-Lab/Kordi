@@ -177,6 +177,69 @@ To submit this to a human maintainer, use the support form available in this con
   assert.doesNotMatch(proposal.draft.description, /use the support form/);
 });
 
+test('a legacy support refusal is recovered into an explicit permission proposal', () => {
+  const response = `Thanks for the feedback! I’d restate your suggestion as:
+
+> *Please improve or redesign the avatar border, as the current appearance is unattractive.*
+
+I can’t create a support ticket directly from this chat. To send it to the maintainers, please submit the support form available in this contact.`;
+  const proposal = parseSupportReportProposal(response);
+
+  assert.ok(proposal);
+  assert.equal(proposal.draft.category, 'feedback');
+  assert.equal(proposal.draft.subject, 'Improve or redesign the avatar border');
+  assert.equal(
+    proposal.draft.description,
+    'Please improve or redesign the avatar border, as the current appearance is unattractive.',
+  );
+  assert.match(proposal.displayText, /I’d restate your suggestion/);
+  assert.match(proposal.displayText, /Please improve or redesign the avatar border/);
+  assert.doesNotMatch(proposal.displayText, /can’t create a support ticket/);
+  assert.doesNotMatch(proposal.displayText, /support form available/);
+});
+
+test('a bare legacy refusal recovers its quoted request into an approval draft', () => {
+  const response = 'I can’t create or confirm a support ticket directly from this chat. To send “testtest” to a human maintainer, please submit the support form available in this contact.';
+  const proposal = parseSupportReportProposal(response);
+
+  assert.ok(proposal);
+  assert.deepEqual(proposal.draft, {
+    category: 'issue',
+    subject: 'Testtest',
+    description: 'testtest',
+    includeDiagnostics: false,
+  });
+  assert.equal(
+    proposal.displayText,
+    'I drafted this support request. Review it below before anything is sent.',
+  );
+});
+
+test('a legacy clearer-version redirect becomes an approval draft', () => {
+  const response = `A clearer version would be:
+
+> *An intervention at this stage could have changed the outcome, whereas the later errors may have been consequences of the initial issue.*
+
+If you intended this as a support report, please submit it through the support form available in this contact.`;
+  const proposal = parseSupportReportProposal(response);
+
+  assert.ok(proposal);
+  assert.deepEqual(proposal.draft, {
+    category: 'issue',
+    subject: 'An intervention at this stage could have changed the outcome',
+    description: 'An intervention at this stage could have changed the outcome, whereas the later errors may have been consequences of the initial issue.',
+    includeDiagnostics: false,
+  });
+  assert.match(proposal.displayText, /A clearer version would be/);
+  assert.doesNotMatch(proposal.displayText, /support form available/);
+});
+
+test('ordinary support guidance never becomes a report proposal', () => {
+  const response = 'I can help explain the support process. Send the relevant details when you are ready.';
+
+  assert.equal(parseSupportReportProposal(response), null);
+});
+
 test('the inline permission card submits only after approval', async () => {
   const installed = installDom();
   const host = document.createElement('div');

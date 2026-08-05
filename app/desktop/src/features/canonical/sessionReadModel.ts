@@ -16,6 +16,7 @@ import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessage
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
 import {
+  isKordiSupportConversation,
   KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
 } from '@/features/support/supportIdentity';
@@ -375,6 +376,14 @@ function shouldKeepRuntimeChatConversationExtra(
     return true;
   }
 
+  // The built-in Support contact is server-backed, but its dedicated
+  // direct-system-agent session can arrive after the contact and transcript.
+  // Keep the runtime conversation visible during that handoff so optimistic
+  // sends and cloud replies cannot disappear while canonical state catches up.
+  if (isKordiSupportConversation(conversation)) {
+    return true;
+  }
+
   const sessionId = conversation.canonicalSessionId ?? conversation.id;
   if (indexes.sessionById.has(sessionId)) {
     return false;
@@ -546,7 +555,7 @@ export function createCanonicalSessionReadModel(
       const session = indexes.sessionById.get(sessionId);
       if (!session) return conversation;
 
-      const isSupportContact = Boolean(conversation.supportTicketEnabled);
+      const isSupportContact = isKordiSupportConversation(conversation);
       const isLegacyCollaborationPersonSession = session.kind === 'direct-person' && isLegacyCanonicalCollaborationSessionId(sessionId);
       const isLegacyCollaborationSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);

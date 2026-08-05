@@ -15,6 +15,7 @@ import {
   KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
   KORDI_SUPPORT_SUBTITLE,
+  isKordiSupportConversation,
 } from '@/features/support/supportIdentity';
 import type { Conversation } from '@/kordi-app/types';
 
@@ -53,9 +54,20 @@ function matchingLegacySupportConversation(
     return undefined;
   }
   const supportAccountId = cloudPeerAccountIdFromConversationId(activeConvId);
-  return conversations.find((conversation) => (
-    conversation.supportTicketEnabled
+  const exactOwnerMatch = conversations.find((conversation) => (
+    isKordiSupportConversation(conversation)
     && conversation.collaborationTarget?.nodeId === supportAccountId
+  ));
+  if (exactOwnerMatch || supportAccountId !== KORDI_SUPPORT_ACCOUNT_ID) {
+    return exactOwnerMatch;
+  }
+
+  // Older desktop builds persisted the synthetic Support account id. The
+  // server can own the built-in agent from a real operator account instead,
+  // so reconcile the legacy selection through the locked agent identity.
+  return conversations.find((conversation) => (
+    isKordiSupportConversation(conversation)
+    && conversation.collaborationTarget?.agentId === KORDI_SUPPORT_AGENT_ID
   ));
 }
 
@@ -103,9 +115,12 @@ export function applyCanonicalHydrationPlaceholder(
   selectedConversation: Conversation,
   hydration: SessionHydrationState | undefined,
 ): Conversation {
+  const knownCanonicalMessageCount =
+    selectedConversation.canonicalMessageCount;
   if (
     selectedConversation.desktopRuntimeBacked
-    || selectedConversation.canonicalMessageCount === 0
+    || typeof knownCanonicalMessageCount !== 'number'
+    || knownCanonicalMessageCount <= 0
     || selectedConversation.messages.length > 0
     || (hydration !== 'cold' && hydration !== 'loading')
   ) {
@@ -166,7 +181,7 @@ export function pendingCloudCollaborationConversationForActiveId(
     trust: 'Cloud',
     directness: isKordiSupport ? 'Person chat' : isAgent ? 'Agent chat' : 'Person chat',
     participants: isKordiSupport ? ['Me', KORDI_SUPPORT_NAME] : ['Me'],
-    messages: [transcriptLoadingNotice(isKordiSupport ? undefined : loadingLabel)],
+    messages: isKordiSupport ? [] : [transcriptLoadingNotice(loadingLabel)],
     supportTicketEnabled: isKordiSupport,
     collaborationTarget: {
       hostId: 'cloud',

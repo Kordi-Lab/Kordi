@@ -101,6 +101,31 @@ export function cloudSessionIdForCollaborationSend(localAccountId: string | null
   return explicitSessionId;
 }
 
+export function resolvedCloudConversationIdForCollaborationSend(
+  conversationId: string,
+  canonicalSessionId?: string | null,
+  resolvedPeerAccountId?: string | null,
+): string {
+  if (
+    !isCloudCollaborationConversationId(conversationId)
+    || cloudSessionIdFromConversationId(conversationId)
+  ) {
+    return conversationId;
+  }
+  const normalizedSessionId = canonicalSessionId?.trim() ?? '';
+  if (!isCloudSystemAgentSessionId(normalizedSessionId)) {
+    return conversationId;
+  }
+  const peerAccountId = resolvedPeerAccountId?.trim()
+    || cloudPeerAccountIdFromConversationId(conversationId);
+  if (!peerAccountId) return conversationId;
+  return cloudCollaborationConversationId(
+    peerAccountId,
+    CLOUD_AGENT_RUNTIME,
+    normalizedSessionId,
+  );
+}
+
 export function isCloudCollaborationState(state: DesktopCollaborationState | null | undefined): boolean {
   return Boolean(state?.hosts.some((host) => isCloudCollaborationHostId(host.id)));
 }

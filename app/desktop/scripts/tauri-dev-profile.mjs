@@ -24,9 +24,9 @@ Usage:
 Options:
   --port <number>          Dev server port. Default: 1420
   --host <host>            Dev server host. Default: 127.0.0.1
-  --profile <name>         Profile label used for app title + identifier suffix.
+  --profile <name>         Profile label used for app title + Cloud identifier suffix.
   --title <name>           Custom window/app title.
-  --identifier <value>     Full app identifier override.
+  --identifier <value>     Full Cloud app identifier override (io.kordi.cloud[.*]).
   --dry-run                Print the generated Tauri config and exit.
   --help                   Show this help.
 `);
@@ -88,6 +88,10 @@ function sanitizeIdentifierPart(value) {
     .replace(/-{2,}/g, '-');
 }
 
+function isCloudIdentifier(value) {
+  return value === 'io.kordi.cloud' || value.startsWith('io.kordi.cloud.');
+}
+
 function ensureTauriCli() {
   if (!existsSync(tauriBin)) {
     console.error(`[kordi] Missing Tauri CLI at ${tauriBin}. Run install first.`);
@@ -117,7 +121,15 @@ if (!Number.isInteger(port) || port <= 0 || port > 65535) {
 
 const profileKey = sanitizeIdentifierPart(options.profile || 'dev') || 'dev';
 const title = options.title || `Kordi (${options.profile})`;
-const identifier = options.identifier || `io.kordi.desktop.${profileKey}`;
+const identifier = options.identifier || `io.kordi.cloud.${profileKey}`;
+if (!isCloudIdentifier(identifier)) {
+  console.error(
+    '[kordi] Isolated profiles must use io.kordi.cloud or an io.kordi.cloud.* identifier '
+    + 'so native Cloud account storage is initialized.',
+  );
+  console.error(`[kordi] Received identifier: ${identifier}`);
+  process.exit(1);
+}
 const devUrl = `http://${options.host}:${port}`;
 const beforeDevCommand = buildBeforeDevCommand({
   title,

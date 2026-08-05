@@ -232,6 +232,9 @@ async fn fail_runner_run(
         &runner_id,
         &input.error_code(),
         &input.message,
+        state
+            .support()
+            .map(|service| service.config().agent_id.as_str()),
     )
     .await
     {
