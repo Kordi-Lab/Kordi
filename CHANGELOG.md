@@ -4,6 +4,35 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1-beta.11] - 2026-08-05
+
+### Added
+
+- Added the built-in Kordi Support contact with explicit, draft-scoped consent
+  before report submission, durable ticket intake, and restored terminal ticket
+  references across navigation and relaunch. ([#868], [#883], [#891])
+- Made Factory Build a chat-first agent creation surface with clearer creation
+  state and consistent 24-hour message timestamps. ([#879], [#880])
+
+### Changed
+
+- Improved attachment handling and linked URLs across desktop sessions, with
+  clearer previews, forwarding, and interaction behavior. ([#866], [#875])
+- Simplified contacts, settings, chat headers, secondary controls, and avatar
+  presentation while preserving the shared desktop visual system.
+  ([#856], [#859], [#863], [#890])
+
+### Fixed
+
+- Stabilized Cloud and local session reconciliation, unread state, Ask Agent
+  sessions, and group-agent terminal delivery so remounts and delayed snapshots
+  cannot revive stale UI state. ([#853], [#858], [#864], [#873], [#882])
+- Locked Kordi Support routing and kept report processing, consent, and submitted
+  approval cards terminal and idempotent across session reopen and app relaunch.
+  ([#884], [#889], [#891])
+- Restored reply-source navigation highlighting and reliable outside dismissal
+  for side-chat menus. ([#869], [#870])
+
 ## [0.0.1-beta.10] - 2026-07-31
 
 ### Changed
@@ -125,7 +154,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta10...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta11...HEAD
+[0.0.1-beta.11]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta10...V0.0.1.beta11
 [0.0.1-beta.10]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta9...V0.0.1.beta10
 [0.0.1-beta.9]: https://github.com/Kordi-AI/Kordi/compare/V0.0.1.beta8...V0.0.1.beta9
 [0.0.1-beta.8]: https://github.com/Kordi-AI/Kordi/compare/V0.0.1.beta7...V0.0.1.beta8
@@ -162,3 +192,23 @@ This release is the comparison baseline for beta.8. See the
 [#757]: https://github.com/Kordi-Lab/Kordi/pull/757
 [#759]: https://github.com/Kordi-Lab/Kordi/pull/759
 [#840]: https://github.com/Kordi-Lab/Kordi/pull/840
+[#853]: https://github.com/Kordi-Lab/Kordi/pull/853
+[#856]: https://github.com/Kordi-Lab/Kordi/pull/856
+[#858]: https://github.com/Kordi-Lab/Kordi/pull/858
+[#859]: https://github.com/Kordi-Lab/Kordi/pull/859
+[#863]: https://github.com/Kordi-Lab/Kordi/pull/863
+[#864]: https://github.com/Kordi-Lab/Kordi/pull/864
+[#866]: https://github.com/Kordi-Lab/Kordi/pull/866
+[#868]: https://github.com/Kordi-Lab/Kordi/pull/868
+[#869]: https://github.com/Kordi-Lab/Kordi/pull/869
+[#870]: https://github.com/Kordi-Lab/Kordi/pull/870
+[#873]: https://github.com/Kordi-Lab/Kordi/pull/873
+[#875]: https://github.com/Kordi-Lab/Kordi/pull/875
+[#879]: https://github.com/Kordi-Lab/Kordi/pull/879
+[#880]: https://github.com/Kordi-Lab/Kordi/pull/880
+[#882]: https://github.com/Kordi-Lab/Kordi/pull/882
+[#883]: https://github.com/Kordi-Lab/Kordi/pull/883
+[#884]: https://github.com/Kordi-Lab/Kordi/pull/884
+[#889]: https://github.com/Kordi-Lab/Kordi/pull/889
+[#890]: https://github.com/Kordi-Lab/Kordi/pull/890
+[#891]: https://github.com/Kordi-Lab/Kordi/pull/891
