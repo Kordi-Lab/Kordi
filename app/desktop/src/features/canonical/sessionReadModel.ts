@@ -372,17 +372,7 @@ function shouldKeepRuntimeChatConversationExtra(
     return true;
   }
 
-  if (conversation.transientDraft) {
-    return true;
-  }
-
-  // The built-in Support contact is server-backed, but its dedicated
-  // direct-system-agent session can arrive after the contact and transcript.
-  // Keep the runtime conversation visible during that handoff so optimistic
-  // sends and cloud replies cannot disappear while canonical state catches up.
-  if (isKordiSupportConversation(conversation)) {
-    return true;
-  }
+  if (conversation.transientDraft || isKordiSupportConversation(conversation)) return true;
 
   const sessionId = conversation.canonicalSessionId ?? conversation.id;
   if (indexes.sessionById.has(sessionId)) {

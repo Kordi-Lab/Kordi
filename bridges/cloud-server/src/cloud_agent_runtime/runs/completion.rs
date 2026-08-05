@@ -22,6 +22,15 @@ use super::envelopes::{
 use super::leases::{runner_response_from_row, RunnerRunResponse, RunnerRunRow};
 use super::{RunError, RunResult};
 
+type FailedRunRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+);
+
 #[derive(Debug, Deserialize)]
 pub struct CompleteRunRequest {
     #[serde(rename = "runnerId")]
@@ -257,7 +266,7 @@ pub async fn fail_run(
     message: &str,
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
-    let existing: Option<(String, String, String, String, Option<String>, Option<String>)> = query_as(
+    let existing: Option<FailedRunRow> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id, target_agent_id \
          FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",

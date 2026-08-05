@@ -2,10 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { shouldAppendOptimisticCollaborationMessage } from '../src/features/chat/messageActions/collaborationSendLifecycle';
-import {
-  cloudSessionIdForCollaborationSend,
-  resolvedCloudConversationIdForCollaborationSend,
-} from '../src/features/cloud/cloudCollaborationState';
+import { cloudSessionIdForCollaborationSend } from '../src/features/cloud/cloudCollaborationState';
+import { resolvedCloudConversationIdForCollaborationSend } from '../src/features/chat/messageActions/directHostedAgentTarget';
 
 test('direct Cloud contact sends use an optimistic row so attachments preview immediately', () => {
   assert.equal(shouldAppendOptimisticCollaborationMessage('bridge:cloud:acct_peer:person'), true);

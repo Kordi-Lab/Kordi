@@ -3,6 +3,7 @@ import {
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdFromConversationId,
   isCloudCollaborationConversationId,
+  isCloudSystemAgentSessionId,
 } from '@/features/collaboration/conversationIds';
 import {
   isKordiSupportConversation,
@@ -26,6 +27,24 @@ export type LockedHostedAgentTarget = {
   ownerAccountId: string | null;
   ownerName: string | null;
 };
+
+export function resolvedCloudConversationIdForCollaborationSend(
+  conversationId: string,
+  canonicalSessionId?: string | null,
+  resolvedPeerAccountId?: string | null,
+): string {
+  if (
+    !isCloudCollaborationConversationId(conversationId)
+    || cloudSessionIdFromConversationId(conversationId)
+  ) return conversationId;
+
+  const normalizedSessionId = canonicalSessionId?.trim() ?? '';
+  if (!isCloudSystemAgentSessionId(normalizedSessionId)) return conversationId;
+  const peerAccountId = resolvedPeerAccountId?.trim()
+    || cloudPeerAccountIdFromConversationId(conversationId);
+  if (!peerAccountId) return conversationId;
+  return cloudCollaborationConversationId(peerAccountId, 'agent', normalizedSessionId);
+}
 
 export function resolveLockedKordiSupportAgentTarget({
   conversationId,

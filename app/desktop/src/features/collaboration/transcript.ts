@@ -16,16 +16,12 @@ import {
 } from '@/features/collaboration/collaborationProcessingState';
 import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
-import {
-  isKordiSupportConversation,
-  KORDI_SUPPORT_AVATAR_URL,
-} from '@/features/support/supportIdentity';
+import { isKordiSupportConversation, KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
 type CollaborationConversationViewModel = Conversation & {
   _updatedAtMs?: number;
 };
-
 function collaborationHostLabel(host?: DesktopCollaborationHost | null) {
   return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Cloud';
 }
@@ -237,7 +233,6 @@ export function mapCollaborationConversationToViewModel(
     && conversation.peerNodeId === conversation.identity?.localHumanId
     && conversation.identity?.remoteAgentId === conversation.identity?.localAgentId;
   const isAgent = !isPersonChat && isCollaborationAgentRuntime(conversation.peerRuntime);
-  const hasAgentReplyLifecycle = isAgent || isSupportContact;
   const hasSentCollaborationRequest = Boolean(conversation.outreach?.sourceRequestId)
     || conversation.messages.some((message) => Boolean(message.requestId));
   const staleProcessingPlaceholderIds = historicalCollaborationProcessingPlaceholderIds(
@@ -506,7 +501,7 @@ export function mapCollaborationConversationToViewModel(
     return [mappedMessage];
   });
 
-  if (((hasAgentReplyLifecycle && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
+  if ((((isAgent || isSupportContact) && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
     const outreachRequestId = conversation.outreach?.sourceRequestId?.trim();
     const requestMessageIds = [...requestMessageIdByRequestId.values()];
     const replyToMessageId = outreachRequestId
