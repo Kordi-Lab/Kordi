@@ -246,30 +246,44 @@ test('the inline permission card submits only after approval', async () => {
   document.body.append(host);
   let root: Root | null = createRoot(host);
   const submissions: CloudSupportTicketInput[] = [];
+  let lookupCalls = 0;
+  let failuresRemaining = 1;
   const proposal = parseSupportReportProposal(`Draft ready.
 
 <kordi-support-report>
 {"category":"feedback","subject":"Clearer support flow","description":"Show an explicit consent card before sending."}
 </kordi-support-report>`);
   assert.ok(proposal);
+  const onLookup = async () => {
+    lookupCalls += 1;
+    return null;
+  };
+  const onSubmit = async (input: CloudSupportTicketInput) => {
+    submissions.push(input);
+    if (failuresRemaining > 0) {
+      failuresRemaining -= 1;
+      throw new Error('Temporary support intake failure.');
+    }
+    return {
+      ticketId: 'ticket:model-proposal',
+      status: 'received' as const,
+      createdAt: '2026-08-04T12:00:00.000Z',
+    };
+  };
+  const card = (
+    <SupportReportSubmissionProvider
+      accountId="account:inline-consent"
+      sessionId="session:support"
+      onLookup={onLookup}
+      onSubmit={onSubmit}
+    >
+      <SupportReportPermissionCard proposal={proposal} />
+    </SupportReportSubmissionProvider>
+  );
 
   try {
     await act(async () => {
-      root?.render(
-        <SupportReportSubmissionProvider
-          sessionId="session:support"
-          onSubmit={async (input) => {
-            submissions.push(input);
-            return {
-              ticketId: 'ticket:model-proposal',
-              status: 'received',
-              createdAt: '2026-08-04T12:00:00.000Z',
-            };
-          }}
-        >
-          <SupportReportPermissionCard proposal={proposal} />
-        </SupportReportSubmissionProvider>,
-      );
+      root?.render(card);
     });
 
     const findButton = (label: string) => Array.from(host.querySelectorAll('button'))
@@ -285,6 +299,11 @@ test('the inline permission card submits only after approval', async () => {
     await act(async () => findButton('Review again')?.click());
     await act(async () => findButton('Approve and send')?.click());
     assert.equal(submissions.length, 1);
+    assert.match(host.textContent ?? '', /Temporary support intake failure/);
+    assert.ok(findButton('Approve and send'));
+
+    await act(async () => findButton('Approve and send')?.click());
+    assert.equal(submissions.length, 2);
     assert.equal(submissions[0]?.consent.reportSubmission, true);
     assert.equal(submissions[0]?.consent.diagnostics, false);
     assert.equal(submissions[0]?.diagnostics, undefined);
@@ -295,12 +314,171 @@ test('the inline permission card submits only after approval', async () => {
     );
     assert.match(host.textContent ?? '', /Sent to Kordi maintainers/);
     assert.match(host.textContent ?? '', /ticket:model-proposal/);
+
+    await act(async () => root?.render(<></>));
+    await act(async () => root?.render(card));
+    assert.match(host.textContent ?? '', /Sent to Kordi maintainers/);
+    assert.match(host.textContent ?? '', /ticket:model-proposal/);
+    assert.equal(findButton('Approve and send'), undefined);
+    assert.equal(lookupCalls, 1);
   } finally {
     await act(async () => root?.unmount());
     root = null;
     host.remove();
     installed.restore();
   }
+});
+
+test('a restored proposal stays non-actionable until durable status resolves', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: Root | null = createRoot(host);
+  let resolveLookup: ((value: {
+    ticketId: string;
+    status: 'received';
+    createdAt: string;
+  }) => void) | null = null;
+  const lookup = new Promise<{
+    ticketId: string;
+    status: 'received';
+    createdAt: string;
+  }>((resolve) => {
+    resolveLookup = resolve;
+  });
+  const proposal = parseSupportReportProposal(`Draft ready.
+
+<kordi-support-report>
+{"category":"issue","subject":"Reopened approval","description":"Keep the submitted ticket terminal after reload."}
+</kordi-support-report>`);
+  assert.ok(proposal);
+
+  try {
+    await act(async () => {
+      root?.render(
+        <SupportReportSubmissionProvider
+          accountId="account:durable-restore"
+          sessionId="session:support"
+          onLookup={() => lookup}
+          onSubmit={async () => {
+            throw new Error('A restored ticket must not be submitted again.');
+          }}
+        >
+          <SupportReportPermissionCard proposal={proposal} />
+        </SupportReportSubmissionProvider>,
+      );
+    });
+
+    assert.match(host.textContent ?? '', /Checking submission status/);
+    assert.equal(host.querySelector('button'), null);
+
+    await act(async () => {
+      resolveLookup?.({
+        ticketId: 'ticket:restored',
+        status: 'received',
+        createdAt: '2026-08-05T12:00:00.000Z',
+      });
+      await lookup;
+    });
+
+    assert.match(host.textContent ?? '', /Sent to Kordi maintainers/);
+    assert.match(host.textContent ?? '', /ticket:restored/);
+    assert.equal(host.querySelector('button'), null);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    installed.restore();
+  }
+});
+
+test('rapid duplicate approvals share one effective submission', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: Root | null = createRoot(host);
+  let submissionCalls = 0;
+  let resolveSubmission: ((value: {
+    ticketId: string;
+    status: 'received';
+    createdAt: string;
+  }) => void) | null = null;
+  const pendingSubmission = new Promise<{
+    ticketId: string;
+    status: 'received';
+    createdAt: string;
+  }>((resolve) => {
+    resolveSubmission = resolve;
+  });
+  const proposal = parseSupportReportProposal(`Draft ready.
+
+<kordi-support-report>
+{"category":"feedback","subject":"Double approval","description":"Only one request should be issued."}
+</kordi-support-report>`);
+  assert.ok(proposal);
+
+  try {
+    await act(async () => {
+      root?.render(
+        <SupportReportSubmissionProvider
+          accountId="account:duplicate-approval"
+          sessionId="session:support"
+          onLookup={async () => null}
+          onSubmit={() => {
+            submissionCalls += 1;
+            return pendingSubmission;
+          }}
+        >
+          <SupportReportPermissionCard proposal={proposal} />
+          <SupportReportPermissionCard proposal={proposal} />
+        </SupportReportSubmissionProvider>,
+      );
+    });
+    const approvals = Array.from(host.querySelectorAll('button'))
+      .filter((button) => button.textContent?.trim() === 'Approve and send');
+    assert.equal(approvals.length, 2);
+
+    await act(async () => {
+      approvals[0]?.click();
+      approvals[1]?.click();
+    });
+    assert.equal(submissionCalls, 1);
+    assert.match(host.textContent ?? '', /Sending/);
+
+    await act(async () => {
+      resolveSubmission?.({
+        ticketId: 'ticket:deduplicated',
+        status: 'received',
+        createdAt: '2026-08-05T12:00:00.000Z',
+      });
+      await pendingSubmission;
+    });
+    assert.match(host.textContent ?? '', /ticket:deduplicated/);
+    assert.equal(host.querySelectorAll('button').length, 0);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    installed.restore();
+  }
+});
+
+test('a changed support draft receives an independent submission identity', () => {
+  const baseline = supportProposalSubmissionId('session:support', draft);
+  assert.notEqual(
+    supportProposalSubmissionId('session:support', {
+      ...draft,
+      subject: 'A different subject',
+    }),
+    baseline,
+  );
+  assert.notEqual(
+    supportProposalSubmissionId('session:support', {
+      ...draft,
+      description: 'A different description',
+    }),
+    baseline,
+  );
 });
 
 test('the report review explains the privacy boundary before sending', () => {

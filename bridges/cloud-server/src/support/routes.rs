@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,9 @@ use sqlx_core::query_as::query_as;
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::server::ServerState;
 
-use super::tickets::{create_ticket, NewSupportTicket};
+use super::tickets::{
+    create_ticket, ticket_by_submission_id, NewSupportTicket, StoredSupportTicket,
+};
 
 const SUBJECT_MAX_CHARS: usize = 160;
 const DESCRIPTION_MAX_CHARS: usize = 12_000;
@@ -58,16 +60,77 @@ struct SupportTicketResponse {
     ticket_id: String,
     status: String,
     created_at: String,
+    created: bool,
+    notification_status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupportTicketLookupResponse {
+    ticket: Option<SupportTicketResponse>,
 }
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/v1/cloud/support/tickets", post(create_support_ticket))
+        .route(
+            "/v1/cloud/support/tickets/by-submission/:client_submission_id",
+            get(get_support_ticket_by_submission),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
         ))
         .with_state(state)
+}
+
+fn ticket_response(ticket: StoredSupportTicket) -> SupportTicketResponse {
+    SupportTicketResponse {
+        ticket_id: ticket.ticket_id,
+        status: "received".to_string(),
+        created_at: ticket.created_at,
+        created: ticket.created,
+        notification_status: ticket.notification_status,
+    }
+}
+
+fn should_schedule_immediate_delivery(ticket: &StoredSupportTicket) -> bool {
+    ticket.created
+}
+
+async fn get_support_ticket_by_submission(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(client_submission_id): Path<String>,
+) -> Response {
+    let client_submission_id = match clean_required(
+        &client_submission_id,
+        "clientSubmissionId",
+        SUBMISSION_ID_MAX_CHARS,
+    ) {
+        Ok(value) => value,
+        Err(message) => {
+            return error("invalid_support_ticket", &message, StatusCode::BAD_REQUEST);
+        }
+    };
+    match ticket_by_submission_id(state.db_pool(), &session.account_id, &client_submission_id).await
+    {
+        Ok(ticket) => (
+            StatusCode::OK,
+            Json(SupportTicketLookupResponse {
+                ticket: ticket.map(ticket_response),
+            }),
+        )
+            .into_response(),
+        Err(error_value) => {
+            eprintln!("[support] restore ticket status: {error_value}");
+            error(
+                "server_error",
+                "Could not restore the support request status.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
 }
 
 fn error(code: &str, message: &str, status: StatusCode) -> Response {
@@ -270,7 +333,7 @@ async fn create_support_ticket(
         }
     };
 
-    if service.mail_delivery_enabled() && ticket.notification_status != "sent" {
+    if service.mail_delivery_enabled() && should_schedule_immediate_delivery(&ticket) {
         let state = state.clone();
         let ticket_id = ticket.ticket_id.clone();
         tokio::spawn(async move {
@@ -278,23 +341,21 @@ async fn create_support_ticket(
         });
     }
 
-    (
-        StatusCode::CREATED,
-        Json(SupportTicketResponse {
-            ticket_id: ticket.ticket_id,
-            status: "received".to_string(),
-            created_at: ticket.created_at,
-        }),
-    )
-        .into_response()
+    let status = if ticket.created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    (status, Json(ticket_response(ticket))).into_response()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        clean_diagnostic, clean_required, clean_subject, support_ticket_metadata,
-        SupportDiagnostics, SupportSubmissionConsent,
+        clean_diagnostic, clean_required, clean_subject, should_schedule_immediate_delivery,
+        support_ticket_metadata, SupportDiagnostics, SupportSubmissionConsent,
     };
+    use crate::support::tickets::StoredSupportTicket;
 
     #[test]
     fn ticket_text_is_trimmed_and_bounded() {
@@ -376,5 +437,21 @@ mod tests {
         assert_eq!(metadata["consent"]["diagnostics"], true);
         assert_eq!(metadata["consent"]["conversationTranscript"], false);
         assert_eq!(metadata["values"]["appVersion"], "0.0.1-beta.10");
+    }
+
+    #[test]
+    fn only_a_new_ticket_schedules_immediate_delivery() {
+        let ticket = |created, notification_status: &str| StoredSupportTicket {
+            ticket_id: "support_test".into(),
+            created_at: "2026-08-05T00:00:00Z".into(),
+            notification_status: notification_status.into(),
+            created,
+        };
+
+        assert!(should_schedule_immediate_delivery(&ticket(true, "pending")));
+        assert!(!should_schedule_immediate_delivery(&ticket(
+            false, "pending"
+        )));
+        assert!(!should_schedule_immediate_delivery(&ticket(false, "sent")));
     }
 }

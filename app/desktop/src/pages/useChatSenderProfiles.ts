@@ -40,6 +40,7 @@ export function useChatSenderProfiles({
   const normalizedCloudAccount = cloudAccount ?? null;
   const cloudContacts = useCloudContacts(normalizedCloudAccount);
   const submitCloudSupportRequest = cloudContacts.submitSupportRequest;
+  const getCloudSupportRequest = cloudContacts.getSupportRequest;
   const [storedState, setStoredState] = useState<SenderProfileState>({
     pageConversationId: activeConversation.id,
     target: null,
@@ -91,6 +92,10 @@ export function useChatSenderProfiles({
     (input: CloudSupportTicketInput) => submitCloudSupportRequest(input),
     [submitCloudSupportRequest],
   );
+  const getSupportRequest = useCallback(
+    (clientSubmissionId: string) => getCloudSupportRequest(clientSubmissionId),
+    [getCloudSupportRequest],
+  );
 
   return {
     target: state.target,
@@ -104,6 +109,10 @@ export function useChatSenderProfiles({
     submitSupportRequest: normalizedCloudAccount
       ? submitSupportRequest
       : undefined,
+    getSupportRequest: normalizedCloudAccount
+      ? getSupportRequest
+      : undefined,
+    supportAccountId: normalizedCloudAccount?.accountId,
     openActive,
     openCompanion,
     close: () => setStoredState({

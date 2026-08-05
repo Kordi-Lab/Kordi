@@ -9,17 +9,23 @@ import {
 } from '@/features/support/supportReportSubmission';
 
 export function SupportReportSubmissionProvider({
+  accountId,
   sessionId,
   onSubmit,
+  onLookup,
   children,
 }: {
+  accountId?: string;
   sessionId?: string;
   onSubmit?: SupportReportSubmission['onSubmit'];
+  onLookup?: SupportReportSubmission['onLookup'];
   children: ReactNode;
 }) {
   const value = useMemo<SupportReportSubmission | null>(
-    () => sessionId && onSubmit ? { sessionId, onSubmit } : null,
-    [onSubmit, sessionId],
+    () => accountId && sessionId && onSubmit && onLookup
+      ? { accountId, sessionId, onSubmit, onLookup }
+      : null,
+    [accountId, onLookup, onSubmit, sessionId],
   );
 
   return (

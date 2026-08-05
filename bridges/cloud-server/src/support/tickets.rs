@@ -22,6 +22,7 @@ pub struct StoredSupportTicket {
     pub ticket_id: String,
     pub created_at: String,
     pub notification_status: String,
+    pub created: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +76,7 @@ pub async fn create_ticket(
 ) -> Result<StoredSupportTicket, sqlx_core::Error> {
     let ticket_id = format!("support_{}", uuid::Uuid::new_v4().simple());
     let now = Utc::now().to_rfc3339();
-    let row: (String, String, String) = query_as(
+    let row: (String, String, String, bool) = query_as(
         "INSERT INTO cloud_support_tickets (
              ticket_id, account_id, category, subject, description, session_id,
              diagnostics_json, client_submission_id, notification_status,
@@ -83,7 +84,7 @@ pub async fn create_ticket(
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', 0, $9, $9, $9)
          ON CONFLICT (account_id, client_submission_id) DO UPDATE
          SET client_submission_id = cloud_support_tickets.client_submission_id
-         RETURNING ticket_id, created_at, notification_status",
+         RETURNING ticket_id, created_at, notification_status, ticket_id = $1",
     )
     .bind(&ticket_id)
     .bind(input.account_id)
@@ -100,7 +101,30 @@ pub async fn create_ticket(
         ticket_id: row.0,
         created_at: row.1,
         notification_status: row.2,
+        created: row.3,
     })
+}
+
+pub async fn ticket_by_submission_id(
+    pool: &PgPool,
+    account_id: &str,
+    client_submission_id: &str,
+) -> Result<Option<StoredSupportTicket>, sqlx_core::Error> {
+    let row: Option<(String, String, String)> = query_as(
+        "SELECT ticket_id, created_at, notification_status
+         FROM cloud_support_tickets
+         WHERE account_id = $1 AND client_submission_id = $2",
+    )
+    .bind(account_id)
+    .bind(client_submission_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| StoredSupportTicket {
+        ticket_id: row.0,
+        created_at: row.1,
+        notification_status: row.2,
+        created: false,
+    }))
 }
 
 async fn claim_ticket(
@@ -200,7 +224,12 @@ pub async fn deliver_ticket(
 
 #[cfg(test)]
 mod tests {
-    use super::retry_delay_minutes;
+    use chrono::Utc;
+    use sqlx_core::query::query;
+
+    use super::{
+        claim_ticket, create_ticket, retry_delay_minutes, ticket_by_submission_id, NewSupportTicket,
+    };
 
     #[test]
     fn notification_retry_backoff_is_bounded() {
@@ -209,5 +238,86 @@ mod tests {
         assert_eq!(retry_delay_minutes(3), 15);
         assert_eq!(retry_delay_minutes(4), 60);
         assert_eq!(retry_delay_minutes(8), 360);
+    }
+
+    #[tokio::test]
+    async fn submissions_are_idempotent_and_sent_delivery_is_terminal() {
+        let Some(database_url) = std::env::var("DATABASE_URL").ok() else {
+            return;
+        };
+        let pool = match crate::pg::init_pool(&database_url).await {
+            Ok(pool) => pool,
+            Err(error) => {
+                eprintln!("[support_ticket_test] init_pool failed, skipping: {error}");
+                return;
+            }
+        };
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let account_id = format!("acct_support_test_{suffix}");
+        let submission_id = format!("desktop:test:{suffix}");
+        let now = Utc::now().to_rfc3339();
+        query(
+            "INSERT INTO cloud_accounts (
+                 account_id, display_name, primary_email, created_at, updated_at
+             ) VALUES ($1, 'Support test', NULL, $2, $2)",
+        )
+        .bind(&account_id)
+        .bind(&now)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let input = || NewSupportTicket {
+            account_id: &account_id,
+            category: "issue",
+            subject: "The approval card reopened",
+            description: "The same proposal must retain its terminal state.",
+            session_id: Some("session:support"),
+            diagnostics: serde_json::json!({}),
+            client_submission_id: &submission_id,
+        };
+        let (first, second) =
+            tokio::join!(create_ticket(&pool, input()), create_ticket(&pool, input()),);
+        let first = first.unwrap();
+        let second = second.unwrap();
+        assert_eq!(first.ticket_id, second.ticket_id);
+        assert_ne!(first.created, second.created);
+
+        let restored = ticket_by_submission_id(&pool, &account_id, &submission_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.ticket_id, first.ticket_id);
+        assert!(!restored.created);
+        assert!(ticket_by_submission_id(&pool, "acct_other", &submission_id)
+            .await
+            .unwrap()
+            .is_none());
+
+        query(
+            "UPDATE cloud_support_tickets
+             SET notification_status = 'sent', updated_at = $2
+             WHERE ticket_id = $1",
+        )
+        .bind(&restored.ticket_id)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert!(claim_ticket(&pool, Some(&restored.ticket_id))
+            .await
+            .unwrap()
+            .is_none());
+
+        let repeated = create_ticket(&pool, input()).await.unwrap();
+        assert_eq!(repeated.ticket_id, restored.ticket_id);
+        assert_eq!(repeated.notification_status, "sent");
+        assert!(!repeated.created);
+
+        query("DELETE FROM cloud_accounts WHERE account_id = $1")
+            .bind(&account_id)
+            .execute(&pool)
+            .await
+            .unwrap();
     }
 }

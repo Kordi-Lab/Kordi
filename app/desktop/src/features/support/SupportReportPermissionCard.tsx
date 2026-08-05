@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   CircleAlert,
@@ -13,14 +13,10 @@ import {
   supportProposalSubmissionId,
   type SupportReportProposal,
 } from '@/features/support/supportReport';
-import { useSupportReportSubmission } from '@/features/support/supportReportSubmission';
-
-type SubmissionState =
-  | { stage: 'pending' }
-  | { stage: 'declined' }
-  | { stage: 'sending' }
-  | { stage: 'sent'; ticketId: string }
-  | { stage: 'error'; message: string };
+import {
+  SupportReportSubmissionContext,
+  useSupportReportSubmission,
+} from '@/features/support/supportReportSubmission';
 
 function categoryLabel(category: SupportReportProposal['draft']['category']) {
   if (category === 'question') return 'Question';
@@ -33,35 +29,30 @@ export function SupportReportPermissionCard({
 }: {
   proposal: SupportReportProposal;
 }) {
-  const submission = useSupportReportSubmission();
-  const [state, setState] = useState<SubmissionState>({ stage: 'pending' });
+  const [declined, setDeclined] = useState(false);
+  const submissionContext = useContext(SupportReportSubmissionContext);
   const clientSubmissionId = useMemo(
-    () => submission
-      ? supportProposalSubmissionId(submission.sessionId, proposal.draft)
+    () => submissionContext
+      ? supportProposalSubmissionId(submissionContext.sessionId, proposal.draft)
       : '',
-    [proposal.draft, submission],
+    [proposal.draft, submissionContext],
   );
+  const submission = useSupportReportSubmission(clientSubmissionId);
+  const state = submission?.state;
 
-  if (!submission) return null;
+  if (!submission || !state) return null;
 
   const approve = async () => {
     if (state.stage === 'sending' || state.stage === 'sent') return;
-    setState({ stage: 'sending' });
     try {
-      const result = await submission.onSubmit(buildSupportTicketInput({
+      await submission.submit(buildSupportTicketInput({
         draft: proposal.draft,
         sessionId: submission.sessionId,
         permissionGranted: true,
         clientSubmissionId,
       }));
-      setState({ stage: 'sent', ticketId: result.ticketId });
-    } catch (caught) {
-      setState({
-        stage: 'error',
-        message: caught instanceof Error
-          ? caught.message
-          : 'The report could not be sent. Try again.',
-      });
+    } catch {
+      // The account-scoped submission store exposes the retryable error.
     }
   };
 
@@ -94,7 +85,30 @@ export function SupportReportPermissionCard({
             </span>
           </div>
 
-          {state.stage === 'pending' || state.stage === 'sending' || state.stage === 'error' ? (
+          {state.stage === 'checking' ? (
+            <div className="mt-2 flex min-w-0 items-center gap-2" aria-live="polite">
+              <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-[color:var(--utility-muted-text)]" aria-hidden="true" />
+              <p className="min-w-0 text-[10px] leading-4 text-[color:var(--utility-muted-text)]">
+                Checking submission status…
+              </p>
+            </div>
+          ) : state.stage === 'lookup-error' ? (
+            <div className="mt-2" role="alert">
+              <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[color:var(--app-transient-danger-text)]">
+                <CircleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                <span>{state.message}</span>
+              </div>
+              <div className="mt-2.5 flex justify-end">
+                <button
+                  type="button"
+                  className="app-button-quiet rounded-[8px] px-2.5 py-1 text-[10px] font-medium"
+                  onClick={submission.retryLookup}
+                >
+                  Retry status
+                </button>
+              </div>
+            </div>
+          ) : !declined && (state.stage === 'pending' || state.stage === 'sending' || state.stage === 'error') ? (
             <>
               <p className="mt-2 text-[10px] leading-4 text-[color:var(--utility-muted-text)]">
                 Approval sends only this draft, your signed-in account identity, and this support-session reference. Chat history, files, diagnostics, and provider credentials stay private.
@@ -112,7 +126,7 @@ export function SupportReportPermissionCard({
                 <button
                   type="button"
                   className="app-button-quiet rounded-[8px] px-2.5 py-1 text-[10px] font-medium"
-                  onClick={() => setState({ stage: 'declined' })}
+                  onClick={() => setDeclined(true)}
                   disabled={state.stage === 'sending'}
                 >
                   Decline
@@ -148,7 +162,7 @@ export function SupportReportPermissionCard({
               <button
                 type="button"
                 className="app-button-quiet rounded-[8px] px-2 py-1 text-[10px] font-medium"
-                onClick={() => setState({ stage: 'pending' })}
+                onClick={() => setDeclined(false)}
               >
                 Review again
               </button>

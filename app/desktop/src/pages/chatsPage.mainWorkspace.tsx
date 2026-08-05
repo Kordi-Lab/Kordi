@@ -109,6 +109,12 @@ export function ChatMainWorkspace({
   const submitSupportReport = activeConv.supportTicketEnabled
     ? models.senderProfiles.submitSupportRequest
     : undefined;
+  const getSupportReport = activeConv.supportTicketEnabled
+    ? models.senderProfiles.getSupportRequest
+    : undefined;
+  const supportAccountId = activeConv.supportTicketEnabled
+    ? models.senderProfiles.supportAccountId
+    : undefined;
   const shouldRenderLiveTurn = Boolean(
     presentation.liveTurn && !presentation.liveTurn.completed,
   );
@@ -209,8 +215,10 @@ export function ChatMainWorkspace({
             ) : null}
 
             <SupportReportSubmissionProvider
+              accountId={supportAccountId}
               sessionId={supportReportSessionId}
               onSubmit={submitSupportReport}
+              onLookup={getSupportReport}
             >
               <ChatSessionPane
               presentation={{

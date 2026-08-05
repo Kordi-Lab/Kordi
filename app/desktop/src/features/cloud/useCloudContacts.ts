@@ -33,6 +33,7 @@ import {
 import { loadSession } from './session';
 import {
   createCloudSupportTicket,
+  getCloudSupportTicketBySubmissionId,
   type CloudSupportTicketInput,
   type CloudSupportTicketResult,
 } from './supportClient';
@@ -53,6 +54,7 @@ export type UseCloudContactsResult = {
   acceptRequest(requestId: string): Promise<void>;
   rejectRequest(requestId: string): Promise<void>;
   submitSupportRequest: (input: CloudSupportTicketInput) => Promise<CloudSupportTicketResult>;
+  getSupportRequest: (clientSubmissionId: string) => Promise<CloudSupportTicketResult | null>;
 };
 
 const REFRESH_INTERVAL_MS = 15_000;
@@ -449,6 +451,20 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     [client, store],
   );
 
+  const getSupportRequest = useCallback(
+    async (clientSubmissionId: string) => {
+      if (!store) throw new Error('Not signed in.');
+      const session = await loadSession();
+      if (!session?.token) throw new Error('Not signed in.');
+      return getCloudSupportTicketBySubmissionId(
+        client,
+        session.token,
+        clientSubmissionId,
+      );
+    },
+    [client, store],
+  );
+
   const mappedContacts = useMemo<Contact[]>(
     () => snapshot.contacts.map((row) => cloudContactToContact(row)),
     [snapshot.contacts],
@@ -470,6 +486,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     acceptRequest,
     rejectRequest,
     submitSupportRequest,
+    getSupportRequest,
   };
 }
 
