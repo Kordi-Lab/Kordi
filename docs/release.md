@@ -424,9 +424,10 @@ merging the preparation PR:
    pull requests.
 3. Update the `[Unreleased]` and version comparison links at the bottom of
    `CHANGELOG.md`.
-4. Re-run the comparison after the release commit is pinned. If another
-   user-facing change entered `main`, update the changelog and pin the new
-   commit before building.
+4. Re-run the comparison after the release commit is pinned. If the release
+   scope intentionally advances to a newer `main` commit, update the changelog
+   and pin that new commit before building. Otherwise keep later changes out of
+   both the release artifacts and release notes.
 
 The release-version test requires a dated entry, at least one classified
 user-facing bullet, and a comparison link for the exact app version. GitHub
