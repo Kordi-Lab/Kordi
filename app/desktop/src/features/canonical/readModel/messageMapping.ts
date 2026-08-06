@@ -454,7 +454,6 @@ export function mapCanonicalMessage(
   const legacyCollaborationAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();
-  const cloudGroupMessageId = stringValue(content.cloudGroupMessageId)?.trim();
   const desktopEntryId = message.sourceTransport?.startsWith('desktop-chat')
     ? stringValue(content.desktopEntryId)?.trim()
     : undefined;
@@ -467,10 +466,8 @@ export function mapCanonicalMessage(
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
-  const replyAliasIds = [...new Set(
-    [parentMessageId, sourceRequestId, cloudGroupMessageId]
-      .filter((value): value is string => Boolean(value && value !== message.id)),
-  )];
+  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, stringValue(content.cloudGroupMessageId)?.trim()]
+    .filter((value): value is string => Boolean(value && value !== message.id)))];
   const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
   const viewerOwnsAgent = isAgentTurn
     && Boolean(trimmedProfileIdentityId)

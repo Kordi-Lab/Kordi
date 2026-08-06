@@ -149,11 +149,7 @@ function renderInlineMarkdown(
         </ExternalMessageLink>
       );
     }
-    return (
-      <Fragment key={`text-${index}`}>
-        <MessageInlineContent text={part.value} showSiteIcons={false} />
-      </Fragment>
-    );
+    return <Fragment key={`text-${index}`}><MessageInlineContent text={part.value} showSiteIcons={false} /></Fragment>;
   });
 }
 
