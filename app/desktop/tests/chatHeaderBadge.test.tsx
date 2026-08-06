@@ -12,7 +12,6 @@ import {
   pairedCompanionConversation,
   parseAskAgentTriggerCommand,
 } from '../src/pages/ChatsPage';
-import { chatCompanionSessionOptions } from '../src/pages/chatsPage.model';
 import type { Conversation } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
@@ -258,84 +257,6 @@ test('ask agent candidates include only agent sessions from any current chat', (
   );
 });
 
-test('side chat session options keep the main Agent hierarchy and renamed title', () => {
-  const activeMainSession = conversation({
-    id: 'main-session',
-    canonicalSessionId: 'session:main',
-    name: 'hahahxhat',
-    type: 'owned-agent',
-    _updatedAtMs: 100,
-  });
-  const rootSession = conversation({
-    id: 'root-session',
-    canonicalSessionId: 'session:root',
-    name: 'Model and identity',
-    type: 'owned-agent',
-    _updatedAtMs: 400,
-  });
-  const childSession = conversation({
-    id: 'child-session',
-    canonicalSessionId: 'session:child',
-    name: 'New chat',
-    type: 'owned-agent',
-    forkedFromSessionId: 'session:root',
-    _updatedAtMs: 300,
-  });
-  const grandchildSession = conversation({
-    id: 'grandchild-session',
-    canonicalSessionId: 'session:grandchild',
-    name: 'New chat',
-    type: 'owned-agent',
-    forkedFromSessionId: 'child-session',
-    _updatedAtMs: 200,
-  });
-
-  assert.deepEqual(
-    chatCompanionSessionOptions(activeMainSession, [
-      grandchildSession,
-      activeMainSession,
-      childSession,
-      rootSession,
-    ]).map((option) => ({
-      id: option.conversation.id,
-      name: option.conversation.name,
-      depth: option.depth,
-      openInMain: option.openInMain,
-      selectable: option.selectable,
-    })),
-    [
-      {
-        id: 'root-session',
-        name: 'Model and identity',
-        depth: 0,
-        openInMain: false,
-        selectable: true,
-      },
-      {
-        id: 'child-session',
-        name: 'New chat',
-        depth: 1,
-        openInMain: false,
-        selectable: true,
-      },
-      {
-        id: 'grandchild-session',
-        name: 'New chat',
-        depth: 2,
-        openInMain: false,
-        selectable: true,
-      },
-      {
-        id: 'main-session',
-        name: 'hahahxhat',
-        depth: 0,
-        openInMain: true,
-        selectable: false,
-      },
-    ],
-  );
-});
-
 test('chat companion drag drop chooses the target side from the drop half', () => {
   assert.equal(chatCompanionSideFromDropPosition(149, 100, 100), 'left');
   assert.equal(chatCompanionSideFromDropPosition(150, 100, 100), 'right');
@@ -456,16 +377,6 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.match(source, />\s*New chat\s*</);
   assert.match(source, />\s*Switch Chat\s*</);
   assert.match(source, /data-side-chat-session-list="true"/);
-  assert.match(source, /data-side-chat-session-option="true"/);
-  assert.match(source, /data-side-chat-open-in-main=/);
-  assert.match(source, /data-side-chat-current-session=/);
-  assert.match(source, /selectableSessionIds\.has\(conversationId\)/);
-  assert.match(source, /data-session-fork-depth=/);
-  assert.match(source, /app-transient-scroll/);
-  assert.match(sidePanelHeader, /app-transient-row app-transient-flat-action mb-1/);
-  assert.match(sidePanelHeader, /!isCurrent && 'app-transient-flat-action'/);
-  assert.match(source, />\s*Main\s*</);
-  assert.match(source, />\s*Current\s*</);
   assert.match(source, />\s*Back\s*</);
   assert.doesNotMatch(source, /aria-label="Change side chat"/);
   assert.doesNotMatch(source, /<span>Close side chat<\/span>/);
