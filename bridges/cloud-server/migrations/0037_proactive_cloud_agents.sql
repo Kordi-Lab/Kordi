@@ -1,14 +1,38 @@
-ALTER TABLE cloud_agent_definitions
-    ADD COLUMN IF NOT EXISTS proactive_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS proactive_skill_pack TEXT NOT NULL DEFAULT 'proact-v1',
-    ADD COLUMN IF NOT EXISTS mention_people_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    ADD COLUMN IF NOT EXISTS mention_agents_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+DO $$
+DECLARE
+    mention_columns_existed BOOLEAN;
+BEGIN
+    SELECT
+        EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'cloud_agent_definitions'
+              AND column_name = 'mention_people_enabled'
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'cloud_agent_definitions'
+              AND column_name = 'mention_agents_enabled'
+        )
+    INTO mention_columns_existed;
 
--- Preserve the outbound mention behavior shipped before permissions existed.
--- New definitions are created with explicit deny-by-default values by the API.
-UPDATE cloud_agent_definitions
-SET mention_people_enabled = TRUE,
-    mention_agents_enabled = TRUE;
+    ALTER TABLE cloud_agent_definitions
+        ADD COLUMN IF NOT EXISTS proactive_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS proactive_skill_pack TEXT NOT NULL DEFAULT 'proact-v1',
+        ADD COLUMN IF NOT EXISTS mention_people_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS mention_agents_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+
+    -- Preserve the outbound mention behavior shipped before permissions existed,
+    -- but never overwrite choices from an earlier proactive migration attempt.
+    IF NOT mention_columns_existed THEN
+        UPDATE cloud_agent_definitions
+        SET mention_people_enabled = TRUE,
+            mention_agents_enabled = TRUE;
+    END IF;
+END $$;
 
 ALTER TABLE cloud_agent_definitions
     ALTER COLUMN proactive_skill_pack SET DEFAULT 'proact-v1',

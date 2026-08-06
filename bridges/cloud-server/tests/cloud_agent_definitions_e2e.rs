@@ -122,6 +122,8 @@ fn cloud_agent_routes_are_mounted_in_source() {
     assert!(models_source.contains("participant_conversations"));
     assert!(store_source.contains("access_scope = $4"));
     assert!(pool_source.contains("0036_agent_runtime_bindings.sql"));
+    assert!(pool_source.contains("0037_proactive_cloud_agents.sql"));
+    assert!(!pool_source.contains("0034_proactive_cloud_agents.sql"));
 }
 
 #[tokio::test]

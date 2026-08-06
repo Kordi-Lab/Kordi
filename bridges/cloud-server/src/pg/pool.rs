@@ -193,11 +193,6 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         sql: include_str!("../../migrations/0033_cloud_session_titles.sql"),
     },
     EmbeddedMigration {
-        version: 34,
-        description: "proactive agents and outbound mention permissions",
-        sql: include_str!("../../migrations/0034_proactive_cloud_agents.sql"),
-    },
-    EmbeddedMigration {
         version: 35,
         description: "global support agent and durable support tickets",
         sql: include_str!("../../migrations/0035_global_support.sql"),
@@ -206,6 +201,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         version: 36,
         description: "local and cloud agent runtime bindings",
         sql: include_str!("../../migrations/0036_agent_runtime_bindings.sql"),
+    },
+    EmbeddedMigration {
+        version: 37,
+        description: "proactive agents and outbound mention permissions",
+        sql: include_str!("../../migrations/0037_proactive_cloud_agents.sql"),
     },
 ];
 
