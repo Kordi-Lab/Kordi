@@ -72,7 +72,7 @@ const ALL_SOCIAL_PROVIDER_IDS: ReadonlyArray<CloudOAuthProvider> = SOCIAL_LOGIN_
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PASSWORD_MIN_LENGTH = 8;
 
-function messageForError(error: CloudAuthError): string {
+function messageForError(error: CloudAuthError, showDebugAuthDiagnostics: boolean): string {
   switch (error.code) {
     case 'invalid_email':
       return 'That email address looks malformed.';
@@ -96,7 +96,9 @@ function messageForError(error: CloudAuthError): string {
     case 'invalid_avatar':
       return 'Could not process that avatar. Try another image.';
     case 'oauth_not_configured':
-      return 'That social sign-in method is not available here. Use email and password.';
+      return showDebugAuthDiagnostics
+        ? 'That social sign-in method is not available here. Use email and password.'
+        : 'Could not start social sign-in. Please try again in a moment.';
     default:
       return error.message || 'Something went wrong.';
   }
@@ -287,6 +289,7 @@ export type CloudLoginPageProps = {
   }) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
   availableSocialProviders?: ReadonlyArray<CloudOAuthProvider>;
+  showDebugAuthDiagnostics?: boolean;
 };
 
 const noopSignIn = async () => {
@@ -300,6 +303,7 @@ export function CloudLoginPage({
   onSignUp = noopSignUp,
   onSocialSignIn,
   availableSocialProviders,
+  showDebugAuthDiagnostics = false,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarPref, setAvatarPref] = useState<AvatarPreference | null>(() => initialAvatarPreference());
@@ -385,7 +389,7 @@ export function CloudLoginPage({
       await onSocialSignIn(provider);
     } catch (caught) {
       if (caught instanceof CloudAuthError) {
-        setSubmitError(messageForError(caught));
+        setSubmitError(messageForError(caught, showDebugAuthDiagnostics));
       } else if (caught instanceof Error) {
         setSubmitError(caught.message);
       } else {
@@ -415,7 +419,7 @@ export function CloudLoginPage({
       }
     } catch (caught) {
       if (caught instanceof CloudAuthError) {
-        setSubmitError(messageForError(caught));
+        setSubmitError(messageForError(caught, showDebugAuthDiagnostics));
       } else if (caught instanceof Error) {
         setSubmitError(caught.message);
       } else {
@@ -496,7 +500,7 @@ export function CloudLoginPage({
           })}
         </div>
 
-        {onSocialSignIn && enabledSocialProviderCount === 0 ? (
+        {showDebugAuthDiagnostics && onSocialSignIn && enabledSocialProviderCount === 0 ? (
           <p
             data-cloud-social-sign-in-unavailable="true"
             className={`mx-auto mt-3 max-w-[320px] text-center ${TYPE_HINT} normal-case tracking-normal ${INK_MUTED}`}

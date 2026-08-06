@@ -361,13 +361,21 @@ function operatorProductionDebugIsEnabled(env: CloudApiEnvironment | undefined):
     && env?.VITE_KORDI_PRODUCTION_DEBUG_ACK?.trim() === '1';
 }
 
-export function operatorCloudOAuthProviderFallback(
-  env?: CloudApiEnvironment,
-): CloudOAuthProvider[] {
+function activeCloudApiEnvironment(env?: CloudApiEnvironment): CloudApiEnvironment | undefined {
   const meta = typeof import.meta !== 'undefined'
     ? (import.meta as ImportMeta & { env?: CloudApiEnvironment }).env
     : undefined;
-  const activeEnv = env ?? meta;
+  return env ?? meta;
+}
+
+export function cloudAuthCapabilityDiscoveryEnabled(env?: CloudApiEnvironment): boolean {
+  return activeCloudApiEnvironment(env)?.DEV === true;
+}
+
+export function operatorCloudOAuthProviderFallback(
+  env?: CloudApiEnvironment,
+): CloudOAuthProvider[] {
+  const activeEnv = activeCloudApiEnvironment(env);
   const configured = activeEnv?.VITE_KORDI_CLOUD_API_BASE?.trim();
   if (!activeEnv?.DEV
     || !configured
@@ -378,11 +386,13 @@ export function operatorCloudOAuthProviderFallback(
   return ['google', 'github'];
 }
 
+export function defaultCloudOAuthProviders(env?: CloudApiEnvironment): CloudOAuthProvider[] {
+  if (!cloudAuthCapabilityDiscoveryEnabled(env)) return ['google', 'github'];
+  return operatorCloudOAuthProviderFallback(env);
+}
+
 export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
-  const meta = typeof import.meta !== 'undefined'
-    ? (import.meta as ImportMeta & { env?: CloudApiEnvironment }).env
-    : undefined;
-  const activeEnv = env ?? meta;
+  const activeEnv = activeCloudApiEnvironment(env);
   const configured = activeEnv?.VITE_KORDI_CLOUD_API_BASE?.trim();
 
   if (activeEnv?.DEV) {

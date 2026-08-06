@@ -6,11 +6,14 @@ import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
+import { cloudAuthCapabilityDiscoveryEnabled } from '@/features/cloud/authClient';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
 import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
+
+const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 
 type CloudSessionGateResult = Pick<
   UseCloudSessionResult,
@@ -191,6 +194,7 @@ function CloudEditionRoot({
           onSignUp={session.signUp}
           onSocialSignIn={session.signInWithProvider}
           availableSocialProviders={session.oauthProviders ?? []}
+          showDebugAuthDiagnostics={SHOW_DEBUG_AUTH_DIAGNOSTICS}
         />
       </CloudGateShell>
     );

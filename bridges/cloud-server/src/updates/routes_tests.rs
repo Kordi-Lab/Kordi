@@ -481,10 +481,10 @@ fn environment_lock() -> &'static tokio::sync::Mutex<()> {
 async fn legacy_metadata_never_authorizes_beta5_native_installation() {
     let _guard = environment_lock().lock().await;
     unsafe {
-        std::env::set_var("KORDI_RELEASE_VERSION", "0.0.1-beta.5");
+        std::env::set_var("KORDI_RELEASE_VERSION", "0.0.1-beta.12");
         std::env::set_var(
             "KORDI_RELEASE_CHANGELOG_URL",
-            "https://kordi.ai/updates/releases/version",
+            "https://kordi.ai/updates/releases/0.0.1-beta.12/Kordi_0.0.1-beta.12_aarch64.dmg",
         );
         std::env::set_var(
             "KORDI_RELEASE_DOWNLOAD_URL",
@@ -506,7 +506,14 @@ async fn legacy_metadata_never_authorizes_beta5_native_installation() {
         .await
         .unwrap();
     let fallback = body_json(fallback).await;
-    assert_eq!(fallback["version"], "0.0.1-beta.5");
+    assert_eq!(fallback["version"], "0.0.1-beta.12");
+    assert_eq!(
+        shipped_beta5_confirmation_action(&fallback),
+        Beta5ConfirmationAction::OpenProductUrl(
+            "https://kordi.ai/updates/releases/0.0.1-beta.12/Kordi_0.0.1-beta.12_aarch64.dmg"
+                .to_string()
+        )
+    );
     assert!(fallback.get("downloadUrl").is_none());
     assert!(fallback.get("signature").is_none());
     assert_ne!(
@@ -525,7 +532,7 @@ async fn legacy_metadata_never_authorizes_beta5_native_installation() {
         .await
         .unwrap();
     let corrupt = body_json(corrupt).await;
-    assert_eq!(corrupt["version"], "0.0.1-beta.5");
+    assert_eq!(corrupt["version"], "0.0.1-beta.12");
     assert!(corrupt.get("downloadUrl").is_none());
     assert!(corrupt.get("signature").is_none());
 
