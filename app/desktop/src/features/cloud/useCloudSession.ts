@@ -14,7 +14,6 @@ import {
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
-  operatorCloudOAuthProviderFallback,
   parseCloudOAuthHashResult,
   type CloudAccount,
   type CloudAuthResult,
@@ -22,6 +21,7 @@ import {
   type CloudProfileUpdateInput,
 } from './authClient';
 import { applyCloudSessionProfileUpdate, cloudAccountsEqual } from './cloudAccountState';
+import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
   CLOUD_SESSION_SIGNED_OUT_EVENT,
@@ -114,7 +114,7 @@ export function useCloudSession({
   const [status, setStatus] = useState<CloudSessionStatus>(enabled ? 'loading' : 'signed-out');
   const [account, setAccount] = useState<CloudAccount | null>(null);
   const [error, setError] = useState<CloudAuthError | null>(null);
-  const [oauthProviders, setOAuthProviders] = useState<CloudOAuthProvider[]>([]);
+  const [oauthProviders, setOAuthProviders] = useState<CloudOAuthProvider[]>(defaultCloudOAuthProviders);
   const mountedRef = useRef(true);
   const accountIdRef = useRef<string | null>(null);
   const accountRef = useRef<CloudAccount | null>(null);
@@ -150,7 +150,7 @@ export function useCloudSession({
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !cloudAuthCapabilityDiscoveryEnabled()) return;
     let cancelled = false;
 
     void authClient.capabilities()
@@ -161,7 +161,7 @@ export function useCloudSession({
         ));
       })
       .catch(() => {
-        if (!cancelled) setOAuthProviders(operatorCloudOAuthProviderFallback());
+        if (!cancelled) setOAuthProviders(defaultCloudOAuthProviders());
       });
 
     return () => {

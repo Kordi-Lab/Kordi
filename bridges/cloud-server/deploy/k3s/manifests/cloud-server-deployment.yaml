@@ -63,11 +63,11 @@ spec:
               protocol: TCP
           env:
             - name: KORDI_RELEASE_VERSION
-              value: "0.0.1-beta.5"
+              value: "0.0.1-beta.12"
             - name: KORDI_RELEASE_CHANGELOG_URL
-              value: "https://kordi.ai/updates/releases/version"
+              value: "https://kordi.ai/updates/releases/0.0.1-beta.12/Kordi_0.0.1-beta.12_aarch64.dmg"
             - name: KORDI_RELEASE_INSTALL_COMMAND
-              value: "Install the latest Kordi release from https://kordi.ai/updates/releases/version"
+              value: "Download the Kordi beta.12 test build from kordi.ai and drag it to Applications once."
             - name: PG_PASSWORD
               valueFrom:
                 secretKeyRef:

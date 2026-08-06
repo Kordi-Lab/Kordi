@@ -230,10 +230,11 @@ test('social buttons surface provider sign-in affordances', () => {
   assert.match(markup, /aria-label="Sign in"/);
 });
 
-test('unconfigured social providers are gray, disabled, and direct users to email sign-in', () => {
+test('debug auth capabilities gray unavailable providers and direct developers to email sign-in', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
     onSocialSignIn: async () => {},
     availableSocialProviders: [],
+    showDebugAuthDiagnostics: true,
   }));
   const googleButton = markup.match(/<button[^>]*data-provider="google"[^>]*>/)?.[0] ?? '';
   const githubButton = markup.match(/<button[^>]*data-provider="github"[^>]*>/)?.[0] ?? '';
@@ -247,6 +248,16 @@ test('unconfigured social providers are gray, disabled, and direct users to emai
   assert.match(markup, /Google and GitHub sign-in aren’t available on this server/);
   assert.match(markup, /Email and password/);
   assert.doesNotMatch(markup, /KORDI_OAUTH_GOOGLE_CLIENT_ID/);
+});
+
+test('packaged login does not expose debug server capability guidance', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
+    onSocialSignIn: async () => {},
+    availableSocialProviders: [],
+  }));
+
+  assert.doesNotMatch(markup, /Google and GitHub sign-in aren’t available on this server/);
+  assert.doesNotMatch(markup, /data-cloud-social-sign-in-unavailable/);
 });
 
 test('capabilities can enable one social provider without enabling the other', () => {

@@ -20,6 +20,8 @@ import {
 import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
+import { CloudSocialUnavailableNotice } from './CloudSocialUnavailableNotice';
+import { cloudLoginErrorMessage, PASSWORD_MIN_LENGTH } from './cloudLoginMessages';
 
 // Type scale — one place, applied everywhere. The whole page reads from these.
 const TYPE_DISPLAY = 'text-[34px] leading-[1.1] font-bold tracking-[-0.025em]';
@@ -70,37 +72,6 @@ const ALL_SOCIAL_PROVIDER_IDS: ReadonlyArray<CloudOAuthProvider> = SOCIAL_LOGIN_
 );
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const PASSWORD_MIN_LENGTH = 8;
-
-function messageForError(error: CloudAuthError): string {
-  switch (error.code) {
-    case 'invalid_email':
-      return 'That email address looks malformed.';
-    case 'weak_password':
-      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
-    case 'email_in_use':
-      return 'An account with that email already exists. Try signing in instead.';
-    case 'invalid_credentials':
-      return 'Email or password is incorrect.';
-    case 'rate_limited':
-      return 'Too many attempts. Wait a moment, then try again.';
-    case 'invalid_session':
-    case 'account_missing':
-      return 'Your session expired. Please sign in again.';
-    case 'network_error':
-      return 'Could not reach the cloud server. Check your connection and try again.';
-    case 'server_error':
-      return 'The server hit an unexpected error. Please try again.';
-    case 'missing_avatar':
-      return 'Upload an avatar to create your account.';
-    case 'invalid_avatar':
-      return 'Could not process that avatar. Try another image.';
-    case 'oauth_not_configured':
-      return 'That social sign-in method is not available here. Use email and password.';
-    default:
-      return error.message || 'Something went wrong.';
-  }
-}
 
 function initialAvatarPreference(): AvatarPreference | null {
   return readAvatarPreference();
@@ -287,6 +258,7 @@ export type CloudLoginPageProps = {
   }) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
   availableSocialProviders?: ReadonlyArray<CloudOAuthProvider>;
+  showDebugAuthDiagnostics?: boolean;
 };
 
 const noopSignIn = async () => {
@@ -300,6 +272,7 @@ export function CloudLoginPage({
   onSignUp = noopSignUp,
   onSocialSignIn,
   availableSocialProviders,
+  showDebugAuthDiagnostics = false,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarPref, setAvatarPref] = useState<AvatarPreference | null>(() => initialAvatarPreference());
@@ -385,7 +358,7 @@ export function CloudLoginPage({
       await onSocialSignIn(provider);
     } catch (caught) {
       if (caught instanceof CloudAuthError) {
-        setSubmitError(messageForError(caught));
+        setSubmitError(cloudLoginErrorMessage(caught, showDebugAuthDiagnostics));
       } else if (caught instanceof Error) {
         setSubmitError(caught.message);
       } else {
@@ -415,7 +388,7 @@ export function CloudLoginPage({
       }
     } catch (caught) {
       if (caught instanceof CloudAuthError) {
-        setSubmitError(messageForError(caught));
+        setSubmitError(cloudLoginErrorMessage(caught, showDebugAuthDiagnostics));
       } else if (caught instanceof Error) {
         setSubmitError(caught.message);
       } else {
@@ -496,13 +469,10 @@ export function CloudLoginPage({
           })}
         </div>
 
-        {onSocialSignIn && enabledSocialProviderCount === 0 ? (
-          <p
-            data-cloud-social-sign-in-unavailable="true"
+        {showDebugAuthDiagnostics && onSocialSignIn && enabledSocialProviderCount === 0 ? (
+          <CloudSocialUnavailableNotice
             className={`mx-auto mt-3 max-w-[320px] text-center ${TYPE_HINT} normal-case tracking-normal ${INK_MUTED}`}
-          >
-            Google and GitHub sign-in aren’t available on this server. Use email and password.
-          </p>
+          />
         ) : null}
 
         <div className={`mt-5 flex items-center gap-3 ${TYPE_DIVIDER} ${INK_SUBTLE}`}>
