@@ -80,6 +80,26 @@ For the repeatable macOS build environment, resource preflight, privacy gates,
 publication order, rollback rehearsal, and cleanup checklist, use the
 [macOS desktop release operator runbook](development/macos-desktop-release-runbook.md).
 
+### Release-state and advertising gate
+
+A merged release-preparation change authorizes building and validation; it does
+not prove that a version was released. Track the source merge, hosted deploy,
+immutable artifacts, updater pointers, legacy/manual metadata, Git tag, and
+GitHub prerelease independently.
+
+Do not advertise a version until its immutable DMG has been uploaded and
+verified through every hostname used by shipped clients. In particular,
+omitting the legacy `downloadUrl` is not enough when `changelogUrl` points to a
+missing DMG. Until publication succeeds, `KORDI_RELEASE_VERSION`,
+`KORDI_RELEASE_CHANGELOG_URL`, and install copy must continue to identify the
+last verified downloadable release.
+
+If an attempt is abandoned, keep the merged fix, stop the build/publisher, and
+inventory all external state. Restore changed pointers and advertising metadata
+to the last verified release, do not create a tag or GitHub prerelease, and use
+a new version next time if any immutable bytes were uploaded. Follow the full
+[abandoned-release procedure](development/macos-desktop-release-runbook.md#abandoning-an-incomplete-release).
+
 ### Signed desktop release prerequisites
 
 Every production updater release uses a Tauri minisign key and a notarized
@@ -431,6 +451,14 @@ Preserve production data and deploy in place from a clean worktree at `RELEASE_C
 
 5. Deploy runner with `bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh`.
 6. Verify rollout images, latest `cloud_schema_versions`, private MinIO readiness, and secret-free logs. The server deploy script also requires in-cluster health, public `https://kordi.ai/health`, safe legacy metadata without `downloadUrl`, and HTTP 204 for the unpublished beta updater route.
+
+The pre-publication deployment must retain the last verified legacy version and
+URLs. Check that every advertised URL returns HTTP 200 before continuing; a
+safe response cannot name the candidate version while its DMG returns HTTP 404.
+After a pod rollout, a healthy in-cluster service with a public HTTP 502 usually
+means the VM's managed loopback port-forward is still attached to the replaced
+pod. Restart only `kordi-cloud-port-forward.service`, then repeat public health,
+auth-capability, updater, and CORS verification.
 
 Production Desktop beta builds should connect to the hosted product API (`https://kordi.ai`). Do not build a public DMG with a raw GCP/sslip URL or local tunnel in `VITE_KORDI_CLOUD_API_BASE`.
 

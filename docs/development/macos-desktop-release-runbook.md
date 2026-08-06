@@ -20,6 +20,12 @@ Record the commit before any deploy, build, upload, or tag. Do not release from
 a dirty development checkout, combine artifacts from different commits, or
 replace an immutable object after publication.
 
+Merging a fix is not the same as releasing it. A merged version bump, deployed
+server image, successful desktop build, product metadata response, Git tag,
+and GitHub prerelease are separate states. Report each state precisely and do
+not call a release complete until the artifact and every public route have
+been verified.
+
 ## Preflight before compiling
 
 1. Fetch `origin/main`, select the merged release commit, and create a clean
@@ -126,6 +132,18 @@ If that failure recurs:
 Do not apply this workaround proactively or globally. Record the exact linker
 command and toolchain with the release artifacts if it is needed.
 
+Changing only `MACOSX_DEPLOYMENT_TARGET` in the wrapper may be insufficient:
+Rust can pass an explicit `-mmacosx-version-min` or `-platform_version` linker
+argument. Rewrite that explicit argument only when the output is a build-time
+proc-macro dylib. Do not lower `Kordi.app`, the runtime sidecar, or a shipped
+library such as `libkordi_desktop_lib.dylib`.
+
+Cargo fingerprints the linker path and flags, but not necessarily the contents
+of a wrapper script. After changing the wrapper, use a new
+`CARGO_TARGET_DIR` or remove only the affected proc-macro outputs. Otherwise a
+malformed dylib from the failed attempt can be reused even though the wrapper
+has been corrected.
+
 ## Fast release order
 
 Use this order so expensive work and external state changes happen only after
@@ -134,7 +152,8 @@ their prerequisites are known:
 1. Merge the release-preparation PR and pin `RELEASE_COMMIT`.
 2. Back up the production database.
 3. Deploy server and runner images built from `RELEASE_COMMIT`; verify rollout,
-   schema, secret-free logs, and public health.
+   schema, secret-free logs, and public health. Keep legacy release metadata on
+   the last verified artifact while the new artifact does not yet exist.
 4. Build or reuse path-remapped sidecars, then build the desktop bundle from
    the physical neutral worktree.
 5. Run the source gate, bundle/signing gate, DMG layout gate, checksum gate,
@@ -145,12 +164,22 @@ their prerequisites are known:
 8. Publish immutable objects and the `acceptance` pointer.
 9. Verify the public manifest, updater archive, direct DMG, and current-version
    HTTP `204` behavior against the locally recorded metadata.
-10. Rehearse rollback, restore the exact pointer bytes and `pubDate`, and repeat
+10. Only now update any legacy/manual-release metadata to the new immutable
+    artifact. Verify every advertised URL returns the recorded bytes through
+    both product origins.
+11. Rehearse rollback, restore the exact pointer bytes and `pubDate`, and repeat
     public verification.
-11. Create the annotated Git tag and GitHub prerelease from the same commit and
+12. Create the annotated Git tag and GitHub prerelease from the same commit and
     DMG only after product verification succeeds.
-12. Verify the GitHub asset digest and size, close tunnels, remove secrets,
+13. Verify the GitHub asset digest and size, close tunnels, remove secrets,
     detach DMGs, and remove the neutral worktree.
+
+Never deploy `KORDI_RELEASE_VERSION`, `KORDI_RELEASE_CHANGELOG_URL`, or manual
+install copy for a version whose referenced immutable DMG is not publicly
+readable. The absence of `downloadUrl` prevents the legacy native installer,
+but it does not make a `changelogUrl` that returns `404` safe. Before artifact
+publication, the legacy response must continue to describe the last verified
+release.
 
 ## Publication and rollback checks
 
@@ -187,6 +216,16 @@ test "$http_code" = 204
 Never generate a new `pubDate` during restoration. A rollback rehearsal is not
 complete until the restored public manifest and downloads are reverified.
 
+After a Kubernetes rollout, verify the public origin separately from in-cluster
+health. The VM's loopback port-forward can remain attached to a replaced pod
+and produce public `502` responses even while the new pods are healthy. Inspect
+and restart only the managed `kordi-cloud-port-forward.service` when its target
+is stale, then repeat `/health`, auth-capability, updater, and CORS checks.
+
+Treat duplicated command output such as `204204` as an attachment or transport
+diagnostic, not as a valid HTTP result. Repeat the check with one standalone
+`curl` and record exactly one status code.
+
 ## Privacy and release integrity
 
 Do not publish if the app bundle, updater archive, mounted DMG, or native
@@ -202,6 +241,33 @@ Use the full scan in [the release guide](../release.md#required-artifact-privacy
 The GitHub DMG and product DMG must have the same SHA-256, byte size, version,
 and source commit. If a bad artifact reaches versioned storage, abandon that
 version; never repair or replace it in place.
+
+## Abandoning an incomplete release
+
+An operator or release owner may stop an attempt after the source fix has been
+merged. The merge remains valid, but no partially completed release state may
+be presented as shipped.
+
+1. Stop active builds and publishers; clear secrets from their environments.
+2. Confirm whether any immutable object, channel pointer, tag, GitHub release,
+   server image, or legacy metadata was already changed.
+3. If no immutable object was published, do not create the tag or GitHub
+   release. Restore public metadata to the last verified downloadable version.
+4. If an immutable object was published, preserve it and abandon that version;
+   never overwrite its bytes. Use a new version for the next attempt.
+5. Restore any changed channel pointer with its recorded ETag and exact bytes,
+   then verify the previous updater and manual-download endpoint matrix.
+6. Verify the abandoned version is not advertised anywhere. A versioned object
+   may remain immutable, but no current pointer or legacy response may select
+   it.
+7. Remove temporary worktrees, linker wrappers, secret directories, mounts,
+   and release-only tunnels. Do not delete compatible non-secret build caches
+   unless they contain a known malformed artifact.
+
+Finish with a state report that distinguishes the merged source commit, live
+backend image, product metadata, immutable artifact, channel pointers, tag,
+and GitHub release. A missing artifact combined with metadata that names it is
+an incident to roll back, not an acceptable stopped state.
 
 ## Cleanup
 
