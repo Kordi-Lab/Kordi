@@ -25,13 +25,15 @@ export async function applyCloudGroupAgentControl(
     account,
     cloudMessage,
     envelope,
-    senderIsAgent,
   } = context;
   const message = envelope.message;
   if (
     !message
-    || senderIsAgent
-    || !policy.messageTargetsLocalAgent(message, account)
+    || !policy.messageTargetsLocalAgent(
+      message,
+      account,
+      envelope.participants,
+    )
     || !policy.isRecentMention(cloudMessage.createdAt)
     || runtime.processedMentionIds.has(message.id)
   ) return;

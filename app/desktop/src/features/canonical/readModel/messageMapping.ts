@@ -466,8 +466,8 @@ export function mapCanonicalMessage(
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
-  const replyAliasIds = [parentMessageId, sourceRequestId]
-    .filter((value): value is string => Boolean(value && value !== message.id));
+  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, stringValue(content.cloudGroupMessageId)?.trim()]
+    .filter((value): value is string => Boolean(value && value !== message.id)))];
   const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
   const viewerOwnsAgent = isAgentTurn
     && Boolean(trimmedProfileIdentityId)

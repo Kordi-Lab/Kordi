@@ -39,6 +39,7 @@ import {
   cloudGroupSelfParticipant,
   encodeCloudGroupControl,
 } from './cloudGroupMessages';
+import { cloudGroupAgentHandoffForResponse } from './cloudGroupMentions';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import {
   cloudVisibleTaskRecordsForSession,
@@ -182,6 +183,7 @@ export async function respondToCloudGroupAgentMention(
       groupId: envelope.groupId,
       requestMessageId: message.id,
       requestCreatedAtMs: message.createdAtMs,
+      respondingAccountId: account.accountId,
     }),
   ];
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
@@ -248,6 +250,7 @@ export async function respondToCloudGroupAgentMention(
 
   const succeeded = finalTurn.succeeded
     && finalTurn.assistantText.trim().length > 0;
+  const responseText = succeeded ? finalTurn.assistantText.trim() : '';
   const failureMessage = succeeded
     ? null
     : isCloudAgentNoProviderConfiguredError(
@@ -264,11 +267,12 @@ export async function respondToCloudGroupAgentMention(
   const responseCreatedAtMs = Date.now();
   const responseRequest = {
     ...processingRequest,
-    contentText: succeeded ? finalTurn.assistantText.trim() : '',
+    contentText: responseText,
     content: {
       sender: presentation.displayName,
       timestampMs: responseCreatedAtMs,
       deliveryState: responseDeliveryState,
+      cloudGroupMessageId: responseMessageId,
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
       requestId: message.id,
       replyToMessageId: message.id,
@@ -300,6 +304,14 @@ export async function respondToCloudGroupAgentMention(
     input,
     persistedResponseMessage,
   );
+  const agentHandoff = succeeded
+    ? cloudGroupAgentHandoffForResponse({
+      responseText,
+      participants: envelope.participants,
+      respondingAccountId: account.accountId,
+      requestMessage: message,
+    })
+    : null;
 
   const activitySpan = beginChatPerformanceSpan(
     'cloud-agent-activity-publish',
@@ -340,10 +352,11 @@ export async function respondToCloudGroupAgentMention(
     responseMessageId,
     responseCreatedAtMs,
     responseText: succeeded
-      ? finalTurn.assistantText.trim()
+      ? responseText
       : (failureMessage ?? ''),
     responseDeliveryState,
     agentDisplayName: presentation.displayName,
+    agentHandoff,
     signal,
   }).catch((error) => runtime.reportFailure('local-response', error));
 }

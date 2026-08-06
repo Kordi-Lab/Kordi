@@ -203,12 +203,16 @@ test('cloud forwarded group mentions do not produce fallback run claims', () => 
   assert.match(claims[0]?.prompt ?? '', /answer only this/);
   assert.doesNotMatch(claims[0]?.prompt ?? '', /PeerPersonKordi test/);
   const index = buildCloudMessageIndex(account.accountId, { acct_peer: [request, nextRequest] });
-  assert.deepEqual(cloudGroupNativeContextMessages({
+  const nativeContext = cloudGroupNativeContextMessages({
     groupRows: index.groupRows,
     groupId,
     requestMessageId: 'msg:ui:group_after_forward_request',
     requestCreatedAtMs: 3_000,
-  }), []);
+    respondingAccountId: 'acct_peer',
+  });
+  assert.equal(nativeContext.length, 1);
+  assert.equal(nativeContext[0]?.authorName, 'Group mention permissions');
+  assert.doesNotMatch(nativeContext[0]?.text ?? '', /PeerPersonKordi test/);
 });
 
 test('cloud outgoing remote-agent mention claims include prior direct chat history', () => {

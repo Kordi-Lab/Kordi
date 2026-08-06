@@ -7,10 +7,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
-import type {
-  DesktopChatContextMessage,
-  DesktopChatMessageRoute,
-} from '@/lib/desktop';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
@@ -25,21 +22,18 @@ import type {
 import type {
   CloudAgentDefinition,
 } from './cloudAgents';
-import {
-  compactCloudAgentNativeContextMessages,
-  cloudMessageMentionsLocalAgent,
-} from './cloudAgentMessages';
 import { CloudAgentTurnCoordinator } from './cloudAgentTurnCoordinator';
 import type {
   CloudSessionActivityStore,
 } from './cloudSessionActivity';
 import {
-  cloudMessageActionAllowsAgentContext,
-  cloudMessageActionAllowsAgentTrigger,
-} from './cloudAgentTriggerPolicy';
-import {
   applyCloudGroupAgentControl,
 } from './cloudGroupAgentControl';
+import {
+  cloudGroupMessageTargetsLocalAgent,
+  cloudGroupNativeContextMessages,
+} from './cloudGroupAgentPolicy';
+export { cloudGroupMessageTargetsLocalAgent, cloudGroupNativeContextMessages };
 import {
   applyCloudGroupMessageControl,
 } from './cloudGroupMessageControl';
@@ -51,10 +45,7 @@ import {
 import type {
   CloudGroupControlEnvelope,
 } from './cloudGroupMessages';
-import type {
-  CloudMessageIndex,
-  IndexedCloudGroupRow,
-} from './cloudMessageIndex';
+import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
   cloudFallbackRunAlreadyOwnsRequest,
   cloudGroupAgentResponseExistsForRequest,
@@ -172,80 +163,6 @@ export function cloudGroupIncomingMessageAlreadyApplied(
     existingMessage.sourceTransport === 'cloud-group-agent-offline'
   ) return false;
   return true;
-}
-
-export function cloudGroupMessageTargetsLocalAgent(
-  message: NonNullable<CloudGroupControlEnvelope['message']>,
-  account: CloudAccount,
-): boolean {
-  if (
-    message.forkSnapshot === true
-    || !cloudMessageActionAllowsAgentTrigger(message.messageAction)
-  ) return false;
-  const targetsOwnedHostedCloudAgent = Boolean(
-    cleanCloudText(message.targetCloudAgentId)
-      .startsWith('cloud_agent_')
-    && cleanCloudText(message.targetCloudAgentOwnerAccountId)
-      === account.accountId,
-  );
-  return targetsOwnedHostedCloudAgent || cloudMessageMentionsLocalAgent(
-    message.text,
-    account,
-    {
-      allowFirstPerson:
-        message.senderAccountId === account.accountId,
-    },
-  );
-}
-
-export function cloudGroupNativeContextMessages({
-  groupRows,
-  groupId,
-  requestMessageId,
-  requestCreatedAtMs,
-}: {
-  groupRows: readonly IndexedCloudGroupRow[];
-  groupId: string;
-  requestMessageId: string;
-  requestCreatedAtMs: number;
-}): DesktopChatContextMessage[] {
-  return compactCloudAgentNativeContextMessages(
-    groupRows.flatMap(({ envelope }) => {
-      if (
-        envelope?.kind !== 'group-message'
-        || envelope.groupId !== groupId
-        || !envelope.message
-      ) return [];
-      const message = envelope.message;
-      if (message.id === requestMessageId) return [];
-      if (message.createdAtMs > requestCreatedAtMs) return [];
-      if (message.forkSnapshot === true) return [];
-      if (
-        !cloudMessageActionAllowsAgentContext(message.messageAction)
-      ) return [];
-      if (
-        message.deliveryState === 'processing'
-        || isCloudAgentProcessingPlaceholderText(message.text)
-      ) return [];
-      const text = message.text.trim();
-      if (!text) return [];
-      const participantName = envelope.participants.find(
-        (participant) =>
-          participant.accountId === message.senderAccountId,
-      )?.displayName?.trim();
-      return [{
-        id: message.id,
-        authorName:
-          message.senderDisplayName?.trim()
-          || participantName
-          || 'Cloud participant',
-        authorKind:
-          message.senderKind === 'agent' ? 'agent' : 'human',
-        text,
-        createdAtMs: message.createdAtMs,
-      }];
-    }),
-  );
 }
 
 type CloudGroupControlApplicationProps = {

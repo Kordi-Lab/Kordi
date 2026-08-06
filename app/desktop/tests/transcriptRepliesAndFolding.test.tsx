@@ -34,10 +34,11 @@ test('renders agent source quote and processing status without an output block b
   assert.match(markup, /app-source-message-quote/);
   assert.doesNotMatch(markup, /app-source-message-quote-rail/);
   assert.doesNotMatch(markup, /app-source-message-quote-icon/);
-  assert.match(markup, />You: <\/span>@AliceKordi review the copy/);
+  assert.match(markup, />You: <\/span>/);
+  assert.match(markup, /app-message-mention-agent[^>]*>@AliceKordi<\/span>/);
   assert.doesNotMatch(markup, /app-source-message-quote-label block truncate/);
   assert.doesNotMatch(markup, /Replying to/);
-  assert.match(markup, /@AliceKordi review the copy/);
+  assert.match(markup, /review the copy/);
   assert.match(markup, /Processing/);
   assert.doesNotMatch(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /checking auth screenshots/);

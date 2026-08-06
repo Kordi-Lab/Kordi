@@ -78,6 +78,17 @@ function safeMentionCharacters(value: string) {
   return value.normalize('NFKC').match(/[\p{L}\p{N}]+/gu)?.join('') ?? '';
 }
 
+export function publicPersonMentionHandle(
+  displayName: string | null | undefined,
+  fallback = 'Participant',
+) {
+  return (
+    safeMentionCharacters(cleanLabel(displayName))
+    || safeMentionCharacters(fallback)
+    || 'Participant'
+  ).slice(0, 64);
+}
+
 export function publicScopedAgentMentionHandle(ownerName: string | null | undefined, agentLabel: string | null | undefined = 'Kordi') {
   const unscopedAgent = (stripSelfPossessivePrefix(agentLabel, ownerName).replace(/^[^'’]+['’]s\s+/u, '').trim()) || 'Kordi';
   const scoped = possessiveScopedLabel(ownerName, unscopedAgent) || unscopedAgent;

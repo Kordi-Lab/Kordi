@@ -21,7 +21,6 @@ import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
-
 export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update' | 'session-fork';
 
 export type CloudGroupParticipant = {
@@ -90,9 +89,9 @@ export type CloudGroupControlEnvelope = {
     targetCloudAgentName?: string | null;
     targetCloudAgentOwnerAccountId?: string | null;
     targetCloudAgentOwnerName?: string | null;
+    agentMentionDepth?: number | null;
   } | null;
 };
-
 type CloudGroupAttachmentReferenceInput = Pick<
   CloudMessageAttachment,
   'attachmentId' | 'name' | 'kind'
@@ -668,6 +667,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         targetCloudAgentName: cleanText(typeof candidate.targetCloudAgentName === 'string' ? candidate.targetCloudAgentName : null) || null,
         targetCloudAgentOwnerAccountId: cleanText(typeof candidate.targetCloudAgentOwnerAccountId === 'string' ? candidate.targetCloudAgentOwnerAccountId : null) || null,
         targetCloudAgentOwnerName: cleanText(typeof candidate.targetCloudAgentOwnerName === 'string' ? candidate.targetCloudAgentOwnerName : null) || null,
+        agentMentionDepth: typeof candidate.agentMentionDepth === 'number' && Number.isInteger(candidate.agentMentionDepth) && candidate.agentMentionDepth >= 0 ? candidate.agentMentionDepth : null,
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);

@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { ExternalMessageLink } from './messageInlineContent';
+import { ExternalMessageLink, MessageInlineContent } from './messageInlineContent';
 import { MarkdownTable } from './markdownTable';
 import {
   bareHttpUrlStartPattern,
@@ -126,14 +126,14 @@ function renderInlineMarkdown(
     if (part.type === 'strong') {
       return (
         <strong key={`strong-${index}`} className={cn('font-semibold', tone === 'muted' ? 'text-slate-100' : 'text-white')}>
-          {part.value}
+          <MessageInlineContent text={part.value} showSiteIcons={false} />
         </strong>
       );
     }
     if (part.type === 'em') {
       return (
         <em key={`em-${index}`} className={cn('italic', tone === 'muted' ? 'text-slate-300' : 'text-slate-100')}>
-          {part.value}
+          <MessageInlineContent text={part.value} showSiteIcons={false} />
         </em>
       );
     }
@@ -149,7 +149,7 @@ function renderInlineMarkdown(
         </ExternalMessageLink>
       );
     }
-    return <Fragment key={`text-${index}`}>{part.value}</Fragment>;
+    return <Fragment key={`text-${index}`}><MessageInlineContent text={part.value} showSiteIcons={false} /></Fragment>;
   });
 }
 

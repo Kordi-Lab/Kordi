@@ -39,6 +39,7 @@ export type CloudGroupAgentPolicy = {
   messageTargetsLocalAgent(
     message: NonNullable<CloudGroupMessageControlContext['envelope']['message']>,
     account: CloudGroupMessageControlContext['account'],
+    participants: CloudGroupMessageControlContext['envelope']['participants'],
   ): boolean;
   responseExists(input: {
     localAccountId: string;
@@ -57,6 +58,7 @@ export type CloudGroupAgentPolicy = {
     groupId: string;
     requestMessageId: string;
     requestCreatedAtMs: number;
+    respondingAccountId: string;
   }): DesktopChatContextMessage[];
   waitForTurn(
     turnId: string,

@@ -229,7 +229,8 @@ test('no-provider live turn keeps the source quote so reply context stays stable
   assert.match(markup, />Open authentication</);
   assert.match(markup, /app-source-message-quote/);
   assert.match(markup, /app-live-assistant-answer-surface/);
-  assert.match(markup, /@MyKordi what are you doing/);
+  assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
+  assert.match(markup, /what are you doing/);
 });
 
 test('contact request row shows accept progress while sending the greeting', () => {
@@ -312,7 +313,8 @@ test('empty pending agent turn renders processing with its source quote', () => 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
   assert.match(markup, /app-source-message-quote/);
-  assert.match(markup, /@MyKordi what are you doing/);
+  assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
+  assert.match(markup, /what are you doing/);
   assert.match(markup, /Starting…/);
 });
 

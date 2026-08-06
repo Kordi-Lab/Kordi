@@ -16,11 +16,11 @@ const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features
 const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
 const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 const cloudGroupAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
+const cloudGroupAgentPolicySource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentPolicy.ts', import.meta.url), 'utf8');
 const cloudGroupAgentPublicationSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentPublication.ts', import.meta.url), 'utf8');
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
-const cloudGroupControlApplicationSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlApplication.ts', import.meta.url), 'utf8');
 
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
@@ -130,7 +130,7 @@ test('hosted cloud agent responses render the selected agent name without owner 
     senderRole: 'external-agent',
     messageKind: 'agent-turn',
     contentText: 'Here is the plan.',
-    content: { sender: 'Kordi Project Driver', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request' },
+    content: { sender: 'Kordi Project Driver', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request', cloudGroupMessageId: 'msg:cloud-agent:terminal' },
     parentMessageId: 'msg:request',
     delegatedExchangeId: null,
     status: 'complete',
@@ -144,6 +144,7 @@ test('hosted cloud agent responses render the selected agent name without owner 
 
   assert.equal(mapped?.sender, 'Kordi Project Driver');
   assert.doesNotMatch(mapped?.sender ?? '', /333['’]s/);
+  assert.deepEqual(mapped?.replyAliasIds, ['msg:request', 'msg:cloud-agent:terminal']);
 });
 
 test('cloud fallback runtime failures render as normal failed agent turns with concise copy', () => {
@@ -375,6 +376,8 @@ test('cloud group terminal hosted-agent responses reserve the stable slot even w
   assert.match(source, /terminalStableAgentNoticeId/);
   assert.match(source, /replacementAgentSlot\?\.id \?\? terminalStableAgentNoticeId \?\? message\.id/);
   assert.match(source, /existingStableRowTerminalLocked[\s\S]*existingStableRowDeliveryState/);
+  assert.match(source, /cloudGroupMessageId:\s*message\.id/);
+  assert.match(cloudGroupAgentExecutionSource(), /cloudGroupMessageId:\s*responseMessageId/);
 });
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
@@ -388,14 +391,15 @@ test('cloud group terminal hosted-agent responses clear timeout placeholders and
 });
 
 test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {
-  const stateSource = cloudGroupControlApplicationSource();
+  const stateSource = cloudGroupAgentPolicySource();
   const agentSource = `${cloudGroupAgentControlSource()}\n${cloudGroupAgentExecutionSource()}`;
   assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
   assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
   assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentOwnerAccountId\)[\s\S]*?=== account\.accountId/);
   assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentId\)[\s\S]*?\.startsWith\('cloud_agent_'\)/);
   assert.match(stateSource, /targetsOwnedHostedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
-  assert.match(agentSource, /policy\.messageTargetsLocalAgent\(message, account\)/);
+  assert.match(agentSource, /policy\.messageTargetsLocalAgent\([\s\S]*message,[\s\S]*account,[\s\S]*envelope\.participants/);
+  assert.doesNotMatch(cloudGroupAgentControlSource(), /\|\|\s*senderIsAgent/);
   assert.match(agentSource, /targetCloudAgentId: message\.targetCloudAgentId/);
 });
 
