@@ -571,10 +571,15 @@ export async function testDesktopAgentBuilderDraft(draftId: string, expectedFing
   return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_test', { draftId, expectedFingerprint });
 }
 
-export async function markDesktopAgentBuilderPublished(draftId: string, expectedFingerprint: string) {
+export async function markDesktopAgentBuilderPublished(
+  draftId: string,
+  expectedFingerprint: string,
+  runtimeTestRequired = true,
+) {
   return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_mark_published', {
     draftId,
     expectedFingerprint,
+    runtimeTestRequired,
   });
 }
 

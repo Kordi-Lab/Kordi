@@ -307,13 +307,14 @@ export function useAgentBuilderSession({
     return result;
   }, [commitStatus, refresh]);
 
-  const markPublished = useCallback(async () => {
+  const markPublished = useCallback(async (runtimeTestRequired = true) => {
     await updateQueueRef.current;
     const currentStatus = statusRef.current;
     if (!currentStatus) return null;
     const next = await markDesktopAgentBuilderPublished(
       currentStatus.draftId,
       currentStatus.validation.fingerprint,
+      runtimeTestRequired,
     );
     commitStatus(next);
     return next;

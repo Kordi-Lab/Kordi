@@ -8,6 +8,11 @@ import { AgentInspectionView } from '../src/kordi-app/agents/AgentInspectionView
 import { AgentStudioWorkspace } from '../src/kordi-app/agents/AgentStudioWorkspace';
 import { CapabilityLibraryView } from '../src/kordi-app/agents/CapabilityLibraryView';
 import {
+  agentBuilderSeedForAgent,
+  agentDraftCanPublish,
+  agentDraftRequiresRuntimeTest,
+} from '../src/kordi-app/agents/factoryAgentUtils';
+import {
   createFactoryBuildTargetKey,
   factoryArtifactIdentityFromTarget,
   factoryArtifactTargetKey,
@@ -56,6 +61,40 @@ test('artifact targets round-trip exact identity without relying on list order',
   assert.notEqual(creation, createFactoryBuildTargetKey('account/one', 'plugin', 'build/other'));
 });
 
+test('policy-only agent drafts can publish without a model run', () => {
+  const validUntestedStatus = {
+    draftId: 'draft-policy',
+    targetKey: 'account:user-1:agent:agent-1',
+    sessionId: 'session:agent-builder:policy',
+    workspacePath: '/tmp/draft-policy',
+    lifecycle: 'draft',
+    validation: { valid: true, fingerprint: 'policy-fingerprint', errors: [], files: [] },
+    testReport: null,
+    publishReady: false,
+  };
+
+  const policyChanges = [{ key: 'access' }, { key: 'proactive' }, { key: 'mentions' }];
+  assert.equal(agentDraftRequiresRuntimeTest(policyChanges), false);
+  assert.equal(agentDraftCanPublish(validUntestedStatus, policyChanges), true);
+  assert.equal(agentDraftRequiresRuntimeTest([{ key: 'definition' }]), true);
+  assert.equal(agentDraftCanPublish(validUntestedStatus, [{ key: 'definition' }]), false);
+  assert.equal(agentDraftCanPublish({
+    ...validUntestedStatus,
+    validation: { ...validUntestedStatus.validation, valid: false, errors: ['Invalid draft'] },
+  }, policyChanges), false);
+});
+
+test('local agent description comparisons use the same value that seeds the builder', () => {
+  const localAgent = {
+    ...agent,
+    id: 'desktop:local-agent',
+    role: 'My local Kordi',
+    cloudAgentDescription: undefined,
+    cloudAgentSourceSummary: undefined,
+  };
+  assert.equal(agentBuilderSeedForAgent(localAgent).description, 'My local Kordi');
+});
+
 test('Agent inspection exposes published configuration and routes every change to Build', () => {
   let edits = 0;
   const html = renderToStaticMarkup(<AgentInspectionView agent={agent} onEditInBuild={() => { edits += 1; }} />);
@@ -82,7 +121,7 @@ test('My Kordi and every owned agent expose collaboration policy controls in Bui
       onCreationAccessScopeChange={() => undefined}
       config={{ systemPrompt: localAgent.systemPrompt, loadedSkills: [], loadedTools: [], loadedPlugins: [] }}
       persisted={{ systemPrompt: localAgent.systemPrompt, loadedSkills: [], loadedTools: [], loadedPlugins: [], editHistory: [] }}
-      changes={[]}
+      changes={[{ key: 'proactive', label: 'Proactive collaboration updated', detail: 'On' }]}
       availableSkills={[]}
       skillDescriptions={{}}
       availableTools={[]}
@@ -99,7 +138,7 @@ test('My Kordi and every owned agent expose collaboration policy controls in Bui
       onDiscard={() => undefined}
       publishing={false}
       publishFeedback={null}
-      publishDisabled
+      publishDisabled={false}
       draftMutationDisabled={false}
       onUpdateAgentAccess={() => undefined}
       activeDetail={null}
@@ -114,6 +153,16 @@ test('My Kordi and every owned agent expose collaboration policy controls in Bui
       onCancelFileEditing={() => undefined}
       onSaveFile={() => undefined}
       onFileDraftChange={() => undefined}
+      builderStatus={{
+        draftId: 'draft-policy',
+        targetKey: 'account:user-1:agent:agent-1',
+        sessionId: 'session:agent-builder:policy',
+        workspacePath: '/tmp/draft-policy',
+        lifecycle: 'draft',
+        validation: { valid: true, fingerprint: 'policy-fingerprint', errors: [], files: [] },
+        testReport: null,
+        publishReady: false,
+      }}
     />,
   );
 
@@ -126,6 +175,8 @@ test('My Kordi and every owned agent expose collaboration policy controls in Bui
   assert.match(html, /@mention permissions/);
   assert.match(html, /aria-label="Allow @mentions of people"/);
   assert.match(html, /aria-label="Allow @mentions of agents"/);
+  assert.match(html, /These policy settings are ready to publish/);
+  assert.doesNotMatch(html, /Open Runs/);
 });
 
 test('Tool and Plugin inspection remain read-only and expose exact Build routing', () => {

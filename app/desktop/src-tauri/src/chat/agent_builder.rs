@@ -232,9 +232,10 @@ pub async fn desktop_agent_builder_test(
 pub async fn desktop_agent_builder_mark_published(
     draft_id: String,
     expected_fingerprint: String,
+    runtime_test_required: bool,
 ) -> Result<DesktopAgentBuilderStatus, String> {
     let _mutation_guard = builder_mutation_lock().lock().await;
-    publishing::mark_published(&draft_id, &expected_fingerprint)
+    publishing::mark_published(&draft_id, &expected_fingerprint, runtime_test_required)
 }
 
 #[tauri::command]

@@ -1,4 +1,4 @@
-import type { DesktopAgentBuilderDraft, DesktopAgentBuilderSeed } from '@/lib/desktop';
+import type { DesktopAgentBuilderDraft, DesktopAgentBuilderSeed, DesktopAgentBuilderStatus } from '@/lib/desktop';
 import type { Agent } from '../types';
 import type { FactoryArtifactKind, FactoryLibraryArtifact } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
@@ -57,6 +57,24 @@ export function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed
       content: 'content' in skill && typeof skill.content === 'string' ? skill.content : null,
     })),
   };
+}
+
+const POLICY_ONLY_CHANGE_KEYS = new Set(['access', 'proactive', 'mentions']);
+
+export function agentDraftRequiresRuntimeTest(
+  changes: ReadonlyArray<{ key: string }>,
+  creating = false,
+) {
+  return creating || changes.some((change) => !POLICY_ONLY_CHANGE_KEYS.has(change.key));
+}
+
+export function agentDraftCanPublish(
+  status: DesktopAgentBuilderStatus | null | undefined,
+  changes: ReadonlyArray<{ key: string }>,
+  creating = false,
+) {
+  if (!status?.validation.valid) return false;
+  return !agentDraftRequiresRuntimeTest(changes, creating) || status.publishReady;
 }
 
 export function newArtifactSeed(kind: FactoryArtifactKind): DesktopAgentBuilderSeed {

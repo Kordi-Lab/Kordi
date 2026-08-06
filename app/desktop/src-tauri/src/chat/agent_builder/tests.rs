@@ -26,6 +26,37 @@ fn clean_slug_produces_safe_skill_names() {
 }
 
 #[test]
+fn policy_only_drafts_can_publish_without_a_runtime_test() {
+    let valid_untested = DesktopAgentBuilderStatus {
+        draft_id: "draft-policy".to_string(),
+        target_key: "account:user-1:agent:agent-1".to_string(),
+        session_id: "session:agent-builder:policy".to_string(),
+        workspace_path: "/tmp/draft-policy".to_string(),
+        lifecycle: "draft".to_string(),
+        draft: None,
+        validation: DesktopAgentBuilderValidation {
+            valid: true,
+            fingerprint: "policy-fingerprint".to_string(),
+            errors: Vec::new(),
+            files: Vec::new(),
+        },
+        test_report: None,
+        publish_ready: false,
+    };
+
+    assert!(publishing::ensure_publishable(&valid_untested, false).is_ok());
+    assert!(publishing::ensure_publishable(&valid_untested, true)
+        .expect_err("runtime changes still require a test")
+        .contains("successfully test"));
+
+    let mut invalid = valid_untested.clone();
+    invalid.validation.valid = false;
+    assert!(publishing::ensure_publishable(&invalid, false)
+        .expect_err("invalid policy changes must not publish")
+        .contains("validation errors"));
+}
+
+#[test]
 fn factory_target_parsing_preserves_legacy_agent_ids() {
     assert_eq!(
         artifact_kind_from_target("device:agent:agent:kordi"),

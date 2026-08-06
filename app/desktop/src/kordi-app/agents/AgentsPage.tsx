@@ -24,7 +24,10 @@ import { AgentStudioRail } from './AgentStudioRail';
 import { AgentStudioWorkspace } from './AgentStudioWorkspace';
 import { CapabilityLibraryView, type FactorySkillLibraryMode } from './CapabilityLibraryView';
 import {
+  agentBuilderSeedForAgent,
   agentBuilderSkillSlug,
+  agentDraftCanPublish,
+  agentDraftRequiresRuntimeTest,
   modelRoutingForAgent,
   resourcesForCreate,
   sameModelRouting,
@@ -351,10 +354,11 @@ export function AgentsPage({
     selectedAgent && selectedAccessScope !== publishedAccessScope,
   );
   const builderDraft = builder.status?.draft;
+  const publishedBuilderDescription = agentBuilderSeedForAgent(selectedAgent).description ?? '';
   const definitionChanges = selectedAgent && builderDraft ? [
     builderDraft.name !== selectedAgent.name ? { key: 'definition' as const, label: 'Agent name updated', detail: builderDraft.name } : null,
     builderDraft.role !== selectedAgent.role ? { key: 'definition' as const, label: 'Agent role updated', detail: builderDraft.role } : null,
-    builderDraft.description !== (selectedAgent.cloudAgentDescription ?? '') ? { key: 'definition' as const, label: 'Agent description updated', detail: builderDraft.description || 'Cleared' } : null,
+    builderDraft.description !== publishedBuilderDescription ? { key: 'definition' as const, label: 'Agent description updated', detail: builderDraft.description || 'Cleared' } : null,
     builderDraft.sourceSummary !== (selectedAgent.cloudAgentSourceSummary ?? '') ? { key: 'definition' as const, label: 'Source summary updated', detail: builderDraft.sourceSummary || 'Cleared' } : null,
     JSON.stringify(builderDraft.boundaries) !== JSON.stringify(selectedAgent.cloudAgentBoundaries ?? []) ? { key: 'definition' as const, label: 'Agent boundaries updated', detail: `${builderDraft.boundaries.length} configured` } : null,
     builderDraft.proactive.enabled !== ((selectedAgent.proactive ?? selectedAgent.cloudAgentProactive)?.enabled ?? false) ? { key: 'proactive' as const, label: 'Proactive collaboration updated', detail: builderDraft.proactive.enabled ? 'On' : 'Off' } : null,
@@ -376,12 +380,13 @@ export function AgentsPage({
   const studioChanges = routingChanged
     ? [...studioChangesWithAccess, { key: 'routing' as const, label: 'Model routing updated', detail: selectedRouting.defaultModel || 'Runtime default' }]
     : studioChangesWithAccess;
+  const runtimeTestRequired = agentDraftRequiresRuntimeTest(studioChanges, creating);
   const publishDisabled = Boolean(publishing
     || builder.opening
     || builder.testing
     || builder.updating
     || (builder.activeTurn && !builder.activeTurn.completed)
-    || !builder.status?.publishReady
+    || !agentDraftCanPublish(builder.status, studioChanges, creating)
     || (creating
       ? !creationDraft || (creatingSkill
         ? !builder.status?.draft?.skills[0]
@@ -615,7 +620,7 @@ export function AgentsPage({
         activeAgentConfig,
         isLocalRuntimeAgent ? 'Published synchronized local and Cloud changes' : 'Published Factory agent changes',
       );
-      await builder.markPublished();
+      await builder.markPublished(runtimeTestRequired);
       setPublishFeedback({ tone: 'success', text: `${selectedAgent.name} is published and ready.` });
     } catch (error) {
       setPublishFeedback({ tone: 'error', text: error instanceof Error ? error.message : `Kordi could not ${creatingSkill ? 'install this skill' : 'publish this agent draft'}.` });

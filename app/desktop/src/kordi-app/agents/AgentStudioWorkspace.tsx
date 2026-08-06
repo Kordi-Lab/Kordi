@@ -34,6 +34,7 @@ import type { ComposerModelOption, ComposerProviderOption } from '../components'
 import type { Agent } from '../types';
 import { cloudAgentAccessDescription, cloudAgentAccessLabel, skillLibraryFileDisplay, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
+import { agentDraftRequiresRuntimeTest } from './factoryAgentUtils';
 import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
 
 type FilePreviewState = { status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string };
@@ -178,6 +179,7 @@ function BlueprintView({
   const skills = creating ? creationDraft?.skills.map((skill) => skill.name) ?? [] : config?.loadedSkills ?? [];
   const tools = creating ? builderStatus?.draft?.tools ?? [] : config?.loadedTools ?? [];
   const totalChanges = creating ? (creationDraft ? 1 : 0) : changes.length;
+  const runtimeTestRequired = agentDraftRequiresRuntimeTest(changes, creating);
 
   useEffect(() => {
     if (!accessMenuOpen) return;
@@ -344,9 +346,9 @@ function BlueprintView({
           <div className="app-agent-studio-draft-summary">
             <div>
               <strong>{creating ? 'Build ready to review' : `${totalChanges} change${totalChanges === 1 ? '' : 's'} ready to review`}</strong>
-              <span>{builderStatus?.publishReady ? 'Validation and runtime test passed. Nothing is live until you publish.' : builderStatus?.validation.valid ? 'Run the current draft in the Runs tab before publishing.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
+              <span>{builderStatus?.publishReady ? 'Validation and runtime test passed. Nothing is live until you publish.' : builderStatus?.validation.valid && !runtimeTestRequired ? 'These policy settings are ready to publish. Nothing is live until you publish.' : builderStatus?.validation.valid ? 'Run the current draft in the Runs tab before publishing.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
             </div>
-            {builderStatus?.validation.valid && !builderStatus.publishReady && onOpenRuns ? (
+            {builderStatus?.validation.valid && runtimeTestRequired && !builderStatus.publishReady && onOpenRuns ? (
               <button type="button" className="app-button-quiet app-agent-studio-button is-small" onClick={onOpenRuns}>Open Runs</button>
             ) : null}
           </div>

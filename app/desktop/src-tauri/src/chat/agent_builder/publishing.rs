@@ -14,6 +14,24 @@ use super::{
     MAX_FINGERPRINT_BYTES, MAX_SKILL_BUNDLE_FILES, MAX_SKILL_SUPPORT_FILE_BYTES,
 };
 
+pub(super) fn ensure_publishable(
+    status: &DesktopAgentBuilderStatus,
+    runtime_test_required: bool,
+) -> Result<(), String> {
+    if status.lifecycle != "draft" {
+        return Err("Only an active draft can be published".to_string());
+    }
+    if !status.validation.valid {
+        return Err("Fix the current draft validation errors before publishing".to_string());
+    }
+    if runtime_test_required && !status.publish_ready {
+        return Err(
+            "Validate and successfully test the current draft before publishing".to_string(),
+        );
+    }
+    Ok(())
+}
+
 fn collect_skill_bundle_files(
     root: &Path,
     current: &Path,
@@ -73,15 +91,12 @@ fn collect_skill_bundle_files(
 pub(super) fn mark_published(
     draft_id: &str,
     expected_fingerprint: &str,
+    runtime_test_required: bool,
 ) -> Result<DesktopAgentBuilderStatus, String> {
     let (workspace, mut metadata) = load_metadata(draft_id)?;
     ensure_expected_fingerprint(&workspace, expected_fingerprint)?;
     let status = status_from_metadata(&metadata)?;
-    if !status.publish_ready {
-        return Err(
-            "Validate and successfully test the current draft before publishing".to_string(),
-        );
-    }
+    ensure_publishable(&status, runtime_test_required)?;
     metadata.status = "published".to_string();
     metadata.updated_at_ms = now_millis();
     write_metadata(&workspace, &metadata)?;
