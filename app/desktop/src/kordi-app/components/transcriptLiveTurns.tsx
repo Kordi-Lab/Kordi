@@ -252,10 +252,11 @@ function ToolTimelineDetails({ tool, display }: { tool: ToolSnapshot; display: T
   if (!toolDetailsAvailable(tool)) return null;
 
   return (
-    <div className="app-transcript-timeline-details">
+    <div className="app-transcript-timeline-details" data-transcript-stable-disclosure-root="true">
       <button
         type="button"
-        className="app-button-quiet app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
+        className="app-button-quiet app-transcript-timeline-details-toggle"
+        data-transcript-stable-disclosure="true"
         onClick={() => setExpandedDetails((current) => !current)}
         aria-expanded={expandedDetails}
       >
@@ -263,7 +264,7 @@ function ToolTimelineDetails({ tool, display }: { tool: ToolSnapshot; display: T
         <span>Details</span>
       </button>
       {expandedDetails ? (
-        <div className="app-transcript-timeline-details-body">
+        <div className="app-transcript-timeline-details-body" data-transcript-stable-disclosure-body="true">
           <ToolDetailBlocks tool={tool} display={display} />
         </div>
       ) : null}
@@ -287,10 +288,11 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
           <span className="app-transcript-timeline-pill">Thinking</span>
         </div>
         {hasMoreThinking ? (
-          <div className="app-transcript-timeline-details">
+          <div className="app-transcript-timeline-details" data-transcript-stable-disclosure-root="true">
             <button
               type="button"
-              className="app-button-quiet app-transcript-timeline-details-toggle" data-transcript-stable-disclosure="true"
+              className="app-button-quiet app-transcript-timeline-details-toggle"
+              data-transcript-stable-disclosure="true"
               onClick={() => setExpandedThinking((current) => !current)}
               aria-expanded={expandedThinking}
             >
@@ -298,7 +300,7 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
               <span>Reasoning</span>
             </button>
             {expandedThinking ? (
-              <div className="app-transcript-timeline-details-body pr-1">
+              <div className="app-transcript-timeline-details-body pr-1" data-transcript-stable-disclosure-body="true">
                 <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" showLinkIcons />
               </div>
             ) : null}
@@ -372,7 +374,10 @@ function ToolTimelineToolGroupRow({ group }: { group: ToolTimelineLayerGroup<Too
   const summary = toolGroupSummary(group.tools);
 
   return (
-    <div className={cn('app-transcript-timeline-row app-transcript-timeline-group-row', group.running && 'app-transcript-timeline-row-running', group.failed && 'app-transcript-timeline-row-error')}>
+    <div
+      className={cn('app-transcript-timeline-row app-transcript-timeline-group-row', group.running && 'app-transcript-timeline-row-running', group.failed && 'app-transcript-timeline-row-error')}
+      data-transcript-stable-disclosure-root="true"
+    >
       <span className="app-transcript-timeline-rail" aria-hidden="true">
         <span className="app-transcript-timeline-node">
           <Icon className="h-3.5 w-3.5" />
@@ -381,7 +386,8 @@ function ToolTimelineToolGroupRow({ group }: { group: ToolTimelineLayerGroup<Too
       <div className="app-transcript-timeline-row-body">
         <button
           type="button"
-          className="app-transcript-timeline-group-summary" data-transcript-stable-disclosure="true"
+          className="app-transcript-timeline-group-summary"
+          data-transcript-stable-disclosure="true"
           onClick={() => setExpandedGroup((current) => !current)}
           aria-expanded={expandedGroup}
         >
@@ -390,7 +396,7 @@ function ToolTimelineToolGroupRow({ group }: { group: ToolTimelineLayerGroup<Too
         </button>
         {summary ? <div className="app-transcript-timeline-row-meta truncate">{summary}</div> : null}
         {expandedGroup ? (
-          <div className="app-transcript-timeline-group-tools">
+          <div className="app-transcript-timeline-group-tools" data-transcript-stable-disclosure-body="true">
             {group.tools.map((tool) => <ToolTimelineToolRow key={tool.id} tool={tool} />)}
           </div>
         ) : null}
@@ -487,6 +493,7 @@ function FoldableToolTimeline({
         active && 'app-transcript-tool-timeline-active',
         separatesAnswer && 'app-transcript-tool-timeline-before-answer',
       )}
+      data-transcript-stable-disclosure-root="true"
     >
       <div className="app-transcript-tool-timeline-row flex w-full items-center gap-2">
         <button
@@ -519,7 +526,7 @@ function FoldableToolTimeline({
         aria-hidden={!expandedTimeline}
         inert={!expandedTimeline}
       >
-        <div className="app-transcript-timeline-reveal-inner">
+        <div className="app-transcript-timeline-reveal-inner" data-transcript-stable-disclosure-body="true">
           {timelineMounted ? (
             <div className="app-transcript-timeline-list">
               {hasThinking ? <ToolTimelineThinkingRow thinkingText={thinkingText} /> : null}

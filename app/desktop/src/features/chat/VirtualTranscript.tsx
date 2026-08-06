@@ -54,6 +54,51 @@ export type VirtualTranscriptProps<Item> = {
 
 const preserveMeasuredDisclosurePosition = () => false;
 const STABLE_DISCLOSURE_SETTLE_MS = 320;
+const TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP = 12;
+const TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT = 72;
+
+type TranscriptDisclosureDirection = 'up' | 'down';
+
+type StableDisclosureAnchor = {
+  sessionKey: string;
+  initialScrollTop: number;
+  targetScrollTop: number;
+  initialHeight: number;
+  availableAbove: number;
+  availableBelow: number;
+  opening: boolean;
+  direction: TranscriptDisclosureDirection | null;
+};
+
+function disclosureDirection(
+  growth: number,
+  availableAbove: number,
+  availableBelow: number,
+): TranscriptDisclosureDirection {
+  if (growth <= availableBelow) return 'down';
+  if (growth <= availableAbove) return 'up';
+  return availableAbove > availableBelow ? 'up' : 'down';
+}
+
+function disclosureBody(root: HTMLElement | null) {
+  return root?.querySelector<HTMLElement>('[data-transcript-stable-disclosure-body="true"]') ?? null;
+}
+
+function clearDisclosureConstraint(body: HTMLElement | null) {
+  if (!body || !body.hasAttribute('data-transcript-disclosure-constrained')) return;
+  body.removeAttribute('data-transcript-disclosure-constrained');
+  body.style.removeProperty('--app-transcript-disclosure-max-height');
+}
+
+function constrainDisclosureBody(body: HTMLElement, maxHeight: number) {
+  const value = `${maxHeight}px`;
+  if (
+    body.dataset.transcriptDisclosureConstrained === 'true'
+    && body.style.getPropertyValue('--app-transcript-disclosure-max-height') === value
+  ) return;
+  body.dataset.transcriptDisclosureConstrained = 'true';
+  body.style.setProperty('--app-transcript-disclosure-max-height', value);
+}
 
 export function VirtualTranscript<Item>({
   items,
@@ -96,11 +141,10 @@ export function VirtualTranscript<Item>({
   const tailAlignmentActiveRef = useRef(false);
   const tailAlignmentFrameRef = useRef<number | null>(null);
   const tailAlignmentTargetRef = useRef<number | null>(null);
-  const stableDisclosureAnchorRef = useRef<{
-    sessionKey: string;
-    scrollTop: number;
-  } | null>(null);
+  const stableDisclosureAnchorRef = useRef<StableDisclosureAnchor | null>(null);
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
+  const stableDisclosureResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const stableDisclosureDirectionRef = useRef(new WeakMap<HTMLElement, TranscriptDisclosureDirection>());
 
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
     internalScrollRef.current = node;
@@ -167,10 +211,12 @@ export function VirtualTranscript<Item>({
     }
   }, []);
 
-  const scheduleStableDisclosureRelease = useCallback((anchor: {
-    sessionKey: string;
-    scrollTop: number;
-  }) => {
+  const disconnectStableDisclosureResizeObserver = useCallback(() => {
+    stableDisclosureResizeObserverRef.current?.disconnect();
+    stableDisclosureResizeObserverRef.current = null;
+  }, []);
+
+  const scheduleStableDisclosureRelease = useCallback((anchor: StableDisclosureAnchor) => {
     cancelStableDisclosureRelease();
     const releaseAfter = Date.now() + STABLE_DISCLOSURE_SETTLE_MS;
     const release = () => {
@@ -178,12 +224,13 @@ export function VirtualTranscript<Item>({
       if (Date.now() < releaseAfter) {
         stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
       } else if (stableDisclosureAnchorRef.current === anchor) {
+        disconnectStableDisclosureResizeObserver();
         stableDisclosureAnchorRef.current = null;
         setStableDisclosureActive(false);
       }
     };
     stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
-  }, [cancelStableDisclosureRelease]);
+  }, [cancelStableDisclosureRelease, disconnectStableDisclosureResizeObserver]);
 
   const alignViewportToTail = useCallback(() => {
     const element = internalScrollRef.current;
@@ -222,9 +269,10 @@ export function VirtualTranscript<Item>({
       mountedRef.current = false;
       cancelTailAlignment();
       cancelStableDisclosureRelease();
+      disconnectStableDisclosureResizeObserver();
       stableDisclosureAnchorRef.current = null;
     };
-  }, [cancelStableDisclosureRelease, cancelTailAlignment]);
+  }, [cancelStableDisclosureRelease, cancelTailAlignment, disconnectStableDisclosureResizeObserver]);
 
   useLayoutEffect(() => {
     const previousScope = committedOlderLoadScopeRef.current;
@@ -294,27 +342,89 @@ export function VirtualTranscript<Item>({
 
   const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target;
-    if (!(target instanceof Element) || !target.closest('[data-transcript-stable-disclosure="true"]')) return;
+    if (!(target instanceof Element)) return;
+    const control = target.closest<HTMLElement>('[data-transcript-stable-disclosure="true"]');
+    if (!control) return;
     const element = internalScrollRef.current;
     if (!element) return;
     cancelTailAlignment();
     cancelStableDisclosureRelease();
+    disconnectStableDisclosureResizeObserver();
     setStableDisclosureActive(true);
-    const anchor = {
+    const root = control.closest<HTMLElement>('[data-transcript-stable-disclosure-root="true"]')
+      ?? control.closest<HTMLElement>('[data-transcript-window-item="true"]')
+      ?? control.closest<HTMLElement>('[data-transcript-message-root="true"]');
+    const viewportRect = element.getBoundingClientRect();
+    const controlRect = control.getBoundingClientRect();
+    const rootRect = root?.getBoundingClientRect();
+    const opening = control.getAttribute('aria-expanded') !== 'true';
+    if (opening) clearDisclosureConstraint(disclosureBody(root));
+    const anchor: StableDisclosureAnchor = {
       sessionKey,
-      scrollTop: element.scrollTop,
+      initialScrollTop: element.scrollTop,
+      targetScrollTop: element.scrollTop,
+      initialHeight: rootRect?.height ?? root?.offsetHeight ?? 0,
+      availableAbove: Math.max(0, controlRect.top - viewportRect.top - TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP),
+      availableBelow: Math.max(0, viewportRect.bottom - controlRect.bottom - TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP),
+      opening,
+      direction: opening ? null : (stableDisclosureDirectionRef.current.get(control) ?? null),
     };
     stableDisclosureAnchorRef.current = anchor;
+
+    if (root && typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => {
+        if (stableDisclosureAnchorRef.current !== anchor || !root.isConnected) return;
+        const currentHeight = root.getBoundingClientRect().height || root.offsetHeight;
+        const heightDelta = currentHeight - anchor.initialHeight;
+        const body = disclosureBody(root);
+        const bodyHeight = body?.getBoundingClientRect().height ?? 0;
+        const fullGrowth = anchor.opening
+          ? Math.max(0, heightDelta, body?.scrollHeight ?? 0)
+          : Math.abs(heightDelta);
+        const direction = anchor.opening
+          ? disclosureDirection(fullGrowth, anchor.availableAbove, anchor.availableBelow)
+          : (anchor.direction ?? disclosureDirection(fullGrowth, anchor.availableAbove, anchor.availableBelow));
+        anchor.direction = direction;
+        stableDisclosureDirectionRef.current.set(control, direction);
+        if (root.dataset.transcriptDisclosureDirection !== direction) {
+          root.dataset.transcriptDisclosureDirection = direction;
+        }
+
+        if (anchor.opening && body) {
+          const available = direction === 'up' ? anchor.availableAbove : anchor.availableBelow;
+          if (fullGrowth > available) {
+            const nonBodyGrowth = Math.max(0, heightDelta - bodyHeight);
+            const maxBodyHeight = Math.max(
+              TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT,
+              Math.floor(available - nonBodyGrowth),
+            );
+            constrainDisclosureBody(body, maxBodyHeight);
+          } else {
+            clearDisclosureConstraint(body);
+          }
+        }
+
+        anchor.targetScrollTop = Math.max(
+          0,
+          anchor.initialScrollTop + (direction === 'up' ? heightDelta : 0),
+        );
+        element.scrollTop = anchor.targetScrollTop;
+        scheduleStableDisclosureRelease(anchor);
+      });
+      resizeObserver.observe(root);
+      stableDisclosureResizeObserverRef.current = resizeObserver;
+    }
     scheduleStableDisclosureRelease(anchor);
-  }, [cancelStableDisclosureRelease, cancelTailAlignment, scheduleStableDisclosureRelease, sessionKey]);
+  }, [cancelStableDisclosureRelease, cancelTailAlignment, disconnectStableDisclosureResizeObserver, scheduleStableDisclosureRelease, sessionKey]);
 
   useLayoutEffect(() => {
     const anchor = stableDisclosureAnchorRef.current;
     if (!anchor || anchor.sessionKey === sessionKey) return;
     cancelStableDisclosureRelease();
+    disconnectStableDisclosureResizeObserver();
     stableDisclosureAnchorRef.current = null;
     setStableDisclosureActive(false);
-  }, [cancelStableDisclosureRelease, sessionKey]);
+  }, [cancelStableDisclosureRelease, disconnectStableDisclosureResizeObserver, sessionKey]);
 
   useLayoutEffect(() => {
     const aligned = alignedSessionRef.current;
@@ -384,7 +494,7 @@ export function VirtualTranscript<Item>({
       cancelTailAlignment();
       const element = internalScrollRef.current;
       if (element) {
-        element.scrollTop = stableDisclosureAnchor.scrollTop;
+        element.scrollTop = stableDisclosureAnchor.targetScrollTop;
         const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
         viewportWasAtTailRef.current = distanceFromTail <= Math.max(4, gap);
       }
