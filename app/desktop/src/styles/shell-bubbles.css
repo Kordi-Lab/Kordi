@@ -94,6 +94,14 @@
   padding: 0;
 }
 
+.app-message-mention-agent {
+  color: var(--app-chat-mention-agent);
+}
+
+.app-message-mention-person {
+  color: var(--app-chat-mention-person);
+}
+
 .app-message-footer {
   color: var(--app-message-meta);
   opacity: 1;

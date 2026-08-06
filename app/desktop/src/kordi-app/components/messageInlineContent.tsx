@@ -92,7 +92,15 @@ export function MessageInlineContent({
   const parts = useMemo(() => parseMessageInlineParts(text, mentions), [mentions, text]);
   return parts.map((part) => {
     if (part.type === 'mention') {
-      return <span key={`mention-${part.start}`} className="app-message-mention">{part.label}</span>;
+      return (
+        <span
+          key={`mention-${part.start}`}
+          className={cn('app-message-mention', `app-message-mention-${part.targetKind}`)}
+          data-mention-kind={part.targetKind}
+        >
+          {part.label}
+        </span>
+      );
     }
     if (part.type === 'link') {
       return (

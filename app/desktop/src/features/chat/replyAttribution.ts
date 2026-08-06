@@ -36,10 +36,13 @@ function isAgentResponse(message: Message) {
 }
 
 function sourceReferenceForMessage(message: Message, messageId: string): MessageSourceReference {
+  const responseText = cleanText(message.turn?.assistantText)
+    || cleanText(message.turn?.error)
+    || cleanText(message.text);
   return {
     messageId,
     senderLabel: message.sender ?? (message.isOwnMessage ? 'You' : null),
-    text: message.text,
+    text: responseText,
     attachmentCount: message.attachments?.length ?? 0,
     time: message.time,
   };
@@ -89,7 +92,8 @@ function messageSourceLookupIds(message: Message, messageId: string) {
 
 function mentionTargetsForRequest(message: Message) {
   const fromStructuredMentions = (message.mentions ?? []).map((mention) => mention.label);
-  const fromTextMentions = [...message.text.matchAll(/@([^\s:;,.!?，。；：！？)\]}]+)/gu)].map((match) => match[1]);
+  const requestText = cleanText(message.text) || cleanText(message.turn?.assistantText);
+  const fromTextMentions = [...requestText.matchAll(/@([^\s:;,.!?，。；：！？)\]}]+)/gu)].map((match) => match[1]);
   return new Set(
     [...fromStructuredMentions, ...fromTextMentions]
       .map(normalizedToken)
@@ -130,6 +134,7 @@ function isLocalAgentResponseMessage(message: Message) {
 function inferredReplyTargetForAgentMessage(
   message: Message,
   requestCandidates: readonly RequestCandidate[],
+  mentionCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
 ) {
   const latestPlainRequest = latestOwnPlainRequest(requestCandidates);
@@ -137,8 +142,8 @@ function inferredReplyTargetForAgentMessage(
     return latestPlainRequest.messageId;
   }
 
-  for (let index = requestCandidates.length - 1; index >= 0; index -= 1) {
-    const candidate = requestCandidates[index];
+  for (let index = mentionCandidates.length - 1; index >= 0; index -= 1) {
+    const candidate = mentionCandidates[index];
     if (requestMentionsAgent(candidate.message, message)) return candidate.messageId;
   }
 
@@ -194,12 +199,18 @@ function inferredReplyTargetForLiveTurn(
 function replyTargetForMessage(
   message: Message,
   requestCandidates: readonly RequestCandidate[],
+  mentionCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
   sourceByMessageId: ReadonlyMap<string, MessageSourceReference>,
 ) {
   const explicitTarget = explicitReplyTargetForMessage(message);
   if (explicitTarget && sourceByMessageId.has(explicitTarget)) return explicitTarget;
-  return inferredReplyTargetForAgentMessage(message, requestCandidates, inferLatestHumanRequest);
+  return inferredReplyTargetForAgentMessage(
+    message,
+    requestCandidates,
+    mentionCandidates,
+    inferLatestHumanRequest,
+  );
 }
 
 function completedReplyCountable(message: Message) {
@@ -346,12 +357,16 @@ export function buildReplyAttribution(
   const summariesByRequestId = new Map<string, MessageReplySummary>();
   const messageIds = inputMessages.map((message, index) => messageIdFor(message, index + messageIndexOffset));
   const requestCandidates: RequestCandidate[] = [];
+  const mentionCandidates: RequestCandidate[] = [];
 
   const messagesWithIds = inputMessages.map((message, index) => {
     const messageId = messageIds[index];
     const withId = message.id === messageId ? message : { ...message, id: messageId };
-    if (isHumanRequest(withId)) {
-      const sourceReference = sourceReferenceForMessage(withId, messageId);
+    const sourceReference = sourceReferenceForMessage(withId, messageId);
+    if (
+      withId.role !== 'system'
+      && (sourceReference.text.length > 0 || (sourceReference.attachmentCount ?? 0) > 0)
+    ) {
       messageSourceLookupIds(withId, messageId).forEach((lookupId) => {
         if (!sourceByMessageId.has(lookupId)) sourceByMessageId.set(lookupId, sourceReference);
       });
@@ -364,6 +379,7 @@ export function buildReplyAttribution(
     const messageId = messageIds[index];
     if (isHumanRequest(message)) {
       requestCandidates.push({ messageId, message });
+      mentionCandidates.push({ messageId, message });
       const explicitTarget = explicitReplyTargetForMessage(message);
       const sourceMessage = explicitTarget ? sourceByMessageId.get(explicitTarget) : undefined;
       if (sourceMessage && sourceMessage.messageId !== messageId) {
@@ -374,7 +390,14 @@ export function buildReplyAttribution(
     }
     if (!isAgentResponse(message)) return message;
 
-    const replyTargetId = replyTargetForMessage(message, requestCandidates, inferLatestHumanRequest, sourceByMessageId);
+    const replyTargetId = replyTargetForMessage(
+      message,
+      requestCandidates,
+      mentionCandidates,
+      inferLatestHumanRequest,
+      sourceByMessageId,
+    );
+    mentionCandidates.push({ messageId, message });
     if (!replyTargetId) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : message;
     const sourceMessage = sourceByMessageId.get(replyTargetId);
     if (!sourceMessage) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : message;

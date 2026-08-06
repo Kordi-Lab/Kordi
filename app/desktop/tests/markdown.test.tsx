@@ -15,6 +15,15 @@ test('renders bare http or https links as external markdown links', () => {
   assert.match(html, /target="_blank"/);
 });
 
+test('emphasizes mentions in agent markdown regardless of markdown weight', () => {
+  const html = renderToStaticMarkup(createElement(MarkdownContent, {
+    text: '@ShuYangsKordi, please ask **@ShenzheZhusKordi** to reply.',
+  }));
+
+  assert.match(html, /app-message-mention[^>]*>@ShuYangsKordi<\/span>/);
+  assert.match(html, /<strong[^>]*>[^<]*<span class="[^"]*app-message-mention-agent[^"]*"[^>]*>@ShenzheZhusKordi<\/span><\/strong>/);
+});
+
 test('markdown links use a quiet URL treatment without underlines or external icons', () => {
   const html = renderToStaticMarkup(createElement(MarkdownContent, { text: 'Open https://www.google.com/ now.' }));
   const shellCss = readDesktopShellCss();

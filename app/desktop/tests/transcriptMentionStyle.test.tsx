@@ -49,6 +49,8 @@ test('chat mention and footer colors are tokenized by bubble context', () => {
   const userBubbleRule = cssRule(shellCss, '.app-chat-bubble-user');
   const peerBubbleRule = cssRule(shellCss, '.app-chat-bubble-peer');
   const mentionRule = cssRule(shellCss, '.app-message-mention');
+  const agentMentionRule = cssRule(shellCss, '.app-message-mention-agent');
+  const personMentionRule = cssRule(shellCss, '.app-message-mention-person');
   const footerRule = cssRule(shellCss, '.app-message-footer');
   const inlineSenderRule = cssRule(shellCss, '.app-message-inline-sender');
 
@@ -61,6 +63,8 @@ test('chat mention and footer colors are tokenized by bubble context', () => {
   assert.match(mentionRule, /background:\s*transparent;/);
   assert.match(mentionRule, /border:\s*0;/);
   assert.match(mentionRule, /padding:\s*0;/);
+  assert.match(agentMentionRule, /color:\s*var\(--app-chat-mention-agent\);/);
+  assert.match(personMentionRule, /color:\s*var\(--app-chat-mention-person\);/);
   assert.match(footerRule, /color:\s*var\(--app-message-meta\);/);
   assert.match(inlineSenderRule, /color:\s*var\(--app-sidebar-title-text\);/);
   assert.doesNotMatch(mentionRule, /border-radius:\s*9999px/);

@@ -14,6 +14,7 @@ import type {
   CloudGroupAgentRuntime,
   CloudGroupMessageControlContext,
 } from './cloudGroupControlContext';
+import type { CloudGroupAgentHandoff } from './cloudGroupMentions';
 import type { CloudGroupAgentPolicy } from './cloudGroupAgentControl.types';
 
 export async function publishCloudGroupAgentTerminalAfterGuards({
@@ -27,6 +28,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText,
   responseDeliveryState,
   agentDisplayName,
+  agentHandoff,
   signal,
 }: {
   context: CloudGroupMessageControlContext;
@@ -39,6 +41,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText: string;
   responseDeliveryState: 'complete' | 'failed';
   agentDisplayName: string;
+  agentHandoff: CloudGroupAgentHandoff | null;
   signal: AbortSignal;
 }): Promise<void> {
   if (signal.aborted) return;
@@ -101,6 +104,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
           deliveryState: responseDeliveryState,
           replyToMessageId: message.id,
           requestId: message.id,
+          ...(agentHandoff ?? {}),
         },
       }),
       sessionId: envelope.groupId,

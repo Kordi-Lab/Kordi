@@ -73,6 +73,37 @@ test('plain message content tokenizes structured mentions and safe URLs without 
   assert.equal(urlMention.filter((part) => part.type === 'mention').length, 0);
 });
 
+test('plain message content emphasizes every textual mention alongside a structured target', () => {
+  const parts = parseMessageInlineParts(
+    '@ShuYangsKordi, please ask @ShenzheZhusKordi to reply. Email test@example.com.',
+    [{ label: 'ShuYangsKordi', targetKind: 'agent' }],
+  );
+
+  assert.deepEqual(
+    parts
+      .filter((part) => part.type === 'mention')
+      .map((part) => part.type === 'mention' ? [part.label, part.targetKind] : []),
+    [
+      ['@ShuYangsKordi', 'agent'],
+      ['@ShenzheZhusKordi', 'agent'],
+    ],
+  );
+  assert.equal(
+    parts.some((part) => part.type === 'mention' && part.label === '@example'),
+    false,
+  );
+});
+
+test('shared inline renderer gives human and agent mentions distinct semantic colors', () => {
+  const html = renderToStaticMarkup(createElement(MessageInlineContent, {
+    text: '@ShenzheZhu ask @ShenzheZhusKordi',
+    mentions: [{ label: 'ShenzheZhu', targetKind: 'person' }],
+  }));
+
+  assert.match(html, /app-message-mention-person[^>]*data-mention-kind="person"[^>]*>@ShenzheZhu<\/span>/);
+  assert.match(html, /app-message-mention-agent[^>]*data-mention-kind="agent"[^>]*>@ShenzheZhusKordi<\/span>/);
+});
+
 test('message URL validation leaves unsafe or credential-bearing schemes inert', () => {
   const text = 'javascript:alert(1) data:text/html,test https://user:secret@example.com/private';
   assert.equal(parseMessageInlineParts(text).some((part) => part.type === 'link'), false);

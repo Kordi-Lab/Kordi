@@ -284,6 +284,7 @@ export async function applyCloudGroupMessageControl({
         sender: message.senderDisplayName?.trim() || 'Kordi',
         timestampMs: message.createdAtMs,
         deliveryState: agentDeliveryState,
+        cloudGroupMessageId: message.id,
         sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
         requestId: messageReplyToId,
         replyToMessageId: messageReplyToId,

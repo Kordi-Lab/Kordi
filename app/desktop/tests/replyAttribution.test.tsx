@@ -659,6 +659,58 @@ test('buildReplyAttribution scopes inferred replies to each mentioned agent requ
   assert.equal(result.messages[3]?.turn?.sourceMessage?.messageId, 'msg:bob-request');
 });
 
+test('buildReplyAttribution resolves an older agent handoff instead of quoting a stale human request', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:stale-local-request',
+      text: '@MyKordi also who is in our group',
+    }),
+    humanRequest({
+      id: 'msg:current-human-request',
+      text: '@CUFishAIsKordi ask my Kordi to ask Shenzhe Zhu’s Kordi to reply “third hop”',
+    }),
+    {
+      id: 'msg:stable-cufish-agent-slot',
+      role: 'external-agent',
+      sender: "C UFishAI's Kordi",
+      senderType: 'agent',
+      text: '',
+      time: '11:18',
+      replyToMessageId: 'msg:current-human-request',
+      turn: turn({
+        id: 'turn:cufish',
+        assistantText: '@ShuYangsKordi, please ask @ShenzheZhusKordi to reply “third hop”.',
+        replyToMessageId: 'msg:current-human-request',
+      }),
+    },
+    {
+      id: 'msg:stable-shuyang-agent-slot',
+      role: 'owned-agent',
+      sender: "Shu Yang's Kordi",
+      senderType: 'agent',
+      text: '',
+      time: '11:19',
+      replyToMessageId: 'msg:cloud-agent:cufish-terminal',
+      turn: turn({
+        id: 'turn:shuyang',
+        assistantText: 'I can’t ask another agent in this hop. @ShenzheZhu, please reply “third hop”.',
+        replyToMessageId: 'msg:cloud-agent:cufish-terminal',
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, { inferLatestHumanRequest: true });
+  const handoffResponse = result.messages[3]?.turn?.sourceMessage;
+
+  assert.equal(handoffResponse?.messageId, 'msg:stable-cufish-agent-slot');
+  assert.equal(handoffResponse?.senderLabel, "C UFishAI's Kordi");
+  assert.equal(
+    handoffResponse?.text,
+    '@ShuYangsKordi, please ask @ShenzheZhusKordi to reply “third hop”.',
+  );
+  assert.notEqual(handoffResponse?.messageId, 'msg:stale-local-request');
+});
+
 test('buildReplyAttribution links direct live turns to matching prompt without broad fallback inference', () => {
   const request = humanRequest({ id: 'msg:direct-request', text: 'check the gym in kaust' });
   const liveTurn = turn({

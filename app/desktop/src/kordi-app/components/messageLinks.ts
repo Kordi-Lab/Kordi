@@ -16,11 +16,11 @@ type ExternalMessageLinkOpener = (url: string) => unknown;
 
 export type MessageInlinePart =
   | { type: 'text'; value: string; start: number }
-  | { type: 'mention'; label: string; start: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; start: number }
   | { type: 'link'; label: string; href: string; start: number };
 
 type InlineRange =
-  | { type: 'mention'; label: string; start: number; end: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; start: number; end: number }
   | { type: 'link'; label: string; href: string; start: number; end: number };
 
 export type SiteIconDescriptor = {
@@ -31,7 +31,7 @@ export type SiteIconDescriptor = {
 export const bareHttpUrlStartPattern = /https?:\/\//i;
 const bareHttpUrlPattern = /https?:\/\/[^\s<>"']+/giu;
 const trailingBareUrlPunctuationPattern = /[.,!?;:，。！？；：]+$/u;
-const legacyMentionPattern = /@[\p{L}\p{N}]{1,64}/gu;
+const textualMentionPattern = /@[\p{L}\p{N}][\p{L}\p{N}._'-]{0,63}/gu;
 const siteIconDescriptorCache = new Map<string, SiteIconDescriptor>();
 const MAX_SITE_ICON_DESCRIPTOR_CACHE_ENTRIES = 256;
 
@@ -165,7 +165,15 @@ function linkRanges(text: string): InlineRange[] {
 function isMentionBoundary(text: string, index: number, length: number) {
   const before = text[index - 1] ?? '';
   const after = text[index + length] ?? '';
-  return (!before || /\s/.test(before)) && (!after || /[\s:;,.!?—-]/.test(after));
+  return (!before || !/[\p{L}\p{N}._%+-]/u.test(before))
+    && (!after || !/[\p{L}\p{N}._'-]/u.test(after));
+}
+
+function inferredMentionTargetKind(label: string): 'agent' | 'person' {
+  const normalized = label.replace(/^@/, '').normalize('NFKC').toLowerCase();
+  return normalized === 'kordi' || normalized === 'mykordi' || normalized.endsWith('kordi')
+    ? 'agent'
+    : 'person';
 }
 
 function structuredMentionRanges(text: string, mentions: MessageMention[], reserved: InlineRange[]) {
@@ -178,6 +186,10 @@ function structuredMentionRanges(text: string, mentions: MessageMention[], reser
 
   for (const label of labels) {
     const needle = `@${label}`;
+    const structuredMention = mentions.find((mention) => mention.label.trim().toLowerCase() === label.toLowerCase());
+    const targetKind = structuredMention?.targetKind === 'agent' || structuredMention?.targetKind === 'person'
+      ? structuredMention.targetKind
+      : inferredMentionTargetKind(needle);
     const normalizedNeedle = needle.toLowerCase();
     let searchFrom = 0;
     while (searchFrom < text.length) {
@@ -186,6 +198,7 @@ function structuredMentionRanges(text: string, mentions: MessageMention[], reser
       const candidate: InlineRange = {
         type: 'mention',
         label: needle,
+        targetKind,
         start,
         end: start + needle.length,
       };
@@ -202,17 +215,23 @@ function structuredMentionRanges(text: string, mentions: MessageMention[], reser
   return ranges;
 }
 
-function legacyMentionRanges(text: string, reserved: InlineRange[]) {
+function textualMentionRanges(text: string, reserved: InlineRange[]) {
   const ranges: InlineRange[] = [];
-  for (const match of text.matchAll(legacyMentionPattern)) {
+  for (const match of text.matchAll(textualMentionPattern)) {
     const start = match.index;
     const candidate: InlineRange = {
       type: 'mention',
       label: match[0],
+      targetKind: inferredMentionTargetKind(match[0]),
       start,
       end: start + match[0].length,
     };
-    if (!reserved.some((range) => rangesOverlap(candidate, range))) ranges.push(candidate);
+    if (
+      isMentionBoundary(text, start, match[0].length)
+      && !reserved.some((range) => rangesOverlap(candidate, range))
+    ) {
+      ranges.push(candidate);
+    }
   }
   return ranges;
 }
@@ -220,9 +239,8 @@ function legacyMentionRanges(text: string, reserved: InlineRange[]) {
 export function parseMessageInlineParts(text: string, mentions: MessageMention[] = []): MessageInlinePart[] {
   const links = linkRanges(text);
   const structuredMentions = structuredMentionRanges(text, mentions, links);
-  const mentionRanges = structuredMentions.length > 0
-    ? structuredMentions
-    : legacyMentionRanges(text, links);
+  const textualMentions = textualMentionRanges(text, [...links, ...structuredMentions]);
+  const mentionRanges = [...structuredMentions, ...textualMentions];
   const ranges = [...links, ...mentionRanges].sort((left, right) => left.start - right.start);
   const parts: MessageInlinePart[] = [];
   let cursor = 0;
@@ -235,7 +253,7 @@ export function parseMessageInlineParts(text: string, mentions: MessageMention[]
     if (range.type === 'link') {
       parts.push({ type: 'link', label: range.label, href: range.href, start: range.start });
     } else {
-      parts.push({ type: 'mention', label: range.label, start: range.start });
+      parts.push({ type: 'mention', label: range.label, targetKind: range.targetKind, start: range.start });
     }
     cursor = range.end;
   }
