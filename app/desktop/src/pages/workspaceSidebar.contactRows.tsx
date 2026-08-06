@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Split } from 'lucide-r
 
 import { isBlankParticipantSpaceSession } from '@/features/chat/participantSpaces';
 import { cn } from '@/lib/utils';
-import type { ChatSidebarRow } from '@/pages/sidebar/VirtualChatList';
+import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
   participantSpaceCanRenameSessions,
   participantSpaceDetailText,

@@ -2,7 +2,7 @@ import { ChevronRight, Split } from 'lucide-react';
 
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import { cn } from '@/lib/utils';
-import type { ChatSidebarRow } from '@/pages/sidebar/VirtualChatList';
+import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
   participantSpaceSessionMessageCount,
   participantSpaceSessionPreviewLine,
