@@ -13,8 +13,10 @@ import type { ChatDestination } from '@/pages/chatsPage.destinationModel';
 import { SessionDestinationTabs } from '@/pages/chatsPage.destinations';
 import {
   companionLabel,
+  type ChatCompanionSessionOption,
   type CompanionSide,
 } from '@/pages/chatsPage.model';
+import { participantSpaceSessionRowTitle } from '@/pages/workspaceSidebar.chatHelpers';
 
 type CompanionHeaderMenu = {
   actionsOpen: boolean;
@@ -37,7 +39,7 @@ type CompanionHeaderActions = {
 
 export type CompanionHeaderProps = {
   conversation: Conversation;
-  candidates: Conversation[];
+  sessionOptions: ChatCompanionSessionOption[];
   side: CompanionSide;
   destination: ChatDestination;
   menu: CompanionHeaderMenu;
@@ -46,7 +48,7 @@ export type CompanionHeaderProps = {
 
 export function CompanionHeader({
   conversation,
-  candidates,
+  sessionOptions,
   side,
   destination,
   menu,
@@ -54,6 +56,7 @@ export function CompanionHeader({
 }: CompanionHeaderProps) {
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const actionsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const sessionListRef = useRef<HTMLDivElement | null>(null);
   const { onCloseActions } = actions;
 
   useEffect(() => {
@@ -79,6 +82,19 @@ export function CompanionHeader({
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [menu.actionsOpen, onCloseActions]);
+
+  useEffect(() => {
+    if (!menu.actionsOpen || !menu.sessionListOpen) return;
+    queueMicrotask(() => {
+      const currentSession = sessionListRef.current?.querySelector<HTMLButtonElement>(
+        '[data-side-chat-current-session="true"]',
+      );
+      const firstSession = sessionListRef.current?.querySelector<HTMLButtonElement>(
+        '[data-side-chat-session-option="true"]',
+      );
+      (currentSession ?? firstSession)?.focus();
+    });
+  }, [menu.actionsOpen, menu.sessionListOpen]);
 
   return (
     <div
@@ -121,36 +137,83 @@ export function CompanionHeader({
           <div
             data-side-chat-options-menu="true"
             data-side-chat-root-menu="true"
-            className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-44 rounded-[18px] border p-1.5 text-[13px] font-medium"
+            className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-[18px] border p-1.5 text-[13px] font-medium"
           >
             {menu.sessionListOpen ? (
-              <div data-side-chat-session-list="true">
+              <div
+                ref={sessionListRef}
+                data-side-chat-session-list="true"
+                className="flex max-h-[min(24rem,55vh)] min-h-0 flex-col"
+              >
                 <button
                   type="button"
-                  className="app-transient-row mb-1 flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition"
+                  className="app-transient-row app-transient-flat-action mb-1 flex w-full shrink-0 items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition"
                   onClick={actions.onCloseSessionList}
                 >
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   <span>Back</span>
                 </button>
-                <div className="mb-1 h-px bg-[color:var(--app-divider)]" aria-hidden="true" />
-                {candidates.map((candidate) => (
-                  <button
-                    key={candidate.id}
-                    type="button"
-                    className={cn(
-                      'app-transient-row flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition',
-                      candidate.id === conversation.id && 'app-transient-row-selected',
-                    )}
-                    title={`Switch to ${candidate.name}`}
-                    onClick={() => actions.onSwitchConversation(candidate.id)}
-                  >
-                    <span className="truncate">{candidate.name}</span>
-                    {candidate.id === conversation.id ? (
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-pink-300" aria-hidden="true" />
-                    ) : null}
-                  </button>
-                ))}
+                <div className="mb-1 h-px shrink-0 bg-[color:var(--app-divider)]" aria-hidden="true" />
+                <div className="app-transient-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">
+                  {sessionOptions.map((option) => {
+                    const candidate = option.conversation;
+                    const isCurrent = candidate.id === conversation.id;
+                    const isFork = option.depth > 0;
+                    const visualDepth = Math.min(option.depth, 4);
+                    const rowTitle = participantSpaceSessionRowTitle(candidate.name);
+                    const stateLabel = option.openInMain
+                      ? 'Open in main panel'
+                      : isCurrent
+                        ? 'Current side chat'
+                        : 'Switch side chat';
+                    return (
+                      <div
+                        key={candidate.id}
+                        className={cn(
+                          isFork
+                            && 'mt-px ml-2 border-l border-[color:var(--app-divider)] pl-1',
+                        )}
+                        data-session-fork-depth={isFork ? option.depth : undefined}
+                      >
+                        <button
+                          type="button"
+                          aria-current={isCurrent ? 'page' : undefined}
+                          aria-disabled={option.openInMain || undefined}
+                          aria-label={`${rowTitle}, ${stateLabel}`}
+                          data-side-chat-session-option="true"
+                          data-side-chat-current-session={isCurrent ? 'true' : undefined}
+                          data-side-chat-open-in-main={option.openInMain ? 'true' : undefined}
+                          className={cn(
+                            'app-transient-row flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition',
+                            isCurrent && 'app-transient-row-selected',
+                            !isCurrent && 'app-transient-flat-action',
+                            option.openInMain && 'cursor-default opacity-60',
+                          )}
+                          style={isFork ? {
+                            paddingInlineStart: `${0.625 + visualDepth * 0.875}rem`,
+                          } : undefined}
+                          title={`${rowTitle} — ${stateLabel}`}
+                          onClick={() => {
+                            if (!option.selectable) return;
+                            actions.onSwitchConversation(candidate.id);
+                          }}
+                        >
+                          <span className="min-w-0 flex-1 truncate">{rowTitle}</span>
+                          {option.openInMain ? (
+                            <span className="shrink-0 text-[10px] font-medium text-[color:var(--app-transient-subtle-text)]">
+                              Main
+                            </span>
+                          ) : isCurrent ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium text-[color:var(--app-transient-subtle-text)]">
+                              <span className="h-1.5 w-1.5 rounded-full bg-pink-300" aria-hidden="true" />
+                              Current
+                            </span>
+                          ) : null}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <div className="space-y-1">

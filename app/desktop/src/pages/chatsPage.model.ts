@@ -3,6 +3,7 @@ import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/co
 import type { Conversation, ConversationParticipant, Message } from '@/kordi-app/types';
 import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
+import { buildChatSidebarRows } from '@/pages/sidebar/chatSidebarRows';
 
 export type CompanionSide = 'left' | 'right';
 
@@ -141,6 +142,90 @@ export function chatCompanionCandidates(activeConv: Conversation, conversations:
     conversation.id !== activeConv.id
     && conversationIsAgentChat(conversation)
   ));
+}
+
+export type ChatCompanionSessionOption = {
+  conversation: Conversation;
+  depth: number;
+  openInMain: boolean;
+  selectable: boolean;
+};
+
+function conversationSessionKey(conversation: Conversation) {
+  return conversation.canonicalSessionId?.trim() || conversation.id.trim();
+}
+
+function conversationActivityAtMs(conversation: Conversation) {
+  return conversation._updatedAtMs ?? conversation.canonicalCreatedAtMs ?? 0;
+}
+
+export function chatCompanionSessionOptions(
+  activeConv: Conversation,
+  conversations: Conversation[] = [],
+): ChatCompanionSessionOption[] {
+  const agentConversations = conversations
+    .filter(conversationIsAgentChat)
+    .sort((left, right) => (
+      conversationActivityAtMs(right) - conversationActivityAtMs(left)
+      || left.name.localeCompare(right.name)
+      || left.id.localeCompare(right.id)
+    ));
+  const conversationById = new Map(
+    agentConversations.map((conversation) => [conversation.id, conversation]),
+  );
+  const conversationIdBySessionReference = new Map<string, string>();
+  for (const conversation of agentConversations) {
+    conversationIdBySessionReference.set(conversation.id, conversation.id);
+    const canonicalSessionId = conversation.canonicalSessionId?.trim();
+    if (canonicalSessionId) {
+      conversationIdBySessionReference.set(canonicalSessionId, conversation.id);
+    }
+  }
+  const sessionInputs = agentConversations.map((conversation) => {
+    const parentReference = conversation.forkedFromSessionId?.trim() || null;
+    return {
+      sessionId: conversation.id,
+      spaceId: 'agent-sessions',
+      parentSessionId: parentReference
+        ? (conversationIdBySessionReference.get(parentReference) ?? parentReference)
+        : null,
+      parentReference,
+    };
+  });
+  const knownConversationIds = new Set(conversationById.keys());
+  const rootSessionIds = sessionInputs
+    .filter((session) => {
+      if (session.parentSessionId && knownConversationIds.has(session.parentSessionId)) {
+        return false;
+      }
+      return !(session.parentReference?.startsWith('session:'));
+    })
+    .map((session) => session.sessionId);
+  const activeSessionKey = conversationSessionKey(activeConv);
+
+  return buildChatSidebarRows({
+    spaces: [{
+      spaceId: 'agent-sessions',
+      expanded: true,
+      rootSessionIds,
+    }],
+    sessions: sessionInputs,
+    collapsedForkParentIds: new Set(),
+    activeSessionId: activeConv.id,
+    includeSpaceRows: false,
+  }).flatMap((row) => {
+    if (row.kind !== 'session') return [];
+    const conversation = conversationById.get(row.sessionId);
+    if (!conversation) return [];
+    const openInMain = conversation.id === activeConv.id
+      || conversationSessionKey(conversation) === activeSessionKey;
+    return [{
+      conversation,
+      depth: row.depth,
+      openInMain,
+      selectable: !openInMain,
+    }];
+  });
 }
 
 export function chatSideAgentConversationForOpenRequest(

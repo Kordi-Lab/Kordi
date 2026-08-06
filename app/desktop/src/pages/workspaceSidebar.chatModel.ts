@@ -5,7 +5,7 @@ import type { ChatChannel } from '@/kordi-app/types';
 import {
   buildChatSidebarRows,
   type ChatSidebarSessionInput,
-} from '@/pages/sidebar/VirtualChatList';
+} from '@/pages/sidebar/chatSidebarRows';
 import { filterGroupForkSessionsFromSpaces } from '@/pages/workspaceSidebar.chatHelpers';
 import type {
   WorkspaceSidebarChats,

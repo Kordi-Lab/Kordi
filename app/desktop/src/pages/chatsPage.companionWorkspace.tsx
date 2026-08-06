@@ -128,7 +128,7 @@ export function ChatCompanionWorkspace({
       header={(
         <CompanionHeader
           conversation={conversation}
-          candidates={session.candidates}
+          sessionOptions={session.sessionOptions}
           side={layoutModel.side}
           destination={destinations.value}
           menu={{

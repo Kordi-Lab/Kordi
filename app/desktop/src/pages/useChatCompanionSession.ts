@@ -11,6 +11,7 @@ import {
   buildAskAgentSessionReferenceContext,
   buildAskAgentSessionReferenceContextMessage,
   chatCompanionCandidates,
+  chatCompanionSessionOptions,
   chatSideAgentConversationForOpenRequest,
   pairedCompanionConversation,
 } from '@/pages/chatsPage.model';
@@ -104,6 +105,18 @@ export function useChatCompanionSession({
   const candidates = useMemo(
     () => chatCompanionCandidates(activeConversation, conversations),
     [activeConversation, conversations],
+  );
+  const sessionOptions = useMemo(
+    () => chatCompanionSessionOptions(activeConversation, conversations),
+    [activeConversation, conversations],
+  );
+  const selectableSessionIds = useMemo(
+    () => new Set(
+      sessionOptions
+        .filter((option) => option.selectable)
+        .map((option) => option.conversation.id),
+    ),
+    [sessionOptions],
   );
   const candidateIds = useMemo(
     () => new Set(candidates.map((conversation) => conversation.id)),
@@ -255,6 +268,7 @@ export function useChatCompanionSession({
   return {
     conversation,
     candidates,
+    sessionOptions,
     suggested,
     draftText,
     canOpen: Boolean(suggested || (activePaneKind === 'agent' && onCreateAgentSession)),
@@ -320,7 +334,10 @@ export function useChatCompanionSession({
     actions: {
       create,
       open,
-      switchConversation: activate,
+      switchConversation: (conversationId: string) => {
+        if (!selectableSessionIds.has(conversationId)) return;
+        activate(conversationId);
+      },
       close: () => updateState((current) => ({
         ...current,
         selectedConversationId: null,
