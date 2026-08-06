@@ -404,6 +404,7 @@ Never promote or replace the immutable beta.6 preview objects. Never create the 
 
 For each beta release, update and verify all desktop release metadata:
 
+- root `CHANGELOG.md`
 - `app/desktop/package.json`
 - `app/desktop/package-lock.json`
 - `app/desktop/src-tauri/Cargo.toml`
@@ -412,6 +413,27 @@ For each beta release, update and verify all desktop release metadata:
 - `app/desktop/src-tauri/Cargo.lock`
 - root `Cargo.lock`
 - `app/desktop/tests/releaseVersion.test.mjs`
+
+The changelog update is a release gate, not a post-release follow-up. Before
+merging the preparation PR:
+
+1. Compare the candidate branch with the previous release tag and inventory
+   every merged user-facing change.
+2. Add a dated `## [0.0.1-beta.N]` entry with `Added`, `Changed`, and/or `Fixed`
+   sections, concise user-facing bullets, and links to the relevant issues or
+   pull requests.
+3. Update the `[Unreleased]` and version comparison links at the bottom of
+   `CHANGELOG.md`.
+4. Re-run the comparison after the release commit is pinned. If another
+   user-facing change entered `main`, update the changelog and pin the new
+   commit before building.
+
+The release-version test requires a dated entry, at least one classified
+user-facing bullet, and a comparison link for the exact app version. GitHub
+release notes must use the same changelog entry for their user-facing change
+list, then append signing status, installation guidance, hashes, deployment
+evidence, and rollback results. Do not maintain a second, divergent feature
+list only in GitHub release notes.
 
 Run the release metadata test after the bump:
 

@@ -13,6 +13,10 @@ function readText(path) {
   return readFileSync(new URL(path, import.meta.url), 'utf8');
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test('desktop release metadata is set for V0.0.1.beta12', () => {
   const pkg = readJson('../package.json');
   const packageLock = readJson('../package-lock.json');
@@ -21,6 +25,13 @@ test('desktop release metadata is set for V0.0.1.beta12', () => {
   const cargoToml = readText('../src-tauri/Cargo.toml');
   const cargoLock = readText('../src-tauri/Cargo.lock');
   const workspaceCargoLock = readText('../../../Cargo.lock');
+  const changelog = readText('../../../CHANGELOG.md');
+  const escapedVersion = escapeRegExp(appVersion);
+  const escapedReleaseName = escapeRegExp(releaseName);
+  const releaseEntryMatch = changelog.match(new RegExp(
+    `^## \\[${escapedVersion}\\] - \\d{4}-\\d{2}-\\d{2}\\n([\\s\\S]*?)(?=^## \\[|(?![\\s\\S]))`,
+    'm',
+  ));
 
   assert.equal(releaseName, 'V0.0.1.beta12');
   assert.equal(pkg.version, appVersion);
@@ -32,4 +43,20 @@ test('desktop release metadata is set for V0.0.1.beta12', () => {
   assert.match(cargoToml, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.12"/);
   assert.match(cargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.12"/);
   assert.match(workspaceCargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.12"/);
+  assert.ok(releaseEntryMatch, `CHANGELOG.md must contain a dated ${appVersion} entry`);
+  assert.match(
+    releaseEntryMatch[1],
+    /^### (?:Added|Changed|Fixed)$/m,
+    `CHANGELOG.md ${appVersion} must classify user-facing changes`,
+  );
+  assert.match(
+    releaseEntryMatch[1],
+    /^- /m,
+    `CHANGELOG.md ${appVersion} must contain at least one user-facing change`,
+  );
+  assert.match(
+    changelog,
+    new RegExp(`^\\[${escapedVersion}\\]: .*${escapedReleaseName}$`, 'm'),
+    `CHANGELOG.md must link ${appVersion} to ${releaseName}`,
+  );
 });

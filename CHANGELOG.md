@@ -6,11 +6,17 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [0.0.1-beta.12] - 2026-08-06
 
+### Added
+
+- Enabled group agents to `@mention` conversation participants and their Kordi
+  agents while preserving authorization, attribution, and relevant reply
+  history across Cloud runs. ([#896])
+
 ### Fixed
 
 - Kept Google and GitHub sign-in available in packaged Cloud builds without
   depending on the development-only capability probe, and limited server
-  capability diagnostics to debug previews.
+  capability diagnostics to debug previews. ([#894])
 
 ## [0.0.1-beta.11] - 2026-08-05
 
@@ -221,3 +227,5 @@ This release is the comparison baseline for beta.8. See the
 [#889]: https://github.com/Kordi-Lab/Kordi/pull/889
 [#890]: https://github.com/Kordi-Lab/Kordi/pull/890
 [#891]: https://github.com/Kordi-Lab/Kordi/pull/891
+[#894]: https://github.com/Kordi-Lab/Kordi/pull/894
+[#896]: https://github.com/Kordi-Lab/Kordi/pull/896
