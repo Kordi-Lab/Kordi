@@ -125,6 +125,13 @@
   transform: translateY(0);
 }
 
+[data-transcript-stable-disclosure-body="true"][data-transcript-disclosure-constrained="true"] {
+  max-height: var(--app-transcript-disclosure-max-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .app-transcript-tool-timeline-summary {
   display: inline-flex;
   width: fit-content;
