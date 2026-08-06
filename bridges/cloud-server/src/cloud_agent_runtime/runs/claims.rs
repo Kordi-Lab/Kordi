@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
 
+use super::authorization::shared_cloud_agent_target_for_claim;
 use super::prompt_history::fallback_prompt_for_claim;
 use super::RunResult;
 
@@ -110,11 +111,24 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     .await?;
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let prompt = fallback_prompt_for_claim(pool, input).await?;
+    let target_agent_id = shared_cloud_agent_target_for_claim(pool, input)
+        .await?
+        .map(|target| target.agent_id);
+    let trigger_kind = if input
+        .request_message_id
+        .trim()
+        .starts_with("scheduled_run_")
+    {
+        "scheduled"
+    } else {
+        "mention"
+    };
     let row: (String, String, Option<String>, String, String) = query_as(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
-            requester_account_id, status, prompt, sandbox_id, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $9)
+            requester_account_id, status, prompt, sandbox_id, target_agent_id, trigger_kind,
+            created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $10, $11, $11)
          ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = cloud_agent_fallback_runs.idempotency_key
          RETURNING run_id, status, sandbox_id, created_at, updated_at",
     )
@@ -126,6 +140,8 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     .bind(&input.requester_account_id)
     .bind(&prompt)
     .bind(&sandbox.sandbox_id)
+    .bind(&target_agent_id)
+    .bind(trigger_kind)
     .bind(&now)
     .fetch_one(pool)
     .await?;

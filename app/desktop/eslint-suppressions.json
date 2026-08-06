@@ -409,11 +409,6 @@
       "count": 1
     }
   },
-  "src/kordi-app/agents/AgentStudioWorkspace.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 3
-    }
-  },
   "src/kordi-app/agents/AgentsPage.tsx": {
     "react-hooks/exhaustive-deps": {
       "count": 1

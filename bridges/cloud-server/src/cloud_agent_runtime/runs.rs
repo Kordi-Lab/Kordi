@@ -34,6 +34,7 @@ pub use leases::{
     lease_canary_run, lease_next_run, mark_run_running, RunnerLeaseResponse, RunnerRunEnvelope,
     RunnerRunRequest, RunnerRunResponse,
 };
+pub(crate) use leases::{runner_response_from_row, RunnerRunRow};
 #[cfg(test)]
 use prompt_history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
 
@@ -69,6 +70,7 @@ mod tests {
                 display_name: "Requester".to_string(),
                 avatar_url: None,
                 role: Some("admin".to_string()),
+                agent_ids: Vec::new(),
             },
             participants: vec![
                 super::CloudGroupParticipant {
@@ -76,12 +78,14 @@ mod tests {
                     display_name: "Requester".to_string(),
                     avatar_url: None,
                     role: Some("admin".to_string()),
+                    agent_ids: Vec::new(),
                 },
                 super::CloudGroupParticipant {
                     account_id: "acct_owner".to_string(),
                     display_name: "Owner".to_string(),
                     avatar_url: None,
                     role: Some("person".to_string()),
+                    agent_ids: Vec::new(),
                 },
             ],
             message: Some(super::CloudGroupMessage {
@@ -169,6 +173,7 @@ mod tests {
                 display_name: "Requester".to_string(),
                 avatar_url: None,
                 role: Some("admin".to_string()),
+                agent_ids: Vec::new(),
             },
             participants: vec![
                 super::CloudGroupParticipant {
@@ -176,12 +181,14 @@ mod tests {
                     display_name: "Requester".to_string(),
                     avatar_url: None,
                     role: Some("admin".to_string()),
+                    agent_ids: Vec::new(),
                 },
                 super::CloudGroupParticipant {
                     account_id: "acct_owner".to_string(),
                     display_name: "Shuyang".to_string(),
                     avatar_url: None,
                     role: Some("person".to_string()),
+                    agent_ids: Vec::new(),
                 },
             ],
             message: Some(super::CloudGroupMessage {
@@ -295,6 +302,7 @@ mod tests {
                 display_name: "Peer".to_string(),
                 avatar_url: None,
                 role: Some("admin".to_string()),
+                agent_ids: Vec::new(),
             },
             participants: vec![
                 super::CloudGroupParticipant {
@@ -302,12 +310,14 @@ mod tests {
                     display_name: "Owner".to_string(),
                     avatar_url: None,
                     role: Some("person".to_string()),
+                    agent_ids: Vec::new(),
                 },
                 super::CloudGroupParticipant {
                     account_id: "acct_peer".to_string(),
                     display_name: "Peer".to_string(),
                     avatar_url: None,
                     role: Some("admin".to_string()),
+                    agent_ids: Vec::new(),
                 },
             ],
             message: None,

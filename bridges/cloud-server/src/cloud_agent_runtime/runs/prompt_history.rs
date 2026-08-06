@@ -3,6 +3,8 @@
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use crate::cloud_agents::models::CloudAgentMentionPermissions;
+
 use super::authorization::shared_cloud_agent_target_for_claim;
 use super::envelopes::{
     cloud_agent_response_text, cloud_group_request_envelope_with_created_at_for_run,
@@ -214,6 +216,31 @@ async fn shared_cloud_agent_prompt_prefix(
     Ok(Some(sections.join("\n\n")))
 }
 
+async fn mention_permissions_for_claim(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<CloudAgentMentionPermissions, sqlx_core::Error> {
+    let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
+        return Ok(CloudAgentMentionPermissions {
+            people: true,
+            agents: true,
+        });
+    };
+    let row: Option<(bool, bool)> = query_as(
+        "SELECT mention_people_enabled, mention_agents_enabled
+         FROM cloud_agent_definitions
+         WHERE agent_id = $1 AND owner_account_id = $2
+           AND status = 'active' AND access_scope = 'participant_conversations'",
+    )
+    .bind(&target.agent_id)
+    .bind(&target.owner_account_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row
+        .map(|(people, agents)| CloudAgentMentionPermissions { people, agents })
+        .unwrap_or_default())
+}
+
 pub(super) async fn fallback_prompt_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
@@ -264,9 +291,10 @@ pub(super) async fn fallback_prompt_for_claim(
         &input.prompt,
         &history,
     );
-    let group_mention_instruction = group_request
-        .as_ref()
-        .and_then(|(envelope, _)| mention_instruction(envelope, &input.owner_account_id));
+    let mention_permissions = mention_permissions_for_claim(pool, input).await?;
+    let group_mention_instruction = group_request.as_ref().and_then(|(envelope, _)| {
+        mention_instruction(envelope, &input.owner_account_id, &mention_permissions)
+    });
     let prompt = group_mention_instruction
         .map(|instruction| format!("{instruction}\n\n{prompt}"))
         .unwrap_or(prompt);

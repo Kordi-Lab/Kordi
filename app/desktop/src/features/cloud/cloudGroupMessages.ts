@@ -28,6 +28,8 @@ export type CloudGroupParticipant = {
   displayName: string;
   avatarUrl: string | null;
   role?: 'admin' | 'person' | 'self' | string | null;
+  /** Cloud agents owned by this account that explicitly participate in the session. */
+  agentIds?: string[];
 };
 
 export type CloudGroupActor = CloudGroupParticipant;
@@ -362,19 +364,26 @@ function uniqueByAccount(
     const avatarUrl = avatarUrlForParticipant(participant.avatarUrl);
     const existing = byAccountId.get(accountId);
     if (existing) {
+      const agentIds = [...new Set([
+        ...(existing.agentIds ?? []),
+        ...(participant.agentIds ?? []),
+      ].map(cleanText).filter(Boolean))];
       byAccountId.set(accountId, {
         ...existing,
         displayName: existing.displayName === accountId ? displayName : existing.displayName,
         avatarUrl: existing.avatarUrl || avatarUrl,
         role: existing.role ?? participant.role ?? 'person',
+        ...(agentIds.length > 0 ? { agentIds } : {}),
       });
       continue;
     }
+    const agentIds = [...new Set((participant.agentIds ?? []).map(cleanText).filter(Boolean))];
     byAccountId.set(accountId, {
       accountId,
       displayName,
       avatarUrl,
       role: participant.role ?? 'person',
+      ...(agentIds.length > 0 ? { agentIds } : {}),
     });
   }
   return [...byAccountId.values()];
@@ -712,11 +721,13 @@ export function isCloudGroupControlMessage(body: string): boolean {
 
 export function cloudGroupNormalizeParticipant(participant: CloudGroupParticipant): CloudGroupParticipant {
   const accountId = cleanText(participant.accountId);
+  const agentIds = [...new Set((participant.agentIds ?? []).map(cleanText).filter(Boolean))];
   return {
     accountId: isCloudAccountId(accountId) ? accountId : '',
     displayName: cleanText(participant.displayName) || accountId || 'Cloud user',
     avatarUrl: syncableCloudGroupAvatarUrl(participant.avatarUrl),
     role: participant.role ?? 'person',
+    ...(agentIds.length > 0 ? { agentIds } : {}),
   };
 }
 
@@ -745,7 +756,11 @@ export function cloudGroupParticipantFromConversationParticipant(
   account: CloudAccount,
 ): CloudGroupParticipant | null {
   const isSelf = participant.role === 'self' || participant.source === 'local';
-  if (isSelf) return cloudGroupSelfParticipant(account, participant.role || 'self');
+  const agentId = participant.kind === 'agent' ? cleanText(participant.agentId) : '';
+  if (isSelf) return {
+    ...cloudGroupSelfParticipant(account, participant.role || 'self'),
+    ...(agentId ? { agentIds: [agentId] } : {}),
+  };
   const accountId = cleanText(participant.humanId) || cleanText(participant.sourceIdentityId);
   if (!accountId) return null;
   return {
@@ -753,6 +768,7 @@ export function cloudGroupParticipantFromConversationParticipant(
     displayName: cleanText(participant.name) || accountId,
     avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl),
     role: participant.role || 'person',
+    ...(agentId ? { agentIds: [agentId] } : {}),
   };
 }
 
@@ -768,7 +784,6 @@ export function cloudGroupParticipantsForConversation(
   conversation: Pick<Conversation, 'canonicalParticipants'>,
 ): CloudGroupParticipant[] {
   const mapped = (conversation.canonicalParticipants ?? [])
-    .filter((participant) => participant.kind === 'human')
     .map((participant) => cloudGroupParticipantFromConversationParticipant(participant, account))
     .filter((value): value is CloudGroupParticipant => Boolean(value));
   const self = mapped.find((participant) => participant.accountId === account.accountId)
@@ -788,6 +803,7 @@ export function cloudGroupParticipantsForCollaborationSession(
         displayName: cleanText(participant.displayName) || accountId,
         avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl),
         role: participant.role || 'person',
+        ...(participant.agentId ? { agentIds: [participant.agentId] } : {}),
       }];
     });
   const self = mapped.find((participant) => participant.accountId === account.accountId)

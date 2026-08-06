@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use crate::cloud_agent_runtime::proactive::cancel_if_ineligible;
+
 use super::{RunError, RunResult};
 
 #[derive(Debug, Deserialize)]
@@ -67,9 +69,15 @@ pub struct RunnerRunResponse {
     pub error_code: Option<String>,
     #[serde(rename = "errorMessage")]
     pub error_message: Option<String>,
+    #[serde(rename = "triggerKind")]
+    pub trigger_kind: String,
+    #[serde(rename = "targetAgentId")]
+    pub target_agent_id: Option<String>,
+    #[serde(rename = "skillPack")]
+    pub skill_pack: Option<String>,
 }
 
-pub(super) type RunnerRunRow = (
+pub(crate) type RunnerRunRow = (
     String,
     String,
     String,
@@ -86,29 +94,50 @@ pub async fn lease_next_run(
     pool: &PgPool,
     runner_id: &str,
 ) -> RunResult<Option<RunnerRunResponse>> {
-    let now = Utc::now();
-    let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
-    let row: Option<RunnerRunRow> = query_as(
-        "UPDATE cloud_agent_fallback_runs \
-         SET status = 'leased', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
-         WHERE run_id = ( \
-             SELECT run_id FROM cloud_agent_fallback_runs \
-             WHERE status = 'queued' \
-             ORDER BY created_at ASC \
-             LIMIT 1 \
-             FOR UPDATE SKIP LOCKED \
-         ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
-    )
-    .bind(runner_id)
-    .bind(&lease_expires_at)
-    .bind(now.to_rfc3339())
-    .fetch_optional(pool)
-    .await?;
-    let Some(row) = row else {
-        return Ok(None);
-    };
-    runner_response_from_row(pool, row).await.map(Some)
+    for _ in 0..8 {
+        let now = Utc::now();
+        let now_text = now.to_rfc3339();
+        let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
+        let row: Option<RunnerRunRow> = query_as(
+            "UPDATE cloud_agent_fallback_runs AS run \
+             SET status = 'leased', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
+             WHERE run.run_id = ( \
+                 SELECT candidate.run_id FROM cloud_agent_fallback_runs candidate \
+                 WHERE candidate.status = 'queued' \
+                   AND (candidate.trigger_kind <> 'proactive' OR ( \
+                       candidate.not_before_at IS NOT NULL \
+                       AND candidate.not_before_at <= $3 \
+                       AND EXISTS ( \
+                           SELECT 1 FROM cloud_agent_definitions agent \
+                           WHERE agent.agent_id = candidate.target_agent_id \
+                             AND agent.owner_account_id = candidate.owner_account_id \
+                             AND agent.status = 'active' \
+                             AND agent.access_scope = 'participant_conversations' \
+                             AND agent.is_system_managed = FALSE \
+                             AND agent.proactive_enabled = TRUE \
+                             AND agent.proactive_skill_pack = 'proact-v1' \
+                       ) \
+                   )) \
+                 ORDER BY candidate.created_at ASC \
+                 LIMIT 1 \
+                 FOR UPDATE SKIP LOCKED \
+             ) \
+             RETURNING run.run_id, run.status, run.prompt, run.owner_account_id, run.requester_account_id, run.session_id, run.sandbox_id, run.response_message_id, run.error_code, run.error_message",
+        )
+        .bind(runner_id)
+        .bind(&lease_expires_at)
+        .bind(&now_text)
+        .fetch_optional(pool)
+        .await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let response = runner_response_from_row(pool, row).await?;
+        if !cancel_if_ineligible(pool, &response.run_id, &response.trigger_kind).await? {
+            return Ok(Some(response));
+        }
+    }
+    Ok(None)
 }
 
 pub async fn lease_canary_run(
@@ -119,9 +148,23 @@ pub async fn lease_canary_run(
     let now = Utc::now();
     let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
-        "UPDATE cloud_agent_fallback_runs \
+        "UPDATE cloud_agent_fallback_runs AS run \
          SET status = 'leased', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
-         WHERE run_id = $4 AND status = 'queued' \
+         WHERE run.run_id = $4 AND run.status = 'queued' \
+           AND (run.trigger_kind <> 'proactive' OR ( \
+               run.not_before_at IS NOT NULL \
+               AND run.not_before_at <= $3 \
+               AND EXISTS ( \
+                   SELECT 1 FROM cloud_agent_definitions agent \
+                   WHERE agent.agent_id = run.target_agent_id \
+                     AND agent.owner_account_id = run.owner_account_id \
+                     AND agent.status = 'active' \
+                     AND agent.access_scope = 'participant_conversations' \
+                     AND agent.is_system_managed = FALSE \
+                     AND agent.proactive_enabled = TRUE \
+                     AND agent.proactive_skill_pack = 'proact-v1' \
+               ) \
+           )) \
          RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
     )
     .bind(runner_id)
@@ -133,7 +176,11 @@ pub async fn lease_canary_run(
     let Some(row) = row else {
         return Ok(None);
     };
-    runner_response_from_row(pool, row).await.map(Some)
+    let response = runner_response_from_row(pool, row).await?;
+    if cancel_if_ineligible(pool, &response.run_id, &response.trigger_kind).await? {
+        return Ok(None);
+    }
+    Ok(Some(response))
 }
 
 pub async fn mark_run_running(
@@ -152,13 +199,17 @@ pub async fn mark_run_running(
     .bind(Utc::now().to_rfc3339())
     .fetch_optional(pool)
     .await?;
-    match row {
-        Some(row) => runner_response_from_row(pool, row).await,
-        None => Err(RunError::NotFound),
+    let Some(row) = row else {
+        return Err(RunError::NotFound);
+    };
+    let response = runner_response_from_row(pool, row).await?;
+    if cancel_if_ineligible(pool, &response.run_id, &response.trigger_kind).await? {
+        return Err(RunError::NotFound);
     }
+    Ok(response)
 }
 
-pub(super) async fn runner_response_from_row(
+pub(crate) async fn runner_response_from_row(
     pool: &PgPool,
     row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
@@ -170,6 +221,15 @@ pub(super) async fn runner_response_from_row(
     .bind(&row.3)
     .fetch_optional(pool)
     .await?;
+    let metadata: Option<(String, Option<String>, Option<String>)> = query_as(
+        "SELECT trigger_kind, target_agent_id, proactive_skill_pack
+         FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(&row.0)
+    .fetch_optional(pool)
+    .await?;
+    let (trigger_kind, target_agent_id, skill_pack) =
+        metadata.unwrap_or_else(|| ("mention".to_string(), None, None));
     Ok(RunnerRunResponse {
         run_id: row.0,
         status: row.1,
@@ -182,5 +242,8 @@ pub(super) async fn runner_response_from_row(
         response_message_id: row.7,
         error_code: row.8,
         error_message: row.9,
+        trigger_kind,
+        target_agent_id,
+        skill_pack,
     })
 }

@@ -169,6 +169,29 @@
   border-radius: 8px;
 }
 
+.app-agent-studio-proactive-activity {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+  margin-top: 18px;
+}
+
+.app-agent-studio-section-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--utility-foreground);
+  font-size: var(--agent-studio-type-body);
+  font-weight: 600;
+}
+
+.app-agent-studio-section-label small {
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+  font-weight: 500;
+}
+
 .app-agent-studio-run-check {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);

@@ -285,3 +285,79 @@ async fn cloud_agent_create_rejects_unsupported_access() {
         "invalid_cloud_agent"
     );
 }
+
+#[tokio::test]
+async fn proactive_and_mention_permissions_are_owner_controlled_and_validated() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(pool);
+    let (_owner_id, owner_token) = signup(&router, "agent-proactive").await;
+
+    let mut invalid = sample_agent_body("Private proactive attempt");
+    invalid["proactive"] = json!({ "enabled": true, "skillPack": "proact-v1" });
+    let response = router
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/v1/cloud/agents",
+            Some(&owner_token),
+            Body::from(invalid.to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let mut body = sample_agent_body("Group facilitator");
+    body["accessScope"] = json!("participant_conversations");
+    body["proactive"] = json!({ "enabled": true, "skillPack": "proact-v1" });
+    body["mentionPermissions"] = json!({ "people": true, "agents": false });
+    let response = router
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/v1/cloud/agents",
+            Some(&owner_token),
+            Body::from(body.to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let created = read_json(response).await;
+    assert_eq!(created["agent"]["proactive"]["enabled"], true);
+    assert_eq!(created["agent"]["proactive"]["skillPack"], "proact-v1");
+    assert_eq!(created["agent"]["mentionPermissions"]["people"], true);
+    assert_eq!(created["agent"]["mentionPermissions"]["agents"], false);
+    let agent_id = created["agent"]["agentId"].as_str().unwrap();
+
+    let response = router
+        .clone()
+        .oneshot(request(
+            Method::PUT,
+            &format!("/v1/cloud/agents/{agent_id}"),
+            Some(&owner_token),
+            Body::from(json!({ "accessScope": "private" }).to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = router
+        .oneshot(request(
+            Method::PUT,
+            &format!("/v1/cloud/agents/{agent_id}"),
+            Some(&owner_token),
+            Body::from(
+                json!({
+                    "proactive": { "enabled": false, "skillPack": "proact-v1" },
+                    "mentionPermissions": { "people": false, "agents": true }
+                })
+                .to_string(),
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let updated = read_json(response).await;
+    assert_eq!(updated["agent"]["proactive"]["enabled"], false);
+    assert_eq!(updated["agent"]["mentionPermissions"]["people"], false);
+    assert_eq!(updated["agent"]["mentionPermissions"]["agents"], true);
+}

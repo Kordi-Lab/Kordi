@@ -12,6 +12,7 @@ import {
   cloudGroupAgentHandoffTargetsAccount,
   cloudGroupMentionCatalog,
   cloudGroupMentionInstruction,
+  enforceCloudGroupMentionPermissions,
   resolveCloudGroupAgentMention,
 } from '../src/features/cloud/cloudGroupMentions';
 import {
@@ -118,6 +119,49 @@ test('agent final text resolves one exact Kordi handoff and never a second hop',
     participants,
     respondingAccountId: 'acct_source',
     requestMessage,
+  }), null);
+});
+
+test('outbound mention permissions fail closed for people and agents', () => {
+  const instruction = cloudGroupMentionInstruction({
+    participants,
+    respondingAccountId: 'acct_source',
+    allowPeopleMentions: false,
+    allowAgentMentions: false,
+  });
+  assert.match(instruction ?? '', /may not @mention people/);
+  assert.match(instruction ?? '', /may not @mention another agent/);
+
+  const requesterInstruction = cloudGroupMentionInstruction({
+    participants,
+    respondingAccountId: 'acct_target',
+    requesterAccountId: 'acct_source',
+    requesterKind: 'human',
+    allowPeopleMentions: false,
+    allowAgentMentions: false,
+  });
+  assert.match(requesterInstruction ?? '', /Current requester: Shu Yang\./);
+  assert.doesNotMatch(requesterInstruction ?? '', /@ShuYang/);
+
+  assert.equal(enforceCloudGroupMentionPermissions({
+    text: '@DArcyLin please review, then ask @DArcyLinsKordi to reply. @Unknown stays.',
+    participants,
+    allowPeopleMentions: false,
+    allowAgentMentions: false,
+  }), 'DArcyLin please review, then ask DArcyLinsKordi to reply. @Unknown stays.');
+
+  assert.equal(cloudGroupAgentHandoffForResponse({
+    responseText: '@DArcyLinsKordi please reply',
+    participants,
+    respondingAccountId: 'acct_source',
+    requestMessage: {
+      id: 'msg_request',
+      senderAccountId: 'acct_source',
+      text: 'Ask the target',
+      createdAtMs: 1,
+      senderKind: 'human',
+    },
+    allowAgentMentions: false,
   }), null);
 });
 

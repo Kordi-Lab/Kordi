@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use super::group_mentions::{resolve_agent_mention, CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH};
+use crate::cloud_agents::models::CloudAgentMentionPermissions;
+
+use super::group_mentions::{
+    enforce_mention_permissions, resolve_agent_mention, CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH,
+};
 
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
@@ -20,6 +24,8 @@ pub(super) struct CloudGroupParticipant {
     #[serde(rename = "avatarUrl")]
     pub(super) avatar_url: Option<String>,
     pub(super) role: Option<String>,
+    #[serde(rename = "agentIds", default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) agent_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -106,6 +112,7 @@ fn encode_cloud_group_envelope(envelope: &CloudGroupEnvelope) -> String {
     )
 }
 
+#[cfg(test)]
 pub(super) fn cloud_group_response_body(
     request_envelope: &CloudGroupEnvelope,
     owner_account_id: &str,
@@ -114,6 +121,34 @@ pub(super) fn cloud_group_response_body(
     response_text: &str,
     delivery_state: &str,
     created_at_ms: i64,
+) -> String {
+    cloud_group_response_body_with_policy(
+        request_envelope,
+        owner_account_id,
+        request_message_id,
+        response_message_id,
+        response_text,
+        delivery_state,
+        created_at_ms,
+        &CloudAgentMentionPermissions {
+            people: true,
+            agents: true,
+        },
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn cloud_group_response_body_with_policy(
+    request_envelope: &CloudGroupEnvelope,
+    owner_account_id: &str,
+    request_message_id: &str,
+    response_message_id: &str,
+    response_text: &str,
+    delivery_state: &str,
+    created_at_ms: i64,
+    mention_permissions: &CloudAgentMentionPermissions,
+    sender_label_override: Option<&str>,
 ) -> String {
     let owner = request_envelope
         .participants
@@ -125,6 +160,7 @@ pub(super) fn cloud_group_response_body(
             display_name: "Kordi".to_string(),
             avatar_url: None,
             role: Some("person".to_string()),
+            agent_ids: Vec::new(),
         });
     let shared_agent_label = request_envelope.message.as_ref().and_then(|message| {
         let agent_name = message.target_cloud_agent_name.as_deref()?.trim();
@@ -143,23 +179,34 @@ pub(super) fn cloud_group_response_body(
             Some(format!("{} · {}'s Agent", agent_name, owner_name))
         }
     });
-    let sender_display_name = shared_agent_label.unwrap_or_else(|| {
-        if owner.display_name.trim().is_empty() {
-            "Kordi".to_string()
-        } else {
-            format!("{}'s Kordi", owner.display_name.trim())
-        }
-    });
+    let sender_display_name = sender_label_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or(shared_agent_label)
+        .unwrap_or_else(|| {
+            if owner.display_name.trim().is_empty() {
+                "Kordi".to_string()
+            } else {
+                format!("{}'s Kordi", owner.display_name.trim())
+            }
+        });
+    let response_text = enforce_mention_permissions(
+        response_text,
+        &request_envelope.participants,
+        mention_permissions,
+    );
     let request_mention_depth = request_envelope
         .message
         .as_ref()
         .and_then(|message| message.agent_mention_depth)
         .unwrap_or(0);
-    let mentioned_agent = (delivery_state == "complete"
+    let mentioned_agent = (mention_permissions.agents
+        && delivery_state == "complete"
         && request_mention_depth < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH)
         .then(|| {
             resolve_agent_mention(
-                response_text,
+                &response_text,
                 &request_envelope.participants,
                 owner_account_id,
             )
@@ -183,7 +230,7 @@ pub(super) fn cloud_group_response_body(
         message: Some(CloudGroupMessage {
             id: response_message_id.to_string(),
             sender_account_id: owner_account_id.to_string(),
-            text: response_text.to_string(),
+            text: response_text,
             created_at_ms,
             sender_kind: Some("agent".to_string()),
             sender_display_name: Some(sender_display_name),

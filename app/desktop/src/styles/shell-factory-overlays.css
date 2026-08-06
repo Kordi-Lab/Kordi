@@ -277,6 +277,10 @@
     grid-template-columns: 78px minmax(0, 1fr) 32px;
   }
 
+  .app-agent-studio-blueprint-row.is-policy {
+    grid-template-columns: 78px minmax(0, 1fr) auto;
+  }
+
   .app-agent-studio-capability-row {
     grid-template-columns: 30px minmax(0, 1fr);
   }

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "proact-v1",
+  "displayName": "Proactive collaboration",
+  "description": "Helps an agent notice collaboration breakdowns and intervene only when a short, useful contribution is warranted.",
+  "rootSkill": "using-proactive-collaboration",
+  "skills": [
+    {
+      "name": "using-proactive-collaboration",
+      "description": "Coordinate the full observe, judge, and respond workflow.",
+      "instructions": "Observe only conversations where this agent is an explicit participant. Run breakdown-judgement first. Prefer silence. Stay silent when people are already handling the issue, a maintainer just answered, new evidence just arrived, the event is housekeeping, or the contribution would only be optional polish. If intervention is justified, select exactly one focused repair skill and respond in one or two sentences without using tools."
+    },
+    {
+      "name": "breakdown-judgement",
+      "description": "Decide whether the conversation has a meaningful collaboration breakdown.",
+      "instructions": "Classify the latest human exchange as none, unclear-goal, stalled-plan, unresolved-conflict, missed-constraint, lost-focus, repeated-loop, participation-imbalance, or unmanaged-risk. Silence unless the breakdown is supported by specific recent message evidence and an intervention would add information or coordination value. Do not intervene when humans are already resolving it, a maintainer just answered, new evidence changed the context, the event is housekeeping, or the contribution is only optional polish."
+    },
+    {
+      "name": "clarification-first",
+      "description": "Ask one precise question when ambiguity is blocking progress.",
+      "instructions": "Ask the smallest question that resolves the blocking ambiguity. Do not restate the whole conversation."
+    },
+    {
+      "name": "plan-completion",
+      "description": "Surface a missing next step, owner, or completion condition.",
+      "instructions": "Name the single missing coordination element and propose a concrete next step."
+    },
+    {
+      "name": "conflict-mediation",
+      "description": "Make an unresolved disagreement explicit and actionable.",
+      "instructions": "State the decision point neutrally and suggest one criterion or experiment that can resolve it."
+    },
+    {
+      "name": "constraint-reminder",
+      "description": "Bring a relevant agreed constraint back into view.",
+      "instructions": "Reference only a constraint supported by recent messages and connect it directly to the current choice."
+    },
+    {
+      "name": "goal-refocusing",
+      "description": "Reconnect a drifting discussion to its stated goal.",
+      "instructions": "Briefly name the stated goal and the most relevant next move."
+    },
+    {
+      "name": "loop-breaking",
+      "description": "Break a repeated discussion loop with a new decision frame.",
+      "instructions": "Identify the repeated point and offer one new piece of structure, evidence request, or reversible experiment."
+    },
+    {
+      "name": "participation-balancing",
+      "description": "Invite missing input when the decision depends on it.",
+      "instructions": "Invite the specific role or participant whose input is necessary. Do not call out people merely for being quiet."
+    },
+    {
+      "name": "risk-check",
+      "description": "Surface an important unaddressed risk before commitment.",
+      "instructions": "Name one material risk and one lightweight check. Avoid generic warnings."
+    }
+  ]
+}

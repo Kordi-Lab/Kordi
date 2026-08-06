@@ -1,6 +1,13 @@
 import type { Agent } from '@/kordi-app/types';
 import type { CloudSyncEvent } from './authClient';
-import type { CloudAgentAccessScope, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
+import type {
+  CloudAgentAccessScope,
+  CloudAgentMentionPermissions,
+  CloudAgentProactiveConfig,
+  CloudAgentResource,
+  CloudAgentSkill,
+  CloudAgentStatus,
+} from './cloudAgentsClient';
 
 export type CloudAgentDefinition = {
   agentId: string;
@@ -16,6 +23,8 @@ export type CloudAgentDefinition = {
   resources: CloudAgentResource[];
   skills: CloudAgentSkill[];
   modelRouting: Record<string, unknown>;
+  proactive: CloudAgentProactiveConfig;
+  mentionPermissions: CloudAgentMentionPermissions;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -72,6 +81,26 @@ function normalizeModelRouting(value: unknown): Record<string, unknown> {
   return objectRecord(value) ?? {};
 }
 
+function normalizeProactive(value: unknown): CloudAgentProactiveConfig {
+  const record = objectRecord(value);
+  return {
+    enabled: record?.enabled === true,
+    skillPack: 'proact-v1',
+  };
+}
+
+function normalizeMentionPermissions(value: unknown): CloudAgentMentionPermissions {
+  const record = objectRecord(value);
+  if (!record) {
+    // Older servers predate outbound mention controls and allowed both kinds.
+    return { people: true, agents: true };
+  }
+  return {
+    people: record.people === true,
+    agents: record.agents === true,
+  };
+}
+
 export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinition | null {
   const record = objectRecord(value);
   if (!record) return null;
@@ -101,6 +130,8 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
     resources: normalizeResources(record.resources),
     skills: normalizeSkills(record.skills),
     modelRouting: normalizeModelRouting(record.modelRouting),
+    proactive: normalizeProactive(record.proactive),
+    mentionPermissions: normalizeMentionPermissions(record.mentionPermissions),
     createdAt,
     updatedAt,
     archivedAt: cleanNullableText(record.archivedAt),
@@ -148,6 +179,8 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     avatarSeed: definition.agentId,
     cloudAgentId: definition.agentId,
     cloudAgentAccessScope: definition.accessScope,
+    cloudAgentProactive: definition.proactive,
+    cloudAgentMentionPermissions: definition.mentionPermissions,
     cloudAgentOwnerAccountId: definition.ownerAccountId,
     cloudAgentDescription: definition.description,
     cloudAgentSourceSummary: definition.sourceSummary,

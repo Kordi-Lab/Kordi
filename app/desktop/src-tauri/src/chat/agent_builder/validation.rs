@@ -251,6 +251,15 @@ fn validate_agent_metadata(agent: &DesktopAgentBuilderAgentFile, errors: &mut Ve
         errors
             .push("agent.json access must be 'only-me' or 'participant-conversations'".to_string());
     }
+    if agent.proactive.skill_pack.trim() != "proact-v1" {
+        errors.push("agent.json proactive.skillPack must be 'proact-v1'".to_string());
+    }
+    if agent.proactive.enabled && agent.access.trim() != "participant-conversations" {
+        errors.push(
+            "agent.json proactive collaboration requires participant-conversations access"
+                .to_string(),
+        );
+    }
     if agent.tools.len() > MAX_TOOLS {
         errors.push(format!("agent.json may include at most {MAX_TOOLS} tools"));
     }
@@ -416,6 +425,8 @@ fn build_draft(
             .filter(|entry| !entry.is_empty())
             .collect(),
         access: agent.access.trim().to_string(),
+        proactive: agent.proactive,
+        mention_permissions: agent.mention_permissions,
         provider: agent.model.provider,
         model: agent.model.model,
         thinking: agent.model.thinking,

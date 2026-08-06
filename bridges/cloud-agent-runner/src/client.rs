@@ -23,6 +23,16 @@ pub struct CloudAgentRun {
     pub sandbox_id: Option<String>,
     #[serde(rename = "providerAuthAvailable")]
     pub provider_auth_available: bool,
+    #[serde(rename = "triggerKind", default = "default_trigger_kind")]
+    pub trigger_kind: String,
+    #[serde(rename = "targetAgentId", default)]
+    pub target_agent_id: Option<String>,
+    #[serde(rename = "skillPack", default)]
+    pub skill_pack: Option<String>,
+}
+
+fn default_trigger_kind() -> String {
+    "mention".to_string()
 }
 
 #[derive(Debug, Deserialize)]

@@ -7,6 +7,41 @@ use super::envelopes::{cloud_group_request_envelope_for_run, direct_cloud_agent_
 use super::group_mentions::agent_handoff_target;
 use super::{ClaimRunRequest, RunResult};
 
+async fn source_agent_allows_group_handoff(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    envelope: &super::envelopes::CloudGroupEnvelope,
+) -> RunResult<bool> {
+    let Some(request_message_id) = envelope
+        .message
+        .as_ref()
+        .and_then(|message| message.request_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(true);
+    };
+    let source_request =
+        cloud_group_request_envelope_for_run(pool, &input.session_id, request_message_id).await?;
+    let Some(source_agent_id) = source_request
+        .and_then(|request| request.message)
+        .and_then(|message| message.target_cloud_agent_id)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(true);
+    };
+    let row: Option<(bool,)> = query_as(
+        "SELECT mention_agents_enabled FROM cloud_agent_definitions
+         WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'",
+    )
+    .bind(source_agent_id)
+    .bind(&input.requester_account_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.is_some_and(|(allowed,)| allowed))
+}
+
 pub async fn requester_can_target_owner(
     pool: &PgPool,
     requester_account_id: &str,
@@ -42,6 +77,9 @@ pub async fn validate_agent_authored_group_handoff_claim(
         return Ok(true);
     }
     if message.sender_account_id.trim() != input.requester_account_id.trim() {
+        return Ok(false);
+    }
+    if !source_agent_allows_group_handoff(pool, input, &envelope).await? {
         return Ok(false);
     }
     Ok(agent_handoff_target(&envelope)

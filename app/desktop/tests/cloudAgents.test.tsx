@@ -56,6 +56,22 @@ test('normalizeCloudAgentDefinition accepts complete private cloud agents', () =
   assert.equal(agent?.skills[0]?.name, 'navigate-knowledge');
   assert.equal(agent?.skills[0]?.content, 'Cite the exact source used for each answer.');
   assert.equal(agent?.resources[0]?.kind, 'text');
+  assert.deepEqual(agent?.proactive, { enabled: false, skillPack: 'proact-v1' });
+  assert.deepEqual(agent?.mentionPermissions, { people: true, agents: true });
+});
+
+test('normalizeCloudAgentDefinition preserves proactive and outbound mention settings', () => {
+  const agent = normalizeCloudAgentDefinition({
+    ...rawAgent,
+    accessScope: 'participant_conversations',
+    proactive: { enabled: true, skillPack: 'proact-v1' },
+    mentionPermissions: { people: true, agents: false },
+  });
+  assert.deepEqual(agent?.proactive, { enabled: true, skillPack: 'proact-v1' });
+  assert.deepEqual(agent?.mentionPermissions, { people: true, agents: false });
+  const mapped = cloudAgentDefinitionToAgent(agent!);
+  assert.deepEqual(mapped.cloudAgentProactive, agent?.proactive);
+  assert.deepEqual(mapped.cloudAgentMentionPermissions, agent?.mentionPermissions);
 });
 
 test('normalizeCloudAgentDefinition accepts participant conversation owned agents', () => {

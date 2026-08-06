@@ -108,6 +108,51 @@ test('Cloud participant snapshots do not silently promote the local sender', () 
   assert.equal(participants.find((participant) => participant.accountId === 'acct_admin')?.role, 'admin');
 });
 
+test('Cloud participant snapshots preserve explicit agent membership by owner', () => {
+  const participants = cloudGroupParticipantsForCollaborationSession({
+    accountId: 'acct_self',
+    displayName: 'Self',
+    primaryEmail: 'self@example.com',
+    avatarUrl: null,
+    nodeId: 'acct_self',
+    passwordSet: true,
+  }, [{
+    identityId: 'human:acct_peer',
+    displayName: 'Peer',
+    kind: 'human',
+    humanId: 'acct_peer',
+  }, {
+    identityId: 'agent:peer-one',
+    displayName: "Peer's Planner",
+    kind: 'agent',
+    humanId: 'acct_peer',
+    agentId: 'cloud_agent_peer_one',
+  }, {
+    identityId: 'agent:peer-two',
+    displayName: "Peer's Reviewer",
+    kind: 'agent',
+    humanId: 'acct_peer',
+    agentId: 'cloud_agent_peer_two',
+  }]);
+
+  assert.deepEqual(
+    participants.find((participant) => participant.accountId === 'acct_peer')?.agentIds,
+    ['cloud_agent_peer_one', 'cloud_agent_peer_two'],
+  );
+  const parsed = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-update',
+    groupId: 'session:group:agents',
+    groupTitle: 'Agents',
+    createdByAccountId: 'acct_self',
+    actor: participants.find((participant) => participant.accountId === 'acct_self')!,
+    participants,
+  }));
+  assert.deepEqual(
+    parsed?.participants.find((participant) => participant.accountId === 'acct_peer')?.agentIds,
+    ['cloud_agent_peer_one', 'cloud_agent_peer_two'],
+  );
+});
+
 test('cloud group control envelopes reject direct contact session ids', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',

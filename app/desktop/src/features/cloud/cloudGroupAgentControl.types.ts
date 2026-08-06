@@ -5,6 +5,7 @@ import type {
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
 import type { CloudMessage } from './authClient';
+import type { CloudAgentMentionPermissions } from './cloudAgentsClient';
 import type { HandleCloudGroupAgentFailureInput } from './cloudGroupAgentFailure';
 import type {
   CanonicalSessionStateSetter,
@@ -59,6 +60,7 @@ export type CloudGroupAgentPolicy = {
     requestMessageId: string;
     requestCreatedAtMs: number;
     respondingAccountId: string;
+    mentionPermissions: CloudAgentMentionPermissions;
   }): DesktopChatContextMessage[];
   waitForTurn(
     turnId: string,

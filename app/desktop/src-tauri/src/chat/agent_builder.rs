@@ -52,6 +52,8 @@ pub use self::models::{
     DesktopAgentBuilderStatus, DesktopAgentBuilderSummary, DesktopAgentBuilderTestReport,
     DesktopAgentBuilderValidation,
 };
+#[cfg(test)]
+use self::models::{DesktopAgentBuilderMentionPermissions, DesktopAgentBuilderProactive};
 
 mod storage;
 

@@ -127,11 +127,12 @@ test('group session root id follows participant-space ids for continuations', ()
   }), 'session:group:root');
 });
 
-test('group bridge thread metadata carries all human members for remote group reconstruction', () => {
+test('group bridge thread metadata carries people and explicit agents for remote reconstruction', () => {
   assert.deepEqual(collaborationGroupSessionParticipants(groupConversation()), [
     { identityId: 'human:me', displayName: 'Me', kind: 'human', role: 'self', sourceIdentityId: 'kd_me', humanId: 'kh_me', runtime: 'person' },
     { identityId: 'human:alice', displayName: 'Alice', kind: 'human', role: 'person', sourceIdentityId: 'kd_alice', humanId: 'kh_alice', runtime: 'person' },
     { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', sourceIdentityId: 'kd_bob', humanId: 'kh_bob', runtime: 'person' },
+    { identityId: 'agent:alice', displayName: "Alice's Kordi", kind: 'agent', role: 'delegate', ownerIdentityId: 'human:alice', ownerDisplayName: 'Alice', sourceIdentityId: 'kd_alice', humanId: 'kh_alice', agentId: 'ka_alice', runtime: 'agent' },
   ]);
 });
 
@@ -142,6 +143,7 @@ test('self-reference local label is replaced with the public bridge owner name w
       { identityId: 'human:me', displayName: 'Kordi User 1', kind: 'human', role: 'self', sourceIdentityId: 'kd_me', humanId: 'kh_me', runtime: 'person' },
       { identityId: 'human:alice', displayName: 'Alice', kind: 'human', role: 'person', sourceIdentityId: 'kd_alice', humanId: 'kh_alice', runtime: 'person' },
       { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', sourceIdentityId: 'kd_bob', humanId: 'kh_bob', runtime: 'person' },
+      { identityId: 'agent:alice', displayName: "Alice's Kordi", kind: 'agent', role: 'delegate', ownerIdentityId: 'human:alice', ownerDisplayName: 'Alice', sourceIdentityId: 'kd_alice', humanId: 'kh_alice', agentId: 'ka_alice', runtime: 'agent' },
     ],
   );
 });
@@ -155,6 +157,7 @@ test('self-reference broadcast falls through to local label when no public name 
       { identityId: 'human:me', displayName: 'Me', kind: 'human', role: 'self', sourceIdentityId: 'kd_me', humanId: 'kh_me', runtime: 'person' },
       { identityId: 'human:alice', displayName: 'Alice', kind: 'human', role: 'person', sourceIdentityId: 'kd_alice', humanId: 'kh_alice', runtime: 'person' },
       { identityId: 'human:bob', displayName: 'Bob', kind: 'human', role: 'person', sourceIdentityId: 'kd_bob', humanId: 'kh_bob', runtime: 'person' },
+      { identityId: 'agent:alice', displayName: "Alice's Kordi", kind: 'agent', role: 'delegate', ownerIdentityId: 'human:alice', ownerDisplayName: 'Alice', sourceIdentityId: 'kd_alice', humanId: 'kh_alice', agentId: 'ka_alice', runtime: 'agent' },
     ],
   );
 });

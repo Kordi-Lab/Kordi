@@ -79,6 +79,7 @@ impl CloudAgentRunClient for RecordingClient {
 struct FakeProvider {
     responses: Mutex<Vec<ModelProviderResponse>>,
     seen_messages: Mutex<Vec<Vec<Value>>>,
+    seen_tools: Mutex<Vec<Vec<Value>>>,
 }
 
 impl FakeProvider {
@@ -86,6 +87,7 @@ impl FakeProvider {
         Self {
             responses: Mutex::new(responses.into_iter().rev().collect()),
             seen_messages: Mutex::new(Vec::new()),
+            seen_tools: Mutex::new(Vec::new()),
         }
     }
 }
@@ -96,9 +98,10 @@ impl CloudModelProvider for FakeProvider {
         &self,
         _auth: &OpenAiProviderConfig,
         messages: &[Value],
-        _tools: &[Value],
+        tools: &[Value],
     ) -> Result<ModelProviderResponse, kordi_cloud_agent_runner::model_loop::ModelLoopError> {
         self.seen_messages.lock().unwrap().push(messages.to_vec());
+        self.seen_tools.lock().unwrap().push(tools.to_vec());
         self.responses.lock().unwrap().pop().ok_or_else(|| {
             kordi_cloud_agent_runner::model_loop::ModelLoopError::Provider(
                 "empty fake response queue".to_string(),
@@ -130,6 +133,19 @@ fn run() -> CloudAgentRun {
         session_id: "session:direct-person:requester:owner".to_string(),
         sandbox_id: Some("sandbox_test".to_string()),
         provider_auth_available: true,
+        trigger_kind: "mention".to_string(),
+        target_agent_id: None,
+        skill_pack: None,
+    }
+}
+
+fn proactive_run() -> CloudAgentRun {
+    CloudAgentRun {
+        trigger_kind: "proactive".to_string(),
+        target_agent_id: Some("cloud_agent_proactive".to_string()),
+        skill_pack: Some("proact-v1".to_string()),
+        prompt: "Return the proactive JSON decision.".to_string(),
+        ..run()
     }
 }
 
@@ -229,6 +245,55 @@ async fn model_loop_completes_text_response() {
         .as_str()
         .unwrap()
         .contains("owner laptop files"));
+}
+
+#[tokio::test]
+async fn proactive_model_loop_exposes_no_tools_and_uses_hardened_evaluator_prompt() {
+    let client = RecordingClient::default();
+    let provider = FakeProvider::new(vec![ModelProviderResponse::FinalText(
+        r#"{"action":"silence"}"#.to_string(),
+    )]);
+
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &proactive_run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(text, r#"{"action":"silence"}"#);
+    assert!(provider.seen_tools.lock().unwrap()[0].is_empty());
+    let messages = provider.seen_messages.lock().unwrap();
+    assert!(messages[0][0]["content"]
+        .as_str()
+        .unwrap()
+        .contains("cannot use tools"));
+}
+
+#[tokio::test]
+async fn proactive_model_loop_rejects_model_tool_calls() {
+    let client = RecordingClient::default();
+    let provider = FakeProvider::new(vec![ModelProviderResponse::ToolCalls(vec![
+        ModelToolCall {
+            id: "call_forbidden".to_string(),
+            name: "web_search".to_string(),
+            arguments: json!({"query": "private context"}),
+        },
+    ])]);
+
+    let error = run_model_loop(
+        &client,
+        &provider,
+        &proactive_run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .expect_err("proactive tool call must fail");
+    assert!(error.to_string().contains("cannot use tools"));
 }
 
 #[tokio::test]

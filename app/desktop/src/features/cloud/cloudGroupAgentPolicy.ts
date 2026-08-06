@@ -1,5 +1,6 @@
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type { CloudAccount } from './authClient';
+import type { CloudAgentMentionPermissions } from './cloudAgentsClient';
 import {
   compactCloudAgentNativeContextMessages,
   cloudMessageMentionsLocalAgent,
@@ -59,12 +60,14 @@ export function cloudGroupNativeContextMessages({
   requestMessageId,
   requestCreatedAtMs,
   respondingAccountId,
+  mentionPermissions = { people: true, agents: true },
 }: {
   groupRows: readonly IndexedCloudGroupRow[];
   groupId: string;
   requestMessageId: string;
   requestCreatedAtMs: number;
   respondingAccountId: string;
+  mentionPermissions?: CloudAgentMentionPermissions;
 }): DesktopChatContextMessage[] {
   const history = compactCloudAgentNativeContextMessages(
     groupRows.flatMap(({ envelope }) => {
@@ -112,9 +115,11 @@ export function cloudGroupNativeContextMessages({
     ? cloudGroupMentionInstruction({
       participants: requestEnvelope.participants,
       respondingAccountId,
-      allowAgentMentions:
+      allowPeopleMentions: mentionPermissions.people,
+      allowAgentMentions: mentionPermissions.agents,
+      agentMentionDepthExhausted:
         cloudGroupAgentMentionDepth(requestEnvelope.message)
-          < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH,
+        >= CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH,
       requesterAccountId: requestEnvelope.message.senderAccountId,
       requesterKind: requestEnvelope.message.senderKind === 'agent'
         ? 'agent'

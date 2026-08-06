@@ -79,11 +79,12 @@ pub async fn bootstrap_support_agent(
         "INSERT INTO cloud_agent_definitions (
              agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at, is_system_managed
+             model_routing_json, mention_people_enabled, mention_agents_enabled,
+             created_at, updated_at, archived_at, is_system_managed
          ) VALUES (
              $1, $2, 'participant_conversations', 'active', $3, 'Official Kordi support agent',
              $4, $5, 'Official Kordi product guidance and feedback intake.', '[]', '[]', '[]',
-             $6, $7, $7, NULL, TRUE
+             $6, TRUE, TRUE, $7, $7, NULL, TRUE
          )
          ON CONFLICT (agent_id) DO UPDATE SET
              owner_account_id = EXCLUDED.owner_account_id,
@@ -95,6 +96,8 @@ pub async fn bootstrap_support_agent(
              system_prompt = EXCLUDED.system_prompt,
              source_summary = EXCLUDED.source_summary,
              model_routing_json = EXCLUDED.model_routing_json,
+             mention_people_enabled = TRUE,
+             mention_agents_enabled = TRUE,
              updated_at = EXCLUDED.updated_at,
              archived_at = NULL,
              is_system_managed = TRUE

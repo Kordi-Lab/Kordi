@@ -10,7 +10,13 @@ import {
   fetchDesktopAgentBuilderList,
   type DesktopAgentBuilderSummary,
 } from '@/lib/desktopAgentBuilderCatalog';
-import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
+import type {
+  CloudAgentAccessScope,
+  CloudAgentMentionPermissions,
+  CloudAgentProactiveConfig,
+} from '@/features/cloud/cloudAgentsClient';
+import { defaultCloudAgentsClient } from '@/features/cloud/cloudAgentsClient';
+import { loadSession } from '@/features/cloud/session';
 import type { Agent } from '../types';
 import { AgentInspectionView } from './AgentInspectionView';
 import { AgentStudioConversation } from './AgentStudioConversation';
@@ -51,6 +57,8 @@ function isNativeDesktopShell() {
   return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
 
+const cloudAgentActivityClient = defaultCloudAgentsClient();
+
 export function AgentsPage({
   agents,
   activeAgentId,
@@ -67,6 +75,7 @@ export function AgentsPage({
   onOpenAuthSettings,
   onCreateCloudAgent,
   onUpdateCloudAgent,
+  onListCloudAgentProactiveRuns,
   onSetAgentSkillEnabled,
 }: AgentsPageProps) {
   const [factorySection, setFactorySection] = useState<FactorySection>('agents');
@@ -83,6 +92,12 @@ export function AgentsPage({
   const [routingDraftByAgentId, setRoutingDraftByAgentId] = useState<Record<string, AgentModelRoutingDraft>>({});
   const [publishing, setPublishing] = useState(false);
   const [publishFeedback, setPublishFeedback] = useState<AgentSaveFeedback | null>(null);
+  const listProactiveRuns = useCallback(async (agentId: string, limit = 30) => {
+    if (onListCloudAgentProactiveRuns) return onListCloudAgentProactiveRuns(agentId, limit);
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Sign in to Cloud to view proactive collaboration activity.');
+    return cloudAgentActivityClient.listProactiveRuns(session.token, agentId, limit);
+  }, [onListCloudAgentProactiveRuns]);
   const routeKind = buildRoute?.artifactKind ?? 'agent';
   const buildingStandaloneArtifact = Boolean(buildRoute && routeKind !== 'agent');
   const creating = Boolean(buildRoute && (buildRoute.artifactId === null || buildingStandaloneArtifact));
@@ -342,6 +357,8 @@ export function AgentsPage({
     builderDraft.description !== (selectedAgent.cloudAgentDescription ?? '') ? { key: 'definition' as const, label: 'Agent description updated', detail: builderDraft.description || 'Cleared' } : null,
     builderDraft.sourceSummary !== (selectedAgent.cloudAgentSourceSummary ?? '') ? { key: 'definition' as const, label: 'Source summary updated', detail: builderDraft.sourceSummary || 'Cleared' } : null,
     JSON.stringify(builderDraft.boundaries) !== JSON.stringify(selectedAgent.cloudAgentBoundaries ?? []) ? { key: 'definition' as const, label: 'Agent boundaries updated', detail: `${builderDraft.boundaries.length} configured` } : null,
+    builderDraft.proactive.enabled !== (selectedAgent.cloudAgentProactive?.enabled ?? false) ? { key: 'proactive' as const, label: 'Proactive collaboration updated', detail: builderDraft.proactive.enabled ? 'On' : 'Off' } : null,
+    JSON.stringify(builderDraft.mentionPermissions) !== JSON.stringify(selectedAgent.cloudAgentMentionPermissions ?? { people: true, agents: true }) ? { key: 'mentions' as const, label: '@mention permissions updated', detail: [builderDraft.mentionPermissions.people ? 'People' : null, builderDraft.mentionPermissions.agents ? 'Agents' : null].filter(Boolean).join(' and ') || 'None' } : null,
   ].filter((change): change is NonNullable<typeof change> => Boolean(change)) : [];
   const publishedRouting = modelRoutingForAgent(selectedAgent);
   const builderRouting = builder.status?.draft ? {
@@ -513,6 +530,8 @@ export function AgentsPage({
             tools: builder.status?.draft?.tools ?? [],
             plugins: builder.status?.draft?.plugins ?? [],
           },
+          proactive: builder.status?.draft?.proactive ?? { enabled: false, skillPack: 'proact-v1' },
+          mentionPermissions: builder.status?.draft?.mentionPermissions ?? { people: false, agents: false },
         });
         const targetKey = factoryArtifactTargetKey(cloudAccountId, 'agent', created.id);
         await builder.retarget(targetKey);
@@ -544,6 +563,8 @@ export function AgentsPage({
             tools: builder.status?.draft?.tools ?? activeAgentConfig.loadedTools,
             plugins: builder.status?.draft?.plugins ?? activeAgentConfig.loadedPlugins,
           },
+          proactive: builder.status?.draft?.proactive ?? selectedAgent.cloudAgentProactive ?? { enabled: false, skillPack: 'proact-v1' },
+          mentionPermissions: builder.status?.draft?.mentionPermissions ?? selectedAgent.cloudAgentMentionPermissions ?? { people: true, agents: true },
           ...(accessChanged ? { accessScope: selectedAccessScope } : {}),
         });
         markAgentDraftPublished(selectedAgent, activeAgentConfig);
@@ -619,9 +640,27 @@ export function AgentsPage({
 
   const updateAgentAccess = (scope: CloudAgentAccessScope) => {
     if (!selectedAgent) return;
+    if (scope === 'private' && builder.status?.draft?.proactive.enabled) {
+      setPublishFeedback({ tone: 'error', text: 'Turn off proactive collaboration before limiting access to only you.' });
+      return;
+    }
     setAccessDraftByAgentId((current) => ({ ...current, [selectedAgent.id]: scope }));
     void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
     setPublishFeedback({ tone: 'info', text: 'Access change added to the reviewable draft.' });
+  };
+
+  const updateProactive = (proactive: CloudAgentProactiveConfig) => {
+    if (proactive.enabled && builderAccessScope !== 'participant_conversations') {
+      setPublishFeedback({ tone: 'error', text: 'Share this agent with people in its chats before enabling proactive collaboration.' });
+      return;
+    }
+    void persistBuilderDraft((draft) => ({ ...draft, proactive }));
+    setPublishFeedback({ tone: 'info', text: 'Proactive collaboration change added to the reviewable draft.' });
+  };
+
+  const updateMentionPermissions = (mentionPermissions: CloudAgentMentionPermissions) => {
+    void persistBuilderDraft((draft) => ({ ...draft, mentionPermissions }));
+    setPublishFeedback({ tone: 'info', text: '@mention permissions added to the reviewable draft.' });
   };
 
   const stageModelRouting = (_agent: Agent, values: AgentModelRoutingDraft) => {
@@ -769,8 +808,16 @@ export function AgentsPage({
               creationAccessScope={creationAccessScope}
               agentAccessScope={selectedAccessScope}
               onCreationAccessScopeChange={(scope) => {
+                if (scope === 'private' && builder.status?.draft?.proactive.enabled) {
+                  setPublishFeedback({ tone: 'error', text: 'Turn off proactive collaboration before limiting access to only you.' });
+                  return;
+                }
                 void persistBuilderDraft((draft) => ({ ...draft, access: scope === 'participant_conversations' ? 'participant-conversations' : 'only-me' }));
               }}
+              proactive={builder.status?.draft?.proactive ?? { enabled: false, skillPack: 'proact-v1' }}
+              mentionPermissions={builder.status?.draft?.mentionPermissions ?? { people: false, agents: false }}
+              onProactiveChange={updateProactive}
+              onMentionPermissionsChange={updateMentionPermissions}
               config={activeAgentConfig}
               persisted={activePersistedConfig}
               changes={studioChanges}
@@ -821,6 +868,7 @@ export function AgentsPage({
               onSaveFile={() => void saveActiveFile()}
               onFileDraftChange={updateActiveFileDraft}
               onOpenReachout={onOpenAgentReachoutSession}
+              onListProactiveRuns={listProactiveRuns}
               builderStatus={builder.status}
               builderTesting={builder.testing}
               onTestBuilderDraft={() => void builder.testDraft()}

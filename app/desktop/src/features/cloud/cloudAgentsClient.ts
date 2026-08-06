@@ -14,6 +14,35 @@ import {
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
 
+export type CloudAgentProactiveConfig = {
+  enabled: boolean;
+  skillPack: 'proact-v1';
+};
+
+export type CloudAgentMentionPermissions = {
+  people: boolean;
+  agents: boolean;
+};
+
+export type CloudAgentProactiveRun = {
+  runId: string;
+  sessionId: string;
+  triggerMessageId: string;
+  status: string;
+  decision: 'silence' | 'intervention' | null;
+  breakdown: string | null;
+  selectedSkill: string | null;
+  evidenceMessageIds: string[];
+  skillPack: string;
+  route: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+};
+
 export type CloudAgentResource = {
   kind: 'url' | 'file' | 'text' | string;
   value: string;
@@ -38,12 +67,15 @@ export type CreateCloudAgentInput = {
   resources?: CloudAgentResource[];
   skills?: CloudAgentSkill[];
   modelRouting?: Record<string, unknown>;
+  proactive?: CloudAgentProactiveConfig;
+  mentionPermissions?: CloudAgentMentionPermissions;
 };
 
 export type UpdateCloudAgentInput = Partial<CreateCloudAgentInput>;
 
 type CloudAgentEnvelope = { agent?: unknown };
 type CloudAgentListResponse = { agents?: unknown[] };
+type CloudAgentProactiveRunsResponse = { runs?: CloudAgentProactiveRun[] };
 type ServerErrorBody = { errorCode?: string; message?: string };
 
 async function readJsonSafe(response: Response): Promise<unknown> {
@@ -155,6 +187,18 @@ export class CloudAgentsClient {
     const agent = normalizeCloudAgentDefinition(body.agent);
     if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
     return agent;
+  }
+
+  async listProactiveRuns(token: string, agentId: string, limit = 30): Promise<CloudAgentProactiveRun[]> {
+    const body = await this.send<CloudAgentProactiveRunsResponse>(
+      `/v1/cloud/agents/${encodeURIComponent(agentId)}/proactive-runs?limit=${Math.max(1, Math.min(100, Math.trunc(limit)))}`,
+      {
+        method: 'GET',
+        headers: this.authHeaders(token),
+      },
+      'Could not list proactive collaboration activity.',
+    );
+    return Array.isArray(body.runs) ? body.runs : [];
   }
 }
 

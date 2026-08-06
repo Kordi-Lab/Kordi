@@ -91,19 +91,26 @@ export function cloudGroupMentionInstruction({
   respondingAccountId,
   requesterAccountId,
   requesterKind,
+  allowPeopleMentions = true,
   allowAgentMentions,
+  agentMentionDepthExhausted = false,
 }: {
   participants: readonly CloudGroupParticipant[];
   respondingAccountId: string;
   requesterAccountId?: string | null;
   requesterKind?: 'human' | 'agent' | null;
+  allowPeopleMentions?: boolean;
   allowAgentMentions: boolean;
+  agentMentionDepthExhausted?: boolean;
 }): string | null {
   const catalog = cloudGroupMentionCatalog(participants);
-  const people = catalog
-    .filter((entry) => entry.targetKind === 'person')
-    .map((entry) => `@${entry.handle} (${entry.displayName})`);
-  const agents = allowAgentMentions
+  const canMentionAgents = allowAgentMentions && !agentMentionDepthExhausted;
+  const people = allowPeopleMentions
+    ? catalog
+      .filter((entry) => entry.targetKind === 'person')
+      .map((entry) => `@${entry.handle} (${entry.displayName})`)
+    : [];
+  const agents = canMentionAgents
     ? catalog
       .filter((entry) => (
         entry.targetKind === 'agent'
@@ -120,27 +127,57 @@ export function cloudGroupMentionInstruction({
     && entry.accountId === requesterAccountId?.trim()
   ));
   const requesterDescription = requesterKind === 'agent' && requesterAgent
-    ? `Current requester: @${requesterAgent.handle} (${requesterAgent.displayName}'s Kordi).`
+    ? canMentionAgents
+      ? `Current requester: @${requesterAgent.handle} (${requesterAgent.displayName}'s Kordi).`
+      : `Current requester: ${requesterAgent.displayName}'s Kordi.`
     : requesterPerson
-      ? `Current requester: @${requesterPerson.handle} (${requesterPerson.displayName}).`
-        + (requesterAgent
+      ? (allowPeopleMentions
+        ? `Current requester: @${requesterPerson.handle} (${requesterPerson.displayName}).`
+        : `Current requester: ${requesterPerson.displayName}.`)
+        + (canMentionAgents && requesterAgent
           ? ` In this request, "my Kordi" means @${requesterAgent.handle}.`
           : '')
       : null;
-  if (people.length === 0 && agents.length === 0) return null;
+  if (people.length === 0 && agents.length === 0 && allowPeopleMentions && allowAgentMentions) return null;
   return [
     'Group @mention permissions: use only the exact handles listed below; never invent a handle.',
     ...(requesterDescription ? [requesterDescription] : []),
     ...(people.length > 0 ? [`People: ${people.join(', ')}`] : []),
+    ...(!allowPeopleMentions ? ['You may not @mention people in this response.'] : []),
     ...(agents.length > 0 ? [
       `Agents: ${agents.join(', ')}`,
       'To ask another participant\'s Kordi to act, include exactly one permitted agent handle followed by the request in your final response.',
     ] : !allowAgentMentions ? [
+      'You may not @mention another agent in this response.',
+    ] : agentMentionDepthExhausted ? [
       'This request already came from another agent. You may mention people, but do not ask another agent.',
     ] : [
       'No other unambiguous participant Kordi handle is available in this group.',
     ]),
   ].join('\n');
+}
+
+export function enforceCloudGroupMentionPermissions({
+  text,
+  participants,
+  allowPeopleMentions,
+  allowAgentMentions,
+}: {
+  text: string;
+  participants: readonly CloudGroupParticipant[];
+  allowPeopleMentions: boolean;
+  allowAgentMentions: boolean;
+}): string {
+  if (allowPeopleMentions && allowAgentMentions) return text;
+  const disallowed = new Set(cloudGroupMentionCatalog(participants)
+    .filter((entry) => entry.targetKind === 'person' ? !allowPeopleMentions : !allowAgentMentions)
+    .map((entry) => normalizedMentionHandle(entry.handle)));
+  if (disallowed.size === 0) return text;
+  return text.replace(CLOUD_GROUP_MENTION_PATTERN, (mention) => (
+    disallowed.has(normalizedMentionHandle(mention.slice(1)))
+      ? mention.slice(1)
+      : mention
+  ));
 }
 
 export function resolveCloudGroupAgentMention({
@@ -174,12 +211,15 @@ export function cloudGroupAgentHandoffForResponse({
   participants,
   respondingAccountId,
   requestMessage,
+  allowAgentMentions = true,
 }: {
   responseText: string;
   participants: readonly CloudGroupParticipant[];
   respondingAccountId: string;
   requestMessage: CloudGroupControlEnvelope['message'];
+  allowAgentMentions?: boolean;
 }): CloudGroupAgentHandoff | null {
+  if (!allowAgentMentions) return null;
   const requestDepth = cloudGroupAgentMentionDepth(requestMessage);
   if (requestDepth >= CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH) return null;
   const target = resolveCloudGroupAgentMention({

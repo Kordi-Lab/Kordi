@@ -335,6 +335,9 @@ mod tests {
             session_id: "session:direct-person:a:b".to_string(),
             sandbox_id: Some("cas_test".to_string()),
             provider_auth_available,
+            trigger_kind: "mention".to_string(),
+            target_agent_id: None,
+            skill_pack: None,
         }
     }
 

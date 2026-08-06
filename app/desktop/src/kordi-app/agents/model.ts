@@ -1,4 +1,9 @@
-import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import type {
+  CloudAgentAccessScope,
+  CloudAgentProactiveRun,
+  CreateCloudAgentInput,
+  UpdateCloudAgentInput,
+} from '@/features/cloud/cloudAgentsClient';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 
@@ -32,6 +37,7 @@ export type AgentsPageProps = {
   onOpenAuthSettings?: () => void;
   onCreateCloudAgent?: (input: CreateCloudAgentInput) => Promise<Agent>;
   onUpdateCloudAgent?: (agent: Agent, input: UpdateCloudAgentInput) => Promise<Agent> | Promise<void> | Agent | void;
+  onListCloudAgentProactiveRuns?: (agentId: string, limit?: number) => Promise<CloudAgentProactiveRun[]>;
   onArchiveCloudAgent?: (agent: Agent) => Promise<void>;
   onSetAgentSkillEnabled?: (agent: Agent, skill: string, enabled: boolean) => Promise<void> | void;
 };

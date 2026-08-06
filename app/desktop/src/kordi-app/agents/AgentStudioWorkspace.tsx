@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   Activity,
+  AtSign,
   Bot,
   Check,
   Clock3,
@@ -14,6 +15,7 @@ import {
   Plug,
   Plus,
   Puzzle,
+  RadioTower,
   Search,
   Settings2,
   SlidersHorizontal,
@@ -22,7 +24,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
-import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
+import type {
+  CloudAgentAccessScope,
+  CloudAgentMentionPermissions,
+  CloudAgentProactiveConfig,
+  CloudAgentProactiveRun,
+} from '@/features/cloud/cloudAgentsClient';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 import { cloudAgentAccessDescription, cloudAgentAccessLabel, skillLibraryFileDisplay, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
@@ -130,6 +137,11 @@ function BlueprintView({
   changes,
   accessScope,
   onAccessScopeChange,
+  proactive = { enabled: false, skillPack: 'proact-v1' },
+  mentionPermissions = { people: false, agents: false },
+  onProactiveChange = () => undefined,
+  onMentionPermissionsChange = () => undefined,
+  showCollaborationPolicies,
   canEditPrompt,
   onPromptChange,
   onCreationDraftChange,
@@ -144,6 +156,11 @@ function BlueprintView({
   changes: Array<{ key: string; label: string; detail: string }>;
   accessScope: CloudAgentAccessScope;
   onAccessScopeChange: (scope: CloudAgentAccessScope) => void;
+  proactive?: CloudAgentProactiveConfig;
+  mentionPermissions?: CloudAgentMentionPermissions;
+  onProactiveChange?: (proactive: CloudAgentProactiveConfig) => void;
+  onMentionPermissionsChange?: (permissions: CloudAgentMentionPermissions) => void;
+  showCollaborationPolicies: boolean;
   canEditPrompt: boolean;
   onPromptChange: (value: string) => void;
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
@@ -244,6 +261,7 @@ function BlueprintView({
                 <div className="app-agent-studio-access-menu" role="menu" aria-label="Agent access" onKeyDown={handleAccessMenuKeyDown}>
                   {(['private', 'participant_conversations'] as const).map((scope) => {
                     const selected = accessScope === scope;
+                    const unavailable = scope === 'private' && proactive.enabled;
                     return (
                       <button
                         key={scope}
@@ -251,6 +269,8 @@ function BlueprintView({
                         role="menuitemradio"
                         aria-checked={selected}
                         className={cn(selected && 'is-selected')}
+                        disabled={unavailable}
+                        title={unavailable ? 'Turn off proactive collaboration first' : undefined}
                         onClick={() => {
                           onAccessScopeChange(scope);
                           setAccessMenuOpen(false);
@@ -269,6 +289,56 @@ function BlueprintView({
             </div>
           ) : <span />}
         </div>
+        {showCollaborationPolicies ? (
+          <>
+            <div className="app-agent-studio-blueprint-row is-policy">
+              <div className="app-agent-studio-blueprint-label"><RadioTower className="h-4 w-4" />Proactive</div>
+              <div className="min-w-0">
+                <div className="app-agent-studio-blueprint-value">{proactive.enabled ? 'On' : 'Off'}</div>
+                <div className="app-agent-studio-blueprint-detail">
+                  Watches settled human group messages and speaks only when a useful intervention is warranted.
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={proactive.enabled}
+                aria-label="Proactive collaboration"
+                className={cn('app-agent-studio-switch', proactive.enabled && 'is-on')}
+                disabled={accessScope !== 'participant_conversations' && !proactive.enabled}
+                title={accessScope !== 'participant_conversations' && !proactive.enabled ? 'Share this agent with people in its chats first' : undefined}
+                onClick={() => onProactiveChange({ enabled: !proactive.enabled, skillPack: 'proact-v1' })}
+              />
+            </div>
+            <div className="app-agent-studio-blueprint-row is-policy">
+              <div className="app-agent-studio-blueprint-label"><AtSign className="h-4 w-4" />Mentions</div>
+              <div className="min-w-0">
+                <div className="app-agent-studio-blueprint-value">@mention permissions</div>
+                <div className="app-agent-studio-blueprint-detail">Choose who this agent may call into a group conversation.</div>
+              </div>
+              <div className="app-agent-studio-policy-controls" aria-label="Agent @mention permissions">
+                <span>People</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={mentionPermissions.people}
+                  aria-label="Allow @mentions of people"
+                  className={cn('app-agent-studio-switch', mentionPermissions.people && 'is-on')}
+                  onClick={() => onMentionPermissionsChange({ ...mentionPermissions, people: !mentionPermissions.people })}
+                />
+                <span>Agents</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={mentionPermissions.agents}
+                  aria-label="Allow @mentions of agents"
+                  className={cn('app-agent-studio-switch', mentionPermissions.agents && 'is-on')}
+                  onClick={() => onMentionPermissionsChange({ ...mentionPermissions, agents: !mentionPermissions.agents })}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
         {totalChanges > 0 ? (
           <div className="app-agent-studio-draft-summary">
             <div>
@@ -482,9 +552,11 @@ export function CapabilitiesView({
     plugin: Array.from(new Set([...availablePlugins, ...draftConfig.loadedPlugins])),
   }), [availablePlugins, availableSkills, availableTools, draftConfig.loadedPlugins, draftConfig.loadedSkills, draftConfig.loadedTools]);
   const [catalog, setCatalog] = useState<CapabilityCatalogItem[]>(incomingCatalog);
-  useEffect(() => {
+  const [previousIncomingCatalog, setPreviousIncomingCatalog] = useState(incomingCatalog);
+  if (previousIncomingCatalog !== incomingCatalog) {
+    setPreviousIncomingCatalog(incomingCatalog);
     setCatalog((current) => mergeCapabilityCatalog(current, incomingCatalog));
-  }, [incomingCatalog]);
+  }
   const draftSkillDescriptions = Object.fromEntries([
     ...(creationDraft?.skills ?? []),
     ...(builderStatus?.draft?.skills ?? []),
@@ -677,33 +749,33 @@ function BuilderDraftFilesView({
   onWriteFile: (path: string, content: string) => Promise<unknown>;
 }) {
   const files = status.validation.files;
-  const [selectedPath, setSelectedPath] = useState(files[0]?.path ?? 'agent.json');
+  const [selectedPathDraft, setSelectedPath] = useState(files[0]?.path ?? 'agent.json');
   const [content, setContent] = useState('');
   const [savedContent, setSavedContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const selectedPath = files.some((file) => file.path === selectedPathDraft)
+    ? selectedPathDraft
+    : files[0]?.path ?? 'agent.json';
   const selectedDisplay = skillLibraryFileDisplay(selectedPath);
   useEffect(() => {
-    if (files.some((file) => file.path === selectedPath)) return;
-    setSelectedPath(files[0]?.path ?? 'agent.json');
-  }, [files, selectedPath]);
-  useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void onReadFile(selectedPath)
-      .then((text) => {
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const text = await onReadFile(selectedPath);
         if (cancelled) return;
         setContent(text);
         setSavedContent(text);
-      })
-      .catch((readError) => {
+      } catch (readError) {
         if (!cancelled) setError(readError instanceof Error ? readError.message : 'Unable to read the draft file.');
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    });
     return () => { cancelled = true; };
   }, [onReadFile, selectedPath, status.validation.fingerprint]);
 
@@ -758,12 +830,14 @@ function RunsView({
   builderStatus,
   builderTesting,
   onTestBuilderDraft,
+  onListProactiveRuns,
 }: {
   agent?: Agent;
   onOpenReachout?: (sessionId: string) => void;
   builderStatus?: DesktopAgentBuilderStatus | null;
   builderTesting?: boolean;
   onTestBuilderDraft?: () => void;
+  onListProactiveRuns?: (agentId: string, limit?: number) => Promise<CloudAgentProactiveRun[]>;
 }) {
   if (builderStatus) {
     const reportIsCurrent = Boolean(
@@ -786,6 +860,7 @@ function RunsView({
             <div><strong>{builderTesting ? 'Testing the candidate runtime' : reportIsCurrent ? builderStatus.testReport?.passed ? 'Runtime test passed' : 'Runtime test failed' : 'Runtime test required'}</strong><p>{builderTesting ? 'Kordi is starting a disposable session with the candidate prompt and skills.' : reportIsCurrent ? builderStatus.testReport?.summary : 'Run a new test after every file change.'}</p></div>
           </section>
         </div>
+        <ProactiveActivity agent={agent} onListRuns={onListProactiveRuns} />
       </div>
     );
   }
@@ -794,6 +869,7 @@ function RunsView({
   return (
     <div className="app-agent-studio-view-scroll">
       <WorkspaceHeading title="Runs" />
+      <ProactiveActivity agent={agent} onListRuns={onListProactiveRuns} />
       {reachouts.length === 0 && activities.length === 0 ? <EmptyWorkspaceState icon={Activity} title="No runtime activity yet" detail="Runs and direct reachouts will appear here when this agent starts working." /> : (
         <div className="app-agent-studio-simple-list">
           {reachouts.map((reachout) => (
@@ -807,6 +883,79 @@ function RunsView({
         </div>
       )}
     </div>
+  );
+}
+
+function ProactiveActivity({
+  agent,
+  onListRuns,
+}: {
+  agent?: Agent;
+  onListRuns?: (agentId: string, limit?: number) => Promise<CloudAgentProactiveRun[]>;
+}) {
+  const [result, setResult] = useState<{
+    agentId: string;
+    runs: CloudAgentProactiveRun[];
+    loading: boolean;
+    error: string | null;
+  }>({ agentId: '', runs: [], loading: false, error: null });
+  const agentId = agent?.cloudAgentId;
+
+  useEffect(() => {
+    if (!agentId || !onListRuns) return;
+    let active = true;
+    void Promise.resolve().then(async () => {
+      if (!active) return;
+      setResult({ agentId, runs: [], loading: true, error: null });
+      try {
+        const runs = await onListRuns(agentId, 30);
+        if (active) setResult({ agentId, runs, loading: false, error: null });
+      } catch (caught) {
+        if (active) {
+          setResult({
+            agentId,
+            runs: [],
+            loading: false,
+            error: caught instanceof Error ? caught.message : 'Could not load proactive collaboration activity.',
+          });
+        }
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [agentId, onListRuns]);
+
+  if (!agentId || !onListRuns) return null;
+  const current = result.agentId === agentId
+    ? result
+    : { agentId, runs: [], loading: true, error: null };
+  return (
+    <section className="app-agent-studio-proactive-activity" aria-label="Proactive collaboration activity">
+      <div className="app-agent-studio-section-label">
+        <span>Proactive collaboration</span>
+        <small>{agent.cloudAgentProactive?.enabled ? 'Monitoring' : 'Off'}</small>
+      </div>
+      {current.loading ? <div className="app-agent-studio-runtime-note"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Loading decisions…</div> : null}
+      {current.error ? <div className="app-agent-studio-file-feedback is-error">{current.error}</div> : null}
+      {!current.loading && !current.error && current.runs.length === 0 ? (
+        <div className="app-agent-studio-runtime-note">No proactive decisions yet. Silence and interventions will both appear here.</div>
+      ) : null}
+      {current.runs.length > 0 ? (
+        <div className="app-agent-studio-simple-list">
+          {current.runs.map((run) => (
+            <div key={run.runId}>
+              {run.status === 'completed' && run.decision !== 'silence' ? <RadioTower className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+              <span>
+                <strong>{run.decision === 'intervention' ? 'Intervened' : run.decision === 'silence' ? 'Stayed silent' : run.status}</strong>
+                <small>{run.selectedSkill || run.breakdown || run.errorMessage || `Trigger ${run.triggerMessageId}`}</small>
+              </span>
+              <time>{new Date(run.createdAt).toLocaleString()}</time>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -833,6 +982,10 @@ export function AgentStudioWorkspace({
   creationAccessScope,
   agentAccessScope,
   onCreationAccessScopeChange,
+  proactive = { enabled: false, skillPack: 'proact-v1' },
+  mentionPermissions = { people: false, agents: false },
+  onProactiveChange = () => undefined,
+  onMentionPermissionsChange = () => undefined,
   config,
   persisted,
   changes,
@@ -871,6 +1024,7 @@ export function AgentStudioWorkspace({
   onSaveFile,
   onFileDraftChange,
   onOpenReachout,
+  onListProactiveRuns,
   builderStatus,
   builderTesting,
   onTestBuilderDraft,
@@ -884,9 +1038,13 @@ export function AgentStudioWorkspace({
   creationAccessScope: CloudAgentAccessScope;
   agentAccessScope: CloudAgentAccessScope;
   onCreationAccessScopeChange: (scope: CloudAgentAccessScope) => void;
+  proactive?: CloudAgentProactiveConfig;
+  mentionPermissions?: CloudAgentMentionPermissions;
+  onProactiveChange?: (proactive: CloudAgentProactiveConfig) => void;
+  onMentionPermissionsChange?: (permissions: CloudAgentMentionPermissions) => void;
   config: AgentStudioConfigDraft | null;
   persisted: PersistedAgentConfig | null;
-  changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'definition' | 'access' | 'routing'; label: string; detail: string }>;
+  changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'definition' | 'access' | 'routing' | 'proactive' | 'mentions'; label: string; detail: string }>;
   availableSkills: string[];
   skillDescriptions: Readonly<Record<string, string>>;
   availableTools: string[];
@@ -933,6 +1091,7 @@ export function AgentStudioWorkspace({
   onSaveFile: () => void;
   onFileDraftChange: (value: string) => void;
   onOpenReachout?: (sessionId: string) => void;
+  onListProactiveRuns?: (agentId: string, limit?: number) => Promise<CloudAgentProactiveRun[]>;
   builderStatus?: DesktopAgentBuilderStatus | null;
   builderTesting?: boolean;
   onTestBuilderDraft?: () => void;
@@ -969,6 +1128,11 @@ export function AgentStudioWorkspace({
             changes={changes}
             accessScope={accessScope}
             onAccessScopeChange={setAccessScope}
+            proactive={proactive}
+            mentionPermissions={mentionPermissions}
+            onProactiveChange={onProactiveChange}
+            onMentionPermissionsChange={onMentionPermissionsChange}
+            showCollaborationPolicies={!standaloneBuild && (creating || Boolean(agent?.cloudAgentId))}
             canEditPrompt={canEditPrompt}
             onPromptChange={onPromptChange}
             onCreationDraftChange={onCreationDraftChange}
@@ -1020,7 +1184,7 @@ export function AgentStudioWorkspace({
             onWriteBuilderFile={onWriteBuilderFile}
           />
         ) : null}
-        {activeTab === 'runs' ? <RunsView agent={agent} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
+        {activeTab === 'runs' ? <RunsView agent={agent} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} onListProactiveRuns={onListProactiveRuns} /> : null}
         {activeTab === 'history' ? <HistoryView entries={persisted?.editHistory ?? []} /> : null}
         {publishFeedback?.text ? <div className={cn('app-agent-studio-toast', publishFeedback.tone === 'error' && 'is-error', publishFeedback.tone === 'success' && 'is-success')}>{publishFeedback.text}</div> : null}
         {routingOpen && agent && onUpdateModelRouting ? (

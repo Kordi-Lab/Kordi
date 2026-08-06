@@ -189,6 +189,8 @@ pub(super) fn materialize_seed(
         } else {
             seed.access.trim().to_string()
         },
+        proactive: seed.proactive,
+        mention_permissions: seed.mention_permissions,
         tools: seed
             .tools
             .into_iter()
@@ -426,6 +428,8 @@ pub(super) fn write_draft(workspace: &Path, draft: DesktopAgentBuilderDraft) -> 
             thinking: draft.thinking.filter(|value| !value.trim().is_empty()),
         },
         access: draft.access.trim().to_string(),
+        proactive: draft.proactive,
+        mention_permissions: draft.mention_permissions,
         tools: draft
             .tools
             .into_iter()

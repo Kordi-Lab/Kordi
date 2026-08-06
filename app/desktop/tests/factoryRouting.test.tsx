@@ -69,8 +69,8 @@ test('Agent inspection exposes published configuration and routes every change t
   assert.equal(edits, 0);
 });
 
-test('every owned agent exposes the same access control in Build', () => {
-  const localAgent = { ...agent, id: 'desktop:local-agent', cloudAgentId: undefined };
+test('owned Cloud agents expose access and collaboration policy controls in Build', () => {
+  const localAgent = { ...agent, id: 'cloud-agent:alpha', cloudAgentId: 'cloud_agent_alpha' };
   const html = renderToStaticMarkup(
     <AgentStudioWorkspace
       agent={localAgent}
@@ -119,6 +119,10 @@ test('every owned agent exposes the same access control in Build', () => {
 
   assert.match(html, /Only me/);
   assert.match(html, /aria-label="Edit access"/);
+  assert.match(html, /Proactive/);
+  assert.match(html, /@mention permissions/);
+  assert.match(html, /aria-label="Allow @mentions of people"/);
+  assert.match(html, /aria-label="Allow @mentions of agents"/);
   assert.doesNotMatch(html, /Local runtime/);
 });
 

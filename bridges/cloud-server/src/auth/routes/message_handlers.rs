@@ -246,6 +246,13 @@ pub(super) async fn send_message(
     // and durable sync events commit together. Duplicate retries already have
     // a published row and must not emit a second live delivery.
     if outcome.inserted {
+        crate::cloud_agent_runtime::proactive::spawn_enqueue_for_message(
+            state.db_pool().clone(),
+            summary.body.clone(),
+            summary.session_id.clone(),
+            session.account_id.clone(),
+        );
+
         let events = state.events().clone();
         let message_id = summary.message_id.clone();
         let from = session.account_id.clone();

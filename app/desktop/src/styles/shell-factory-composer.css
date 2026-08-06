@@ -137,6 +137,19 @@
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 48%, transparent);
 }
 
+.app-agent-studio-blueprint-row.is-policy {
+  grid-template-columns: 108px minmax(0, 1fr) auto;
+}
+
+.app-agent-studio-policy-controls {
+  display: grid;
+  grid-template-columns: auto 31px;
+  align-items: center;
+  gap: 5px 8px;
+  color: var(--utility-muted-text);
+  font-size: var(--agent-studio-type-caption);
+}
+
 .app-agent-studio-blueprint-row:last-of-type {
   border-bottom: 0;
 }

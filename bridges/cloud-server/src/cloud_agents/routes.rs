@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
+use crate::cloud_agent_runtime::proactive::{list_run_diagnostics, RunDiagnostic};
 use crate::cloud_agents::models::{
     CloudAgentDefinition, CreateCloudAgentRequest, SharedCloudAgentSummary, UpdateCloudAgentRequest,
 };
@@ -44,6 +45,18 @@ struct SharedCloudAgentListResponse {
     agents: Vec<SharedCloudAgentSummary>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProactiveRunsQuery {
+    limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProactiveRunsResponse {
+    runs: Vec<RunDiagnostic>,
+}
+
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/v1/cloud/agents", get(list_agents).post(create_agent))
@@ -51,6 +64,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route(
             "/v1/cloud/agents/:agent_id",
             put(update_agent).delete(archive_agent),
+        )
+        .route(
+            "/v1/cloud/agents/:agent_id/proactive-runs",
+            get(list_proactive_runs),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -166,5 +183,31 @@ async fn archive_agent(
             StatusCode::NOT_FOUND,
         ),
         Err(err) => store_error_response("archive", err),
+    }
+}
+
+async fn list_proactive_runs(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(agent_id): Path<String>,
+    Query(query): Query<ProactiveRunsQuery>,
+) -> Response {
+    match list_run_diagnostics(
+        state.db_pool(),
+        &session.account_id,
+        &agent_id,
+        query.limit.unwrap_or(30),
+    )
+    .await
+    {
+        Ok(runs) => Json(ProactiveRunsResponse { runs }).into_response(),
+        Err(err) => {
+            eprintln!("[cloud_agents] list proactive runs: {err}");
+            error_response(
+                "server_error",
+                "Could not list proactive collaboration activity.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     }
 }

@@ -5,10 +5,11 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use crate::cloud_agents::models::{
-    clean_access_scope, clean_optional_text, clean_required_text, clean_string_list,
-    CloudAgentDefinition, CloudAgentResource, CloudAgentSkill, CreateCloudAgentRequest,
-    SharedCloudAgentSummary, UpdateCloudAgentRequest, CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS,
-    CLOUD_AGENT_STATUS_ACTIVE, CLOUD_AGENT_STATUS_ARCHIVED,
+    clean_access_scope, clean_optional_text, clean_proactive_config, clean_required_text,
+    clean_string_list, CloudAgentDefinition, CloudAgentMentionPermissions, CloudAgentResource,
+    CloudAgentSkill, CreateCloudAgentRequest, SharedCloudAgentSummary, UpdateCloudAgentRequest,
+    CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS, CLOUD_AGENT_STATUS_ACTIVE,
+    CLOUD_AGENT_STATUS_ARCHIVED,
 };
 
 const NAME_MAX_LEN: usize = 120;
@@ -108,44 +109,108 @@ fn json_or_array<T: serde::Serialize>(
     serde_json::to_value(value).map_err(|err| CloudAgentStoreError::Invalid(err.to_string()))
 }
 
-type CloudAgentRow = (
-    String,
-    String,
-    String,
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    Option<String>,
-    serde_json::Value,
-    serde_json::Value,
-    serde_json::Value,
-    serde_json::Value,
-    String,
-    String,
-    Option<String>,
-);
+struct CloudAgentRow {
+    agent_id: String,
+    owner_account_id: String,
+    access_scope: String,
+    status: String,
+    name: String,
+    role: String,
+    description: Option<String>,
+    system_prompt: String,
+    source_summary: Option<String>,
+    boundaries_json: serde_json::Value,
+    resources_json: serde_json::Value,
+    skills_json: serde_json::Value,
+    model_routing_json: serde_json::Value,
+    proactive_enabled: bool,
+    proactive_skill_pack: String,
+    mention_people_enabled: bool,
+    mention_agents_enabled: bool,
+    created_at: String,
+    updated_at: String,
+    archived_at: Option<String>,
+}
+
+impl<'r> sqlx_core::from_row::FromRow<'r, sqlx_postgres::PgRow> for CloudAgentRow {
+    fn from_row(row: &'r sqlx_postgres::PgRow) -> Result<Self, sqlx_core::Error> {
+        use sqlx_core::row::Row;
+
+        Ok(Self {
+            agent_id: row.try_get("agent_id")?,
+            owner_account_id: row.try_get("owner_account_id")?,
+            access_scope: row.try_get("access_scope")?,
+            status: row.try_get("status")?,
+            name: row.try_get("name")?,
+            role: row.try_get("role")?,
+            description: row.try_get("description")?,
+            system_prompt: row.try_get("system_prompt")?,
+            source_summary: row.try_get("source_summary")?,
+            boundaries_json: row.try_get("boundaries_json")?,
+            resources_json: row.try_get("resources_json")?,
+            skills_json: row.try_get("skills_json")?,
+            model_routing_json: row.try_get("model_routing_json")?,
+            proactive_enabled: row.try_get("proactive_enabled")?,
+            proactive_skill_pack: row.try_get("proactive_skill_pack")?,
+            mention_people_enabled: row.try_get("mention_people_enabled")?,
+            mention_agents_enabled: row.try_get("mention_agents_enabled")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+            archived_at: row.try_get("archived_at")?,
+        })
+    }
+}
 
 fn row_to_definition(row: CloudAgentRow) -> CloudAgentDefinition {
     CloudAgentDefinition {
-        agent_id: row.0,
-        owner_account_id: row.1,
-        access_scope: row.2,
-        status: row.3,
-        name: row.4,
-        role: row.5,
-        description: row.6,
-        system_prompt: row.7,
-        source_summary: row.8,
-        boundaries: serde_json::from_value(row.9).unwrap_or_default(),
-        resources: serde_json::from_value(row.10).unwrap_or_default(),
-        skills: serde_json::from_value(row.11).unwrap_or_default(),
-        model_routing: row.12,
-        created_at: row.13,
-        updated_at: row.14,
-        archived_at: row.15,
+        agent_id: row.agent_id,
+        owner_account_id: row.owner_account_id,
+        access_scope: row.access_scope,
+        status: row.status,
+        name: row.name,
+        role: row.role,
+        description: row.description,
+        system_prompt: row.system_prompt,
+        source_summary: row.source_summary,
+        boundaries: serde_json::from_value(row.boundaries_json).unwrap_or_default(),
+        resources: serde_json::from_value(row.resources_json).unwrap_or_default(),
+        skills: serde_json::from_value(row.skills_json).unwrap_or_default(),
+        model_routing: row.model_routing_json,
+        proactive: crate::cloud_agents::models::CloudAgentProactiveConfig {
+            enabled: row.proactive_enabled,
+            skill_pack: row.proactive_skill_pack,
+        },
+        mention_permissions: CloudAgentMentionPermissions {
+            people: row.mention_people_enabled,
+            agents: row.mention_agents_enabled,
+        },
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        archived_at: row.archived_at,
     }
+}
+
+async fn cancel_proactive_runs(
+    pool: &PgPool,
+    owner_account_id: &str,
+    agent_id: &str,
+    now: &str,
+) -> Result<(), sqlx_core::Error> {
+    query(
+        "UPDATE cloud_agent_fallback_runs
+         SET status = 'cancelled', claimed_by = NULL, lease_expires_at = NULL,
+             updated_at = $3, completed_at = $3
+         WHERE owner_account_id = $1
+           AND target_agent_id = $2
+           AND trigger_kind = 'proactive'
+           AND status IN ('queued', 'leased', 'running')",
+    )
+    .bind(owner_account_id)
+    .bind(agent_id)
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn insert_agent_sync_event(
@@ -192,6 +257,9 @@ pub async fn create_agent_definition(
     let resources = clean_resources(input.resources);
     let skills = clean_skills(input.skills);
     let model_routing = input.model_routing.unwrap_or_else(|| serde_json::json!({}));
+    let proactive = clean_proactive_config(input.proactive, &access_scope)
+        .map_err(CloudAgentStoreError::Invalid)?;
+    let mention_permissions = input.mention_permissions.unwrap_or_default();
     let now_text = timestamp(now);
     let agent_id = format!("cloud_agent_{}", Uuid::new_v4().simple());
 
@@ -199,11 +267,13 @@ pub async fn create_agent_definition(
         "INSERT INTO cloud_agent_definitions (
              agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at
-         ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+             model_routing_json, proactive_enabled, proactive_skill_pack,
+             mention_people_enabled, mention_agents_enabled, created_at, updated_at
+         ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at",
+             model_routing_json, proactive_enabled, proactive_skill_pack,
+             mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at",
     )
     .bind(&agent_id)
     .bind(owner_account_id)
@@ -217,6 +287,10 @@ pub async fn create_agent_definition(
     .bind(json_or_array(&resources)?)
     .bind(json_or_array(&skills)?)
     .bind(model_routing)
+    .bind(proactive.enabled)
+    .bind(&proactive.skill_pack)
+    .bind(mention_permissions.people)
+    .bind(mention_permissions.agents)
     .bind(&now_text)
     .fetch_one(pool)
     .await?;
@@ -239,7 +313,8 @@ pub async fn list_agent_definitions(
     let rows = query_as::<_, CloudAgentRow>(
         "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at
+             model_routing_json, proactive_enabled, proactive_skill_pack,
+             mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at
          FROM cloud_agent_definitions
          WHERE owner_account_id = $1 AND status = 'active' AND is_system_managed = FALSE
          ORDER BY updated_at DESC, agent_id ASC",
@@ -347,18 +422,33 @@ pub async fn update_agent_definition(
     if let Some(value) = input.model_routing {
         current.model_routing = value;
     }
+    if let Some(value) = input.proactive {
+        current.proactive = clean_proactive_config(Some(value), &current.access_scope)
+            .map_err(CloudAgentStoreError::Invalid)?;
+    } else if current.access_scope != CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS
+        && current.proactive.enabled
+    {
+        return Err(CloudAgentStoreError::Invalid(
+            "Disable proactive collaboration before limiting this agent to only you.".to_string(),
+        ));
+    }
+    if let Some(value) = input.mention_permissions {
+        current.mention_permissions = value;
+    }
 
     let now_text = timestamp(now);
     let row = query_as::<_, CloudAgentRow>(
         "UPDATE cloud_agent_definitions
          SET access_scope = $4, name = $5, role = $6, description = $7, system_prompt = $8, source_summary = $9,
              boundaries_json = $10, resources_json = $11, skills_json = $12, model_routing_json = $13,
-             updated_at = $14
+             proactive_enabled = $14, proactive_skill_pack = $15,
+             mention_people_enabled = $16, mention_agents_enabled = $17, updated_at = $18
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = $3
            AND is_system_managed = FALSE
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at",
+             model_routing_json, proactive_enabled, proactive_skill_pack,
+             mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at",
     )
     .bind(owner_account_id)
     .bind(agent_id)
@@ -373,6 +463,10 @@ pub async fn update_agent_definition(
     .bind(json_or_array(&current.resources)?)
     .bind(json_or_array(&current.skills)?)
     .bind(&current.model_routing)
+    .bind(current.proactive.enabled)
+    .bind(&current.proactive.skill_pack)
+    .bind(current.mention_permissions.people)
+    .bind(current.mention_permissions.agents)
     .bind(&now_text)
     .fetch_optional(pool)
     .await?;
@@ -380,6 +474,9 @@ pub async fn update_agent_definition(
         return Ok(None);
     };
     let agent = row_to_definition(row);
+    if !agent.proactive.enabled {
+        cancel_proactive_runs(pool, owner_account_id, agent_id, &now_text).await?;
+    }
     insert_agent_sync_event(
         pool,
         owner_account_id,
@@ -405,7 +502,8 @@ pub async fn archive_agent_definition(
            AND is_system_managed = FALSE
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at",
+             model_routing_json, proactive_enabled, proactive_skill_pack,
+             mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at",
     )
     .bind(owner_account_id)
     .bind(agent_id)
@@ -417,6 +515,7 @@ pub async fn archive_agent_definition(
         return Ok(None);
     };
     let agent = row_to_definition(row);
+    cancel_proactive_runs(pool, owner_account_id, agent_id, &now_text).await?;
     insert_agent_sync_event(
         pool,
         owner_account_id,
@@ -436,7 +535,8 @@ async fn get_agent_definition(
     let row = query_as::<_, CloudAgentRow>(
         "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at
+             model_routing_json, proactive_enabled, proactive_skill_pack,
+             mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at
          FROM cloud_agent_definitions
          WHERE owner_account_id = $1 AND agent_id = $2 AND is_system_managed = FALSE",
     )

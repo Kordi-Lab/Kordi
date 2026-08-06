@@ -437,6 +437,16 @@ export type DesktopAgentBuilderSkillSeed = {
   content?: string | null;
 };
 
+export type DesktopAgentBuilderProactive = {
+  enabled: boolean;
+  skillPack: 'proact-v1';
+};
+
+export type DesktopAgentBuilderMentionPermissions = {
+  people: boolean;
+  agents: boolean;
+};
+
 export type DesktopAgentBuilderSeed = {
   name?: string;
   role?: string;
@@ -445,6 +455,8 @@ export type DesktopAgentBuilderSeed = {
   sourceSummary?: string;
   boundaries?: string[];
   access?: string;
+  proactive?: DesktopAgentBuilderProactive;
+  mentionPermissions?: DesktopAgentBuilderMentionPermissions;
   provider?: string | null;
   model?: string | null;
   thinking?: string | null;
@@ -468,6 +480,8 @@ export type DesktopAgentBuilderDraft = {
   sourceSummary: string;
   boundaries: string[];
   access: string;
+  proactive: DesktopAgentBuilderProactive;
+  mentionPermissions: DesktopAgentBuilderMentionPermissions;
   provider?: string | null;
   model?: string | null;
   thinking?: string | null;

@@ -173,6 +173,10 @@ spec:
                   name: kordi-cloud-runner
                   key: runner-token
                   optional: true
+            - name: KORDI_PROACTIVE_AGENTS_ENABLED
+              value: "true"
+            - name: KORDI_PROACTIVE_QUIET_WINDOW_SECONDS
+              value: "8"
             - name: KORDI_SUPPORT_ENABLED
               value: "true"
             - name: KORDI_SUPPORT_OWNER_EMAIL

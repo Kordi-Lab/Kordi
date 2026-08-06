@@ -200,13 +200,26 @@ export function collaborationGroupSessionParticipants(
   options: { selfPublicName?: string | null } = {},
 ): DesktopCollaborationSessionParticipant[] {
   const selfPublicName = cleanText(options.selfPublicName ?? undefined);
+  const canonicalParticipants = conversation.canonicalParticipants ?? [];
+  const humanIdByIdentityId = new Map(canonicalParticipants
+    .filter((participant) => participant.kind === 'human')
+    .map((participant) => [participant.id, cleanText(participant.humanId)]));
+  const selfHumanId = canonicalParticipants
+    .find((participant) => participant.kind === 'human' && participantIsSelf(participant))
+    ?.humanId;
   const participants = new Map<string, DesktopCollaborationSessionParticipant>();
-  for (const participant of conversation.canonicalParticipants ?? []) {
-    if (participant.kind !== 'human') continue;
+  for (const participant of canonicalParticipants) {
+    if (participant.kind !== 'human' && participant.kind !== 'agent') continue;
     const rawDisplayName = cleanText(participant.name);
     if (!rawDisplayName) continue;
     const sourceIdentityId = cleanText(participant.sourceIdentityId);
-    const humanId = cleanText(participant.humanId);
+    const humanId = cleanText(participant.humanId)
+      || (participant.kind === 'agent'
+        ? cleanText(humanIdByIdentityId.get(participant.ownerIdentityId?.trim() ?? ''))
+          || (participant.source === 'local' ? cleanText(selfHumanId) : null)
+        : null);
+    const agentId = cleanText(participant.agentId);
+    if (participant.kind === 'agent' && (!humanId || !agentId)) continue;
     const isSelf = participantIsSelf(participant);
     if (isSelf && !sourceIdentityId && !humanId) continue;
     const displayName = isSelf && isSelfReferencePeerLabel(rawDisplayName) && selfPublicName
@@ -215,11 +228,14 @@ export function collaborationGroupSessionParticipants(
     participants.set(participant.id || `${sourceIdentityId ?? ''}:${humanId ?? ''}:${displayName}`, {
       identityId: cleanText(participant.id),
       displayName,
-      kind: 'human',
-      role: isSelf ? 'self' : (cleanText(participant.role) ?? 'person'),
+      kind: participant.kind,
+      role: isSelf ? 'self' : (cleanText(participant.role) ?? (participant.kind === 'agent' ? 'delegate' : 'person')),
+      ...(cleanText(participant.ownerIdentityId) ? { ownerIdentityId: cleanText(participant.ownerIdentityId) } : {}),
+      ...(cleanText(participant.ownerName) ? { ownerDisplayName: cleanText(participant.ownerName) } : {}),
       sourceIdentityId,
       humanId,
-      runtime: 'person',
+      ...(agentId ? { agentId } : {}),
+      runtime: participant.kind === 'agent' ? 'agent' : 'person',
     });
   }
   return [...participants.values()];

@@ -39,7 +39,10 @@ import {
   cloudGroupSelfParticipant,
   encodeCloudGroupControl,
 } from './cloudGroupMessages';
-import { cloudGroupAgentHandoffForResponse } from './cloudGroupMentions';
+import {
+  cloudGroupAgentHandoffForResponse,
+  enforceCloudGroupMentionPermissions,
+} from './cloudGroupMentions';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import {
   cloudVisibleTaskRecordsForSession,
@@ -68,6 +71,13 @@ export async function respondToCloudGroupAgentMention(
     participantByAccount,
   } = context;
   const message = envelope.message!;
+  const targetCloudAgentId = message.targetCloudAgentId?.trim() ?? '';
+  const targetDefinition = targetCloudAgentId
+    ? runtime.agentDefinitionsById[targetCloudAgentId]
+    : null;
+  const mentionPermissions = targetCloudAgentId
+    ? (targetDefinition?.mentionPermissions ?? { people: false, agents: false })
+    : { people: true, agents: true };
   const session = await loadSession();
   if (!session?.token) throw new Error('Not signed in.');
   throwIfCloudAgentTurnAborted(signal);
@@ -176,7 +186,7 @@ export async function respondToCloudGroupAgentMention(
 
   const contextMessages = [
     ...cloudAgentContextMessagesFromDefinition(
-      runtime.agentDefinitionsById[message.targetCloudAgentId ?? ''] ?? null,
+      targetDefinition,
     ),
     ...policy.nativeContext({
       groupRows,
@@ -184,6 +194,7 @@ export async function respondToCloudGroupAgentMention(
       requestMessageId: message.id,
       requestCreatedAtMs: message.createdAtMs,
       respondingAccountId: account.accountId,
+      mentionPermissions,
     }),
   ];
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
@@ -250,7 +261,14 @@ export async function respondToCloudGroupAgentMention(
 
   const succeeded = finalTurn.succeeded
     && finalTurn.assistantText.trim().length > 0;
-  const responseText = succeeded ? finalTurn.assistantText.trim() : '';
+  const responseText = succeeded
+    ? enforceCloudGroupMentionPermissions({
+      text: finalTurn.assistantText.trim(),
+      participants: envelope.participants,
+      allowPeopleMentions: mentionPermissions.people,
+      allowAgentMentions: mentionPermissions.agents,
+    })
+    : '';
   const failureMessage = succeeded
     ? null
     : isCloudAgentNoProviderConfiguredError(
@@ -310,6 +328,7 @@ export async function respondToCloudGroupAgentMention(
       participants: envelope.participants,
       respondingAccountId: account.accountId,
       requestMessage: message,
+      allowAgentMentions: mentionPermissions.agents,
     })
     : null;
 

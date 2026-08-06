@@ -1,6 +1,7 @@
 pub mod artifacts;
 mod claim_route;
 pub mod policy;
+pub mod proactive;
 pub mod provider_auth;
 pub mod routes;
 pub mod runs;

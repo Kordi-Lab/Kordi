@@ -42,6 +42,10 @@ export function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed
     boundaries: agent?.cloudAgentBoundaries ?? [],
     systemPrompt: agent?.systemPrompt ?? '',
     access: agent?.cloudAgentAccessScope === 'participant_conversations' ? 'participant-conversations' : 'only-me',
+    proactive: agent?.cloudAgentProactive ?? { enabled: false, skillPack: 'proact-v1' },
+    mentionPermissions: agent
+      ? (agent.cloudAgentMentionPermissions ?? { people: true, agents: true })
+      : { people: false, agents: false },
     provider: agent?.defaultAuthProvider ?? null,
     model: agent?.defaultModel ?? null,
     thinking: agent?.defaultThinking ?? null,
@@ -100,6 +104,8 @@ export function newArtifactSeed(kind: FactoryArtifactKind): DesktopAgentBuilderS
     description: '',
     systemPrompt: '',
     access: 'only-me',
+    proactive: { enabled: false, skillPack: 'proact-v1' },
+    mentionPermissions: { people: false, agents: false },
     tools: [],
     plugins: [],
     skills: [],

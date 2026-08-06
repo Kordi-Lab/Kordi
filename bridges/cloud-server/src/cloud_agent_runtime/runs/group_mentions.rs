@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use unicode_normalization::UnicodeNormalization;
 
+use crate::cloud_agents::models::CloudAgentMentionPermissions;
+
 use super::envelopes::{CloudGroupEnvelope, CloudGroupMessage, CloudGroupParticipant};
 
 pub(super) const CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH: u32 = 1;
@@ -111,15 +113,21 @@ fn message_mention_depth(message: &CloudGroupMessage) -> u32 {
 pub(super) fn mention_instruction(
     envelope: &CloudGroupEnvelope,
     responding_account_id: &str,
+    permissions: &CloudAgentMentionPermissions,
 ) -> Option<String> {
     let message = envelope.message.as_ref()?;
     let catalog = mention_catalog(&envelope.participants);
-    let people = catalog
-        .iter()
-        .filter(|entry| entry.kind == MentionKind::Person)
-        .map(|entry| format!("@{} ({})", entry.handle, entry.display_name))
-        .collect::<Vec<_>>();
-    let allow_agent_mentions = message_mention_depth(message) < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH;
+    let people = if permissions.people {
+        catalog
+            .iter()
+            .filter(|entry| entry.kind == MentionKind::Person)
+            .map(|entry| format!("@{} ({})", entry.handle, entry.display_name))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let allow_agent_mentions =
+        permissions.agents && message_mention_depth(message) < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH;
     let agents = if allow_agent_mentions {
         catalog
             .iter()
@@ -132,7 +140,7 @@ pub(super) fn mention_instruction(
     } else {
         Vec::new()
     };
-    if people.is_empty() && agents.is_empty() {
+    if people.is_empty() && agents.is_empty() && permissions.people && permissions.agents {
         return None;
     }
     let requester_account_id = message.sender_account_id.trim();
@@ -146,22 +154,32 @@ pub(super) fn mention_instruction(
     });
     let requester_description = if message.sender_kind.as_deref() == Some("agent") {
         requester_agent.map(|entry| {
-            format!(
-                "Current requester: @{} ({}'s Kordi).",
-                entry.handle, entry.display_name
-            )
+            if permissions.agents {
+                format!(
+                    "Current requester: @{} ({}'s Kordi).",
+                    entry.handle, entry.display_name
+                )
+            } else {
+                format!("Current requester: {}'s Kordi.", entry.display_name)
+            }
         })
     } else {
         requester_person.map(|entry| {
-            let mut description = format!(
-                "Current requester: @{} ({}).",
-                entry.handle, entry.display_name
-            );
-            if let Some(agent) = requester_agent {
-                description.push_str(&format!(
-                    " In this request, \"my Kordi\" means @{}.",
-                    agent.handle
-                ));
+            let mut description = if permissions.people {
+                format!(
+                    "Current requester: @{} ({}).",
+                    entry.handle, entry.display_name
+                )
+            } else {
+                format!("Current requester: {}.", entry.display_name)
+            };
+            if permissions.agents {
+                if let Some(agent) = requester_agent {
+                    description.push_str(&format!(
+                        " In this request, \"my Kordi\" means @{}.",
+                        agent.handle
+                    ));
+                }
             }
             description
         })
@@ -175,6 +193,8 @@ pub(super) fn mention_instruction(
     }
     if !people.is_empty() {
         sections.push(format!("People: {}", people.join(", ")));
+    } else if !permissions.people {
+        sections.push("You may not @mention people in this response.".to_string());
     }
     if !agents.is_empty() {
         sections.push(format!("Agents: {}", agents.join(", ")));
@@ -182,6 +202,8 @@ pub(super) fn mention_instruction(
             "To ask another participant's Kordi to act, include exactly one permitted agent handle followed by the request in your final response."
                 .to_string(),
         );
+    } else if !permissions.agents {
+        sections.push("You may not @mention another agent in this response.".to_string());
     } else if !allow_agent_mentions {
         sections.push(
             "This request already came from another agent. You may mention people, but do not ask another agent."
@@ -195,14 +217,62 @@ pub(super) fn mention_instruction(
     Some(sections.join("\n"))
 }
 
+fn is_mention_character(character: char) -> bool {
+    character.is_alphanumeric() || matches!(character, '.' | '_' | '\'' | '’' | '-')
+}
+
 fn mention_tokens(text: &str) -> impl Iterator<Item = String> + '_ {
     text.split('@').skip(1).map(|tail| {
         tail.chars()
-            .take_while(|character| {
-                character.is_alphanumeric() || matches!(character, '.' | '_' | '\'' | '’' | '-')
-            })
+            .take_while(|character| is_mention_character(*character))
             .collect()
     })
+}
+
+pub(super) fn enforce_mention_permissions(
+    text: &str,
+    participants: &[CloudGroupParticipant],
+    permissions: &CloudAgentMentionPermissions,
+) -> String {
+    if permissions.people && permissions.agents {
+        return text.to_string();
+    }
+    let disallowed = mention_catalog(participants)
+        .into_iter()
+        .filter(|entry| match entry.kind {
+            MentionKind::Person => !permissions.people,
+            MentionKind::Agent => !permissions.agents,
+        })
+        .map(|entry| normalized_handle(&entry.handle))
+        .collect::<HashSet<_>>();
+    if disallowed.is_empty() {
+        return text.to_string();
+    }
+    let mut output = String::with_capacity(text.len());
+    let mut cursor = 0usize;
+    while let Some(relative) = text[cursor..].find('@') {
+        let marker = cursor + relative;
+        output.push_str(&text[cursor..marker]);
+        let token_start = marker + '@'.len_utf8();
+        let token_len = text[token_start..]
+            .char_indices()
+            .take_while(|(_, character)| is_mention_character(*character))
+            .map(|(index, character)| index + character.len_utf8())
+            .last()
+            .unwrap_or(0);
+        let token_end = token_start + token_len;
+        let token = &text[token_start..token_end];
+        if !disallowed.contains(&normalized_handle(token)) {
+            output.push('@');
+        }
+        output.push_str(token);
+        cursor = token_end;
+        if token_len == 0 {
+            cursor = token_start;
+        }
+    }
+    output.push_str(&text[cursor..]);
+    output
 }
 
 pub(super) fn resolve_agent_mention(
@@ -255,6 +325,7 @@ mod tests {
             display_name: display_name.to_string(),
             avatar_url: None,
             role: Some("person".to_string()),
+            agent_ids: Vec::new(),
         }
     }
 
@@ -314,7 +385,12 @@ mod tests {
                 agent_mention_depth: None,
             }),
         };
-        let first = mention_instruction(&envelope, "acct_owner").expect("instruction");
+        let permissions = CloudAgentMentionPermissions {
+            people: true,
+            agents: true,
+        };
+        let first =
+            mention_instruction(&envelope, "acct_owner", &permissions).expect("instruction");
         assert!(first.contains("\"my Kordi\" means @JiaxinPeisKordi"));
         assert!(first.contains("Agents:"));
         assert!(!first.contains("@CUFishAIsKordi ("));
@@ -322,8 +398,29 @@ mod tests {
         let message = envelope.message.as_mut().expect("message");
         message.sender_kind = Some("agent".to_string());
         message.agent_mention_depth = Some(1);
-        let second = mention_instruction(&envelope, "acct_owner").expect("instruction");
+        let second =
+            mention_instruction(&envelope, "acct_owner", &permissions).expect("instruction");
         assert!(second.contains("do not ask another agent"));
         assert!(!second.contains("Agents:"));
+    }
+
+    #[test]
+    fn strips_only_disallowed_exact_participant_handles() {
+        let participants = vec![
+            participant("acct_source", "Source"),
+            participant("acct_target", "Target User"),
+        ];
+        let people_only = CloudAgentMentionPermissions {
+            people: true,
+            agents: false,
+        };
+        assert_eq!(
+            enforce_mention_permissions(
+                "@TargetUsersKordi ask @TargetUser to check @unrelated",
+                &participants,
+                &people_only,
+            ),
+            "TargetUsersKordi ask @TargetUser to check @unrelated"
+        );
     }
 }

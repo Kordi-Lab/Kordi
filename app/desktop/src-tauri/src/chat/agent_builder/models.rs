@@ -14,6 +14,37 @@ pub struct DesktopAgentBuilderSkillSeed {
     pub content: Option<String>,
 }
 
+fn default_proactive_skill_pack() -> String {
+    "proact-v1".to_string()
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopAgentBuilderProactive {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_proactive_skill_pack")]
+    pub skill_pack: String,
+}
+
+impl Default for DesktopAgentBuilderProactive {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            skill_pack: default_proactive_skill_pack(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopAgentBuilderMentionPermissions {
+    #[serde(default)]
+    pub people: bool,
+    #[serde(default)]
+    pub agents: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopAgentBuilderSeed {
@@ -31,6 +62,10 @@ pub struct DesktopAgentBuilderSeed {
     pub boundaries: Vec<String>,
     #[serde(default)]
     pub access: String,
+    #[serde(default)]
+    pub proactive: DesktopAgentBuilderProactive,
+    #[serde(default)]
+    pub mention_permissions: DesktopAgentBuilderMentionPermissions,
     #[serde(default)]
     pub provider: Option<String>,
     #[serde(default)]
@@ -119,6 +154,10 @@ pub(super) struct DesktopAgentBuilderAgentFile {
     #[serde(default)]
     pub(super) access: String,
     #[serde(default)]
+    pub(super) proactive: DesktopAgentBuilderProactive,
+    #[serde(default)]
+    pub(super) mention_permissions: DesktopAgentBuilderMentionPermissions,
+    #[serde(default)]
     pub(super) tools: Vec<String>,
     #[serde(default)]
     pub(super) plugins: Vec<String>,
@@ -145,6 +184,8 @@ pub struct DesktopAgentBuilderDraft {
     pub source_summary: String,
     pub boundaries: Vec<String>,
     pub access: String,
+    pub proactive: DesktopAgentBuilderProactive,
+    pub mention_permissions: DesktopAgentBuilderMentionPermissions,
     pub provider: Option<String>,
     pub model: Option<String>,
     pub thinking: Option<String>,

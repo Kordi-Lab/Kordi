@@ -8,9 +8,10 @@ use uuid::Uuid;
 use crate::cloud_agent_runtime::sync_events::{
     append_cloud_agent_response_sync_event, CloudAgentResponseSyncEvent,
 };
+use crate::cloud_agents::models::CloudAgentMentionPermissions;
 
 use super::envelopes::{
-    cloud_group_request_envelope_for_run, cloud_group_response_body,
+    cloud_group_request_envelope_for_run, cloud_group_response_body_with_policy,
     latest_cloud_group_envelope_for_session, CloudGroupEnvelope,
 };
 use super::RunResult;
@@ -68,6 +69,8 @@ pub(super) struct GroupResponse<'a> {
     pub(super) request_message_id: &'a str,
     pub(super) response_text: &'a str,
     pub(super) delivery_state: &'a str,
+    pub(super) mention_permissions: Option<CloudAgentMentionPermissions>,
+    pub(super) sender_label_override: Option<&'a str>,
 }
 
 pub(super) async fn ensure_group_response_messages(
@@ -83,11 +86,15 @@ pub(super) async fn ensure_group_response_messages(
     let Some(request_envelope) = request_envelope else {
         return Ok(None);
     };
-    let response_group_message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
+    let response_group_message_id = format!("cloudrunmsg_{}_group", response.run_id);
     let now = Utc::now();
     let now_string = now.to_rfc3339();
     let now_ms = now.timestamp_millis();
-    let response_body = cloud_group_response_body(
+    let default_permissions = CloudAgentMentionPermissions {
+        people: true,
+        agents: true,
+    };
+    let response_body = cloud_group_response_body_with_policy(
         &request_envelope,
         response.owner_account_id,
         response.request_message_id,
@@ -95,15 +102,20 @@ pub(super) async fn ensure_group_response_messages(
         response.response_text,
         response.delivery_state,
         now_ms,
+        response
+            .mention_permissions
+            .as_ref()
+            .unwrap_or(&default_permissions),
+        response.sender_label_override,
     );
     let recipients = cloud_group_response_recipients(&request_envelope);
     let mut first_message_id = None;
-    for recipient_account_id in recipients {
-        let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
+    for (recipient_index, recipient_account_id) in recipients.into_iter().enumerate() {
+        let message_id = format!("cloudrunmsg_{}_{recipient_index}", response.run_id);
         if first_message_id.is_none() {
             first_message_id = Some(message_id.clone());
         }
-        query(
+        let inserted = query(
             "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
              VALUES ($1, $2, $3, $4, $5, $5, $6) \
              ON CONFLICT (message_id) DO NOTHING",
@@ -116,24 +128,26 @@ pub(super) async fn ensure_group_response_messages(
         .bind(response.session_id)
         .execute(pool)
         .await?;
-        append_cloud_agent_response_sync_event(
-            pool,
-            CloudAgentResponseSyncEvent {
-                account_id: &recipient_account_id,
-                peer_account_id: response.owner_account_id,
-                message_id: &message_id,
-                from_account_id: response.owner_account_id,
-                to_account_id: &recipient_account_id,
-                body: &response_body,
-                session_id: response.session_id,
-                created_at: &now_string,
-                direction: cloud_group_response_direction(
-                    response.owner_account_id,
-                    &recipient_account_id,
-                ),
-            },
-        )
-        .await?;
+        if inserted.rows_affected() > 0 {
+            append_cloud_agent_response_sync_event(
+                pool,
+                CloudAgentResponseSyncEvent {
+                    account_id: &recipient_account_id,
+                    peer_account_id: response.owner_account_id,
+                    message_id: &message_id,
+                    from_account_id: response.owner_account_id,
+                    to_account_id: &recipient_account_id,
+                    body: &response_body,
+                    session_id: response.session_id,
+                    created_at: &now_string,
+                    direction: cloud_group_response_direction(
+                        response.owner_account_id,
+                        &recipient_account_id,
+                    ),
+                },
+            )
+            .await?;
+        }
     }
     if let Some(message_id) = &first_message_id {
         query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")

@@ -170,6 +170,46 @@ fn validates_materialized_workspace_and_invalidates_changed_fingerprint() {
 }
 
 #[test]
+fn proactive_and_mention_permissions_round_trip_through_the_builder() {
+    let workspace =
+        std::env::temp_dir().join(format!("kordi-agent-builder-test-{}", uuid::Uuid::new_v4()));
+    let seed = DesktopAgentBuilderSeed {
+        name: "Group facilitator".to_string(),
+        role: "Collaboration agent".to_string(),
+        access: "participant-conversations".to_string(),
+        proactive: DesktopAgentBuilderProactive {
+            enabled: true,
+            skill_pack: "proact-v1".to_string(),
+        },
+        mention_permissions: DesktopAgentBuilderMentionPermissions {
+            people: true,
+            agents: false,
+        },
+        ..DesktopAgentBuilderSeed::default()
+    };
+
+    materialize_seed(&workspace, Some(&seed)).expect("materialize builder workspace");
+    let (draft, validation) = validate_workspace(&workspace);
+    assert!(validation.valid, "{:?}", validation.errors);
+    let draft = draft.expect("validated draft");
+    assert!(draft.proactive.enabled);
+    assert_eq!(draft.proactive.skill_pack, "proact-v1");
+    assert!(draft.mention_permissions.people);
+    assert!(!draft.mention_permissions.agents);
+
+    let mut private_draft = draft;
+    private_draft.access = "only-me".to_string();
+    write_draft(&workspace, private_draft).expect("write invalid private proactive draft");
+    let (_, invalid) = validate_workspace(&workspace);
+    assert!(!invalid.valid);
+    assert!(invalid
+        .errors
+        .iter()
+        .any(|error| error.contains("requires participant-conversations access")));
+    let _ = fs::remove_dir_all(workspace);
+}
+
+#[test]
 fn rejects_skill_paths_that_do_not_match_the_skill_name() {
     let skill = DesktopAgentBuilderSkillFile {
         name: "repository-review".to_string(),
