@@ -16,7 +16,7 @@ function creatorAgentPromptBlock(creatorAgent?: ShapeAgentCreatorContext | null)
 - Skills available to the creator during shaping: ${skills}
 - Identity files visible to the creator: ${files}
 
-Use the creator Agent's available tools and skills to shape the draft. The new Cloud Agent definition may suggest skills, but do not claim its runtime has installed executable tools unless the Cloud runtime actually supports them.`;
+Use the creator agent's available tools and skills to shape the draft. The synchronized definition may suggest skills, but do not claim its runtime has installed executable tools unless that runtime actually supports them.`;
 }
 
 export function buildShapeAgentDraftPrompt(input: {
@@ -28,7 +28,7 @@ export function buildShapeAgentDraftPrompt(input: {
     ? input.resources.map((resource) => `- ${resource.kind}: ${resource.value}`).join('\n')
     : '- description-only';
 
-  return `You are creating a Kordi Cloud Agent draft.
+  return `You are creating a Kordi agent draft that can run locally or through Cloud fallback.
 
 Access model:
 - This Agent is private to the creator's Cloud account by default.

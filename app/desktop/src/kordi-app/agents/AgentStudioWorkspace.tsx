@@ -934,7 +934,7 @@ function ProactiveActivity({
     <section className="app-agent-studio-proactive-activity" aria-label="Proactive collaboration activity">
       <div className="app-agent-studio-section-label">
         <span>Proactive collaboration</span>
-        <small>{agent.cloudAgentProactive?.enabled ? 'Monitoring' : 'Off'}</small>
+        <small>{(agent.proactive ?? agent.cloudAgentProactive)?.enabled ? 'Monitoring' : 'Off'}</small>
       </div>
       {current.loading ? <div className="app-agent-studio-runtime-note"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Loading decisions…</div> : null}
       {current.error ? <div className="app-agent-studio-file-feedback is-error">{current.error}</div> : null}
@@ -1132,7 +1132,7 @@ export function AgentStudioWorkspace({
             mentionPermissions={mentionPermissions}
             onProactiveChange={onProactiveChange}
             onMentionPermissionsChange={onMentionPermissionsChange}
-            showCollaborationPolicies={!standaloneBuild && (creating || Boolean(agent?.cloudAgentId))}
+            showCollaborationPolicies={!standaloneBuild && (creating || agent?.isOwned === true)}
             canEditPrompt={canEditPrompt}
             onPromptChange={onPromptChange}
             onCreationDraftChange={onCreationDraftChange}

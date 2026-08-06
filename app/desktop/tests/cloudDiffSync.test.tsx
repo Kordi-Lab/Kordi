@@ -426,6 +426,7 @@ test('syncCloudDiffOnce applies cloud agent definition events', async () => {
   const storage = memoryStorage();
   const cloudAgent: CloudAgentDefinition = {
     agentId: 'cloud_agent_abc',
+    sourceAgentId: null,
     ownerAccountId: 'acct_me',
     accessScope: 'private',
     status: 'active',
@@ -438,6 +439,8 @@ test('syncCloudDiffOnce applies cloud agent definition events', async () => {
     resources: [],
     skills: [],
     modelRouting: {},
+    proactive: { enabled: false, skillPack: 'proact-v1' },
+    mentionPermissions: { people: true, agents: true },
     createdAt: '2026-06-18T00:00:00Z',
     updatedAt: '2026-06-18T00:00:00Z',
     archivedAt: null,

@@ -57,6 +57,8 @@ export type CloudAgentSkill = {
 };
 
 export type CreateCloudAgentInput = {
+  /** Stable local runtime identity when this definition synchronizes an installed agent. */
+  sourceAgentId?: string | null;
   accessScope?: CloudAgentAccessScope;
   name: string;
   role: string;
@@ -158,11 +160,16 @@ export class CloudAgentsClient {
   }
 
   async createCloudAgent(token: string, input: CreateCloudAgentInput): Promise<CloudAgentDefinition> {
-    const body = await this.send<CloudAgentEnvelope>('/v1/cloud/agents', {
+    const path = input.sourceAgentId?.trim()
+      ? '/v1/cloud/agents/synchronize'
+      : '/v1/cloud/agents';
+    const body = await this.send<CloudAgentEnvelope>(path, {
       method: 'POST',
       headers: this.authHeaders(token),
       body: JSON.stringify(input),
-    }, 'Could not create Cloud Agent.');
+    }, input.sourceAgentId?.trim()
+      ? 'This server cannot synchronize the local agent yet.'
+      : 'Could not create agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
     if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
     return agent;

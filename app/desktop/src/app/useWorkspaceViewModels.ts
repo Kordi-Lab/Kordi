@@ -736,6 +736,17 @@ export function useWorkspaceViewModels({
     const localAgent = desktopChatState?.localAgent;
     const items: Agent[] = [];
     const seen = new Set<string>();
+    const synchronizedDefinitionBySourceAgentId = new Map(
+      Object.values(cloudAgentDefinitionsById).flatMap((definition) => (
+        definition.sourceAgentId ? [[definition.sourceAgentId, definition] as const] : []
+      )),
+    );
+    const withSynchronizedDefinition = (agent: Agent): Agent => {
+      const definition = synchronizedDefinitionBySourceAgentId.get(agent.sourceAgentId ?? agent.id);
+      return definition
+        ? { ...cloudAgentDefinitionToAgent(definition), ...agent }
+        : agent;
+    };
 
     for (const host of desktopCollaborationState?.hosts ?? []) {
       const hostLabel = collaborationLabel(host.serverUrl);
@@ -749,7 +760,7 @@ export function useWorkspaceViewModels({
           ...(localAgentCollaborationReachoutsByAgentId.get(agent.id) ?? []),
           ...(agent.nodeId ? localAgentCollaborationReachoutsByAgentId.get(agent.nodeId) ?? [] : []),
         ].filter((reachout, index, list) => list.findIndex((candidate) => candidate.sessionId === reachout.sessionId) === index);
-        items.push({
+        items.push(withSynchronizedDefinition({
           name: agent.label,
           id: agent.id,
           role: 'My agent',
@@ -798,13 +809,13 @@ export function useWorkspaceViewModels({
           isCollaborationRegistered: agent.registered,
           avatarSeed: agent.id,
           collaborationReachouts,
-        });
+        }));
       }
     }
 
     if (items.length === 0 && localAgent) {
       const localAgentRouting = desktopCollaborationState?.localAgentRouting;
-      items.push({
+      items.push(withSynchronizedDefinition({
         name: localAgent.label,
         id: 'desktop:local-agent',
         role: 'Local desktop agent',
@@ -835,7 +846,7 @@ export function useWorkspaceViewModels({
         isOwned: true,
         isCollaborationActive: true,
         avatarSeed: getLocalAgentAvatarSeed(localAgent.label),
-      });
+      }));
     }
 
     const existingIds = new Set(items.map((agent) => agent.id));

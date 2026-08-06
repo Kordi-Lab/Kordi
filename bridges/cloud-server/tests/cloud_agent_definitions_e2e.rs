@@ -112,12 +112,55 @@ fn cloud_agent_routes_are_mounted_in_source() {
         .expect("read cloud agent routes source");
     assert!(server_source.contains("cloud_agents::routes::routes"));
     assert!(routes_source.contains("/v1/cloud/agents"));
+    assert!(routes_source.contains("/v1/cloud/agents/synchronize"));
     let models_source = std::fs::read_to_string("src/cloud_agents/models.rs")
         .expect("read cloud agent models source");
     let store_source = std::fs::read_to_string("src/cloud_agents/store.rs")
         .expect("read cloud agent store source");
     assert!(models_source.contains("participant_conversations"));
     assert!(store_source.contains("access_scope = $4"));
+}
+
+#[tokio::test]
+async fn local_runtime_agent_synchronization_is_idempotent() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(pool);
+    let (_owner_id, owner_token) = signup(&router, "agent-runtime-binding").await;
+    let mut body = sample_agent_body("My Kordi");
+    body["sourceAgentId"] = json!("local_agent_primary");
+    body["accessScope"] = json!("participant_conversations");
+    body["mentionPermissions"] = json!({ "people": false, "agents": true });
+
+    let first = router
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/v1/cloud/agents/synchronize",
+            Some(&owner_token),
+            Body::from(body.to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let first = read_json(first).await;
+    let agent_id = first["agent"]["agentId"].as_str().unwrap().to_string();
+    assert_eq!(first["agent"]["sourceAgentId"], "local_agent_primary");
+
+    body["name"] = json!("My Kordi updated");
+    let second = router
+        .oneshot(request(
+            Method::POST,
+            "/v1/cloud/agents/synchronize",
+            Some(&owner_token),
+            Body::from(body.to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let second = read_json(second).await;
+    assert_eq!(second["agent"]["agentId"], agent_id);
+    assert_eq!(second["agent"]["name"], "My Kordi updated");
+    assert_eq!(second["agent"]["mentionPermissions"]["people"], false);
 }
 
 #[test]

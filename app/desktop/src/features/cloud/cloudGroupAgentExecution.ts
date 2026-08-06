@@ -14,6 +14,7 @@ import type {
   AppendCanonicalMessageRequest,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
+import { cloudAgentDefinitionForRuntimeAgentIds } from './cloudAgents';
 import { cloudGroupAgentCancelledNoticeRequest } from './cloudAgentCancellation';
 import {
   cloudAgentNoProviderNoticeText,
@@ -72,12 +73,23 @@ export async function respondToCloudGroupAgentMention(
   } = context;
   const message = envelope.message!;
   const targetCloudAgentId = message.targetCloudAgentId?.trim() ?? '';
+  const localRuntimeAgentIds = new Set(
+    envelope.participants
+      .find((participant) => participant.accountId === account.accountId)
+      ?.agentIds
+      ?.map((agentId) => agentId.trim().replace(/^cloud-agent:/, ''))
+      .filter(Boolean)
+      ?? [],
+  );
   const targetDefinition = targetCloudAgentId
     ? runtime.agentDefinitionsById[targetCloudAgentId]
-    : null;
-  const mentionPermissions = targetCloudAgentId
-    ? (targetDefinition?.mentionPermissions ?? { people: false, agents: false })
-    : { people: true, agents: true };
+    : cloudAgentDefinitionForRuntimeAgentIds(
+        runtime.agentDefinitionsById,
+        localRuntimeAgentIds,
+      );
+  const effectiveTargetCloudAgentId = targetDefinition?.agentId ?? targetCloudAgentId;
+  const mentionPermissions = targetDefinition?.mentionPermissions
+    ?? (targetCloudAgentId ? { people: false, agents: false } : { people: true, agents: true });
   const session = await loadSession();
   if (!session?.token) throw new Error('Not signed in.');
   throwIfCloudAgentTurnAborted(signal);
@@ -213,7 +225,7 @@ export async function respondToCloudGroupAgentMention(
         .map((attachment) => attachment.localPath?.trim() || '')
         .filter(Boolean),
       cloudAgentRuntimeRouteForTargetCloudAgent({
-        targetCloudAgentId: message.targetCloudAgentId,
+        targetCloudAgentId: effectiveTargetCloudAgentId,
         cloudAgentDefinitionsById: runtime.agentDefinitionsById,
         routesByRuntimeSessionId: runtime.routesBySessionId,
         runtimeSessionId,

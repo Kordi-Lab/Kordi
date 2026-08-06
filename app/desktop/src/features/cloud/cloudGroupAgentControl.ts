@@ -2,6 +2,7 @@ import {
   beginChatPerformanceSpan,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
+import { cloudAgentDefinitionForRuntimeAgentIds } from './cloudAgents';
 import { cloudGroupAgentRuntimeSessionId } from './cloudAgentRuntime';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import { respondToCloudGroupAgentMention } from './cloudGroupAgentExecution';
@@ -39,6 +40,19 @@ export async function applyCloudGroupAgentControl(
   ) return;
 
   const replaySpan = beginChatPerformanceSpan('cloud-group-replay');
+  const targetDefinition = message.targetCloudAgentId?.trim()
+    ? runtime.agentDefinitionsById[message.targetCloudAgentId.trim()]
+    : cloudAgentDefinitionForRuntimeAgentIds(
+        runtime.agentDefinitionsById,
+        envelope.participants
+          .find((participant) => participant.accountId === account.accountId)
+          ?.agentIds ?? [],
+      );
+  if (targetDefinition && targetDefinition.accessScope !== 'participant_conversations') {
+    finishChatPerformanceSpan(replaySpan, { resultClass: 'cancelled' });
+    return;
+  }
+
   const currentRows = runtime.messageIndex().groupRows;
   if (
     cloudGroupLocalAgentRequestAlreadyHandled({

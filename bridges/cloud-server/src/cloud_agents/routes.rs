@@ -4,7 +4,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 use axum::{Extension, Json, Router};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,7 @@ struct ProactiveRunsResponse {
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/v1/cloud/agents", get(list_agents).post(create_agent))
+        .route("/v1/cloud/agents/synchronize", post(synchronize_agent))
         .route("/v1/cloud/agents/shared", get(list_shared_agents))
         .route(
             "/v1/cloud/agents/:agent_id",
@@ -140,6 +141,29 @@ async fn create_agent(
     match create_agent_definition(state.db_pool(), &session.account_id, input, Utc::now()).await {
         Ok(agent) => (StatusCode::CREATED, Json(CloudAgentEnvelope { agent })).into_response(),
         Err(err) => store_error_response("create", err),
+    }
+}
+
+async fn synchronize_agent(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(input): Json<CreateCloudAgentRequest>,
+) -> Response {
+    if input
+        .source_agent_id
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        return error_response(
+            "invalid_cloud_agent",
+            "A local runtime identity is required to synchronize this agent.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    match create_agent_definition(state.db_pool(), &session.account_id, input, Utc::now()).await {
+        Ok(agent) => Json(CloudAgentEnvelope { agent }).into_response(),
+        Err(err) => store_error_response("synchronize", err),
     }
 }
 

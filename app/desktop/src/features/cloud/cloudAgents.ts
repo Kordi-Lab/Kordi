@@ -11,6 +11,7 @@ import type {
 
 export type CloudAgentDefinition = {
   agentId: string;
+  sourceAgentId: string | null;
   ownerAccountId: string;
   accessScope: CloudAgentAccessScope;
   status: CloudAgentStatus;
@@ -118,6 +119,7 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
   }
   return {
     agentId,
+    sourceAgentId: cleanNullableText(record.sourceAgentId),
     ownerAccountId,
     accessScope: accessScope as CloudAgentAccessScope,
     status: status as CloudAgentStatus,
@@ -139,7 +141,7 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
 }
 
 function cloudAgentId(definition: CloudAgentDefinition): string {
-  return `cloud-agent:${definition.agentId}`;
+  return definition.sourceAgentId ?? `cloud-agent:${definition.agentId}`;
 }
 
 export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): Agent {
@@ -153,7 +155,7 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     name: definition.name,
     id: cloudAgentId(definition),
     role: definition.role,
-    messaging: 'Cloud synced',
+    messaging: 'Local + Cloud',
     status: definition.accessScope === 'private' ? 'Private' : 'Shared',
     tasks: 0,
     defaultProvider: 'Cloud',
@@ -161,7 +163,7 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     defaultAuthProvider,
     defaultAuthChoice,
     defaultThinking,
-    collaborationConfig: 'Cloud Agent',
+    collaborationConfig: 'Local + Cloud',
     contactId: cloudAgentId(definition),
     systemPrompt: definition.systemPrompt,
     xMd: definition.sourceSummary ?? definition.description ?? '',
@@ -177,10 +179,13 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     isOwned: true,
     isCollaborationRegistered: true,
     avatarSeed: definition.agentId,
+    sourceAgentId: definition.sourceAgentId ?? undefined,
     cloudAgentId: definition.agentId,
     cloudAgentAccessScope: definition.accessScope,
     cloudAgentProactive: definition.proactive,
     cloudAgentMentionPermissions: definition.mentionPermissions,
+    proactive: definition.proactive,
+    mentionPermissions: definition.mentionPermissions,
     cloudAgentOwnerAccountId: definition.ownerAccountId,
     cloudAgentDescription: definition.description,
     cloudAgentSourceSummary: definition.sourceSummary,
@@ -188,6 +193,21 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     cloudAgentResources: definition.resources,
     cloudAgentSkills: definition.skills,
   };
+}
+
+export function cloudAgentDefinitionForRuntimeAgentIds(
+  definitionsById: Record<string, CloudAgentDefinition>,
+  runtimeAgentIds: Iterable<string>,
+): CloudAgentDefinition | null {
+  const normalizedIds = new Set(
+    Array.from(runtimeAgentIds, (agentId) => agentId.trim().replace(/^cloud-agent:/, ''))
+      .filter(Boolean),
+  );
+  if (normalizedIds.size === 0) return null;
+  return Object.values(definitionsById).find((definition) => {
+    const sourceAgentId = definition.sourceAgentId?.trim().replace(/^cloud-agent:/, '');
+    return Boolean(sourceAgentId && normalizedIds.has(sourceAgentId));
+  }) ?? null;
 }
 
 export type SharedCloudAgentSummary = {

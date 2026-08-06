@@ -75,6 +75,7 @@ pub struct CloudAgentSkill {
 #[serde(rename_all = "camelCase")]
 pub struct CloudAgentDefinition {
     pub agent_id: String,
+    pub source_agent_id: Option<String>,
     pub owner_account_id: String,
     pub access_scope: String,
     pub status: String,
@@ -110,6 +111,7 @@ pub struct SharedCloudAgentSummary {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCloudAgentRequest {
+    pub source_agent_id: Option<String>,
     pub access_scope: Option<String>,
     pub name: String,
     pub role: String,

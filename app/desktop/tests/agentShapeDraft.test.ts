@@ -53,7 +53,8 @@ test('buildFallbackShapeAgentDraft creates a usable private agent draft from inp
   });
 
   assert.equal(draft.name, 'Technical Support Helper');
-  assert.match(draft.systemPrompt, /private Cloud agent/i);
+  assert.match(draft.systemPrompt, /private agent/i);
+  assert.doesNotMatch(draft.systemPrompt, /private Cloud agent/i);
   assert.match(draft.sourceSummary, /https:\/\/docs\.example\.com/);
   assert.ok(draft.skills.some((skill) => skill.name === 'navigate-knowledge'));
 });

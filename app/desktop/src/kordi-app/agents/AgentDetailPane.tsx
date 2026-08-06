@@ -29,7 +29,7 @@ export async function archiveAgentFromMenu({
   onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
   onFeedback?: (feedback: ArchiveAgentFeedback | null) => void;
 }) {
-  if (!agent.cloudAgentId || !onArchiveCloudAgent) return false;
+  if (!agent.cloudAgentId || agent.sourceAgentId || !onArchiveCloudAgent) return false;
 
   onFeedback?.({ tone: 'info', text: `Deleting ${agent.name}…` });
   try {
@@ -125,7 +125,7 @@ function AgentActionsMenu({ agent, onRequestArchive }: {
   agent: Agent;
   onRequestArchive?: (agent: Agent) => void;
 }) {
-  if (!agent.cloudAgentId || !onRequestArchive) return null;
+  if (!agent.cloudAgentId || agent.sourceAgentId || !onRequestArchive) return null;
   return (
     <details className="relative">
       <summary

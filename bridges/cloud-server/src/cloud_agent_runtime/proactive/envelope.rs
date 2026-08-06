@@ -116,13 +116,17 @@ pub(super) fn contains_agent(
     participants: &[Participant],
     owner_account_id: &str,
     agent_id: &str,
+    source_agent_id: Option<&str>,
 ) -> bool {
     participants.iter().any(|participant| {
         participant.account_id.trim() == owner_account_id.trim()
-            && participant
-                .agent_ids
-                .iter()
-                .any(|candidate| normalized_agent_id(candidate) == normalized_agent_id(agent_id))
+            && participant.agent_ids.iter().any(|candidate| {
+                let normalized = normalized_agent_id(candidate);
+                normalized == normalized_agent_id(agent_id)
+                    || source_agent_id.is_some_and(|source_agent_id| {
+                        normalized == normalized_agent_id(source_agent_id)
+                    })
+            })
     })
 }
 
@@ -131,6 +135,7 @@ pub(super) async fn history(
     session_id: &str,
     owner_account_id: &str,
     agent_id: &str,
+    source_agent_id: Option<&str>,
 ) -> Result<Vec<Message>, sqlx_core::Error> {
     let rows = query_as::<_, (String,)>(
         "SELECT body FROM cloud_messages
@@ -147,7 +152,12 @@ pub(super) async fn history(
         .filter_map(|(body,)| {
             let envelope = parse(&body)?;
             if !is_history_message(&envelope)
-                || !contains_agent(&envelope.participants, owner_account_id, agent_id)
+                || !contains_agent(
+                    &envelope.participants,
+                    owner_account_id,
+                    agent_id,
+                    source_agent_id,
+                )
             {
                 return None;
             }
@@ -210,5 +220,28 @@ mod tests {
         let candidate = envelope("I already answered the question.", Some("agent"), None);
         assert!(is_history_message(&candidate));
         assert!(!is_context_trigger(&candidate));
+    }
+
+    #[test]
+    fn participant_membership_accepts_the_cloud_id_or_bound_local_runtime_id() {
+        let participant = Participant {
+            account_id: "acct_owner".to_string(),
+            agent_ids: vec!["local_agent_primary".to_string()],
+        };
+        assert!(contains_agent(
+            &[participant.clone()],
+            "acct_owner",
+            "cloud_agent_synced",
+            Some("local_agent_primary"),
+        ));
+        assert!(contains_agent(
+            &[Participant {
+                agent_ids: vec!["cloud-agent:cloud_agent_synced".to_string()],
+                ..participant
+            }],
+            "acct_owner",
+            "cloud_agent_synced",
+            Some("local_agent_primary"),
+        ));
     }
 }

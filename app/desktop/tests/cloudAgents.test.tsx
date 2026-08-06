@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { CloudAgentsClient } from '../src/features/cloud/cloudAgentsClient';
 import {
   applyCloudAgentSyncEvents,
+  cloudAgentDefinitionForRuntimeAgentIds,
   cloudAgentDefinitionToAgent,
   cloudAgentDefinitionToSharedCloudAgentSummary,
   normalizeCloudAgentDefinition,
@@ -72,6 +73,31 @@ test('normalizeCloudAgentDefinition preserves proactive and outbound mention set
   const mapped = cloudAgentDefinitionToAgent(agent!);
   assert.deepEqual(mapped.cloudAgentProactive, agent?.proactive);
   assert.deepEqual(mapped.cloudAgentMentionPermissions, agent?.mentionPermissions);
+  assert.deepEqual(mapped.proactive, agent?.proactive);
+  assert.deepEqual(mapped.mentionPermissions, agent?.mentionPermissions);
+});
+
+test('synchronized definitions keep one local identity and resolve its Cloud policy', () => {
+  const definition = normalizeCloudAgentDefinition({
+    ...rawAgent,
+    sourceAgentId: 'local_agent_primary',
+    accessScope: 'participant_conversations',
+    proactive: { enabled: true, skillPack: 'proact-v1' },
+    mentionPermissions: { people: false, agents: true },
+  });
+  assert.ok(definition);
+
+  const mapped = cloudAgentDefinitionToAgent(definition);
+  assert.equal(mapped.id, 'local_agent_primary');
+  assert.equal(mapped.sourceAgentId, 'local_agent_primary');
+  assert.equal(mapped.cloudAgentId, 'cloud_agent_abc');
+  assert.equal(
+    cloudAgentDefinitionForRuntimeAgentIds(
+      { [definition.agentId]: definition },
+      ['cloud-agent:local_agent_primary'],
+    )?.agentId,
+    'cloud_agent_abc',
+  );
 });
 
 test('normalizeCloudAgentDefinition accepts participant conversation owned agents', () => {
@@ -140,7 +166,7 @@ test('cloudAgentDefinitionToAgent maps private cloud definition into Agent page 
   assert.equal(agent.id, 'cloud-agent:cloud_agent_abc');
   assert.equal(agent.name, 'Docs Helper');
   assert.equal(agent.status, 'Private');
-  assert.equal(agent.messaging, 'Cloud synced');
+  assert.equal(agent.messaging, 'Local + Cloud');
   assert.equal(agent.systemPrompt, 'Use docs only.');
   assert.deepEqual(agent.loadedSkills, ['navigate-knowledge']);
   assert.deepEqual(agent.loadedTools, ['read', 'grep']);
@@ -198,6 +224,9 @@ test('CloudAgentsClient lists creates updates and archives cloud agents with bea
     if (String(url).endsWith('/v1/cloud/agents') && init.method === 'POST') {
       return new Response(JSON.stringify({ agent: rawAgent }), { status: 201 });
     }
+    if (String(url).endsWith('/v1/cloud/agents/synchronize') && init.method === 'POST') {
+      return new Response(JSON.stringify({ agent: { ...rawAgent, sourceAgentId: 'local_agent_primary' } }), { status: 200 });
+    }
     if (String(url).endsWith('/v1/cloud/agents/cloud_agent_abc') && init.method === 'PUT') {
       return new Response(JSON.stringify({ agent: { ...rawAgent, name: 'Docs Helper v2' } }), { status: 200 });
     }
@@ -213,11 +242,12 @@ test('CloudAgentsClient lists creates updates and archives cloud agents with bea
   const client = new CloudAgentsClient({ baseUrl: 'https://cloud.example', fetchImpl });
   assert.equal((await client.listCloudAgents('token')).length, 1);
   assert.equal((await client.createCloudAgent('token', rawAgent)).agentId, 'cloud_agent_abc');
+  assert.equal((await client.createCloudAgent('token', { ...rawAgent, sourceAgentId: 'local_agent_primary' })).sourceAgentId, 'local_agent_primary');
   assert.equal((await client.updateCloudAgent('token', 'cloud_agent_abc', { name: 'Docs Helper v2' })).name, 'Docs Helper v2');
   assert.equal((await client.archiveCloudAgent('token', 'cloud_agent_abc')).status, 'archived');
   assert.equal((await client.listSharedCloudAgents('token', ['acct_owner']))[0]?.agentId, 'cloud_agent_shared');
 
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 6);
   for (const call of calls) {
     assert.equal((call.init.headers as Record<string, string>).authorization, 'Bearer token');
   }

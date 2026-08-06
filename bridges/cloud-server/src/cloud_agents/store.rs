@@ -24,6 +24,7 @@ const RESOURCE_VALUE_MAX_LEN: usize = 4_000;
 const SKILL_MAX_ITEMS: usize = 12;
 const SKILL_FIELD_MAX_LEN: usize = 240;
 const SKILL_CONTENT_MAX_LEN: usize = 96_000;
+const SOURCE_AGENT_ID_MAX_LEN: usize = 240;
 
 #[derive(Debug)]
 pub enum CloudAgentStoreError {
@@ -111,6 +112,7 @@ fn json_or_array<T: serde::Serialize>(
 
 struct CloudAgentRow {
     agent_id: String,
+    source_agent_id: Option<String>,
     owner_account_id: String,
     access_scope: String,
     status: String,
@@ -138,6 +140,7 @@ impl<'r> sqlx_core::from_row::FromRow<'r, sqlx_postgres::PgRow> for CloudAgentRo
 
         Ok(Self {
             agent_id: row.try_get("agent_id")?,
+            source_agent_id: row.try_get("source_agent_id")?,
             owner_account_id: row.try_get("owner_account_id")?,
             access_scope: row.try_get("access_scope")?,
             status: row.try_get("status")?,
@@ -164,6 +167,7 @@ impl<'r> sqlx_core::from_row::FromRow<'r, sqlx_postgres::PgRow> for CloudAgentRo
 fn row_to_definition(row: CloudAgentRow) -> CloudAgentDefinition {
     CloudAgentDefinition {
         agent_id: row.agent_id,
+        source_agent_id: row.source_agent_id,
         owner_account_id: row.owner_account_id,
         access_scope: row.access_scope,
         status: row.status,
@@ -240,6 +244,48 @@ pub async fn create_agent_definition(
     input: CreateCloudAgentRequest,
     now: DateTime<Utc>,
 ) -> Result<CloudAgentDefinition, CloudAgentStoreError> {
+    let source_agent_id =
+        clean_optional_text(input.source_agent_id.as_deref(), SOURCE_AGENT_ID_MAX_LEN)
+            .map_err(CloudAgentStoreError::Invalid)?;
+    if let Some(source_agent_id) = source_agent_id.as_deref() {
+        let existing: Option<(String,)> = query_as(
+            "SELECT agent_id FROM cloud_agent_definitions
+             WHERE owner_account_id = $1 AND source_agent_id = $2
+               AND status = 'active' AND is_system_managed = FALSE",
+        )
+        .bind(owner_account_id)
+        .bind(source_agent_id)
+        .fetch_optional(pool)
+        .await?;
+        if let Some((agent_id,)) = existing {
+            return update_agent_definition(
+                pool,
+                owner_account_id,
+                &agent_id,
+                UpdateCloudAgentRequest {
+                    access_scope: input.access_scope,
+                    name: Some(input.name),
+                    role: Some(input.role),
+                    description: input.description,
+                    system_prompt: Some(input.system_prompt),
+                    source_summary: input.source_summary,
+                    boundaries: Some(input.boundaries),
+                    resources: Some(input.resources),
+                    skills: Some(input.skills),
+                    model_routing: input.model_routing,
+                    proactive: input.proactive,
+                    mention_permissions: input.mention_permissions,
+                },
+                now,
+            )
+            .await?
+            .ok_or_else(|| {
+                CloudAgentStoreError::Invalid(
+                    "The synchronized agent definition is no longer available.".to_string(),
+                )
+            });
+        }
+    }
     let access_scope =
         clean_access_scope(input.access_scope.as_deref()).map_err(CloudAgentStoreError::Invalid)?;
     let name = clean_required_text(&input.name, "name", NAME_MAX_LEN)
@@ -265,17 +311,18 @@ pub async fn create_agent_definition(
 
     let row = query_as::<_, CloudAgentRow>(
         "INSERT INTO cloud_agent_definitions (
-             agent_id, owner_account_id, access_scope, status, name, role, description,
+             agent_id, source_agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, proactive_enabled, proactive_skill_pack,
              mention_people_enabled, mention_agents_enabled, created_at, updated_at
-         ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
-         RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
+         ) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18)
+         RETURNING agent_id, source_agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, proactive_enabled, proactive_skill_pack,
              mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at",
     )
     .bind(&agent_id)
+    .bind(&source_agent_id)
     .bind(owner_account_id)
     .bind(&access_scope)
     .bind(&name)
@@ -311,7 +358,7 @@ pub async fn list_agent_definitions(
     owner_account_id: &str,
 ) -> Result<Vec<CloudAgentDefinition>, CloudAgentStoreError> {
     let rows = query_as::<_, CloudAgentRow>(
-        "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
+        "SELECT agent_id, source_agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, proactive_enabled, proactive_skill_pack,
              mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at
@@ -348,6 +395,7 @@ pub async fn list_shared_agent_summaries(
          WHERE a.owner_account_id = ANY($1)
            AND a.status = $2
            AND a.access_scope = $3
+           AND a.source_agent_id IS NULL
            AND a.is_system_managed = FALSE
          ORDER BY a.updated_at DESC, a.agent_id ASC",
     )
@@ -445,7 +493,7 @@ pub async fn update_agent_definition(
              mention_people_enabled = $16, mention_agents_enabled = $17, updated_at = $18
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = $3
            AND is_system_managed = FALSE
-         RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
+         RETURNING agent_id, source_agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, proactive_enabled, proactive_skill_pack,
              mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at",
@@ -500,7 +548,7 @@ pub async fn archive_agent_definition(
          SET status = $4, archived_at = $3, updated_at = $3
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = 'active'
            AND is_system_managed = FALSE
-         RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
+         RETURNING agent_id, source_agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, proactive_enabled, proactive_skill_pack,
              mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at",
@@ -533,7 +581,7 @@ async fn get_agent_definition(
     agent_id: &str,
 ) -> Result<Option<CloudAgentDefinition>, CloudAgentStoreError> {
     let row = query_as::<_, CloudAgentRow>(
-        "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
+        "SELECT agent_id, source_agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
              model_routing_json, proactive_enabled, proactive_skill_pack,
              mention_people_enabled, mention_agents_enabled, created_at, updated_at, archived_at

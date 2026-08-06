@@ -111,6 +111,7 @@ pub async fn enqueue_runs_for_message(
     let not_before = (now + chrono::Duration::seconds(quiet_window_seconds())).to_rfc3339();
     let cooldown_cutoff = (now - chrono::Duration::minutes(5)).to_rfc3339();
     let mut seen_agents = HashSet::new();
+    let mut seen_definitions = HashSet::new();
     let mut candidates = Vec::new();
     for participant in &envelope.participants {
         for raw_agent_id in &participant.agent_ids {
@@ -118,10 +119,10 @@ pub async fn enqueue_runs_for_message(
             if agent_id.is_empty() || !seen_agents.insert(agent_id.clone()) {
                 continue;
             }
-            let definition: Option<(String, String, String)> = query_as(
-                "SELECT name, system_prompt, owner_account_id
+            let definition: Option<(String, Option<String>, String, String, String)> = query_as(
+                "SELECT agent_id, source_agent_id, name, system_prompt, owner_account_id
                  FROM cloud_agent_definitions
-                 WHERE agent_id = $1
+                 WHERE (agent_id = $1 OR source_agent_id = $1)
                    AND owner_account_id = $2
                    AND status = 'active'
                    AND access_scope = 'participant_conversations'
@@ -134,9 +135,14 @@ pub async fn enqueue_runs_for_message(
             .bind(SKILL_PACK_ID)
             .fetch_optional(pool)
             .await?;
-            let Some((agent_name, system_prompt, owner_account_id)) = definition else {
+            let Some((agent_id, source_agent_id, agent_name, system_prompt, owner_account_id)) =
+                definition
+            else {
                 continue;
             };
+            if !seen_definitions.insert(agent_id.clone()) {
+                continue;
+            }
             let recent_intervention: Option<(String,)> = query_as(
                 "SELECT run_id FROM cloud_agent_fallback_runs
                  WHERE target_agent_id = $1
@@ -154,7 +160,14 @@ pub async fn enqueue_runs_for_message(
             if recent_intervention.is_some() {
                 continue;
             }
-            let history = history(pool, session_id, &owner_account_id, &agent_id).await?;
+            let history = history(
+                pool,
+                session_id,
+                &owner_account_id,
+                &agent_id,
+                source_agent_id.as_deref(),
+            )
+            .await?;
             let sandbox =
                 ensure_sandbox_for_run(pool, session_id, &owner_account_id, sender_account_id)
                     .await?;

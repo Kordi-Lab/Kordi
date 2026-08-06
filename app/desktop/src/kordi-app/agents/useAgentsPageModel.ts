@@ -377,7 +377,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
 
   const markAgentDraftPublished = (agent: Agent, draft: AgentStudioConfigDraft, action = 'Published Factory draft') => {
     const previous = persistedAgentConfigs[agent.id] ?? buildPersistedAgentConfig(agent);
-    const path = getAgentConfigPath(agent) ?? (agent.cloudAgentId ? 'Cloud Agent' : 'Local runtime');
+    const path = getAgentConfigPath(agent) ?? (agent.cloudAgentId ? 'Synchronized agent' : 'Local runtime');
     const nextPersisted: PersistedAgentConfig = {
       ...draft,
       editHistory: [

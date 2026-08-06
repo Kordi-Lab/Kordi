@@ -40,7 +40,7 @@ export function useKordiCloudAgentActions({
   const updateCloudAgent = useCallback(
     async (agent: Agent, input: UpdateCloudAgentInput) => {
       if (!agent.cloudAgentId) {
-        throw new Error('Only Cloud Agents can be updated here.');
+        throw new Error('This agent has not been synchronized yet.');
       }
       const definition = await updateCloudAgentDefinition(
         agent.cloudAgentId,
@@ -57,7 +57,7 @@ export function useKordiCloudAgentActions({
   const archiveCloudAgent = useCallback(
     async (agent: Agent) => {
       if (!agent.cloudAgentId) {
-        throw new Error('Only private Cloud Agents can be deleted here.');
+        throw new Error('This agent cannot be deleted here.');
       }
       await archiveCloudAgentDefinition(agent.cloudAgentId);
       await refreshCloudAgents().catch(() => undefined);

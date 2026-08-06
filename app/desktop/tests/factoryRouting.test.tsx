@@ -69,8 +69,8 @@ test('Agent inspection exposes published configuration and routes every change t
   assert.equal(edits, 0);
 });
 
-test('owned Cloud agents expose access and collaboration policy controls in Build', () => {
-  const localAgent = { ...agent, id: 'cloud-agent:alpha', cloudAgentId: 'cloud_agent_alpha' };
+test('My Kordi and every owned agent expose collaboration policy controls in Build', () => {
+  const localAgent = { ...agent, id: 'desktop:local-agent', messaging: 'Local runtime' };
   const html = renderToStaticMarkup(
     <AgentStudioWorkspace
       agent={localAgent}
@@ -123,7 +123,6 @@ test('owned Cloud agents expose access and collaboration policy controls in Buil
   assert.match(html, /@mention permissions/);
   assert.match(html, /aria-label="Allow @mentions of people"/);
   assert.match(html, /aria-label="Allow @mentions of agents"/);
-  assert.doesNotMatch(html, /Local runtime/);
 });
 
 test('Tool and Plugin inspection remain read-only and expose exact Build routing', () => {

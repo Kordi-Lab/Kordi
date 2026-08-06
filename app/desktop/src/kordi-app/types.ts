@@ -313,6 +313,14 @@ export type Agent = {
     people: boolean;
     agents: boolean;
   };
+  proactive?: {
+    enabled: boolean;
+    skillPack: 'proact-v1';
+  };
+  mentionPermissions?: {
+    people: boolean;
+    agents: boolean;
+  };
   cloudAgentOwnerAccountId?: string;
   cloudAgentDescription?: string | null;
   cloudAgentSourceSummary?: string | null;

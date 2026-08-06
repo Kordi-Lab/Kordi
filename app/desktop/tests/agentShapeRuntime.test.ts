@@ -80,5 +80,6 @@ test('draftShapeAgentWithRunner falls back when model output is malformed', asyn
 
   assert.equal(result.source, 'fallback');
   assert.equal(result.draft.name, 'Technical Support Helper');
-  assert.match(result.error ?? '', /valid Cloud Agent JSON/);
+  assert.match(result.error ?? '', /valid agent JSON/);
+  assert.doesNotMatch(result.error ?? '', /Cloud Agent/);
 });

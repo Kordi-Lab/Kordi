@@ -7,6 +7,54 @@ use super::envelopes::{cloud_group_request_envelope_for_run, direct_cloud_agent_
 use super::group_mentions::agent_handoff_target;
 use super::{ClaimRunRequest, RunResult};
 
+fn normalized_agent_id(value: &str) -> &str {
+    value
+        .trim()
+        .strip_prefix("cloud-agent:")
+        .unwrap_or(value.trim())
+}
+
+async fn synchronized_agent_target_for_envelope(
+    pool: &PgPool,
+    envelope: &super::envelopes::CloudGroupEnvelope,
+    owner_account_id: &str,
+) -> Result<Option<SharedCloudAgentTarget>, sqlx_core::Error> {
+    let Some(participant) = envelope
+        .participants
+        .iter()
+        .find(|participant| participant.account_id.trim() == owner_account_id.trim())
+    else {
+        return Ok(None);
+    };
+    for source_agent_id in participant
+        .agent_ids
+        .iter()
+        .map(|value| normalized_agent_id(value))
+        .filter(|value| !value.is_empty())
+    {
+        let row: Option<(String,)> = query_as(
+            "SELECT agent_id FROM cloud_agent_definitions
+             WHERE owner_account_id = $1
+               AND (agent_id = $2 OR source_agent_id = $2)
+               AND status = 'active' AND is_system_managed = FALSE
+             LIMIT 1",
+        )
+        .bind(owner_account_id)
+        .bind(source_agent_id)
+        .fetch_optional(pool)
+        .await?;
+        if let Some((agent_id,)) = row {
+            return Ok(Some(SharedCloudAgentTarget {
+                agent_id,
+                owner_account_id: owner_account_id.to_string(),
+                owner_name: Some(participant.display_name.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+            }));
+        }
+    }
+    Ok(None)
+}
+
 async fn source_agent_allows_group_handoff(
     pool: &PgPool,
     input: &ClaimRunRequest,
@@ -23,12 +71,24 @@ async fn source_agent_allows_group_handoff(
     };
     let source_request =
         cloud_group_request_envelope_for_run(pool, &input.session_id, request_message_id).await?;
-    let Some(source_agent_id) = source_request
-        .and_then(|request| request.message)
-        .and_then(|message| message.target_cloud_agent_id)
-        .map(|value| value.trim().to_string())
+    let Some(source_request) = source_request else {
+        return Ok(true);
+    };
+    let source_agent_id = source_request
+        .message
+        .as_ref()
+        .and_then(|message| message.target_cloud_agent_id.as_deref())
+        .map(str::trim)
         .filter(|value| !value.is_empty())
-    else {
+        .map(ToString::to_string);
+    let source_agent_id = if let Some(source_agent_id) = source_agent_id {
+        source_agent_id
+    } else if let Some(target) =
+        synchronized_agent_target_for_envelope(pool, &source_request, &input.requester_account_id)
+            .await?
+    {
+        target.agent_id
+    } else {
         return Ok(true);
     };
     let row: Option<(bool,)> = query_as(
@@ -101,7 +161,7 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
             .await?
     {
-        if let Some(message) = envelope.message {
+        if let Some(message) = envelope.message.as_ref() {
             if let Some(agent_id) = message
                 .target_cloud_agent_id
                 .as_deref()
@@ -127,6 +187,11 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
                         .map(ToString::to_string),
                 }));
             }
+        }
+        if let Some(target) =
+            synchronized_agent_target_for_envelope(pool, &envelope, &input.owner_account_id).await?
+        {
+            return Ok(Some(target));
         }
     }
 

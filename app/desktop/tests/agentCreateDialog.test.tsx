@@ -53,7 +53,7 @@ const cloudAgent: Agent = {
   isOwned: true,
 };
 
-test('AgentCreateDialog shows real cloud access options', () => {
+test('AgentCreateDialog shows unified local and cloud access options', () => {
   const markup = renderToStaticMarkup(createElement(AgentCreateDialog, {
     open: true,
     creatorAgent,
@@ -61,7 +61,8 @@ test('AgentCreateDialog shows real cloud access options', () => {
     onCreateCloudAgent: async () => cloudAgent,
   }));
 
-  assert.match(markup, /Create Cloud Agent/);
+  assert.match(markup, /Create Agent/);
+  assert.doesNotMatch(markup, /Create Cloud Agent/);
   assert.match(markup, /Created by Kordi/);
   assert.match(markup, /3 tools/);
   assert.match(markup, /2 skills/);

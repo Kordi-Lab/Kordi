@@ -351,14 +351,14 @@ export function AgentsPage({
     selectedAgent && selectedAccessScope !== publishedAccessScope,
   );
   const builderDraft = builder.status?.draft;
-  const cloudDefinitionChanges = selectedAgent?.cloudAgentId && builderDraft ? [
+  const definitionChanges = selectedAgent && builderDraft ? [
     builderDraft.name !== selectedAgent.name ? { key: 'definition' as const, label: 'Agent name updated', detail: builderDraft.name } : null,
     builderDraft.role !== selectedAgent.role ? { key: 'definition' as const, label: 'Agent role updated', detail: builderDraft.role } : null,
     builderDraft.description !== (selectedAgent.cloudAgentDescription ?? '') ? { key: 'definition' as const, label: 'Agent description updated', detail: builderDraft.description || 'Cleared' } : null,
     builderDraft.sourceSummary !== (selectedAgent.cloudAgentSourceSummary ?? '') ? { key: 'definition' as const, label: 'Source summary updated', detail: builderDraft.sourceSummary || 'Cleared' } : null,
     JSON.stringify(builderDraft.boundaries) !== JSON.stringify(selectedAgent.cloudAgentBoundaries ?? []) ? { key: 'definition' as const, label: 'Agent boundaries updated', detail: `${builderDraft.boundaries.length} configured` } : null,
-    builderDraft.proactive.enabled !== (selectedAgent.cloudAgentProactive?.enabled ?? false) ? { key: 'proactive' as const, label: 'Proactive collaboration updated', detail: builderDraft.proactive.enabled ? 'On' : 'Off' } : null,
-    JSON.stringify(builderDraft.mentionPermissions) !== JSON.stringify(selectedAgent.cloudAgentMentionPermissions ?? { people: true, agents: true }) ? { key: 'mentions' as const, label: '@mention permissions updated', detail: [builderDraft.mentionPermissions.people ? 'People' : null, builderDraft.mentionPermissions.agents ? 'Agents' : null].filter(Boolean).join(' and ') || 'None' } : null,
+    builderDraft.proactive.enabled !== ((selectedAgent.proactive ?? selectedAgent.cloudAgentProactive)?.enabled ?? false) ? { key: 'proactive' as const, label: 'Proactive collaboration updated', detail: builderDraft.proactive.enabled ? 'On' : 'Off' } : null,
+    JSON.stringify(builderDraft.mentionPermissions) !== JSON.stringify(selectedAgent.mentionPermissions ?? selectedAgent.cloudAgentMentionPermissions ?? { people: true, agents: true }) ? { key: 'mentions' as const, label: '@mention permissions updated', detail: [builderDraft.mentionPermissions.people ? 'People' : null, builderDraft.mentionPermissions.agents ? 'Agents' : null].filter(Boolean).join(' and ') || 'None' } : null,
   ].filter((change): change is NonNullable<typeof change> => Boolean(change)) : [];
   const publishedRouting = modelRoutingForAgent(selectedAgent);
   const builderRouting = builder.status?.draft ? {
@@ -369,7 +369,7 @@ export function AgentsPage({
   } : publishedRouting;
   const selectedRouting = selectedAgent ? routingDraftByAgentId[selectedAgent.id] ?? builderRouting : publishedRouting;
   const routingChanged = Boolean(selectedAgent && !sameModelRouting(selectedRouting, publishedRouting));
-  const studioChangesWithDefinition = [...activeDraftChanges, ...cloudDefinitionChanges];
+  const studioChangesWithDefinition = [...activeDraftChanges, ...definitionChanges];
   const studioChangesWithAccess = accessChanged
     ? [...studioChangesWithDefinition, { key: 'access' as const, label: 'Access policy updated', detail: cloudAgentAccessLabel(selectedAccessScope) }]
     : studioChangesWithDefinition;
@@ -474,7 +474,7 @@ export function AgentsPage({
         : routeKind === 'tool' || routeKind === 'plugin'
           ? `Publishing the ${routeKind} definition…`
         : creating
-          ? 'Creating the Cloud Agent…'
+          ? 'Creating the agent…'
           : `Publishing ${selectedAgent?.name ?? 'agent'}…`,
     });
     try {
@@ -542,43 +542,46 @@ export function AgentsPage({
         return;
       }
       if (!selectedAgent || !activeAgentConfig || !activePersistedConfig) return;
+      const isLocalRuntimeAgent = Boolean(
+        selectedAgent.id === 'desktop:local-agent'
+          || selectedAgent.sourceAgentId
+          || selectedAgent.sourceHostId,
+      );
+      const builderSkills = new Map((builder.status?.draft?.skills ?? []).map((skill) => [skill.name, skill]));
+      const descriptions = new Map((selectedAgent.cloudAgentSkills ?? []).map((skill) => [skill.name, skill.description]));
+      const definitionInput = {
+        name: builder.status?.draft?.name ?? selectedAgent.name,
+        role: builder.status?.draft?.role ?? selectedAgent.role,
+        description: builder.status?.draft?.description ?? selectedAgent.cloudAgentDescription ?? null,
+        systemPrompt: activeAgentConfig.systemPrompt,
+        sourceSummary: builder.status?.draft?.sourceSummary ?? selectedAgent.cloudAgentSourceSummary ?? null,
+        boundaries: builder.status?.draft?.boundaries ?? selectedAgent.cloudAgentBoundaries ?? [],
+        skills: activeAgentConfig.loadedSkills.map((name) => ({
+          name,
+          description: builderSkills.get(name)?.description ?? descriptions.get(name) ?? 'Configured in Kordi Factory.',
+          content: builderSkills.get(name)?.content ?? null,
+        })),
+        modelRouting: {
+          ...selectedRouting,
+          tools: builder.status?.draft?.tools ?? activeAgentConfig.loadedTools,
+          plugins: builder.status?.draft?.plugins ?? activeAgentConfig.loadedPlugins,
+        },
+        proactive: builder.status?.draft?.proactive ?? selectedAgent.proactive ?? selectedAgent.cloudAgentProactive ?? { enabled: false, skillPack: 'proact-v1' as const },
+        mentionPermissions: builder.status?.draft?.mentionPermissions ?? selectedAgent.mentionPermissions ?? selectedAgent.cloudAgentMentionPermissions ?? { people: true, agents: true },
+        accessScope: selectedAccessScope,
+      };
       if (selectedAgent.cloudAgentId) {
-        if (!onUpdateCloudAgent) throw new Error('Cloud Agent updates are unavailable in this session.');
-        const builderSkills = new Map((builder.status?.draft?.skills ?? []).map((skill) => [skill.name, skill]));
-        const descriptions = new Map((selectedAgent.cloudAgentSkills ?? []).map((skill) => [skill.name, skill.description]));
-        await onUpdateCloudAgent(selectedAgent, {
-          name: builder.status?.draft?.name ?? selectedAgent.name,
-          role: builder.status?.draft?.role ?? selectedAgent.role,
-          description: builder.status?.draft?.description ?? selectedAgent.cloudAgentDescription ?? null,
-          systemPrompt: activeAgentConfig.systemPrompt,
-          sourceSummary: builder.status?.draft?.sourceSummary ?? selectedAgent.cloudAgentSourceSummary ?? null,
-          boundaries: builder.status?.draft?.boundaries ?? selectedAgent.cloudAgentBoundaries ?? [],
-          skills: activeAgentConfig.loadedSkills.map((name) => ({
-            name,
-            description: builderSkills.get(name)?.description ?? descriptions.get(name) ?? 'Configured in Kordi Factory.',
-            content: builderSkills.get(name)?.content ?? null,
-          })),
-          modelRouting: {
-            ...selectedRouting,
-            tools: builder.status?.draft?.tools ?? activeAgentConfig.loadedTools,
-            plugins: builder.status?.draft?.plugins ?? activeAgentConfig.loadedPlugins,
-          },
-          proactive: builder.status?.draft?.proactive ?? selectedAgent.cloudAgentProactive ?? { enabled: false, skillPack: 'proact-v1' },
-          mentionPermissions: builder.status?.draft?.mentionPermissions ?? selectedAgent.cloudAgentMentionPermissions ?? { people: true, agents: true },
-          ...(accessChanged ? { accessScope: selectedAccessScope } : {}),
-        });
-        markAgentDraftPublished(selectedAgent, activeAgentConfig);
-        setAccessDraftByAgentId((current) => {
-          const next = { ...current };
-          delete next[selectedAgent.id];
-          return next;
-        });
-        setRoutingDraftByAgentId((current) => {
-          const next = { ...current };
-          delete next[selectedAgent.id];
-          return next;
-        });
+        if (!onUpdateCloudAgent) throw new Error('Agent synchronization is unavailable in this session.');
+        await onUpdateCloudAgent(selectedAgent, definitionInput);
       } else {
+        if (!onCreateCloudAgent) throw new Error('Sign in to synchronize this agent across local and Cloud runtimes.');
+        await onCreateCloudAgent({
+          ...definitionInput,
+          sourceAgentId: selectedAgent.sourceAgentId ?? selectedAgent.id,
+        });
+      }
+
+      if (isLocalRuntimeAgent) {
         const addedSkills = activeAgentConfig.loadedSkills.filter((skill) => !activePersistedConfig.loadedSkills.includes(skill));
         const removedSkills = activePersistedConfig.loadedSkills.filter((skill) => !activeAgentConfig.loadedSkills.includes(skill));
         if (canToggleRuntimeSkills) {
@@ -593,16 +596,25 @@ export function AgentsPage({
           change.key !== 'skills' || !canToggleRuntimeSkills
         ));
         if (hasFileBackedChange) await saveAgentConfig(selectedAgent, 'all', activeAgentConfig);
-        if (accessChanged) {
-          setPublishedAccessByAgentId((current) => ({ ...current, [selectedAgent.id]: selectedAccessScope }));
-          setAccessDraftByAgentId((current) => {
-            const next = { ...current };
-            delete next[selectedAgent.id];
-            return next;
-          });
-        }
-        markAgentDraftPublished(selectedAgent, activeAgentConfig, 'Published Factory runtime changes');
       }
+      if (accessChanged) {
+        setPublishedAccessByAgentId((current) => ({ ...current, [selectedAgent.id]: selectedAccessScope }));
+      }
+      setAccessDraftByAgentId((current) => {
+        const next = { ...current };
+        delete next[selectedAgent.id];
+        return next;
+      });
+      setRoutingDraftByAgentId((current) => {
+        const next = { ...current };
+        delete next[selectedAgent.id];
+        return next;
+      });
+      markAgentDraftPublished(
+        selectedAgent,
+        activeAgentConfig,
+        isLocalRuntimeAgent ? 'Published synchronized local and Cloud changes' : 'Published Factory agent changes',
+      );
       await builder.markPublished();
       setPublishFeedback({ tone: 'success', text: `${selectedAgent.name} is published and ready.` });
     } catch (error) {

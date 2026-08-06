@@ -28,8 +28,8 @@ pub async fn run_still_eligible(pool: &PgPool, run_id: &str) -> Result<bool, sql
     let Some((request_message_id, session_id, owner_account_id, target_agent_id)) = metadata else {
         return Ok(false);
     };
-    let active: Option<(String,)> = query_as(
-        "SELECT agent_id FROM cloud_agent_definitions
+    let active: Option<(String, Option<String>)> = query_as(
+        "SELECT agent_id, source_agent_id FROM cloud_agent_definitions
          WHERE agent_id = $1
            AND owner_account_id = $2
            AND status = 'active'
@@ -43,9 +43,9 @@ pub async fn run_still_eligible(pool: &PgPool, run_id: &str) -> Result<bool, sql
     .bind(SKILL_PACK_ID)
     .fetch_optional(pool)
     .await?;
-    if active.is_none() {
+    let Some((_, source_agent_id)) = active else {
         return Ok(false);
-    }
+    };
     let cooldown_cutoff = (Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
     let recent_intervention: Option<(String,)> = query_as(
         "SELECT run_id FROM cloud_agent_fallback_runs
@@ -85,7 +85,12 @@ pub async fn run_still_eligible(pool: &PgPool, run_id: &str) -> Result<bool, sql
         .as_ref()
         .is_some_and(|message| message.id == request_message_id)
         && latest_membership.is_some_and(|envelope| {
-            contains_agent(&envelope.participants, &owner_account_id, &target_agent_id)
+            contains_agent(
+                &envelope.participants,
+                &owner_account_id,
+                &target_agent_id,
+                source_agent_id.as_deref(),
+            )
         }))
 }
 
@@ -99,11 +104,26 @@ pub async fn evidence_is_canonical(
     if evidence_message_ids.is_empty() {
         return Ok(false);
     }
-    let available = history(pool, session_id, owner_account_id, agent_id)
-        .await?
-        .into_iter()
-        .map(|message| message.id)
-        .collect::<HashSet<_>>();
+    let source_agent_id: Option<(Option<String>,)> = query_as(
+        "SELECT source_agent_id FROM cloud_agent_definitions
+         WHERE agent_id = $1 AND owner_account_id = $2",
+    )
+    .bind(agent_id)
+    .bind(owner_account_id)
+    .fetch_optional(pool)
+    .await?;
+    let source_agent_id = source_agent_id.and_then(|(value,)| value);
+    let available = history(
+        pool,
+        session_id,
+        owner_account_id,
+        agent_id,
+        source_agent_id.as_deref(),
+    )
+    .await?
+    .into_iter()
+    .map(|message| message.id)
+    .collect::<HashSet<_>>();
     Ok(evidence_message_ids
         .iter()
         .all(|message_id| available.contains(message_id)))
