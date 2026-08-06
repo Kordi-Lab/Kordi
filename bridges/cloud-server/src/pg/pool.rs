@@ -202,6 +202,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "global support agent and durable support tickets",
         sql: include_str!("../../migrations/0035_global_support.sql"),
     },
+    EmbeddedMigration {
+        version: 36,
+        description: "local and cloud agent runtime bindings",
+        sql: include_str!("../../migrations/0036_agent_runtime_bindings.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

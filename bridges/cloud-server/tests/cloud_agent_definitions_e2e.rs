@@ -117,8 +117,11 @@ fn cloud_agent_routes_are_mounted_in_source() {
         .expect("read cloud agent models source");
     let store_source = std::fs::read_to_string("src/cloud_agents/store.rs")
         .expect("read cloud agent store source");
+    let pool_source =
+        std::fs::read_to_string("src/pg/pool.rs").expect("read Postgres migration source");
     assert!(models_source.contains("participant_conversations"));
     assert!(store_source.contains("access_scope = $4"));
+    assert!(pool_source.contains("0036_agent_runtime_bindings.sql"));
 }
 
 #[tokio::test]

@@ -218,7 +218,7 @@ async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_f
         ))
         .await
         .unwrap();
-    assert_eq!(signup_response.status(), StatusCode::OK);
+    assert_eq!(signup_response.status(), StatusCode::CREATED);
     let signup_json = read_json(signup_response).await;
     let token = signup_json["session"]["token"]
         .as_str()
