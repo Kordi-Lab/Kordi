@@ -147,6 +147,7 @@ function BlueprintView({
   onCreationDraftChange,
   onOpenCapabilities,
   onOpenRouting,
+  onOpenRuns,
   builderStatus,
 }: {
   agent?: Agent;
@@ -166,6 +167,7 @@ function BlueprintView({
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   onOpenCapabilities: () => void;
   onOpenRouting?: () => void;
+  onOpenRuns?: () => void;
   builderStatus?: DesktopAgentBuilderStatus | null;
 }) {
   const [promptEditorOpen, setPromptEditorOpen] = useState(false);
@@ -305,8 +307,7 @@ function BlueprintView({
                 aria-checked={proactive.enabled}
                 aria-label="Proactive collaboration"
                 className={cn('app-agent-studio-switch', proactive.enabled && 'is-on')}
-                disabled={accessScope !== 'participant_conversations' && !proactive.enabled}
-                title={accessScope !== 'participant_conversations' && !proactive.enabled ? 'Share this agent with people in its chats first' : undefined}
+                title={accessScope !== 'participant_conversations' && !proactive.enabled ? 'Enabling proactive also shares this agent with people in its chats' : undefined}
                 onClick={() => onProactiveChange({ enabled: !proactive.enabled, skillPack: 'proact-v1' })}
               />
             </div>
@@ -345,6 +346,9 @@ function BlueprintView({
               <strong>{creating ? 'Build ready to review' : `${totalChanges} change${totalChanges === 1 ? '' : 's'} ready to review`}</strong>
               <span>{builderStatus?.publishReady ? 'Validation and runtime test passed. Nothing is live until you publish.' : builderStatus?.validation.valid ? 'Run the current draft in the Runs tab before publishing.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
             </div>
+            {builderStatus?.validation.valid && !builderStatus.publishReady && onOpenRuns ? (
+              <button type="button" className="app-button-quiet app-agent-studio-button is-small" onClick={onOpenRuns}>Open Runs</button>
+            ) : null}
           </div>
         ) : null}
         {!creating && changes.length > 0 ? (
@@ -1138,6 +1142,7 @@ export function AgentStudioWorkspace({
             onCreationDraftChange={onCreationDraftChange}
             onOpenCapabilities={() => setTab('capabilities')}
             onOpenRouting={onUpdateModelRouting && chatModelOptions.length > 0 ? () => setRoutingOpen(true) : undefined}
+            onOpenRuns={() => setTab('runs')}
             builderStatus={builderStatus}
           />
         ) : null}

@@ -663,7 +663,18 @@ export function AgentsPage({
 
   const updateProactive = (proactive: CloudAgentProactiveConfig) => {
     if (proactive.enabled && builderAccessScope !== 'participant_conversations') {
-      setPublishFeedback({ tone: 'error', text: 'Share this agent with people in its chats before enabling proactive collaboration.' });
+      if (selectedAgent) {
+        setAccessDraftByAgentId((current) => ({
+          ...current,
+          [selectedAgent.id]: 'participant_conversations',
+        }));
+      }
+      void persistBuilderDraft((draft) => ({
+        ...draft,
+        access: 'participant-conversations',
+        proactive,
+      }));
+      setPublishFeedback({ tone: 'info', text: 'Proactive collaboration and access for people in this agent’s chats were added to the draft.' });
       return;
     }
     void persistBuilderDraft((draft) => ({ ...draft, proactive }));

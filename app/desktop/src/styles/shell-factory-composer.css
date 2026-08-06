@@ -277,6 +277,15 @@
   padding-top: 12px;
 }
 
+.app-agent-studio-draft-summary > div {
+  min-width: 0;
+}
+
+.app-agent-studio-draft-summary > .app-agent-studio-button {
+  flex: none;
+  margin-inline-start: auto;
+}
+
 .app-agent-studio-draft-summary strong,
 .app-agent-studio-draft-summary span {
   display: block;

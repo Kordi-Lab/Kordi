@@ -120,6 +120,9 @@ test('My Kordi and every owned agent expose collaboration policy controls in Bui
   assert.match(html, /Only me/);
   assert.match(html, /aria-label="Edit access"/);
   assert.match(html, /Proactive/);
+  assert.match(html, /Enabling proactive also shares this agent with people in its chats/);
+  const proactiveSwitch = html.slice(html.indexOf('aria-label="Proactive collaboration"'), html.indexOf('aria-label="Proactive collaboration"') + 320);
+  assert.doesNotMatch(proactiveSwitch, /disabled/);
   assert.match(html, /@mention permissions/);
   assert.match(html, /aria-label="Allow @mentions of people"/);
   assert.match(html, /aria-label="Allow @mentions of agents"/);
