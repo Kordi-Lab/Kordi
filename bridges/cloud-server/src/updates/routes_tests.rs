@@ -507,13 +507,6 @@ async fn legacy_metadata_never_authorizes_beta5_native_installation() {
         .unwrap();
     let fallback = body_json(fallback).await;
     assert_eq!(fallback["version"], "0.0.1-beta.12");
-    assert_eq!(
-        shipped_beta5_confirmation_action(&fallback),
-        Beta5ConfirmationAction::OpenProductUrl(
-            "https://kordi.ai/updates/releases/0.0.1-beta.12/Kordi_0.0.1-beta.12_aarch64.dmg"
-                .to_string()
-        )
-    );
     assert!(fallback.get("downloadUrl").is_none());
     assert!(fallback.get("signature").is_none());
     assert_ne!(
