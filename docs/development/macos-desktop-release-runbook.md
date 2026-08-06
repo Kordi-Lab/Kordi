@@ -30,7 +30,10 @@ been verified.
 
 1. Fetch `origin/main`, select the merged release commit, and create a clean
    detached worktree for it.
-2. Confirm every version source and the release-version test agree.
+2. Compare the commit with the previous release tag, confirm every user-facing
+   change is represented in the dated `CHANGELOG.md` entry, and run the
+   release-version test. The changelog version/link and all package, Cargo, and
+   Tauri version sources must agree.
 3. Select the release profile before building:
    - production requires Developer ID signing and notarization;
    - ad-hoc requires explicit approval and can publish only to `acceptance`.
@@ -69,6 +72,32 @@ export CLOUDSDK_AUTH_ACCESS_TOKEN="$(
 ```
 
 Unset `CLOUDSDK_AUTH_ACCESS_TOKEN` during cleanup.
+
+## Changelog reconciliation
+
+Treat `CHANGELOG.md` as part of the immutable release source, not as optional
+release-day copy. Before compiling:
+
+1. List commits and merged pull requests from the previous tag through
+   `RELEASE_COMMIT`.
+2. Classify every user-facing change under `Added`, `Changed`, or `Fixed` in the
+   candidate version entry and link its issue or pull request.
+3. Confirm `[Unreleased]` starts at the candidate tag and the candidate version
+   compares the previous tag with that tag.
+4. Run `tests/releaseVersion.test.mjs`; it must fail when the dated entry,
+   classified bullet, or version comparison link is missing.
+5. Copy the same user-facing list into the GitHub prerelease notes. Add release
+   evidence separately rather than rewriting or omitting features.
+
+Repeat the commit-to-tag comparison immediately before artifact publication.
+If `origin/main` advanced after `RELEASE_COMMIT` was pinned, do not silently add
+those changes to the release notes; either keep the pinned release scope or
+restart preparation with a new commit and reconciled changelog.
+
+If an omission is discovered after immutable artifacts and the tag exist,
+correct `CHANGELOG.md` on `main` and align the GitHub release notes, but never
+move the tag or replace release bytes. Record the correction as post-release
+documentation.
 
 ## Build from a physical neutral path
 
