@@ -7,7 +7,6 @@ import {
 import {
   buildDesktopCloudProviderAuthSnapshotPayload,
   restoreDesktopCloudProviderAuth,
-  type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import { requestDesktopAuthRefresh } from '@/features/auth/desktopAuthSync';
 import type {
@@ -37,8 +36,6 @@ export function useCloudProviderAuthSnapshotSync({
 }: {
   account: CloudAccount | null;
   client: CloudAuthClient;
-  route: DesktopChatMessageRoute | null | undefined;
-  additionalRoutes?: readonly DesktopChatMessageRoute[];
   authState?: DesktopAuthState | null;
   initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;

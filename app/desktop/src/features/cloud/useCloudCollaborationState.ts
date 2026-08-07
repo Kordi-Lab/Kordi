@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -25,8 +24,6 @@ import {
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
 } from './cloudAgentMessages';
-import { cloudAgentRuntimeRouteFromDefinition } from './cloudAgentRuntime';
-import { retargetCloudAgentModelRoutingForAuthState } from './providerAuthSnapshot';
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
@@ -64,9 +61,7 @@ import {
   useCloudCanonicalReconciliation,
 } from './useCloudCanonicalReconciliation';
 import { useRecoveredCloudGroupReplay } from './useRecoveredCloudGroupReplay';
-import {
-  useCloudProviderAuthSnapshotSync,
-} from './useCloudProviderAuthSnapshotSync';
+import { useCloudAgentProviderAuthSync } from './useCloudAgentProviderAuthSync';
 import {
   useCloudMessageReadReceipts,
 } from './useCloudMessageReadReceipts';
@@ -502,60 +497,15 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  const cloudAgentProviderAuthRoutes = useMemo(
-    () => Object.values(cloudAgentDefinitionsById).flatMap((definition) => {
-      if (
-        definition.ownerAccountId !== account?.accountId
-        || definition.status !== 'active'
-      ) return [];
-      const route = cloudAgentRuntimeRouteFromDefinition(definition);
-      return route ? [route] : [];
-    }),
-    [account?.accountId, cloudAgentDefinitionsById],
-  );
-
-  const { reconciledAuthState } = useCloudProviderAuthSnapshotSync({
+  useCloudAgentProviderAuthSync({
     account,
     client,
-    route: defaultCloudAgentRuntimeRoute,
-    additionalRoutes: cloudAgentProviderAuthRoutes,
     authState: desktopAuthState,
+    agentDefinitionsById: cloudAgentDefinitionsById,
     initialMessagesSettled,
+    updateDefinition: updateCloudAgentDefinition,
     reportWarning: reportCloudAgentExecutionWarning,
   });
-
-  const cloudAgentRouteRepairsInFlightRef = useRef(new Set<string>());
-  useEffect(() => {
-    if (!account || !reconciledAuthState) return;
-    for (const definition of Object.values(cloudAgentDefinitionsById)) {
-      if (
-        definition.ownerAccountId !== account.accountId
-        || definition.status !== 'active'
-        || cloudAgentRouteRepairsInFlightRef.current.has(definition.agentId)
-      ) continue;
-      const modelRouting = retargetCloudAgentModelRoutingForAuthState(
-        definition.modelRouting,
-        reconciledAuthState,
-      );
-      if (!modelRouting) continue;
-      cloudAgentRouteRepairsInFlightRef.current.add(definition.agentId);
-      void updateCloudAgentDefinition(definition.agentId, { modelRouting })
-        .catch((error) => {
-          reportCloudAgentExecutionWarning(
-            '[cloud-provider-auth-sync] agent route repair failed',
-            error,
-          );
-        })
-        .finally(() => {
-          cloudAgentRouteRepairsInFlightRef.current.delete(definition.agentId);
-        });
-    }
-  }, [
-    account,
-    cloudAgentDefinitionsById,
-    reconciledAuthState,
-    updateCloudAgentDefinition,
-  ]);
 
   useCloudAgentCancellation({
     account,
