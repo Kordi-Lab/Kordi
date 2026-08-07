@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 
 const APP_INVITE_TOKEN_PREFIX: &str = "kordi_ai_";
 const APP_INVITE_LIFETIME_DAYS: i64 = 7;
+const KORDI_HOMEPAGE_URL: &str = "https://kordi.ai/";
 
 struct AppInvitationRecord {
     display_name: Option<String>,
@@ -85,18 +86,64 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn invitation_landing_html(
-    status: StatusCode,
+fn configured_release_download_url() -> Option<String> {
+    std::env::var("KORDI_RELEASE_CHANGELOG_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn safe_release_download_url(candidate: Option<&str>) -> Option<String> {
+    let url = url::Url::parse(candidate?.trim()).ok()?;
+    let homepage = url::Url::parse(KORDI_HOMEPAGE_URL).expect("valid Kordi homepage URL");
+    if url.scheme() != "https"
+        || url.origin() != homepage.origin()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    let segments = url.path_segments()?.collect::<Vec<_>>();
+    if segments.len() != 4
+        || segments[0] != "updates"
+        || segments[1] != "releases"
+        || semver::Version::parse(segments[2]).is_err()
+        || !segments[3].ends_with(".dmg")
+    {
+        return None;
+    }
+    Some(url.to_string())
+}
+
+fn invitation_landing_document(
     title: &str,
     message: &str,
-    kordi_id: Option<i64>,
-) -> Response {
+    release_download_url: Option<&str>,
+) -> String {
     let escaped_title = escape_html(title);
     let escaped_message = escape_html(message);
-    let handle = kordi_id
-        .map(|value| format!("<p class=\"handle\">@{value:09}</p>"))
+    let download_url = safe_release_download_url(release_download_url);
+    let download_action = download_url
+        .as_deref()
+        .map(|url| {
+            format!(
+                r#"<a class="button button-primary" href="{}">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m0 0 4-4m-4 4L6 8M3 15v2h14v-2"></path></svg>
+          Download Kordi for Mac
+        </a>"#,
+                escape_html(url)
+            )
+        })
         .unwrap_or_default();
-    let body = format!(
+    let learn_more_class = if download_url.is_some() {
+        "button button-secondary"
+    } else {
+        "button button-primary"
+    };
+
+    format!(
         r#"<!doctype html>
 <html lang="en">
 <head>
@@ -104,29 +151,80 @@ fn invitation_landing_html(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{escaped_title} · Kordi</title>
   <style>
-    :root {{ color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    @font-face {{ font-family: "Marcellus"; src: url("/assets/fonts/marcellus-latin.woff2") format("woff2"); font-display: swap; }}
+    :root {{ color-scheme: light dark; --paper: #faf9f7; --ink: #1a1714; --ink-2: #5c554d; --ink-3: #746d65; --rule: rgba(26, 23, 20, .1); }}
     * {{ box-sizing: border-box; }}
-    body {{ min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: #111827; color: #f8fafc; }}
-    main {{ width: min(100%, 440px); padding: 36px; border: 1px solid rgba(255,255,255,.12); border-radius: 24px; background: #182235; box-shadow: 0 24px 80px rgba(0,0,0,.28); }}
-    .mark {{ display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; background: #34d399; color: #06281d; font-weight: 800; }}
-    h1 {{ margin: 24px 0 8px; font-size: 26px; line-height: 1.2; letter-spacing: -.02em; }}
-    p {{ margin: 0; color: #aebbd0; font-size: 15px; line-height: 1.6; }}
-    .handle {{ margin-top: 8px; color: #6ee7b7; font-weight: 650; letter-spacing: .04em; }}
-    a {{ display: flex; min-height: 46px; margin-top: 28px; align-items: center; justify-content: center; border-radius: 999px; background: #f8fafc; color: #111827; font-weight: 700; text-decoration: none; }}
-    a:focus-visible {{ outline: 3px solid #6ee7b7; outline-offset: 3px; }}
+    html, body {{ min-height: 100%; }}
+    body {{ min-height: 100vh; margin: 0; background: var(--paper); color: var(--ink); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    .page {{ min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }}
+    .wrap {{ width: min(calc(100% - 8rem), 1312px); margin-inline: auto; }}
+    header {{ min-height: 68px; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }}
+    .brand {{ width: fit-content; display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font-family: "Marcellus", Optima, Candara, serif; font-size: 23px; line-height: 1; text-decoration: none; }}
+    .brand svg {{ width: 31px; height: 31px; flex: 0 0 auto; }}
+    main {{ display: flex; align-items: center; padding-block: clamp(4.5rem, 12vh, 8rem); }}
+    .content {{ max-width: 760px; min-width: 0; }}
+    h1 {{ max-width: 12ch; margin: 0; overflow-wrap: anywhere; color: var(--ink); font-family: "Marcellus", Optima, Candara, serif; font-size: clamp(3.15rem, 6vw, 5.75rem); font-weight: 400; line-height: .98; letter-spacing: -.035em; text-wrap: balance; }}
+    p {{ max-width: 39ch; margin: 1.6rem 0 0; color: var(--ink-2); font-size: 1.0625rem; line-height: 1.72; }}
+    .actions {{ display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin-top: 2.35rem; }}
+    .button {{ min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding-inline: 18px; border: 1px solid var(--ink); border-radius: 6px; font-size: 14px; font-weight: 500; text-decoration: none; transition: transform 180ms cubic-bezier(.22, 1, .36, 1), box-shadow 180ms cubic-bezier(.22, 1, .36, 1); }}
+    .button svg {{ width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; }}
+    .button-primary {{ background: var(--ink); color: var(--paper); }}
+    .button-secondary {{ border-color: var(--rule); background: transparent; color: var(--ink); }}
+    .button:hover {{ transform: translateY(-2px); box-shadow: 0 7px 18px -8px rgba(26, 23, 20, .4); }}
+    .button:focus-visible, .brand:focus-visible {{ outline: 2px solid var(--ink); outline-offset: 3px; }}
+    footer {{ padding-block: 1.4rem 1.6rem; border-top: 1px solid var(--rule); color: var(--ink-3); font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: .69rem; letter-spacing: .08em; }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{ --paper: #191814; --ink: #f2efe9; --ink-2: #b8b0a7; --ink-3: #8d857c; --rule: rgba(242, 239, 233, .1); }}
+      .button:hover {{ box-shadow: 0 7px 18px -8px rgba(0, 0, 0, .8); }}
+    }}
+    @media (max-width: 600px) {{
+      .wrap {{ width: calc(100% - 2.5rem); }}
+      main {{ padding-block: 3.5rem; }}
+      h1 {{ max-width: 11ch; font-size: clamp(2.7rem, 13vw, 4rem); }}
+      .actions {{ display: grid; }}
+      .button {{ width: 100%; }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{ .button {{ transition: none; }} }}
   </style>
 </head>
 <body>
-  <main>
-    <div class="mark" aria-hidden="true">K</div>
-    <h1>{escaped_title}</h1>
-    <p>{escaped_message}</p>
-    {handle}
-    <a href="/updates/releases/latest/Kordi.dmg">Get Kordi</a>
-  </main>
+  <div class="page">
+    <header>
+      <div class="wrap">
+        <a class="brand" href="{KORDI_HOMEPAGE_URL}" aria-label="Kordi home">
+          <svg viewBox="0 0 36 36" aria-hidden="true">
+            <circle cx="18" cy="10" r="9" fill="currentColor" opacity=".62"></circle>
+            <circle cx="11" cy="22" r="9" fill="currentColor" opacity=".82"></circle>
+            <circle cx="25" cy="22" r="9" fill="currentColor"></circle>
+          </svg>
+          <span>kordi</span>
+        </a>
+      </div>
+    </header>
+    <main class="wrap">
+      <section class="content">
+        <h1>{escaped_title}</h1>
+        <p>{escaped_message}</p>
+        <div class="actions">
+          {download_action}
+          <a class="{learn_more_class}" href="{KORDI_HOMEPAGE_URL}">Learn more</a>
+        </div>
+      </section>
+    </main>
+    <footer class="wrap">&copy; Kordi 2026</footer>
+  </div>
 </body>
 </html>"#
-    );
+    )
+}
+
+fn invitation_landing_html(
+    status: StatusCode,
+    title: &str,
+    message: &str,
+    release_download_url: Option<&str>,
+) -> Response {
+    let body = invitation_landing_document(title, message, release_download_url);
 
     (
         status,
@@ -134,7 +232,7 @@ fn invitation_landing_html(
             ("cache-control", "no-store"),
             (
                 "content-security-policy",
-                "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             ),
             ("referrer-policy", "no-referrer"),
             ("x-content-type-options", "nosniff"),
@@ -250,6 +348,7 @@ pub(super) async fn app_invitation_landing(
         return limited_response(retry_after);
     }
 
+    let release_download_url = configured_release_download_url();
     match lookup_app_invitation(state.db_pool(), &token).await {
         Ok(AppInvitationLookup::Valid(record)) => {
             let inviter = record
@@ -260,28 +359,28 @@ pub(super) async fn app_invitation_landing(
                 .unwrap_or("A Kordi user");
             invitation_landing_html(
                 StatusCode::OK,
-                &format!("{inviter} invited you to Kordi"),
+                &format!("{inviter} invited you to Kordi."),
                 "A shared workspace where people and agents work together.",
-                Some(record.public_account_number),
+                release_download_url.as_deref(),
             )
         }
         Ok(AppInvitationLookup::Invalid) => invitation_landing_html(
             StatusCode::NOT_FOUND,
             "Invitation not available",
             "This link is invalid or has been revoked. Ask the sender for a new invitation.",
-            None,
+            release_download_url.as_deref(),
         ),
         Ok(AppInvitationLookup::Expired) => invitation_landing_html(
             StatusCode::GONE,
             "Invitation expired",
             "Ask the sender for a new invitation link.",
-            None,
+            release_download_url.as_deref(),
         ),
         Err(_) => invitation_landing_html(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Invitation unavailable",
             "Kordi could not load this invitation. Please try again shortly.",
-            None,
+            release_download_url.as_deref(),
         ),
     }
 }
@@ -314,6 +413,69 @@ pub(super) async fn revoke_app_invitation(
             "Could not revoke invitation.",
             StatusCode::INTERNAL_SERVER_ERROR,
         ),
+    }
+}
+
+#[cfg(test)]
+mod invitation_landing_tests {
+    use super::*;
+
+    const VERSIONED_DMG_URL: &str =
+        "https://kordi.ai/updates/releases/0.0.1-beta.12/Kordi_0.0.1-beta.12_aarch64.dmg";
+
+    #[test]
+    fn release_download_url_requires_a_versioned_kordi_dmg() {
+        assert_eq!(
+            safe_release_download_url(Some(VERSIONED_DMG_URL)).as_deref(),
+            Some(VERSIONED_DMG_URL)
+        );
+        assert!(safe_release_download_url(Some(
+            "https://kordi.ai/updates/releases/latest/Kordi.dmg"
+        ))
+        .is_none());
+        assert!(safe_release_download_url(Some(
+            "https://example.com/updates/releases/0.0.1/Kordi.dmg"
+        ))
+        .is_none());
+        assert!(safe_release_download_url(Some(
+            "http://kordi.ai/updates/releases/0.0.1/Kordi.dmg"
+        ))
+        .is_none());
+    }
+
+    #[test]
+    fn invitation_document_matches_the_approved_kordi_surface() {
+        let document = invitation_landing_document(
+            "Shu Yang invited you to Kordi.",
+            "A shared workspace where people and agents work together.",
+            Some(VERSIONED_DMG_URL),
+        );
+
+        assert!(document.contains("<span>kordi</span>"));
+        assert!(document.contains("Download Kordi for Mac"));
+        assert!(document.contains(VERSIONED_DMG_URL));
+        assert!(document.contains("href=\"https://kordi.ai/\">Learn more</a>"));
+        assert!(document.contains("&copy; Kordi 2026"));
+        assert!(!document.contains("Back to overview"));
+        assert!(!document.contains("Kordi beta"));
+        assert!(!document.contains("@218208141"));
+        assert!(!document.contains("/updates/releases/latest/Kordi.dmg"));
+    }
+
+    #[test]
+    fn invitation_document_escapes_copy_and_degrades_without_a_release() {
+        let document = invitation_landing_document(
+            "<script>alert(1)</script>",
+            "Try <again> & ask the sender.",
+            Some("https://example.com/Kordi.dmg"),
+        );
+
+        assert!(document.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        assert!(document.contains("Try &lt;again&gt; &amp; ask the sender."));
+        assert!(!document.contains("<script>alert(1)</script>"));
+        assert!(!document.contains("Download Kordi for Mac"));
+        assert!(document
+            .contains("class=\"button button-primary\" href=\"https://kordi.ai/\">Learn more"));
     }
 }
 
