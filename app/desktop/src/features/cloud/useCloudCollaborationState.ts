@@ -498,7 +498,6 @@ export function useCloudCollaborationState({
     client,
     authState: desktopAuthState,
     agentDefinitionsById: cloudAgentDefinitionsById,
-    initialMessagesSettled,
     updateDefinition: updateCloudAgentDefinition,
     reportWarning: reportCloudAgentExecutionWarning,
   });

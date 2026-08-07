@@ -12,7 +12,6 @@ export function useCloudAgentProviderAuthSync({
   client,
   authState,
   agentDefinitionsById,
-  initialMessagesSettled,
   updateDefinition,
   reportWarning,
 }: {
@@ -20,7 +19,6 @@ export function useCloudAgentProviderAuthSync({
   client: CloudAuthClient;
   authState?: DesktopAuthState | null;
   agentDefinitionsById: Record<string, CloudAgentDefinition>;
-  initialMessagesSettled: boolean;
   updateDefinition: (
     agentId: string,
     input: UpdateCloudAgentInput,
@@ -31,7 +29,6 @@ export function useCloudAgentProviderAuthSync({
     account,
     client,
     authState,
-    initialMessagesSettled,
     reportWarning,
   });
   const repairsInFlightRef = useRef(new Set<string>());
