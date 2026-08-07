@@ -316,7 +316,7 @@ fn cloud_auth_reconcile_imports_updates_removes_and_selects_profiles() {
             .map(String::as_str),
         Some("cloud-api-profile")
     );
-    assert!(store.profiles.get("anthropic").is_none());
+    assert!(!store.profiles.contains_key("anthropic"));
     assert!(matches!(
         store
             .profiles

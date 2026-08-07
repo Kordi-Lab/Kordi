@@ -13,14 +13,13 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 
+mod device_restore;
+mod run_material;
+
+pub use device_restore::*;
+pub use run_material::*;
+
 const NONCE_LEN: usize = 12;
-const DEVICE_RESTORE_SALT_LEN: usize = 32;
-const DEVICE_RESTORE_KEY_LEN: usize = 32;
-const DEVICE_RESTORE_MAX_SNAPSHOTS: i64 = 32;
-const DEVICE_RESTORE_MAX_PLAINTEXT_BYTES: usize = 1024 * 1024;
-const DEVICE_RESTORE_SESSION_MAX_AGE_MINUTES: i64 = 15;
-const DEVICE_RESTORE_ALGORITHM: &str = "x25519-hkdf-sha256-aes-256-gcm-v1";
-const DEVICE_RESTORE_HKDF_INFO: &[u8] = b"kordi-provider-auth-device-restore-v1";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderAuthCipherError {
@@ -126,6 +125,16 @@ pub struct NormalizedProviderAuthSnapshotInput {
     pub payload: Value,
 }
 
+type StoredProviderAuthSnapshotRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Vec<u8>,
+    String,
+);
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderAuthSnapshotResponse {
     #[serde(rename = "snapshotId")]
@@ -144,119 +153,11 @@ pub struct CurrentProviderAuthSnapshotResponse {
     pub snapshot: Option<ProviderAuthSnapshotResponse>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RestoreProviderAuthSnapshotsRequest {
-    #[serde(rename = "devicePublicKey")]
-    pub device_public_key: String,
-    #[serde(rename = "knownRevision")]
-    pub known_revision: Option<String>,
-}
-
-impl RestoreProviderAuthSnapshotsRequest {
-    pub fn decoded_device_public_key(&self) -> Option<[u8; 32]> {
-        let decoded = URL_SAFE_NO_PAD.decode(self.device_public_key.trim()).ok()?;
-        decoded.try_into().ok()
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProviderAuthDeviceRestoreEnvelope {
-    pub algorithm: String,
-    #[serde(rename = "serverPublicKey")]
-    pub server_public_key: String,
-    pub salt: String,
-    pub nonce: String,
-    pub ciphertext: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RestoreProviderAuthSnapshotsResponse {
-    #[serde(rename = "deviceId")]
-    pub device_id: String,
-    #[serde(rename = "snapshotCount")]
-    pub snapshot_count: usize,
-    #[serde(rename = "syncRevision")]
-    pub sync_revision: String,
-    pub changed: bool,
-    pub envelope: Option<ProviderAuthDeviceRestoreEnvelope>,
-}
-
 #[derive(Debug, Serialize)]
 pub struct ProviderAuthSnapshotManifestResponse {
     #[serde(rename = "syncRevision")]
     pub sync_revision: String,
     pub snapshots: Vec<ProviderAuthSnapshotResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RestorableProviderAuthSnapshot {
-    #[serde(rename = "snapshotId")]
-    pub snapshot_id: String,
-    pub provider: String,
-    #[serde(rename = "authChoice")]
-    pub auth_choice: String,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
-    pub payload: Value,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProviderAuthDeviceRestoreBundle {
-    pub version: u32,
-    #[serde(rename = "accountId")]
-    pub account_id: String,
-    #[serde(rename = "deviceId")]
-    pub device_id: String,
-    #[serde(rename = "syncRevision")]
-    pub sync_revision: String,
-    pub snapshots: Vec<RestorableProviderAuthSnapshot>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RunnerProviderAuthMaterialEnvelope {
-    #[serde(rename = "providerAuth")]
-    pub provider_auth: RunnerProviderAuthMaterial,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RunnerProviderAuthMaterial {
-    #[serde(rename = "snapshotId")]
-    pub snapshot_id: String,
-    pub provider: String,
-    #[serde(rename = "authChoice")]
-    pub auth_choice: String,
-    pub payload: Value,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RefreshRunnerProviderAuthRequest {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    #[serde(rename = "snapshotId")]
-    pub snapshot_id: String,
-    pub payload: Value,
-}
-
-#[derive(Debug)]
-pub enum ProviderAuthForRunResult {
-    Found(RunnerProviderAuthMaterial),
-    RunNotFound,
-    ProviderAuthNotFound,
-}
-
-#[derive(Debug)]
-pub enum RefreshProviderAuthForRunResult {
-    Refreshed(RunnerProviderAuthMaterial),
-    RunNotFound,
-    SnapshotNotFound,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeviceRestoreKeyAuthorization {
-    Allowed,
-    ReauthenticationRequired,
-    KeyMismatch,
-    DeviceNotFound,
 }
 
 #[derive(Debug, Deserialize)]
@@ -273,15 +174,7 @@ pub async fn publish_snapshot(
     device_id: &str,
     input: NormalizedProviderAuthSnapshotInput,
 ) -> Result<ProviderAuthSnapshotResponse, sqlx_core::Error> {
-    let current: Option<(
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        Vec<u8>,
-        String,
-    )> = query_as(
+    let current: Option<StoredProviderAuthSnapshotRow> = query_as(
         "SELECT snapshot_id, provider, auth_choice, created_at, revoked_at, \
                 encrypted_payload, encryption_key_id \
          FROM cloud_agent_provider_auth_snapshots \
@@ -439,240 +332,6 @@ fn provider_auth_sync_revision<'a>(
     hex::encode(digest.finalize())
 }
 
-pub async fn session_is_recent_enough_for_provider_auth_restore(
-    pool: &PgPool,
-    token_id: &str,
-    account_id: &str,
-    device_id: &str,
-) -> Result<bool, sqlx_core::Error> {
-    let row: Option<(String,)> = query_as(
-        "SELECT created_at FROM cloud_refresh_tokens \
-         WHERE token_id = $1 AND account_id = $2 AND device_id = $3 \
-           AND revoked_at IS NULL",
-    )
-    .bind(token_id)
-    .bind(account_id)
-    .bind(device_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((created_at,)) = row else {
-        return Ok(false);
-    };
-    let Ok(created_at) = DateTime::parse_from_rfc3339(&created_at) else {
-        return Ok(false);
-    };
-    let created_at = created_at.with_timezone(&Utc);
-    let now = Utc::now();
-    Ok(created_at <= now + Duration::minutes(1)
-        && created_at >= now - Duration::minutes(DEVICE_RESTORE_SESSION_MAX_AGE_MINUTES))
-}
-
-pub async fn authorize_device_restore_key(
-    pool: &PgPool,
-    token_id: &str,
-    account_id: &str,
-    device_id: &str,
-    device_public_key: &[u8; 32],
-) -> Result<DeviceRestoreKeyAuthorization, sqlx_core::Error> {
-    let current: Option<(String,)> = query_as(
-        "SELECT device_public_key FROM cloud_devices \
-         WHERE device_id = $1 AND account_id = $2 AND revoked_at IS NULL",
-    )
-    .bind(device_id)
-    .bind(account_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((current_key,)) = current else {
-        return Ok(DeviceRestoreKeyAuthorization::DeviceNotFound);
-    };
-    let registered = format!("x25519:v1:{}", URL_SAFE_NO_PAD.encode(device_public_key));
-    if current_key == registered {
-        return Ok(DeviceRestoreKeyAuthorization::Allowed);
-    }
-    if current_key.starts_with("x25519:v1:") {
-        return Ok(DeviceRestoreKeyAuthorization::KeyMismatch);
-    }
-    if !session_is_recent_enough_for_provider_auth_restore(pool, token_id, account_id, device_id)
-        .await?
-    {
-        return Ok(DeviceRestoreKeyAuthorization::ReauthenticationRequired);
-    }
-    let updated = query(
-        "UPDATE cloud_devices SET device_public_key = $3, last_seen_at = $4 \
-         WHERE device_id = $1 AND account_id = $2 AND revoked_at IS NULL \
-           AND device_public_key = $5",
-    )
-    .bind(device_id)
-    .bind(account_id)
-    .bind(&registered)
-    .bind(Utc::now().to_rfc3339())
-    .bind(&current_key)
-    .execute(pool)
-    .await?;
-    Ok(if updated.rows_affected() == 1 {
-        DeviceRestoreKeyAuthorization::Allowed
-    } else {
-        DeviceRestoreKeyAuthorization::KeyMismatch
-    })
-}
-
-pub async fn restore_snapshots_for_device(
-    pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
-    account_id: &str,
-    device_id: &str,
-    device_public_key: [u8; 32],
-    known_revision: Option<&str>,
-) -> Result<RestoreProviderAuthSnapshotsResponse, sqlx_core::Error> {
-    let rows: Vec<(String, String, String, String, Vec<u8>)> = query_as(
-        "SELECT snapshot_id, provider, auth_choice, created_at, encrypted_payload \
-         FROM cloud_agent_provider_auth_snapshots \
-         WHERE account_id = $1 AND encryption_key_id = $2 AND revoked_at IS NULL \
-         ORDER BY created_at DESC LIMIT $3",
-    )
-    .bind(account_id)
-    .bind(cipher.key_id())
-    .bind(DEVICE_RESTORE_MAX_SNAPSHOTS)
-    .fetch_all(pool)
-    .await?;
-
-    let mut snapshots = Vec::new();
-    for (snapshot_id, provider, auth_choice, created_at, encrypted_payload) in rows {
-        let plaintext = cipher
-            .decrypt(&encrypted_payload)
-            .map_err(|err| sqlx_core::Error::Protocol(err.to_string()))?;
-        let payload: Value = serde_json::from_slice(&plaintext)
-            .map_err(|err| sqlx_core::Error::Decode(Box::new(err)))?;
-        if !is_restorable_provider_auth_payload(&payload) {
-            continue;
-        }
-        snapshots.push(RestorableProviderAuthSnapshot {
-            snapshot_id,
-            provider,
-            auth_choice,
-            created_at,
-            payload,
-        });
-    }
-
-    let sync_revision = provider_auth_sync_revision(snapshots.iter().map(|snapshot| {
-        (
-            &snapshot.snapshot_id,
-            &snapshot.provider,
-            &snapshot.auth_choice,
-            &snapshot.created_at,
-        )
-    }));
-    let changed = known_revision.map(str::trim) != Some(sync_revision.as_str());
-    if !changed || snapshots.is_empty() {
-        return Ok(RestoreProviderAuthSnapshotsResponse {
-            device_id: device_id.to_string(),
-            snapshot_count: snapshots.len(),
-            sync_revision,
-            changed,
-            envelope: None,
-        });
-    }
-
-    let snapshot_count = snapshots.len();
-    let bundle = ProviderAuthDeviceRestoreBundle {
-        version: 2,
-        account_id: account_id.to_string(),
-        device_id: device_id.to_string(),
-        sync_revision: sync_revision.clone(),
-        snapshots,
-    };
-    let plaintext =
-        serde_json::to_vec(&bundle).map_err(|err| sqlx_core::Error::Encode(Box::new(err)))?;
-    if plaintext.len() > DEVICE_RESTORE_MAX_PLAINTEXT_BYTES {
-        return Err(sqlx_core::Error::Protocol(
-            "provider auth restore bundle is too large".to_string(),
-        ));
-    }
-    let envelope =
-        encrypt_device_restore_bundle(account_id, device_id, &device_public_key, &plaintext)
-            .map_err(|err| sqlx_core::Error::Protocol(err.to_string()))?;
-
-    let restored_at = Utc::now().to_rfc3339();
-    let mut tx = pool.begin().await?;
-    for snapshot in &bundle.snapshots {
-        insert_audit_in_tx(
-            &mut tx,
-            &snapshot.snapshot_id,
-            account_id,
-            None,
-            "restored",
-            &restored_at,
-        )
-        .await?;
-    }
-    tx.commit().await?;
-
-    Ok(RestoreProviderAuthSnapshotsResponse {
-        device_id: device_id.to_string(),
-        snapshot_count,
-        sync_revision,
-        changed: true,
-        envelope: Some(envelope),
-    })
-}
-
-fn is_restorable_provider_auth_payload(payload: &Value) -> bool {
-    payload
-        .get("apiKey")
-        .and_then(Value::as_str)
-        .is_some_and(|value| !value.trim().is_empty())
-        || matches!(
-            payload.get("apiMode").and_then(Value::as_str),
-            Some("openai-codex-oauth" | "anthropic-oauth" | "github-copilot-oauth")
-        )
-}
-
-fn device_restore_aad(account_id: &str, device_id: &str) -> Vec<u8> {
-    format!("kordi-provider-auth-device-restore-v1\0{account_id}\0{device_id}").into_bytes()
-}
-
-fn encrypt_device_restore_bundle(
-    account_id: &str,
-    device_id: &str,
-    device_public_key: &[u8; 32],
-    plaintext: &[u8],
-) -> Result<ProviderAuthDeviceRestoreEnvelope, ProviderAuthCipherError> {
-    let device_public_key = PublicKey::from(*device_public_key);
-    let server_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
-    let server_public_key = PublicKey::from(&server_secret);
-    let shared_secret = server_secret.diffie_hellman(&device_public_key);
-    if !shared_secret.was_contributory() {
-        return Err(ProviderAuthCipherError::Encrypt);
-    }
-    let mut salt = [0_u8; DEVICE_RESTORE_SALT_LEN];
-    rand::rngs::OsRng.fill_bytes(&mut salt);
-    let mut key_bytes = [0_u8; DEVICE_RESTORE_KEY_LEN];
-    Hkdf::<Sha256>::new(Some(&salt), shared_secret.as_bytes())
-        .expand(DEVICE_RESTORE_HKDF_INFO, &mut key_bytes)
-        .map_err(|_| ProviderAuthCipherError::Encrypt)?;
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key_bytes));
-    let mut nonce_bytes = [0_u8; NONCE_LEN];
-    rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
-    let ciphertext = cipher.encrypt(
-        Nonce::from_slice(&nonce_bytes),
-        Payload {
-            msg: plaintext,
-            aad: &device_restore_aad(account_id, device_id),
-        },
-    );
-    key_bytes.fill(0);
-    let ciphertext = ciphertext.map_err(|_| ProviderAuthCipherError::Encrypt)?;
-
-    Ok(ProviderAuthDeviceRestoreEnvelope {
-        algorithm: DEVICE_RESTORE_ALGORITHM.to_string(),
-        server_public_key: URL_SAFE_NO_PAD.encode(server_public_key.as_bytes()),
-        salt: URL_SAFE_NO_PAD.encode(salt),
-        nonce: URL_SAFE_NO_PAD.encode(nonce_bytes),
-        ciphertext: URL_SAFE_NO_PAD.encode(ciphertext),
-    })
-}
-
 pub async fn revoke_snapshot(
     pool: &PgPool,
     account_id: &str,
@@ -696,177 +355,6 @@ pub async fn revoke_snapshot(
     }
     tx.commit().await?;
     Ok(row.map(snapshot_response_from_row))
-}
-
-pub async fn provider_auth_for_run(
-    pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
-    run_id: &str,
-    runner_id: &str,
-) -> Result<ProviderAuthForRunResult, sqlx_core::Error> {
-    let run: Option<(String, Option<String>)> = query_as(
-        "SELECT owner_account_id, target_agent_id FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
-    )
-    .bind(run_id)
-    .bind(runner_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((owner_account_id, target_agent_id)) = run else {
-        return Ok(ProviderAuthForRunResult::RunNotFound);
-    };
-
-    let agent_route: Option<(Option<String>, Option<String>, Option<String>)> =
-        match target_agent_id.as_deref() {
-            Some(agent_id) => {
-                query_as(
-                    "SELECT NULLIF(BTRIM(model_routing_json->>'defaultAuthProvider'), ''), \
-                        NULLIF(BTRIM(model_routing_json->>'defaultAuthChoice'), ''), \
-                        NULLIF(BTRIM(model_routing_json->>'defaultModel'), '') \
-                 FROM cloud_agent_definitions \
-                 WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'",
-                )
-                .bind(agent_id)
-                .bind(&owner_account_id)
-                .fetch_optional(pool)
-                .await?
-            }
-            None => None,
-        };
-    let (route_provider, route_auth_choice, route_model) =
-        agent_route.unwrap_or((None, None, None));
-    let route_provider = route_provider
-        .as_deref()
-        .map(normalize_snapshot_provider)
-        .map(ToString::to_string);
-
-    let mut row: Option<(String, String, String, Vec<u8>)> = query_as(
-        "SELECT snapshot_id, provider, auth_choice, encrypted_payload \
-         FROM cloud_agent_provider_auth_snapshots \
-         WHERE account_id = $1 AND encryption_key_id = $2 AND revoked_at IS NULL \
-           AND ($3::TEXT IS NULL OR provider = $3 \
-                OR ($3 = 'openai' AND provider = 'openai-codex')) \
-           AND ($4::TEXT IS NULL OR auth_choice = $4) \
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(&owner_account_id)
-    .bind(cipher.key_id())
-    .bind(route_provider.as_deref())
-    .bind(route_auth_choice.as_deref())
-    .fetch_optional(pool)
-    .await?;
-    if row.is_none() && route_provider.is_some() && route_auth_choice.is_some() {
-        let candidates: Vec<(String, String, String, Vec<u8>)> = query_as(
-            "SELECT snapshot_id, provider, auth_choice, encrypted_payload \
-             FROM cloud_agent_provider_auth_snapshots \
-             WHERE account_id = $1 AND encryption_key_id = $2 AND revoked_at IS NULL \
-               AND (provider = $3 OR ($3 = 'openai' AND provider = 'openai-codex')) \
-             ORDER BY created_at DESC LIMIT 2",
-        )
-        .bind(&owner_account_id)
-        .bind(cipher.key_id())
-        .bind(route_provider.as_deref())
-        .fetch_all(pool)
-        .await?;
-        if candidates.len() == 1 {
-            row = candidates.into_iter().next();
-        }
-    }
-    let Some((snapshot_id, provider, auth_choice, encrypted_payload)) = row else {
-        return Ok(ProviderAuthForRunResult::ProviderAuthNotFound);
-    };
-
-    let plaintext = cipher
-        .decrypt(&encrypted_payload)
-        .map_err(|err| sqlx_core::Error::Protocol(err.to_string()))?;
-    let mut payload: Value = serde_json::from_slice(&plaintext)
-        .map_err(|err| sqlx_core::Error::Decode(Box::new(err)))?;
-    if let Some(model) = route_model {
-        if let Some(object) = payload.as_object_mut() {
-            object.insert("model".to_string(), Value::String(model));
-        }
-    }
-    record_snapshot_used(pool, &snapshot_id, &owner_account_id, Some(run_id)).await?;
-
-    Ok(ProviderAuthForRunResult::Found(
-        RunnerProviderAuthMaterial {
-            snapshot_id,
-            provider,
-            auth_choice,
-            payload,
-        },
-    ))
-}
-
-pub async fn refresh_provider_auth_for_run(
-    pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
-    run_id: &str,
-    runner_id: &str,
-    snapshot_id: &str,
-    payload: Value,
-) -> Result<RefreshProviderAuthForRunResult, sqlx_core::Error> {
-    let mut tx = pool.begin().await?;
-    let run: Option<(String,)> = query_as(
-        "SELECT owner_account_id FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
-    )
-    .bind(run_id)
-    .bind(runner_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some((owner_account_id,)) = run else {
-        return Ok(RefreshProviderAuthForRunResult::RunNotFound);
-    };
-
-    let payload_bytes =
-        serde_json::to_vec(&payload).map_err(|err| sqlx_core::Error::Encode(Box::new(err)))?;
-    let encrypted_payload = cipher
-        .encrypt(&payload_bytes)
-        .map_err(|err| sqlx_core::Error::Protocol(err.to_string()))?;
-    let row: Option<(String, String)> = query_as(
-        "UPDATE cloud_agent_provider_auth_snapshots \
-         SET encrypted_payload = $4 \
-         WHERE snapshot_id = $1 AND account_id = $2 AND encryption_key_id = $3 \
-           AND revoked_at IS NULL \
-         RETURNING provider, auth_choice",
-    )
-    .bind(snapshot_id)
-    .bind(&owner_account_id)
-    .bind(cipher.key_id())
-    .bind(encrypted_payload)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some((provider, auth_choice)) = row else {
-        return Ok(RefreshProviderAuthForRunResult::SnapshotNotFound);
-    };
-    insert_audit_in_tx(
-        &mut tx,
-        snapshot_id,
-        &owner_account_id,
-        Some(run_id),
-        "refreshed",
-        &Utc::now().to_rfc3339(),
-    )
-    .await?;
-    tx.commit().await?;
-
-    Ok(RefreshProviderAuthForRunResult::Refreshed(
-        RunnerProviderAuthMaterial {
-            snapshot_id: snapshot_id.to_string(),
-            provider,
-            auth_choice,
-            payload,
-        },
-    ))
-}
-
-fn normalize_snapshot_provider(provider: &str) -> &str {
-    match provider.trim() {
-        "openai-codex" => "openai",
-        "anthropic-oauth" => "anthropic",
-        value => value,
-    }
 }
 
 pub async fn record_snapshot_used(
@@ -954,76 +442,5 @@ mod tests {
             payload: serde_json::json!({"token":"x"}),
         };
         assert!(request.normalized().is_none());
-    }
-
-    #[test]
-    fn agent_route_provider_aliases_match_account_snapshots() {
-        assert_eq!(normalize_snapshot_provider("openai-codex"), "openai");
-        assert_eq!(normalize_snapshot_provider("anthropic-oauth"), "anthropic");
-        assert_eq!(
-            normalize_snapshot_provider("github-copilot"),
-            "github-copilot"
-        );
-    }
-
-    #[test]
-    fn device_restore_envelope_round_trips_only_for_target_account_and_key() {
-        let device_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
-        let device_public = PublicKey::from(&device_secret);
-        let plaintext = br#"{"version":1,"accessToken":"secret"}"#;
-        let envelope = encrypt_device_restore_bundle(
-            "acct_owner",
-            "dev_target",
-            device_public.as_bytes(),
-            plaintext,
-        )
-        .unwrap();
-        assert_eq!(envelope.algorithm, DEVICE_RESTORE_ALGORITHM);
-        assert!(!envelope.ciphertext.contains("secret"));
-
-        let server_public_bytes: [u8; 32] = URL_SAFE_NO_PAD
-            .decode(&envelope.server_public_key)
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let server_public = PublicKey::from(server_public_bytes);
-        let shared_secret = device_secret.diffie_hellman(&server_public);
-        let salt = URL_SAFE_NO_PAD.decode(&envelope.salt).unwrap();
-        let mut key_bytes = [0_u8; DEVICE_RESTORE_KEY_LEN];
-        Hkdf::<Sha256>::new(Some(&salt), shared_secret.as_bytes())
-            .expand(DEVICE_RESTORE_HKDF_INFO, &mut key_bytes)
-            .unwrap();
-        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key_bytes));
-        let nonce = URL_SAFE_NO_PAD.decode(&envelope.nonce).unwrap();
-        let ciphertext = URL_SAFE_NO_PAD.decode(&envelope.ciphertext).unwrap();
-        let decrypted = cipher
-            .decrypt(
-                Nonce::from_slice(&nonce),
-                Payload {
-                    msg: &ciphertext,
-                    aad: &device_restore_aad("acct_owner", "dev_target"),
-                },
-            )
-            .unwrap();
-        assert_eq!(decrypted, plaintext);
-        assert!(cipher
-            .decrypt(
-                Nonce::from_slice(&nonce),
-                Payload {
-                    msg: &ciphertext,
-                    aad: &device_restore_aad("acct_other", "dev_target"),
-                },
-            )
-            .is_err());
-    }
-
-    #[test]
-    fn restore_request_rejects_malformed_device_keys() {
-        assert!(RestoreProviderAuthSnapshotsRequest {
-            device_public_key: "not-a-key".to_string(),
-            known_revision: None,
-        }
-        .decoded_device_public_key()
-        .is_none());
     }
 }

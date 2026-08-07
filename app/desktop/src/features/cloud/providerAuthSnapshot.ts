@@ -1,5 +1,23 @@
-import type { CloudProviderAuthSnapshotInput } from './authClient';
 import type { DesktopAuthState } from '@/kordi-app/types';
+
+export type CloudProviderAuthSnapshotInput = {
+  provider: string;
+  authChoice: string;
+  payload: unknown;
+};
+
+export type CloudProviderAuthSnapshot = {
+  snapshotId: string;
+  provider: string;
+  authChoice: string;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
+export type CloudProviderAuthSnapshotManifest = {
+  syncRevision: string;
+  snapshots: CloudProviderAuthSnapshot[];
+};
 
 type ProviderAuthProfiles = Record<string, Record<string, unknown>>;
 

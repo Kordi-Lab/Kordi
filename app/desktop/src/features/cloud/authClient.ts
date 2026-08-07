@@ -9,10 +9,12 @@ import {
 } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
 import type { CloudAccount, CloudAppInvitation, CloudPublicProfile } from './cloudIdentityTypes';
+import type { CloudProviderAuthSnapshot, CloudProviderAuthSnapshotInput, CloudProviderAuthSnapshotManifest } from './providerAuthSnapshot';
 
 export type { CloudContactSummary } from './cloudContactTypes';
 export { parseCloudOAuthHashResult } from './cloudOAuthResult';
 export type { CloudAccount, CloudAppInvitation, CloudPublicProfile } from './cloudIdentityTypes';
+export type { CloudProviderAuthSnapshot, CloudProviderAuthSnapshotInput, CloudProviderAuthSnapshotManifest } from './providerAuthSnapshot';
 
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
@@ -271,25 +273,6 @@ export type CloudPresenceAccount = {
 
 export type CloudPresenceContactsResponse = {
   accounts: CloudPresenceAccount[];
-};
-
-export type CloudProviderAuthSnapshotInput = {
-  provider: string;
-  authChoice: string;
-  payload: unknown;
-};
-
-export type CloudProviderAuthSnapshot = {
-  snapshotId: string;
-  provider: string;
-  authChoice: string;
-  createdAt: string;
-  revokedAt: string | null;
-};
-
-export type CloudProviderAuthSnapshotManifest = {
-  syncRevision: string;
-  snapshots: CloudProviderAuthSnapshot[];
 };
 
 export type CloudAgentRunClaimInput = {
