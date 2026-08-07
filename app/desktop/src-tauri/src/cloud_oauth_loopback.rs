@@ -175,23 +175,31 @@ fn completion_page_html(request_id: &str) -> String {
   <style>{style}</style>
 </head>
 <body>
-  <div class="page" aria-hidden="false">
-    <div class="page-grain" aria-hidden="true"></div>
-    <main class="card" role="status" aria-live="polite">
-      <span class="state-marker" data-status-loading aria-hidden="true"></span>
-      <span class="state-marker" data-status-success aria-hidden="true"></span>
-      <span class="state-marker" data-status-error aria-hidden="true"></span>
-
-      <div class="copy">
-        <h1 class="title" data-title-loading>Completing sign-in</h1>
-        <h1 class="title" data-title-success>Signed in</h1>
-        <h1 class="title" data-title-error>Couldn’t sign in</h1>
-
-        <p class="subtitle" data-sub-loading>Finishing the browser handoff.</p>
-        <p class="subtitle" data-sub-success>Your account is connected. You can close this window and return to the app.</p>
-        <p class="subtitle" data-sub-error>Return to the app and try signing in again.</p>
+  <div class="page">
+    <header>
+      <div class="wrap">
+        <div class="brand" aria-label="Kordi">
+          <svg viewBox="0 0 36 36" aria-hidden="true">
+            <circle cx="18" cy="10" r="9" fill="currentColor" opacity=".62"></circle>
+            <circle cx="11" cy="22" r="9" fill="currentColor" opacity=".82"></circle>
+            <circle cx="25" cy="22" r="9" fill="currentColor"></circle>
+          </svg>
+          <span>kordi</span>
+        </div>
       </div>
+    </header>
+    <main class="wrap" role="status" aria-live="polite">
+      <section class="copy">
+        <h1 data-title-loading>Completing sign-in.</h1>
+        <h1 data-title-success>Signed in.</h1>
+        <h1 data-title-error>Couldn’t sign in.</h1>
+
+        <p data-sub-loading>Finishing the secure browser handoff to Kordi.</p>
+        <p data-sub-success>Your account is connected. You can close this window and return to Kordi.</p>
+        <p data-sub-error>Return to Kordi and try signing in again.</p>
+      </section>
     </main>
+    <footer>&copy; Kordi 2026</footer>
   </div>
   <script>{script}</script>
 </body>
@@ -201,138 +209,73 @@ fn completion_page_html(request_id: &str) -> String {
     )
 }
 
-// Self-contained callback page matching OAuth provider confirmation pages:
-// a dark ambient canvas, one centered confirmation card, and no external
-// assets. It intentionally avoids the in-app cream surface because this page
-// lives in the browser after provider auth rather than inside the desktop UI.
+// This callback is served by a short-lived loopback listener, so it must remain
+// self-contained. Its visual language mirrors Kordi's public web surfaces
+// without loading external fonts or assets.
 fn completion_page_css() -> &'static str {
     r#"
     :root {
-      color-scheme: dark light;
-      --page-bg: oklch(0.145 0.006 250);
-      --page-bg-deep: oklch(0.105 0.004 250);
-      --glow-a: oklch(0.72 0.010 250 / 0.34);
-      --glow-b: oklch(0.50 0.012 250 / 0.18);
-      --surface: oklch(0.165 0.006 250 / 0.78);
-      --surface-top: oklch(0.22 0.006 250 / 0.22);
-      --border: oklch(0.50 0.006 250 / 0.26);
-      --ink-strong: oklch(0.985 0.004 250);
-      --ink-soft: oklch(0.82 0.010 250);
-      --ink-muted: oklch(0.70 0.010 250);
-      --shadow: oklch(0 0 0 / 0.34);
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root { color-scheme: dark; }
-    }
-
-    @media (prefers-color-scheme: light) {
-      :root {
-        --page-bg: oklch(0.18 0.006 250);
-        --page-bg-deep: oklch(0.12 0.004 250);
-      }
+      color-scheme: light dark;
+      --paper: #faf9f7;
+      --ink: #1a1714;
+      --ink-muted: #655e56;
+      --footer-ink: #81786f;
+      --rule: rgba(26, 23, 20, .09);
     }
 
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
+    html, body { min-height: 100%; margin: 0; }
     body {
       min-height: 100vh;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      color: var(--ink-soft);
-      background:
-        radial-gradient(circle at 50% 23%, oklch(0.86 0 0 / 0.20), transparent 24rem),
-        radial-gradient(circle at 42% 42%, oklch(0.66 0.006 250 / 0.22), transparent 30rem),
-        linear-gradient(180deg, var(--page-bg) 0%, var(--page-bg-deep) 78%);
+      color: var(--ink);
+      background: var(--paper);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       text-rendering: geometricPrecision;
     }
 
     .page {
-      position: relative;
       min-height: 100vh;
       display: grid;
-      place-items: center;
-      padding: 32px;
-      overflow: hidden;
+      grid-template-rows: auto 1fr auto;
     }
-    .page::before {
-      content: "";
-      position: absolute;
-      width: min(900px, 78vw);
-      height: min(520px, 52vh);
-      left: 50%;
-      top: 33%;
-      transform: translate(-50%, -50%);
-      border-radius: 999px;
-      background:
-        radial-gradient(circle at 50% 44%, var(--glow-a), transparent 58%),
-        radial-gradient(circle at 46% 66%, var(--glow-b), transparent 72%);
-      filter: blur(52px);
-      opacity: 0.92;
-      pointer-events: none;
+    .wrap { width: min(calc(100% - 4.25rem), 520px); margin-inline: auto; }
+    header { min-height: 68px; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }
+    header .wrap { width: min(calc(100% - 4.25rem), 1312px); }
+    .brand {
+      width: fit-content;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      font-size: 24px;
+      line-height: 1;
     }
-    .page-grain {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background-image: radial-gradient(circle at 50% 50%, transparent 0 42%, oklch(0 0 0 / 0.34) 100%);
-    }
-
-    .card {
-      position: relative;
-      width: min(470px, calc(100vw - 64px));
-      min-height: 0;
-      padding: 36px 32px;
-      overflow: hidden;
-      display: grid;
-      justify-items: start;
-      align-content: center;
-      gap: 0;
-      text-align: left;
-      background:
-        linear-gradient(180deg, var(--surface-top), transparent 42%),
-        var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 30px;
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.045),
-        0 30px 86px -44px var(--shadow),
-        0 8px 28px -22px oklch(0 0 0 / 0.80);
-      animation: card-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    }
-    @keyframes card-enter {
-      from { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.996); }
-      to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-    }
-
-    .state-marker { display: none; }
-    .copy {
-      display: grid;
-      justify-items: start;
-      gap: 12px;
-    }
-    .title {
+    .brand svg { width: 30px; height: 30px; flex: 0 0 auto; }
+    main { display: flex; align-items: center; padding-block: 3.5rem 4.5rem; }
+    .copy { width: 100%; }
+    h1 {
       display: none;
+      max-width: 11ch;
       margin: 0;
-      color: var(--ink-strong);
-      font-size: clamp(34px, 8vw, 46px);
-      line-height: .96;
-      font-weight: 780;
-      letter-spacing: -0.055em;
-      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 90ms;
-    }
-    .subtitle {
-      display: none;
-      margin: 0;
-      max-width: 34ch;
-      color: var(--ink-soft);
-      font-size: 15px;
-      line-height: 1.62;
-      font-weight: 500;
-      letter-spacing: -0.018em;
+      color: var(--ink);
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      font-size: clamp(48px, 8vw, 72px);
+      font-weight: 400;
+      line-height: .98;
+      letter-spacing: -.035em;
       text-wrap: balance;
-      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 140ms;
+    }
+    p {
+      display: none;
+      max-width: 43ch;
+      margin: 18px 0 0;
+      color: var(--ink-muted);
+      font-size: 15px;
+      line-height: 1.65;
+      text-wrap: balance;
     }
     [data-status="loading"] [data-title-loading],
     [data-status="loading"] [data-sub-loading],
@@ -340,23 +283,27 @@ fn completion_page_css() -> &'static str {
     [data-status="success"] [data-sub-success],
     [data-status="error"]   [data-title-error],
     [data-status="error"]   [data-sub-error] { display: block; }
-
-    @keyframes text-fade {
-      from { opacity: 0; transform: translate3d(0, 3px, 0); }
-      to   { opacity: 1; transform: translate3d(0, 0, 0); }
+    footer {
+      padding: 16px 34px 18px;
+      border-top: 1px solid var(--rule);
+      color: var(--footer-ink);
+      font-size: 11px;
+      text-align: center;
     }
 
-    @media (max-width: 640px) {
-      .page { padding: 20px; }
-      .card {
-        width: 100%;
-        min-height: 0;
-        padding: 34px 26px 32px;
-        border-radius: 28px;
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #191814;
+        --ink: #f2efe9;
+        --ink-muted: #b8b0a7;
+        --footer-ink: #938b82;
+        --rule: rgba(242, 239, 233, .09);
       }
     }
-    @media (prefers-reduced-motion: reduce) {
-      .card, .title, .subtitle { animation: none; }
+    @media (max-width: 520px) {
+      .wrap, header .wrap { width: calc(100% - 3.5rem); }
+      main { align-items: flex-start; padding-block: 5.5rem 3.5rem; }
+      h1 { font-size: clamp(48px, 16vw, 62px); }
     }
     "#
 }
@@ -368,7 +315,7 @@ fn completion_page_script(request_id: &str) -> String {
       const root = document.documentElement;
       // The page boots in `loading` state via the data attribute on <html>;
       // we toggle to `success` / `error` after the POST resolves so CSS can
-      // swap the visible pill + title + subtitle without any flash.
+      // swap the visible title + subtitle without any flash.
       function setStatus(next) {{ root.setAttribute('data-status', next); }}
 
       fetch('/complete/{request_id}', {{
@@ -403,15 +350,13 @@ mod completion_page_tests {
             "page should not render a visible label chip"
         );
 
-        // All three state blocks must be present so the swap between them is
+        assert!(html.contains("<span>kordi</span>"));
+        assert_eq!(html.matches("<circle ").count(), 3);
+        assert!(html.contains("&copy; Kordi 2026"));
+        assert!(!html.contains("state-marker"));
+
+        // All three copy blocks are pre-rendered so the swap between them is
         // just an attribute flip, never a layout shift.
-        for status in [
-            "data-status-loading",
-            "data-status-success",
-            "data-status-error",
-        ] {
-            assert!(html.contains(status), "missing status state: {status}");
-        }
         for title in [
             "data-title-loading",
             "data-title-success",
@@ -428,14 +373,17 @@ mod completion_page_tests {
     fn copy_matches_brand_voice_for_each_state() {
         let html = completion_page_html("cloud_oauth_abc123");
 
-        assert!(!html.contains(">kordi</div>"));
         assert!(!html.contains("KORDI LOGIN"));
         assert!(html.contains("Completing sign-in"));
         assert!(html.contains("Signed in"));
         assert!(html.contains("Couldn’t sign in"));
-        assert!(html.contains(
-            "Your account is connected. You can close this window and return to the app."
-        ));
+        assert!(html
+            .contains("Your account is connected. You can close this window and return to Kordi."));
+        assert!(html.contains("Finishing the secure browser handoff to Kordi."));
+        assert!(html.contains("Return to Kordi and try signing in again."));
+        assert!(!html.contains("Kordi is ready in the app"));
+        assert!(!html.contains("This window will update automatically"));
+        assert!(!html.contains("No account changes were made"));
         assert!(!html.contains("Close window"));
         assert!(!html.contains("<button"));
         assert!(
@@ -469,42 +417,46 @@ mod completion_page_tests {
     fn page_carries_brand_palette_and_dark_mode_support() {
         let html = completion_page_html("cloud_oauth_palette");
 
-        // The OAuth callback should align with provider callback pages: dark,
-        // centered, and quiet by default, with a blurred ambient field behind
-        // a single confirmation card.
+        // The callback uses the same warm paper, ink, rules, and simple
+        // header/content/footer structure as Kordi's public web surfaces.
         assert!(
-            html.contains("--page-bg: oklch(0.145 0.006 250)"),
-            "default page bg should be the dark callback surface"
+            html.contains("--paper: #faf9f7"),
+            "light mode should use the Kordi paper surface"
         );
         assert!(
-            html.contains("filter: blur(52px)"),
-            "page should carry the soft blurred provider-callback glow"
+            html.contains("--paper: #191814"),
+            "dark mode should use the Kordi dark paper surface"
         );
+        assert!(html.contains("grid-template-rows: auto 1fr auto"));
+        assert!(html.contains("text-align: center"));
         assert!(
             html.contains("prefers-color-scheme: dark"),
             "dark mode must be supported"
         );
-        assert!(
-            html.contains("prefers-reduced-motion: reduce"),
-            "reduced motion must collapse animations"
-        );
+        assert!(!html.contains("linear-gradient"));
+        assert!(!html.contains("filter: blur"));
+        assert!(!html.contains("animation:"));
     }
 
     #[test]
-    fn uses_provider_callback_system_font_stack_and_scale() {
+    fn uses_self_contained_kordi_typography_and_scale() {
         let html = completion_page_html("cloud_oauth_font");
 
         assert!(
             html.contains("-apple-system, BlinkMacSystemFont"),
-            "callback page should use the same system font stack as the provider-style confirmation page"
+            "body copy should use the platform system stack"
+        );
+        assert!(
+            html.contains("\"Iowan Old Style\", \"Palatino Linotype\", Palatino, Georgia, serif"),
+            "display copy should use the self-contained Kordi serif stack"
         );
         assert!(
             !html.contains("text-transform: uppercase"),
             "callback label should not force the kordi wordmark into capitals"
         );
         assert!(
-            html.contains("font-size: clamp(34px, 8vw, 46px);"),
-            "callback title should use the shared compact callback scale"
+            html.contains("font-size: clamp(48px, 8vw, 72px);"),
+            "callback title should use the approved Kordi display scale"
         );
         assert!(
             html.contains("font-size: 15px;"),
@@ -512,7 +464,7 @@ mod completion_page_tests {
         );
         assert!(
             !html.contains("Avenir Next"),
-            "callback page should not use the previous Kordi in-app display font"
+            "callback page should not use the previous display font"
         );
     }
 
@@ -534,6 +486,11 @@ mod completion_page_tests {
         assert!(!html.contains("background-clip: text"));
         assert!(!html.contains("border-left: 4px"));
         assert!(!html.contains("border-left: 3px"));
+        assert!(!html.contains("class=\"card\""));
+        assert!(
+            !html.contains("<path"),
+            "the removed status icon must stay removed"
+        );
     }
 }
 
