@@ -146,14 +146,7 @@ pub(super) async fn account_response_row(
     pool: &PgPool,
     account_id: &str,
 ) -> Result<Option<AccountResponse>, sqlx_core::Error> {
-    let row: Option<(
-        String,
-        i64,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = query_as(
+    let row: Option<AccountRecordRow> = query_as(
         "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash \
              FROM cloud_accounts WHERE account_id = $1",
     )

@@ -38,8 +38,8 @@ use crate::auth::password::{
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::rows::{
-    AttachmentOwnerRow, CloudSyncEventRow, ContactRequestRow, MessageAttachmentRow,
-    MessageRecordRow,
+    AccountRecordRow, AttachmentOwnerRow, CloudSyncEventRow, ContactListRow, ContactRequestRow,
+    MessageAttachmentRow, MessageRecordRow,
 };
 use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,

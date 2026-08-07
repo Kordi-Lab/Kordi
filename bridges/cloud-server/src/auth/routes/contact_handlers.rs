@@ -95,7 +95,7 @@ pub(super) async fn list_contacts(
 ) -> Response {
     let pool = state.db_pool();
 
-    let rows: Vec<(String, i64, Option<String>, Option<String>, String)> = match query_as(
+    let rows: Vec<ContactListRow> = match query_as(
         "SELECT a.account_id, a.public_account_number, a.display_name, a.avatar_url, c.created_at \
          FROM cloud_contacts c \
          JOIN cloud_accounts a ON a.account_id = c.peer_account_id \
