@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Blocks, Check, FileText, LoaderCircle, Puzzle, Wrench } from 'lucide-react';
 
+import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import {
   fetchDesktopSkillLibraryDetail,
   readDesktopSkillLibraryFile,
@@ -173,7 +174,7 @@ export function CapabilityLibraryView({
                 {files.map((file) => <button key={file.path} type="button" aria-current={file.path === selectedPath ? 'true' : undefined} className={cn(file.path === selectedPath && 'is-active')} onClick={() => void openFile(file.path)}><FileText className="h-3.5 w-3.5" /><span>{file.path}</span></button>)}
               </nav>
               <div className="app-factory-library-code">
-                {loading ? <div className="app-skill-library-loading"><LoaderCircle className="h-4 w-4 animate-spin" />Loading file…</div> : <pre>{content || 'No text preview is available.'}</pre>}
+                {loading ? <div className="app-skill-library-loading"><LoaderCircle className="h-4 w-4 animate-spin" />Loading file…</div> : <pre data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{content || 'No text preview is available.'}</pre>}
               </div>
             </>
           ) : (

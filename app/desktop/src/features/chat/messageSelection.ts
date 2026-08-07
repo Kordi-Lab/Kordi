@@ -20,6 +20,16 @@ export type MessageSelectionState = {
   sourcesByMessageId: Map<string, ForwardMessageSource>;
 };
 
+export function selectAllMessageSources(
+  conversationId: string,
+  sources: readonly ForwardMessageSource[],
+): MessageSelectionState | null {
+  const sourcesByMessageId = new Map(
+    sources.map((source) => [source.sourceMessageId, source]),
+  );
+  return sourcesByMessageId.size > 0 ? { conversationId, sourcesByMessageId } : null;
+}
+
 export function formatSelectedMessagesForCopy(sources: readonly ForwardMessageSource[]) {
   return sources
     .map((source) => {

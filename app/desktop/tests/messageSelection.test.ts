@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { formatSelectedMessagesForCopy, hasMessageSelectionDragExceededThreshold, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '../src/features/chat/messageSelection';
+import { formatSelectedMessagesForCopy, hasMessageSelectionDragExceededThreshold, selectAllMessageSources, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '../src/features/chat/messageSelection';
 import type { ForwardMessageSource } from '../src/features/chat/messageActionMetadata';
 
 const source = (id: string): ForwardMessageSource => ({
@@ -54,4 +54,17 @@ test('toggleMessageSelectionSource toggles without mutating previous state', () 
 
   assert.equal(previous.sourcesByMessageId.has('msg:first'), true);
   assert.equal(toggled, null);
+});
+
+test('selectAllMessageSources selects every eligible message and de-duplicates ids', () => {
+  const selected = selectAllMessageSources('conv:one', [
+    source('msg:first'),
+    source('msg:second'),
+    { ...source('msg:first'), textPreview: 'latest source wins' },
+  ]);
+
+  assert.equal(selected?.conversationId, 'conv:one');
+  assert.deepEqual([...selected!.sourcesByMessageId.keys()], ['msg:first', 'msg:second']);
+  assert.equal(selected?.sourcesByMessageId.get('msg:first')?.textPreview, 'latest source wins');
+  assert.equal(selectAllMessageSources('conv:one', []), null);
 });

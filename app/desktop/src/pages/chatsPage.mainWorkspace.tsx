@@ -267,6 +267,8 @@ export function ChatMainWorkspace({
                 onSelectionDragStart: composer.onSelectionDragStart,
                 onSelectionDragEnter: composer.onSelectionDragEnter,
                 onSelectionDragEnd: composer.onSelectionDragEnd,
+                onCancelMessageSelection: composer.onCancelMessageSelection,
+                onSelectAllMessages: composer.onSelectAllMessages,
               }}
               viewport={{
                 sessionKey: activeConv.id,

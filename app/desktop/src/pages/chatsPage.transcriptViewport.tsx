@@ -109,6 +109,8 @@ export function useChatTranscriptViewport({
     onSelectionDragStart,
     onSelectionDragEnter,
     onSelectionDragEnd,
+    onCancelMessageSelection,
+    onSelectAllMessages,
   } = selection;
 
   const loadOlderMessagesRef = useRef(onLoadOlderMessages);
@@ -134,6 +136,9 @@ export function useChatTranscriptViewport({
       )}
       hasOlder={hasOlderMessages}
       onLoadOlder={canLoadOlderMessages ? handleLoadOlderMessages : undefined}
+      selectionMode={selectionMode}
+      onCancelMessageSelection={onCancelMessageSelection}
+      onSelectAllMessages={onSelectAllMessages}
       getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={({ message: msg, originalIndex: idx }) => (
         <div>
@@ -218,6 +223,7 @@ export function useChatTranscriptViewport({
     messageForksByEntryId,
     navigationRequest,
     onCancelQueuedMessage,
+    onCancelMessageSelection,
     onEditQueuedMessage,
     onForwardMessage,
     onForkMessage,
@@ -235,6 +241,7 @@ export function useChatTranscriptViewport({
     onRequestUnpinMessage,
     onRetryMessage,
     onSelectMessage,
+    onSelectAllMessages,
     onSelectSession,
     onSelectionDragEnd,
     onSelectionDragEnter,

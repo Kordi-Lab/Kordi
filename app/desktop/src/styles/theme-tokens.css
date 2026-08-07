@@ -271,6 +271,9 @@
  * Several menus are portaled to document.body, so keeping this contract on
  * only .kordi-app would make their theme depend on where React mounts them. */
 :where(body, .kordi-app) {
+  --app-copy-selection-bg: rgb(96 165 250 / 0.32);
+  --app-copy-selection-surface-bg: rgb(96 165 250 / 0.18);
+  --app-copy-selection-text: rgb(248 250 252);
   --app-transient-surface-bg: rgb(20 22 27 / 0.985);
   --app-transient-surface-fallback: rgb(20 22 27);
   --app-transient-raised-bg: rgb(29 31 37 / 0.98);
@@ -298,6 +301,9 @@
 }
 
 :where(body.theme-light, .kordi-app.theme-light, .app-transient-theme-light, .app-compact-model-menu-light, .app-composer-mention-menu-light) {
+  --app-copy-selection-bg: rgb(147 197 253 / 0.46);
+  --app-copy-selection-surface-bg: rgb(147 197 253 / 0.30);
+  --app-copy-selection-text: rgb(15 23 42);
   --app-transient-surface-bg: rgb(252 252 253 / 0.985);
   --app-transient-surface-fallback: rgb(252 252 253);
   --app-transient-raised-bg: rgb(244 245 247 / 0.98);

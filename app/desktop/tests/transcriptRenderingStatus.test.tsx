@@ -55,7 +55,7 @@ test('code blocks remove the header bar and reveal copy controls on hover', () =
   assert.match(codeBlock, /group relative max-w-full/);
   assert.match(codeBlock, /rounded-\[10px\]/);
   assert.doesNotMatch(codeBlock, /rounded-\[18px\]/);
-  assert.match(codeBlock, /<span className="sr-only">\{resolvedLanguage\}<\/span>/);
+  assert.match(codeBlock, /<span className="sr-only" data-kordi-copy-exclude="true">\{resolvedLanguage\}<\/span>/);
   assert.doesNotMatch(codeBlock, />\{resolvedLanguage\}<\/div>/);
   assert.match(codeBlock, /app-markdown-code-copy-button[^"']*absolute[^"']*opacity-0[^"']*group-hover:opacity-100[^"']*group-focus-within:opacity-100/);
   assert.doesNotMatch(codeBlock, />\{copied \? 'Copied' : 'Copy'\}</);

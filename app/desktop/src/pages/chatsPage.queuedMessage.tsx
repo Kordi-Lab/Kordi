@@ -43,7 +43,7 @@ export function QueuedMessageBubble({
             </div>
           </div>
           <div className="mt-0.5 flex items-center gap-2">
-            <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5">
+            <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5" data-kordi-copy-surface="message">
               <MessageInlineContent text={message.text} />
             </div>
             <div

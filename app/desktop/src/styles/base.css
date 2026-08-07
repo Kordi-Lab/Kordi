@@ -17,6 +17,79 @@
   box-sizing: border-box;
 }
 
+/* Desktop-app selection contract: interface chrome is not copyable. Message
+ * payloads, document previews, and editable controls opt in explicitly. */
+:where(body, body *) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:where(
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]),
+  [data-kordi-copy-surface="message"],
+  [data-kordi-copy-surface="message"] *,
+  [data-kordi-copy-surface="document"],
+  [data-kordi-copy-surface="document"] *
+) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+:where(
+  [data-kordi-copy-surface] button,
+  [data-kordi-copy-surface] [role="button"],
+  [data-kordi-copy-surface] [data-kordi-copy-exclude="true"]
+) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+:where(
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]),
+  [data-kordi-copy-surface],
+  [data-kordi-copy-surface] *
+)::selection {
+  background-color: var(--app-copy-selection-bg, rgb(96 165 250 / 0.32));
+  color: var(--app-copy-selection-text, rgb(248 250 252));
+  text-shadow: none;
+}
+
+[data-kordi-copy-surface][data-kordi-copy-selection="unified"] {
+  position: relative;
+  isolation: isolate;
+}
+
+[data-kordi-copy-surface][data-kordi-copy-selection="unified"]::before {
+  position: absolute;
+  z-index: -1;
+  top: calc(var(--app-copy-selection-top, 0px) - 0.2rem);
+  right: -0.4rem;
+  height: calc(var(--app-copy-selection-height, 100%) + 0.4rem);
+  left: -0.4rem;
+  border-radius: 10px;
+  background-color: var(--app-copy-selection-surface-bg, rgb(96 165 250 / 0.18));
+  content: "";
+  pointer-events: none;
+}
+
+:where(
+  [data-kordi-copy-surface][data-kordi-copy-selection="unified"],
+  [data-kordi-copy-surface][data-kordi-copy-selection="unified"] *
+)::selection {
+  background-color: transparent;
+  color: inherit;
+}
+
+[data-virtual-transcript-scroll][data-message-selection-mode="true"]
+  :where([data-kordi-copy-surface="message"], [data-kordi-copy-surface="message"] *) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 :where(.app-error-text, [role="alert"]) {
   min-width: 0;
   max-width: 100%;

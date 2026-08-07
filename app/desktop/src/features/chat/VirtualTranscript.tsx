@@ -27,10 +27,10 @@ import {
   completeSessionClickToFirstMessage,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
+import { useTranscriptSelectionViewportProps, type TranscriptSelectionProps } from './transcriptSelection';
 
 export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
-
-export type VirtualTranscriptProps<Item> = {
+export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   items: readonly Item[];
   sessionKey: string;
   getItemKey: (item: Item, index: number) => string | number;
@@ -51,12 +51,10 @@ export type VirtualTranscriptProps<Item> = {
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
-
 const preserveMeasuredDisclosurePosition = () => false;
 const STABLE_DISCLOSURE_SETTLE_MS = 320;
 const TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP = 12;
 const TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT = 72;
-
 type TranscriptDisclosureDirection = 'up' | 'down';
 
 type StableDisclosureAnchor = {
@@ -119,7 +117,7 @@ export function VirtualTranscript<Item>({
   tail,
   tailKey,
   estimateSize,
-  gap = 4,
+  gap = 4, selectionMode = false, onSelectAllMessages, onCancelMessageSelection,
 }: VirtualTranscriptProps<Item>) {
   const renderPerformanceSpan = beginChatPerformanceSpan('transcript-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
@@ -203,6 +201,8 @@ export function VirtualTranscript<Item>({
       tailAlignmentFrameRef.current = null;
     }
   }, []);
+
+  const selectionViewportProps = useTranscriptSelectionViewportProps({ cancelTailAlignment, viewportRef: internalScrollRef, selectionMode, onSelectAllMessages, onCancelMessageSelection });
 
   const cancelStableDisclosureRelease = useCallback(() => {
     if (stableDisclosureReleaseFrameRef.current !== null) {
@@ -559,7 +559,7 @@ export function VirtualTranscript<Item>({
       onScroll={handleScroll}
       onClickCapture={handleClickCapture}
       onWheelCapture={cancelTailAlignment}
-      onPointerDownCapture={cancelTailAlignment}
+      {...selectionViewportProps}
       onTouchStartCapture={cancelTailAlignment}
       data-virtual-transcript-scroll="true"
       data-transcript-loading-older={isLoadingOlder ? 'true' : undefined}

@@ -324,6 +324,7 @@ export function useKordiAppShellComposition({
       onSelectionDragEnter: messages.onSelectionDragEnter,
       onSelectionDragEnd: messages.onSelectionDragEnd,
       onCancelMessageSelection: messages.onCancelMessageSelection,
+      onSelectAllMessages: messages.onSelectAllMessages,
       onCopySelectedMessages: messages.onCopySelectedMessages,
       onForwardSelectedMessages: messages.onForwardSelectedMessages,
     },

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
-
+import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
 import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
@@ -117,7 +117,7 @@ function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: stri
   const [headers, ...bodyRows] = rows;
 
   return (
-    <div data-artifact-preview-mode={mode} className={cn('overflow-auto p-3', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
+    <div data-artifact-preview-mode={mode} data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown} className={cn('overflow-auto p-3', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
       <div className="overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-control-bg)]/70">
         <table className="min-w-full border-collapse text-left text-[12px] text-slate-100">
           <thead className="bg-white/[0.05] text-[10px] uppercase tracking-[0.12em] text-slate-400">
@@ -177,13 +177,13 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
   }
 
   if (previewKind === 'mermaid') {
-    return <div data-artifact-preview-mode={mode} className={cn('p-3', mode !== 'panel' && 'min-h-full')}><MermaidDiagram code={source} className={mode !== 'panel' ? 'min-h-full' : undefined} /></div>;
+    return <div data-artifact-preview-mode={mode} className={cn('p-3', mode !== 'panel' && 'min-h-full')}><MermaidDiagram code={source} copySurface="document" className={mode !== 'panel' ? 'min-h-full' : undefined} /></div>;
   }
 
   if (previewKind === 'json') {
     return (
       <div data-artifact-preview-mode={mode} className={cn('app-artifact-preview-opaque-surface p-3', mode !== 'panel' && 'min-h-full')}>
-        <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass={mode === 'panel' ? 'max-h-[32rem]' : 'max-h-none'} wrapLines />
+        <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass={mode === 'panel' ? 'max-h-[32rem]' : 'max-h-none'} wrapLines copySurface="document" />
       </div>
     );
   }
@@ -196,7 +196,7 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
     return (
       <div data-artifact-preview-mode={mode} className={cn('overflow-auto px-3 py-3', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
         <MarkdownContent
-          text={source}
+          text={source} copySurface="document"
           className={cn(
             ARTIFACT_MARKDOWN_PREVIEW_CLASS,
             mode === 'panel' ? 'rounded-[14px] px-3 py-3' : 'min-h-full px-4 py-4',
@@ -209,7 +209,7 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
   return (
     <div data-artifact-preview-mode={mode} className={cn('app-artifact-preview-opaque-surface p-3', mode !== 'panel' && 'min-h-full')}>
       <MarkdownCodeBlock
-        language={languageFromPath(preview.path)}
+        language={languageFromPath(preview.path)} copySurface="document"
         code={source}
         maxHeightClass={mode === 'panel' ? 'max-h-[32rem]' : 'max-h-none'}
         wrapLines
