@@ -6,6 +6,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::cloud_agent_runtime::proactive::cancel_if_ineligible;
+use crate::cloud_agent_runtime::provider_auth::{EnvProviderAuthCipher, ProviderAuthCipher};
 
 use super::{RunError, RunResult};
 
@@ -213,14 +214,23 @@ pub(crate) async fn runner_response_from_row(
     pool: &PgPool,
     row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
-    let provider_auth_available: Option<(String,)> = query_as(
-        "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
-         WHERE account_id = $1 AND revoked_at IS NULL \
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(&row.3)
-    .fetch_optional(pool)
-    .await?;
+    let provider_auth_key_id = EnvProviderAuthCipher::from_env()
+        .ok()
+        .map(|cipher| cipher.key_id().to_string());
+    let provider_auth_available: Option<(String,)> = match provider_auth_key_id {
+        Some(key_id) => {
+            query_as(
+                "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
+             WHERE account_id = $1 AND encryption_key_id = $2 AND revoked_at IS NULL \
+             ORDER BY created_at DESC LIMIT 1",
+            )
+            .bind(&row.3)
+            .bind(key_id)
+            .fetch_optional(pool)
+            .await?
+        }
+        None => None,
+    };
     let metadata: Option<(String, Option<String>, Option<String>)> = query_as(
         "SELECT trigger_kind, target_agent_id, proactive_skill_pack
          FROM cloud_agent_fallback_runs WHERE run_id = $1",

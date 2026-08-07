@@ -300,6 +300,11 @@ export type CloudProviderAuthSnapshot = {
   revokedAt: string | null;
 };
 
+export type CloudProviderAuthSnapshotManifest = {
+  syncRevision: string;
+  snapshots: CloudProviderAuthSnapshot[];
+};
+
 export type CloudAgentRunClaimInput = {
   requestMessageId: string;
   sessionId: string;
@@ -708,6 +713,17 @@ export class CloudAuthClient {
       'Could not load Cloud provider-auth snapshot.',
     );
     return response?.snapshot ?? null;
+  }
+
+  async providerAuthSnapshotManifest(token: string): Promise<CloudProviderAuthSnapshotManifest> {
+    return this.send<CloudProviderAuthSnapshotManifest>(
+      '/v1/cloud/agent-provider-auth/snapshots/manifest',
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load Cloud provider-auth snapshot manifest.',
+    );
   }
 
   async revokeProviderAuthSnapshot(token: string, snapshotId: string): Promise<CloudProviderAuthSnapshot> {

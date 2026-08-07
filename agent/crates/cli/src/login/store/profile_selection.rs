@@ -294,7 +294,7 @@ pub(super) fn active_auth_method_for_store(
     methods.first().copied()
 }
 
-pub(super) fn repair_active_auth_selections(store: &mut AuthStore) {
+pub(crate) fn repair_active_auth_selections(store: &mut AuthStore) {
     let mut providers = store.profiles.keys().cloned().collect::<Vec<_>>();
     providers.extend(store.active_auth_methods.keys().cloned());
     providers.extend(store.active_env_auth_methods.keys().cloned());

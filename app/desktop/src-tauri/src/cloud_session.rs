@@ -53,7 +53,7 @@ fn dev_file_secret_path(service: &str, account_id: &str) -> Option<PathBuf> {
     )
 }
 
-fn secret_store(service: &str, account_id: &str, value: &str) -> Result<(), String> {
+pub(crate) fn secret_store(service: &str, account_id: &str, value: &str) -> Result<(), String> {
     if let Some(path) = dev_file_secret_path(service, account_id) {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|err| format!("file_secret_write_failed: {err}"))?;
@@ -66,7 +66,7 @@ fn secret_store(service: &str, account_id: &str, value: &str) -> Result<(), Stri
         .map_err(|err| format!("keychain_write_failed: {err}"))
 }
 
-fn secret_load(service: &str, account_id: &str) -> Result<Option<String>, String> {
+pub(crate) fn secret_load(service: &str, account_id: &str) -> Result<Option<String>, String> {
     if let Some(path) = dev_file_secret_path(service, account_id) {
         return match fs::read_to_string(path) {
             Ok(value) => Ok(Some(value)),

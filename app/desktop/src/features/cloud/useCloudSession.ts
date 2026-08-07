@@ -4,6 +4,7 @@ import {
   activateDesktopCloudAccountStorage,
   openDesktopExternalUrl,
   prepareDesktopCloudOAuthLoopback,
+  restoreDesktopCloudProviderAuth,
   waitForDesktopCloudOAuthLoopback,
   type DesktopCloudAccountStorageActivation,
 } from '@/lib/desktop';
@@ -63,10 +64,17 @@ export type UseCloudSessionOptions = {
 
 const CLOUD_PROFILE_REFRESH_INTERVAL_MS = 15_000;
 const CLOUD_PROFILE_UPDATED_SUBJECT_PREFIX = 'kordi.events.account.profile.updated.';
+export const CLOUD_PROVIDER_AUTH_UPDATED_EVENT = 'kordi-cloud-provider-auth-updated';
+const CLOUD_PROVIDER_AUTH_UPDATED_SUBJECT_PREFIX = 'kordi.events.account.provider_auth.updated.';
 
 export function shouldRefreshCloudSessionProfileForWsSubject(subject: string | undefined | null, accountId: string | undefined | null): boolean {
   const cleanAccountId = accountId?.trim();
   return Boolean(cleanAccountId && subject === `${CLOUD_PROFILE_UPDATED_SUBJECT_PREFIX}${cleanAccountId}`);
+}
+
+export function shouldRestoreCloudProviderAuthForWsSubject(subject: string | undefined | null, accountId: string | undefined | null): boolean {
+  const cleanAccountId = accountId?.trim();
+  return Boolean(cleanAccountId && subject === `${CLOUD_PROVIDER_AUTH_UPDATED_SUBJECT_PREFIX}${cleanAccountId}`);
 }
 
 type CompleteCloudAuthResultOptions = {
@@ -74,6 +82,11 @@ type CompleteCloudAuthResultOptions = {
   currentAccountId: string | null;
   saveSession?: (session: StoredSession) => Promise<void>;
   activateAccountStorage?: (accountId: string) => Promise<DesktopCloudAccountStorageActivation>;
+  restoreAccountProviderAuth?: (accountId: string) => Promise<{
+    restoredProfiles: number;
+    removedProfiles?: number;
+    selectionChanged?: boolean;
+  }>;
   setAuthenticated: (account: CloudAccount) => void;
   reloadWindow?: () => void;
 };
@@ -83,6 +96,7 @@ export async function completeCloudAuthResult({
   currentAccountId,
   saveSession: persistSession,
   activateAccountStorage = activateDesktopCloudAccountStorage,
+  restoreAccountProviderAuth = restoreDesktopCloudProviderAuth,
   setAuthenticated: publishAuthenticated,
   reloadWindow,
 }: CompleteCloudAuthResultOptions): Promise<boolean> {
@@ -95,10 +109,28 @@ export async function completeCloudAuthResult({
     await persistSession(session);
   }
   const activation = await activateAccountStorage(result.account.accountId);
+  let restoredProfiles = 0;
+  let removedProfiles = 0;
+  let selectionChanged = false;
+  try {
+    const restored = await restoreAccountProviderAuth(result.account.accountId);
+    restoredProfiles = restored.restoredProfiles;
+    removedProfiles = restored.removedProfiles ?? 0;
+    selectionChanged = restored.selectionChanged ?? false;
+  } catch {
+    // Provider restoration is best-effort; account sign-in must remain usable
+    // when the server has no snapshot or requires a newer login session.
+  }
   const switchedAuthenticatedAccount = Boolean(
     activation.storageRoot && currentAccountId && currentAccountId !== result.account.accountId,
   );
-  if (activation.requiresReload || switchedAuthenticatedAccount) {
+  if (
+    activation.requiresReload
+    || switchedAuthenticatedAccount
+    || restoredProfiles > 0
+    || removedProfiles > 0
+    || selectionChanged
+  ) {
     reloadWindow?.();
     return false;
   }
@@ -222,6 +254,10 @@ export function useCloudSession({
           try {
             const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
             const subject = typeof frame?.subject === 'string' ? frame.subject : '';
+            if (shouldRestoreCloudProviderAuthForWsSubject(subject, account.accountId)) {
+              window.dispatchEvent(new CustomEvent(CLOUD_PROVIDER_AUTH_UPDATED_EVENT));
+              return;
+            }
             if (!shouldRefreshCloudSessionProfileForWsSubject(subject, account.accountId)) return;
             const patched = applyCloudSessionProfileUpdate(accountRef.current, frame?.payload);
             if (patched) {

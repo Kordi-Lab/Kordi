@@ -70,6 +70,7 @@ export function authStateHasChatReadyProvider(
   if (buildAuthDisplayProviders(authState).some((provider) => {
     if (!provider.configured) return false;
     const providerId = normalizeSelectedProviderId(provider.id) ?? provider.id;
+    if (!isLocalProvider(providerId)) return true;
     return modelProviderIds.has(providerId)
       || localProviderHasSavedModel(providerId, provider.preferredModel);
   })) {
@@ -137,7 +138,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     providers.push({
       id: 'anthropic',
       label: 'Claude',
-      configured: anthropic.options.length > 0,
+      configured: displayProviderConfigured(anthropic),
       statusSummary: methods
         .map((method) => `${method.title}: ${method.options.length > 0 ? `${method.options.length} configured` : 'not configured'}`)
         .join(' • '),
@@ -180,7 +181,11 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     providers.push({
       id: 'openai',
       label: 'OpenAI',
-      configured: methods.some((method) => method.options.length > 0),
+      configured: Boolean(
+        openAiOauth?.configured
+        || openAiApi?.configured
+        || methods.some((method) => method.options.length > 0),
+      ),
       statusSummary: methods
         .map((method) => `${method.title}: ${method.options.length > 0 ? `${method.options.length} configured` : 'not configured'}`)
         .join(' • '),

@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     let model = std::env::var("KORDI_CLOUD_REAL_PROVIDER_MODEL")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "gpt-5.5".to_string());
+        .unwrap_or_else(|| kordi_core::agent_session::parse_model_arg(Some(&provider), None).1);
 
     let (provider, auth_choice, payload) = match auth.method {
         ProviderAuthMethod::ApiKey => (
@@ -34,14 +34,8 @@ fn main() -> Result<()> {
                 "model": model,
             }),
         ),
-        ProviderAuthMethod::OAuth => {
-            if auth.credential_provider != "openai-codex" {
-                bail!(
-                    "real-provider canary only supports OpenAI OAuth right now; resolved {}",
-                    auth.credential_provider
-                );
-            }
-            (
+        ProviderAuthMethod::OAuth => match auth.credential_provider.as_str() {
+            "openai-codex" => (
                 "openai-codex".to_string(),
                 "local-active-oauth".to_string(),
                 json!({
@@ -50,8 +44,32 @@ fn main() -> Result<()> {
                     "accountId": auth.account_id,
                     "model": model,
                 }),
-            )
-        }
+            ),
+            "anthropic-oauth" => (
+                "anthropic".to_string(),
+                "local-active-oauth".to_string(),
+                json!({
+                    "apiMode": "anthropic-oauth",
+                    "accessToken": auth.credential,
+                    "accountLabel": auth.account_label,
+                    "model": model,
+                }),
+            ),
+            "github-copilot" => (
+                "github-copilot".to_string(),
+                "local-active-oauth".to_string(),
+                json!({
+                    "apiMode": "github-copilot-oauth",
+                    "accessToken": auth.credential,
+                    "accountLabel": auth.account_label,
+                    "authority": auth.authority,
+                    "baseUrl": login::github_copilot_api_base_url(),
+                    "headers": login::github_copilot_runtime_headers(),
+                    "model": model,
+                }),
+            ),
+            resolved => bail!("real-provider canary does not support OAuth provider {resolved}"),
+        },
     };
 
     let body = json!({

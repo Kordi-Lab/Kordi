@@ -207,6 +207,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "proactive agents and outbound mention permissions",
         sql: include_str!("../../migrations/0037_proactive_cloud_agents.sql"),
     },
+    EmbeddedMigration {
+        version: 38,
+        description: "provider auth refresh audit action",
+        sql: include_str!("../../migrations/0038_provider_auth_refresh_audit.sql"),
+    },
+    EmbeddedMigration {
+        version: 39,
+        description: "provider auth device restore audit action",
+        sql: include_str!("../../migrations/0039_provider_auth_device_restore_audit.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

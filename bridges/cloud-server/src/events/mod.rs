@@ -228,6 +228,26 @@ impl EventBus {
         self.publish_raw(subject, body).await;
     }
 
+    pub async fn publish_provider_auth_updated(&self, account_id: &str) {
+        if self.inner.is_none() {
+            return;
+        }
+        let payload = ProviderAuthUpdated {
+            event_type: "account.provider_auth.updated",
+            account_id,
+            occurred_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let body = match serde_json::to_vec(&payload) {
+            Ok(value) => Bytes::from(value),
+            Err(err) => {
+                eprintln!("[events] serialize account.provider_auth.updated: {err}");
+                return;
+            }
+        };
+        let subject = format!("kordi.events.account.provider_auth.updated.{account_id}");
+        self.publish_raw(subject, body).await;
+    }
+
     pub async fn publish_presence_account_changed(
         &self,
         account_id: &str,
@@ -382,6 +402,13 @@ struct AccountProfileUpdated<'a> {
     observer_account_id: &'a str,
     display_name: Option<&'a str>,
     avatar_url: Option<&'a str>,
+    occurred_at: String,
+}
+
+#[derive(Serialize)]
+struct ProviderAuthUpdated<'a> {
+    event_type: &'static str,
+    account_id: &'a str,
     occurred_at: String,
 }
 
