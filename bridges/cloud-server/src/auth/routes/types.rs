@@ -278,6 +278,24 @@ pub struct MessageListResponse {
     pub peer_read_at: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MessageBodyLookupRequest {
+    #[serde(rename = "messageIds")]
+    pub message_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageBodyLookupSummary {
+    #[serde(rename = "messageId")]
+    pub message_id: String,
+    pub body: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageBodyLookupResponse {
+    pub messages: Vec<MessageBodyLookupSummary>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct MessageResponse {
     pub message: MessageSummary,

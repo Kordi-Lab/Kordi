@@ -5,9 +5,7 @@ import {
 import {
   fetchExistingCanonicalMessageSources,
 } from '@/features/canonical/canonicalMessageSources';
-import type {
-  CloudGroupControlEnvelope,
-} from './cloudGroupMessages';
+import type { CloudGroupControlEnvelope } from './cloudGroupMessages';
 import {
   cloudGroupReplayKeyForRow,
   canonicalMessageSourceKey,
@@ -16,12 +14,11 @@ import {
   type CloudMessageIndex,
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
-import type {
-  CloudMessage,
-} from './authClient';
+import type { CloudMessage } from './authClient';
 import type {
   CloudGroupReplayCoordinator,
 } from './cloudGroupReplayCoordinator';
+
 export function useCloudGroupReplay({
   enabled,
   contextKey,

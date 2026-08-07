@@ -7,9 +7,7 @@ import type {
   Dispatch,
   SetStateAction,
 } from 'react';
-import type {
-  DesktopChatMessageRoute,
-} from '@/lib/desktop';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   CanonicalSessionState,
   DesktopCollaborationState,
@@ -484,6 +482,7 @@ export function useCloudCollaborationState({
 
   useRecoveredCloudGroupReplay({
     account,
+    client,
     humanIdentityId: canonicalSessionState?.profile.humanIdentityId,
     canonicalStateRef: canonicalSessionStateRef,
     setCanonicalState: setCanonicalSessionState,

@@ -17,7 +17,6 @@ import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
-
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
@@ -516,6 +515,7 @@ function cloudTitleUpdateNoticeRequest(input: {
       scope: input.scope,
       title,
       actorDisplayName,
+      ...(input.scope === 'group' ? { sourceControlKind: 'group-title-update' } : {}),
     },
     createdAtMs: input.createdAtMs,
     status: 'complete',
@@ -533,7 +533,7 @@ export function cloudGroupTitleUpdateNoticeRequest(input: {
   return cloudTitleUpdateNoticeRequest({
     ...input,
     scope: 'group',
-    title: shouldApplyCloudGroupTitleUpdate(input.envelope) ? input.envelope.groupTitle : null,
+    title: input.envelope.kind === 'group-title-update' && cloudGroupNonGenericTitle(input.envelope.groupTitle) ? input.envelope.groupTitle : null,
   });
 }
 

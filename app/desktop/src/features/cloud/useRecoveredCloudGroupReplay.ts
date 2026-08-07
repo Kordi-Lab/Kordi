@@ -4,7 +4,7 @@ import type {
   SetStateAction,
 } from 'react';
 import type { CanonicalSessionState } from '@/kordi-app/types';
-import type { CloudAccount, CloudMessage } from './authClient';
+import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
 import type { CloudGroupControlEnvelope } from './cloudGroupMessages';
 import type {
   CloudMessageIndex,
@@ -13,9 +13,11 @@ import type {
 import type { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import { useCloudAgentTurnRecovery } from './useCloudAgentTurnRecovery';
 import { useCloudGroupReplay } from './useCloudGroupReplay';
+import { useLegacyCloudGroupTitleNoticeRecovery } from './useLegacyCloudGroupTitleNoticeRecovery';
 
 export function useRecoveredCloudGroupReplay({
   account,
+  client,
   humanIdentityId,
   canonicalStateRef,
   setCanonicalState,
@@ -28,6 +30,7 @@ export function useRecoveredCloudGroupReplay({
   reportWarning,
 }: {
   account: CloudAccount | null;
+  client: CloudAuthClient;
   humanIdentityId?: string | null;
   canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
   setCanonicalState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
@@ -53,14 +56,25 @@ export function useRecoveredCloudGroupReplay({
   const contextKey = account && humanIdentityId
     ? `${account.accountId}:${humanIdentityId}`
     : null;
+  const replayEnabled = Boolean(
+    contextKey
+    && setCanonicalState
+    && initialMessagesSettled
+    && recoverySettled
+  );
+
+  useLegacyCloudGroupTitleNoticeRecovery({
+    enabled: replayEnabled,
+    contextKey,
+    client,
+    canonicalStateRef,
+    setCanonicalState,
+    messageIndex,
+    reportWarning,
+  });
 
   useCloudGroupReplay({
-    enabled: Boolean(
-      contextKey
-      && setCanonicalState
-      && initialMessagesSettled
-      && recoverySettled
-    ),
+    enabled: replayEnabled,
     contextKey,
     coordinator,
     messageIndex,

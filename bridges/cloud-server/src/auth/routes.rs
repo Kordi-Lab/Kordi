@@ -138,6 +138,7 @@ pub fn routes_with_config(
             post(reject_contact_request),
         )
         .route("/v1/cloud/messages", get(list_messages).post(send_message))
+        .route("/v1/cloud/messages/lookup", post(lookup_message_bodies))
         .route("/v1/cloud/messages/read", post(mark_messages_read))
         .route(
             "/v1/cloud/sessions/:source_session_id/read",

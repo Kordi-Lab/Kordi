@@ -1,6 +1,159 @@
 use super::*;
 
 #[test]
+fn legacy_group_title_classification_batch_is_bounded() {
+    let mut conn = test_conn();
+    let request = ClassifyLegacyCloudGroupTitleNoticeRequest {
+        cloud_message_id: "message".to_string(),
+        source_control_kind: "group-invite".to_string(),
+    };
+    let error = classify_legacy_cloud_group_title_notices_in_db(&mut conn, vec![request; 501])
+        .expect_err("oversized classification batch must fail closed");
+    assert!(error.contains("At most 500"));
+}
+
+#[test]
+fn legacy_group_title_notices_are_classified_durably_across_restarts() {
+    let mut conn = test_conn();
+    seed_identity(&conn);
+    conn.execute(
+        "INSERT INTO sessions (
+            id, kind, title, status, created_by_identity_id,
+            created_at_ms, updated_at_ms, last_message_at_ms
+         ) VALUES ('session:group:one', 'group', 'One', 'active', 'human:me', 1, 3, 3)",
+        [],
+    )
+    .expect("seed session");
+    for (id, text, content, sequence_num, created_at_ms, source_event_id) in [
+        (
+            "message:real",
+            "hello",
+            r#"{"kind":"text"}"#,
+            1,
+            1,
+            "cloud-group-message:real",
+        ),
+        (
+            "cloud-group-title-notice:explicit-rename",
+            "Alice changed the group name to Research",
+            r#"{"kind":"group-title-update","scope":"group","title":"Research"}"#,
+            2,
+            2,
+            "cloud-group-title-update:explicit-rename",
+        ),
+        (
+            "cloud-group-title-notice:invite-copy",
+            "Alice changed the group name to Research",
+            r#"{"kind":"group-title-update","scope":"group","title":"Research"}"#,
+            3,
+            3,
+            "cloud-group-title-update:invite-copy",
+        ),
+    ] {
+        conn.execute(
+            "INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, content_json, status, sequence_num, created_at_ms, updated_at_ms,
+                source_transport, source_event_id
+             ) VALUES (?1, 'session:group:one', 'human:me', ?2, ?3, ?4, ?5, 'complete', ?6, ?7, ?7, ?8, ?9)",
+            params![
+                id,
+                if sequence_num == 1 { "user" } else { "system" },
+                if sequence_num == 1 { "text" } else { "status" },
+                text,
+                content,
+                sequence_num,
+                created_at_ms,
+                if sequence_num == 1 { "cloud-group" } else { "cloud-group-title-update" },
+                source_event_id,
+            ],
+        )
+        .expect("seed message");
+    }
+    conn.execute(
+        "INSERT INTO session_participants (
+            session_id, identity_id, role, state, added_at_ms, last_read_message_id
+         ) VALUES ('session:group:one', 'human:me', 'self', 'active', 1,
+                   'cloud-group-title-notice:invite-copy')",
+        [],
+    )
+    .expect("seed read cursor");
+
+    assert_eq!(
+        list_legacy_cloud_group_title_notice_ids_in_db(&conn).expect("list candidates"),
+        vec!["explicit-rename", "invite-copy"],
+    );
+    let classified = classify_legacy_cloud_group_title_notices_in_db(
+        &mut conn,
+        vec![
+            ClassifyLegacyCloudGroupTitleNoticeRequest {
+                cloud_message_id: "explicit-rename".to_string(),
+                source_control_kind: "group-title-update".to_string(),
+            },
+            ClassifyLegacyCloudGroupTitleNoticeRequest {
+                cloud_message_id: "invite-copy".to_string(),
+                source_control_kind: "group-invite".to_string(),
+            },
+        ],
+    )
+    .expect("classify notices");
+
+    assert_eq!(classified.messages.len(), 2);
+    let invite_content = classified
+        .messages
+        .iter()
+        .find(|message| message.id.ends_with("invite-copy"))
+        .and_then(|message| message.content.as_ref())
+        .expect("invite content");
+    assert_eq!(invite_content["synchronizationOnly"], true);
+    assert_eq!(invite_content["sourceControlKind"], "group-invite");
+    let rename_content = classified
+        .messages
+        .iter()
+        .find(|message| message.id.ends_with("explicit-rename"))
+        .and_then(|message| message.content.as_ref())
+        .expect("rename content");
+    assert_eq!(rename_content["sourceControlKind"], "group-title-update");
+    assert!(rename_content.get("synchronizationOnly").is_none());
+    assert!(list_legacy_cloud_group_title_notice_ids_in_db(&conn)
+        .expect("list after restart")
+        .is_empty());
+    assert_eq!(classified.session_repairs.len(), 1);
+    assert_eq!(
+        classified.session_repairs[0].session_id,
+        "session:group:one"
+    );
+    assert_eq!(classified.session_repairs[0].last_message_at_ms, Some(2));
+    assert_eq!(classified.session_repairs[0].replaced_through_at_ms, 3);
+
+    let catalog = load_catalog_from_db(&conn).expect("load catalog");
+    let summary = catalog.summaries.first().expect("summary");
+    assert_eq!(summary.message_count, 2);
+    assert_eq!(
+        summary
+            .latest_message
+            .as_ref()
+            .map(|message| message.id.as_str()),
+        Some("cloud-group-title-notice:explicit-rename"),
+    );
+    let (last_message_at_ms, last_read_message_id): (i64, String) = conn
+        .query_row(
+            "SELECT session.last_message_at_ms, participant.last_read_message_id
+             FROM sessions AS session
+             JOIN session_participants AS participant ON participant.session_id = session.id
+             WHERE session.id = 'session:group:one'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("repaired activity and cursor");
+    assert_eq!(last_message_at_ms, 2);
+    assert_eq!(
+        last_read_message_id,
+        "cloud-group-title-notice:explicit-rename"
+    );
+}
+
+#[test]
 fn restored_delivery_updates_an_old_message_by_id_with_a_bounded_delta() {
     let mut conn = test_conn();
     seed_identity(&conn);

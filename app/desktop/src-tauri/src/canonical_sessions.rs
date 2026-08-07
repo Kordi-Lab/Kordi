@@ -16,6 +16,7 @@ mod identity_helpers;
 mod identity_migration;
 mod message_lookup;
 mod message_reconcile;
+mod message_visibility;
 mod models;
 mod persistence;
 mod presence;
@@ -76,6 +77,7 @@ use self::identity_migration::{
 pub(crate) use self::message_lookup::{
     canonical_message_exists, similar_agent_message_exists, similar_agent_message_text,
 };
+pub(crate) use self::message_visibility::latest_readable_session_message_id;
 pub(crate) use self::persistence::{
     append_message_in_db, create_delegated_exchange_in_db, select_delegated_exchange,
     select_message, select_message_by_source, upsert_message_in_db,
@@ -110,25 +112,6 @@ fn open_db() -> Result<Connection, String> {
     .map_err(|err| err.to_string())?;
     initialize_schema(&conn)?;
     Ok(conn)
-}
-
-fn latest_readable_session_message_id(
-    conn: &Connection,
-    session_id: &str,
-) -> Result<Option<String>, String> {
-    conn.query_row(
-        "SELECT id
-         FROM session_messages
-         WHERE session_id = ?1
-           AND COALESCE(source_transport, '') NOT IN ('canonical-fork-snapshot', 'cloud-group-fork-snapshot')
-           AND LOWER(TRIM(status)) NOT IN ('sending', 'processing')
-         ORDER BY sequence_num DESC, created_at_ms DESC
-         LIMIT 1",
-        params![session_id],
-        |row| row.get(0),
-    )
-    .optional()
-    .map_err(|err| err.to_string())
 }
 
 fn self_participant_identity_id(
@@ -384,6 +367,23 @@ pub async fn desktop_canonical_upsert_message_fast(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionMessage, String> {
     run_canonical_blocking(move || commands::desktop_canonical_upsert_message_fast(request)).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_list_legacy_cloud_group_title_notice_ids(
+) -> Result<Vec<String>, String> {
+    run_canonical_blocking(commands::desktop_canonical_list_legacy_cloud_group_title_notice_ids)
+        .await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_classify_legacy_cloud_group_title_notices(
+    requests: Vec<ClassifyLegacyCloudGroupTitleNoticeRequest>,
+) -> Result<ClassifyLegacyCloudGroupTitleNoticesResponse, String> {
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_classify_legacy_cloud_group_title_notices(requests)
+    })
+    .await
 }
 
 #[tauri::command]

@@ -1,13 +1,17 @@
 //! Message, delivery-state, and delegated-exchange command orchestration.
 
+use std::collections::{HashMap, HashSet};
+
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{Map, Value};
 
 use super::super::{
-    append_message_in_db, create_delegated_exchange_in_db, hash_hex, now_ms, open_db,
-    upsert_message_in_db, AppendCanonicalMessageRequest, CanonicalMessageDeliveryDelta,
-    CanonicalSessionMessage, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
-    UpdateCanonicalMessageDeliveryRequest,
+    append_message_in_db, create_delegated_exchange_in_db, hash_hex, json_to_db,
+    latest_readable_session_message_id, now_ms, open_db, select_message, upsert_message_in_db,
+    AppendCanonicalMessageRequest, CanonicalMessageDeliveryDelta, CanonicalSessionMessage,
+    CanonicalSessionState, ClassifyLegacyCloudGroupTitleNoticeRequest,
+    ClassifyLegacyCloudGroupTitleNoticesResponse, CreateCanonicalDelegatedExchangeRequest,
+    LegacyCloudGroupTitleNoticeSessionRepair, UpdateCanonicalMessageDeliveryRequest,
 };
 use super::catalog::load_state_from_db;
 
@@ -32,6 +36,196 @@ pub(in crate::canonical_sessions) fn desktop_canonical_upsert_message_fast(
 ) -> Result<CanonicalSessionMessage, String> {
     let conn = open_db()?;
     upsert_message_in_db(&conn, request)
+}
+
+pub(super) fn list_legacy_cloud_group_title_notice_ids_in_db(
+    conn: &Connection,
+) -> Result<Vec<String>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT SUBSTR(id, LENGTH('cloud-group-title-notice:') + 1)
+             FROM session_messages
+             WHERE message_kind = 'status'
+               AND source_transport = 'cloud-group-title-update'
+               AND id LIKE 'cloud-group-title-notice:%'
+               AND source_event_id = 'cloud-group-title-update:' || SUBSTR(id, LENGTH('cloud-group-title-notice:') + 1)
+               AND json_valid(content_json)
+               AND json_extract(content_json, '$.kind') = 'group-title-update'
+               AND json_extract(content_json, '$.scope') = 'group'
+               AND NULLIF(TRIM(COALESCE(json_extract(content_json, '$.sourceControlKind'), '')), '') IS NULL
+             ORDER BY sequence_num ASC, created_at_ms ASC, id ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+pub(super) fn classify_legacy_cloud_group_title_notices_in_db(
+    conn: &mut Connection,
+    requests: Vec<ClassifyLegacyCloudGroupTitleNoticeRequest>,
+) -> Result<ClassifyLegacyCloudGroupTitleNoticesResponse, String> {
+    if requests.len() > 500 {
+        return Err(
+            "At most 500 legacy Cloud group title notices can be classified at once".into(),
+        );
+    }
+    let transaction = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let mut seen_notice_ids = HashSet::new();
+    let mut classified = Vec::new();
+    let mut repaired_sessions = HashMap::<String, i64>::new();
+
+    for request in requests {
+        let cloud_message_id = request.cloud_message_id.trim();
+        let source_control_kind = request.source_control_kind.trim();
+        if cloud_message_id.is_empty() {
+            continue;
+        }
+        if !matches!(
+            source_control_kind,
+            "group-invite" | "group-update" | "group-title-update"
+        ) {
+            return Err(format!(
+                "Unsupported Cloud group title synchronization kind: {source_control_kind}"
+            ));
+        }
+        let notice_id = format!("cloud-group-title-notice:{cloud_message_id}");
+        if !seen_notice_ids.insert(notice_id.clone()) {
+            continue;
+        }
+        let Some(message) = select_message(&transaction, &notice_id)? else {
+            continue;
+        };
+        let expected_source_event_id = format!("cloud-group-title-update:{cloud_message_id}");
+        if message.message_kind != "status"
+            || message.source_transport.as_deref() != Some("cloud-group-title-update")
+            || message.source_event_id.as_deref() != Some(expected_source_event_id.as_str())
+        {
+            continue;
+        }
+        let Some(Value::Object(mut content)) = message.content.clone() else {
+            continue;
+        };
+        if content.get("kind").and_then(Value::as_str) != Some("group-title-update")
+            || content.get("scope").and_then(Value::as_str) != Some("group")
+        {
+            continue;
+        }
+
+        let synchronization_only = matches!(source_control_kind, "group-invite" | "group-update");
+        content.insert(
+            "sourceControlKind".to_string(),
+            Value::String(source_control_kind.to_string()),
+        );
+        if synchronization_only {
+            content.insert("synchronizationOnly".to_string(), Value::Bool(true));
+        } else {
+            content.remove("synchronizationOnly");
+        }
+        let content_value = Some(Value::Object(content));
+        let content_json = json_to_db(&content_value)?;
+        let content_hash = hash_hex(
+            &format!(
+                "{}|{}",
+                message.content_text,
+                content_json.clone().unwrap_or_default()
+            ),
+            16,
+        );
+        transaction
+            .execute(
+                "UPDATE session_messages SET content_json = ?1, content_hash = ?2 WHERE id = ?3",
+                params![content_json, content_hash, notice_id],
+            )
+            .map_err(|error| error.to_string())?;
+
+        if synchronization_only {
+            let replacement_message_id =
+                latest_readable_session_message_id(&transaction, &message.session_id)?;
+            transaction
+                .execute(
+                    "UPDATE session_participants SET last_read_message_id = ?1
+                     WHERE session_id = ?2 AND last_read_message_id = ?3",
+                    params![replacement_message_id, message.session_id, notice_id],
+                )
+                .map_err(|error| error.to_string())?;
+            let replacement_created_at_ms = replacement_message_id
+                .as_deref()
+                .map(|message_id| {
+                    transaction.query_row(
+                        "SELECT created_at_ms FROM session_messages WHERE id = ?1",
+                        params![message_id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                })
+                .transpose()
+                .map_err(|error| error.to_string())?;
+            transaction
+                .execute(
+                    "UPDATE sessions SET last_message_at_ms = ?1 WHERE id = ?2",
+                    params![replacement_created_at_ms, message.session_id],
+                )
+                .map_err(|error| error.to_string())?;
+            repaired_sessions
+                .entry(message.session_id.clone())
+                .and_modify(|latest| *latest = (*latest).max(message.created_at_ms))
+                .or_insert(message.created_at_ms);
+        }
+        if let Some(updated) = select_message(&transaction, &notice_id)? {
+            classified.push(updated);
+        }
+    }
+
+    let mut repaired_sessions = repaired_sessions.into_iter().collect::<Vec<_>>();
+    repaired_sessions.sort_by(|left, right| left.0.cmp(&right.0));
+    let session_repairs = repaired_sessions
+        .into_iter()
+        .map(|(session_id, replaced_through_at_ms)| {
+            transaction
+                .query_row(
+                    "SELECT last_message_at_ms FROM sessions WHERE id = ?1",
+                    params![session_id],
+                    |row| row.get::<_, Option<i64>>(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())
+                .map(|last_message_at_ms| {
+                    last_message_at_ms.map(|last_message_at_ms| {
+                        LegacyCloudGroupTitleNoticeSessionRepair {
+                            session_id,
+                            last_message_at_ms,
+                            replaced_through_at_ms,
+                        }
+                    })
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(ClassifyLegacyCloudGroupTitleNoticesResponse {
+        messages: classified,
+        session_repairs,
+    })
+}
+
+pub(in crate::canonical_sessions) fn desktop_canonical_list_legacy_cloud_group_title_notice_ids(
+) -> Result<Vec<String>, String> {
+    let conn = open_db()?;
+    list_legacy_cloud_group_title_notice_ids_in_db(&conn)
+}
+
+pub(in crate::canonical_sessions) fn desktop_canonical_classify_legacy_cloud_group_title_notices(
+    requests: Vec<ClassifyLegacyCloudGroupTitleNoticeRequest>,
+) -> Result<ClassifyLegacyCloudGroupTitleNoticesResponse, String> {
+    let mut conn = open_db()?;
+    classify_legacy_cloud_group_title_notices_in_db(&mut conn, requests)
 }
 
 pub(in crate::canonical_sessions) fn desktop_canonical_append_message_fast(
