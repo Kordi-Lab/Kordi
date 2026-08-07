@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -10,6 +11,7 @@ import type {
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   CanonicalSessionState,
+  DesktopAuthState,
   DesktopCollaborationState,
   MessageActionMetadata,
 } from '@/kordi-app/types';
@@ -23,6 +25,8 @@ import {
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
 } from './cloudAgentMessages';
+import { cloudAgentRuntimeRouteFromDefinition } from './cloudAgentRuntime';
+import { retargetCloudAgentModelRoutingForAuthState } from './providerAuthSnapshot';
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
@@ -241,6 +245,7 @@ export function useCloudCollaborationState({
   setCanonicalSessionState,
   cloudAgentRuntimeRoutesBySessionId,
   defaultCloudAgentRuntimeRoute,
+  desktopAuthState,
 }: {
   account: CloudAccount | null;
   activeConversationId?: string | null;
@@ -248,6 +253,7 @@ export function useCloudCollaborationState({
   setCanonicalSessionState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   cloudAgentRuntimeRoutesBySessionId?: Record<string, DesktopChatMessageRoute>;
   defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
+  desktopAuthState?: DesktopAuthState | null;
 }): UseCloudCollaborationStateResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const cloudAgentsClient = useMemo(() => defaultCloudAgentsClient(), []);
@@ -496,13 +502,60 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useCloudProviderAuthSnapshotSync({
+  const cloudAgentProviderAuthRoutes = useMemo(
+    () => Object.values(cloudAgentDefinitionsById).flatMap((definition) => {
+      if (
+        definition.ownerAccountId !== account?.accountId
+        || definition.status !== 'active'
+      ) return [];
+      const route = cloudAgentRuntimeRouteFromDefinition(definition);
+      return route ? [route] : [];
+    }),
+    [account?.accountId, cloudAgentDefinitionsById],
+  );
+
+  const { reconciledAuthState } = useCloudProviderAuthSnapshotSync({
     account,
     client,
     route: defaultCloudAgentRuntimeRoute,
+    additionalRoutes: cloudAgentProviderAuthRoutes,
+    authState: desktopAuthState,
     initialMessagesSettled,
     reportWarning: reportCloudAgentExecutionWarning,
   });
+
+  const cloudAgentRouteRepairsInFlightRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!account || !reconciledAuthState) return;
+    for (const definition of Object.values(cloudAgentDefinitionsById)) {
+      if (
+        definition.ownerAccountId !== account.accountId
+        || definition.status !== 'active'
+        || cloudAgentRouteRepairsInFlightRef.current.has(definition.agentId)
+      ) continue;
+      const modelRouting = retargetCloudAgentModelRoutingForAuthState(
+        definition.modelRouting,
+        reconciledAuthState,
+      );
+      if (!modelRouting) continue;
+      cloudAgentRouteRepairsInFlightRef.current.add(definition.agentId);
+      void updateCloudAgentDefinition(definition.agentId, { modelRouting })
+        .catch((error) => {
+          reportCloudAgentExecutionWarning(
+            '[cloud-provider-auth-sync] agent route repair failed',
+            error,
+          );
+        })
+        .finally(() => {
+          cloudAgentRouteRepairsInFlightRef.current.delete(definition.agentId);
+        });
+    }
+  }, [
+    account,
+    cloudAgentDefinitionsById,
+    reconciledAuthState,
+    updateCloudAgentDefinition,
+  ]);
 
   useCloudAgentCancellation({
     account,

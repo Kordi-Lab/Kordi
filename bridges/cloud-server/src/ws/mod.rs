@@ -294,6 +294,8 @@ fn account_event_subjects(account_id: &str) -> Vec<String> {
         // match the general subject above, causing recipient request badges to
         // wait for the 15s polling fallback.
         format!("kordi.events.contact.request.*.{account_id}"),
+        // Account-scoped provider credential lifecycle notifications.
+        format!("kordi.events.account.provider_auth.updated.{account_id}"),
         // Presence events are addressed directly to each observer account.
         format!("kordi.events.presence.account.{account_id}"),
     ]
@@ -350,6 +352,9 @@ mod tests {
 
         assert!(subjects.contains(&"kordi.events.*.*.acct_peer".to_string()));
         assert!(subjects.contains(&"kordi.events.contact.request.*.acct_peer".to_string()));
+        assert!(
+            subjects.contains(&"kordi.events.account.provider_auth.updated.acct_peer".to_string())
+        );
     }
 
     #[test]

@@ -78,11 +78,11 @@ test('authStateHasChatReadyProvider accepts discovered local runtime models with
   assert.equal(authStateHasChatReadyProvider(authState({ hasAnyAuth: true }), []), false);
 });
 
-test('authStateHasChatReadyProvider requires a configured provider with available models', () => {
+test('authStateHasChatReadyProvider trusts configured cloud auth while model discovery refreshes', () => {
   assert.equal(authStateHasChatReadyProvider(authState({
     hasAnyAuth: true,
     providers: [authProvider({ configured: true })],
-  }), []), false);
+  }), []), true);
   assert.equal(authStateHasChatReadyProvider(authState({
     hasAnyAuth: true,
     providers: [authProvider({ configured: true, options: [authOption('API key')] })],

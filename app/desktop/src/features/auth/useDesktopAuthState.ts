@@ -9,6 +9,7 @@ import {
 } from '@/lib/desktop';
 import {
   DESKTOP_AUTH_CHANNEL_NAME,
+  DESKTOP_AUTH_REFRESH_EVENT,
   broadcastDesktopAuthUpdated,
   createDesktopAuthSyncGuard,
   isDesktopAuthUpdateFromAnotherSource,
@@ -140,9 +141,11 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     }
 
     window.addEventListener('focus', refresh);
+    window.addEventListener(DESKTOP_AUTH_REFRESH_EVENT, refresh);
 
     return () => {
       window.removeEventListener('focus', refresh);
+      window.removeEventListener(DESKTOP_AUTH_REFRESH_EVENT, refresh);
       channel?.close();
     };
   }, [isNativeShell, refreshDesktopAuth]);

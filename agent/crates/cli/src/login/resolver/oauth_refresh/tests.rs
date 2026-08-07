@@ -360,3 +360,56 @@ fn resolves_anthropic_to_active_api_key_when_both_methods_are_saved() {
     assert_eq!(resolved.credential, "api-key-secret");
     assert_eq!(resolved.credential_provider, "anthropic");
 }
+
+#[test]
+fn cloud_oauth_snapshot_exports_only_the_selected_profile_refresh_material() {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let _home = EnvVarGuard::set("HOME", home.path());
+
+    save_auth(&AuthStore {
+        last_provider: Some("openai".to_string()),
+        active_auth_methods: HashMap::from([("openai".to_string(), ProviderAuthMethod::OAuth)]),
+        active_auth_profiles: HashMap::from([("openai".to_string(), "oauth-primary".to_string())]),
+        profiles: HashMap::from([(
+            "openai".to_string(),
+            vec![
+                AuthProfile {
+                    id: "oauth-primary".to_string(),
+                    method: ProviderAuthMethod::OAuth,
+                    created_at_ms: Some(10),
+                    updated_at_ms: Some(10),
+                    entry: AuthEntry::OAuth {
+                        access: "primary-access".to_string(),
+                        refresh: "primary-refresh".to_string(),
+                        expires: 4_102_444_800_000,
+                        extra: serde_json::json!({}),
+                    },
+                },
+                AuthProfile {
+                    id: "oauth-secondary".to_string(),
+                    method: ProviderAuthMethod::OAuth,
+                    created_at_ms: Some(20),
+                    updated_at_ms: Some(20),
+                    entry: AuthEntry::OAuth {
+                        access: "secondary-access".to_string(),
+                        refresh: "secondary-refresh".to_string(),
+                        expires: 4_102_444_900_000,
+                        extra: serde_json::json!({}),
+                    },
+                },
+            ],
+        )]),
+        ..AuthStore::default()
+    })
+    .expect("save auth");
+
+    let selected =
+        crate::login::cloud_oauth_snapshot_credentials("openai", Some("profile:oauth-secondary"))
+            .expect("selected OAuth material");
+    assert_eq!(selected.access_token, "secondary-access");
+    assert_eq!(selected.refresh_token.as_deref(), Some("secondary-refresh"));
+    assert_eq!(selected.access_expires_at_ms, 4_102_444_900_000);
+
+    assert!(crate::login::cloud_oauth_snapshot_credentials("openai", Some("env:oauth")).is_none());
+}

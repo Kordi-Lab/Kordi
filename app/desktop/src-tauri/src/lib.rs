@@ -4,6 +4,7 @@ mod chat;
 mod cloud_account_paths;
 mod cloud_oauth_loopback;
 mod cloud_presence;
+mod cloud_provider_auth_restore;
 mod cloud_session;
 mod project;
 mod remote_image;
@@ -523,6 +524,7 @@ pub fn run() {
             cloud_account_paths::cloud_account_storage_root,
             cloud_oauth_loopback::cloud_oauth_loopback_prepare,
             cloud_oauth_loopback::cloud_oauth_loopback_wait,
+            cloud_provider_auth_restore::desktop_cloud_provider_auth_restore,
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
             cloud_session::cloud_session_clear,

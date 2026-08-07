@@ -30,6 +30,10 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
+rand = { workspace = true }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+hkdf = "0.12"
+aes-gcm = "0.10"
 futures-util = "0.3"
 hex = "0.4"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }

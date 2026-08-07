@@ -60,6 +60,7 @@ where
     C: CloudAgentRunClient + Sync,
     P: CloudModelProvider + Sync,
 {
+    let auth_material = refresh_oauth_material_if_needed(client, run, auth_material).await?;
     let auth = OpenAiProviderConfig::from_material(&auth_material)?;
     let tools = prompt::tool_catalog();
     let executor = CloudToolExecutor::new(sandbox.clone());
@@ -107,6 +108,163 @@ where
     }
 
     Err(ModelLoopError::LimitExceeded)
+}
+
+const OAUTH_REFRESH_BUFFER_MS: i64 = 5 * 60 * 1_000;
+
+async fn refresh_oauth_material_if_needed<C: CloudAgentRunClient + Sync>(
+    client: &C,
+    run: &CloudAgentRun,
+    mut material: ProviderAuthMaterial,
+) -> Result<ProviderAuthMaterial, ModelLoopError> {
+    let mode = material
+        .payload
+        .get("apiMode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    let expiry_field = match mode.as_str() {
+        "openai-codex-oauth" | "anthropic-oauth" => "expiresAt",
+        "github-copilot-oauth" => "runtimeExpiresAt",
+        _ => return Ok(material),
+    };
+    let Some(expires_at_ms) = material.payload.get(expiry_field).and_then(Value::as_i64) else {
+        return Ok(material);
+    };
+    if expires_at_ms > chrono::Utc::now().timestamp_millis() + OAUTH_REFRESH_BUFFER_MS {
+        return Ok(material);
+    }
+
+    let payload = material.payload.as_object_mut().ok_or_else(|| {
+        ModelLoopError::Provider(
+            "Cloud fallback OAuth snapshot payload is not an object.".to_string(),
+        )
+    })?;
+    match mode.as_str() {
+        "openai-codex-oauth" => {
+            let refresh_token = payload_secret(payload, "refreshToken")?;
+            let refreshed =
+                kordi_cli::oauth::openai_codex::refresh_openai_codex_token(&refresh_token)
+                    .await
+                    .map_err(|error| {
+                        ModelLoopError::Provider(format!(
+                            "Cloud fallback could not refresh OpenAI OAuth: {error}"
+                        ))
+                    })?;
+            payload.insert("accessToken".to_string(), Value::String(refreshed.access));
+            payload.insert(
+                "refreshToken".to_string(),
+                Value::String(if refreshed.refresh.trim().is_empty() {
+                    refresh_token
+                } else {
+                    refreshed.refresh
+                }),
+            );
+            payload.insert(
+                "expiresAt".to_string(),
+                Value::Number(refreshed.expires.into()),
+            );
+            if let Some(account_id) = refreshed
+                .extra
+                .get("accountId")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+            {
+                payload.insert(
+                    "accountId".to_string(),
+                    Value::String(account_id.to_string()),
+                );
+            }
+        }
+        "anthropic-oauth" => {
+            let refresh_token = payload_secret(payload, "refreshToken")?;
+            let refreshed = kordi_cli::oauth::anthropic::refresh_anthropic_token(&refresh_token)
+                .await
+                .map_err(|error| {
+                    ModelLoopError::Provider(format!(
+                        "Cloud fallback could not refresh Anthropic OAuth: {error}"
+                    ))
+                })?;
+            payload.insert("accessToken".to_string(), Value::String(refreshed.access));
+            payload.insert(
+                "refreshToken".to_string(),
+                Value::String(if refreshed.refresh.trim().is_empty() {
+                    refresh_token
+                } else {
+                    refreshed.refresh
+                }),
+            );
+            payload.insert(
+                "expiresAt".to_string(),
+                Value::Number(refreshed.expires.into()),
+            );
+        }
+        "github-copilot-oauth" => {
+            let github_access_token = payload_secret(payload, "githubAccessToken")?;
+            if payload
+                .get("githubAccessExpiresAt")
+                .and_then(Value::as_i64)
+                .is_some_and(|expires| expires <= chrono::Utc::now().timestamp_millis())
+            {
+                return Err(ModelLoopError::Provider(
+                    "Cloud fallback GitHub OAuth session expired; reconnect GitHub Copilot while the owner is online."
+                        .to_string(),
+                ));
+            }
+            let authority = payload
+                .get("authority")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("github.com")
+                .to_string();
+            let refreshed =
+                kordi_cli::oauth::github_copilot::exchange_github_token_for_copilot_session(
+                    &authority,
+                    &github_access_token,
+                )
+                .await
+                .map_err(|error| {
+                    ModelLoopError::Provider(format!(
+                        "Cloud fallback could not refresh GitHub Copilot OAuth: {error}"
+                    ))
+                })?;
+            payload.insert(
+                "accessToken".to_string(),
+                Value::String(refreshed.copilot_token),
+            );
+            payload.insert(
+                "runtimeExpiresAt".to_string(),
+                Value::Number(refreshed.copilot_expires_at_ms.into()),
+            );
+            payload.insert("baseUrl".to_string(), Value::String(refreshed.api_base_url));
+            if let Some(login) = refreshed.login {
+                payload.insert("accountLabel".to_string(), Value::String(login));
+            }
+        }
+        _ => return Ok(material),
+    }
+
+    client
+        .persist_refreshed_provider_auth(&run.run_id, &material.snapshot_id, &material.payload)
+        .await?;
+    Ok(material)
+}
+
+fn payload_secret(
+    payload: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<String, ModelLoopError> {
+    payload
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            ModelLoopError::Provider(format!("Cloud fallback OAuth snapshot is missing {field}."))
+        })
 }
 
 async fn execute_model_tool<C: CloudAgentRunClient + Sync>(

@@ -305,6 +305,7 @@ export function useKordiAppFoundation({
     setCanonicalSessionState,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
+    desktopAuthState,
   });
 
   // The desktop collaboration read model is derived only from hosted Cloud data.

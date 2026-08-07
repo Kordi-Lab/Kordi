@@ -3,7 +3,10 @@ use super::{
     save_api_key, save_auth, save_oauth_state, stored_auth_entry_for_method,
     stored_auth_methods_for_store, stored_auth_profiles, validate_auth_store,
 };
-use crate::login::ProviderAuthMethod;
+use crate::login::{
+    CloudAuthProfileImport, CloudAuthProfileSecret, CloudOAuthProfileImport, ProviderAuthMethod,
+    import_cloud_oauth_profiles, reconcile_cloud_auth_profiles,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -199,6 +202,177 @@ fn save_oauth_state_keeps_distinct_openai_accounts_with_timestamps() {
         stored_auth_methods_for_store(&store, "openai"),
         vec![ProviderAuthMethod::OAuth]
     );
+}
+
+#[test]
+fn cloud_oauth_import_preserves_profile_ids_and_is_idempotent() {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+
+    let imports = vec![
+        CloudOAuthProfileImport {
+            provider: "openai-codex".to_string(),
+            profile_id: "openai-codex-original".to_string(),
+            access: "openai-access-secret".to_string(),
+            refresh: "openai-refresh-secret".to_string(),
+            expires: i64::MAX,
+            extra: json!({"accountId": "provider-account"}),
+        },
+        CloudOAuthProfileImport {
+            provider: "anthropic".to_string(),
+            profile_id: "anthropic-oauth-original".to_string(),
+            access: "anthropic-access-secret".to_string(),
+            refresh: "anthropic-refresh-secret".to_string(),
+            expires: i64::MAX,
+            extra: json!({}),
+        },
+    ];
+
+    assert_eq!(import_cloud_oauth_profiles(imports.clone()).unwrap(), 2);
+    assert_eq!(import_cloud_oauth_profiles(imports).unwrap(), 0);
+
+    let store = load_auth();
+    assert_eq!(
+        store.active_auth_profiles.get("openai").map(String::as_str),
+        Some("openai-codex-original")
+    );
+    assert_eq!(
+        store
+            .active_auth_profiles
+            .get("anthropic")
+            .map(String::as_str),
+        Some("anthropic-oauth-original")
+    );
+    assert!(matches!(
+        store
+            .profiles
+            .get("openai")
+            .and_then(|profiles| profiles.iter().find(|profile| profile.id == "openai-codex-original"))
+            .map(|profile| &profile.entry),
+        Some(AuthEntry::OAuth { access, refresh, .. })
+            if access == "openai-access-secret" && refresh == "openai-refresh-secret"
+    ));
+}
+
+#[test]
+fn cloud_auth_reconcile_imports_updates_removes_and_selects_profiles() {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+
+    let first = reconcile_cloud_auth_profiles(
+        vec![
+            CloudAuthProfileImport {
+                provider: "openrouter".to_string(),
+                profile_id: "cloud-api-profile".to_string(),
+                active: true,
+                secret: CloudAuthProfileSecret::ApiKey {
+                    key: "cloud-api-key-one".to_string(),
+                },
+            },
+            CloudAuthProfileImport {
+                provider: "anthropic".to_string(),
+                profile_id: "cloud-oauth-profile".to_string(),
+                active: false,
+                secret: CloudAuthProfileSecret::OAuth {
+                    access: "cloud-oauth-access".to_string(),
+                    refresh: "cloud-oauth-refresh".to_string(),
+                    expires: i64::MAX,
+                    extra: json!({}),
+                },
+            },
+        ],
+        &[],
+    )
+    .expect("initial reconcile");
+    assert_eq!(first.imported_profiles, 2);
+    assert_eq!(first.removed_profiles, 0);
+    assert!(first.selection_changed);
+
+    let updated = reconcile_cloud_auth_profiles(
+        vec![CloudAuthProfileImport {
+            provider: "openrouter".to_string(),
+            profile_id: "cloud-api-profile".to_string(),
+            active: true,
+            secret: CloudAuthProfileSecret::ApiKey {
+                key: "cloud-api-key-two".to_string(),
+            },
+        }],
+        &[
+            ("openrouter".to_string(), "cloud-api-profile".to_string()),
+            ("anthropic".to_string(), "cloud-oauth-profile".to_string()),
+        ],
+    )
+    .expect("updated reconcile");
+    assert_eq!(updated.imported_profiles, 1);
+    assert_eq!(updated.removed_profiles, 1);
+
+    let store = load_auth();
+    assert_eq!(
+        store
+            .active_auth_profiles
+            .get("openrouter")
+            .map(String::as_str),
+        Some("cloud-api-profile")
+    );
+    assert!(store.profiles.get("anthropic").is_none());
+    assert!(matches!(
+        store
+            .profiles
+            .get("openrouter")
+            .and_then(|profiles| profiles.iter().find(|profile| profile.id == "cloud-api-profile"))
+            .map(|profile| &profile.entry),
+        Some(AuthEntry::ApiKey { key }) if key == "cloud-api-key-two"
+    ));
+
+    let unchanged = reconcile_cloud_auth_profiles(
+        vec![CloudAuthProfileImport {
+            provider: "openrouter".to_string(),
+            profile_id: "cloud-api-profile".to_string(),
+            active: true,
+            secret: CloudAuthProfileSecret::ApiKey {
+                key: "cloud-api-key-two".to_string(),
+            },
+        }],
+        &[("openrouter".to_string(), "cloud-api-profile".to_string())],
+    )
+    .expect("idempotent reconcile");
+    assert_eq!(unchanged.imported_profiles, 0);
+    assert_eq!(unchanged.removed_profiles, 0);
+    assert!(!unchanged.selection_changed);
+}
+
+#[test]
+fn cloud_auth_reconcile_only_removes_profiles_previously_synced_from_cloud() {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+
+    save_api_key("openrouter", "local-only-key".to_string()).expect("save local profile");
+    let local_profile_id = stored_auth_profiles("openrouter")[0].profile_id.clone();
+    reconcile_cloud_auth_profiles(
+        vec![CloudAuthProfileImport {
+            provider: "openrouter".to_string(),
+            profile_id: "cloud-only-profile".to_string(),
+            active: false,
+            secret: CloudAuthProfileSecret::ApiKey {
+                key: "cloud-only-key".to_string(),
+            },
+        }],
+        &[],
+    )
+    .expect("import cloud profile");
+
+    let removed = reconcile_cloud_auth_profiles(
+        Vec::new(),
+        &[("openrouter".to_string(), "cloud-only-profile".to_string())],
+    )
+    .expect("remove cloud profile");
+    assert_eq!(removed.removed_profiles, 1);
+    let remaining = stored_auth_profiles("openrouter");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].profile_id, local_profile_id);
 }
 
 #[test]

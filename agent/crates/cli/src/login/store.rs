@@ -26,11 +26,11 @@ pub(super) use persistence::{load_auth, save_auth};
 use profile_selection::stored_auth_entry_for_method;
 use profile_selection::{
     active_auth_method_for_store, auth_profile_matches, normalized_auth_provider,
-    repair_active_auth_selections, stored_auth_profiles_for_store,
+    stored_auth_profiles_for_store,
 };
 pub(super) use profile_selection::{
-    provider_storage_key, stored_auth_methods_for_store, stored_auth_profile_by_id,
-    stored_auth_profile_for_method,
+    provider_storage_key, repair_active_auth_selections, stored_auth_methods_for_store,
+    stored_auth_profile_by_id, stored_auth_profile_for_method,
 };
 use profile_updates::{upsert_api_key_profile, upsert_oauth_profile};
 

@@ -273,7 +273,7 @@ export function AuthProviderDetail({
               <DetailSection title="Advanced">
                 <DetailRow
                   title="Remove saved access"
-                  detail="Saved access is reused after relaunch on this device, but is not copied to another device; sign in or add the key there. Delete it from Kordi's shared desktop and terminal auth store here. Environment variables are not removed."
+                  detail="Saved access is encrypted and synced with your Kordi account. Adding, changing, selecting, or deleting it updates your other signed-in devices. Environment variables stay on this device and are not removed."
                   trailing={
                     confirmRemoveAll ? (
                       <>
