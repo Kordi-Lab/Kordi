@@ -16,7 +16,6 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-
 import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import {
   fetchDesktopCommunitySkillDetail,

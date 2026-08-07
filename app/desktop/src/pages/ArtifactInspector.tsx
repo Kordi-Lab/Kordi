@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Braces, ChevronLeft, FileText, FolderOpen, Globe2, LoaderCircle, Maximize2, X } from 'lucide-react';
-
 import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/components';
 import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
@@ -197,8 +196,7 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
     return (
       <div data-artifact-preview-mode={mode} className={cn('overflow-auto px-3 py-3', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
         <MarkdownContent
-          text={source}
-          copySurface="document"
+          text={source} copySurface="document"
           className={cn(
             ARTIFACT_MARKDOWN_PREVIEW_CLASS,
             mode === 'panel' ? 'rounded-[14px] px-3 py-3' : 'min-h-full px-4 py-4',
@@ -211,9 +209,8 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
   return (
     <div data-artifact-preview-mode={mode} className={cn('app-artifact-preview-opaque-surface p-3', mode !== 'panel' && 'min-h-full')}>
       <MarkdownCodeBlock
-        language={languageFromPath(preview.path)}
+        language={languageFromPath(preview.path)} copySurface="document"
         code={source}
-        copySurface="document"
         maxHeightClass={mode === 'panel' ? 'max-h-[32rem]' : 'max-h-none'}
         wrapLines
       />

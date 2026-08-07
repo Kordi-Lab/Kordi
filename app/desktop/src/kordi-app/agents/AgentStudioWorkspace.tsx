@@ -32,7 +32,6 @@ import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
 
 type FilePreviewState = { status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string };
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
-
 const TABS: Array<{ id: AgentStudioTab; label: string; icon: typeof SlidersHorizontal }> = [
   { id: 'blueprint', label: 'Blueprint', icon: SlidersHorizontal },
   { id: 'capabilities', label: 'Capabilities', icon: Puzzle },

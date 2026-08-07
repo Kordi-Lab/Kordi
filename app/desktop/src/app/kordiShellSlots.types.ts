@@ -1,5 +1,4 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react';
-
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { CloudSessionPin } from '@/features/cloud/authClient';
@@ -40,7 +39,6 @@ import type {
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
 export type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
-
 export type CreateChatGroupRequest = {
   name?: string | null;
   contactIds: string[];

@@ -44,6 +44,14 @@ export function handleDocumentCopySurfaceKeyDown(event: SelectionKeyboardEvent) 
   selectCopySurfaceContents(event.currentTarget);
 }
 
+export function copySurfaceProps(copySurface?: KordiCopySurface) {
+  return {
+    'data-kordi-copy-surface': copySurface,
+    tabIndex: copySurface === 'document' ? 0 : undefined,
+    onKeyDown: copySurface === 'document' ? handleDocumentCopySurfaceKeyDown : undefined,
+  } as const;
+}
+
 function rangeIntersectsNode(range: Range, node: Node) {
   try {
     return range.intersectsNode(node);

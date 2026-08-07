@@ -133,8 +133,7 @@ function ToolTranscriptBlock({
       </div>
       <MarkdownCodeBlock
         code={cleanedText}
-        language={language}
-        copySurface="message"
+        language={language} copySurface="message"
         maxHeightClass={maxHeightClass}
         wrapLines={isWrapped}
         headerActions={

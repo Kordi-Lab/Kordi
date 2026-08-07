@@ -1,8 +1,7 @@
-import { createElement, useCallback, useMemo, useRef, useState } from 'react';
+import { createElement, useCallback, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
-import { clearNativeTextSelection } from '@/features/contentSelection';
 import { cloudGroupMessageSessionId, cloudGroupTargetAccountIds } from '@/features/cloud/cloudGroupMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
@@ -21,10 +20,6 @@ import {
 } from '@/features/chat/messageActionMetadata';
 import {
   formatSelectedMessagesForCopy,
-  selectAllMessageSources,
-  setMessageSelectionSource,
-  toggleMessageSelectionSource,
-  type MessageSelectionState,
 } from '@/features/chat/messageSelection';
 import {
   buildForwardDestinations,
@@ -44,6 +39,7 @@ import type {
   Message,
 } from '@/kordi-app/types';
 import { appendCanonicalMessage } from '@/lib/desktop';
+import { useMessageSelectionActions } from './useMessageSelectionActions';
 
 type MessageActionCloudTransport = Pick<
   UseCloudCollaborationStateResult,
@@ -94,12 +90,6 @@ export function useKordiMessageActions({
 }: UseKordiMessageActionsArgs) {
   const [forwardDialog, setForwardDialog] =
     useState<ForwardDialogState | null>(null);
-  const [messageSelection, setMessageSelection] =
-    useState<MessageSelectionState | null>(null);
-  const selectionDragRef = useRef<{
-    conversationId: string;
-    shouldSelect: boolean;
-  } | null>(null);
   const {
     prepareCloudForwardAttachments,
     sendCloudCollaborationMessage,
@@ -163,92 +153,19 @@ export function useKordiMessageActions({
     setForwardDialog({ sources: [source], destinations });
   }, [conversations, sourceForSelectableMessage]);
 
-  const isMessageSelectable = useCallback(
-    (message: Message) => Boolean(sourceForSelectableMessage(message)),
-    [sourceForSelectableMessage],
-  );
-
-  const onSelectMessage = useCallback((message: Message) => {
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    clearNativeTextSelection();
-    setMessageSelection({
-      conversationId: activeConversation.id,
-      sourcesByMessageId: new Map([[source.sourceMessageId, source]]),
-    });
-  }, [activeConversation.id, sourceForSelectableMessage]);
-
-  const onToggleSelectedMessage = useCallback((message: Message) => {
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    clearNativeTextSelection();
-    setMessageSelection((current) => toggleMessageSelectionSource(
-      current,
-      activeConversation.id,
-      source,
-    ));
-  }, [activeConversation.id, sourceForSelectableMessage]);
-
-  const onCancelMessageSelection = useCallback(() => {
-    clearNativeTextSelection();
-    selectionDragRef.current = null;
-    setMessageSelection(null);
-  }, []);
-
-  const onSelectAllMessages = useCallback(() => {
-    const sources = activeConversation.messages
-      .map(sourceForSelectableMessage)
-      .filter((source): source is ForwardMessageSource => Boolean(source));
-    clearNativeTextSelection();
-    selectionDragRef.current = null;
-    setMessageSelection(selectAllMessageSources(activeConversation.id, sources));
-  }, [activeConversation.id, activeConversation.messages, sourceForSelectableMessage]);
-
-  const onSelectionDragStart = useCallback((
-    message: Message,
-    shouldSelect: boolean,
-  ) => {
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    clearNativeTextSelection();
-    selectionDragRef.current = {
-      conversationId: activeConversation.id,
-      shouldSelect,
-    };
-    setMessageSelection((current) => setMessageSelectionSource(
-      current,
-      activeConversation.id,
-      source,
-      shouldSelect,
-    ));
-  }, [activeConversation.id, sourceForSelectableMessage]);
-
-  const onSelectionDragEnter = useCallback((message: Message) => {
-    const drag = selectionDragRef.current;
-    if (!drag || drag.conversationId !== activeConversation.id) return;
-    const source = sourceForSelectableMessage(message);
-    if (!source) return;
-    setMessageSelection((current) => setMessageSelectionSource(
-      current,
-      activeConversation.id,
-      source,
-      drag.shouldSelect,
-    ));
-  }, [activeConversation.id, sourceForSelectableMessage]);
-
-  const onSelectionDragEnd = useCallback(() => {
-    selectionDragRef.current = null;
-  }, []);
-
-  const activeMessageSelection =
-    messageSelection?.conversationId === activeConversation.id
-      ? messageSelection
-      : null;
-  const selectedMessageIds = useMemo(
-    () => new Set(activeMessageSelection?.sourcesByMessageId.keys() ?? []),
-    [activeMessageSelection?.sourcesByMessageId],
-  );
-  const selectedMessageCount = selectedMessageIds.size;
+  const {
+    activeMessageSelection,
+    selectedMessageIds,
+    selectedMessageCount,
+    isMessageSelectable,
+    onSelectMessage,
+    onToggleSelectedMessage,
+    onCancelMessageSelection,
+    onSelectAllMessages,
+    onSelectionDragStart,
+    onSelectionDragEnter,
+    onSelectionDragEnd,
+  } = useMessageSelectionActions({ activeConversation, sourceForSelectableMessage });
 
   const orderedSelectedMessageSources = useCallback(() => {
     if (
@@ -325,7 +242,7 @@ export function useKordiMessageActions({
     const drafts = createForwardedMessageDrafts({ sources, caption });
     const now = Date.now();
     setForwardDialog(null);
-    setMessageSelection(null);
+    onCancelMessageSelection();
     const directCloudConversationId =
       isCloudCollaborationConversationId(destination.conversationId)
         ? destination.conversationId
@@ -462,6 +379,7 @@ export function useKordiMessageActions({
     collaborationState,
     conversations,
     forwardDialog?.sources,
+    onCancelMessageSelection,
     prepareCloudForwardAttachments,
     revealForward,
     sendCloudCollaborationMessage,
