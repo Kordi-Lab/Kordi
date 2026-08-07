@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
+import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import {
   fetchDesktopCommunitySkillDetail,
   fetchDesktopCommunitySkillProviders,
@@ -447,7 +448,7 @@ function InstalledSkillView({
               <strong className="min-w-0">{selectedPath}</strong>
               {canEditFile ? <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" disabled={saving || fileLoading || content === savedContent} onClick={() => void save()}>{saving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save file</button> : null}
             </header>
-            {fileLoading ? <div className="app-skill-library-loading"><LoaderCircle className="h-4 w-4 animate-spin" />Loading file…</div> : canEditFile ? <textarea value={content} onChange={(event) => setContent(event.currentTarget.value)} spellCheck={false} /> : <pre>{content}</pre>}
+            {fileLoading ? <div className="app-skill-library-loading"><LoaderCircle className="h-4 w-4 animate-spin" />Loading file…</div> : canEditFile ? <textarea value={content} onChange={(event) => setContent(event.currentTarget.value)} spellCheck={false} /> : <pre data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{content}</pre>}
           </section>
         </div>
       ) : null}
@@ -640,7 +641,7 @@ export function CommunitySkillView({
               ) : <button type="button" className="app-button-quiet app-agent-studio-button is-primary" onClick={() => void install()} disabled={installing}>{installing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{installing ? 'Installing' : 'Install reviewed skill'}</button>}
             </div>
             <div className="app-skill-community-file-strip" aria-label="Community skill files">{detail.files.map((file) => <button key={file.path} type="button" className={cn(selectedPreviewFile?.path === file.path && 'is-active')} onClick={() => setSelectedFilePath(file.path)}><FileText className="h-3.5 w-3.5" />{file.path}</button>)}</div>
-            <pre className="app-skill-community-code">{selectedPreviewFile?.text ?? 'Preview unavailable for this binary file.'}</pre>
+            <pre className="app-skill-community-code" data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{selectedPreviewFile?.text ?? 'Preview unavailable for this binary file.'}</pre>
           </>
         ) : <SkillLibraryState title="Inspect before installing" detail="Select a result to review its instructions, files, provenance, and available security report." />}
       </section>

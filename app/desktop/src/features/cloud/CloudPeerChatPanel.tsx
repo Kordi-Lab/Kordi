@@ -122,7 +122,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
                           : 'border border-white/10 bg-white/5 text-slate-100',
                       )}
                     >
-                      {msg.body.trim() ? <div className="whitespace-pre-wrap break-words">{msg.body}</div> : null}
+                      {msg.body.trim() ? <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.body}</div> : null}
                       {msg.attachments?.length ? (
                         <div className={msg.body.trim() ? 'mt-2' : ''}>
                           <AttachmentPreview msg={cloudAttachmentPreviewMessage(msg, mine)} />

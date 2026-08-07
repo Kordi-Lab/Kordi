@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { cn } from '@/lib/utils';
 import type { Agent } from '../types';
 import { getAgentConfigPath, type AgentConfigDraft, type AgentSaveFeedback } from './model';
@@ -120,7 +121,7 @@ export function AgentContentPane({
               />
             ) : (
               <ScrollArea className="min-h-0 flex-1">
-                <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{displayedSystemPrompt || 'No prompt available.'}</pre>
+                <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words" data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{displayedSystemPrompt || 'No prompt available.'}</pre>
               </ScrollArea>
             )}
           </div>
@@ -201,7 +202,7 @@ export function AgentContentPane({
             />
           ) : (
             <ScrollArea className="min-h-0 flex-1">
-              <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{activeFileDraft}</pre>
+              <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words" data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{activeFileDraft}</pre>
             </ScrollArea>
           )}
         </div>

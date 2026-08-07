@@ -140,6 +140,7 @@ export type ChatsPageComposer = {
   onSelectionDragEnter?: (message: Message) => void;
   onSelectionDragEnd?: () => void;
   onCancelMessageSelection?: () => void;
+  onSelectAllMessages?: () => void;
   onCopySelectedMessages?: () => void;
   onForwardSelectedMessages?: () => void;
 };
@@ -292,6 +293,7 @@ export type ChatSessionPaneSelection = {
   onSelectionDragEnd?: () => void;
   selectedMessageCount?: number;
   onCancelMessageSelection?: () => void;
+  onSelectAllMessages?: () => void;
   onCopySelectedMessages?: () => void;
   onForwardSelectedMessages?: () => void;
   messageSelectionMode?: boolean;

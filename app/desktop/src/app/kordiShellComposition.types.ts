@@ -204,6 +204,7 @@ export type KordiShellCompositionArgs = {
     | 'onSelectionDragEnter'
     | 'onSelectionDragEnd'
     | 'onCancelMessageSelection'
+    | 'onSelectAllMessages'
     | 'onCopySelectedMessages'
     | 'onForwardSelectedMessages'
   >;

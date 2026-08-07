@@ -6,6 +6,12 @@ import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
+import {
+  clearNativeTextSelection,
+  installCopySurfaceSelectionTracking,
+  isEditableSelectionTarget,
+  isSelectAllShortcut,
+} from '@/features/contentSelection';
 import { cloudAuthCapabilityDiscoveryEnabled } from '@/features/cloud/cloudAuthReleasePolicy';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
 import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
@@ -133,6 +139,24 @@ export function KordiAppRoot({
   cloudSessionStatus,
   cloudSession,
 }: KordiAppRootProps = {}) {
+  useEffect(() => {
+    const suppressUnscopedSelectAll = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented
+        || !isSelectAllShortcut(event)
+        || isEditableSelectionTarget(event.target)
+      ) return;
+      event.preventDefault();
+      clearNativeTextSelection();
+    };
+    const stopTrackingCopySelection = installCopySurfaceSelectionTracking(document);
+    document.addEventListener('keydown', suppressUnscopedSelectAll);
+    return () => {
+      document.removeEventListener('keydown', suppressUnscopedSelectAll);
+      stopTrackingCopySelection();
+    };
+  }, []);
+
   return (
     <CloudEditionRoot
       cloudSessionStatusOverride={cloudSessionStatus}

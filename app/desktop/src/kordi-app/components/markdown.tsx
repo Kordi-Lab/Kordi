@@ -1,6 +1,10 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 
+import {
+  handleDocumentCopySurfaceKeyDown,
+  type KordiCopySurface,
+} from '@/features/contentSelection';
 import { cn } from '@/lib/utils';
 import { ExternalMessageLink, MessageInlineContent } from './messageInlineContent';
 import { MarkdownTable } from './markdownTable';
@@ -515,7 +519,15 @@ function MermaidPie({ lines }: { lines: string[] }) {
   );
 }
 
-function MermaidDiagram({ code, className }: { code: string; className?: string }) {
+function MermaidDiagram({
+  code,
+  className,
+  copySurface,
+}: {
+  code: string;
+  className?: string;
+  copySurface?: KordiCopySurface;
+}) {
   const lines = mermaidLines(code);
   const diagram = lines[0]?.startsWith('sequenceDiagram')
     ? <MermaidSequence lines={lines} />
@@ -526,12 +538,23 @@ function MermaidDiagram({ code, className }: { code: string; className?: string 
         : null;
 
   return (
-    <div data-mermaid-diagram="true" className={cn('overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)]', className)}>
-      <div className="flex items-center justify-between gap-3 border-b border-white/8 px-3 py-2">
+    <div data-mermaid-diagram="true" data-kordi-copy-block="true" className={cn('overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)]', className)}>
+      <div className="flex items-center justify-between gap-3 border-b border-white/8 px-3 py-2" data-kordi-copy-exclude="true">
         <div className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Mermaid diagram</div>
         {!diagram ? <div className="truncate text-[10px] text-amber-200">Source preview</div> : null}
       </div>
-      {diagram ? <div className="overflow-auto bg-white p-3">{diagram}</div> : <div className="p-3"><MarkdownCodeBlock language="mermaid" code={code} maxHeightClass="max-h-[20rem]" /></div>}
+      {diagram ? (
+        <div
+          className="overflow-auto bg-white p-3"
+          data-kordi-copy-surface={copySurface}
+          tabIndex={copySurface === 'document' ? 0 : undefined}
+          onKeyDown={copySurface === 'document' ? handleDocumentCopySurfaceKeyDown : undefined}
+        >
+          {diagram}
+        </div>
+      ) : (
+        <div className="p-3"><MarkdownCodeBlock language="mermaid" code={code} maxHeightClass="max-h-[20rem]" copySurface={copySurface} /></div>
+      )}
     </div>
   );
 }
@@ -542,12 +565,14 @@ function MarkdownCodeBlock({
   maxHeightClass = 'max-h-[28rem]',
   wrapLines = false,
   headerActions,
+  copySurface,
 }: {
   language?: string;
   code: string;
   maxHeightClass?: string;
   wrapLines?: boolean;
   headerActions?: ReactNode;
+  copySurface?: KordiCopySurface;
 }) {
   const [copied, setCopied] = useState(false);
   const resolvedLanguage = useMemo(() => normalizeCodeLanguage(language ?? inferCodeLanguage(code)), [language, code]);
@@ -564,8 +589,12 @@ function MarkdownCodeBlock({
   };
 
   return (
-    <div className="group relative max-w-full overflow-hidden rounded-[10px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]" aria-label={`Code block language: ${resolvedLanguage}`}>
-      <span className="sr-only">{resolvedLanguage}</span>
+    <div
+      className="group relative max-w-full overflow-hidden rounded-[10px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+      aria-label={`Code block language: ${resolvedLanguage}`}
+      data-kordi-copy-block="true"
+    >
+      <span className="sr-only" data-kordi-copy-exclude="true">{resolvedLanguage}</span>
       {headerActions ? (
         <div className="absolute right-9 top-2 z-10 flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           {headerActions}
@@ -582,7 +611,12 @@ function MarkdownCodeBlock({
       >
         {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
       </button>
-      <pre className={cn('overflow-auto px-2.5 py-2.5 font-mono text-[11px] leading-5.5 text-slate-100', maxHeightClass)}>
+      <pre
+        className={cn('overflow-auto px-2.5 py-2.5 font-mono text-[11px] leading-5.5 text-slate-100', maxHeightClass)}
+        data-kordi-copy-surface={copySurface}
+        tabIndex={copySurface === 'document' ? 0 : undefined}
+        onKeyDown={copySurface === 'document' ? handleDocumentCopySurfaceKeyDown : undefined}
+      >
         <code className={cn('block', wrapLines ? 'min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'min-w-max')}>
           {highlightedLines.map((line, lineIndex) => (
             <div key={`code-line-${lineIndex}`} className={wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}>
@@ -617,6 +651,7 @@ function MarkdownListView({
 
   return (
     <Wrapper
+      data-kordi-copy-block={depth === 0 ? 'true' : undefined}
       className={cn(
         'space-y-1 text-sm leading-6 text-slate-100 marker:text-slate-500',
         depth === 0 ? 'pl-5' : 'pl-4 pt-1',
@@ -652,16 +687,23 @@ function MarkdownContent({
   className,
   tone = 'default',
   showLinkIcons = false,
+  copySurface,
 }: {
   text: string;
   className?: string;
   tone?: 'default' | 'muted';
   showLinkIcons?: boolean;
+  copySurface?: KordiCopySurface;
 }) {
   const blocks = useMemo(() => parseMarkdownBlocks(text), [text]);
 
   return (
-    <div className={cn('min-w-0 space-y-3 break-words [overflow-wrap:anywhere]', className)}>
+    <div
+      className={cn('min-w-0 space-y-3 break-words [overflow-wrap:anywhere]', className)}
+      data-kordi-copy-surface={copySurface}
+      tabIndex={copySurface === 'document' ? 0 : undefined}
+      onKeyDown={copySurface === 'document' ? handleDocumentCopySurfaceKeyDown : undefined}
+    >
       {blocks.map((block, index) => {
         if (block.type === 'heading') {
           const headingClass =
@@ -677,7 +719,7 @@ function MarkdownContent({
                   ? 'app-markdown-muted-heading text-[0.92rem] font-medium text-slate-400'
                   : 'text-[0.92rem] font-semibold text-slate-100';
           return (
-            <div key={`heading-${index}`} className={cn(headingClass, 'min-w-0 break-words [overflow-wrap:anywhere]')}>
+            <div key={`heading-${index}`} data-kordi-copy-block="true" className={cn(headingClass, 'min-w-0 break-words [overflow-wrap:anywhere]')}>
               {renderInlineMarkdown(block.text, tone, showLinkIcons)}
             </div>
           );
@@ -692,7 +734,7 @@ function MarkdownContent({
         }
         if (block.type === 'blockquote') {
           return (
-            <blockquote key={`quote-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] border-l-2 pl-4 text-sm italic leading-6', tone === 'muted' ? 'app-markdown-muted-quote border-slate-500/20 text-slate-500' : 'border-slate-500/40 text-slate-300')}>
+            <blockquote key={`quote-${index}`} data-kordi-copy-block="true" className={cn('min-w-0 break-words [overflow-wrap:anywhere] border-l-2 pl-4 text-sm italic leading-6', tone === 'muted' ? 'app-markdown-muted-quote border-slate-500/20 text-slate-500' : 'border-slate-500/40 text-slate-300')}>
               {block.text.split('\n').map((line, lineIndex) => (
                 <p key={`quote-line-${lineIndex}`}>{renderInlineMarkdown(line, tone, showLinkIcons)}</p>
               ))}
@@ -701,16 +743,17 @@ function MarkdownContent({
         }
         if (block.type === 'table') {
           return (
-            <MarkdownTable
-              key={`table-${index}`}
-              headers={block.headers}
-              rows={block.rows}
-              renderCell={(value) => renderInlineMarkdown(value, 'default', showLinkIcons)}
-            />
+            <div key={`table-${index}`} data-kordi-copy-block="true">
+              <MarkdownTable
+                headers={block.headers}
+                rows={block.rows}
+                renderCell={(value) => renderInlineMarkdown(value, 'default', showLinkIcons)}
+              />
+            </div>
           );
         }
         return (
-          <p key={`paragraph-${index}`} className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', tone === 'muted' ? 'app-markdown-muted-copy text-slate-400' : 'text-slate-100')}>
+          <p key={`paragraph-${index}`} data-kordi-copy-block="true" className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', tone === 'muted' ? 'app-markdown-muted-copy text-slate-400' : 'text-slate-100')}>
             {renderInlineMarkdown(block.text, tone, showLinkIcons)}
           </p>
         );

@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import { Braces, X } from 'lucide-react';
 
+import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import type { DetailTab, EditFilePreview } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
@@ -86,7 +87,7 @@ export function RightDetailRail({
                 <div className="app-code-toolbar border-b border-white/10 px-4 py-2 text-[12px] text-slate-400">
                   Source preview
                 </div>
-                <div className="font-mono text-[12px] leading-7">
+                <div className="font-mono text-[12px] leading-7" data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>
                   {(activeSourcePreview.sourceLines ?? []).map((line) => (
                     <div
                       key={`${activeSourcePreview.path}-${line.number}-${line.text}`}

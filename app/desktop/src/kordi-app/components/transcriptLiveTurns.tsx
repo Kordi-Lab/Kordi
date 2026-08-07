@@ -77,7 +77,7 @@ function DiffOutputBlock({ label, icon, text }: { label: string; icon: Component
         <span>{label}</span>
         <span className="app-transcript-utility-chip rounded-full bg-white/6 px-2 py-0.5 text-[10px] text-slate-400">patch</span>
       </div>
-      <div className="app-transcript-diff-block">
+      <div className="app-transcript-diff-block" data-kordi-copy-surface="message">
         {fileRows.length > 0 ? (
           <div className="app-transcript-diff-files">
             {fileRows.map((row, index) => <div key={`diff-file-${index}`} className="truncate">{row.content}</div>)}
@@ -134,6 +134,7 @@ function ToolTranscriptBlock({
       <MarkdownCodeBlock
         code={cleanedText}
         language={language}
+        copySurface="message"
         maxHeightClass={maxHeightClass}
         wrapLines={isWrapped}
         headerActions={
@@ -301,7 +302,7 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
             </button>
             {expandedThinking ? (
               <div className="app-transcript-timeline-details-body pr-1" data-transcript-stable-disclosure-body="true">
-                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" showLinkIcons />
+                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown" showLinkIcons copySurface="message" />
               </div>
             ) : null}
           </div>

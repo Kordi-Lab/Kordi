@@ -2,6 +2,7 @@ import { createElement, useCallback, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
+import { clearNativeTextSelection } from '@/features/contentSelection';
 import { cloudGroupMessageSessionId, cloudGroupTargetAccountIds } from '@/features/cloud/cloudGroupMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
@@ -20,6 +21,7 @@ import {
 } from '@/features/chat/messageActionMetadata';
 import {
   formatSelectedMessagesForCopy,
+  selectAllMessageSources,
   setMessageSelectionSource,
   toggleMessageSelectionSource,
   type MessageSelectionState,
@@ -169,6 +171,7 @@ export function useKordiMessageActions({
   const onSelectMessage = useCallback((message: Message) => {
     const source = sourceForSelectableMessage(message);
     if (!source) return;
+    clearNativeTextSelection();
     setMessageSelection({
       conversationId: activeConversation.id,
       sourcesByMessageId: new Map([[source.sourceMessageId, source]]),
@@ -178,6 +181,7 @@ export function useKordiMessageActions({
   const onToggleSelectedMessage = useCallback((message: Message) => {
     const source = sourceForSelectableMessage(message);
     if (!source) return;
+    clearNativeTextSelection();
     setMessageSelection((current) => toggleMessageSelectionSource(
       current,
       activeConversation.id,
@@ -186,9 +190,19 @@ export function useKordiMessageActions({
   }, [activeConversation.id, sourceForSelectableMessage]);
 
   const onCancelMessageSelection = useCallback(() => {
+    clearNativeTextSelection();
     selectionDragRef.current = null;
     setMessageSelection(null);
   }, []);
+
+  const onSelectAllMessages = useCallback(() => {
+    const sources = activeConversation.messages
+      .map(sourceForSelectableMessage)
+      .filter((source): source is ForwardMessageSource => Boolean(source));
+    clearNativeTextSelection();
+    selectionDragRef.current = null;
+    setMessageSelection(selectAllMessageSources(activeConversation.id, sources));
+  }, [activeConversation.id, activeConversation.messages, sourceForSelectableMessage]);
 
   const onSelectionDragStart = useCallback((
     message: Message,
@@ -196,6 +210,7 @@ export function useKordiMessageActions({
   ) => {
     const source = sourceForSelectableMessage(message);
     if (!source) return;
+    clearNativeTextSelection();
     selectionDragRef.current = {
       conversationId: activeConversation.id,
       shouldSelect,
@@ -478,6 +493,7 @@ export function useKordiMessageActions({
     onSelectionDragEnter,
     onSelectionDragEnd,
     onCancelMessageSelection,
+    onSelectAllMessages,
     onCopySelectedMessages,
     onForwardSelectedMessages,
     messageForwardDialog,

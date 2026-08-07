@@ -20,6 +20,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { cn } from '@/lib/utils';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
@@ -657,9 +658,9 @@ function FilesView({
               canEditPrompt ? <textarea value={prompt} onChange={(event) => {
                 if (creating && creationDraft) onCreationDraftChange({ ...creationDraft, systemPrompt: event.currentTarget.value });
                 else onPromptChange(event.currentTarget.value);
-              }} spellCheck={false} /> : <pre>{prompt || 'No prompt available.'}</pre>
+              }} spellCheck={false} /> : <pre data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{prompt || 'No prompt available.'}</pre>
             ) : activeFileIsEditing ? <textarea value={activeFileDraft} onChange={(event) => onFileDraftChange(event.currentTarget.value)} spellCheck={false} />
-              : <pre>{activeFilePreview.status === 'loading' ? 'Loading…' : activeFileDraft || 'No preview available.'}</pre>}
+              : <pre data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{activeFilePreview.status === 'loading' ? 'Loading…' : activeFileDraft || 'No preview available.'}</pre>}
           </section>
         </div>
       )}

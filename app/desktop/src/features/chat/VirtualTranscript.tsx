@@ -6,9 +6,11 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
   type UIEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -27,6 +29,11 @@ import {
   completeSessionClickToFirstMessage,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
+import {
+  clearNativeTextSelection,
+  isEditableSelectionTarget,
+  isSelectAllShortcut,
+} from '@/features/contentSelection';
 
 export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
 
@@ -50,6 +57,9 @@ export type VirtualTranscriptProps<Item> = {
   tailKey?: string | number;
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
+  selectionMode?: boolean;
+  onSelectAllMessages?: () => void;
+  onCancelMessageSelection?: () => void;
 };
 
 const preserveMeasuredDisclosurePosition = () => false;
@@ -120,6 +130,9 @@ export function VirtualTranscript<Item>({
   tailKey,
   estimateSize,
   gap = 4,
+  selectionMode = false,
+  onSelectAllMessages,
+  onCancelMessageSelection,
 }: VirtualTranscriptProps<Item>) {
   const renderPerformanceSpan = beginChatPerformanceSpan('transcript-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
@@ -203,6 +216,29 @@ export function VirtualTranscript<Item>({
       tailAlignmentFrameRef.current = null;
     }
   }, []);
+
+  const handleSelectionKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (isEditableSelectionTarget(event.target)) return;
+    if (isSelectAllShortcut(event)) {
+      event.preventDefault();
+      clearNativeTextSelection();
+      onSelectAllMessages?.();
+      return;
+    }
+    if (event.key === 'Escape' && selectionMode) {
+      event.preventDefault();
+      clearNativeTextSelection();
+      onCancelMessageSelection?.();
+    }
+  }, [onCancelMessageSelection, onSelectAllMessages, selectionMode]);
+
+  const handleTranscriptPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    cancelTailAlignment();
+    if (event.button !== 0 || isEditableSelectionTarget(event.target)) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('button, a, select, [role="button"]')) return;
+    internalScrollRef.current?.focus({ preventScroll: true });
+  }, [cancelTailAlignment]);
 
   const cancelStableDisclosureRelease = useCallback(() => {
     if (stableDisclosureReleaseFrameRef.current !== null) {
@@ -559,9 +595,14 @@ export function VirtualTranscript<Item>({
       onScroll={handleScroll}
       onClickCapture={handleClickCapture}
       onWheelCapture={cancelTailAlignment}
-      onPointerDownCapture={cancelTailAlignment}
+      onPointerDownCapture={handleTranscriptPointerDown}
       onTouchStartCapture={cancelTailAlignment}
+      onKeyDown={handleSelectionKeyDown}
+      tabIndex={0}
+      role="region"
+      aria-label="Conversation messages"
       data-virtual-transcript-scroll="true"
+      data-message-selection-mode={selectionMode ? 'true' : undefined}
       data-transcript-loading-older={isLoadingOlder ? 'true' : undefined}
       aria-busy={isLoadingOlder || undefined}
     >

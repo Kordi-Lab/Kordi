@@ -265,6 +265,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         onSelectionDragEnter: args.onSelectionDragEnter,
         onSelectionDragEnd: args.onSelectionDragEnd,
         onCancelMessageSelection: args.onCancelMessageSelection,
+        onSelectAllMessages: args.onSelectAllMessages,
         onCopySelectedMessages: args.onCopySelectedMessages,
         onForwardSelectedMessages: args.onForwardSelectedMessages,
         composerSelectionChat: args.composerSelectionChat,

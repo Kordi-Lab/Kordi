@@ -101,6 +101,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onSelectionDragEnter: args.onSelectionDragEnter,
     onSelectionDragEnd: args.onSelectionDragEnd,
     onCancelMessageSelection: args.onCancelMessageSelection,
+    onSelectAllMessages: args.onSelectAllMessages,
     onCopySelectedMessages: args.onCopySelectedMessages,
     onForwardSelectedMessages: args.onForwardSelectedMessages,
     },

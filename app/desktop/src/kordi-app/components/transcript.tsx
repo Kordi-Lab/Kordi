@@ -681,7 +681,7 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
         </div>
         {expanded && hasSummary ? (
           <div className="max-h-[26rem] overflow-y-auto border-t border-[color:var(--app-divider)] px-4 py-3 pr-5">
-            <MarkdownContent text={summary} tone="muted" className="text-[13px]" showLinkIcons />
+            <MarkdownContent text={summary} tone="muted" className="text-[13px]" showLinkIcons copySurface="message" />
           </div>
         ) : null}
       </div>
@@ -991,8 +991,8 @@ function MessageBubbleView({
           <ArrowRightLeft className="h-4 w-4" />
           {msg.sender}
         </div>
-        <div className="text-sm"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
-        <div className="mt-2 text-xs text-muted-foreground">{msg.detail}</div>
+        <div className="text-sm" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
+        <div className="mt-2 text-xs text-muted-foreground" data-kordi-copy-surface="message">{msg.detail}</div>
         <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <Clock3 className="h-3 w-3" />
@@ -1017,7 +1017,7 @@ function MessageBubbleView({
         </div>
         <div className="app-detail-sheet w-full max-w-[760px]">
           <div className="flex items-center justify-between px-3.5 py-3">
-            <div className="text-[14px] font-medium text-white/92"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
+            <div className="text-[14px] font-medium text-white/92" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
             <button className="app-button-quiet inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[12px] font-medium">
               <Undo2 className="h-3.5 w-3.5" />
               Undo
@@ -1053,7 +1053,7 @@ function MessageBubbleView({
                 </div>
               </div>
               {isEditExpanded && (
-                <div className="app-code-panel px-0 py-2.5">
+                <div className="app-code-panel px-0 py-2.5" data-kordi-copy-surface="message">
                   <div className="font-mono text-[11px] leading-6">
                     {primaryFile.lines.map((line, index) => (
                       <div
@@ -1327,7 +1327,7 @@ function MessageBubbleView({
         {showCompactFooter ? (
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
-              <span className="whitespace-pre-wrap break-words">
+              <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
                 <MessageInlineContent text={msg.text} mentions={msg.mentions} />
               </span>
               <span className={cn(
@@ -1352,7 +1352,7 @@ function MessageBubbleView({
                       : undefined}
                   />
                 ) : null}
-                {hasText ? <div className="whitespace-pre-wrap break-words"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div> : null}
+                {hasText ? <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div> : null}
               </div>
               {!hasOnlyImageAttachments ? (
                 <MessageFooter
@@ -1370,7 +1370,7 @@ function MessageBubbleView({
           <>
             <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
               {hasAttachments ? <AttachmentPreview msg={msg} imageDeliveryStatus={null} /> : null}
-              {hasText ? <MarkdownContent text={msg.text} showLinkIcons /> : null}
+              {hasText ? <MarkdownContent text={msg.text} showLinkIcons copySurface="message" /> : null}
             </div>
             {(msg.statusChips?.length || footerDetail) ? (
               <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>

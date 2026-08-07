@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { handleDocumentCopySurfaceKeyDown } from '@/features/contentSelection';
 import { cn } from '@/lib/utils';
 import type { CloudAgentAccessScope, CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { Agent } from '../types';
@@ -173,7 +174,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
                 <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className="app-agent-inspector-row min-h-20 w-full resize-y rounded-[14px] border bg-transparent px-3 py-3 text-[13px] outline-none" />
                 <textarea value={draft.systemPrompt} onChange={(event) => setDraft({ ...draft, systemPrompt: event.target.value })} className="app-agent-code-panel min-h-40 w-full resize-y rounded-[14px] border bg-transparent px-3 py-3 font-mono text-[12px] leading-5 outline-none" />
                 <div className="app-agent-row-meta text-[11px]">Shape prompt</div>
-                <pre className="app-agent-code-panel max-h-28 overflow-auto rounded-[14px] border px-3 py-3 text-[10px] leading-4 whitespace-pre-wrap">{shapePrompt}</pre>
+                <pre className="app-agent-code-panel max-h-28 overflow-auto rounded-[14px] border px-3 py-3 text-[10px] leading-4 whitespace-pre-wrap" data-kordi-copy-surface="document" tabIndex={0} onKeyDown={handleDocumentCopySurfaceKeyDown}>{shapePrompt}</pre>
               </div>
             ) : (
               <div className="app-agent-create-muted rounded-[18px] px-4 py-10 text-center text-[13px] leading-5">Add resources and identity, then click Shape draft.</div>
