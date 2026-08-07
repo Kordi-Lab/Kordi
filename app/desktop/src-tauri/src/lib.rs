@@ -5,6 +5,7 @@ mod cloud_account_paths;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_provider_auth_restore;
+mod cloud_provider_auth_snapshot;
 mod cloud_session;
 mod project;
 mod remote_image;
@@ -13,7 +14,6 @@ mod system_proxy;
 #[cfg(test)]
 mod test_support;
 mod workspace;
-
 use std::process::Command;
 
 fn is_cloud_edition_context(
@@ -438,7 +438,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_set_session_participant_role,
             canonical_sessions::desktop_canonical_mark_session_read,
             auth::desktop_auth_state,
-            auth::desktop_cloud_provider_auth_snapshot_payload,
+            cloud_provider_auth_snapshot::desktop_cloud_provider_auth_snapshot_payload,
             auth::desktop_save_api_key,
             auth::desktop_set_local_provider_port,
             auth::desktop_logout,
@@ -536,7 +536,6 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");
-
     app.run(|app_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
             publish_stored_offline_on_exit();
@@ -569,7 +568,6 @@ pub fn run() {
         }
         _ => {}
     });
-
     // macOS application Quit can bypass browser page lifecycle events. Run one
     // final native best-effort publish after Tauri's event loop returns so
     // explicit Quit does not wait for heartbeat timeout.

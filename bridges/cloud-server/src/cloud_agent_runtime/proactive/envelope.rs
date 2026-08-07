@@ -229,7 +229,7 @@ mod tests {
             agent_ids: vec!["local_agent_primary".to_string()],
         };
         assert!(contains_agent(
-            &[participant.clone()],
+            std::slice::from_ref(&participant),
             "acct_owner",
             "cloud_agent_synced",
             Some("local_agent_primary"),

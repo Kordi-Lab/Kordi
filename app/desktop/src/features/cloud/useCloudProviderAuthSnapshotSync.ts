@@ -22,7 +22,7 @@ import {
 import {
   loadSession,
 } from './session';
-import { CLOUD_PROVIDER_AUTH_UPDATED_EVENT } from './useCloudSession';
+import { CLOUD_PROVIDER_AUTH_UPDATED_EVENT } from './cloudSessionAuth';
 
 const PROVIDER_AUTH_PUBLISH_REFRESH_INTERVAL_MS = 5 * 60_000;
 const PROVIDER_AUTH_RESTORE_INTERVAL_MS = 15_000;

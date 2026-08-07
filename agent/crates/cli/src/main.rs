@@ -9,6 +9,7 @@ mod extensions;
 
 mod input_files;
 mod live_models;
+#[allow(dead_code)]
 mod login;
 mod models;
 mod oauth;

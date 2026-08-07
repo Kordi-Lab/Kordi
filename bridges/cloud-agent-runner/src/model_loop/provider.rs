@@ -8,6 +8,12 @@ use crate::client::ProviderAuthMaterial;
 
 use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelToolCall};
 
+mod endpoint;
+use endpoint::is_owner_local_provider_endpoint;
+
+#[cfg(test)]
+mod oauth_tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAiApiMode {
     ChatCompletions,
@@ -165,37 +171,6 @@ fn default_base_url_for_mode(provider: &str, api_mode: OpenAiApiMode) -> &'stati
         "xai" => "https://api.x.ai/v1",
         _ => "https://api.openai.com/v1",
     }
-}
-
-fn is_owner_local_provider_endpoint(base_url: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(base_url) else {
-        return true;
-    };
-    let Some(host) = url.host_str() else {
-        return true;
-    };
-    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
-    if host == "localhost" || host.ends_with(".local") || host.ends_with(".localhost") {
-        return true;
-    }
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return match ip {
-            std::net::IpAddr::V4(ip) => {
-                ip.is_loopback()
-                    || ip.is_private()
-                    || ip.is_link_local()
-                    || ip.is_unspecified()
-                    || ip.is_broadcast()
-            }
-            std::net::IpAddr::V6(ip) => {
-                ip.is_loopback()
-                    || ip.is_unspecified()
-                    || ip.is_unique_local()
-                    || ip.is_unicast_link_local()
-            }
-        };
-    }
-    false
 }
 
 #[derive(Default)]
@@ -437,55 +412,6 @@ mod tests {
         let config = OpenAiProviderConfig::from_material(&material).unwrap();
 
         assert_eq!(config.model, "gpt-5.5");
-    }
-
-    #[test]
-    fn anthropic_oauth_material_uses_messages_api_and_oauth_auth() {
-        let material = ProviderAuthMaterial {
-            snapshot_id: "snap".to_string(),
-            provider: "anthropic".to_string(),
-            auth_choice: "local-active-oauth".to_string(),
-            payload: json!({
-                "apiMode": "anthropic-oauth",
-                "accessToken": "oauth-token",
-                "model": "anthropic/claude-opus-4-8"
-            }),
-        };
-
-        let config = OpenAiProviderConfig::from_material(&material).unwrap();
-        assert_eq!(config.api_mode, OpenAiApiMode::AnthropicOAuth);
-        assert_eq!(config.base_url, "https://api.anthropic.com");
-        assert_eq!(config.model, "claude-opus-4-8");
-        assert_eq!(config.request_options().auth_mode, ProviderAuthMode::OAuth);
-    }
-
-    #[test]
-    fn github_copilot_oauth_material_uses_copilot_endpoint_and_headers() {
-        let material = ProviderAuthMaterial {
-            snapshot_id: "snap".to_string(),
-            provider: "github-copilot".to_string(),
-            auth_choice: "local-active-oauth".to_string(),
-            payload: json!({
-                "apiMode": "github-copilot-oauth",
-                "accessToken": "copilot-token",
-                "baseUrl": "https://api.githubcopilot.com",
-                "headers": { "OpenAI-Organization": "github-copilot" },
-                "model": "github-copilot/gpt-5.4"
-            }),
-        };
-
-        let config = OpenAiProviderConfig::from_material(&material).unwrap();
-        assert_eq!(config.api_mode, OpenAiApiMode::GithubCopilotOAuth);
-        assert_eq!(config.base_url, "https://api.githubcopilot.com");
-        assert_eq!(config.model, "gpt-5.4");
-        assert_eq!(
-            config
-                .headers
-                .get("OpenAI-Organization")
-                .map(String::as_str),
-            Some("github-copilot")
-        );
-        assert_eq!(config.request_options().auth_mode, ProviderAuthMode::ApiKey);
     }
 
     #[test]

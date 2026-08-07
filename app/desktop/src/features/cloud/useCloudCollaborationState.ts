@@ -3,13 +3,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import type {
-  Dispatch,
-  SetStateAction,
-} from 'react';
-import type {
-  DesktopChatMessageRoute,
-} from '@/lib/desktop';
+import type { Dispatch, SetStateAction } from 'react';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   CanonicalSessionState,
   DesktopAuthState,

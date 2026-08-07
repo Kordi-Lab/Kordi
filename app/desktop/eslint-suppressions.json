@@ -362,15 +362,6 @@
   "src/features/cloud/useCloudSession.ts": {
     "@typescript-eslint/no-misused-promises": {
       "count": 2
-    },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 3
     }
   },
   "src/features/cloud/useScheduledTasks.ts": {
