@@ -15,6 +15,7 @@ import {
   subscribeDesktopUpdater,
 } from '@/lib/desktop';
 import { isPendingIncomingCloudContactRequest, useCloudContacts } from '@/features/cloud/useCloudContacts';
+import { normalizeKordiId } from '@/features/cloud/kordiId';
 
 type SidebarChatActions = Pick<
   WorkspaceSidebarProps['chats'],
@@ -71,19 +72,17 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
     ((idOrEmail: string) => Promise<AddContactLookupResult | null>) | undefined
   >(() => {
     return async (rawId: string) => {
-      const trimmed = rawId.trim();
-      if (!trimmed) return null;
-      if (!trimmed.startsWith('acct_')) {
-        throw new Error('Kordi IDs start with "acct_".');
-      }
+      const kordiId = normalizeKordiId(rawId);
+      if (!kordiId) throw new Error('Enter a nine-digit Kordi ID.');
       const session = await loadSession();
       if (!session?.token) {
         throw new Error('Account is not ready yet.');
       }
       try {
-        const profile = await cloudAuthClient.getProfile(session.token, trimmed);
+        const profile = await cloudAuthClient.getProfile(session.token, kordiId);
         return {
           accountId: profile.accountId,
+          kordiId: profile.kordiId,
           displayName: profile.displayName,
           avatarUrl: profile.avatarUrl,
           isContact: profile.isContact,
@@ -108,7 +107,7 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
     const trimmed = rawId.trim();
     if (!trimmed) return;
     if (!trimmed.startsWith('acct_')) {
-      throw new Error('Kordi IDs start with "acct_".');
+      throw new Error('Contact could not be added. Search by Kordi ID and try again.');
     }
     await cloud.sendRequest(trimmed);
   };
@@ -153,7 +152,7 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         onCreateChatGroup: chatActions.onCreateChatGroup,
         onAddContactByNodeId,
         onLookupContact,
-        addContactPlaceholder: 'Account ID, e.g. acct_…',
+        addContactPlaceholder: 'Kordi ID, e.g. @482731906',
         onCreateChatSessionInParticipantSpace: args.handleCreateChatSessionInParticipantSpace,
         onRenameChatGroup: chatActions.onRenameChatGroup,
         onRenameChatSession: (sessionId, title) => {
@@ -219,6 +218,12 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         },
         onUpdateCloudProfile: async (input) => { await cloudSession.updateProfile(input); },
         onCloudSignOut: async () => { await cloudSession.signOut(); },
+        onCreateAppInvite: async () => {
+          const session = await loadSession();
+          if (!session?.token) throw new Error('Account is not ready yet.');
+          const invitation = await cloudAuthClient.createAppInvitation(session.token);
+          return invitation.inviteUrl;
+        },
       }}
     />
   );

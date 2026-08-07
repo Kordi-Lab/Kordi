@@ -17,6 +17,8 @@ const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
 
 export type CloudAccount = {
   accountId: string;
+  /** Public nine-digit identity. Optional while cached pre-migration sessions refresh. */
+  kordiId?: string | null;
   displayName: string | null;
   primaryEmail: string | null;
   avatarUrl: string | null;
@@ -78,11 +80,18 @@ export type CloudAuthErrorCode =
 
 export type CloudPublicProfile = {
   accountId: string;
+  kordiId?: string | null;
   displayName: string | null;
   avatarUrl: string | null;
   nodeId: string | null;
   isContact: boolean;
   isSelf: boolean;
+};
+
+export type CloudAppInvitation = {
+  invitationId: string;
+  inviteUrl: string;
+  expiresAt: string;
 };
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';
@@ -732,6 +741,17 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not load profile.',
+    );
+  }
+
+  async createAppInvitation(token: string): Promise<CloudAppInvitation> {
+    return this.send<CloudAppInvitation>(
+      '/v1/cloud/invitations/app',
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not create invitation.',
     );
   }
 

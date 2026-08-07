@@ -141,6 +141,7 @@ export type WorkspaceSidebarAccount = {
   cloudSettings?: CloudAccountSettingsConfig;
   onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
+  onCreateAppInvite?: () => Promise<string>;
 };
 
 export type WorkspaceSidebarProps = {

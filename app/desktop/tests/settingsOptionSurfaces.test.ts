@@ -54,6 +54,8 @@ test('setting controls keep containment while theme choices only fill on hover',
   assert.match(controls, /app-settings-theme-option[^\n]*bg-transparent[^\n]*hover:bg-white\/\[0\.04\]/);
   assert.match(controls, /app-settings-theme-option[^\n]*transition-none/);
   assert.match(controls, /app-settings-theme-preview[^']*transition-none/);
+  assert.match(controls, /mode: 'auto', label: 'System'/);
+  assert.match(controls, /app-settings-theme-preview[^']*h-24/);
   assert.doesNotMatch(controls, /selected \? 'bg-emerald-400\/10'/);
   assert.match(controls, /app-settings-toggle/);
   assert.match(controls, /app-input-shell app-settings-control/);

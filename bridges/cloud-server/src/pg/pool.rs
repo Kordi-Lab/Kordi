@@ -193,6 +193,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         sql: include_str!("../../migrations/0033_cloud_session_titles.sql"),
     },
     EmbeddedMigration {
+        version: 34,
+        description: "public Kordi ids and app invitations",
+        sql: include_str!("../../migrations/0034_public_kordi_ids_and_app_invitations.sql"),
+    },
+    EmbeddedMigration {
         version: 35,
         description: "global support agent and durable support tickets",
         sql: include_str!("../../migrations/0035_global_support.sql"),

@@ -6,6 +6,7 @@ import type { CloudAccount } from '../src/features/cloud/authClient';
 
 const account: CloudAccount = {
   accountId: 'acct_50a66b83799045',
+  kordiId: '482731906',
   displayName: 'Shuyheretest',
   primaryEmail: 'shu@example.com',
   avatarUrl: 'data:image/jpeg;base64,profile',
@@ -13,16 +14,16 @@ const account: CloudAccount = {
   passwordSet: true,
 };
 
-test('cloud profile menu shows personal account rows without device or avatar storage rows', () => {
+test('cloud profile helpers expose only the public Kordi ID', () => {
   const rows = buildCloudProfileRows(account);
-  assert.deepEqual(rows.map((row) => row.label), ['Email', 'Account ID']);
-  assert.equal(rows.find((row) => row.label === 'Email')?.value, 'shu@example.com');
-  assert.equal(rows.find((row) => row.label === 'Account ID')?.value, 'acct_50a66b83799045');
+  assert.deepEqual(rows.map((row) => row.label), ['Kordi ID']);
+  assert.equal(rows[0]?.value, '@482731906');
   assert.equal(rows.some((row) => row.label === 'Device'), false);
   assert.equal(rows.some((row) => row.label === 'Avatar'), false);
+  assert.equal(rows.some((row) => row.label === 'Email'), false);
 });
 
-test('cloud profile menu falls back when optional personal info is missing', () => {
-  const rows = buildCloudProfileRows({ ...account, primaryEmail: null });
-  assert.deepEqual(rows.map((row) => row.label), ['Account ID']);
+test('cloud profile helpers do not fall back to a canonical account id', () => {
+  const rows = buildCloudProfileRows({ ...account, kordiId: null });
+  assert.deepEqual(rows, []);
 });

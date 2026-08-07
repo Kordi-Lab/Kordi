@@ -124,6 +124,7 @@ pub fn support_contact(config: &SupportConfig) -> ContactSummary {
         contact_id: Some("cloud-system:kordi-support".to_string()),
         contact_kind: Some("system_agent".to_string()),
         account_id: config.owner_account_id.clone(),
+        kordi_id: None,
         display_name: Some(config.name.clone()),
         subtitle: Some(config.subtitle.clone()),
         avatar_url: None,

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { KeyRound, Palette, User, X } from 'lucide-react';
+import { Camera, KeyRound, Palette, User, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,6 +12,7 @@ import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settin
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
 import type { CloudAccount, CloudProfileUpdateInput } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
+import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 
 export type CloudAccountSettingsTabId = 'profile' | 'auth' | 'appearance';
@@ -52,9 +53,10 @@ function profileDisplayName(account: CloudAccount | null) {
 
 function cloudProfileRows(account: CloudAccount | null) {
   if (!account) return [];
+  const kordiHandle = formatKordiHandle(account.kordiId);
   return [
+    kordiHandle ? { label: 'Kordi ID', value: kordiHandle } : null,
     account.primaryEmail?.trim() ? { label: 'Email', value: account.primaryEmail.trim() } : null,
-    { label: 'Account ID', value: account.accountId },
   ].filter((row): row is { label: string; value: string } => Boolean(row));
 }
 
@@ -155,7 +157,7 @@ export function CloudAccountSettingsDialog({
   const tabs: Array<{ id: CloudAccountSettingsTabId; label: string; icon: typeof User }> = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'auth', label: 'Authentication', icon: KeyRound },
-    { id: 'appearance', label: 'Theme', icon: Palette },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
   ];
 
   const selectTab = (tabId: CloudAccountSettingsTabId) => {
@@ -219,38 +221,51 @@ export function CloudAccountSettingsDialog({
   };
 
   const profilePanel = (
-    <div className="app-cloud-account-settings-section app-cloud-account-profile max-w-[680px]">
-      <div className="flex flex-wrap items-center gap-4 py-3">
-        <IdentityAvatar
-          kind="human"
-          seed={avatarSeed}
-          name={displayNameDraft || displayName}
-          imageUrl={avatarUrlDraft || undefined}
-          className="h-12 w-12 border border-white/10"
-        />
-        <label className="grid min-w-[16rem] flex-1 gap-1.5 text-[12px] font-medium text-slate-300">
-          Display name
-          <input
-            value={displayNameDraft}
-            onChange={(event) => {
-              setDisplayNameDraft(event.currentTarget.value);
-              if (profileError) setProfileError('');
-            }}
-            className={cn(
-              'app-input-shell app-flat-input app-cloud-account-profile-name-input h-10 rounded-[10px] px-3 text-[13px] text-white outline-none',
-              isDisplayNameInvalid && 'app-flat-input-error',
-            )}
-            placeholder="Your display name"
-            aria-invalid={isDisplayNameInvalid || undefined}
-            aria-describedby={profileError ? profileErrorId : undefined}
+    <div className="app-cloud-account-settings-section app-cloud-account-profile max-w-[620px] py-2">
+      <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-5">
+        <div className="grid justify-items-center gap-2.5">
+          <IdentityAvatar
+            kind="human"
+            seed={avatarSeed}
+            name={displayNameDraft || displayName}
+            imageUrl={avatarUrlDraft || undefined}
+            className="h-16 w-16 border border-white/10"
           />
-        </label>
-        <Button type="button" variant="quiet" className="h-9 rounded-full px-4 text-[12px]" onClick={() => {
-          setProfileError('');
-          fileInputRef.current?.click();
-        }}>
-          Upload avatar
-        </Button>
+          <Button type="button" variant="quiet" className="h-8 rounded-full px-2.5 text-[11px]" onClick={() => {
+            setProfileError('');
+            fileInputRef.current?.click();
+          }}>
+            <Camera className="h-3.5 w-3.5" />
+            Change
+          </Button>
+        </div>
+        <div className="min-w-0">
+          <label className="grid gap-2 text-[12px] font-medium text-slate-300">
+            Display name
+            <input
+              value={displayNameDraft}
+              onChange={(event) => {
+                setDisplayNameDraft(event.currentTarget.value);
+                if (profileError) setProfileError('');
+              }}
+              className={cn(
+                'app-input-shell app-flat-input app-cloud-account-profile-name-input h-10 w-full rounded-[10px] px-3 text-[13px] text-white outline-none',
+                isDisplayNameInvalid && 'app-flat-input-error',
+              )}
+              placeholder="Your display name"
+              aria-invalid={isDisplayNameInvalid || undefined}
+              aria-describedby={profileError ? profileErrorId : undefined}
+            />
+          </label>
+          <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+            {cloudProfileRows(account).map((row) => (
+              <div key={row.label} className="min-w-0">
+                <dt className="text-[11px] text-slate-500">{row.label}</dt>
+                <dd className="mt-0.5 truncate text-[12px] text-slate-300" title={row.value}>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -263,29 +278,25 @@ export function CloudAccountSettingsDialog({
           }}
         />
       </div>
-      {profileError ? <div id={profileErrorId} className="app-error-text mt-3 text-[12px] text-rose-200" aria-live="polite">{profileError}</div> : null}
-      <div className="app-cloud-account-settings-meta-row mt-5 flex flex-wrap items-center justify-between gap-3 py-3">
-        <div className="grid gap-1 text-[11px] text-slate-500">
-          {cloudProfileRows(account).map((row) => (
-            <div key={row.label}><span className="text-slate-400">{row.label}:</span> {row.value}</div>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          {onSignOut ? (
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-9 rounded-full border border-rose-400/20 bg-rose-500/10 px-4 text-[12px] text-rose-200 hover:bg-rose-500/15 hover:text-rose-100"
-              disabled={isSigningOut}
-              onClick={signOut}
-            >
-              {isSigningOut ? 'Signing out…' : 'Sign out'}
-            </Button>
-          ) : null}
-          <Button type="button" className="h-9 rounded-full px-4 text-[12px]" disabled={isSavingProfile} onClick={saveProfile}>
-            {isSavingProfile ? 'Saving…' : 'Save profile'}
+      {profileError ? <div id={profileErrorId} className="app-error-text mt-3 text-[12px] text-rose-200 sm:pl-[108px]" aria-live="polite">{profileError}</div> : null}
+      <div className={cn(
+        'app-cloud-account-settings-meta-row mt-6 flex flex-wrap items-center gap-3 sm:pl-[108px]',
+        onSignOut ? 'justify-between' : 'justify-end',
+      )}>
+        {onSignOut ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-9 rounded-full border border-rose-400/20 bg-rose-500/10 px-4 text-[12px] text-rose-200 hover:bg-rose-500/15 hover:text-rose-100"
+            disabled={isSigningOut}
+            onClick={signOut}
+          >
+            {isSigningOut ? 'Signing out…' : 'Sign out'}
           </Button>
-        </div>
+        ) : null}
+        <Button type="button" className="h-9 rounded-full px-4 text-[12px]" disabled={isSavingProfile} onClick={saveProfile}>
+          {isSavingProfile ? 'Saving…' : 'Save profile'}
+        </Button>
       </div>
     </div>
   );
@@ -312,18 +323,18 @@ export function CloudAccountSettingsDialog({
     </div>
   );
 
-  const themePanel = (
-    <div className="app-cloud-account-settings-section app-cloud-account-theme app-settings-option-list max-w-[680px]">
+  const appearancePanel = (
+    <div className="app-cloud-account-settings-section app-cloud-account-theme app-settings-option-list max-w-[620px] py-2">
       {(appearanceSection?.items ?? []).map((item) => (
         <div
           key={item.label}
-          className="app-settings-option-row grid items-center gap-3 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]"
+          className="app-settings-option-row grid gap-4 py-3"
         >
           <div>
             <div className="text-[13px] font-medium text-white">{item.label}</div>
             {item.hint ? <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.hint}</div> : null}
           </div>
-          <div className="flex justify-end">
+          <div className="w-full">
             <SettingsValueControl item={item} themeMode={themeMode} onSelectThemeMode={setThemeMode} />
           </div>
         </div>
@@ -374,7 +385,7 @@ export function CloudAccountSettingsDialog({
           <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
             <div>
               <div className="text-[18px] font-semibold tracking-tight text-white">
-                {activeTab === 'profile' ? 'Profile' : activeTab === 'auth' ? 'Authentication' : 'Theme'}
+                {activeTab === 'profile' ? 'Profile' : activeTab === 'auth' ? 'Authentication' : 'Appearance'}
               </div>
             </div>
             <button type="button" className="app-button-quiet app-transient-flat-action grid h-8 w-8 place-items-center rounded-full p-0" onClick={onClose} aria-label="Close account settings">
@@ -382,7 +393,7 @@ export function CloudAccountSettingsDialog({
             </button>
           </div>
           <ScrollArea className="min-h-0 flex-1 pr-2">
-            {activeTab === 'profile' ? profilePanel : activeTab === 'auth' ? authPanel : themePanel}
+            {activeTab === 'profile' ? profilePanel : activeTab === 'auth' ? authPanel : appearancePanel}
           </ScrollArea>
         </div>
       </div>

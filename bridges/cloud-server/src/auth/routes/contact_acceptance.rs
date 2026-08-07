@@ -235,6 +235,7 @@ pub(super) fn account_to_summary(account: AccountResponse) -> ContactSummary {
         contact_id: None,
         contact_kind: None,
         account_id: account.account_id,
+        kordi_id: Some(account.kordi_id),
         display_name: account.display_name,
         subtitle: None,
         avatar_url: account.avatar_url,

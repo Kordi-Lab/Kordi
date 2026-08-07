@@ -1,10 +1,3 @@
-pub(super) type AccountRecordRow = (
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
 pub(super) type ContactRequestRow = (
     String,
     String,

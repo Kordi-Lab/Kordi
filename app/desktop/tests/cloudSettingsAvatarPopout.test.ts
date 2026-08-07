@@ -18,7 +18,7 @@ test('cloud avatar opens a small account menu before the centered settings modal
   assert.match(profileControl, /aria-label="Account menu"/);
   assert.doesNotMatch(profileControl, /Open profile settings/);
   assert.match(profileControl, /Open account settings/);
-  assert.match(profileControl, /CloudProfileRowCopyButton[\s\S]*label="Account ID"[\s\S]*value=\{cloudAccount\.accountId\}/);
+  assert.match(profileControl, /CloudProfileRowCopyButton[\s\S]*label="Kordi ID"[\s\S]*value=\{profileKordiHandle\}[\s\S]*compact/);
   assert.match(profileControl, /isOpen=\{dialogTab !== null\}/);
   assert.doesNotMatch(profileControl, /isOpen=\{isProfileCardOpen\}/);
   assert.match(slot, /cloudSettings:\s*\{/);
@@ -33,6 +33,7 @@ test('cloud settings modal contains profile authentication and theme sections', 
 
   assert.match(modal, /Profile/);
   assert.match(modal, /Authentication/);
+  assert.match(modal, /Appearance/);
   assert.match(modal, /Theme/);
   assert.match(modal, /AuthPage/);
   assert.match(modal, /SettingsValueControl/);
@@ -116,6 +117,16 @@ test('profile modal is distilled to one avatar and no cloud explanation copy', (
   assert.doesNotMatch(profileControl, />Cloud account</);
 });
 
+test('profile editor groups identity controls without resizing the settings dialog', () => {
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+
+  assert.match(modal, /grid-cols-\[88px_minmax\(0,1fr\)\]/);
+  assert.match(modal, /<Camera className="h-3\.5 w-3\.5" \/>/);
+  assert.match(modal, /app-cloud-account-settings-dialog[^\n]*h-\[min\(680px,/);
+  assert.doesNotMatch(modal, /h-\[min\(440px,/);
+  assert.doesNotMatch(modal, />\s*Upload avatar\s*</);
+});
+
 test('profile display name uses the scoped flat form treatment in both themes', () => {
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const shellCss = readDesktopShellCss();
@@ -129,19 +140,23 @@ test('profile display name uses the scoped flat form treatment in both themes', 
   assert.match(shellCss, /\.app-input-shell\.app-flat-input:focus-within\s*\{[^}]*outline:\s*2px solid/s);
 });
 
-test('account popover keeps account id compact and removes redundant profile row', () => {
+test('account popover shows the public handle directly and copies invites without another card', () => {
   const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
   const accountMenuStart = profileControl.indexOf('aria-label="Account menu"');
   const accountMenuEnd = profileControl.indexOf('{!cloudSettings', accountMenuStart);
   assert.ok(accountMenuStart >= 0 && accountMenuEnd > accountMenuStart, 'cloud account menu block should be present');
   const accountMenu = profileControl.slice(accountMenuStart, accountMenuEnd);
 
-  assert.match(accountMenu, /CloudProfileRowCopyButton[\s\S]*label="Account ID"[\s\S]*value=\{cloudAccount\.accountId\}/);
+  assert.match(accountMenu, /CloudProfileRowCopyButton[\s\S]*label="Kordi ID"[\s\S]*value=\{profileKordiHandle\}[\s\S]*compact/);
+  assert.match(accountMenu, /CloudAppInviteCopyRow onCreateInvite=\{onCreateAppInvite\}/);
   assert.doesNotMatch(accountMenu, /profileRows\.map/);
+  assert.doesNotMatch(accountMenu, /cloudAccount\.primaryEmail/);
+  assert.doesNotMatch(accountMenu, /cloudAccount\.accountId/);
   assert.doesNotMatch(accountMenu, /Open profile settings/);
   assert.doesNotMatch(accountMenu, />Profile</);
   assert.match(accountMenu, /Open account settings/);
   assert.match(accountMenu, />\s*Settings\s*</);
+  assert.doesNotMatch(profileControl, /profileDisplayName[\s\S]{0,160}primaryEmail/);
 });
 
 test('profile sign out action is styled as destructive red', () => {

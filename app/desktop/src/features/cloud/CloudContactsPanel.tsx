@@ -11,6 +11,7 @@ import {
 import { loadSession } from './session';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import { formatKordiHandle, normalizeKordiId } from './kordiId';
 
 function avatarSeedFor(profile: { accountId: string; avatarUrl: string | null }): string {
   return cloudAvatarSeedForAccount(profile.accountId, profile.avatarUrl);
@@ -36,6 +37,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
   const [lookup, setLookup] = useState<LookupState>({ kind: 'idle' });
   const [adding, setAdding] = useState(false);
   const [copied, setCopied] = useState(false);
+  const ownKordiHandle = formatKordiHandle(account.kordiId);
 
   const fetchContacts = useCallback(async () => {
     const session = await loadSession();
@@ -59,9 +61,12 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
   const handleLookup = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      const trimmed = lookupQuery.trim();
-      if (!trimmed) return;
-      if (trimmed === account.accountId) {
+      const kordiId = normalizeKordiId(lookupQuery);
+      if (!kordiId) {
+        setLookup({ kind: 'error', message: 'Enter a nine-digit Kordi ID.' });
+        return;
+      }
+      if (kordiId === account.kordiId) {
         setLookup({ kind: 'error', message: 'That is your own Kordi ID.' });
         return;
       }
@@ -72,7 +77,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
         return;
       }
       try {
-        const profile = await authClient.getProfile(session.token, trimmed);
+        const profile = await authClient.getProfile(session.token, kordiId);
         setLookup({ kind: 'found', profile });
       } catch (caught) {
         if (caught instanceof CloudAuthError && caught.code === 'account_missing') {
@@ -85,7 +90,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
         }
       }
     },
-    [authClient, lookupQuery, account.accountId],
+    [authClient, lookupQuery, account.kordiId],
   );
 
   const handleAdd = useCallback(
@@ -114,13 +119,13 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
   );
 
   const handleCopy = useCallback(() => {
-    const value = account.accountId;
+    if (!ownKordiHandle) return;
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      void navigator.clipboard.writeText(value);
+      void navigator.clipboard.writeText(ownKordiHandle);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
-  }, [account.accountId]);
+  }, [ownKordiHandle]);
 
   return (
     <div
@@ -163,17 +168,19 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                 {account.displayName ?? account.primaryEmail ?? 'You'}
               </div>
               <div className="app-transient-muted mt-0.5 truncate font-mono text-[11px]">
-                {account.accountId}
+                {ownKordiHandle || 'Kordi ID unavailable'}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="app-button-quiet app-transient-flat-action rounded-[10px] px-3 py-1 text-[11px] font-semibold"
-              aria-label="Copy your Kordi ID"
-            >
-              {copied ? 'Copied' : 'Copy ID'}
-            </button>
+            {ownKordiHandle ? (
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="app-button-quiet app-transient-flat-action rounded-[10px] px-3 py-1 text-[11px] font-semibold"
+                aria-label="Copy your Kordi ID"
+              >
+                {copied ? 'Copied' : 'Copy ID'}
+              </button>
+            ) : null}
           </div>
         </section>
 
@@ -187,7 +194,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
               autoComplete="off"
               autoCapitalize="off"
               spellCheck={false}
-              placeholder="acct_…"
+              placeholder="@482731906"
               value={lookupQuery}
               onChange={(event) => setLookupQuery(event.currentTarget.value)}
               className="h-10 rounded-[12px] border border-[color:var(--app-transient-border)] bg-[color:var(--app-transient-raised-bg)] px-4 font-mono text-[13px] text-[color:var(--app-transient-text)] outline-none placeholder:text-[color:var(--app-transient-subtle-text)]"
@@ -214,7 +221,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
               <IdentityAvatar
                 kind="human"
                 seed={avatarSeedFor(lookup.profile)}
-                name={lookup.profile.displayName ?? lookup.profile.accountId}
+                name={lookup.profile.displayName ?? 'Kordi user'}
                 imageUrl={cloudAvatarImageUrl(lookup.profile.avatarUrl)}
                 avatarKey={`cloud-peer:${lookup.profile.accountId}`}
                 className="h-10 w-10 shrink-0 rounded-full border border-[color:var(--app-transient-border)]"
@@ -224,7 +231,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                   {lookup.profile.displayName ?? 'Unnamed account'}
                 </div>
                 <div className="app-transient-muted mt-0.5 truncate font-mono text-[11px]">
-                  {lookup.profile.accountId}
+                  {formatKordiHandle(lookup.profile.kordiId) || 'Kordi ID unavailable'}
                 </div>
               </div>
               {lookup.profile.isContact ? (
@@ -273,7 +280,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                 <IdentityAvatar
                   kind="human"
                   seed={avatarSeedFor(contact)}
-                  name={contact.displayName ?? contact.accountId}
+                  name={contact.displayName ?? 'Kordi user'}
                   imageUrl={cloudAvatarImageUrl(contact.avatarUrl)}
                   avatarKey={`cloud-contact:${contact.accountId}`}
                   className="h-9 w-9 shrink-0 rounded-full border border-[color:var(--app-transient-border)]"
@@ -283,7 +290,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                     {contact.displayName ?? 'Unnamed account'}
                   </div>
                   <div className="app-transient-muted mt-0.5 truncate font-mono text-[11px]">
-                    {contact.accountId}
+                    {formatKordiHandle(contact.kordiId) || 'Kordi ID unavailable'}
                   </div>
                 </div>
               </div>

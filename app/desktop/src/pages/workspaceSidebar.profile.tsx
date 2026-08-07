@@ -5,9 +5,10 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Settings } from 'lucide-react';
+import { Check, Copy, Settings, Share2 } from 'lucide-react';
 
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
+import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
 import {
@@ -23,9 +24,11 @@ const CLOUD_PROFILE_COPY_RESET_MS = 1800;
 export function CloudProfileRowCopyButton({
   label,
   value,
+  compact = false,
 }: {
   label: string;
   value: string;
+  compact?: boolean;
 }) {
   const [status, setStatus] = useState<'idle' | 'copied' | 'error'>('idle');
   const resetTimerRef = useRef<number | null>(null);
@@ -64,7 +67,8 @@ export function CloudProfileRowCopyButton({
     <button
       type="button"
       className={cn(
-        'shrink-0 inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[11px] font-semibold transition',
+        'shrink-0 inline-flex items-center justify-center gap-1 rounded-[8px] text-[11px] font-semibold transition',
+        compact ? 'h-7 w-7' : 'px-2 py-1',
         copied
           ? 'bg-emerald-500/15 text-emerald-200'
           : errored
@@ -81,8 +85,83 @@ export function CloudProfileRowCopyButton({
         void handleCopy();
       }}
     >
-      {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
-      {copied ? 'Copied' : errored ? 'Copy failed' : 'Copy'}
+      {compact ? (
+        copied
+          ? <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          : <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+      ) : (
+        <>
+          {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
+          {copied ? 'Copied' : errored ? 'Copy failed' : 'Copy'}
+        </>
+      )}
+    </button>
+  );
+}
+
+function CloudAppInviteCopyRow({ onCreateInvite }: { onCreateInvite: () => Promise<string> }) {
+  const [status, setStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+  }, []);
+
+  const scheduleReset = () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = window.setTimeout(() => {
+      setStatus('idle');
+      resetTimerRef.current = null;
+    }, CLOUD_PROFILE_COPY_RESET_MS);
+  };
+
+  const handleCopy = async () => {
+    if (status === 'copying') return;
+    setStatus('copying');
+    try {
+      const inviteUrl = await onCreateInvite();
+      if (!inviteUrl.trim() || typeof navigator === 'undefined' || !navigator.clipboard) {
+        throw new Error('Clipboard unavailable');
+      }
+      await navigator.clipboard.writeText(inviteUrl);
+      setStatus('copied');
+    } catch {
+      setStatus('error');
+    } finally {
+      scheduleReset();
+    }
+  };
+
+  const detail = status === 'copying'
+    ? 'Creating invitation…'
+    : status === 'copied'
+      ? 'Invitation link copied'
+      : status === 'error'
+        ? 'Could not copy link'
+        : 'Copy personal invitation link';
+
+  return (
+    <button
+      type="button"
+      className="app-button-quiet app-transient-flat-action flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium disabled:cursor-wait disabled:opacity-70"
+      onClick={() => { void handleCopy(); }}
+      disabled={status === 'copying'}
+      aria-label="Copy personal invitation link"
+    >
+      <span className="flex min-w-0 items-center gap-2.5">
+        <Share2 className="app-transient-muted h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="min-w-0">
+          <span className="block truncate">Invite to Kordi</span>
+          <span className="app-transient-muted mt-0.5 block truncate text-[11px] font-normal" aria-live="polite">
+            {detail}
+          </span>
+        </span>
+      </span>
+      {status === 'copied' ? (
+        <Check className="h-4 w-4 shrink-0 text-emerald-300" aria-hidden="true" />
+      ) : (
+        <Copy className="app-transient-subtle h-4 w-4 shrink-0" aria-hidden="true" />
+      )}
     </button>
   );
 }
@@ -118,6 +197,7 @@ export function SidebarProfileControl({
   cloudSettings,
   onUpdateCloudProfile,
   onCloudSignOut,
+  onCreateAppInvite,
 }: WorkspaceSidebarAccount) {
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
   const [localDialogTab, setLocalDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
@@ -132,9 +212,10 @@ export function SidebarProfileControl({
   } | null>(null);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const profileRows = buildCloudProfileRows(cloudAccount);
-  const profileDisplayName = cloudAccount?.displayName?.trim()
-    || cloudAccount?.primaryEmail?.trim()
-    || 'Local profile';
+  const profileDisplayName = cloudAccount
+    ? cloudAccount.displayName?.trim() || 'Kordi user'
+    : 'Local profile';
+  const profileKordiHandle = formatKordiHandle(cloudAccount?.kordiId);
   const profileAvatarSeed = cloudAccount
     ? cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl)
     : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
@@ -234,7 +315,7 @@ export function SidebarProfileControl({
               'w-[22rem] rounded-[18px] border px-4 py-3 text-foreground',
             )}
           >
-            <div className="mb-3 flex items-start gap-3">
+            <div className="flex items-center gap-3 px-3 py-2.5">
               <IdentityAvatar
                 kind="human"
                 seed={profileAvatarSeed}
@@ -244,35 +325,22 @@ export function SidebarProfileControl({
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-semibold">{profileDisplayName}</div>
-                <div className="app-transient-muted mt-0.5 flex min-w-0 items-center gap-2 text-[11px]">
-                  <span className="shrink-0">Account</span>
-                  <span aria-hidden="true" className="app-transient-subtle">•</span>
-                  <span
-                    className="min-w-0 truncate font-mono"
-                    title={cloudAccount.accountId}
-                  >
-                    {cloudAccount.accountId}
-                  </span>
-                  <CloudProfileRowCopyButton
-                    label="Account ID"
-                    value={cloudAccount.accountId}
-                  />
+                <div className="app-transient-muted mt-0.5 truncate text-[11px] tabular-nums">
+                  {profileKordiHandle || 'Kordi ID unavailable'}
                 </div>
               </div>
+              {profileKordiHandle ? (
+                <CloudProfileRowCopyButton
+                  label="Kordi ID"
+                  value={profileKordiHandle}
+                  compact
+                />
+              ) : null}
             </div>
-            {cloudAccount.primaryEmail?.trim() ? (
-              <div className="grid gap-1 text-[12px]">
-                <div className="app-transient-row flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">Email</div>
-                    <div className="app-transient-muted mt-0.5 truncate text-[11px]">
-                      {cloudAccount.primaryEmail.trim()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-            <div className="app-transient-divider mt-3 grid gap-1 border-t pt-3">
+            <div className="app-transient-divider mt-2 grid gap-1 border-t pt-2">
+              {onCreateAppInvite ? (
+                <CloudAppInviteCopyRow onCreateInvite={onCreateAppInvite} />
+              ) : null}
               <button
                 type="button"
                 className="app-button-quiet app-transient-flat-action flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium"
