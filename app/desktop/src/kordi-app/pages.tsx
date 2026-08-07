@@ -179,7 +179,6 @@ export function ContactsPage({
   const requestInboxSummary = `Review ${pendingRequestCount} pending ${pendingRequestCount === 1 ? 'request' : 'requests'}.`;
   const sentInvitesSummary = `Waiting on ${sentInviteCount} ${sentInviteCount === 1 ? 'person' : 'people'} to approve.`;
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
-  const lookupKordiHandle = formatKordiHandle(lookupResult?.kordiId);
   const activeContactDetailBody = contactDetailBodyText(activeContact);
   const activeContactPresenceStatus = contactPresenceStatus(activeContact);
 
@@ -370,7 +369,7 @@ export function ContactsPage({
                   <div className="app-chat-create-list-item mt-3 flex items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2">
                     <div className="min-w-0">
                       <div className="truncate text-[12.5px] font-medium leading-4 text-slate-100">{lookupResult.displayName || 'Kordi user'}</div>
-                      <div className="mt-px truncate text-[10.5px] leading-4 text-slate-400">{lookupKordiHandle || 'Kordi ID unavailable'}</div>
+                      <div className="mt-px truncate text-[10.5px] leading-4 text-slate-400">{formatKordiHandle(lookupResult.kordiId) || 'Kordi ID unavailable'}</div>
                     </div>
                     {lookupResult.isSelf ? (
                       <span className="text-[11px] text-slate-400">That's you</span>
@@ -382,7 +381,7 @@ export function ContactsPage({
                       <Button
                         type="button"
                         className="app-contacts-action-chip h-8 w-8 shrink-0 rounded-full p-0"
-                        aria-label={`Send request to ${lookupResult.displayName || lookupKordiHandle || 'Kordi user'}`}
+                        aria-label={`Send request to ${lookupResult.displayName || formatKordiHandle(lookupResult.kordiId) || 'Kordi user'}`}
                         title="Send request"
                         disabled={addContactState === 'saving' || requestedContactNodeIds.includes(lookupResult.accountId)}
                         onClick={() => { void submitAddContact(lookupResult.accountId); }}
@@ -587,5 +586,4 @@ export function ContactsPage({
     </div>
   );
 }
-
 export { AuthPage } from './auth/AuthPage';

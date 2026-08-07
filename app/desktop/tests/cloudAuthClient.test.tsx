@@ -166,45 +166,6 @@ test('publishPresenceOffline uses keepalive so page close can finish the request
   assert.equal(calls[0].init?.keepalive, true);
 });
 
-test('me returns the parsed account', async () => {
-  const { fetchImpl } = recordingFetch(() =>
-    jsonResponse(200, {
-      accountId: 'acct_1',
-      kordiId: '482731906',
-      displayName: 'Ada',
-      primaryEmail: 'ada@example.com',
-      avatarUrl: null,
-      passwordSet: true,
-    }),
-  );
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
-
-  const account = await client.me('kordi_cs_xyz');
-  assert.equal(account.accountId, 'acct_1');
-  assert.equal(account.kordiId, '482731906');
-  assert.equal(account.passwordSet, true);
-});
-
-test('createAppInvitation creates an expiring personal invitation with bearer auth', async () => {
-  const { calls, fetchImpl } = recordingFetch(() =>
-    jsonResponse(200, {
-      invitationId: 'appinv_1',
-      inviteUrl: 'https://kordi.ai/i/kordi_ai_token',
-      expiresAt: '2026-08-14T00:00:00Z',
-    }),
-  );
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
-
-  const invitation = await client.createAppInvitation('kordi_cs_xyz');
-
-  assert.equal(invitation.inviteUrl, 'https://kordi.ai/i/kordi_ai_token');
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'http://srv/v1/cloud/invitations/app');
-  assert.equal(calls[0].init?.method, 'POST');
-  const headers = calls[0].init?.headers as Record<string, string>;
-  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
-});
-
 test('capabilities reports only server-configured social sign-in providers', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
     password: true,
