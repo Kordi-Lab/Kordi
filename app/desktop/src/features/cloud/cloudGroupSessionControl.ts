@@ -1,4 +1,7 @@
-import { resolveReplicatedGroupTitle } from '@/features/chat/groupTitle';
+import {
+  groupMetadataWithoutSessionTitleOwnership,
+  resolveReplicatedGroupTitle,
+} from '@/features/chat/groupTitle';
 import {
   appendCanonicalMessage,
   openOrCreateCanonicalSessionFast,
@@ -246,6 +249,7 @@ export async function applyCloudGroupSessionControl({
   const groupRootSession = canonicalState.sessions.find((session) => session.id === groupSpaceId) ?? null;
   const envelopeSessionMetadata = stateOps.objectContent(envelopeSession?.metadata);
   const groupRootMetadata = stateOps.objectContent(groupRootSession?.metadata);
+  const inheritedGroupRootMetadata = groupMetadataWithoutSessionTitleOwnership(groupRootMetadata);
   const storedCreatorIdentityId = stateOps.cleanText(
     typeof envelopeSessionMetadata.groupCreatorIdentityId === 'string'
       ? envelopeSessionMetadata.groupCreatorIdentityId
@@ -289,6 +293,7 @@ export async function applyCloudGroupSessionControl({
     groupSpaceId,
     incomingTitle: incomingGroupTitle,
     incomingUpdatedAtMs: controlCreatedAtMs,
+    replaceStoredTitle: envelope.kind === 'group-title-update',
   });
   const envelopeAdminUpdatedAtMs = typeof envelopeSessionMetadata.groupAdminUpdatedAtMs === 'number'
     && Number.isFinite(envelopeSessionMetadata.groupAdminUpdatedAtMs)
@@ -329,7 +334,7 @@ export async function applyCloudGroupSessionControl({
     adminIdentityIds: adminSnapshot.adminIdentityIds,
   });
   const groupMetadata = {
-    ...groupRootMetadata,
+    ...inheritedGroupRootMetadata,
     ...envelopeSessionMetadata,
     schemaVersion: 1,
     kind: 'chat-group',

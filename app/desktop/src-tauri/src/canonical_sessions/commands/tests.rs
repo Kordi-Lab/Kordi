@@ -4,11 +4,13 @@ use rusqlite::{params, Connection};
 
 use super::super::{
     AddCanonicalGroupMembersRequest, CanonicalGroupMemberJoinEvent, CanonicalGroupMembershipUpdate,
-    UpdateCanonicalMessageDeliveryRequest,
+    ClassifyLegacyCloudGroupTitleNoticeRequest, UpdateCanonicalMessageDeliveryRequest,
 };
 use super::{
-    add_canonical_group_members_in_db, load_catalog_from_db, load_message_page_from_db,
-    load_state_from_db, select_session_participants, update_canonical_message_delivery_in_db,
+    add_canonical_group_members_in_db, classify_legacy_cloud_group_title_notices_in_db,
+    list_legacy_cloud_group_title_notice_ids_in_db, load_catalog_from_db,
+    load_message_page_from_db, load_state_from_db, select_session_participants,
+    update_canonical_message_delivery_in_db,
 };
 
 fn test_conn() -> Connection {

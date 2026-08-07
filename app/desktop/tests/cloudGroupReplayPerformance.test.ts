@@ -7,6 +7,7 @@ const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/featur
 const cloudGroupSessionControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupSessionControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlApplicationSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlApplication.ts', import.meta.url), 'utf8');
 const cloudGroupReplaySource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupReplay.ts', import.meta.url), 'utf8');
+const legacyGroupTitleRecoverySource = () => readFileSync(new URL('../src/features/cloud/useLegacyCloudGroupTitleNoticeRecovery.ts', import.meta.url), 'utf8');
 const groupMemberRolesSource = () => readFileSync(
   new URL('../src/app/useKordiGroupMemberRoles.ts', import.meta.url),
   'utf8',
@@ -88,6 +89,19 @@ test('cloud group replay does not restart native lookups when callback identitie
   );
   assert.doesNotMatch(dependencyList, /applyControl|flushCanonicalState|reportWarning/);
   assert.match(dependencyList, /coordinator[\s\S]*contextKey[\s\S]*enabled[\s\S]*messageIndex/);
+});
+
+test('legacy group-title repair stays single-flight and cannot block current group replay', () => {
+  const replaySource = cloudGroupReplaySource();
+  const recoverySource = legacyGroupTitleRecoverySource();
+
+  assert.doesNotMatch(replaySource, /lookupMessageBodies|listLegacyCloudGroupTitleNoticeIds/);
+  assert.match(recoverySource, /recoveryRef\.current\?\.contextKey === contextKey/);
+  assert.match(recoverySource, /completedContextKeyRef\.current === contextKey/);
+  assert.match(recoverySource, /CLOUD_MESSAGE_BODY_LOOKUP_MAX_PARALLEL = 4/);
+  assert.match(recoverySource, /setRetryVersion\(\(current\) => current \+ 1\)/);
+  assert.match(recoverySource, /canonicalStateRef\.current \?\? current/);
+  assert.match(recoverySource, /canonicalStateRef\.current = next/);
 });
 
 test('group member removal publishes the current membership and a durable leave event', () => {

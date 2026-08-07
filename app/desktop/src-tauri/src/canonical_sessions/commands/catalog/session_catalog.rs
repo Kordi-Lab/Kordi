@@ -104,7 +104,7 @@ pub(in crate::canonical_sessions::commands) fn load_catalog_from_db(
                       AND NOT CASE
                           WHEN LOWER(TRIM(COALESCE(sm.message_kind, ''))) = 'status'
                                AND json_valid(sm.content_json)
-                          THEN
+                          THEN (
                               LOWER(TRIM(COALESCE(json_extract(sm.content_json, '$.kind'), ''))) = 'session-title-update'
                               AND LOWER(TRIM(COALESCE(json_extract(sm.content_json, '$.scope'), ''))) = 'session'
                               AND LOWER(TRIM(
@@ -114,6 +114,14 @@ pub(in crate::canonical_sessions::commands) fn load_catalog_from_db(
                                       ELSE COALESCE(json_extract(sm.content_json, '$.title'), '')
                                   END
                               )) IN ('new session', 'new chat', 'new fork', 'untitled session', 'session')
+                          ) OR (
+                              LOWER(TRIM(COALESCE(sm.source_transport, ''))) = 'cloud-group-title-update'
+                              AND LOWER(TRIM(COALESCE(json_extract(sm.content_json, '$.kind'), ''))) = 'group-title-update'
+                              AND LOWER(TRIM(COALESCE(json_extract(sm.content_json, '$.scope'), ''))) = 'group'
+                              AND COALESCE(json_extract(sm.content_json, '$.synchronizationOnly'), 0) = 1
+                              AND LOWER(TRIM(COALESCE(json_extract(sm.content_json, '$.sourceControlKind'), '')))
+                                  IN ('group-invite', 'group-update')
+                          )
                           ELSE 0
                       END
                 ),

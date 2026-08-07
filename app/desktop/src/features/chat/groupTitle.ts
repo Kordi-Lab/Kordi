@@ -33,6 +33,15 @@ function validUpdatedAtMs(value?: number | null) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+export function groupMetadataWithoutSessionTitleOwnership(
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  const groupMetadata = { ...metadata };
+  delete groupMetadata.titleSource;
+  delete groupMetadata.sessionTitleSource;
+  return groupMetadata;
+}
+
 /**
  * Resolve the one shared group label independently of session activity order.
  * A replicated rename wins first; otherwise the canonical group root owns the
@@ -75,6 +84,7 @@ export function resolveReplicatedGroupTitle(input: {
   groupSpaceId?: string | null;
   incomingTitle?: string | null;
   incomingUpdatedAtMs?: number | null;
+  replaceStoredTitle?: boolean;
 }): ReplicatedGroupTitleResolution {
   const storedTitle = sharedGroupCustomTitle(input.candidates, input.groupSpaceId);
   const storedUpdatedAtMs = input.candidates.reduce((latest, candidate) => (
@@ -86,7 +96,7 @@ export function resolveReplicatedGroupTitle(input: {
   const incomingUpdatedAtMs = validUpdatedAtMs(input.incomingUpdatedAtMs);
   const appliesIncoming = Boolean(
     incomingTitle
-    && incomingUpdatedAtMs >= storedUpdatedAtMs,
+    && (!storedTitle || (input.replaceStoredTitle !== false && incomingUpdatedAtMs >= storedUpdatedAtMs)),
   );
   return {
     title: appliesIncoming ? incomingTitle : storedTitle,

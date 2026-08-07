@@ -12,9 +12,7 @@ mod system_proxy;
 #[cfg(test)]
 mod test_support;
 mod workspace;
-
 use std::process::Command;
-
 fn is_cloud_edition_context(
     kordi_edition: Option<&str>,
     vite_kordi_edition: Option<&str>,
@@ -425,6 +423,8 @@ pub fn run() {
             canonical_sessions::desktop_canonical_append_message,
             canonical_sessions::desktop_canonical_upsert_message,
             canonical_sessions::desktop_canonical_upsert_message_fast,
+            canonical_sessions::desktop_canonical_list_legacy_cloud_group_title_notice_ids,
+            canonical_sessions::desktop_canonical_classify_legacy_cloud_group_title_notices,
             canonical_sessions::desktop_canonical_update_message_delivery,
             canonical_sessions::desktop_canonical_append_message_fast,
             canonical_sessions::desktop_canonical_create_delegated_exchange,

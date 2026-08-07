@@ -309,6 +309,28 @@ pub struct AppendCanonicalMessageRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClassifyLegacyCloudGroupTitleNoticeRequest {
+    pub cloud_message_id: String,
+    pub source_control_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyCloudGroupTitleNoticeSessionRepair {
+    pub session_id: String,
+    pub last_message_at_ms: Option<i64>,
+    pub replaced_through_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClassifyLegacyCloudGroupTitleNoticesResponse {
+    pub messages: Vec<CanonicalSessionMessage>,
+    pub session_repairs: Vec<LegacyCloudGroupTitleNoticeSessionRepair>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateCanonicalMessageDeliveryRequest {
     pub message_id: String,
     pub session_id: String,

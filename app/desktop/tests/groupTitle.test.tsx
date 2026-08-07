@@ -2,9 +2,22 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  groupMetadataWithoutSessionTitleOwnership,
   resolveReplicatedGroupTitle,
   sharedGroupCustomTitle,
 } from '../src/features/chat/groupTitle';
+
+test('group metadata inheritance never copies root session title ownership', () => {
+  assert.deepEqual(groupMetadataWithoutSessionTitleOwnership({
+    customName: 'Shared group',
+    groupSpaceId: 'session:group:root',
+    titleSource: 'manual',
+    sessionTitleSource: 'manual',
+  }), {
+    customName: 'Shared group',
+    groupSpaceId: 'session:group:root',
+  });
+});
 
 test('shared group title prefers the canonical root over session activity order', () => {
   assert.equal(sharedGroupCustomTitle([
@@ -87,4 +100,25 @@ test('replicated group title resolution accepts a newer shared label', () => {
     updatedAtMs: 200,
     appliesIncoming: true,
   });
+});
+
+test('membership snapshots initialize a missing group name but never replace a stored one', () => {
+  assert.equal(resolveReplicatedGroupTitle({
+    candidates: [{ sessionId: 'session:group:root', customName: null }],
+    groupSpaceId: 'session:group:root',
+    incomingTitle: 'Shenzhe Zhu, Shu Yang',
+    incomingUpdatedAtMs: 200,
+    replaceStoredTitle: false,
+  }).title, 'Shenzhe Zhu, Shu Yang');
+  assert.equal(resolveReplicatedGroupTitle({
+    candidates: [{
+      sessionId: 'session:group:root',
+      customName: 'Current shared name',
+      groupNameUpdatedAtMs: 100,
+    }],
+    groupSpaceId: 'session:group:root',
+    incomingTitle: 'Stale membership copy',
+    incomingUpdatedAtMs: 200,
+    replaceStoredTitle: false,
+  }).title, 'Current shared name');
 });

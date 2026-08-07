@@ -12,12 +12,21 @@ const AUTH_MESSAGE_ROUTES_SOURCE: &str = concat!(
     include_str!("../src/auth/routes/sync_handlers.rs"),
     include_str!("../src/auth/routes/types.rs"),
 );
+const AUTH_ROUTER_SOURCE: &str = include_str!("../src/auth/routes.rs");
 
 #[test]
 fn cloud_message_listing_uses_newest_window_before_oldest_first_display_order() {
     assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("ORDER BY cm.created_at DESC"));
     assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("ORDER BY created_at ASC"));
     assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("FROM ("));
+}
+
+#[test]
+fn exact_message_lookup_is_authenticated_bounded_and_account_scoped() {
+    assert!(AUTH_ROUTER_SOURCE.contains("/v1/cloud/messages/lookup"));
+    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("MESSAGE_BODY_LOOKUP_MAX_IDS: usize = 500"));
+    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("message_id = ANY($1)"));
+    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("from_account_id = $2 OR to_account_id = $2"));
 }
 
 #[test]

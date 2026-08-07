@@ -15,10 +15,17 @@ pub(super) use self::catalog::{
 use self::catalog::{load_catalog_from_db, load_message_page_from_db};
 #[cfg(test)]
 use self::delivery::update_canonical_message_delivery_in_db;
+#[cfg(test)]
+use self::delivery::{
+    classify_legacy_cloud_group_title_notices_in_db, list_legacy_cloud_group_title_notice_ids_in_db,
+};
 pub(super) use self::delivery::{
     desktop_canonical_append_message, desktop_canonical_append_message_fast,
-    desktop_canonical_create_delegated_exchange, desktop_canonical_update_message_delivery,
-    desktop_canonical_upsert_message, desktop_canonical_upsert_message_fast,
+    desktop_canonical_classify_legacy_cloud_group_title_notices,
+    desktop_canonical_create_delegated_exchange,
+    desktop_canonical_list_legacy_cloud_group_title_notice_ids,
+    desktop_canonical_update_message_delivery, desktop_canonical_upsert_message,
+    desktop_canonical_upsert_message_fast,
 };
 #[cfg(test)]
 use self::groups::{add_canonical_group_members_in_db, select_session_participants};

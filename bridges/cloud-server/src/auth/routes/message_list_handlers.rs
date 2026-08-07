@@ -179,3 +179,73 @@ pub(super) async fn list_messages(
     })
     .into_response()
 }
+
+/// Load exact message bodies by id for authenticated recovery of durable
+/// Cloud control metadata. Rows are only returned to their sender or recipient.
+pub(super) async fn lookup_message_bodies(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(request): Json<MessageBodyLookupRequest>,
+) -> Response {
+    if request.message_ids.len() > MESSAGE_BODY_LOOKUP_MAX_IDS {
+        return err(
+            "too_many_message_ids",
+            "At most 500 messageIds can be looked up at once.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    let mut seen = HashSet::new();
+    let mut message_ids = Vec::with_capacity(request.message_ids.len());
+    for raw_message_id in request.message_ids {
+        let message_id = raw_message_id.trim();
+        if message_id.is_empty() || message_id.chars().count() > MESSAGE_ID_MAX_CHARS {
+            return err(
+                "invalid_message_id",
+                "Each messageId must be between 1 and 512 characters.",
+                StatusCode::BAD_REQUEST,
+            );
+        }
+        if seen.insert(message_id.to_string()) {
+            message_ids.push(message_id.to_string());
+        }
+    }
+    if message_ids.is_empty() {
+        return Json(MessageBodyLookupResponse {
+            messages: Vec::new(),
+        })
+        .into_response();
+    }
+
+    let rows: Vec<(String, String)> = match query_as(
+        "SELECT message_id, body
+         FROM cloud_messages
+         WHERE message_id = ANY($1)
+           AND (from_account_id = $2 OR to_account_id = $2)",
+    )
+    .bind(&message_ids)
+    .bind(&session.account_id)
+    .fetch_all(state.db_pool())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let bodies_by_id = rows.into_iter().collect::<HashMap<_, _>>();
+    let messages = message_ids
+        .into_iter()
+        .filter_map(|message_id| {
+            bodies_by_id
+                .get(&message_id)
+                .cloned()
+                .map(|body| MessageBodyLookupSummary { message_id, body })
+        })
+        .collect();
+    Json(MessageBodyLookupResponse { messages }).into_response()
+}

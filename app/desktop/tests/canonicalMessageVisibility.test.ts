@@ -6,6 +6,7 @@ import { mapCanonicalMessage } from '../src/features/canonical/readModel/message
 import {
   canonicalMessageCountsAsReadable,
   isPlaceholderSessionTitleNotice,
+  isSynchronizationOnlyCloudGroupTitleNotice,
 } from '../src/features/canonical/readModel/messageVisibility';
 import type { CanonicalSessionMessage } from '../src/kordi-app/types';
 
@@ -42,4 +43,26 @@ test('a real session rename remains visible and counts as activity', () => {
   assert.equal(canonicalMessageCountsAsReadable(notice), true);
   assert.equal(canonicalMessageCountsForLastActive(notice), true);
   assert.ok(mapCanonicalMessage(notice, new Map()));
+});
+
+test('invite-derived group title notices stay hidden while genuine renames remain visible', () => {
+  const notice = (sourceControlKind: 'group-invite' | 'group-title-update'): CanonicalSessionMessage => ({
+    ...sessionTitleNotice('Research'),
+    id: `cloud-group-title-notice:${sourceControlKind}`,
+    content: {
+      kind: 'group-title-update',
+      scope: 'group',
+      title: 'Research',
+      sourceControlKind,
+      ...(sourceControlKind === 'group-invite' ? { synchronizationOnly: true } : {}),
+    },
+    sourceTransport: 'cloud-group-title-update',
+  });
+  const inviteCopy = notice('group-invite');
+  const genuineRename = notice('group-title-update');
+  assert.equal(isSynchronizationOnlyCloudGroupTitleNotice(inviteCopy), true);
+  assert.equal(canonicalMessageCountsAsReadable(inviteCopy), false);
+  assert.equal(mapCanonicalMessage(inviteCopy, new Map()), null);
+  assert.equal(isSynchronizationOnlyCloudGroupTitleNotice(genuineRename), false);
+  assert.ok(mapCanonicalMessage(genuineRename, new Map()));
 });

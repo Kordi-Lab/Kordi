@@ -72,14 +72,20 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
     source,
     /useRecoveredCloudGroupReplay\(\{[\s\S]*canonicalSessionState\?\.profile\.humanIdentityId[\s\S]*setCanonicalSessionState[\s\S]*initialMessagesSettled/,
   );
+  const recoveredReplay = recoveredReplaySource();
+  assert.match(recoveredReplay, /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled/);
+  assert.match(recoveredReplay, /const replayEnabled = Boolean\([\s\S]*recoverySettled/);
+  assert.match(recoveredReplay, /useLegacyCloudGroupTitleNoticeRecovery\(\{\s*enabled: replayEnabled/);
+  assert.match(recoveredReplay, /useCloudGroupReplay\(\{\s*enabled: replayEnabled/);
   assert.match(
-    recoveredReplaySource(),
-    /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled[\s\S]*useCloudGroupReplay\(\{[\s\S]*recoverySettled/,
+    recoveredReplay,
+    /useCloudAgentTurnRecovery\(\{[\s\S]*processedRequestIdsRef,\s*reportWarning,\s*\}\);/,
+    'interrupted-turn recovery must receive stable hydration callbacks',
   );
   assert.match(
-    recoveredReplaySource(),
-    /processedRequestIdsRef,\s*reportWarning,\s*\}\);[\s\S]*messageIndex,\s*applyControl,\s*flushCanonicalState,\s*reportWarning,\s*\}\);/,
-    'recovery and replay must pass stable callbacks through during history hydration',
+    recoveredReplay,
+    /useCloudGroupReplay\(\{[\s\S]*messageIndex,\s*applyControl,\s*flushCanonicalState,\s*reportWarning,\s*\}\);/,
+    'current group replay must receive stable callbacks after recovery settles',
   );
 });
 

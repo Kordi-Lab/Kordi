@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cloudGroupMemberJoinNoticeRequests, cloudGroupSessionTitleSnapshotForControl, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupTitleUpdateNoticeRequest, cloudSessionTitleUpdateNoticeRequest } from '../src/features/cloud/cloudGroupMessages';
+import { legacyCloudGroupTitleNoticeClassifications } from '../src/features/cloud/legacyCloudGroupTitleNotices';
 
 test('legacy session rename controls become administrator-authored title snapshots', () => {
   const snapshot = cloudGroupSessionTitleSnapshotForControl({
@@ -78,7 +79,51 @@ test('group title updates build a remote visible group rename notice separately 
     scope: 'group',
     title: 'Good group',
     actorDisplayName: 'Álvaro',
+    sourceControlKind: 'group-title-update',
   });
+});
+
+test('group invites and membership updates never synthesize rename notices', () => {
+  for (const kind of ['group-invite', 'group-update'] as const) {
+    assert.equal(cloudGroupTitleUpdateNoticeRequest({
+      envelope: {
+        kind,
+        groupId: 'session:group:cloud',
+        groupSpaceId: 'session:group:cloud',
+        groupTitle: 'Shenzhe Zhu, Shu Yang',
+        createdByAccountId: 'acct_jiaxin',
+        actor: { accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null },
+        participants: [{ accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null }],
+        message: null,
+      },
+      actorIdentityId: 'human:cloud:acct_jiaxin',
+      createdAtMs: 1_234,
+      cloudMessageId: `cloud-${kind}`,
+    }), null);
+  }
+});
+
+test('historical notices classify exact recovered controls after cache loss', () => {
+  const body = (kind: 'group-invite' | 'group-title-update') => encodeCloudGroupControl({
+    kind,
+    groupId: 'session:group:cloud',
+    groupSpaceId: 'session:group:cloud',
+    groupTitle: 'Shenzhe Zhu, Shu Yang',
+    createdByAccountId: 'acct_jiaxin',
+    actor: { accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null },
+    participants: [{ accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null }],
+    message: null,
+  });
+  assert.deepEqual(legacyCloudGroupTitleNoticeClassifications(
+    ['older-than-window', 'real-rename', 'missing'],
+    [
+      { messageId: 'older-than-window', body: body('group-invite') },
+      { messageId: 'real-rename', body: body('group-title-update') },
+    ],
+  ), [
+    { cloudMessageId: 'older-than-window', sourceControlKind: 'group-invite' },
+    { cloudMessageId: 'real-rename', sourceControlKind: 'group-title-update' },
+  ]);
 });
 
 test('session title updates build a remote visible rename notice without changing group metadata', () => {
