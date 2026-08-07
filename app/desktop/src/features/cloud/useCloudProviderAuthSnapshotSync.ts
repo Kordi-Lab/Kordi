@@ -31,13 +31,11 @@ export function useCloudProviderAuthSnapshotSync({
   account,
   client,
   authState,
-  initialMessagesSettled,
   reportWarning,
 }: {
   account: CloudAccount | null;
   client: CloudAuthClient;
   authState?: DesktopAuthState | null;
-  initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const publishedCredentialRevisionsRef = useRef<Map<string, string>>(new Map());
@@ -150,7 +148,6 @@ export function useCloudProviderAuthSnapshotSync({
   useEffect(() => {
     if (
       !account
-      || !initialMessagesSettled
       || !authState
       || !canReconcileCloudProviderAuthManifest(account.accountId, restoreReadyAccountId)
     ) return;
@@ -224,7 +221,6 @@ export function useCloudProviderAuthSnapshotSync({
     authState,
     client,
     enqueueSync,
-    initialMessagesSettled,
     publishRefreshGeneration,
     reportWarning,
     restoreReadyAccountId,

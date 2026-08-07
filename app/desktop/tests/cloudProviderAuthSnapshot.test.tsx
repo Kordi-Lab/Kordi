@@ -32,6 +32,20 @@ test('provider auth reconciliation stays blocked until this account restores suc
   );
 });
 
+test('provider auth synchronization is independent from chat hydration', () => {
+  const providerSyncSource = readFileSync(new URL(
+    '../src/features/cloud/useCloudProviderAuthSnapshotSync.ts',
+    import.meta.url,
+  ), 'utf8');
+  const agentSyncSource = readFileSync(new URL(
+    '../src/features/cloud/useCloudAgentProviderAuthSync.ts',
+    import.meta.url,
+  ), 'utf8');
+
+  assert.doesNotMatch(providerSyncSource, /initialMessagesSettled/);
+  assert.doesNotMatch(agentSyncSource, /initialMessagesSettled/);
+});
+
 type FetchCall = { url: string; init: RequestInit | undefined };
 
 function recordingFetch(handler: (call: FetchCall) => Response | Promise<Response>) {
