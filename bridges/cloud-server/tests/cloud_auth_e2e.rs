@@ -154,6 +154,8 @@ mod message_idempotency;
 mod message_lookup;
 #[path = "cloud_auth_e2e/messages_and_attachments.rs"]
 mod messages_and_attachments;
+#[path = "cloud_auth_e2e/public_identity.rs"]
+mod public_identity;
 #[path = "cloud_auth_e2e/read_receipts.rs"]
 mod read_receipts;
 #[path = "cloud_auth_e2e/session_and_presence.rs"]

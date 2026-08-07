@@ -197,6 +197,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "global support agent and durable support tickets",
         sql: include_str!("../../migrations/0035_global_support.sql"),
     },
+    EmbeddedMigration {
+        version: 36,
+        description: "public Kordi ids and app invitations",
+        sql: include_str!("../../migrations/0036_public_kordi_ids_and_app_invitations.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

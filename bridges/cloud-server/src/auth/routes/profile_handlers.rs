@@ -176,24 +176,47 @@ pub(super) async fn logout(
 
 pub(super) async fn get_profile(
     State(state): State<Arc<ServerState>>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
     axum::extract::Path(account_id): axum::extract::Path<String>,
 ) -> Response {
     let target = account_id.trim().to_string();
     if target.is_empty() {
         return err(
             "invalid_account_id",
-            "Account id is required.",
+            "Kordi ID is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_ip(ip_from_extension(connect_info.as_ref()))
+        .await
+    {
+        return limited_response(retry_after);
+    }
+
+    let legacy_account_id = target.starts_with("acct_").then_some(target.as_str());
+    let public_account_number = normalize_public_kordi_id(&target);
+    if legacy_account_id.is_none() && public_account_number.is_none() {
+        return err(
+            "invalid_account_id",
+            "Enter a nine-digit Kordi ID.",
             StatusCode::BAD_REQUEST,
         );
     }
 
     let pool = state.db_pool();
 
-    let row: Option<(String, Option<String>, Option<String>)> = match query_as(
-        "SELECT account_id, display_name, avatar_url FROM cloud_accounts WHERE account_id = $1",
+    let row: Option<(String, i64, Option<String>, Option<String>)> = match query_as(
+        "SELECT account_id, public_account_number, display_name, avatar_url \
+         FROM cloud_accounts \
+         WHERE ($1::BIGINT IS NOT NULL AND public_account_number = $1) \
+            OR ($2::TEXT IS NOT NULL AND account_id = $2)",
     )
-    .bind(&target)
+    .bind(public_account_number)
+    .bind(legacy_account_id)
     .fetch_optional(pool)
     .await
     {
@@ -207,10 +230,10 @@ pub(super) async fn get_profile(
         }
     };
 
-    let Some((account_id, display_name, avatar_url)) = row else {
+    let Some((account_id, public_account_number, display_name, avatar_url)) = row else {
         return err(
             "account_missing",
-            "No account found with that id.",
+            "No account found with that Kordi ID.",
             StatusCode::NOT_FOUND,
         );
     };
@@ -231,6 +254,7 @@ pub(super) async fn get_profile(
 
     Json(PublicProfileResponse {
         account_id,
+        kordi_id: public_account_number.to_string(),
         display_name,
         avatar_url,
         node_id: None,

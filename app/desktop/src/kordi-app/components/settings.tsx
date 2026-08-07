@@ -5,57 +5,61 @@ import { settingsSections } from '../data';
 import type { ThemeMode } from '../types';
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; detail: string }> = [
-  { mode: 'auto', label: 'Auto', detail: 'Match macOS' },
-  { mode: 'light', label: 'Light', detail: 'Bright surfaces' },
-  { mode: 'dark', label: 'Dark', detail: 'Dim surfaces' },
+  { mode: 'auto', label: 'System', detail: 'Match your device' },
+  { mode: 'light', label: 'Light', detail: 'Always use light appearance' },
+  { mode: 'dark', label: 'Dark', detail: 'Always use dark appearance' },
 ];
 
 function ThemePreview({ mode, selected }: { mode: ThemeMode; selected: boolean }) {
-  const surfaceClass = mode === 'dark'
-    ? 'from-[#273057] via-[#14205a] to-[#08122d]'
-    : 'from-[#f7f3e7] via-[#d9ecf2] to-[#8fb6de]';
-  const railClass = mode === 'dark' ? 'bg-[#060a18]/92' : 'bg-[#fff8e8]/94';
-  const panelClass = mode === 'dark' ? 'bg-[#17224a]/86' : 'bg-white/86';
-  const dotClass = mode === 'dark' ? 'bg-[#ffb84d]' : 'bg-[#ff6157]';
+  const dark = mode === 'dark';
+  const surfaceClass = dark ? 'bg-[#51545a]' : 'bg-[#f1f2f4]';
+  const panelClass = dark ? 'border-white/10 bg-[#24272d]' : 'border-slate-900/8 bg-white';
+  const strongLineClass = dark ? 'bg-white/24' : 'bg-slate-900/16';
+  const softLineClass = dark ? 'bg-white/12' : 'bg-slate-900/8';
 
   return (
     <div
       className={cn(
-        'app-settings-theme-preview relative h-[46px] overflow-hidden rounded-[11px] border bg-gradient-to-br shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-none',
-        mode === 'auto' ? 'from-[#f5f0e3] via-[#d8edf2] to-[#07112d]' : surfaceClass,
+        'app-settings-theme-preview relative h-24 overflow-hidden rounded-[12px] border transition-none',
+        mode === 'auto' ? 'bg-slate-100' : surfaceClass,
         selected ? 'border-emerald-300/85 ring-2 ring-emerald-400/70 ring-offset-1 ring-offset-transparent' : 'border-white/12',
       )}
       aria-hidden="true"
     >
       {mode === 'auto' ? (
         <>
-          <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-br from-[#fff8e7] via-[#d8edf2] to-[#8fb5dc]" />
-          <div className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-br from-[#273057] via-[#14205a] to-[#08122d]" />
-          <div className="absolute inset-y-1 left-1 w-[calc(50%-6px)] rounded-[8px] bg-white/76" />
-          <div className="absolute inset-y-1 right-1 w-[calc(50%-6px)] rounded-[8px] bg-[#081126]/78" />
+          <div className="absolute inset-y-0 left-0 w-1/2 bg-[#f1f2f4]" />
+          <div className="absolute inset-y-0 right-0 w-1/2 bg-[#51545a]" />
         </>
-      ) : (
-        <>
-          <div className={cn('absolute inset-y-1 left-1 w-4 rounded-[7px]', railClass)} />
-          <div className={cn('absolute inset-y-1 right-1 left-6 rounded-[8px]', panelClass)} />
-        </>
-      )}
-      <div className="absolute left-2 top-2 h-1.5 w-8 rounded-full bg-emerald-400/85" />
-      <div className="absolute right-2 top-2 h-1.5 w-5 rounded-full bg-sky-400/70" />
-      <div className="absolute bottom-2 left-2 flex gap-1">
-        <span className={cn('h-1.5 w-1.5 rounded-full', dotClass)} />
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+      ) : null}
+      <div className={cn(
+        'absolute left-[18%] right-[18%] top-3 h-1.5 rounded-full',
+        mode === 'auto' ? 'bg-slate-500/25' : strongLineClass,
+      )} />
+      <div className={cn(
+        'absolute inset-x-3 bottom-2 top-7 overflow-hidden rounded-[9px] border',
+        mode === 'auto' ? 'border-slate-500/10 bg-white' : panelClass,
+      )}>
+        {mode === 'auto' ? <div className="absolute inset-y-0 right-0 w-1/2 bg-[#24272d]" /> : null}
+        <div className={cn(
+          'relative h-7 border-b px-2 py-2',
+          mode === 'auto' ? 'border-slate-500/10' : dark ? 'border-white/8' : 'border-slate-900/8',
+        )}>
+          <div className={cn('h-1.5 w-1/3 rounded-full', mode === 'auto' ? 'bg-slate-500/20' : strongLineClass)} />
+        </div>
+        <div className="relative space-y-2 px-2 py-2">
+          <div className={cn('h-1.5 w-2/5 rounded-full', mode === 'auto' ? 'bg-slate-500/20' : strongLineClass)} />
+          <div className={cn('h-1.5 w-3/5 rounded-full', mode === 'auto' ? 'bg-slate-500/12' : softLineClass)} />
+        </div>
       </div>
-      <div className={cn('absolute bottom-2 right-2 h-2 w-6 rounded-full', mode === 'dark' ? 'bg-white/16' : 'bg-slate-900/12')} />
     </div>
   );
 }
 
 function ThemeModeSelector({ themeMode, onSelectThemeMode }: { themeMode: ThemeMode; onSelectThemeMode: (mode: ThemeMode) => void }) {
   return (
-    <div className="min-w-[278px]" role="radiogroup" aria-label="Theme mode">
-      <div className="grid grid-cols-3 gap-2">
+    <div className="w-full" role="radiogroup" aria-label="Theme mode">
+      <div className="grid grid-cols-3 gap-3">
         {THEME_OPTIONS.map((option) => {
           const selected = themeMode === option.mode;
           return (
@@ -67,10 +71,10 @@ function ThemeModeSelector({ themeMode, onSelectThemeMode }: { themeMode: ThemeM
               aria-label={`${option.label} theme`}
               title={option.detail}
               onClick={() => onSelectThemeMode(option.mode)}
-              className="app-settings-theme-option group rounded-[14px] bg-transparent p-1 text-center outline-none transition-none hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-emerald-300/80"
+              className="app-settings-theme-option group min-w-0 rounded-[14px] bg-transparent p-1 text-center outline-none transition-none hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-emerald-300/80"
             >
               <ThemePreview mode={option.mode} selected={selected} />
-              <div className={cn('mt-1 text-[11px] font-medium leading-4', selected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200')}>
+              <div className={cn('mt-2 text-[12px] font-medium leading-4', selected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200')}>
                 {option.label}
               </div>
             </button>

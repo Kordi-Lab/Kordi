@@ -147,7 +147,7 @@ pub(super) async fn account_response_row(
     account_id: &str,
 ) -> Result<Option<AccountResponse>, sqlx_core::Error> {
     let row: Option<AccountRecordRow> = query_as(
-        "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
+        "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash \
              FROM cloud_accounts WHERE account_id = $1",
     )
     .bind(account_id)
@@ -155,8 +155,16 @@ pub(super) async fn account_response_row(
     .await?;
 
     Ok(row.map(
-        |(account_id, display_name, primary_email, avatar_url, password_hash)| AccountResponse {
+        |(
             account_id,
+            public_account_number,
+            display_name,
+            primary_email,
+            avatar_url,
+            password_hash,
+        )| AccountResponse {
+            account_id,
+            kordi_id: public_account_number.to_string(),
             display_name,
             primary_email,
             avatar_url,
@@ -166,6 +174,26 @@ pub(super) async fn account_response_row(
             password_set: password_hash.is_some(),
         },
     ))
+}
+
+pub(super) fn normalize_public_kordi_id(value: &str) -> Option<i64> {
+    let trimmed = value.trim();
+    let without_prefix = trimmed.strip_prefix('@').unwrap_or(trimmed);
+    if without_prefix.is_empty()
+        || without_prefix
+            .chars()
+            .any(|ch| !ch.is_ascii_digit() && ch != ' ' && ch != '-')
+    {
+        return None;
+    }
+    let digits: String = without_prefix
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect();
+    if digits.len() != 9 || digits.starts_with('0') {
+        return None;
+    }
+    digits.parse::<i64>().ok()
 }
 
 pub(super) async fn write_audit(
@@ -190,4 +218,19 @@ pub(super) async fn write_audit(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod public_identity_tests {
+    use super::normalize_public_kordi_id;
+
+    #[test]
+    fn kordi_id_normalization_accepts_supported_human_formats() {
+        assert_eq!(normalize_public_kordi_id("@482731906"), Some(482_731_906));
+        assert_eq!(normalize_public_kordi_id("482 731 906"), Some(482_731_906));
+        assert_eq!(normalize_public_kordi_id("482-731-906"), Some(482_731_906));
+        assert_eq!(normalize_public_kordi_id("acct_private"), None);
+        assert_eq!(normalize_public_kordi_id("48273190"), None);
+        assert_eq!(normalize_public_kordi_id("082731906"), None);
+    }
 }

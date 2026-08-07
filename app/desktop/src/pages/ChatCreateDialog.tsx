@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -14,6 +13,7 @@ import type { Agent, Contact } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { formatKordiHandle } from '@/features/cloud/kordiId';
 
 export type ChatCreatePopoverAnchor = {
   left: number;
@@ -24,6 +24,7 @@ export type ChatCreatePopoverAnchor = {
 
 export type AddContactLookupResult = {
   accountId: string;
+  kordiId?: string | null;
   displayName: string | null;
   avatarUrl: string | null;
   isContact: boolean;
@@ -47,8 +48,7 @@ export type ChatCreateDialogProps = {
    * the auth client's getProfile call so users see who they're about
    * to request before sending. */
   onLookupContact?: (idOrEmail: string) => Promise<AddContactLookupResult | null>;
-  /** Override the placeholder shown in the Add-contacts input. Cloud
-   * uses "acct_…" while the retired local runtime used "kd_…". */
+  /** Override the placeholder shown in the Add-contacts input. */
   addContactPlaceholder?: string;
   initialMode?: CreateMode;
   anchorRect?: ChatCreatePopoverAnchor | null;
@@ -221,7 +221,7 @@ export function ChatCreateDialog({
   const selectedGroupContactIds = selectedPeople.map((option) => option.id);
   const defaultGroupName = groupDefaultName(selectedPeople.map((option) => option.label));
   const canSubmitGroup = canCreateGroup(selectedGroupContactIds);
-  const addContactSubtitle = 'Send an approval request by Kordi account ID.';
+  const addContactSubtitle = 'Send an approval request by Kordi ID.';
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
 
   if (!isOpen) return null;
@@ -415,7 +415,7 @@ export function ChatCreateDialog({
               setLookupError('');
               if (addContactState !== 'saving') setAddContactState('idle');
             }}
-            placeholder={addContactPlaceholder ?? 'Account ID, e.g. acct_...'}
+            placeholder={addContactPlaceholder ?? 'Kordi ID, e.g. @482731906'}
             className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
             autoFocus
           />
@@ -424,10 +424,10 @@ export function ChatCreateDialog({
             <div className="app-chat-create-list-item flex items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2">
               <span className="min-w-0">
                 <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">
-                  {lookupResult.displayName || lookupResult.accountId}
+                  {lookupResult.displayName || 'Kordi user'}
                 </span>
                 <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">
-                  {lookupResult.accountId}
+                  {formatKordiHandle(lookupResult.kordiId) || 'Kordi ID unavailable'}
                 </span>
               </span>
               {lookupResult.isSelf ? (
@@ -466,7 +466,7 @@ export function ChatCreateDialog({
                     ? addContactError || 'Unable to send contact request.'
                     : lookupResult
                       ? 'Tap Add to send a contact request.'
-                      : 'Enter an account ID, then Search to preview the profile.'}
+                      : 'Enter a Kordi ID, then Search to preview the profile.'}
           </div>
 
           <div className="flex gap-1.5">
@@ -527,7 +527,7 @@ export function ChatCreateDialog({
               setContactNodeId(event.target.value);
               if (addContactState !== 'saving') setAddContactState('idle');
             }}
-            placeholder={addContactPlaceholder ?? 'Kordi account ID'}
+            placeholder={addContactPlaceholder ?? 'Kordi ID'}
             className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
           />
           <div className="min-h-4 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]" aria-live="polite">
@@ -535,7 +535,7 @@ export function ChatCreateDialog({
               ? 'Request sent. They will appear in contacts after approval.'
               : addContactState === 'error'
                 ? addContactError || 'Unable to send contact request.'
-                : 'Paste a Kordi account ID to request approval.'}
+                : 'Paste a Kordi ID to request approval.'}
           </div>
           <div className="flex gap-1.5">
             <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>

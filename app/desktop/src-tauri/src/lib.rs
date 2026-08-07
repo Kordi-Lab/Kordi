@@ -393,10 +393,6 @@ pub fn run() {
             }
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
-            let window = app
-                .get_webview_window("main")
-                .expect("main window should exist");
-            window.set_title("Kordi")?;
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }

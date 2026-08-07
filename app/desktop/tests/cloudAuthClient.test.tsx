@@ -166,23 +166,6 @@ test('publishPresenceOffline uses keepalive so page close can finish the request
   assert.equal(calls[0].init?.keepalive, true);
 });
 
-test('me returns the parsed account', async () => {
-  const { fetchImpl } = recordingFetch(() =>
-    jsonResponse(200, {
-      accountId: 'acct_1',
-      displayName: 'Ada',
-      primaryEmail: 'ada@example.com',
-      avatarUrl: null,
-      passwordSet: true,
-    }),
-  );
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
-
-  const account = await client.me('kordi_cs_xyz');
-  assert.equal(account.accountId, 'acct_1');
-  assert.equal(account.passwordSet, true);
-});
-
 test('capabilities reports only server-configured social sign-in providers', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
     password: true,

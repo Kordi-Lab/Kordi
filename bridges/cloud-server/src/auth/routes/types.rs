@@ -61,6 +61,8 @@ pub struct UpdateProfileRequest {
 pub struct AccountResponse {
     #[serde(rename = "accountId")]
     pub account_id: String,
+    #[serde(rename = "kordiId")]
+    pub kordi_id: String,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
     #[serde(rename = "primaryEmail")]
@@ -90,6 +92,8 @@ pub struct AuthResponse {
 pub struct PublicProfileResponse {
     #[serde(rename = "accountId")]
     pub account_id: String,
+    #[serde(rename = "kordiId")]
+    pub kordi_id: String,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
     #[serde(rename = "avatarUrl")]
@@ -116,6 +120,8 @@ pub struct ContactSummary {
     pub contact_kind: Option<String>,
     #[serde(rename = "accountId")]
     pub account_id: String,
+    #[serde(rename = "kordiId", skip_serializing_if = "Option::is_none")]
+    pub kordi_id: Option<String>,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -146,6 +152,33 @@ pub struct ContactSummary {
     pub target_cloud_agent_owner_name: Option<String>,
     #[serde(rename = "supportTicketEnabled")]
     pub support_ticket_enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AppInvitationResponse {
+    #[serde(rename = "invitationId")]
+    pub invitation_id: String,
+    #[serde(rename = "inviteUrl")]
+    pub invite_url: String,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AppInvitationInviterResponse {
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    #[serde(rename = "kordiId")]
+    pub kordi_id: String,
+    #[serde(rename = "avatarUrl")]
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AppInvitationPreviewResponse {
+    pub inviter: AppInvitationInviterResponse,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: String,
 }
 
 #[derive(Debug, Serialize)]

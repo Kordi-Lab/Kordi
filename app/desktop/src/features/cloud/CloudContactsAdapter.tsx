@@ -17,6 +17,7 @@ import type { CloudAccount } from './authClient';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactRequest } from '@/kordi-app/types';
+import { formatKordiHandle, normalizeKordiId } from './kordiId';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -30,7 +31,7 @@ type CloudContactsAdapterProps = {
  *   - onAcceptRequest / onRejectRequest / onAddContactByNodeId
  *     (routes them through the cloud auth client)
  *   - addableContacts          (clears legacy local addables; the hosted add
- *                               flow is a free-text account ID lookup)
+ *                               flow is a public Kordi ID lookup)
  */
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
@@ -106,22 +107,20 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     const trimmed = rawId.trim();
     if (!trimmed) return;
     if (!trimmed.startsWith('acct_')) {
-      throw new Error('Account IDs start with "acct_".');
+      throw new Error('Contact could not be added. Search by Kordi ID and try again.');
     }
     if (hasOutgoingPendingRequestForAccount(cloud.requests, trimmed)) return;
     await cloud.sendRequest(trimmed);
   };
 
   const onLookupContact = async (rawId: string): Promise<AddContactLookupResult | null> => {
-    const trimmed = rawId.trim();
-    if (!trimmed) return null;
-    if (!trimmed.startsWith('acct_')) {
-      throw new Error('Account IDs start with "acct_".');
-    }
-    const profile = await cloud.lookupProfile(trimmed);
+    const kordiId = normalizeKordiId(rawId);
+    if (!kordiId) throw new Error('Enter a nine-digit Kordi ID.');
+    const profile = await cloud.lookupProfile(kordiId);
     if (!profile) return null;
     return {
       accountId: profile.accountId,
+      kordiId: profile.kordiId,
       displayName: profile.displayName,
       avatarUrl: profile.avatarUrl,
       isSelf: profile.accountId === account.accountId,
@@ -221,18 +220,21 @@ function hasOutgoingPendingRequestForAccount(requests: ContactRequest[], account
 }
 
 function cloudAccountToSelfContact(account: CloudAccount): Contact {
+  const kordiHandle = formatKordiHandle(account.kordiId);
+  const displayName = account.displayName || account.primaryEmail || kordiHandle || 'Kordi user';
   const contact = cloudContactToContact({
     accountId: account.accountId,
-    displayName: account.displayName || account.primaryEmail || account.accountId,
+    kordiId: account.kordiId,
+    displayName,
     avatarUrl: account.avatarUrl,
     nodeId: account.nodeId,
     createdAt: '',
   });
   return {
     ...contact,
-    name: account.displayName || account.primaryEmail || account.accountId,
-    subtitle: account.primaryEmail || account.accountId,
-    detail: `Signed in to Kordi Cloud as ${account.accountId}.`,
+    name: displayName,
+    subtitle: account.primaryEmail || kordiHandle || 'Kordi account',
+    detail: kordiHandle ? `Signed in to Kordi as ${kordiHandle}.` : 'Signed in to Kordi.',
     owner: 'Me',
   };
 }

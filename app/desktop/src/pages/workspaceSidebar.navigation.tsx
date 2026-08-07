@@ -88,6 +88,7 @@ export function WorkspaceNavigationRail({
           cloudSettings={account.cloudSettings}
           onUpdateCloudProfile={account.onUpdateCloudProfile}
           onCloudSignOut={account.onCloudSignOut}
+          onCreateAppInvite={account.onCreateAppInvite}
         />
       </div>
     </div>

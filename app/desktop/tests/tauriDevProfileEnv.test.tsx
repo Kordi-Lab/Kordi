@@ -6,6 +6,12 @@ import { buildBeforeDevCommand } from '../scripts/tauri-dev-env.mjs';
 
 const appShellFrameSource = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
 
+test('native startup preserves the title selected by a named Tauri profile', () => {
+  const source = readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /set_title\("Kordi"\)/);
+});
+
 test('buildBeforeDevCommand does not forward removed edition env into the Vite dev server command', () => {
   const command = buildBeforeDevCommand({
     title: 'Kordi Cloud',

@@ -95,8 +95,8 @@ pub(super) async fn list_contacts(
 ) -> Response {
     let pool = state.db_pool();
 
-    let rows: Vec<(String, Option<String>, Option<String>, String)> = match query_as(
-        "SELECT a.account_id, a.display_name, a.avatar_url, c.created_at \
+    let rows: Vec<ContactListRow> = match query_as(
+        "SELECT a.account_id, a.public_account_number, a.display_name, a.avatar_url, c.created_at \
          FROM cloud_contacts c \
          JOIN cloud_accounts a ON a.account_id = c.peer_account_id \
          WHERE c.account_id = $1 \
@@ -119,21 +119,24 @@ pub(super) async fn list_contacts(
     let mut contacts = rows
         .into_iter()
         .map(
-            |(account_id, display_name, avatar_url, created_at)| ContactSummary {
-                contact_id: None,
-                contact_kind: None,
-                account_id,
-                display_name,
-                subtitle: None,
-                avatar_url,
-                node_id: None,
-                created_at,
-                locked: false,
-                target_cloud_agent_id: None,
-                target_cloud_agent_name: None,
-                target_cloud_agent_owner_account_id: None,
-                target_cloud_agent_owner_name: None,
-                support_ticket_enabled: false,
+            |(account_id, public_account_number, display_name, avatar_url, created_at)| {
+                ContactSummary {
+                    contact_id: None,
+                    contact_kind: None,
+                    account_id,
+                    kordi_id: Some(public_account_number.to_string()),
+                    display_name,
+                    subtitle: None,
+                    avatar_url,
+                    node_id: None,
+                    created_at,
+                    locked: false,
+                    target_cloud_agent_id: None,
+                    target_cloud_agent_name: None,
+                    target_cloud_agent_owner_account_id: None,
+                    target_cloud_agent_owner_name: None,
+                    support_ticket_enabled: false,
+                }
             },
         )
         .collect::<Vec<_>>();

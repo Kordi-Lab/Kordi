@@ -8,21 +8,14 @@ import {
   type CloudMessageSnapshotResponse,
 } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
+import type { CloudAccount, CloudAppInvitation, CloudPublicProfile } from './cloudIdentityTypes';
 
 export type { CloudContactSummary } from './cloudContactTypes';
 export { parseCloudOAuthHashResult } from './cloudOAuthResult';
+export type { CloudAccount, CloudAppInvitation, CloudPublicProfile } from './cloudIdentityTypes';
 
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
-
-export type CloudAccount = {
-  accountId: string;
-  displayName: string | null;
-  primaryEmail: string | null;
-  avatarUrl: string | null;
-  nodeId: string | null;
-  passwordSet: boolean;
-};
 
 export type CloudSession = {
   token: string;
@@ -75,15 +68,6 @@ export type CloudAuthErrorCode =
   | 'server_error'
   | 'network_error'
   | 'unknown';
-
-export type CloudPublicProfile = {
-  accountId: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-  nodeId: string | null;
-  isContact: boolean;
-  isSelf: boolean;
-};
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';
 export type CloudContactRequestStatus = 'pending' | 'accepted' | 'rejected';
@@ -732,6 +716,17 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not load profile.',
+    );
+  }
+
+  async createAppInvitation(token: string): Promise<CloudAppInvitation> {
+    return this.send<CloudAppInvitation>(
+      '/v1/cloud/invitations/app',
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not create invitation.',
     );
   }
 

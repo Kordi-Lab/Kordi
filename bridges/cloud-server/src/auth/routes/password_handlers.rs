@@ -192,13 +192,15 @@ pub(super) async fn signup(
         });
     }
 
-    let account = AccountResponse {
-        account_id,
-        display_name,
-        primary_email: Some(normalized_email),
-        avatar_url: Some(avatar_url),
-        node_id: None,
-        password_set: true,
+    let account = match account_response_row(pool, &account_id).await {
+        Ok(Some(account)) => account,
+        _ => {
+            return err(
+                "server_error",
+                "Could not load the created account.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
     };
     let body = AuthResponse {
         account,
@@ -234,8 +236,8 @@ pub(super) async fn login(
 
     let pool = state.db_pool();
 
-    let row: Option<AccountRecordRow> = match query_as(
-        "SELECT account_id, display_name, primary_email, avatar_url, password_hash \
+    let row: Option<(String, Option<String>)> = match query_as(
+        "SELECT account_id, password_hash \
              FROM cloud_accounts WHERE LOWER(primary_email) = $1",
     )
     .bind(&normalized_email)
@@ -252,7 +254,7 @@ pub(super) async fn login(
         }
     };
 
-    let Some((account_id, display_name, primary_email, avatar_url, password_hash)) = row else {
+    let Some((account_id, password_hash)) = row else {
         rate_limiter.record_email_failure(&normalized_email).await;
         return err(
             "invalid_credentials",
@@ -380,15 +382,18 @@ pub(super) async fn login(
         );
     }
 
+    let account = match account_response_row(pool, &account_id).await {
+        Ok(Some(account)) => account,
+        _ => {
+            return err(
+                "server_error",
+                "Could not load account.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
     let body = AuthResponse {
-        account: AccountResponse {
-            account_id,
-            display_name,
-            primary_email,
-            avatar_url,
-            node_id: None,
-            password_set: true,
-        },
+        account,
         session: SessionResponse {
             token: issued.plaintext_token,
             expires_at: issued.expires_at.to_rfc3339(),

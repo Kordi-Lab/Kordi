@@ -16,7 +16,7 @@ test('product navigation only exposes final Cloud pages', () => {
 
 test('settings data keeps only final Cloud settings sections', () => {
   assert.deepEqual(settingsSections.map((section) => section.id), ['auth', 'appearance']);
-  assert.deepEqual(settingsSections.map((section) => section.label), ['Authentication', 'Theme']);
+  assert.deepEqual(settingsSections.map((section) => section.label), ['Authentication', 'Appearance']);
   assert.deepEqual(settingsSections[1]?.items.map((item) => item.label), ['Theme']);
   assert.equal(normalizeSettingsSectionIdForCloud('general'), 'auth');
   assert.equal(normalizeSettingsSectionIdForCloud('appearance'), 'appearance');
@@ -92,7 +92,8 @@ test('cloud contact and group fallbacks use product-facing names', () => {
   const bridgeStateSource = readFileSync(new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url), 'utf8');
 
   assert.doesNotMatch(contactsAdapterSource, /Cloud account IDs/);
-  assert.match(contactsAdapterSource, /Account IDs start with/);
+  assert.match(contactsAdapterSource, /Enter a nine-digit Kordi ID/);
+  assert.doesNotMatch(contactsAdapterSource, /Account IDs start with/);
   assert.doesNotMatch(bridgeStateSource, /'Cloud group'/);
   assert.doesNotMatch(bridgeStateSource, /Cloud group message failed/);
   assert.doesNotMatch(bridgeStateSource, /cloud agent request/);

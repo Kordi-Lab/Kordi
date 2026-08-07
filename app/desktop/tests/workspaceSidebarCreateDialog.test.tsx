@@ -79,7 +79,7 @@ test('ChatCreateDialog renders compact theme-aware choices beside the plus butto
   assert.match(markup, /Add contacts/);
 });
 
-test('ChatCreateDialog cloud lookup copy asks for an account id, not a Bridge node id', () => {
+test('ChatCreateDialog cloud lookup copy asks for a public Kordi ID, not a canonical account id', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     initialMode: 'add-contact',
@@ -91,16 +91,17 @@ test('ChatCreateDialog cloud lookup copy asks for an account id, not a Bridge no
     onCreateGroup: () => {},
     onAddContact: () => {},
     onLookupContact: async () => null,
-    addContactPlaceholder: 'Account ID, e.g. acct_…',
+    addContactPlaceholder: 'Kordi ID, e.g. @482731906',
   }));
 
   assert.match(markup, /Add contact/);
-  assert.match(markup, /Kordi account ID/);
-  assert.match(markup, /Account ID, e.g. acct_…/);
+  assert.match(markup, /Kordi ID/);
+  assert.match(markup, /Kordi ID, e.g. @482731906/);
+  assert.doesNotMatch(markup, /acct_/);
   assert.doesNotMatch(markup, /Bridge node ID/);
 });
 
-test('ChatCreateDialog add contact mode requests a Kordi account id', () => {
+test('ChatCreateDialog add contact mode requests a Kordi ID', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,
     initialMode: 'add-contact',
@@ -114,9 +115,9 @@ test('ChatCreateDialog add contact mode requests a Kordi account id', () => {
   }));
 
   assert.match(markup, /Add contact/);
-  assert.match(markup, /Kordi account ID/);
+  assert.match(markup, /Kordi ID/);
   assert.match(markup, /Send request/);
-  assert.match(markup, /Paste a Kordi account ID/);
+  assert.match(markup, /Paste a Kordi ID/);
 });
 
 test('ChatCreateDialog add contact mode shows visible non-contact Bridge users', () => {

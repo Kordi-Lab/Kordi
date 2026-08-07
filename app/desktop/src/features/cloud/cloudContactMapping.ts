@@ -3,6 +3,7 @@ import { KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 
 import type { CloudContactSummary } from './cloudContactTypes';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import { formatKordiHandle } from './kordiId';
 
 export const CLOUD_HOST_SENTINEL = 'cloud';
 
@@ -13,9 +14,10 @@ export function isCloudContact(contact: Contact): boolean {
 }
 
 export function cloudContactToContact(row: CloudContactSummary): Contact {
-  const name = row.displayName ?? row.accountId;
   const isSystemAgent = row.contactKind === 'system_agent' && Boolean(row.targetCloudAgentId?.trim());
   const isSupportContact = isSystemAgent && Boolean(row.supportTicketEnabled);
+  const kordiHandle = formatKordiHandle(row.kordiId);
+  const name = row.displayName ?? (isSystemAgent ? 'Kordi agent' : 'Kordi user');
   const classType = isSystemAgent && !isSupportContact ? 'other-users-agents' : 'other-users';
   const entityType = isSystemAgent && !isSupportContact ? 'agent' : 'user';
   const contactId = row.contactId?.trim();
@@ -25,11 +27,11 @@ export function cloudContactToContact(row: CloudContactSummary): Contact {
     initials: cloudContactInitials(name),
     classType,
     entityType,
-    subtitle: row.subtitle?.trim() || (isSystemAgent ? 'Official Kordi agent' : row.accountId),
+    subtitle: row.subtitle?.trim() || (isSystemAgent ? 'Official Kordi agent' : kordiHandle || 'Kordi account'),
     collaborationSources: [CLOUD_HOST_SENTINEL],
     status: 'online',
     discoverableOn: [CLOUD_HOST_SENTINEL],
-    detail: isSystemAgent ? (row.subtitle?.trim() || 'Official Kordi support') : row.accountId,
+    detail: isSystemAgent ? (row.subtitle?.trim() || 'Official Kordi support') : kordiHandle || 'Kordi account',
     owner: row.targetCloudAgentOwnerName?.trim() || name,
     sourceHostId: CLOUD_HOST_SENTINEL,
     sourceParticipantId: row.accountId,

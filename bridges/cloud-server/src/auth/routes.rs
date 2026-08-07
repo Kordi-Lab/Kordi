@@ -12,7 +12,7 @@ use std::sync::Arc;
 use axum::extract::{ConnectInfo, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Extension, Json, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -38,7 +38,7 @@ use crate::auth::password::{
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::rows::{
-    AccountRecordRow, AttachmentOwnerRow, CloudSyncEventRow, ContactRequestRow,
+    AccountRecordRow, AttachmentOwnerRow, CloudSyncEventRow, ContactListRow, ContactRequestRow,
     MessageAttachmentRow, MessageRecordRow,
 };
 use crate::auth::session::{
@@ -48,6 +48,7 @@ use crate::auth::session::{
 use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use crate::server::ServerState;
 
+mod app_invitation_handlers;
 mod contact_acceptance;
 mod contact_handlers;
 mod contact_request_handlers;
@@ -68,6 +69,7 @@ mod support;
 mod sync_handlers;
 mod types;
 
+use app_invitation_handlers::*;
 use contact_acceptance::*;
 use contact_handlers::*;
 use contact_request_handlers::*;
@@ -111,6 +113,11 @@ pub fn routes_with_config(
         .route("/v1/cloud/auth/capabilities", get(auth_capabilities))
         .route("/v1/cloud/auth/signup", post(signup))
         .route("/v1/cloud/auth/login", post(login))
+        .route(
+            "/v1/cloud/invitations/app/resolve/:token",
+            get(get_app_invitation),
+        )
+        .route("/i/:token", get(app_invitation_landing))
         .route("/v1/cloud/auth/oauth/:provider/start", get(oauth_start))
         .route(
             "/v1/cloud/auth/oauth/:provider/callback",
@@ -124,6 +131,11 @@ pub fn routes_with_config(
         .route("/v1/cloud/auth/me", get(me).patch(update_me))
         .route("/v1/cloud/auth/logout", post(logout))
         .route("/v1/cloud/accounts/:account_id/profile", get(get_profile))
+        .route("/v1/cloud/invitations/app", post(create_app_invitation))
+        .route(
+            "/v1/cloud/invitations/app/:invitation_id",
+            delete(revoke_app_invitation),
+        )
         .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
         .route(
             "/v1/cloud/contacts/requests",
@@ -207,6 +219,7 @@ pub fn routes_with_config(
             "/v1/cloud/sessions/:source_session_id/forks",
             get(list_cloud_session_forks).post(create_cloud_session_fork),
         )
+        .layer(Extension(rate_limiter.clone()))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,

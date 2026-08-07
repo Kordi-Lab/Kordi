@@ -2,6 +2,7 @@ export type CloudContactSummary = {
   contactId?: string | null;
   contactKind?: string | null;
   accountId: string;
+  kordiId?: string | null;
   displayName: string | null;
   subtitle?: string | null;
   avatarUrl: string | null;

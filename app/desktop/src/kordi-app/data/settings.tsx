@@ -44,9 +44,9 @@ export const settingsSections: SettingsSection[] = [
   },
   {
     id: 'appearance',
-    label: 'Theme',
+    label: 'Appearance',
     icon: Sparkles,
-    title: 'Theme',
+    title: 'Appearance',
     items: [
       {
         label: 'Theme',
