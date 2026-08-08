@@ -41,15 +41,12 @@ export function WhatsNewDialog({
       <article className="flex max-h-[min(42rem,calc(100dvh-1.5rem))] min-h-0 flex-col">
         <header className="app-transient-divider flex shrink-0 items-start justify-between gap-5 border-b px-6 py-5">
           <div className="min-w-0">
-            <AppDialogTitle
-              id="whats-new-title"
-              className="text-[20px] leading-7 tracking-[-0.02em]"
-            >
+            <AppDialogTitle id="whats-new-title">
               What’s New in Kordi {release.version}
             </AppDialogTitle>
             <AppDialogDescription
               id="whats-new-description"
-              className="mt-1 max-w-[34rem] text-[12px] leading-5"
+              className="mt-1 max-w-[34rem]"
             >
               A quick look at the changes included in this version.
             </AppDialogDescription>
@@ -78,7 +75,7 @@ export function WhatsNewDialog({
                   {group.items.map((item) => (
                     <li
                       key={item}
-                      className="flex items-start gap-3 text-[12px] leading-5 text-[color:var(--app-transient-muted-text)]"
+                      className="flex items-start gap-3 text-[13px] leading-5 text-[color:var(--app-transient-muted-text)]"
                     >
                       <span
                         className="app-whats-new-bullet mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full"
@@ -97,7 +94,7 @@ export function WhatsNewDialog({
           {release.changelogUrl && onOpenFullReleaseNotes ? (
             <button
               type="button"
-              className="app-transient-flat-action mr-auto inline-flex min-h-9 items-center gap-2 rounded-[10px] px-3 text-[11px] font-medium"
+              className="app-transient-flat-action mr-auto inline-flex min-h-9 items-center gap-2 rounded-[10px] px-3 text-[12px] font-medium"
               onClick={onOpenFullReleaseNotes}
             >
               View full release notes
@@ -106,7 +103,7 @@ export function WhatsNewDialog({
           ) : null}
           <button
             type="button"
-            className="app-button-primary min-h-9 rounded-[10px] px-4 text-[11px] font-semibold"
+            className="app-button-primary min-h-9 rounded-[10px] px-4 text-[12px] font-semibold"
             onClick={onDismiss}
             autoFocus
           >
