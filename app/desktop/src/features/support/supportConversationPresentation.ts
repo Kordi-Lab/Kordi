@@ -117,3 +117,13 @@ export function collapseDuplicateKordiSupportConversations(
     !isKordiSupportConversation(conversation) || conversation === preferred
   ));
 }
+
+export function normalizeSupportContactConversationCollection(
+  conversations: Conversation[],
+): Conversation[] {
+  return collapseDuplicateKordiSupportConversations(conversations.map((conversation) => (
+    isKordiSupportConversation(conversation)
+      ? normalizeSupportContactConversationPresentation(conversation)
+      : conversation
+  )));
+}

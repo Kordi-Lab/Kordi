@@ -33,9 +33,10 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
 import { AttachmentPreview } from './transcriptAttachments';
-import { SupportContactAnswer } from './transcriptAssistantAnswer';
+import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
+import { messageSnapshotKey } from './transcriptMessageSnapshot';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
-import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
+import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { MessageHoverTime } from './transcriptMessageTime';
 export { LiveChatTurnCard, LiveChatTurnMessage };
@@ -49,22 +50,6 @@ import type {
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
-
-function SupportContactTypingIndicator() {
-  return (
-    <div
-      className="app-support-contact-typing"
-      data-support-contact-typing="true"
-      role="status"
-      aria-label="Kordi Support is typing"
-    >
-      <span className="sr-only">Kordi Support is typing</span>
-      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-1" aria-hidden="true" />
-      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-2" aria-hidden="true" />
-      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-3" aria-hidden="true" />
-    </div>
-  );
-}
 
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
@@ -1425,37 +1410,6 @@ function MessageBubbleView({
       ) : null}
     </MessageContextMenuHost>
   );
-}
-
-function messageSnapshotKey(msg: Message) {
-  return [
-    msg.id ?? '',
-    msg.entryId ?? '',
-    msg.role,
-    msg.sender ?? '',
-    msg.senderIdentityId ?? '',
-    msg.senderType ?? '',
-    msg.isOwnMessage ? 'own' : 'peer',
-    msg.showSenderMeta ? 'meta' : '',
-    msg.text,
-    msg.time,
-    msg.timestampMs ?? '',
-    msg.detail ?? '',
-    msg.senderAvatarSeed ?? '',
-    msg.senderProfileImageUrl ?? '',
-    msg.supportContactResponse ? 'support-contact-response' : '',
-    msg.supportContactTyping ? 'support-contact-typing' : '',
-    msg.statusChips?.join(',') ?? '',
-    msg.replyToMessageId ?? '',
-    msg.replyAliasIds?.join('|') ?? '',
-    msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
-    msg.readReceiptSummary ? [msg.readReceiptSummary.count, msg.readReceiptSummary.participants.map((participant) => [participant.id, participant.name, participant.readAt ?? ''].join(':')).join('|')].join(':') : '',
-    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
-    msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
-    msg.mentions?.map((mention) => mention.label).join('|') ?? '',
-    msg.turn ? liveTurnSnapshotKey(msg.turn) : '',
-    msg.edit?.files.map((file) => [file.path, file.additions, file.deletions, file.lines.length].join(':')).join('|') ?? '',
-  ].join('\u0001');
 }
 
 export const MessageBubble = memo(

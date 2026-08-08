@@ -51,6 +51,22 @@ export function SupportContactAnswer({ text }: { text: string }) {
   );
 }
 
+export function SupportContactTypingIndicator() {
+  return (
+    <div
+      className="app-support-contact-typing"
+      data-support-contact-typing="true"
+      role="status"
+      aria-label="Kordi Support is typing"
+    >
+      <span className="sr-only">Kordi Support is typing</span>
+      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-1" aria-hidden="true" />
+      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-2" aria-hidden="true" />
+      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-3" aria-hidden="true" />
+    </div>
+  );
+}
+
 export function FoldableAssistantAnswer({
   text,
   foldable = true,
