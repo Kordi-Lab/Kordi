@@ -73,7 +73,7 @@ test('support presentation hides stale local provider failures only', () => {
     },
   ]);
 
-  assert.deepEqual(messages.map((message) => message.id), ['support-answer', 'user-question']);
+  assert.deepEqual(messages.map((message) => message.id), ['support-answer', 'support-processing', 'user-question']);
   assert.equal(messages[0]?.sender, KORDI_SUPPORT_NAME);
   assert.equal(messages[0]?.role, 'person');
   assert.equal(messages[0]?.senderType, 'human');
@@ -81,6 +81,15 @@ test('support presentation hides stale local provider failures only', () => {
   assert.equal(messages[0]?.turn, undefined);
   assert.equal(messages[0]?.replyToMessageId, undefined);
   assert.equal(messages[0]?.supportContactResponse, true);
+  assert.equal(messages[0]?.supportContactTyping, false);
+  assert.equal(messages[1]?.sender, KORDI_SUPPORT_NAME);
+  assert.equal(messages[1]?.role, 'person');
+  assert.equal(messages[1]?.senderType, 'human');
+  assert.equal(messages[1]?.text, '');
+  assert.equal(messages[1]?.turn, undefined);
+  assert.equal(messages[1]?.replyToMessageId, undefined);
+  assert.equal(messages[1]?.supportContactResponse, true);
+  assert.equal(messages[1]?.supportContactTyping, true);
 });
 
 test('canonical hydration preserves the fixed Kordi Support contact identity', () => {

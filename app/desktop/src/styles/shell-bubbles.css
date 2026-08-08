@@ -107,6 +107,34 @@
   opacity: 1;
 }
 
+.app-support-contact-typing {
+  display: inline-flex;
+  min-height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding-inline: 1px;
+  color: color-mix(in oklab, var(--utility-foreground) 52%, transparent);
+}
+
+.app-support-contact-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.3;
+  transform-origin: center;
+  animation: app-support-contact-typing-pulse 1.15s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.app-support-contact-typing-dot-2 {
+  animation-delay: 140ms;
+}
+
+.app-support-contact-typing-dot-3 {
+  animation-delay: 280ms;
+}
+
 .app-message-compact-footer {
   opacity: 1;
 }
@@ -144,6 +172,18 @@
   }
 }
 
+@keyframes app-support-contact-typing-pulse {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 0.78;
+    transform: translateY(-2px);
+  }
+}
+
 @keyframes app-attachment-shimmer {
   from {
     transform: translate3d(-115%, 0, 0);
@@ -164,6 +204,11 @@
 
   .app-message-bubble-shape-fill {
     transition: none;
+  }
+
+  .app-support-contact-typing-dot {
+    animation: none;
+    opacity: 0.52;
   }
 }
 

@@ -50,6 +50,22 @@ import type {
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
 
+function SupportContactTypingIndicator() {
+  return (
+    <div
+      className="app-support-contact-typing"
+      data-support-contact-typing="true"
+      role="status"
+      aria-label="Kordi Support is typing"
+    >
+      <span className="sr-only">Kordi Support is typing</span>
+      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-1" aria-hidden="true" />
+      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-2" aria-hidden="true" />
+      <span className="app-support-contact-typing-dot app-support-contact-typing-dot-3" aria-hidden="true" />
+    </div>
+  );
+}
+
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
 }
@@ -1285,8 +1301,16 @@ function MessageBubbleView({
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
-                  ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[52rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
-                  : cn('w-fit min-w-[6.75rem] max-w-[52rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
+                  ? cn(
+                    'app-message-bubble-contact-compact w-fit max-w-[52rem] rounded-[8px] px-3 py-1.5',
+                    msg.supportContactTyping ? 'min-w-[3.25rem]' : 'min-w-[5.5rem]',
+                    humanMessageBubbleShapeClass('peer'),
+                  )
+                  : cn(
+                    'w-fit max-w-[52rem] px-4 py-2.5',
+                    msg.supportContactTyping ? 'min-w-[4rem]' : 'min-w-[6.75rem]',
+                    humanMessageBubbleShapeClass('peer'),
+                  )
               : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5',
           !hasOnlyImageAttachments && bubble,
         )}
@@ -1352,7 +1376,9 @@ function MessageBubbleView({
                       : undefined}
                   />
                 ) : null}
-                {hasText ? (
+                {msg.supportContactTyping ? (
+                  <SupportContactTypingIndicator />
+                ) : hasText ? (
                   msg.supportContactResponse
                     ? <SupportContactAnswer text={msg.text} />
                     : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
@@ -1418,6 +1444,7 @@ function messageSnapshotKey(msg: Message) {
     msg.senderAvatarSeed ?? '',
     msg.senderProfileImageUrl ?? '',
     msg.supportContactResponse ? 'support-contact-response' : '',
+    msg.supportContactTyping ? 'support-contact-typing' : '',
     msg.statusChips?.join(',') ?? '',
     msg.replyToMessageId ?? '',
     msg.replyAliasIds?.join('|') ?? '',

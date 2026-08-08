@@ -27,13 +27,18 @@ function supportContactResponseText(message: Message): string {
   return candidates.find((value) => value?.trim()) ?? '';
 }
 
+function isPendingSupportContactResponse(message: Message): boolean {
+  return Boolean(message.turn && !message.turn.completed && !message.turn.error?.trim());
+}
+
 export function normalizeSupportContactMessages(messages: Message[]) {
   return messages.flatMap((message) => {
     if (isStaleLocalProviderFailure(message)) return [];
     if (message.role !== 'owned-agent' && message.role !== 'external-agent') return [message];
 
     const text = supportContactResponseText(message);
-    if (!text.trim()) return [];
+    const supportContactTyping = !text.trim() && isPendingSupportContactResponse(message);
+    if (!text.trim() && !supportContactTyping) return [];
 
     return [{
       ...message,
@@ -45,6 +50,7 @@ export function normalizeSupportContactMessages(messages: Message[]) {
       isOwnMessage: false,
       showSenderMeta: false,
       supportContactResponse: true,
+      supportContactTyping,
       text,
       detail: undefined,
       replyToMessageId: undefined,

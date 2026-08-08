@@ -87,7 +87,7 @@ test('bridge transcript keeps a fresh processing response visible', () => {
   assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), true);
 });
 
-test('Kordi Support does not expose the agent processing card after an optimistic send', () => {
+test('Kordi Support shows contact typing without exposing the agent processing card', () => {
   const supportConversationId = `bridge:cloud:${KORDI_SUPPORT_ACCOUNT_ID}:person`;
   const state: DesktopCollaborationState = {
     activeHostId: 'cloud',
@@ -126,8 +126,14 @@ test('Kordi Support does not expose the agent processing card after an optimisti
   );
 
   assert.equal(view.type, 'person');
-  assert.equal(view.messages.length, 1);
+  assert.equal(view.messages.length, 2);
   assert.equal(view.messages[0]?.role, 'user');
+  assert.equal(view.messages[1]?.role, 'person');
+  assert.equal(view.messages[1]?.sender, KORDI_SUPPORT_NAME);
+  assert.equal(view.messages[1]?.text, '');
+  assert.equal(view.messages[1]?.supportContactResponse, true);
+  assert.equal(view.messages[1]?.supportContactTyping, true);
+  assert.equal(view.messages[1]?.turn, undefined);
   assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), false);
 });
 

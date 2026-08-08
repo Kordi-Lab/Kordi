@@ -168,6 +168,34 @@ test('Kordi Support answers use a normal contact bubble without agent reply UI',
   assert.doesNotMatch(markup, /Me:/);
 });
 
+test('pending Kordi Support replies use a contact typing indicator without agent controls', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Kordi Support',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: false,
+    supportContactResponse: true,
+    supportContactTyping: true,
+    text: '',
+    time: '19:12',
+    senderProfileImageUrl: '/kordi-support-avatar.svg',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'contact-compact',
+  }));
+
+  assert.match(markup, /app-chat-bubble-peer/);
+  assert.match(markup, /data-support-contact-typing="true"/);
+  assert.match(markup, /aria-label="Kordi Support is typing"/);
+  assert.equal((markup.match(/app-support-contact-typing-dot app-support-contact-typing-dot-/g) ?? []).length, 3);
+  assert.match(markup, /min-w-\[3\.25rem\]/);
+  assert.doesNotMatch(markup, /app-live-turn-response-panel/);
+  assert.doesNotMatch(markup, /Processing…|Me:|Stop/);
+});
+
 test('Kordi Support contact bubbles preserve reviewed report approval', () => {
   const message: Message = {
     role: 'person',
