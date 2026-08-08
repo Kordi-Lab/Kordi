@@ -39,7 +39,14 @@ pub(super) async fn refresh_runner_provider_auth(
     )
     .await
     {
-        Ok(RefreshProviderAuthForRunResult::Refreshed(provider_auth)) => {
+        Ok(RefreshProviderAuthForRunResult::Refreshed {
+            account_id,
+            material: provider_auth,
+        }) => {
+            state
+                .events()
+                .publish_provider_auth_updated(&account_id)
+                .await;
             Json(RunnerProviderAuthMaterialEnvelope { provider_auth }).into_response()
         }
         Ok(RefreshProviderAuthForRunResult::RunNotFound) => error_response(

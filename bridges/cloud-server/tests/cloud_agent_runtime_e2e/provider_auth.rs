@@ -392,6 +392,7 @@ async fn provider_auth_manifest_and_restore_track_api_key_add_update_and_removal
     assert_eq!(first_restore["changed"], true);
     assert!(first_restore["envelope"].is_object());
     let restore_revision = first_restore["syncRevision"].as_str().unwrap().to_string();
+    assert_eq!(restore_revision, first_revision);
 
     let unchanged = router
         .clone()

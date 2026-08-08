@@ -135,6 +135,8 @@ type StoredProviderAuthSnapshotRow = (
     String,
 );
 
+type ProviderAuthManifestRow = (String, String, String, String, Option<String>, Vec<u8>);
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderAuthSnapshotResponse {
     #[serde(rename = "snapshotId")]
@@ -301,8 +303,8 @@ pub async fn snapshot_manifest(
     pool: &PgPool,
     account_id: &str,
 ) -> Result<ProviderAuthSnapshotManifestResponse, sqlx_core::Error> {
-    let rows: Vec<(String, String, String, String, Option<String>)> = query_as(
-        "SELECT snapshot_id, provider, auth_choice, created_at, revoked_at \
+    let rows: Vec<ProviderAuthManifestRow> = query_as(
+        "SELECT snapshot_id, provider, auth_choice, created_at, revoked_at, encrypted_payload \
          FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL \
          ORDER BY provider ASC, auth_choice ASC, snapshot_id ASC",
@@ -310,24 +312,31 @@ pub async fn snapshot_manifest(
     .bind(account_id)
     .fetch_all(pool)
     .await?;
-    let sync_revision =
-        provider_auth_sync_revision(rows.iter().map(|row| (&row.0, &row.1, &row.2, &row.3)));
+    let sync_revision = provider_auth_sync_revision(
+        rows.iter()
+            .map(|row| (&row.0, &row.1, &row.2, &row.3, row.5.as_slice())),
+    );
     Ok(ProviderAuthSnapshotManifestResponse {
         sync_revision,
-        snapshots: rows.into_iter().map(snapshot_response_from_row).collect(),
+        snapshots: rows
+            .into_iter()
+            .map(|row| snapshot_response_from_row((row.0, row.1, row.2, row.3, row.4)))
+            .collect(),
     })
 }
 
 fn provider_auth_sync_revision<'a>(
-    rows: impl IntoIterator<Item = (&'a String, &'a String, &'a String, &'a String)>,
+    rows: impl IntoIterator<Item = (&'a String, &'a String, &'a String, &'a String, &'a [u8])>,
 ) -> String {
     let mut digest = Sha256::new();
     digest.update(b"kordi-provider-auth-sync-v1\0");
-    for (snapshot_id, provider, auth_choice, created_at) in rows {
+    for (snapshot_id, provider, auth_choice, created_at, encrypted_payload) in rows {
         for value in [snapshot_id, provider, auth_choice, created_at] {
             digest.update((value.len() as u64).to_be_bytes());
             digest.update(value.as_bytes());
         }
+        digest.update((encrypted_payload.len() as u64).to_be_bytes());
+        digest.update(encrypted_payload);
     }
     hex::encode(digest.finalize())
 }
@@ -442,5 +451,25 @@ mod tests {
             payload: serde_json::json!({"token":"x"}),
         };
         assert!(request.normalized().is_none());
+    }
+
+    #[test]
+    fn sync_revision_changes_when_encrypted_credentials_are_refreshed() {
+        let snapshot_id = "snap_one".to_string();
+        let provider = "anthropic".to_string();
+        let auth_choice = "profile:claude".to_string();
+        let created_at = "2026-08-08T00:00:00Z".to_string();
+        let revision = |encrypted_payload: &[u8]| {
+            provider_auth_sync_revision(std::iter::once((
+                &snapshot_id,
+                &provider,
+                &auth_choice,
+                &created_at,
+                encrypted_payload,
+            )))
+        };
+
+        assert_ne!(revision(b"encrypted-v1"), revision(b"encrypted-v2"));
+        assert_eq!(revision(b"encrypted-v2"), revision(b"encrypted-v2"));
     }
 }

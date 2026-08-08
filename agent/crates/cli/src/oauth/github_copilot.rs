@@ -196,7 +196,7 @@ pub(crate) async fn login_github_copilot(
     })
 }
 
-pub(crate) async fn refresh_github_copilot_token(
+pub async fn refresh_github_copilot_token(
     refresh_token: &str,
     authority: &str,
 ) -> Result<OAuthCredentials> {

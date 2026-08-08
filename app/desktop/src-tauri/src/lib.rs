@@ -25,13 +25,12 @@ fn is_cloud_edition_context(
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
+    let cloud_bundle =
+        bundle_identifier == "io.kordi.cloud" || bundle_identifier.starts_with("io.kordi.cloud.");
     match explicit.as_str() {
         "cloud" => true,
         "local" => false,
-        _ => {
-            bundle_identifier == "io.kordi.cloud"
-                || bundle_identifier.starts_with("io.kordi.cloud.")
-        }
+        _ => cloud_bundle,
     }
 }
 

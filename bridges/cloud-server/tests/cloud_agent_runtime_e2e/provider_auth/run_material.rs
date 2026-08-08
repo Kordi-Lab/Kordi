@@ -244,6 +244,22 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
     .await
     .unwrap();
 
+    let manifest_before_refresh = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                "/v1/cloud/agent-provider-auth/snapshots/manifest",
+                &owner.token,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let revision_before_refresh = manifest_before_refresh["syncRevision"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
     let refresh = router
         .clone()
         .oneshot(post_json_with_runner_token(
@@ -268,6 +284,21 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
     assert_eq!(
         refreshed_body["providerAuth"]["payload"]["accessToken"],
         "rotated-runner-secret"
+    );
+    let manifest_after_refresh = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                "/v1/cloud/agent-provider-auth/snapshots/manifest",
+                &owner.token,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_ne!(
+        manifest_after_refresh["syncRevision"],
+        revision_before_refresh
     );
 
     let fetched_after_refresh = router

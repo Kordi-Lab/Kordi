@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use crate::cloud_agent_runtime::provider_auth::{EnvProviderAuthCipher, ProviderAuthCipher};
 use super::{RunError, RunResult};
+use crate::cloud_agent_runtime::provider_auth::{EnvProviderAuthCipher, ProviderAuthCipher};
 
 #[derive(Debug, Deserialize)]
 pub struct RunnerRunRequest {

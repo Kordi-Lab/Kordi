@@ -21,9 +21,7 @@ import {
   type CloudMessage,
   type CloudSessionTitle,
 } from './authClient';
-import {
-  CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-} from './cloudAgentMessages';
+import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';

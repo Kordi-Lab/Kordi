@@ -166,7 +166,7 @@ pub async fn restore_snapshots_for_device(
         "SELECT snapshot_id, provider, auth_choice, created_at, encrypted_payload \
          FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND encryption_key_id = $2 AND revoked_at IS NULL \
-         ORDER BY created_at DESC LIMIT $3",
+         ORDER BY provider ASC, auth_choice ASC, snapshot_id ASC LIMIT $3",
     )
     .bind(account_id)
     .bind(cipher.key_id())
@@ -175,6 +175,7 @@ pub async fn restore_snapshots_for_device(
     .await?;
 
     let mut snapshots = Vec::new();
+    let mut revision_rows = Vec::new();
     for (snapshot_id, provider, auth_choice, created_at, encrypted_payload) in rows {
         let plaintext = cipher
             .decrypt(&encrypted_payload)
@@ -184,6 +185,13 @@ pub async fn restore_snapshots_for_device(
         if !is_restorable_provider_auth_payload(&payload) {
             continue;
         }
+        revision_rows.push((
+            snapshot_id.clone(),
+            provider.clone(),
+            auth_choice.clone(),
+            created_at.clone(),
+            encrypted_payload,
+        ));
         snapshots.push(RestorableProviderAuthSnapshot {
             snapshot_id,
             provider,
@@ -193,14 +201,11 @@ pub async fn restore_snapshots_for_device(
         });
     }
 
-    let sync_revision = provider_auth_sync_revision(snapshots.iter().map(|snapshot| {
-        (
-            &snapshot.snapshot_id,
-            &snapshot.provider,
-            &snapshot.auth_choice,
-            &snapshot.created_at,
-        )
-    }));
+    let sync_revision = provider_auth_sync_revision(
+        revision_rows
+            .iter()
+            .map(|row| (&row.0, &row.1, &row.2, &row.3, row.4.as_slice())),
+    );
     let changed = known_revision.map(str::trim) != Some(sync_revision.as_str());
     if !changed || snapshots.is_empty() {
         return Ok(RestoreProviderAuthSnapshotsResponse {

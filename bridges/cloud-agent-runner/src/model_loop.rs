@@ -201,17 +201,6 @@ async fn refresh_oauth_material_if_needed<C: CloudAgentRunClient + Sync>(
             );
         }
         "github-copilot-oauth" => {
-            let github_access_token = payload_secret(payload, "githubAccessToken")?;
-            if payload
-                .get("githubAccessExpiresAt")
-                .and_then(Value::as_i64)
-                .is_some_and(|expires| expires <= chrono::Utc::now().timestamp_millis())
-            {
-                return Err(ModelLoopError::Provider(
-                    "Cloud fallback GitHub OAuth session expired; reconnect GitHub Copilot while the owner is online."
-                        .to_string(),
-                ));
-            }
             let authority = payload
                 .get("authority")
                 .and_then(Value::as_str)
@@ -219,28 +208,79 @@ async fn refresh_oauth_material_if_needed<C: CloudAgentRunClient + Sync>(
                 .filter(|value| !value.is_empty())
                 .unwrap_or("github.com")
                 .to_string();
-            let refreshed =
-                kordi_cli::oauth::github_copilot::exchange_github_token_for_copilot_session(
+            let github_access_expiring = payload
+                .get("githubAccessExpiresAt")
+                .and_then(Value::as_i64)
+                .is_some_and(|expires| {
+                    expires <= chrono::Utc::now().timestamp_millis() + OAUTH_REFRESH_BUFFER_MS
+                });
+            if github_access_expiring {
+                let refresh_token = payload_secret(payload, "refreshToken")?;
+                let refreshed = kordi_cli::oauth::github_copilot::refresh_github_copilot_token(
+                    &refresh_token,
                     &authority,
-                    &github_access_token,
                 )
                 .await
                 .map_err(|error| {
                     ModelLoopError::Provider(format!(
-                        "Cloud fallback could not refresh GitHub Copilot OAuth: {error}"
+                        "Cloud fallback could not refresh GitHub OAuth: {error}"
                     ))
                 })?;
-            payload.insert(
-                "accessToken".to_string(),
-                Value::String(refreshed.copilot_token),
-            );
-            payload.insert(
-                "runtimeExpiresAt".to_string(),
-                Value::Number(refreshed.copilot_expires_at_ms.into()),
-            );
-            payload.insert("baseUrl".to_string(), Value::String(refreshed.api_base_url));
-            if let Some(login) = refreshed.login {
-                payload.insert("accountLabel".to_string(), Value::String(login));
+                payload.insert(
+                    "githubAccessToken".to_string(),
+                    Value::String(refreshed.access),
+                );
+                payload.insert(
+                    "refreshToken".to_string(),
+                    Value::String(if refreshed.refresh.trim().is_empty() {
+                        refresh_token
+                    } else {
+                        refreshed.refresh
+                    }),
+                );
+                payload.insert(
+                    "githubAccessExpiresAt".to_string(),
+                    Value::Number(refreshed.expires.into()),
+                );
+                copy_string_field(&refreshed.extra, payload, "copilot_token", "accessToken")?;
+                copy_i64_field(
+                    &refreshed.extra,
+                    payload,
+                    "copilot_expires_at",
+                    "runtimeExpiresAt",
+                )?;
+                copy_optional_string_field(
+                    &refreshed.extra,
+                    payload,
+                    "copilot_api_base_url",
+                    "baseUrl",
+                );
+                copy_optional_string_field(&refreshed.extra, payload, "login", "accountLabel");
+            } else {
+                let github_access_token = payload_secret(payload, "githubAccessToken")?;
+                let refreshed =
+                    kordi_cli::oauth::github_copilot::exchange_github_token_for_copilot_session(
+                        &authority,
+                        &github_access_token,
+                    )
+                    .await
+                    .map_err(|error| {
+                        ModelLoopError::Provider(format!(
+                            "Cloud fallback could not refresh GitHub Copilot OAuth: {error}"
+                        ))
+                    })?;
+                payload.insert(
+                    "accessToken".to_string(),
+                    Value::String(refreshed.copilot_token),
+                );
+                payload.insert(
+                    "runtimeExpiresAt".to_string(),
+                    Value::Number(refreshed.copilot_expires_at_ms.into()),
+                );
+                payload.insert("baseUrl".to_string(), Value::String(refreshed.api_base_url));
+                if let Some(login) = refreshed.login {
+                    payload.insert("accountLabel".to_string(), Value::String(login));
+                }
             }
         }
         _ => return Ok(material),
@@ -250,6 +290,60 @@ async fn refresh_oauth_material_if_needed<C: CloudAgentRunClient + Sync>(
         .persist_refreshed_provider_auth(&run.run_id, &material.snapshot_id, &material.payload)
         .await?;
     Ok(material)
+}
+
+fn copy_string_field(
+    source: &Value,
+    target: &mut serde_json::Map<String, Value>,
+    source_field: &str,
+    target_field: &str,
+) -> Result<(), ModelLoopError> {
+    let value = source
+        .get(source_field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ModelLoopError::Provider(format!(
+                "Cloud fallback GitHub refresh response is missing {source_field}."
+            ))
+        })?;
+    target.insert(target_field.to_string(), Value::String(value.to_string()));
+    Ok(())
+}
+
+fn copy_i64_field(
+    source: &Value,
+    target: &mut serde_json::Map<String, Value>,
+    source_field: &str,
+    target_field: &str,
+) -> Result<(), ModelLoopError> {
+    let value = source
+        .get(source_field)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| {
+            ModelLoopError::Provider(format!(
+                "Cloud fallback GitHub refresh response is missing {source_field}."
+            ))
+        })?;
+    target.insert(target_field.to_string(), Value::Number(value.into()));
+    Ok(())
+}
+
+fn copy_optional_string_field(
+    source: &Value,
+    target: &mut serde_json::Map<String, Value>,
+    source_field: &str,
+    target_field: &str,
+) {
+    if let Some(value) = source
+        .get(source_field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        target.insert(target_field.to_string(), Value::String(value.to_string()));
+    }
 }
 
 fn payload_secret(

@@ -34,7 +34,10 @@ pub enum ProviderAuthForRunResult {
 
 #[derive(Debug)]
 pub enum RefreshProviderAuthForRunResult {
-    Refreshed(RunnerProviderAuthMaterial),
+    Refreshed {
+        account_id: String,
+        material: RunnerProviderAuthMaterial,
+    },
     RunNotFound,
     SnapshotNotFound,
 }
@@ -192,14 +195,15 @@ pub async fn refresh_provider_auth_for_run(
     .await?;
     tx.commit().await?;
 
-    Ok(RefreshProviderAuthForRunResult::Refreshed(
-        RunnerProviderAuthMaterial {
+    Ok(RefreshProviderAuthForRunResult::Refreshed {
+        account_id: owner_account_id,
+        material: RunnerProviderAuthMaterial {
             snapshot_id: snapshot_id.to_string(),
             provider,
             auth_choice,
             payload,
         },
-    ))
+    })
 }
 
 fn normalize_snapshot_provider(provider: &str) -> &str {
