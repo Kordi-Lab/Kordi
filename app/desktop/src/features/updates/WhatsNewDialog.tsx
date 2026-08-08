@@ -94,7 +94,7 @@ export function WhatsNewDialog({
           {release.changelogUrl && onOpenFullReleaseNotes ? (
             <button
               type="button"
-              className="app-transient-flat-action mr-auto inline-flex min-h-9 items-center gap-2 rounded-[10px] px-3 text-[12px] font-medium"
+              className="app-transient-flat-action app-whats-new-action mr-auto inline-flex min-h-9 items-center gap-2 rounded-[10px] px-3 font-medium"
               onClick={onOpenFullReleaseNotes}
             >
               View full release notes
@@ -103,7 +103,7 @@ export function WhatsNewDialog({
           ) : null}
           <button
             type="button"
-            className="app-button-primary min-h-9 rounded-[10px] px-4 text-[12px] font-semibold"
+            className="app-button-primary app-whats-new-action min-h-9 rounded-[10px] px-4 font-semibold"
             onClick={onDismiss}
             autoFocus
           >
