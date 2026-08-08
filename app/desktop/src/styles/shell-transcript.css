@@ -88,6 +88,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.app-message-hover-time-trigger:is(:hover, :focus-within) + .app-message-hover-time {
+  opacity: 1;
+}
+
 .app-message-status-bar {
   display: flex;
   flex-wrap: wrap;

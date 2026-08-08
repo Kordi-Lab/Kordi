@@ -128,16 +128,24 @@ test('real assistant row keeps its sender, time, and fork control DOM through ca
 
   await act(async () => root?.render(<MessageBubble msg={live} onForkMessage={onForkMessage} />));
   const liveForkButton = host.querySelector<HTMLButtonElement>('.app-message-fork-button');
+  const liveTime = host.querySelector<HTMLElement>('.app-message-hover-time');
   assert.ok(liveForkButton);
+  assert.ok(liveTime?.parentElement?.classList.contains('w-fit'));
+  assert.ok(liveTime?.parentElement?.classList.contains('max-w-full'));
+  assert.equal(liveTime?.parentElement?.classList.contains('w-full'), false);
   assert.equal(liveForkButton.disabled, true);
-  assert.match(host.textContent ?? '', new RegExp(`My Kordi\\s*•\\s*${live.time}`));
+  assert.equal(host.querySelector('.app-message-meta')?.textContent?.trim(), 'My Kordi');
+  assert.equal(liveTime?.textContent, live.time);
 
   await act(async () => root?.render(<MessageBubble msg={canonical} onForkMessage={onForkMessage} />));
   const canonicalForkButton = host.querySelector<HTMLButtonElement>('.app-message-fork-button');
+  const canonicalTime = host.querySelector<HTMLElement>('.app-message-hover-time');
   assert.equal(canonical.id, live.id);
   assert.equal(canonical.sender, live.sender);
   assert.equal(canonical.time, live.time);
   assert.equal(canonicalForkButton, liveForkButton);
+  assert.equal(canonicalTime, liveTime);
   assert.equal(canonicalForkButton?.disabled, false);
-  assert.match(host.textContent ?? '', new RegExp(`My Kordi\\s*•\\s*${live.time}`));
+  assert.equal(host.querySelector('.app-message-meta')?.textContent?.trim(), 'My Kordi');
+  assert.equal(canonicalTime?.textContent, live.time);
 });

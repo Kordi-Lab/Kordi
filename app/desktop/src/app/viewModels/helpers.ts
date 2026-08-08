@@ -174,7 +174,6 @@ export function buildOutreachInlineMessages(conversation: DesktopCollaborationCo
     text: requestPreview ? `${joinText} — “${requestPreview}”` : joinText,
     time: conversation.updatedAtLabel,
   }];
-
   const cutoffMs = Math.max(0, outreach.createdAtMs - 2_000);
   for (const message of conversation.messages) {
     if (message.timestampMs < cutoffMs) continue;
@@ -205,6 +204,7 @@ export function buildOutreachInlineMessages(conversation: DesktopCollaborationCo
       senderAvatarSeed: avatarSeed,
       text: isAgent ? '' : message.text,
       time: message.timeLabel,
+      timestampMs: message.timestampMs,
       turn: agentTurn,
     });
   }

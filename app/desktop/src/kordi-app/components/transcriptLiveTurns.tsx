@@ -804,7 +804,7 @@ function LiveChatTurnCardView({
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
-        <div className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
+        <div className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,58rem)] space-y-2.5')}>
           {shouldShowSourceQuote ? (
             <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
           ) : null}

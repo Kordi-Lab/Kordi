@@ -104,6 +104,7 @@ export function useProjectMessageActions({
     if (!isNativeShell) {
       if (!activeProjectSessionId) return;
       shouldAutoFollowChatRef.current = true;
+      const sentAtMs = Date.now();
       const sentAt = formatDesktopEventTime();
 
       setProjectWorkspaces((current: Project[]) =>
@@ -126,6 +127,7 @@ export function useProjectMessageActions({
                             text,
                             attachments: toOptimisticAttachments(chatComposerAttachments),
                             time: sentAt,
+                            timestampMs: sentAtMs,
                           },
                         ],
                       },

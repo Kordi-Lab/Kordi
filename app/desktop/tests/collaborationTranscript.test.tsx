@@ -100,8 +100,8 @@ test('cloud self-agent bridge conversations render as My agent, not external age
   assert.deepEqual(view.participants, ['Me', 'My Kordi']);
   assert.equal(view.messages[0]?.role, 'owned-agent');
   assert.equal(view.messages[0]?.sender, 'My Kordi');
+  assert.equal(view.messages[0]?.timestampMs, 2);
 });
-
 test('bridge transcript maps local and remote human profile images onto message avatars', () => {
   const view = mapCollaborationConversationToViewModel(conversation({
     messages: [

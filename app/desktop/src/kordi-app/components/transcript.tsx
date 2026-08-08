@@ -36,6 +36,7 @@ import { AttachmentPreview } from './transcriptAttachments';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
+import { MessageHoverTime } from './transcriptMessageTime';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
@@ -280,7 +281,6 @@ function MessageDeliveryStatusSlot({ status }: { status?: string | null }) {
 }
 
 function MessageFooter({
-  time,
   status,
   detail,
   isUser,
@@ -288,7 +288,6 @@ function MessageFooter({
   replySummary,
   onNavigateToMessage,
 }: {
-  time: string;
   status?: string | null;
   detail?: string;
   isUser?: boolean;
@@ -297,17 +296,17 @@ function MessageFooter({
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
+  if (!isUser && !showDetail && !replySummary) return null;
 
   return (
     <div className={cn(
       'app-message-footer app-message-delivery-footer flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
-      compact ? 'shrink-0 self-end whitespace-nowrap pl-2 min-w-[4.6rem] justify-end' : 'ml-auto mt-1.5 min-w-[4.6rem] justify-end',
+      compact ? 'shrink-0 self-end whitespace-nowrap pl-2 justify-end' : 'ml-auto mt-1.5 justify-end',
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
       <RequestReplyLine summary={replySummary} own={Boolean(isUser)} inline onNavigateToMessage={onNavigateToMessage} />
-      <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
-      <MessageDeliveryStatusSlot status={status} />
+      {isUser ? <MessageDeliveryStatusSlot status={status} /> : null}
     </div>
   );
 }
@@ -1103,35 +1102,39 @@ function MessageBubbleView({
       </MessageContextMenuHost>
     );
   }
-
   if (msg.turn) {
     return (
       <MessageContextMenuHost
         msg={msg}
         {...menuActionHandlers}
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
-        className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
+        className="flex w-full max-w-[min(100%,61rem)] flex-col items-start py-0.5"
       >
         {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
           <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
         ) : null}
-        <div className="flex w-full items-center gap-1.5">
-          <div className="app-message-meta">
-            {msg.sender} • {msg.time}
+        <div className="flex w-fit max-w-full items-end gap-2">
+          <div className="app-message-hover-time-trigger min-w-0 w-fit max-w-[58rem]">
+            <div className="flex w-full items-center gap-1.5">
+              <div className="app-message-meta">
+                {msg.sender}
+              </div>
+              {forkButton}
+              {forkChip}
+            </div>
+            <LiveChatTurnCard
+              turn={msg.turn}
+              historical={msg.turn.completed}
+              plainAgentResponse={plainAgentResponse}
+              onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
+              onStopActiveTurn={onStopActiveTurn}
+              onNavigateToMessage={onNavigateToMessage}
+              onOpenArtifact={onOpenArtifact}
+              onOpenAuthSettings={onOpenAuthSettings}
+            />
           </div>
-          {forkButton}
-          {forkChip}
+          <MessageHoverTime msg={msg} side="peer" />
         </div>
-        <LiveChatTurnCard
-          turn={msg.turn}
-          historical={msg.turn.completed}
-          plainAgentResponse={plainAgentResponse}
-          onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-          onStopActiveTurn={onStopActiveTurn}
-          onNavigateToMessage={onNavigateToMessage}
-          onOpenArtifact={onOpenArtifact}
-          onOpenAuthSettings={onOpenAuthSettings}
-        />
       </MessageContextMenuHost>
     );
   }
@@ -1196,22 +1199,17 @@ function MessageBubbleView({
         useHumanCompactDensity ? (isGroupedWithNext ? 'pb-0' : 'pb-0.5') : (isGroupedWithNext ? 'pb-0' : 'pb-1'),
         useHumanCompactDensity ? 'app-message-row-contact-compact' : '',
         align,
-        isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
+        isAgentMessage ? 'w-full max-w-[min(100%,61rem)]' : '',
         showContactRequestAction ? 'w-full' : '',
         isSelectedForAction ? 'app-message-selection-selected' : '',
       )}
       data-transcript-density={compactDensity}
     >
-      {showHeaderMeta ? (
-        <div className="app-message-meta px-1">
-          {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
-        </div>
-      ) : null}
+      {showHeaderMeta ? <div className="app-message-meta px-1">{msg.sender}</div> : null}
       <div className={cn(
         'flex items-end',
-        showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
+        isAgentMessage ? 'w-fit max-w-full gap-2' : showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
-        isAgentMessage ? 'w-full' : '',
       )}>
         {selectionControl}
         {showAvatar ? (
@@ -1272,7 +1270,7 @@ function MessageBubbleView({
             onOpenSenderProfile?.(msg, event.currentTarget.getBoundingClientRect());
           }}
           className={cn(
-          'min-w-0',
+          'app-message-hover-time-trigger min-w-0',
           canOpenSenderProfile ? 'cursor-pointer' : '',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
@@ -1280,15 +1278,15 @@ function MessageBubbleView({
             ? hasOnlyImageAttachments
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
-                ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
-                : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
+                ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[52rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
+                : cn('w-fit min-w-[6.75rem] max-w-[52rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
-                  ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
-                  : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
-              : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
+                  ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[52rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
+                  : cn('w-fit min-w-[6.75rem] max-w-[52rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
+              : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5',
           !hasOnlyImageAttachments && bubble,
         )}
         >
@@ -1330,15 +1328,16 @@ function MessageBubbleView({
               <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
                 <MessageInlineContent text={msg.text} mentions={msg.mentions} />
               </span>
-              <span className={cn(
-                'app-message-footer app-message-compact-footer inline-flex translate-y-[1px] items-center whitespace-nowrap text-[9.5px] leading-none tabular-nums',
-                isOwnHumanMessage ? 'app-message-delivery-footer ml-3 gap-0.5 text-black/45' : 'ml-4 gap-1 text-slate-500/80',
-              )}>
-                {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
-                <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
-                <span className={cn(isOwnHumanMessage && 'inline-block min-w-[2.1rem] text-right')}>{msg.time}</span>
-                {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={deliveryStatus} /> : null}
-              </span>
+              {isOwnHumanMessage || footerDetail || msg.replySummary ? (
+                <span className={cn(
+                  'app-message-footer app-message-compact-footer inline-flex translate-y-[1px] items-center whitespace-nowrap text-[9.5px] leading-none tabular-nums',
+                  isOwnHumanMessage ? 'app-message-delivery-footer ml-3 gap-0.5 text-black/45' : 'ml-4 gap-1 text-slate-500/80',
+                )}>
+                  {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
+                  <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
+                  {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={deliveryStatus} /> : null}
+                </span>
+              ) : null}
             </div>
           ) : (
             <>
@@ -1356,7 +1355,6 @@ function MessageBubbleView({
               </div>
               {!hasOnlyImageAttachments ? (
                 <MessageFooter
-                  time={msg.time}
                   status={isOwnHumanMessage ? deliveryStatus : undefined}
                   detail={footerDetail}
                   isUser={isOwnHumanMessage}
@@ -1385,6 +1383,7 @@ function MessageBubbleView({
           </>
         )}
         </div>
+        <MessageHoverTime msg={msg} side={isOwnHumanMessage ? 'own' : 'peer'} />
         {forkButton}
         {forkChip}
       </div>
@@ -1409,6 +1408,7 @@ function messageSnapshotKey(msg: Message) {
     msg.showSenderMeta ? 'meta' : '',
     msg.text,
     msg.time,
+    msg.timestampMs ?? '',
     msg.detail ?? '',
     msg.senderAvatarSeed ?? '',
     msg.senderProfileImageUrl ?? '',

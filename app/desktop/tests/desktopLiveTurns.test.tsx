@@ -201,6 +201,7 @@ test('live, synthetic completion, and canonical hydration keep one render identi
   assert.equal(canonical.transcriptRenderId, liveMessage.id);
   assert.equal(synthetic.timeLabel, liveMessage.time);
   assert.equal(canonical.timeLabel, liveMessage.time);
+  assert.equal(liveMessage.timestampMs, completedTurn.startedAtMs);
   assert.equal(alias.entryId, 'entry:assistant:stable');
 });
 

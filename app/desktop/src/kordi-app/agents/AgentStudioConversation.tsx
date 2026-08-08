@@ -71,12 +71,12 @@ function attachmentFormatLabel(name: string, mimeType?: string) {
     || mimeType?.split('/').pop()?.trim().toUpperCase()
     || 'FILE';
 }
-
 function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: {
   seed?: string | null;
   displayName?: string | null;
   imageUrl?: string | null;
 }): Message {
+  const timestampMs = Date.now();
   return {
     id: `agent-builder-optimistic:${text}`,
     role: 'user',
@@ -96,10 +96,10 @@ function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: 
       localPath: attachment.path,
       sizeBytes: attachment.sizeBytes,
     })),
-    time: formatDesktopClockTime(new Date()),
+    time: formatDesktopClockTime(timestampMs),
+    timestampMs,
   };
 }
-
 export function AgentStudioConversation({
   targetName,
   creating,

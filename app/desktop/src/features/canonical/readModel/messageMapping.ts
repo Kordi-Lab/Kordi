@@ -566,7 +566,6 @@ export function mapCanonicalMessage(
     || agentLabelForHumanIdentity(sourceHumanIdentity, identityById);
   const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
-
   if (role === 'system' && !displayText.trim()) return null;
 
   return {
@@ -588,6 +587,7 @@ export function mapCanonicalMessage(
     showSenderMeta: role === 'person' || role === 'external-agent',
     text: isAgentTurn ? '' : displayText,
     time,
+    timestampMs: message.createdAtMs,
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
     mentions: canonicalMentions(content.mentions),

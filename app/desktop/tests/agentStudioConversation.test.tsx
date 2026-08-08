@@ -79,7 +79,8 @@ test('Kordi Factory optimistic messages use the shared 24-hour desktop clock', (
     'utf8',
   );
 
-  assert.match(source, /time: formatDesktopClockTime\(new Date\(\)\)/);
+  assert.match(source, /time: formatDesktopClockTime\(timestampMs\)/);
+  assert.match(source, /timestampMs,/);
   assert.doesNotMatch(source, /toLocaleTimeString/);
 });
 
