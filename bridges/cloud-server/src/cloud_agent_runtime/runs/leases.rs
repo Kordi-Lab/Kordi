@@ -94,6 +94,11 @@ pub async fn lease_next_run(
          WHERE run_id = ( \
              SELECT run_id FROM cloud_agent_fallback_runs \
              WHERE status = 'queued' \
+                OR ( \
+                    status IN ('leased', 'running') \
+                    AND lease_expires_at IS NOT NULL \
+                    AND lease_expires_at <= $3 \
+                ) \
              ORDER BY created_at ASC \
              LIMIT 1 \
              FOR UPDATE SKIP LOCKED \
@@ -121,7 +126,14 @@ pub async fn lease_canary_run(
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'leased', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
-         WHERE run_id = $4 AND status = 'queued' \
+         WHERE run_id = $4 AND ( \
+             status = 'queued' \
+             OR ( \
+                 status IN ('leased', 'running') \
+                 AND lease_expires_at IS NOT NULL \
+                 AND lease_expires_at <= $3 \
+             ) \
+         ) \
          RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
     )
     .bind(runner_id)
@@ -141,15 +153,18 @@ pub async fn mark_run_running(
     run_id: &str,
     runner_id: &str,
 ) -> RunResult<RunnerRunResponse> {
+    let now = Utc::now();
+    let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
-         SET status = 'running', updated_at = $3 \
+         SET status = 'running', lease_expires_at = $3, updated_at = $4 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
          RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
     )
     .bind(run_id)
     .bind(runner_id)
-    .bind(Utc::now().to_rfc3339())
+    .bind(lease_expires_at)
+    .bind(now.to_rfc3339())
     .fetch_optional(pool)
     .await?;
     match row {

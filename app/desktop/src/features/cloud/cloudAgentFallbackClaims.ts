@@ -205,11 +205,13 @@ export function cloudFallbackRunClaimsForMessages({
   contacts,
   messageIndex,
   messagesByPeer = {},
+  recentSinceMs,
 }: {
   account: CloudAccount;
   contacts: Contact[];
   messageIndex?: CloudMessageIndex;
   messagesByPeer?: Record<string, CloudMessage[]>;
+  recentSinceMs?: number;
 }): CloudAgentRunClaimInput[] {
   const index = messageIndex
     ?? buildCloudMessageIndex(account.accountId, messagesByPeer);
@@ -266,6 +268,13 @@ export function cloudFallbackRunClaimsForMessages({
         && groupEnvelope.message?.senderAccountId === account.accountId
       ) {
         const groupMessage = groupEnvelope.message;
+        if (
+          recentSinceMs !== undefined
+          && (
+            !Number.isFinite(groupMessage.createdAtMs)
+            || groupMessage.createdAtMs < recentSinceMs
+          )
+        ) continue;
         if (!cloudMessageActionAllowsAgentTrigger(groupMessage.messageAction)) {
           continue;
         }
@@ -308,6 +317,12 @@ export function cloudFallbackRunClaimsForMessages({
         || parseCloudAgentResponse(message.body)
         || parseCloudAgentCancel(message.body)
       ) continue;
+      if (recentSinceMs !== undefined) {
+        const createdAtMs = Date.parse(message.createdAt);
+        if (!Number.isFinite(createdAtMs) || createdAtMs < recentSinceMs) {
+          continue;
+        }
+      }
       if (
         !cloudMessageActionAllowsAgentTrigger(
           cloudDirectMessageAction(message.body),

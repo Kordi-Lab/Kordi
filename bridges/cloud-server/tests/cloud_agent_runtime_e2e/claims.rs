@@ -54,7 +54,7 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 }
 
 #[tokio::test]
-async fn cloud_agent_runtime_fallback_claim_is_rejected_when_owner_is_online() {
+async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_online() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
@@ -69,7 +69,7 @@ async fn cloud_agent_runtime_fallback_claim_is_rejected_when_owner_is_online() {
         .unwrap();
     assert_eq!(online.status(), StatusCode::OK);
 
-    let response = router
+    let first = router
         .clone()
         .oneshot(post_json_with_token(
             "/v1/cloud/agent-runs/claim",
@@ -79,7 +79,30 @@ async fn cloud_agent_runtime_fallback_claim_is_rejected_when_owner_is_online() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_body = read_json(first).await;
+
+    let second = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_online_owner"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let second_body = read_json(second).await;
+
+    assert_eq!(first_body["runId"], second_body["runId"]);
+    let idempotency_key = claim_body(&owner, &requester, "msg_online_owner")["idempotencyKey"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        count_cloud_agent_runs_for_key(&pool, &idempotency_key).await,
+        1
+    );
 }
 
 #[tokio::test]

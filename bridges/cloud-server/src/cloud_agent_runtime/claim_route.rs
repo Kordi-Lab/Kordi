@@ -2,20 +2,17 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json};
-use chrono::Utc;
-
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
     claim_has_shared_cloud_agent_target, claim_run, error_response, requester_can_target_owner,
     run_error_response, validate_agent_authored_group_handoff_claim,
     validate_shared_cloud_agent_claim, ClaimRunRequest,
 };
-use crate::presence::{account_presence_status, presence_timeout, AccountPresenceStatus};
 use crate::server::ServerState;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::{Extension, Json};
 
 pub(super) async fn claim_cloud_agent_run(
     State(state): State<Arc<ServerState>>,
@@ -115,33 +112,9 @@ pub(super) async fn claim_cloud_agent_run(
         );
     }
 
-    let owner_presence = match account_presence_status(
-        state.db_pool(),
-        &input.owner_account_id,
-        Utc::now(),
-        presence_timeout(),
-    )
-    .await
-    {
-        Ok(summary) => summary,
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] load owner presence: {err}");
-            return error_response(
-                "server_error",
-                "Could not validate owner presence for Cloud fallback.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
-
-    if owner_presence.status == AccountPresenceStatus::Online {
-        return error_response(
-            "owner_online",
-            "The owner device is online, so Cloud fallback did not claim this run.",
-            StatusCode::CONFLICT,
-        );
-    }
-
+    // Presence describes reachability; it is not ownership of this request.
+    // The exact idempotency key below is the durable admission boundary, so a
+    // stale/online presence row cannot strand a request without a runner.
     match claim_run(state.db_pool(), &input).await {
         Ok(run) => Json(run).into_response(),
         Err(error) => run_error_response(

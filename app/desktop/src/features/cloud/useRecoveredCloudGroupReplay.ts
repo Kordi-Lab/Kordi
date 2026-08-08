@@ -78,6 +78,7 @@ export function useRecoveredCloudGroupReplay({
     contextKey,
     coordinator,
     messageIndex,
+    canonicalStateRef,
     applyControl,
     flushCanonicalState,
     reportWarning,

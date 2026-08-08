@@ -1,6 +1,7 @@
 import {
   useEffect,
   useRef,
+  type MutableRefObject,
 } from 'react';
 import {
   fetchExistingCanonicalMessageSources,
@@ -15,6 +16,11 @@ import {
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
 import type { CloudMessage } from './authClient';
+import type { CanonicalSessionState } from '@/kordi-app/types';
+import {
+  cloudGroupTerminalRepairReplayKey,
+  cloudGroupTerminalRepairReplayRows,
+} from './cloudGroupTerminalRepair';
 import type {
   CloudGroupReplayCoordinator,
 } from './cloudGroupReplayCoordinator';
@@ -24,6 +30,7 @@ export function useCloudGroupReplay({
   contextKey,
   coordinator,
   messageIndex,
+  canonicalStateRef,
   applyControl,
   flushCanonicalState,
   reportWarning,
@@ -32,6 +39,7 @@ export function useCloudGroupReplay({
   contextKey: string | null;
   coordinator: CloudGroupReplayCoordinator<IndexedCloudGroupRow>;
   messageIndex: CloudMessageIndex;
+  canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
   applyControl: (
     wire: CloudMessage,
     envelope: CloudGroupControlEnvelope,
@@ -143,11 +151,29 @@ export function useCloudGroupReplay({
         messageIndex.replayRows,
         cache.existing,
       );
-      const replaySignature = replayRows
-        .map(cloudGroupReplayKeyForRow)
-        .join('\n');
+      const terminalRepairRows = cloudGroupTerminalRepairReplayRows(
+        messageIndex.replayRows,
+        canonicalStateRef.current?.messages ?? [],
+      );
+      const terminalRepairRowSet = new Set(terminalRepairRows);
+      const entries = [
+        ...replayRows
+          .filter((row) => !terminalRepairRowSet.has(row))
+          .map((row) => ({
+            key: cloudGroupReplayKeyForRow(row),
+            row,
+          })),
+        ...terminalRepairRows.map((row) => ({
+          // A normal replay key may already be completed because this response
+          // is durable. Repair the stale in-memory processing slot through a
+          // separate monotonic coordinator key.
+          key: cloudGroupTerminalRepairReplayKey(row),
+          row,
+        })),
+      ];
+      const replaySignature = entries.map(({ key }) => key).join('\n');
       if (cache.lastReplaySignature === replaySignature) return;
-      if (replayRows.length === 0) {
+      if (entries.length === 0) {
         cache.lastReplaySignature = replaySignature;
         return;
       }
@@ -161,10 +187,7 @@ export function useCloudGroupReplay({
         flushCanonicalStateRef.current();
       };
       await coordinator.request({
-        entries: replayRows.map((row) => ({
-          key: cloudGroupReplayKeyForRow(row),
-          row,
-        })),
+        entries,
         apply: async (row) => {
           await applyControlRef.current(row.wire, row.envelope);
         },
@@ -196,6 +219,7 @@ export function useCloudGroupReplay({
     };
   }, [
     coordinator,
+    canonicalStateRef,
     contextKey,
     enabled,
     messageIndex,
