@@ -1,0 +1,187 @@
+import { cloudApiBaseUrl } from '@/features/cloud/authClient';
+import {
+  readPreferenceStorageItem,
+  resolvePreferenceStorage,
+  writePreferenceStorageItem,
+} from '@/features/cloud/preferenceStorage';
+
+export const WHATS_NEW_LAST_SHOWN_VERSION_KEY = 'kordi.desktop.whatsNew.v1.lastShownVersion';
+
+const SEMANTIC_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const MAX_RELEASE_NOTES_LENGTH = 16_384;
+
+export type WhatsNewRelease = {
+  version: string;
+  notes: string;
+  publishedAt: string;
+  changelogUrl?: string;
+};
+
+export type WhatsNewHighlightGroup = {
+  title: string;
+  items: string[];
+};
+
+export type WhatsNewRuntime = {
+  isNativeShell: boolean;
+  currentVersion: () => Promise<string>;
+  fetchImpl?: typeof fetch;
+  baseUrl?: string;
+  storage?: Storage | null;
+  signal?: AbortSignal;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizedVersion(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const version = value.trim();
+  return SEMANTIC_VERSION.test(version) ? version : null;
+}
+
+function safeChangelogUrl(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' || url.username || url.password) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseWhatsNewRelease(value: unknown, expectedVersion: string): WhatsNewRelease | null {
+  if (!isRecord(value) || value.schemaVersion !== 1) return null;
+  const version = normalizedVersion(value.version);
+  const notes = typeof value.notes === 'string' ? value.notes.trim() : '';
+  const publishedAt = typeof value.pubDate === 'string' ? value.pubDate.trim() : '';
+  if (
+    version !== expectedVersion
+    || !notes
+    || notes.length > MAX_RELEASE_NOTES_LENGTH
+    || !publishedAt
+    || Number.isNaN(Date.parse(publishedAt))
+  ) {
+    return null;
+  }
+  return {
+    version,
+    notes,
+    publishedAt,
+    changelogUrl: safeChangelogUrl(value.changelogUrl),
+  };
+}
+
+export function whatsNewRequestUrl(version: string, baseUrl = cloudApiBaseUrl()) {
+  const normalized = normalizedVersion(version);
+  if (!normalized) throw new Error('Installed Kordi version is invalid.');
+  return new URL(
+    `/updates/releases/${encodeURIComponent(normalized)}/metadata`,
+    baseUrl,
+  ).toString();
+}
+
+export async function fetchWhatsNewRelease(
+  version: string,
+  options: Pick<WhatsNewRuntime, 'fetchImpl' | 'baseUrl' | 'signal'> = {},
+) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  if (typeof fetchImpl !== 'function') return null;
+  const response = await fetchImpl(whatsNewRequestUrl(version, options.baseUrl), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+    signal: options.signal,
+  });
+  if (!response.ok) return null;
+  return parseWhatsNewRelease(await response.json(), version);
+}
+
+export async function loadWhatsNewRelease(runtime: WhatsNewRuntime): Promise<WhatsNewRelease | null> {
+  if (!runtime.isNativeShell) return null;
+  try {
+    const version = normalizedVersion(await runtime.currentVersion());
+    if (!version) return null;
+    const storage = runtime.storage === undefined
+      ? resolvePreferenceStorage()
+      : runtime.storage;
+    if (
+      storage
+      && readPreferenceStorageItem(storage, WHATS_NEW_LAST_SHOWN_VERSION_KEY) === version
+    ) {
+      return null;
+    }
+    return await fetchWhatsNewRelease(version, runtime);
+  } catch {
+    return null;
+  }
+}
+
+export function markWhatsNewPresented(
+  release: Pick<WhatsNewRelease, 'version'>,
+  storage: Storage | null = resolvePreferenceStorage(),
+) {
+  if (!storage) return false;
+  return writePreferenceStorageItem(
+    storage,
+    WHATS_NEW_LAST_SHOWN_VERSION_KEY,
+    release.version,
+  );
+}
+
+function cleanReleaseNoteText(value: string) {
+  return value
+    .replace(/\[([^\]]+)]\([^\s)]+\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s*\(\s*(?:\[#\d+]\s*(?:,\s*)?)+\)\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function releaseHighlightGroups(notes: string): WhatsNewHighlightGroup[] {
+  const groups: WhatsNewHighlightGroup[] = [];
+  let current: WhatsNewHighlightGroup | null = null;
+  let lastItemIndex = -1;
+
+  const ensureGroup = () => {
+    current ??= { title: 'Highlights', items: [] };
+    if (!groups.includes(current)) groups.push(current);
+    return current;
+  };
+
+  for (const rawLine of notes.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const heading = line.match(/^#{1,6}\s+(.+)$/)?.[1];
+    if (heading) {
+      current = { title: cleanReleaseNoteText(heading), items: [] };
+      groups.push(current);
+      lastItemIndex = -1;
+      continue;
+    }
+    const bullet = line.match(/^[-*]\s+(.+)$/)?.[1];
+    if (bullet) {
+      const group = ensureGroup();
+      const item = cleanReleaseNoteText(bullet);
+      if (item) {
+        group.items.push(item);
+        lastItemIndex = group.items.length - 1;
+      }
+      continue;
+    }
+    const text = cleanReleaseNoteText(line);
+    if (!text) continue;
+    const group = ensureGroup();
+    if (lastItemIndex >= 0) {
+      group.items[lastItemIndex] = `${group.items[lastItemIndex]} ${text}`;
+    } else {
+      group.items.push(text);
+      lastItemIndex = group.items.length - 1;
+    }
+  }
+
+  return groups.filter((group) => group.title && group.items.length > 0);
+}

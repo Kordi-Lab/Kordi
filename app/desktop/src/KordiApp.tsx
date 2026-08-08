@@ -16,6 +16,7 @@ import { cloudAuthCapabilityDiscoveryEnabled } from '@/features/cloud/cloudAuthR
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
 import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
+import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
 
@@ -272,7 +273,12 @@ function KordiAppShell({ cloudSession }: { cloudSession?: UseCloudSessionResult 
       </div>
     );
   }
-  return <AppShellFrame {...appShellFrameProps} />;
+  return (
+    <>
+      <AppShellFrame {...appShellFrameProps} />
+      <WhatsNewLaunchWindow />
+    </>
+  );
 }
 
 export default function KordiApp() {

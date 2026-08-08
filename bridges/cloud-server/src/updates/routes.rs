@@ -32,6 +32,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/updates/releases/latest/Kordi.dmg",
             get(stable_dmg_get).head(stable_dmg_head),
         )
+        .route("/updates/releases/:version/metadata", get(release_metadata))
         .route(
             "/updates/releases/:version/:asset",
             get(immutable_asset_get).head(immutable_asset_head),
@@ -54,6 +55,16 @@ struct TauriUpdateResponse {
     pub_date: String,
     url: String,
     signature: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicReleaseMetadata {
+    schema_version: u32,
+    version: String,
+    notes: String,
+    pub_date: String,
+    changelog_url: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -280,6 +291,35 @@ fn safe_route_component(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
+async fn release_metadata(
+    State(state): State<Arc<ServerState>>,
+    Path(version): Path<String>,
+) -> Response {
+    if Version::parse(&version).is_err() {
+        return not_found();
+    }
+    let store = match release_store(&state) {
+        Ok(store) => store,
+        Err(response) => return *response,
+    };
+    let release = match store.load_version(&version).await {
+        Ok(Some(release)) => release,
+        Ok(None) | Err(ReleaseStoreError::NotFound) => return not_found(),
+        Err(_) => return unavailable(),
+    };
+    (
+        [(header::CACHE_CONTROL, IMMUTABLE_CACHE_CONTROL)],
+        Json(PublicReleaseMetadata {
+            schema_version: release.schema_version,
+            version: release.version,
+            notes: release.notes,
+            pub_date: release.pub_date,
+            changelog_url: release.changelog_url,
+        }),
+    )
+        .into_response()
 }
 
 async fn immutable_asset_get(

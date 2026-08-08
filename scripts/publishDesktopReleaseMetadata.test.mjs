@@ -27,6 +27,7 @@ import {
   MemoryStore,
   preparedFixture,
 } from './test_support/publishDesktopReleaseFixtures.mjs';
+import { releaseNotesFromChangelog } from './lib/desktop-release-notes.mjs';
 
 test('generates deterministic beta.6 metadata, keys, checksums, and product URLs', async (t) => {
   const fixture = await makeFixture();
@@ -39,6 +40,8 @@ test('generates deterministic beta.6 metadata, keys, checksums, and product URLs
   assert.deepEqual(first.pointer, second.pointer);
   assert.equal(first.release.version, VERSION);
   assert.equal(first.release.pubDate, PUB_DATE);
+  assert.match(first.release.notes, /^### (?:Added|Changed|Fixed)$/m);
+  assert.match(first.release.notes, /^- /m);
   assert.equal(first.release.manual.objectKey, `desktop/releases/${VERSION}/macos/aarch64/${fixture.dmgName}`);
   assert.equal(first.release.platforms['darwin-aarch64'].objectKey, `desktop/releases/${VERSION}/macos/aarch64/Kordi.app.tar.gz`);
   assert.equal(first.pointerKey, 'desktop/channels/beta/latest.json');
@@ -54,6 +57,45 @@ test('generates deterministic beta.6 metadata, keys, checksums, and product URLs
   assert.deepEqual(await readFile(join(fixture.releaseDir, 'release.json')), first.releaseBytes);
   assert.deepEqual(await readFile(join(fixture.releaseDir, 'checksums.sha256')), first.checksumsBytes);
   assert.deepEqual(await readFile(join(fixture.releaseDir, 'channel-beta-latest.json')), first.pointerBytes);
+});
+
+test('extracts the exact classified changelog entry and rejects missing release notes', () => {
+  const changelog = [
+    '# Changelog',
+    '',
+    '## [Unreleased]',
+    '',
+    '## [1.2.3-beta.4] - 2026-08-08',
+    '',
+    '### Added',
+    '',
+    '- Added a focused first-launch summary.',
+    '',
+    '### Fixed',
+    '',
+    '- Kept startup available when metadata cannot load.',
+    '',
+    '## [1.2.3-beta.3] - 2026-08-01',
+    '',
+    '- Older notes.',
+  ].join('\n');
+
+  assert.equal(
+    releaseNotesFromChangelog(changelog, '1.2.3-beta.4'),
+    [
+      '### Added',
+      '',
+      '- Added a focused first-launch summary.',
+      '',
+      '### Fixed',
+      '',
+      '- Kept startup available when metadata cannot load.',
+    ].join('\n'),
+  );
+  assert.throws(
+    () => releaseNotesFromChangelog(changelog, '1.2.3-beta.5'),
+    /does not contain classified release notes/,
+  );
 });
 
 test('ad-hoc publication is legal only on acceptance and fails before storage', async (t) => {

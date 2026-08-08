@@ -34,6 +34,7 @@ import {
   verifyPublicReleaseArtifacts,
   verifyUnpublishedChannel as verifyUnpublishedReleaseChannel,
 } from './desktop-release-public.mjs';
+import { releaseNotesForPublication } from './desktop-release-notes.mjs';
 
 export {
   LEGACY_RELEASE_ORIGIN,
@@ -226,6 +227,7 @@ function validateOptions(options) {
     releaseProfile,
     expectedCommit,
     pubDate,
+    releaseNotes: options?.releaseNotes,
     dryRun: options?.dryRun === true,
   };
 }
@@ -278,9 +280,7 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
   const updaterDigest = sha256(updaterBytes);
   const signatureDigest = sha256(signatureBytes);
 
-  const notes = normalized.releaseProfile === 'adhoc-preview'
-    ? `Kordi ${normalized.version} ad-hoc external-test preview`
-    : `Kordi ${normalized.version}`;
+  const notes = await releaseNotesForPublication(normalized, join(REPO_ROOT, 'CHANGELOG.md'));
   const changelogUrl = normalized.releaseProfile === 'adhoc-preview'
     ? `https://github.com/Kordi-AI/Kordi/commit/${normalized.expectedCommit}`
     : `https://github.com/Kordi-AI/Kordi/releases/tag/V${normalized.version.replace(/-beta\./, '.beta')}`;

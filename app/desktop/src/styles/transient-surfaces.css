@@ -214,6 +214,10 @@
   color: var(--app-transient-disabled-text);
 }
 
+.app-transient-surface .app-whats-new-bullet {
+  background: var(--app-transient-focus-ring);
+}
+
 /* Report footer actions are secondary decisions, not large composer actions. */
 .app-transient-surface .app-support-report-action {
   min-height: 1.75rem;

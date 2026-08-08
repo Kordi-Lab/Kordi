@@ -140,7 +140,7 @@ export function SidebarUpdatePopover({
             <div className="app-update-popover-copy mt-0.5 text-[11px] leading-[1.125rem]">
               {state.status === 'up-to-date' ? updateStatusMessage(state) : null}
               {state.status === 'available'
-                ? (state.notes || `Kordi ${state.latestVersion ?? 'update'} is available.`)
+                ? `Kordi ${state.latestVersion ?? 'update'} is ready to install.`
                 : null}
               {state.status === 'failed' && state.failureStage === 'check'
                 ? 'The update server could not be reached. Your current app is unaffected.'
