@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { JSDOM } from 'jsdom';
 
 import { CloudAuthClient } from '../src/features/cloud/authClient';
 import {
@@ -13,6 +14,38 @@ import {
   retargetCloudAgentModelRoutingForAuthState,
   shouldPublishCloudProviderAuthSnapshot,
 } from '../src/features/cloud/providerAuthSnapshot';
+import {
+  CLOUD_PROVIDER_AUTH_SYNC_REQUEST_EVENT,
+  requestCloudProviderAuthSync,
+  type CloudProviderAuthSyncRequestDetail,
+} from '../src/features/cloud/cloudProviderAuthSyncRequest';
+
+test('manual provider refresh waits for the mounted cloud sync handler', async () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>');
+  let handled = 0;
+  dom.window.addEventListener(CLOUD_PROVIDER_AUTH_SYNC_REQUEST_EVENT, (event) => {
+    const detail = (event as CustomEvent<CloudProviderAuthSyncRequestDetail>).detail;
+    detail.handled = true;
+    handled += 1;
+    queueMicrotask(detail.resolve);
+  });
+
+  try {
+    assert.equal(await requestCloudProviderAuthSync(dom.window), true);
+    assert.equal(handled, 1);
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('manual provider refresh remains local when no cloud sync handler is mounted', async () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>');
+  try {
+    assert.equal(await requestCloudProviderAuthSync(dom.window), false);
+  } finally {
+    dom.window.close();
+  }
+});
 
 test('provider auth reconciliation stays blocked until this account restores successfully', () => {
   assert.equal(canReconcileCloudProviderAuthManifest('acct_shu', null), false);

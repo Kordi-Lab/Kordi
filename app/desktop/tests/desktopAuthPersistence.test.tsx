@@ -13,6 +13,7 @@ import {
   shouldShowDesktopAuthGate,
 } from '../src/features/auth/useDesktopAuthUiState';
 import { AuthProviderDetail } from '../src/kordi-app/auth/AuthProviderDetail';
+import { AuthProviderList } from '../src/kordi-app/auth/AuthProviderList';
 import { buildAuthDisplayProviders } from '../src/kordi-app/auth/model';
 import type { DesktopAuthProvider, DesktopAuthState } from '../src/kordi-app/types';
 
@@ -189,6 +190,34 @@ test('saved provider access explains encrypted account synchronization', () => {
   assert.match(markup, /encrypted and synced with your Kordi account/);
   assert.match(markup, /updates your other signed-in devices/);
   assert.match(markup, /Environment variables stay on this device/);
+});
+
+test('provider refresh exposes cloud sync progress and recovery', () => {
+  const providers = buildAuthDisplayProviders(emptyOpenAiAuthState());
+  const syncingMarkup = renderToStaticMarkup(createElement(AuthProviderList, {
+    providers,
+    selectedProviderId: null,
+    configuredCount: 0,
+    onSelectProvider: () => {},
+    onRefresh: () => {},
+    isRefreshing: true,
+  }));
+  assert.match(syncingMarkup, /Syncing…/);
+  assert.match(syncingMarkup, /aria-busy="true"/);
+  assert.match(syncingMarkup, /disabled=""/);
+  assert.match(syncingMarkup, /animate-spin/);
+
+  const errorMarkup = renderToStaticMarkup(createElement(AuthProviderList, {
+    providers,
+    selectedProviderId: null,
+    configuredCount: 0,
+    onSelectProvider: () => {},
+    onRefresh: () => {},
+    refreshError: 'Provider access could not sync.',
+  }));
+  assert.match(errorMarkup, /role="alert"/);
+  assert.match(errorMarkup, /Provider access could not sync\./);
+  assert.match(errorMarkup, /Try again/);
 });
 
 test('settings provider detail uses one restrained responsive content column', () => {

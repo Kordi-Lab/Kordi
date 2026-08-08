@@ -23,6 +23,10 @@ import {
   loadSession,
 } from './session';
 import { CLOUD_PROVIDER_AUTH_UPDATED_EVENT } from './cloudSessionAuth';
+import {
+  CLOUD_PROVIDER_AUTH_SYNC_REQUEST_EVENT,
+  type CloudProviderAuthSyncRequestDetail,
+} from './cloudProviderAuthSyncRequest';
 
 const PROVIDER_AUTH_PUBLISH_REFRESH_INTERVAL_MS = 5 * 60_000;
 const PROVIDER_AUTH_RESTORE_INTERVAL_MS = 15_000;
@@ -88,51 +92,64 @@ export function useCloudProviderAuthSnapshotSync({
     if (!account || typeof window === 'undefined') return;
     let cancelled = false;
 
-    const restore = () => {
-      void enqueueSync(async () => {
+    const restore = () => enqueueSync(async () => {
+      if (cancelled) return;
+      restoreReadyAccountIdRef.current = null;
+      try {
+        const result = await restoreDesktopCloudProviderAuth(account.accountId);
         if (cancelled) return;
-        restoreReadyAccountIdRef.current = null;
-        try {
-          const result = await restoreDesktopCloudProviderAuth(account.accountId);
-          if (cancelled) return;
-          lastRestoreWarningRef.current = null;
-          if (
-            result.changed
-            && (
-              result.restoredProfiles > 0
-              || result.removedProfiles > 0
-              || result.selectionChanged
-            )
-          ) {
-            setRestoreStatus({
-              accountId: account.accountId,
-              authStateBeforeRefresh: latestAuthStateRef.current ?? null,
-            });
-            requestDesktopAuthRefresh('cloud-restored');
-          } else {
-            restoreReadyAccountIdRef.current = account.accountId;
-            setRestoreStatus({ accountId: account.accountId });
-          }
-        } catch (error) {
-          if (cancelled) return;
-          setRestoreStatus(null);
-          const warningKey = error instanceof Error ? error.message : String(error);
-          if (lastRestoreWarningRef.current === warningKey) return;
+        lastRestoreWarningRef.current = null;
+        if (
+          result.changed
+          && (
+            result.restoredProfiles > 0
+            || result.removedProfiles > 0
+            || result.selectionChanged
+          )
+        ) {
+          setRestoreStatus({
+            accountId: account.accountId,
+            authStateBeforeRefresh: latestAuthStateRef.current ?? null,
+          });
+          requestDesktopAuthRefresh('cloud-restored');
+        } else {
+          restoreReadyAccountIdRef.current = account.accountId;
+          setRestoreStatus({ accountId: account.accountId });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setRestoreStatus(null);
+        const warningKey = error instanceof Error ? error.message : String(error);
+        if (lastRestoreWarningRef.current !== warningKey) {
           lastRestoreWarningRef.current = warningKey;
           reportWarning('[cloud-provider-auth-sync] restore failed', error);
         }
-      });
+        throw error;
+      }
+    });
+
+    const restoreInBackground = () => {
+      void restore().catch(() => undefined);
     };
 
-    restore();
-    const intervalId = window.setInterval(restore, PROVIDER_AUTH_RESTORE_INTERVAL_MS);
-    window.addEventListener('focus', restore);
-    window.addEventListener(CLOUD_PROVIDER_AUTH_UPDATED_EVENT, restore);
+    const handleManualSyncRequest = (event: Event) => {
+      const detail = (event as CustomEvent<CloudProviderAuthSyncRequestDetail>).detail;
+      if (!detail || detail.handled) return;
+      detail.handled = true;
+      void restore().then(detail.resolve, detail.reject);
+    };
+
+    restoreInBackground();
+    const intervalId = window.setInterval(restoreInBackground, PROVIDER_AUTH_RESTORE_INTERVAL_MS);
+    window.addEventListener('focus', restoreInBackground);
+    window.addEventListener(CLOUD_PROVIDER_AUTH_UPDATED_EVENT, restoreInBackground);
+    window.addEventListener(CLOUD_PROVIDER_AUTH_SYNC_REQUEST_EVENT, handleManualSyncRequest);
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
-      window.removeEventListener('focus', restore);
-      window.removeEventListener(CLOUD_PROVIDER_AUTH_UPDATED_EVENT, restore);
+      window.removeEventListener('focus', restoreInBackground);
+      window.removeEventListener(CLOUD_PROVIDER_AUTH_UPDATED_EVENT, restoreInBackground);
+      window.removeEventListener(CLOUD_PROVIDER_AUTH_SYNC_REQUEST_EVENT, handleManualSyncRequest);
     };
   }, [account, enqueueSync, reportWarning]);
 

@@ -12,6 +12,8 @@ type AuthProviderListProps = {
   configuredCount: number;
   onSelectProvider: (providerId: string) => void;
   onRefresh: () => void;
+  isRefreshing?: boolean;
+  refreshError?: string | null;
   onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
   variant?: 'settings' | 'gate';
 };
@@ -40,6 +42,8 @@ export function AuthProviderList({
   configuredCount,
   onSelectProvider,
   onRefresh,
+  isRefreshing = false,
+  refreshError = null,
   onEnterChat,
   variant = 'settings',
 }: AuthProviderListProps) {
@@ -119,12 +123,32 @@ export function AuthProviderList({
           variant="quiet"
           className="h-9 shrink-0 rounded-full px-3 text-[12px]"
           onClick={onRefresh}
-          style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
+          disabled={isRefreshing}
+          aria-busy={isRefreshing || undefined}
+          style={{ WebkitAppRegion: 'no-drag' as const, cursor: isRefreshing ? 'wait' : 'pointer' }}
         >
-          <RefreshCw className="mr-2 h-3.5 w-3.5" />
-          Refresh
+          <RefreshCw className={cn('mr-2 h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
+          {isRefreshing ? 'Syncing…' : 'Refresh'}
         </Button>
       </div>
+
+      {refreshError ? (
+        <div
+          role="alert"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[12px] leading-5 text-rose-200"
+        >
+          <span>{refreshError}</span>
+          <Button
+            type="button"
+            variant="quiet"
+            className="h-8 shrink-0 rounded-full px-3 text-[11px]"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+          >
+            Try again
+          </Button>
+        </div>
+      ) : null}
 
       {configuredCount > 0 ? (
         <div className="mb-3 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.06] px-3.5 py-3 text-[12px] leading-5 text-emerald-50/90">

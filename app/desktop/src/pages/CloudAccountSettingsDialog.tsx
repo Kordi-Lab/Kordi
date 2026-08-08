@@ -315,7 +315,7 @@ export function CloudAccountSettingsDialog({
         selectedProviderId={activeLoginProviderId}
         onSelectProvider={selectAuthProvider}
         onOpenLogin={openLoginFlow}
-        onRefresh={() => { void refreshDesktopAuth(); }}
+        onRefresh={refreshDesktopAuth}
         onSelectAuthChoice={(providerId, choice) => { void handleSelectAuthChoice(providerId, choice); }}
         onRemoveAuthProfile={(providerId, profileId) => { void handleRemoveAuthProfile(providerId, profileId); }}
         onLogoutProvider={(providerId) => { void handleLogoutProvider(providerId); }}
