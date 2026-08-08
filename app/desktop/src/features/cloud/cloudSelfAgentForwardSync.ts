@@ -27,6 +27,7 @@ export type CloudSelfAgentSyncOperation = {
   text: string;
   parentLocalMessageId: string | null;
   createdAtMs: number;
+  deliveryState: 'sent' | 'complete' | 'failed' | 'cancelled';
 };
 
 function cleanText(value?: string | null) {
@@ -159,17 +160,65 @@ export function saveCloudSelfAgentSyncLedger(
   }
 }
 
-function isTerminalSelfAgentMessage(
+function objectContent(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function contentText(content: Record<string, unknown>, key: string): string {
+  return cleanText(typeof content[key] === 'string' ? content[key] : null);
+}
+
+function selfAgentMessageDeliveryState(
   message: CanonicalSessionMessage,
-): boolean {
+): CloudSelfAgentSyncOperation['deliveryState'] | null {
   const status = cleanText(message.status).toLowerCase();
-  return ![
-    '',
-    'sending',
-    'processing',
-    'failed',
-    'cancelled',
-  ].includes(status);
+  const content = objectContent(message.content);
+  const deliveryState = contentText(content, 'deliveryState').toLowerCase();
+  if (message.senderRole === 'user') {
+    return ['sent', 'delivered', 'read', 'complete', 'completed'].includes(
+      deliveryState || status,
+    ) ? 'sent' : null;
+  }
+  const terminal = deliveryState || status;
+  if (terminal === 'failed' || terminal === 'processing_failed') {
+    return 'failed';
+  }
+  if (terminal === 'cancelled' || terminal === 'canceled') {
+    return 'cancelled';
+  }
+  return ['complete', 'completed', 'succeeded', 'responded', 'read'].includes(
+    terminal,
+  ) ? 'complete' : null;
+}
+
+function selfAgentMessageText(
+  message: CanonicalSessionMessage,
+  deliveryState: CloudSelfAgentSyncOperation['deliveryState'],
+): string {
+  const text = cleanText(message.contentText);
+  if (text) return text;
+  const content = objectContent(message.content);
+  if (deliveryState === 'failed') {
+    return contentText(content, 'error')
+      || contentText(content, 'detail')
+      || 'Kordi could not finish this reply. Try again.';
+  }
+  if (deliveryState === 'cancelled') {
+    return contentText(content, 'message') || 'Request canceled.';
+  }
+  return '';
+}
+
+function explicitSelfAgentParentMessageId(
+  message: CanonicalSessionMessage,
+): string | null {
+  const content = objectContent(message.content);
+  return cleanText(message.parentMessageId)
+    || contentText(content, 'replyToMessageId')
+    || contentText(content, 'requestId')
+    || null;
 }
 
 function localSelfAgentSessionIds(
@@ -209,10 +258,10 @@ export function seedCloudSelfAgentForwardSyncLedger(
   for (const message of state.messages) {
     if (
       !selfAgentSessionIds.has(message.sessionId)
-      || !isTerminalSelfAgentMessage(message)
+      || !selfAgentMessageDeliveryState(message)
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
-    if (!cleanText(message.contentText) || next[message.id]) continue;
+    if (next[message.id]) continue;
     next[message.id] = {
       cloudMessageId: null,
       syncedAtMs,
@@ -238,16 +287,15 @@ export function planCloudSelfAgentSync(
   const messagesBySession =
     new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
-    if (
-      !selfAgentSessionIds.has(message.sessionId)
-      || !isTerminalSelfAgentMessage(message)
-    ) continue;
+    if (!selfAgentSessionIds.has(message.sessionId)) continue;
+    const deliveryState = selfAgentMessageDeliveryState(message);
+    if (!deliveryState) continue;
     if (
       options.createdAfterMs != null
       && message.createdAtMs <= options.createdAfterMs
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
-    const text = cleanText(message.contentText);
+    const text = selfAgentMessageText(message, deliveryState);
     if (!text) continue;
     const bucket = messagesBySession.get(message.sessionId) ?? [];
     bucket.push(message);
@@ -273,6 +321,7 @@ export function planCloudSelfAgentSync(
             text: cleanText(message.contentText),
             parentLocalMessageId: null,
             createdAtMs: message.createdAtMs,
+            deliveryState: 'sent',
           });
         }
         continue;
@@ -281,16 +330,21 @@ export function planCloudSelfAgentSync(
         || message.senderRole.includes('agent');
       if (
         !isAgentMessage
-        || !lastUserMessageId
         || ledger[message.id]
       ) continue;
+      const parentLocalMessageId = explicitSelfAgentParentMessageId(message)
+        || lastUserMessageId;
+      if (!parentLocalMessageId) continue;
+      const deliveryState = selfAgentMessageDeliveryState(message);
+      if (!deliveryState || deliveryState === 'sent') continue;
       operations.push({
         localMessageId: message.id,
         sessionId,
         role: 'agent',
-        text: cleanText(message.contentText),
-        parentLocalMessageId: lastUserMessageId,
+        text: selfAgentMessageText(message, deliveryState),
+        parentLocalMessageId,
         createdAtMs: message.createdAtMs,
+        deliveryState,
       });
     }
   }

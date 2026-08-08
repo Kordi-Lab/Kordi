@@ -3,7 +3,7 @@ import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAge
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import {
   latestCloudReceiptAt,
-  upsertCloudMessage as upsertMessage,
+  mergeCloudMessageMonotonicState,
 } from './cloudMessageMerge';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
 import { cloudSyncCursorRequiresFallback } from './cloudSyncCursorProgress';
@@ -216,9 +216,42 @@ export function applyCloudSyncEventsToMessagesByPeer(
   initialHiddenSessionIds: ReadonlySet<string> = new Set(),
   initialDeletedSessionIds: ReadonlySet<string> = new Set(),
 ): Record<string, CloudMessage[]> {
-  let next = currentMessagesByPeer;
   const hiddenSessionIds = new Set(initialHiddenSessionIds);
   const deletedSessionIds = new Set(initialDeletedSessionIds);
+  const indexedMessagesByPeer = new Map<string, Map<string, CloudMessage>>();
+  const changedPeerIds = new Set<string>();
+
+  const indexedPeerMessages = (peerId: string) => {
+    const existing = indexedMessagesByPeer.get(peerId);
+    if (existing) return existing;
+    const indexed = new Map(
+      (currentMessagesByPeer[peerId] ?? []).map((message) => [
+        message.messageId,
+        message,
+      ]),
+    );
+    indexedMessagesByPeer.set(peerId, indexed);
+    return indexed;
+  };
+
+  const removeSessionMessages = (sessionId: string) => {
+    for (const peerId of new Set([
+      ...Object.keys(currentMessagesByPeer),
+      ...indexedMessagesByPeer.keys(),
+    ])) {
+      const indexed = indexedPeerMessages(peerId);
+      let changed = false;
+      for (const [messageId, message] of indexed) {
+        if (!messageMatchesSession(accountId, message, sessionId, peerId)) {
+          continue;
+        }
+        indexed.delete(messageId);
+        changed = true;
+      }
+      if (changed) changedPeerIds.add(peerId);
+    }
+  };
+
   for (const event of events) {
     if (event.eventType === 'session.hidden') {
       const sessionId = eventSessionId(event);
@@ -237,7 +270,7 @@ export function applyCloudSyncEventsToMessagesByPeer(
       if (!sessionId) continue;
       hiddenSessionIds.delete(sessionId);
       deletedSessionIds.add(sessionId);
-      next = removeCloudSessionMessages(accountId, next, sessionId);
+      removeSessionMessages(sessionId);
       continue;
     }
 
@@ -251,13 +284,14 @@ export function applyCloudSyncEventsToMessagesByPeer(
         hiddenSessionIds.delete(key);
         deletedSessionIds.delete(key);
       }
-      const currentPeerMessages = next[peerId] ?? [];
-      const nextPeerMessages = upsertMessage(currentPeerMessages, message);
-      if (nextPeerMessages !== currentPeerMessages) {
-        next = {
-          ...next,
-          [peerId]: nextPeerMessages,
-        };
+      const indexed = indexedPeerMessages(peerId);
+      const existing = indexed.get(message.messageId);
+      const merged = existing
+        ? mergeCloudMessageMonotonicState(existing, message)
+        : message;
+      if (merged !== existing) {
+        indexed.set(message.messageId, merged);
+        changedPeerIds.add(peerId);
       }
       continue;
     }
@@ -265,24 +299,35 @@ export function applyCloudSyncEventsToMessagesByPeer(
     if (event.eventType === 'message.read') {
       const receipt = readReceiptPayload(event);
       const peerId = event.peerAccountId?.trim() ?? '';
-      if (!receipt || !peerId || !(peerId in next)) continue;
-      const ids = new Set(receipt.messageIds);
-      let changed = false;
-      const nextPeerMessages = next[peerId].map((message) => {
-        if (!ids.has(message.messageId)) return message;
+      if (
+        !receipt
+        || !peerId
+        || (!(peerId in currentMessagesByPeer) && !indexedMessagesByPeer.has(peerId))
+      ) continue;
+      const indexed = indexedPeerMessages(peerId);
+      for (const messageId of receipt.messageIds) {
+        const message = indexed.get(messageId);
+        if (!message) continue;
         const deliveredAt = message.deliveredAt ?? receipt.readAt;
         const readAt = latestCloudReceiptAt(message.readAt, receipt.readAt);
-        if (message.deliveredAt === deliveredAt && message.readAt === readAt) return message;
-        changed = true;
-        return { ...message, deliveredAt, readAt };
-      });
-      if (changed) {
-        next = {
-          ...next,
-          [peerId]: nextPeerMessages,
-        };
+        if (message.deliveredAt === deliveredAt && message.readAt === readAt) {
+          continue;
+        }
+        indexed.set(messageId, { ...message, deliveredAt, readAt });
+        changedPeerIds.add(peerId);
       }
     }
+  }
+
+  if (changedPeerIds.size === 0) return currentMessagesByPeer;
+  const next = { ...currentMessagesByPeer };
+  for (const peerId of changedPeerIds) {
+    const messages = [...indexedPeerMessages(peerId).values()].sort((left, right) => (
+      left.createdAt.localeCompare(right.createdAt)
+      || left.messageId.localeCompare(right.messageId)
+    ));
+    if (messages.length > 0) next[peerId] = messages;
+    else delete next[peerId];
   }
   return next;
 }

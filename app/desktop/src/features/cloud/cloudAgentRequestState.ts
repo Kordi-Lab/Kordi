@@ -416,10 +416,12 @@ export function cloudAgentResponseExistsForRequest({
   requestMessageId: string;
   peerMessages: readonly CloudMessage[];
 }): boolean {
-  return peerMessages.some((candidate) => (
-    candidate.fromAccountId === account.accountId
-    && parseCloudAgentResponse(candidate.body)?.requestId === requestMessageId
-  ));
+  return peerMessages.some((candidate) => {
+    if (candidate.fromAccountId !== account.accountId) return false;
+    const response = parseCloudAgentResponse(candidate.body);
+    return response?.requestId === requestMessageId
+      && response.deliveryState !== 'processing';
+  });
 }
 
 export function cloudGroupAgentResponseExistsForRequest({

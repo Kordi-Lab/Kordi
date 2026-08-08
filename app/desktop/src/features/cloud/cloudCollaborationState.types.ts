@@ -1,12 +1,16 @@
 import type { Dispatch, SetStateAction } from 'react';
 
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
+  CanonicalSessionState,
   Contact,
   DesktopCollaborationState,
+  DesktopChatTurnSnapshot,
   MessageAttachment,
 } from '@/kordi-app/types';
 import type {
+  CloudAccount,
   CloudSessionPin,
   UpsertCloudArtifactActivityInput,
   UpsertCloudTaskActivityInput,
@@ -26,6 +30,21 @@ import type { SendCloudGroupControlInput } from './useCloudGroupControlSender';
 import type {
   SendCloudCollaborationMessageOptions,
 } from './useCloudDirectMessaging';
+
+export type UseCloudCollaborationStateArgs = {
+  account: CloudAccount | null;
+  activeConversationId?: string | null;
+  canonicalSessionState?: CanonicalSessionState | null;
+  setCanonicalSessionState?: Dispatch<
+    SetStateAction<CanonicalSessionState | null>
+  >;
+  localTurnsBySessionId?: Record<string, DesktopChatTurnSnapshot>;
+  cloudAgentRuntimeRoutesBySessionId?: Record<
+    string,
+    DesktopChatMessageRoute
+  >;
+  defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
+};
 
 export type UseCloudCollaborationStateResult = {
   cloudCollaborationState: DesktopCollaborationState | null;

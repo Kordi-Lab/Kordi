@@ -219,7 +219,7 @@ test('cloud self-agent canonical sync materializes restored Cloud private agent 
     sourceEventId: request.sourceEventId,
   })), [
     { id: 'msg:cloud:self:msg_self_request', senderRole: 'user', messageKind: 'text', contentText: 'sync this question', parentMessageId: null, sourceEventId: 'msg_self_request' },
-    { id: 'msg:cloud:self:msg_self_answer', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'synced answer', parentMessageId: 'msg:cloud:self:msg_self_request', sourceEventId: 'msg_self_answer' },
+    { id: 'msg:cloud:self:response:msg_self_request', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'synced answer', parentMessageId: 'msg:cloud:self:msg_self_request', sourceEventId: 'msg_self_answer' },
   ]);
 });
 

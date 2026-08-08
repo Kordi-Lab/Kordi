@@ -4,12 +4,6 @@ import {
   useState,
 } from 'react';
 import type {
-  Dispatch,
-  SetStateAction,
-} from 'react';
-import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import type {
-  CanonicalSessionState,
   DesktopCollaborationState,
   MessageActionMetadata,
 } from '@/kordi-app/types';
@@ -95,6 +89,7 @@ import {
   useCloudActiveSessionLifecycle,
 } from './useCloudActiveSessionLifecycle';
 import type {
+  UseCloudCollaborationStateArgs,
   UseCloudCollaborationStateResult,
 } from './cloudCollaborationState.types';
 
@@ -148,6 +143,7 @@ export {
 export {
   CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS,
   CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,
+  CLOUD_SELF_AGENT_FALLBACK_TIMEOUT_MS,
 } from './useCloudAgentAvailability';
 export {
   CLOUD_AGENT_TURN_POLL_MS,
@@ -239,16 +235,10 @@ export function useCloudCollaborationState({
   activeConversationId,
   canonicalSessionState,
   setCanonicalSessionState,
+  localTurnsBySessionId,
   cloudAgentRuntimeRoutesBySessionId,
   defaultCloudAgentRuntimeRoute,
-}: {
-  account: CloudAccount | null;
-  activeConversationId?: string | null;
-  canonicalSessionState?: CanonicalSessionState | null;
-  setCanonicalSessionState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
-  cloudAgentRuntimeRoutesBySessionId?: Record<string, DesktopChatMessageRoute>;
-  defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
-}): UseCloudCollaborationStateResult {
+}: UseCloudCollaborationStateArgs): UseCloudCollaborationStateResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const cloudAgentsClient = useMemo(() => defaultCloudAgentsClient(), []);
   const cloudMessageCache = useMemo(() => defaultCloudMessageCache(), []);
@@ -414,6 +404,7 @@ export function useCloudCollaborationState({
     account,
     canonicalState: canonicalSessionState,
     canonicalStateRef: canonicalSessionStateRef,
+    localTurnsBySessionId,
     client,
     cancelledRef,
     processedRequestIdsRef: processedCloudAgentMentionIdsRef,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Message, QueuedDesktopChatMessage } from '@/kordi-app/types';
+import type { DesktopChatState, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import {
   fetchDesktopChatState,
   fetchDesktopChatTurnState,
@@ -19,13 +19,9 @@ import {
   suppressIncompleteLiveTurnEcho,
 } from './desktopLiveTurns';
 import { createDesktopTurnRenderAliasRegistry } from './desktopTurnRenderAliasRegistry';
+import type { UseDesktopChatStateArgs } from './desktopChatState.types';
 import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession } from './queuedDesktopMessages';
 import { useDesktopSessionTranscriptCache } from './useDesktopSessionTranscriptCache';
-
-type UseDesktopChatStateArgs = {
-  isNativeShell: boolean;
-  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[], sessionContext?: { metadata?: unknown }) => Message[];
-};
 
 function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
@@ -44,7 +40,7 @@ function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {
   });
 }
 
-export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDesktopChatStateArgs) {
+export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refreshCanonicalSession }: UseDesktopChatStateArgs) {
   const latestDesktopSessionIdRef = useRef<string | undefined>(undefined);
   const latestDesktopRefreshRequestRef = useRef(0);
   const visibleLocalSessionIdRef = useRef<string | null>(null);
@@ -451,6 +447,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         }
         setPendingUserChatMessage(null);
         desktopTurnRenderAliases.register(nextTurn);
+        await refreshCanonicalSession?.(nextTurn.sessionId).catch(
+          () => undefined,
+        );
 
         const visibleSessionId = visibleLocalSessionIdRef.current;
         const isVisibleCompletedSession = visibleSessionId === nextTurn.sessionId
@@ -486,7 +485,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, desktopTurnRenderAliases, mergeCompletedDesktopTurn, refreshCompletedDesktopTurnTranscript, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
+    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, desktopTurnRenderAliases, mergeCompletedDesktopTurn, refreshCanonicalSession, refreshCompletedDesktopTurnTranscript, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {

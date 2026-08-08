@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useReducer,
   useRef,
   type Dispatch,
   type MutableRefObject,
@@ -47,6 +48,7 @@ import { loadSession } from './session';
 
 export const CLOUD_GROUP_AGENT_STATUS_RECHECK_MS = 5_000;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 2 * 60_000;
+export const CLOUD_SELF_AGENT_FALLBACK_TIMEOUT_MS = 2 * 60_000;
 
 export type CloudFallbackRunClaimer = (
   claim: CloudAgentRunClaimInput,
@@ -81,6 +83,10 @@ export function useCloudAgentAvailability({
   const offlineTimersRef = useRef<Map<string, number>>(new Map());
   const claimedRunKeysRef = useRef<Set<string>>(new Set());
   const claimingRunKeysRef = useRef<Set<string>>(new Set());
+  const [selfFallbackRevision, checkSelfFallback] = useReducer(
+    (revision: number) => revision + 1,
+    0,
+  );
 
   useEffect(() => {
     claimedRunKeysRef.current.clear();
@@ -409,11 +415,14 @@ export function useCloudAgentAvailability({
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
+    const selfAgentFallbackBeforeMs =
+      Date.now() - CLOUD_SELF_AGENT_FALLBACK_TIMEOUT_MS;
     const claims = cloudFallbackRunClaimsForMessages({
       account,
       contacts,
       messageIndex,
       recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
+      selfAgentFallbackBeforeMs,
     }).filter(
       (claim) => !claimedRunKeysRef.current.has(claim.idempotencyKey),
     );
@@ -436,6 +445,32 @@ export function useCloudAgentAvailability({
     contacts,
     initialMessagesSettled,
     messageIndex,
+    selfFallbackRevision,
+  ]);
+
+  useEffect(() => {
+    if (!account || !initialMessagesSettled) return;
+    const pendingSelfClaims = cloudFallbackRunClaimsForMessages({
+      account,
+      contacts,
+      messageIndex,
+      recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
+      selfAgentFallbackBeforeMs: Number.POSITIVE_INFINITY,
+    });
+    if (!pendingSelfClaims.some(
+      (claim) => claim.ownerAccountId === account.accountId,
+    )) return;
+    const timeoutId = window.setTimeout(
+      checkSelfFallback,
+      CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    account,
+    contacts,
+    initialMessagesSettled,
+    messageIndex,
+    selfFallbackRevision,
   ]);
 
   return claimCloudFallbackRun;

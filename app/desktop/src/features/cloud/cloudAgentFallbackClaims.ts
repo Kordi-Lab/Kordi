@@ -206,12 +206,14 @@ export function cloudFallbackRunClaimsForMessages({
   messageIndex,
   messagesByPeer = {},
   recentSinceMs,
+  selfAgentFallbackBeforeMs,
 }: {
   account: CloudAccount;
   contacts: Contact[];
   messageIndex?: CloudMessageIndex;
   messagesByPeer?: Record<string, CloudMessage[]>;
   recentSinceMs?: number;
+  selfAgentFallbackBeforeMs?: number;
 }): CloudAgentRunClaimInput[] {
   const index = messageIndex
     ?? buildCloudMessageIndex(account.accountId, messagesByPeer);
@@ -241,20 +243,86 @@ export function cloudFallbackRunClaimsForMessages({
     }
   }
   const terminalDirectRequestIdsByPeerId = new Map<string, Set<string>>();
+  const processingDirectRequestAtMsByPeerId = new Map<
+    string,
+    Map<string, number>
+  >();
   for (const [peerId, peerMessages] of index.byPeerId) {
     const requestIds = new Set<string>();
+    const processingByRequestId = new Map<string, number>();
     for (const message of peerMessages) {
       if (groupControlMessageIds.has(message.messageId)) continue;
-      const requestId = parseCloudAgentCancel(message.body)?.requestId
-        || parseCloudAgentResponse(message.body)?.requestId;
-      if (requestId) requestIds.add(requestId);
+      const cancelledRequestId = parseCloudAgentCancel(message.body)?.requestId;
+      if (cancelledRequestId) {
+        requestIds.add(cancelledRequestId);
+        continue;
+      }
+      const response = parseCloudAgentResponse(message.body);
+      if (!response) continue;
+      if (response.deliveryState !== 'processing') {
+        requestIds.add(response.requestId);
+        continue;
+      }
+      const createdAtMs = Date.parse(message.createdAt);
+      if (Number.isFinite(createdAtMs)) {
+        processingByRequestId.set(
+          response.requestId,
+          Math.max(
+            processingByRequestId.get(response.requestId) ?? 0,
+            createdAtMs,
+          ),
+        );
+      }
     }
     terminalDirectRequestIdsByPeerId.set(peerId, requestIds);
+    processingDirectRequestAtMsByPeerId.set(peerId, processingByRequestId);
   }
 
   for (const [peerId, peerMessages] of index.byPeerId) {
     const ownerAccountId = peerId.trim();
-    if (!ownerAccountId || ownerAccountId === account.accountId) continue;
+    if (!ownerAccountId) continue;
+    if (ownerAccountId === account.accountId) {
+      if (selfAgentFallbackBeforeMs === undefined) continue;
+      for (const message of peerMessages) {
+        if (
+          message.fromAccountId !== account.accountId
+          || message.toAccountId !== account.accountId
+          || groupControlMessageIds.has(message.messageId)
+          || parseCloudAgentResponse(message.body)
+          || parseCloudAgentCancel(message.body)
+        ) continue;
+        const createdAtMs = Date.parse(message.createdAt);
+        if (
+          recentSinceMs !== undefined
+          && (!Number.isFinite(createdAtMs) || createdAtMs < recentSinceMs)
+        ) continue;
+        if (
+          terminalDirectRequestIdsByPeerId.get(peerId)?.has(message.messageId)
+        ) continue;
+        const processingAtMs = processingDirectRequestAtMsByPeerId
+          .get(peerId)
+          ?.get(message.messageId) ?? createdAtMs;
+        if (
+          !Number.isFinite(processingAtMs)
+          || processingAtMs > selfAgentFallbackBeforeMs
+        ) continue;
+        const sessionId = cleanText(message.sessionId);
+        if (!sessionId) continue;
+        const prompt = cloudDirectMessageDisplayText(message.body).trim();
+        if (!prompt) continue;
+        claims.push({
+          requestMessageId: message.messageId,
+          sessionId,
+          ownerAccountId: account.accountId,
+          requesterAccountId: account.accountId,
+          prompt,
+          idempotencyKey:
+            `cloud-self-agent:${sessionId}:${message.messageId}`
+            + `:${account.accountId}`,
+        });
+      }
+      continue;
+    }
     const contact = contactByPeerId.get(ownerAccountId);
     for (const message of peerMessages) {
       if (
