@@ -187,7 +187,7 @@ function TaskTargetAvatars({ participants }: { participants: TaskTargetParticipa
         <IdentityAvatar
           key={participant.id}
           kind={participant.kind === 'agent' ? 'agent' : 'human'}
-          seed={participant.avatarKey ?? participant.avatarSeed ?? participant.name}
+          seed={participant.avatarKey ?? participant.avatarSeed ?? participant.name} isSelf={participant.kind !== 'agent' && participant.role === 'self'}
           avatarKey={participant.avatarKey}
           imageUrl={participant.profileImageUrl}
           name={participant.name}

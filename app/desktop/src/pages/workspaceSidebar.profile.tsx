@@ -275,6 +275,7 @@ export function SidebarProfileControl({
         <IdentityAvatar
           kind="human"
           seed={profileAvatarSeed}
+          isSelf
           name={profileDisplayName}
           imageUrl={profileImageUrl}
           className="app-nav-rail-avatar h-9 w-9"
@@ -319,6 +320,7 @@ export function SidebarProfileControl({
               <IdentityAvatar
                 kind="human"
                 seed={profileAvatarSeed}
+                isSelf
                 name={profileDisplayName}
                 imageUrl={profileImageUrl}
                 className="h-10 w-10 border border-white/10"

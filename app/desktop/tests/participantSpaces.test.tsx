@@ -151,7 +151,7 @@ test('buildParticipantSpaces infers a local owned-agent session as part of the s
   assert.equal(spaces[0]?.id, 'self:local');
   assert.equal(spaces[0]?.kind, 'self');
   assert.equal(spaces[0]?.title, 'My chats');
-  assert.deepEqual(spaces[0]?.avatarStack, [{ kind: 'human', seed: 'human-local', imageUrl: null, presenceStatus: null }]);
+  assert.deepEqual(spaces[0]?.avatarStack, [{ kind: 'human', seed: 'human-local', isSelf: true, imageUrl: null, presenceStatus: null }]);
 });
 
 test('buildParticipantSpaces keeps one human plus agents in a human-centered space', () => {
@@ -906,7 +906,7 @@ test('ensureSelfParticipantSpace adds My chats as a pinned contact when no self 
   const selfSpace = spaces.find((space) => space.kind === 'self');
   assert.equal(selfSpace?.title, 'My chats');
   assert.equal(selfSpace?.sessionCount, 0);
-  assert.deepEqual(selfSpace?.avatarStack, [{ kind: 'human', seed: 'local-me', imageUrl: null }]);
+  assert.deepEqual(selfSpace?.avatarStack, [{ kind: 'human', seed: 'local-me', isSelf: true, imageUrl: null }]);
   assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact').map((space) => space.title), ['Bob']);
   assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent').map((space) => space.title), ['My chats']);
 });

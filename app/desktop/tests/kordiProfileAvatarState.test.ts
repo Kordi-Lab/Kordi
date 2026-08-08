@@ -117,3 +117,20 @@ test('cloud account profile identity takes precedence over host fallbacks', () =
   );
   assert.equal(state.shouldPersistProfileSeed, false);
 });
+
+test('cloud account email keeps generated self avatars stable when a display name is absent', () => {
+  const state = resolveKordiProfileAvatarState({
+    account: {
+      accountId: 'account-2',
+      displayName: null,
+      primaryEmail: 'owner@example.com',
+      avatarUrl: null,
+      nodeId: null,
+      passwordSet: true,
+    },
+    canonicalState: null,
+    collaborationState: null,
+  });
+
+  assert.equal(state.localProfileDisplayName, 'owner@example.com');
+});

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 
 import {
   canonicalAvatarSeed,
@@ -12,6 +12,7 @@ import {
   setLocalAgentAvatarSeed,
   setLocalProfileAvatarSeed,
 } from '@/kordi-app/components/IdentityAvatar';
+import { setActiveLocalProfileIdentity } from '@/kordi-app/components/localProfileIdentity';
 import type {
   CanonicalSessionState,
   DesktopCollaborationState,
@@ -69,6 +70,7 @@ export function resolveKordiProfileAvatarState({
     localProfileImageUrl:
       cloudProfileAvatar?.imageUrl ?? canonicalProfileImage,
     localProfileDisplayName: account?.displayName?.trim()
+      || account?.primaryEmail?.trim()
       || canonicalIdentityDisplayName(
         canonicalState,
         canonicalState?.profile.humanIdentityId,
@@ -104,6 +106,18 @@ export function useKordiProfileAvatarState({
     if (!state.shouldPersistProfileSeed) return;
     setLocalProfileAvatarSeed(state.localProfileAvatarSeed);
   }, [state.localProfileAvatarSeed, state.shouldPersistProfileSeed]);
+
+  useLayoutEffect(() => {
+    setActiveLocalProfileIdentity({
+      avatarSeed: state.localProfileAvatarSeed,
+      displayName: state.localProfileDisplayName,
+      profileImageUrl: state.localProfileImageUrl,
+    });
+  }, [
+    state.localProfileAvatarSeed,
+    state.localProfileDisplayName,
+    state.localProfileImageUrl,
+  ]);
 
   useEffect(() => {
     setLocalAgentAvatarSeed(state.localAgentAvatarSeed);
