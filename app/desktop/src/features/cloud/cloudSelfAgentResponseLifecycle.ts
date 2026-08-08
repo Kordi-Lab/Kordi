@@ -8,6 +8,16 @@ export type CloudSelfAgentResponseDeliveryState =
   | 'failed'
   | 'cancelled';
 
+const DELIVERY_STATE_PRIORITY: Record<
+  CloudSelfAgentResponseDeliveryState,
+  number
+> = {
+  processing: 0,
+  failed: 1,
+  cancelled: 2,
+  complete: 3,
+};
+
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
@@ -74,10 +84,40 @@ export function legacyCloudSelfAgentResponseIds({
   return legacyByStableId;
 }
 
-export function processingWouldDowngradeTerminal(
+function normalizedDeliveryState(
+  value: string | null | undefined,
+): CloudSelfAgentResponseDeliveryState | null {
+  const normalized = cleanText(value).toLowerCase();
+  if (normalized === 'completed' || normalized === 'succeeded') {
+    return 'complete';
+  }
+  if (normalized === 'canceled') return 'cancelled';
+  return normalized in DELIVERY_STATE_PRIORITY
+    ? normalized as CloudSelfAgentResponseDeliveryState
+    : null;
+}
+
+export function cloudSelfAgentResponseWouldDowngrade(
   existingStatus: string | null | undefined,
   nextDeliveryState: CloudSelfAgentResponseDeliveryState | null,
 ): boolean {
-  return nextDeliveryState === 'processing'
-    && cleanText(existingStatus).toLowerCase() !== 'processing';
+  const existingDeliveryState = normalizedDeliveryState(existingStatus);
+  if (!existingDeliveryState || !nextDeliveryState) return false;
+  return DELIVERY_STATE_PRIORITY[nextDeliveryState]
+    < DELIVERY_STATE_PRIORITY[existingDeliveryState];
+}
+
+export function shouldReplacePlannedCloudSelfAgentResponse(
+  currentStatus: string | null | undefined,
+  nextDeliveryState: CloudSelfAgentResponseDeliveryState,
+): boolean {
+  const currentDeliveryState = normalizedDeliveryState(currentStatus);
+  if (!currentDeliveryState) return true;
+  const currentPriority = DELIVERY_STATE_PRIORITY[currentDeliveryState];
+  const nextPriority = DELIVERY_STATE_PRIORITY[nextDeliveryState];
+  return nextPriority > currentPriority
+    || (
+      nextPriority === currentPriority
+      && nextDeliveryState !== 'processing'
+    );
 }

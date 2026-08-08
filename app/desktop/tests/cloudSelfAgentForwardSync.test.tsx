@@ -153,6 +153,16 @@ test('two devices converge processing and terminal self-agent replies onto one s
     }),
     createdAt: '2026-08-08T09:49:04.000Z',
   };
+  const failed: CloudMessage = {
+    ...request,
+    messageId: 'msg_self_failed_before_recovery',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'Cloud fallback could not complete this request.',
+      deliveryState: 'failed',
+    }),
+    createdAt: '2026-08-08T09:49:02.000Z',
+  };
   const emptyDeviceState = {
     sessions: [],
     identities: [],
@@ -172,7 +182,7 @@ test('two devices converge processing and terminal self-agent replies onto one s
   });
   const completedPlan = planCloudSelfAgentCanonicalSync({
     account,
-    messages: [completed, processing, request],
+    messages: [completed, failed, processing, request],
     state: emptyDeviceState,
   });
 
@@ -197,7 +207,7 @@ test('two devices converge processing and terminal self-agent replies onto one s
   );
 });
 
-test('a delayed self-agent heartbeat cannot downgrade an existing terminal reply', () => {
+test('delayed self-agent failures and heartbeats cannot downgrade an existing completed reply', () => {
   const request: CloudMessage = {
     messageId: 'msg_self_request_terminal',
     fromAccountId: account.accountId,
@@ -218,6 +228,16 @@ test('a delayed self-agent heartbeat cannot downgrade an existing terminal reply
     }),
     createdAt: '2026-08-08T09:50:00.000Z',
   };
+  const delayedFailure: CloudMessage = {
+    ...request,
+    messageId: 'msg_self_failed_late',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'Cloud fallback could not complete this request.',
+      deliveryState: 'failed',
+    }),
+    createdAt: '2026-08-08T09:51:00.000Z',
+  };
   const state = {
     sessions: [],
     identities: [],
@@ -235,7 +255,7 @@ test('a delayed self-agent heartbeat cannot downgrade an existing terminal reply
 
   const plan = planCloudSelfAgentCanonicalSync({
     account,
-    messages: [request, delayedHeartbeat],
+    messages: [request, delayedHeartbeat, delayedFailure],
     state,
   });
 

@@ -27,9 +27,10 @@ import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { createCloudSelfAgentSessionPlanner } from './cloudSelfAgentSessionPlan';
 import {
   cloudSelfAgentStableResponseId,
+  cloudSelfAgentResponseWouldDowngrade,
   existingCanonicalMessageMatchesCloudSelfAgent,
   legacyCloudSelfAgentResponseIds,
-  processingWouldDowngradeTerminal,
+  shouldReplacePlannedCloudSelfAgentResponse,
   type CloudSelfAgentResponseDeliveryState,
 } from './cloudSelfAgentResponseLifecycle';
 
@@ -396,7 +397,7 @@ export function planCloudSelfAgentCanonicalSync({
       : null;
     if (
       existingMatch
-      && processingWouldDowngradeTerminal(
+      && cloudSelfAgentResponseWouldDowngrade(
         existingMatch.status,
         deliveryState,
       )
@@ -444,11 +445,12 @@ export function planCloudSelfAgentCanonicalSync({
       messageRequests.push(request);
     } else {
       const planned = messageRequests[plannedIndex];
-      const plannedStatus = cleanText(planned.status).toLowerCase();
-      const requestStatus = cleanText(request.status).toLowerCase();
       if (
-        plannedStatus === 'processing'
-        && requestStatus !== 'processing'
+        deliveryState
+        && shouldReplacePlannedCloudSelfAgentResponse(
+          planned.status,
+          deliveryState,
+        )
       ) {
         messageRequests[plannedIndex] = request;
       }
