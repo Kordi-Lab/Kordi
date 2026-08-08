@@ -87,7 +87,7 @@ test('bridge transcript keeps a fresh processing response visible', () => {
   assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), true);
 });
 
-test('Kordi Support shows processing immediately after an optimistic send', () => {
+test('Kordi Support does not expose the agent processing card after an optimistic send', () => {
   const supportConversationId = `bridge:cloud:${KORDI_SUPPORT_ACCOUNT_ID}:person`;
   const state: DesktopCollaborationState = {
     activeHostId: 'cloud',
@@ -124,15 +124,11 @@ test('Kordi Support shows processing immediately after an optimistic send', () =
     undefined,
     'My Kordi',
   );
-  const processingTurn = view.messages.find((message) => message.turn?.status === 'processing');
 
   assert.equal(view.type, 'person');
-  assert.equal(processingTurn?.sender, KORDI_SUPPORT_NAME);
-  assert.equal(processingTurn?.turn?.message, 'Processing…');
-  assert.equal(
-    processingTurn?.replyToMessageId,
-    `collaboration-message:${supportConversationId}:support-request-1`,
-  );
+  assert.equal(view.messages.length, 1);
+  assert.equal(view.messages[0]?.role, 'user');
+  assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), false);
 });
 
 test('Kordi Support identity suppresses stale user-provider failures before canonical hydration', () => {

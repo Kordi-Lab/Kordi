@@ -29,8 +29,40 @@ test('support presentation hides stale local provider failures only', () => {
       id: 'support-answer',
       role: 'owned-agent',
       sender: 'My Kordi',
-      text: 'Kordi Support is ready.',
+      text: '',
       time: '12:47',
+      replyToMessageId: 'user-question',
+      turn: {
+        id: 'turn:support-answer',
+        sessionId,
+        prompt: 'Are you there?',
+        status: 'complete',
+        message: 'Complete',
+        assistantText: 'Kordi Support is ready.',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+      },
+    },
+    {
+      id: 'support-processing',
+      role: 'external-agent',
+      sender: KORDI_SUPPORT_NAME,
+      text: '',
+      time: '12:47',
+      turn: {
+        id: 'turn:support-processing',
+        sessionId,
+        prompt: 'Are you there?',
+        status: 'processing',
+        message: 'Processing…',
+        assistantText: '',
+        thinkingText: '',
+        tools: [],
+        completed: false,
+        succeeded: false,
+      },
     },
     {
       id: 'user-question',
@@ -43,6 +75,12 @@ test('support presentation hides stale local provider failures only', () => {
 
   assert.deepEqual(messages.map((message) => message.id), ['support-answer', 'user-question']);
   assert.equal(messages[0]?.sender, KORDI_SUPPORT_NAME);
+  assert.equal(messages[0]?.role, 'person');
+  assert.equal(messages[0]?.senderType, 'human');
+  assert.equal(messages[0]?.text, 'Kordi Support is ready.');
+  assert.equal(messages[0]?.turn, undefined);
+  assert.equal(messages[0]?.replyToMessageId, undefined);
+  assert.equal(messages[0]?.supportContactResponse, true);
 });
 
 test('canonical hydration preserves the fixed Kordi Support contact identity', () => {
@@ -141,7 +179,10 @@ test('canonical hydration preserves the fixed Kordi Support contact identity', (
   );
   assert.equal(conversation?.messages[1]?.sender, KORDI_SUPPORT_NAME);
   assert.equal(conversation?.messages[1]?.sourceSenderLabel, KORDI_SUPPORT_NAME);
-  assert.equal(conversation?.messages[1]?.role, 'external-agent');
+  assert.equal(conversation?.messages[1]?.role, 'person');
+  assert.equal(conversation?.messages[1]?.senderType, 'human');
+  assert.equal(conversation?.messages[1]?.turn, undefined);
+  assert.equal(conversation?.messages[1]?.supportContactResponse, true);
   assert.equal(conversation?.messages[1]?.senderProfileImageUrl, KORDI_SUPPORT_AVATAR_URL);
   assert.equal(conversation?.profileImageUrl, KORDI_SUPPORT_AVATAR_URL);
   assert.equal(conversation?.participantProfileImageUrls?.[KORDI_SUPPORT_NAME], KORDI_SUPPORT_AVATAR_URL);
@@ -225,8 +266,13 @@ test('canonical hydration keeps runtime Kordi Support visible before its session
   assert.equal(conversations.length, 1);
   assert.equal(conversations[0]?.id, runtimeSupportConversation.id);
   assert.equal(conversations[0]?.name, KORDI_SUPPORT_NAME);
+  assert.equal(conversations[0]?.type, 'person');
+  assert.equal(conversations[0]?.directness, 'Person chat');
   assert.deepEqual(
     conversations[0]?.messages.map((message) => message.turn?.assistantText || message.text),
     ['hi', 'Hi! How can I help?'],
   );
+  assert.equal(conversations[0]?.messages[1]?.role, 'person');
+  assert.equal(conversations[0]?.messages[1]?.turn, undefined);
+  assert.equal(conversations[0]?.messages[1]?.supportContactResponse, true);
 });

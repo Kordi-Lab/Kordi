@@ -26,6 +26,31 @@ function foldedAssistantAnswerToggleLabel(hiddenLineCount: number) {
   return 'Show full response';
 }
 
+function useSupportAwareAnswer(text: string) {
+  const supportSubmission = useSupportReportSubmission();
+  const reportProposal = useMemo(
+    () => supportSubmission ? parseSupportReportProposal(text) : null,
+    [supportSubmission, text],
+  );
+  const visibleText = supportSubmission
+    ? reportProposal?.displayText ?? supportReportDisplayText(text)
+    : text;
+  return { reportProposal, visibleText };
+}
+
+export function SupportContactAnswer({ text }: { text: string }) {
+  const { reportProposal, visibleText } = useSupportAwareAnswer(text);
+
+  return (
+    <>
+      <MarkdownContent text={visibleText} showLinkIcons copySurface="message" />
+      {reportProposal ? (
+        <SupportReportPermissionCard proposal={reportProposal} />
+      ) : null}
+    </>
+  );
+}
+
 export function FoldableAssistantAnswer({
   text,
   foldable = true,
@@ -36,14 +61,7 @@ export function FoldableAssistantAnswer({
   tone?: 'default' | 'cancelled';
 }) {
   const [expanded, setExpanded] = useState(false);
-  const supportSubmission = useSupportReportSubmission();
-  const reportProposal = useMemo(
-    () => supportSubmission ? parseSupportReportProposal(text) : null,
-    [supportSubmission, text],
-  );
-  const visibleText = supportSubmission
-    ? reportProposal?.displayText ?? supportReportDisplayText(text)
-    : text;
+  const { reportProposal, visibleText } = useSupportAwareAnswer(text);
   const foldInfo = useMemo(() => assistantAnswerFoldInfo(visibleText), [visibleText]);
   const shouldFold = foldable && foldInfo.shouldFold;
   const folded = shouldFold && !expanded;

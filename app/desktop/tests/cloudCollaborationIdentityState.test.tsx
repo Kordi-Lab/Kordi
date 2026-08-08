@@ -441,7 +441,10 @@ test('the built-in support agent keeps a stable thread separate from its owner h
   assert.equal(supportView.directness, 'Person chat');
   assert.deepEqual(supportView.participants, ['Me', 'Kordi Support']);
   assert.equal(supportView.messages[1]?.sender, 'Kordi Support');
-  assert.equal(supportView.messages[1]?.role, 'external-agent');
+  assert.equal(supportView.messages[1]?.role, 'person');
+  assert.equal(supportView.messages[1]?.senderType, 'human');
+  assert.equal(supportView.messages[1]?.turn, undefined);
+  assert.equal(supportView.messages[1]?.supportContactResponse, true);
   assert.equal(supportView.collaborationTarget?.runtime, 'kordi-desktop');
   assert.equal(supportView.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
   assert.equal(supportView.profileImageUrl, KORDI_SUPPORT_AVATAR_URL);

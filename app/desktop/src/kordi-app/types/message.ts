@@ -147,6 +147,10 @@ export type Message = {
   senderAvatarSeed?: string | null;
   isOwnMessage?: boolean;
   showSenderMeta?: boolean;
+  /** Kordi Support answers are service responses presented as ordinary contact
+   * messages. This preserves support-specific report actions without routing
+   * the row through the live-agent turn UI. */
+  supportContactResponse?: boolean;
   text: string;
   time: string;
   /** Exact source timestamp used for transcript ordering and time separators.

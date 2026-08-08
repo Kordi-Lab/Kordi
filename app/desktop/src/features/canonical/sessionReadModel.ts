@@ -14,7 +14,10 @@ import {
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
-import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
+import {
+  normalizeSupportContactConversationPresentation,
+  normalizeSupportContactMessages,
+} from '@/features/support/supportConversationPresentation';
 import {
   isKordiSupportConversation,
   KORDI_SUPPORT_AVATAR_URL,
@@ -729,12 +732,16 @@ export function createCanonicalSessionReadModel(
         });
       const hydratedIds = new Set(hydrated.map((conversation) => conversation.id));
       const groupedSessionIds = new Set([...groups.values()].flatMap((sessions) => sessions.map((session) => session.id)));
-      const extras = conversations.filter((conversation) => {
-        const sessionId = conversation.canonicalSessionId ?? conversation.id;
-        return !hydratedIds.has(conversation.id)
-          && !groupedSessionIds.has(sessionId)
-          && shouldKeepRuntimeChatConversationExtra(conversation, indexes);
-      });
+      const extras = conversations
+        .filter((conversation) => {
+          const sessionId = conversation.canonicalSessionId ?? conversation.id;
+          return !hydratedIds.has(conversation.id)
+            && !groupedSessionIds.has(sessionId)
+            && shouldKeepRuntimeChatConversationExtra(conversation, indexes);
+        })
+        .map((conversation) => isKordiSupportConversation(conversation)
+          ? normalizeSupportContactConversationPresentation(conversation)
+          : conversation);
       return [...hydrated, ...extras];
     },
   };

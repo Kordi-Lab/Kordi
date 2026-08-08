@@ -33,6 +33,7 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
 import { AttachmentPreview } from './transcriptAttachments';
+import { SupportContactAnswer } from './transcriptAssistantAnswer';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
@@ -1158,7 +1159,7 @@ function MessageBubbleView({
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
-  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
+  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
@@ -1351,7 +1352,11 @@ function MessageBubbleView({
                       : undefined}
                   />
                 ) : null}
-                {hasText ? <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div> : null}
+                {hasText ? (
+                  msg.supportContactResponse
+                    ? <SupportContactAnswer text={msg.text} />
+                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
+                ) : null}
               </div>
               {!hasOnlyImageAttachments ? (
                 <MessageFooter
@@ -1412,6 +1417,7 @@ function messageSnapshotKey(msg: Message) {
     msg.detail ?? '',
     msg.senderAvatarSeed ?? '',
     msg.senderProfileImageUrl ?? '',
+    msg.supportContactResponse ? 'support-contact-response' : '',
     msg.statusChips?.join(',') ?? '',
     msg.replyToMessageId ?? '',
     msg.replyAliasIds?.join('|') ?? '',
