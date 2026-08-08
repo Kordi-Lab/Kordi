@@ -143,194 +143,348 @@ async fn provider_auth_snapshot_is_account_scoped() {
 }
 
 #[tokio::test]
-async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
+async fn provider_auth_restore_is_fresh_session_account_scoped_and_device_encrypted() {
+    use aes_gcm::aead::{Aead, KeyInit, Payload};
+    use aes_gcm::{Aes256Gcm, Key, Nonce};
+    use hkdf::Hkdf;
+    use sha2::Sha256;
+    use x25519_dalek::{PublicKey, StaticSecret};
+
     let Some(pool) = try_pool().await else { return };
-    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     std::env::set_var(
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
-    let owner = signup(&router, "provider-material-owner", "Owner").await;
-    let requester = signup(&router, "provider-material-requester", "Requester").await;
-    accept_contacts(&router, &requester, &owner).await;
+    let owner = signup(&router, "provider-auth-restore-owner", "Owner").await;
+    let other = signup(&router, "provider-auth-restore-other", "Other").await;
 
-    let snapshot = router
+    let create = router
         .clone()
         .oneshot(post_json_with_token(
             "/v1/cloud/agent-provider-auth/snapshots",
             &owner.token,
             json!({
-                "provider": "openai",
-                "authChoice": "default",
+                "provider": "anthropic",
+                "authChoice": "profile:anthropic-oauth-owner",
                 "payload": {
-                    "apiKey": "runner-secret",
-                    "baseUrl": "https://api.openai.com/v1",
-                    "model": "gpt-4.1-mini"
+                    "apiMode": "anthropic-oauth",
+                    "accessToken": "restore-access-secret",
+                    "refreshToken": "restore-refresh-secret",
+                    "expiresAt": 4102444800000_i64
                 }
             }),
         ))
         .await
         .unwrap();
-    assert_eq!(snapshot.status(), StatusCode::CREATED);
-    let snapshot_id = read_json(snapshot).await["snapshotId"]
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let snapshot_id = read_json(create).await["snapshotId"]
         .as_str()
         .unwrap()
         .to_string();
 
-    assert_eq!(
-        router
-            .clone()
-            .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
-            .await
-            .unwrap()
-            .status(),
-        StatusCode::OK
-    );
-    let claim = router
+    let device_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
+    let device_public = PublicKey::from(&device_secret);
+    let restore = router
         .clone()
         .oneshot(post_json_with_token(
-            "/v1/cloud/agent-runs/claim",
-            &requester.token,
-            claim_body(&owner, &requester, "msg_provider_material"),
+            "/v1/cloud/agent-provider-auth/snapshots/restore",
+            &owner.token,
+            json!({
+                "devicePublicKey": base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .encode(device_public.as_bytes())
+            }),
         ))
         .await
         .unwrap();
-    assert_eq!(claim.status(), StatusCode::OK);
-    let run_id = read_json(claim).await["runId"]
-        .as_str()
+    assert_eq!(restore.status(), StatusCode::OK);
+    let body = read_json(restore).await;
+    let serialized = body.to_string();
+    assert!(!serialized.contains("restore-access-secret"));
+    assert!(!serialized.contains("restore-refresh-secret"));
+    assert_eq!(body["snapshotCount"], 1);
+
+    let server_public_bytes: [u8; 32] = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(body["envelope"]["serverPublicKey"].as_str().unwrap())
         .unwrap()
-        .to_string();
-    cancel_other_queued_runs(&pool, &run_id).await;
-
-    let lease = router
-        .clone()
-        .oneshot(post_json_with_runner_token(
-            "/v1/cloud/agent-runs/lease",
-            "runner-test-token",
-            json!({ "runnerId": "runner-material" }),
-        ))
-        .await
+        .try_into()
         .unwrap();
-    assert_eq!(lease.status(), StatusCode::OK);
-
-    let user_token_response = router
-        .clone()
-        .oneshot(post_json_with_runner_token(
-            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
-            &requester.token,
-            json!({ "runnerId": "runner-material" }),
-        ))
-        .await
+    let shared_secret = device_secret.diffie_hellman(&PublicKey::from(server_public_bytes));
+    let salt = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(body["envelope"]["salt"].as_str().unwrap())
         .unwrap();
-    assert_eq!(user_token_response.status(), StatusCode::UNAUTHORIZED);
-
-    let wrong_runner_response = router
-        .clone()
-        .oneshot(post_json_with_runner_token(
-            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
-            "runner-test-token",
-            json!({ "runnerId": "runner-other" }),
-        ))
-        .await
+    let mut key_bytes = [0_u8; 32];
+    Hkdf::<Sha256>::new(Some(&salt), shared_secret.as_bytes())
+        .expand(b"kordi-provider-auth-device-restore-v1", &mut key_bytes)
         .unwrap();
-    assert_eq!(wrong_runner_response.status(), StatusCode::NOT_FOUND);
-    let wrong_runner_body = read_json(wrong_runner_response).await;
-    assert_eq!(wrong_runner_body["errorCode"], "agent_run_not_found");
-
-    let provider_auth = router
-        .clone()
-        .oneshot(post_json_with_runner_token(
-            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
-            "runner-test-token",
-            json!({ "runnerId": "runner-material" }),
-        ))
-        .await
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key_bytes));
+    let nonce = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(body["envelope"]["nonce"].as_str().unwrap())
         .unwrap();
-    assert_eq!(provider_auth.status(), StatusCode::OK);
-    let body = read_json(provider_auth).await;
-    assert_eq!(body["providerAuth"]["snapshotId"], snapshot_id);
-    assert_eq!(body["providerAuth"]["provider"], "openai");
-    assert_eq!(body["providerAuth"]["authChoice"], "default");
-    assert_eq!(body["providerAuth"]["payload"]["apiKey"], "runner-secret");
-    assert_eq!(
-        body["providerAuth"]["payload"]["baseUrl"],
-        "https://api.openai.com/v1"
+    let ciphertext = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(body["envelope"]["ciphertext"].as_str().unwrap())
+        .unwrap();
+    let aad = format!(
+        "kordi-provider-auth-device-restore-v1\0{}\0{}",
+        owner.account_id,
+        body["deviceId"].as_str().unwrap()
     );
-    assert_eq!(body["providerAuth"]["payload"]["model"], "gpt-4.1-mini");
+    let plaintext = cipher
+        .decrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &ciphertext,
+                aad: aad.as_bytes(),
+            },
+        )
+        .unwrap();
+    let bundle: Value = serde_json::from_slice(&plaintext).unwrap();
+    assert_eq!(bundle["accountId"], owner.account_id);
+    assert_eq!(bundle["snapshots"][0]["snapshotId"], snapshot_id);
+    assert_eq!(
+        bundle["snapshots"][0]["payload"]["accessToken"],
+        "restore-access-secret"
+    );
+
+    let other_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
+    let other_public = PublicKey::from(&other_secret);
+    let other_restore = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/restore",
+            &other.token,
+            json!({
+                "devicePublicKey": base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .encode(other_public.as_bytes())
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(other_restore.status(), StatusCode::OK);
+    let other_body = read_json(other_restore).await;
+    assert_eq!(other_body["snapshotCount"], 0);
+    assert_eq!(other_body["envelope"], Value::Null);
 
     let audit_count: (i64,) = sqlx_core::query_as::query_as(
-        "SELECT COUNT(*)::BIGINT FROM cloud_agent_provider_auth_snapshot_audit WHERE snapshot_id = $1 AND run_id = $2 AND action = 'used'",
+        "SELECT COUNT(*)::BIGINT FROM cloud_agent_provider_auth_snapshot_audit \
+         WHERE snapshot_id = $1 AND account_id = $2 AND action = 'restored'",
     )
     .bind(&snapshot_id)
-    .bind(&run_id)
+    .bind(&owner.account_id)
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(audit_count.0, 1);
+
+    sqlx_core::query::query(
+        "UPDATE cloud_refresh_tokens SET created_at = $1 \
+         WHERE account_id = $2 AND token_hash = $3",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::minutes(20)).to_rfc3339())
+    .bind(&owner.account_id)
+    .bind(kordi_cloud_server::auth::session::hash_session_token(
+        &owner.token,
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let stale_restore = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/restore",
+            &owner.token,
+            json!({
+                "devicePublicKey": base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .encode(device_public.as_bytes())
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stale_restore.status(), StatusCode::OK);
+    assert_eq!(read_json(stale_restore).await["snapshotCount"], 1);
+
+    let replacement_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
+    let replacement_public = PublicKey::from(&replacement_secret);
+    let replacement_restore = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/restore",
+            &owner.token,
+            json!({
+                "devicePublicKey": base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .encode(replacement_public.as_bytes())
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(replacement_restore.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        read_json(replacement_restore).await["errorCode"],
+        "provider_auth_restore_device_key_mismatch"
+    );
 }
 
 #[tokio::test]
-async fn provider_auth_material_missing_snapshot_returns_not_found() {
+async fn provider_auth_manifest_and_restore_track_api_key_add_update_and_removal() {
+    use x25519_dalek::{PublicKey, StaticSecret};
+
     let Some(pool) = try_pool().await else { return };
-    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     std::env::set_var(
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
     let router = test_router(state);
-    let owner = signup(&router, "provider-material-missing-owner", "Owner").await;
-    let requester = signup(&router, "provider-material-missing-requester", "Requester").await;
-    accept_contacts(&router, &requester, &owner).await;
+    let owner = signup(&router, "provider-auth-lifecycle-owner", "Owner").await;
+    let device_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
+    let device_public = PublicKey::from(&device_secret);
+    let encoded_device_key =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(device_public.as_bytes());
 
-    assert_eq!(
-        router
-            .clone()
-            .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
-            .await
-            .unwrap()
-            .status(),
-        StatusCode::OK
-    );
-    let claim = router
-        .clone()
-        .oneshot(post_json_with_token(
-            "/v1/cloud/agent-runs/claim",
-            &requester.token,
-            claim_body(&owner, &requester, "msg_provider_material_missing"),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(claim.status(), StatusCode::OK);
-    let run_id = read_json(claim).await["runId"]
+    let publish = |api_key: &str| {
+        post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots",
+            &owner.token,
+            json!({
+                "provider": "openrouter",
+                "authChoice": "profile:cross-device-key",
+                "payload": {
+                    "apiKey": api_key,
+                    "model": "openai/gpt-5.5",
+                    "syncActive": true
+                }
+            }),
+        )
+    };
+    let first = router.clone().oneshot(publish("key-one")).await.unwrap();
+    assert_eq!(first.status(), StatusCode::CREATED);
+    let first_snapshot_id = read_json(first).await["snapshotId"]
         .as_str()
         .unwrap()
         .to_string();
-    cancel_other_queued_runs(&pool, &run_id).await;
 
-    let lease = router
+    let first_manifest = router
         .clone()
-        .oneshot(post_json_with_runner_token(
-            "/v1/cloud/agent-runs/lease",
-            "runner-test-token",
-            json!({ "runnerId": "runner-material-missing" }),
+        .oneshot(get_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/manifest",
+            &owner.token,
         ))
         .await
         .unwrap();
-    assert_eq!(lease.status(), StatusCode::OK);
+    assert_eq!(first_manifest.status(), StatusCode::OK);
+    let first_manifest = read_json(first_manifest).await;
+    assert_eq!(first_manifest["snapshots"].as_array().unwrap().len(), 1);
+    let first_revision = first_manifest["syncRevision"].as_str().unwrap().to_string();
 
-    let missing_snapshot_response = router
+    let first_restore = router
         .clone()
-        .oneshot(post_json_with_runner_token(
-            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
-            "runner-test-token",
-            json!({ "runnerId": "runner-material-missing" }),
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/restore",
+            &owner.token,
+            json!({ "devicePublicKey": encoded_device_key.clone() }),
         ))
         .await
         .unwrap();
-    assert_eq!(missing_snapshot_response.status(), StatusCode::NOT_FOUND);
-    let body = read_json(missing_snapshot_response).await;
-    assert_eq!(body["errorCode"], "provider_auth_not_found");
+    assert_eq!(first_restore.status(), StatusCode::OK);
+    let first_restore = read_json(first_restore).await;
+    assert_eq!(first_restore["snapshotCount"], 1);
+    assert_eq!(first_restore["changed"], true);
+    assert!(first_restore["envelope"].is_object());
+    let restore_revision = first_restore["syncRevision"].as_str().unwrap().to_string();
+    assert_eq!(restore_revision, first_revision);
+
+    let unchanged = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/restore",
+            &owner.token,
+            json!({
+                "devicePublicKey": encoded_device_key.clone(),
+                "knownRevision": restore_revision.clone(),
+            }),
+        ))
+        .await
+        .unwrap();
+    let unchanged = read_json(unchanged).await;
+    assert_eq!(unchanged["changed"], false);
+    assert_eq!(unchanged["envelope"], Value::Null);
+
+    let duplicate = router.clone().oneshot(publish("key-one")).await.unwrap();
+    assert_eq!(
+        read_json(duplicate).await["snapshotId"],
+        first_snapshot_id,
+        "identical device publications must be idempotent",
+    );
+    let duplicate_manifest = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                "/v1/cloud/agent-provider-auth/snapshots/manifest",
+                &owner.token,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(duplicate_manifest["syncRevision"], first_revision);
+
+    let updated = router.clone().oneshot(publish("key-two")).await.unwrap();
+    let updated_snapshot_id = read_json(updated).await["snapshotId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(updated_snapshot_id, first_snapshot_id);
+    let updated_restore = read_json(
+        router
+            .clone()
+            .oneshot(post_json_with_token(
+                "/v1/cloud/agent-provider-auth/snapshots/restore",
+                &owner.token,
+                json!({
+                    "devicePublicKey": encoded_device_key.clone(),
+                    "knownRevision": restore_revision,
+                }),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(updated_restore["changed"], true);
+    assert_eq!(updated_restore["snapshotCount"], 1);
+    let updated_revision = updated_restore["syncRevision"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let revoke = router
+        .clone()
+        .oneshot(delete_with_token(
+            &format!("/v1/cloud/agent-provider-auth/snapshots/{updated_snapshot_id}"),
+            &owner.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(revoke.status(), StatusCode::OK);
+    let removed_restore = read_json(
+        router
+            .oneshot(post_json_with_token(
+                "/v1/cloud/agent-provider-auth/snapshots/restore",
+                &owner.token,
+                json!({
+                    "devicePublicKey": encoded_device_key,
+                    "knownRevision": updated_revision,
+                }),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(removed_restore["changed"], true);
+    assert_eq!(removed_restore["snapshotCount"], 0);
+    assert_eq!(removed_restore["envelope"], Value::Null);
 }
+
+#[cfg(test)]
+#[path = "provider_auth/run_material.rs"]
+mod run_material;

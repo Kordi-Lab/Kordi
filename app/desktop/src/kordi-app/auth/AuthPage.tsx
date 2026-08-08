@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -7,6 +7,7 @@ import type { DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
 import { AuthProviderDetail } from './AuthProviderDetail';
 import { AuthProviderList } from './AuthProviderList';
 import { buildAuthDisplayProviders, normalizeSelectedProviderId } from './model';
+import { requestCloudProviderAuthSync } from '@/features/cloud/cloudProviderAuthSyncRequest';
 
 type AuthRoute =
   | { type: 'list' }
@@ -27,7 +28,7 @@ export type AuthPageProps = {
     mode: 'oauth' | 'api-key',
     options?: { authority?: string; requireAuthority?: boolean },
   ) => void;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   onSelectAuthChoice: (providerId: string, choice: string) => void;
   onRemoveAuthProfile: (providerId: string, profileId: string) => void;
   onLogoutProvider: (providerId: string) => void;
@@ -62,6 +63,9 @@ export function AuthPage({
   const configuredCount = visibleProviders.filter((item) => item.configured).length;
 
   const [currentRoute, setCurrentRoute] = useState<AuthRoute>({ type: 'list' });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const detailProviderId =
     currentRoute.type === 'detail'
       ? normalizeSelectedProviderId(currentRoute.providerId)
@@ -90,6 +94,39 @@ export function AuthPage({
 
   const showDetailPage = currentRoute.type === 'detail' && !!provider;
 
+  const refreshProviders = useCallback(() => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const pending = (async () => {
+      setIsRefreshing(true);
+      setRefreshError(null);
+      let cloudSyncFailed = false;
+      try {
+        await requestCloudProviderAuthSync();
+      } catch {
+        cloudSyncFailed = true;
+      }
+      try {
+        await onRefresh();
+        if (cloudSyncFailed) {
+          setRefreshError(
+            'Provider access could not sync with your Kordi account. Check your connection, then try again.',
+          );
+        }
+      } catch {
+        setRefreshError(
+          'Provider access could not be refreshed. Check your connection, then try again.',
+        );
+      } finally {
+        setIsRefreshing(false);
+        refreshInFlightRef.current = null;
+      }
+    })();
+    refreshInFlightRef.current = pending;
+    return pending;
+  }, [onRefresh, setIsRefreshing, setRefreshError]);
+
+  const effectiveError = refreshError ?? error;
+
   const content = useMemo(() => {
     if (showNativeNote) {
       return (
@@ -114,7 +151,9 @@ export function AuthPage({
           selectedProviderId={selectedProviderId ? provider?.id ?? null : null}
           configuredCount={configuredCount}
           onSelectProvider={openProviderDetail}
-          onRefresh={onRefresh}
+          onRefresh={() => { void refreshProviders(); }}
+          isRefreshing={isRefreshing}
+          refreshError={refreshError}
           onEnterChat={onEnterChat ?? onDismissGate}
           variant={showHero ? 'gate' : 'settings'}
         />
@@ -126,12 +165,12 @@ export function AuthPage({
         provider={provider}
         rawProviders={authState?.providers ?? []}
         authPath={authState?.authPath}
-        error={error}
+        error={effectiveError}
         onOpenLogin={onOpenLogin}
         onSelectAuthChoice={onSelectAuthChoice}
         onRemoveAuthProfile={onRemoveAuthProfile}
         onLogoutProvider={onLogoutProvider}
-        onRefreshAuth={onRefresh}
+        onRefreshAuth={() => { void refreshProviders(); }}
         onDismissGate={onDismissGate}
         onEnterChat={onEnterChat}
       />
@@ -140,11 +179,13 @@ export function AuthPage({
     authState?.authPath,
     authState?.providers,
     configuredCount,
-    error,
+    effectiveError,
     isLoading,
     onLogoutProvider,
     onOpenLogin,
-    onRefresh,
+    isRefreshing,
+    refreshError,
+    refreshProviders,
     onSelectAuthChoice,
     onRemoveAuthProfile,
     onDismissGate,

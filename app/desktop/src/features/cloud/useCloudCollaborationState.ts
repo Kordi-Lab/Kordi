@@ -10,6 +10,7 @@ import type {
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   CanonicalSessionState,
+  DesktopAuthState,
   DesktopCollaborationState,
   MessageActionMetadata,
 } from '@/kordi-app/types';
@@ -20,9 +21,7 @@ import {
   type CloudMessage,
   type CloudSessionTitle,
 } from './authClient';
-import {
-  CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-} from './cloudAgentMessages';
+import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
@@ -60,9 +59,7 @@ import {
   useCloudCanonicalReconciliation,
 } from './useCloudCanonicalReconciliation';
 import { useRecoveredCloudGroupReplay } from './useRecoveredCloudGroupReplay';
-import {
-  useCloudProviderAuthSnapshotSync,
-} from './useCloudProviderAuthSnapshotSync';
+import { useCloudAgentProviderAuthSync } from './useCloudAgentProviderAuthSync';
 import {
   useCloudMessageReadReceipts,
 } from './useCloudMessageReadReceipts';
@@ -241,6 +238,7 @@ export function useCloudCollaborationState({
   setCanonicalSessionState,
   cloudAgentRuntimeRoutesBySessionId,
   defaultCloudAgentRuntimeRoute,
+  desktopAuthState,
 }: {
   account: CloudAccount | null;
   activeConversationId?: string | null;
@@ -248,6 +246,7 @@ export function useCloudCollaborationState({
   setCanonicalSessionState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   cloudAgentRuntimeRoutesBySessionId?: Record<string, DesktopChatMessageRoute>;
   defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
+  desktopAuthState?: DesktopAuthState | null;
 }): UseCloudCollaborationStateResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const cloudAgentsClient = useMemo(() => defaultCloudAgentsClient(), []);
@@ -496,11 +495,12 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useCloudProviderAuthSnapshotSync({
+  useCloudAgentProviderAuthSync({
     account,
     client,
-    route: defaultCloudAgentRuntimeRoute,
-    initialMessagesSettled,
+    authState: desktopAuthState,
+    agentDefinitionsById: cloudAgentDefinitionsById,
+    updateDefinition: updateCloudAgentDefinition,
     reportWarning: reportCloudAgentExecutionWarning,
   });
 

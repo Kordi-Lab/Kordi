@@ -120,9 +120,7 @@ export function SettingsPage({
                 selectedProviderId={activeLoginProviderId}
                 onSelectProvider={selectAuthProvider}
                 onOpenLogin={openLoginFlow}
-                onRefresh={() => {
-                  void refreshDesktopAuth();
-                }}
+                onRefresh={refreshDesktopAuth}
                 onSelectAuthChoice={(providerId, choice) => {
                   void handleSelectAuthChoice(providerId, choice);
                 }}

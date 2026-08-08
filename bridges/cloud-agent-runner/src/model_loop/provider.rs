@@ -8,10 +8,19 @@ use crate::client::ProviderAuthMaterial;
 
 use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelToolCall};
 
+mod endpoint;
+use endpoint::is_owner_local_provider_endpoint;
+
+#[cfg(test)]
+mod oauth_tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAiApiMode {
     ChatCompletions,
     CodexOAuth,
+    AnthropicApiKey,
+    AnthropicOAuth,
+    GithubCopilotOAuth,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +31,7 @@ pub struct OpenAiProviderConfig {
     pub model: String,
     pub api_mode: OpenAiApiMode,
     pub account_id: Option<String>,
+    pub headers: HashMap<String, String>,
 }
 
 impl OpenAiProviderConfig {
@@ -46,6 +56,10 @@ impl OpenAiProviderConfig {
             .map(str::trim)
         {
             Some("openai-codex-oauth") => OpenAiApiMode::CodexOAuth,
+            Some("anthropic-oauth") => OpenAiApiMode::AnthropicOAuth,
+            Some("github-copilot-oauth") => OpenAiApiMode::GithubCopilotOAuth,
+            _ if material.provider == "anthropic" => OpenAiApiMode::AnthropicApiKey,
+            _ if material.provider == "github-copilot" => OpenAiApiMode::GithubCopilotOAuth,
             _ => OpenAiApiMode::ChatCompletions,
         };
         let base_url = payload
@@ -75,6 +89,25 @@ impl OpenAiProviderConfig {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToString::to_string);
+        let mut headers = payload
+            .get("headers")
+            .and_then(Value::as_object)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|(key, value)| {
+                        value
+                            .as_str()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(|value| (key.clone(), value.to_string()))
+                    })
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        if api_mode == OpenAiApiMode::GithubCopilotOAuth && headers.is_empty() {
+            headers = kordi_cli::login::github_copilot_runtime_headers();
+        }
         Ok(Self {
             provider: material.provider.clone(),
             api_key,
@@ -82,6 +115,7 @@ impl OpenAiProviderConfig {
             model,
             api_mode,
             account_id,
+            headers,
         })
     }
 
@@ -90,12 +124,16 @@ impl OpenAiProviderConfig {
             provider: self.provider.clone(),
             api_key: self.api_key.clone(),
             auth_mode: match self.api_mode {
-                OpenAiApiMode::ChatCompletions => ProviderAuthMode::ApiKey,
-                OpenAiApiMode::CodexOAuth => ProviderAuthMode::OAuth,
+                OpenAiApiMode::CodexOAuth | OpenAiApiMode::AnthropicOAuth => {
+                    ProviderAuthMode::OAuth
+                }
+                OpenAiApiMode::ChatCompletions
+                | OpenAiApiMode::AnthropicApiKey
+                | OpenAiApiMode::GithubCopilotOAuth => ProviderAuthMode::ApiKey,
             },
             auth_account_id: self.account_id.clone(),
             base_url: self.base_url.clone(),
-            headers: HashMap::new(),
+            headers: self.headers.clone(),
             cancel: CancellationToken::new(),
             retry_callback: None,
             max_retries: 2,
@@ -106,15 +144,25 @@ impl OpenAiProviderConfig {
 }
 
 fn normalize_model_for_mode(model: &str, api_mode: OpenAiApiMode) -> &str {
-    if api_mode == OpenAiApiMode::CodexOAuth {
-        return model.strip_prefix("openai/").unwrap_or(model);
+    match api_mode {
+        OpenAiApiMode::CodexOAuth | OpenAiApiMode::ChatCompletions => {
+            model.strip_prefix("openai/").unwrap_or(model)
+        }
+        OpenAiApiMode::AnthropicApiKey | OpenAiApiMode::AnthropicOAuth => {
+            model.strip_prefix("anthropic/").unwrap_or(model)
+        }
+        OpenAiApiMode::GithubCopilotOAuth => model.strip_prefix("github-copilot/").unwrap_or(model),
     }
-    model
 }
 
 fn default_base_url_for_mode(provider: &str, api_mode: OpenAiApiMode) -> &'static str {
-    if api_mode == OpenAiApiMode::CodexOAuth {
-        return "https://chatgpt.com/backend-api";
+    match api_mode {
+        OpenAiApiMode::CodexOAuth => return "https://chatgpt.com/backend-api",
+        OpenAiApiMode::AnthropicApiKey | OpenAiApiMode::AnthropicOAuth => {
+            return "https://api.anthropic.com";
+        }
+        OpenAiApiMode::GithubCopilotOAuth => return "https://api.githubcopilot.com",
+        OpenAiApiMode::ChatCompletions => {}
     }
     match provider {
         "openai" => "https://api.openai.com/v1",
@@ -125,40 +173,10 @@ fn default_base_url_for_mode(provider: &str, api_mode: OpenAiApiMode) -> &'stati
     }
 }
 
-fn is_owner_local_provider_endpoint(base_url: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(base_url) else {
-        return true;
-    };
-    let Some(host) = url.host_str() else {
-        return true;
-    };
-    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
-    if host == "localhost" || host.ends_with(".local") || host.ends_with(".localhost") {
-        return true;
-    }
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return match ip {
-            std::net::IpAddr::V4(ip) => {
-                ip.is_loopback()
-                    || ip.is_private()
-                    || ip.is_link_local()
-                    || ip.is_unspecified()
-                    || ip.is_broadcast()
-            }
-            std::net::IpAddr::V6(ip) => {
-                ip.is_loopback()
-                    || ip.is_unspecified()
-                    || ip.is_unique_local()
-                    || ip.is_unicast_link_local()
-            }
-        };
-    }
-    false
-}
-
 #[derive(Default)]
 pub struct OpenAiCompatibleProvider {
-    provider: kordi_provider::openai::OpenAiProvider,
+    openai_provider: kordi_provider::openai::OpenAiProvider,
+    anthropic_provider: kordi_provider::anthropic::AnthropicProvider,
 }
 
 #[async_trait]
@@ -170,11 +188,18 @@ impl CloudModelProvider for OpenAiCompatibleProvider {
         tools: &[Value],
     ) -> Result<ModelProviderResponse, ModelLoopError> {
         let request = completion_request_from_cloud_messages(auth, messages, tools);
-        let events = self
-            .provider
-            .complete(request, auth.request_options())
-            .await
-            .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
+        let options = auth.request_options();
+        let events = match auth.api_mode {
+            OpenAiApiMode::AnthropicApiKey | OpenAiApiMode::AnthropicOAuth => {
+                self.anthropic_provider.complete(request, options).await
+            }
+            OpenAiApiMode::ChatCompletions
+            | OpenAiApiMode::CodexOAuth
+            | OpenAiApiMode::GithubCopilotOAuth => {
+                self.openai_provider.complete(request, options).await
+            }
+        }
+        .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
         model_response_from_stream_events(events)
     }
 }
@@ -398,6 +423,7 @@ mod tests {
             model: "gpt-5.5".to_string(),
             api_mode: OpenAiApiMode::CodexOAuth,
             account_id: Some("acct".to_string()),
+            headers: HashMap::new(),
         };
         let request = completion_request_from_cloud_messages(
             &auth,

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CloudAccount, CloudAuthResult } from '../src/features/cloud/authClient';
-import { completeCloudAuthResult } from '../src/features/cloud/useCloudSession';
+import {
+  completeCloudAuthResult,
+  shouldRestoreCloudProviderAuthForWsSubject,
+} from '../src/features/cloud/useCloudSession';
 
 const account = (accountId: string): CloudAccount => ({
   accountId,
@@ -35,6 +38,10 @@ test('completeCloudAuthResult activates account storage before publishing authen
       order.push(`activate:${accountId}`);
       return { accountId, storageRoot: `/tmp/${accountId}/kordi`, requiresReload: false };
     },
+    restoreAccountProviderAuth: async (accountId) => {
+      order.push(`restore:${accountId}`);
+      return { restoredProfiles: 0 };
+    },
     setAuthenticated: (next) => {
       order.push(`auth:${next.accountId}`);
     },
@@ -47,6 +54,7 @@ test('completeCloudAuthResult activates account storage before publishing authen
   assert.deepEqual(order, [
     'save:acct_alpha',
     'activate:acct_alpha',
+    'restore:acct_alpha',
     'auth:acct_alpha',
   ]);
 });
@@ -65,6 +73,10 @@ test('completeCloudAuthResult reloads instead of publishing when native account 
       order.push(`activate:${accountId}`);
       return { accountId, storageRoot: `/tmp/${accountId}/kordi`, requiresReload: true };
     },
+    restoreAccountProviderAuth: async (accountId) => {
+      order.push(`restore:${accountId}`);
+      return { restoredProfiles: 0 };
+    },
     setAuthenticated: (next) => {
       order.push(`auth:${next.accountId}`);
     },
@@ -74,5 +86,81 @@ test('completeCloudAuthResult reloads instead of publishing when native account 
   });
 
   assert.equal(completed, false);
-  assert.deepEqual(order, ['save:acct_beta', 'activate:acct_beta', 'reload']);
+  assert.deepEqual(order, ['save:acct_beta', 'activate:acct_beta', 'restore:acct_beta', 'reload']);
+});
+
+test('completeCloudAuthResult reloads after restoring provider auth on a new device', async () => {
+  const order: string[] = [];
+  const result = resultFor('acct_alpha');
+
+  const completed = await completeCloudAuthResult({
+    result,
+    currentAccountId: null,
+    saveSession: async (session) => {
+      order.push(`save:${session.accountId}`);
+    },
+    activateAccountStorage: async (accountId) => {
+      order.push(`activate:${accountId}`);
+      return { accountId, storageRoot: `/tmp/${accountId}/kordi`, requiresReload: false };
+    },
+    restoreAccountProviderAuth: async (accountId) => {
+      order.push(`restore:${accountId}`);
+      return { restoredProfiles: 1 };
+    },
+    setAuthenticated: (next) => {
+      order.push(`auth:${next.accountId}`);
+    },
+    reloadWindow: () => {
+      order.push('reload');
+    },
+  });
+
+  assert.equal(completed, false);
+  assert.deepEqual(order, [
+    'save:acct_alpha',
+    'activate:acct_alpha',
+    'restore:acct_alpha',
+    'reload',
+  ]);
+});
+
+test('completeCloudAuthResult reloads after a cloud removal changes local provider auth', async () => {
+  let reloaded = false;
+  const completed = await completeCloudAuthResult({
+    result: resultFor('acct_alpha'),
+    currentAccountId: null,
+    activateAccountStorage: async (accountId) => ({
+      accountId,
+      storageRoot: `/tmp/${accountId}/kordi`,
+      requiresReload: false,
+    }),
+    restoreAccountProviderAuth: async () => ({
+      restoredProfiles: 0,
+      removedProfiles: 1,
+    }),
+    setAuthenticated: () => undefined,
+    reloadWindow: () => {
+      reloaded = true;
+    },
+  });
+
+  assert.equal(completed, false);
+  assert.equal(reloaded, true);
+});
+
+test('provider auth websocket subjects are account-scoped', () => {
+  assert.equal(
+    shouldRestoreCloudProviderAuthForWsSubject(
+      'kordi.events.account.provider_auth.updated.acct_alpha',
+      'acct_alpha',
+    ),
+    true,
+  );
+  assert.equal(
+    shouldRestoreCloudProviderAuthForWsSubject(
+      'kordi.events.account.provider_auth.updated.acct_beta',
+      'acct_alpha',
+    ),
+    false,
+  );
 });

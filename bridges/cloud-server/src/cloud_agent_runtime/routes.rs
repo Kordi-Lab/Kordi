@@ -12,9 +12,12 @@ use crate::cloud_agent_runtime::artifacts::{
 };
 use crate::cloud_agent_runtime::claim_route::claim_cloud_agent_run;
 use crate::cloud_agent_runtime::provider_auth::{
-    current_snapshot, provider_auth_for_run, publish_snapshot, revoke_snapshot,
-    CurrentProviderAuthSnapshotQuery, CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher,
-    ProviderAuthForRunResult, PublishProviderAuthSnapshotRequest,
+    authorize_device_restore_key, current_snapshot, provider_auth_for_run, publish_snapshot,
+    refresh_provider_auth_for_run, restore_snapshots_for_device, revoke_snapshot,
+    snapshot_manifest, CurrentProviderAuthSnapshotQuery, CurrentProviderAuthSnapshotResponse,
+    DeviceRestoreKeyAuthorization, EnvProviderAuthCipher, ProviderAuthForRunResult,
+    PublishProviderAuthSnapshotRequest, RefreshProviderAuthForRunResult,
+    RefreshRunnerProviderAuthRequest, RestoreProviderAuthSnapshotsRequest,
     RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
@@ -23,6 +26,9 @@ use crate::cloud_agent_runtime::runs::{
     CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::server::ServerState;
+
+mod provider_auth;
+use provider_auth::{refresh_runner_provider_auth, restore_provider_auth_snapshots};
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
@@ -38,6 +44,14 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route(
             "/v1/cloud/agent-provider-auth/snapshots/current",
             get(current_provider_auth_snapshot),
+        )
+        .route(
+            "/v1/cloud/agent-provider-auth/snapshots/manifest",
+            get(provider_auth_snapshot_manifest),
+        )
+        .route(
+            "/v1/cloud/agent-provider-auth/snapshots/restore",
+            post(restore_provider_auth_snapshots),
         )
         .route(
             "/v1/cloud/agent-provider-auth/snapshots/:snapshot_id",
@@ -63,6 +77,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route(
             "/v1/cloud/agent-runs/:run_id/provider-auth",
             post(fetch_runner_provider_auth),
+        )
+        .route(
+            "/v1/cloud/agent-runs/:run_id/provider-auth/refresh",
+            post(refresh_runner_provider_auth),
         )
         .route(
             "/v1/cloud/agent-runs/:run_id/artifacts",
@@ -340,12 +358,35 @@ async fn publish_provider_auth_snapshot(
     )
     .await
     {
-        Ok(snapshot) => (StatusCode::CREATED, Json(snapshot)).into_response(),
+        Ok(snapshot) => {
+            state
+                .events()
+                .publish_provider_auth_updated(&session.account_id)
+                .await;
+            (StatusCode::CREATED, Json(snapshot)).into_response()
+        }
         Err(err) => {
             eprintln!("[cloud_agent_runtime] publish provider auth snapshot: {err}");
             error_response(
                 "server_error",
                 "Could not publish Cloud provider-auth snapshot.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+async fn provider_auth_snapshot_manifest(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+) -> Response {
+    match snapshot_manifest(state.db_pool(), &session.account_id).await {
+        Ok(manifest) => Json(manifest).into_response(),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] provider auth snapshot manifest: {err}");
+            error_response(
+                "server_error",
+                "Could not load Cloud provider-auth snapshot manifest.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }
@@ -376,7 +417,13 @@ async fn revoke_provider_auth_snapshot(
     Path(snapshot_id): Path<String>,
 ) -> Response {
     match revoke_snapshot(state.db_pool(), &session.account_id, &snapshot_id).await {
-        Ok(Some(snapshot)) => Json(snapshot).into_response(),
+        Ok(Some(snapshot)) => {
+            state
+                .events()
+                .publish_provider_auth_updated(&session.account_id)
+                .await;
+            Json(snapshot).into_response()
+        }
         Ok(None) => error_response(
             "provider_auth_snapshot_not_found",
             "Cloud provider-auth snapshot was not found.",

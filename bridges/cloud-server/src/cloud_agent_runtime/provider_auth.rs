@@ -1,6 +1,8 @@
-use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
-use chrono::Utc;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use chrono::{DateTime, Duration, Utc};
+use hkdf::Hkdf;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,6 +11,13 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
+use x25519_dalek::{PublicKey, StaticSecret};
+
+mod device_restore;
+mod run_material;
+
+pub use device_restore::*;
+pub use run_material::*;
 
 const NONCE_LEN: usize = 12;
 
@@ -116,6 +125,18 @@ pub struct NormalizedProviderAuthSnapshotInput {
     pub payload: Value,
 }
 
+type StoredProviderAuthSnapshotRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Vec<u8>,
+    String,
+);
+
+type ProviderAuthManifestRow = (String, String, String, String, Option<String>, Vec<u8>);
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderAuthSnapshotResponse {
     #[serde(rename = "snapshotId")]
@@ -135,26 +156,10 @@ pub struct CurrentProviderAuthSnapshotResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct RunnerProviderAuthMaterialEnvelope {
-    #[serde(rename = "providerAuth")]
-    pub provider_auth: RunnerProviderAuthMaterial,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RunnerProviderAuthMaterial {
-    #[serde(rename = "snapshotId")]
-    pub snapshot_id: String,
-    pub provider: String,
-    #[serde(rename = "authChoice")]
-    pub auth_choice: String,
-    pub payload: Value,
-}
-
-#[derive(Debug)]
-pub enum ProviderAuthForRunResult {
-    Found(RunnerProviderAuthMaterial),
-    RunNotFound,
-    ProviderAuthNotFound,
+pub struct ProviderAuthSnapshotManifestResponse {
+    #[serde(rename = "syncRevision")]
+    pub sync_revision: String,
+    pub snapshots: Vec<ProviderAuthSnapshotResponse>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -171,6 +176,40 @@ pub async fn publish_snapshot(
     device_id: &str,
     input: NormalizedProviderAuthSnapshotInput,
 ) -> Result<ProviderAuthSnapshotResponse, sqlx_core::Error> {
+    let current: Option<StoredProviderAuthSnapshotRow> = query_as(
+        "SELECT snapshot_id, provider, auth_choice, created_at, revoked_at, \
+                encrypted_payload, encryption_key_id \
+         FROM cloud_agent_provider_auth_snapshots \
+         WHERE account_id = $1 AND provider = $2 AND auth_choice = $3 \
+           AND revoked_at IS NULL \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .bind(&input.provider)
+    .bind(&input.auth_choice)
+    .fetch_optional(pool)
+    .await?;
+    if let Some((snapshot_id, provider, auth_choice, created_at, revoked_at, encrypted, key_id)) =
+        current
+    {
+        if key_id == cipher.key_id()
+            && cipher
+                .decrypt(&encrypted)
+                .ok()
+                .and_then(|plaintext| serde_json::from_slice::<Value>(&plaintext).ok())
+                .as_ref()
+                == Some(&input.payload)
+        {
+            return Ok(ProviderAuthSnapshotResponse {
+                snapshot_id,
+                provider,
+                auth_choice,
+                created_at,
+                revoked_at,
+            });
+        }
+    }
+
     let now = Utc::now().to_rfc3339();
     let snapshot_id = format!("snap_{}", Uuid::new_v4().simple());
     let payload_bytes = serde_json::to_vec(&input.payload)
@@ -260,6 +299,48 @@ pub async fn current_snapshot(
     Ok(row.map(snapshot_response_from_row))
 }
 
+pub async fn snapshot_manifest(
+    pool: &PgPool,
+    account_id: &str,
+) -> Result<ProviderAuthSnapshotManifestResponse, sqlx_core::Error> {
+    let rows: Vec<ProviderAuthManifestRow> = query_as(
+        "SELECT snapshot_id, provider, auth_choice, created_at, revoked_at, encrypted_payload \
+         FROM cloud_agent_provider_auth_snapshots \
+         WHERE account_id = $1 AND revoked_at IS NULL \
+         ORDER BY provider ASC, auth_choice ASC, snapshot_id ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await?;
+    let sync_revision = provider_auth_sync_revision(
+        rows.iter()
+            .map(|row| (&row.0, &row.1, &row.2, &row.3, row.5.as_slice())),
+    );
+    Ok(ProviderAuthSnapshotManifestResponse {
+        sync_revision,
+        snapshots: rows
+            .into_iter()
+            .map(|row| snapshot_response_from_row((row.0, row.1, row.2, row.3, row.4)))
+            .collect(),
+    })
+}
+
+fn provider_auth_sync_revision<'a>(
+    rows: impl IntoIterator<Item = (&'a String, &'a String, &'a String, &'a String, &'a [u8])>,
+) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"kordi-provider-auth-sync-v1\0");
+    for (snapshot_id, provider, auth_choice, created_at, encrypted_payload) in rows {
+        for value in [snapshot_id, provider, auth_choice, created_at] {
+            digest.update((value.len() as u64).to_be_bytes());
+            digest.update(value.as_bytes());
+        }
+        digest.update((encrypted_payload.len() as u64).to_be_bytes());
+        digest.update(encrypted_payload);
+    }
+    hex::encode(digest.finalize())
+}
+
 pub async fn revoke_snapshot(
     pool: &PgPool,
     account_id: &str,
@@ -283,54 +364,6 @@ pub async fn revoke_snapshot(
     }
     tx.commit().await?;
     Ok(row.map(snapshot_response_from_row))
-}
-
-pub async fn provider_auth_for_run(
-    pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
-    run_id: &str,
-    runner_id: &str,
-) -> Result<ProviderAuthForRunResult, sqlx_core::Error> {
-    let run: Option<(String,)> = query_as(
-        "SELECT owner_account_id FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
-    )
-    .bind(run_id)
-    .bind(runner_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((owner_account_id,)) = run else {
-        return Ok(ProviderAuthForRunResult::RunNotFound);
-    };
-
-    let row: Option<(String, String, String, Vec<u8>)> = query_as(
-        "SELECT snapshot_id, provider, auth_choice, encrypted_payload \
-         FROM cloud_agent_provider_auth_snapshots \
-         WHERE account_id = $1 AND revoked_at IS NULL \
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(&owner_account_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some((snapshot_id, provider, auth_choice, encrypted_payload)) = row else {
-        return Ok(ProviderAuthForRunResult::ProviderAuthNotFound);
-    };
-
-    let plaintext = cipher
-        .decrypt(&encrypted_payload)
-        .map_err(|err| sqlx_core::Error::Protocol(err.to_string()))?;
-    let payload: Value = serde_json::from_slice(&plaintext)
-        .map_err(|err| sqlx_core::Error::Decode(Box::new(err)))?;
-    record_snapshot_used(pool, &snapshot_id, &owner_account_id, Some(run_id)).await?;
-
-    Ok(ProviderAuthForRunResult::Found(
-        RunnerProviderAuthMaterial {
-            snapshot_id,
-            provider,
-            auth_choice,
-            payload,
-        },
-    ))
 }
 
 pub async fn record_snapshot_used(
@@ -418,5 +451,25 @@ mod tests {
             payload: serde_json::json!({"token":"x"}),
         };
         assert!(request.normalized().is_none());
+    }
+
+    #[test]
+    fn sync_revision_changes_when_encrypted_credentials_are_refreshed() {
+        let snapshot_id = "snap_one".to_string();
+        let provider = "anthropic".to_string();
+        let auth_choice = "profile:claude".to_string();
+        let created_at = "2026-08-08T00:00:00Z".to_string();
+        let revision = |encrypted_payload: &[u8]| {
+            provider_auth_sync_revision(std::iter::once((
+                &snapshot_id,
+                &provider,
+                &auth_choice,
+                &created_at,
+                encrypted_payload,
+            )))
+        };
+
+        assert_ne!(revision(b"encrypted-v1"), revision(b"encrypted-v2"));
+        assert_eq!(revision(b"encrypted-v2"), revision(b"encrypted-v2"));
     }
 }

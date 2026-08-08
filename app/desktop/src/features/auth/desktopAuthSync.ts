@@ -1,4 +1,5 @@
 export const DESKTOP_AUTH_CHANNEL_NAME = 'kordi-auth';
+export const DESKTOP_AUTH_REFRESH_EVENT = 'kordi-desktop-auth-refresh';
 
 const DESKTOP_AUTH_UPDATED_MESSAGE_TYPE = 'auth-updated';
 
@@ -6,6 +7,7 @@ export type DesktopAuthUpdateReason =
   | 'active-choice-changed'
   | 'api-key-saved'
   | 'oauth-completed'
+  | 'cloud-restored'
   | 'profile-removed'
   | 'provider-logout';
 
@@ -94,4 +96,11 @@ export function broadcastDesktopAuthUpdated(reason: DesktopAuthUpdateReason) {
   } catch {
     // Focus-driven refresh remains the fallback when BroadcastChannel is unavailable.
   }
+}
+
+export function requestDesktopAuthRefresh(reason: DesktopAuthUpdateReason) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(DESKTOP_AUTH_REFRESH_EVENT, { detail: { reason } }));
+  }
+  broadcastDesktopAuthUpdated(reason);
 }

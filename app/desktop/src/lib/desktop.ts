@@ -42,45 +42,10 @@ import {
   desktopUpdaterController,
   type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
+import { invokeDesktop, isNativeDesktopShell } from './desktopRuntime';
 
-export function isNativeDesktopShell() {
-  if (typeof window === 'undefined') return false;
-  return typeof window.__TAURI_INTERNALS__ !== 'undefined';
-}
-
-function extractDesktopErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  if (typeof error === 'string' && error.trim().length > 0) {
-    return error;
-  }
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>;
-    const candidates = [record.message, record.error, record.cause]
-      .filter((value): value is string => typeof value === 'string')
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (candidates.length > 0) {
-      return candidates[0];
-    }
-    try {
-      return JSON.stringify(error);
-    } catch {
-      // fall through
-    }
-  }
-  return 'Desktop command failed';
-}
-
-export async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
-  const { invoke } = await import('@tauri-apps/api/core');
-  try {
-    return await invoke<T>(command, args);
-  } catch (error) {
-    throw new Error(extractDesktopErrorMessage(error));
-  }
-}
+export { invokeDesktop, isNativeDesktopShell } from './desktopRuntime';
+export * from './desktopCloudProviderAuth';
 
 export async function openDesktopExternalUrl(url: string) {
   if (isNativeDesktopShell()) {
@@ -151,28 +116,9 @@ export async function writeDesktopWorkspaceTextFile(path: string, contents: stri
   return invokeDesktop<string>('desktop_write_workspace_text_file', { path, contents });
 }
 
-export type DesktopCloudProviderAuthSnapshotPayload = {
-  provider: string;
-  authChoice: string;
-  payload: Record<string, unknown>;
-};
-
 export async function fetchDesktopAuthState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopAuthState>('desktop_auth_state');
-}
-
-export async function buildDesktopCloudProviderAuthSnapshotPayload(input: {
-  provider?: string | null;
-  authChoice?: string | null;
-  model?: string | null;
-}) {
-  if (!isNativeDesktopShell()) return null;
-  return invokeDesktop<DesktopCloudProviderAuthSnapshotPayload>('desktop_cloud_provider_auth_snapshot_payload', {
-    provider: input.provider ?? null,
-    authChoice: input.authChoice ?? null,
-    model: input.model ?? null,
-  });
 }
 
 export async function saveDesktopApiKey(provider: string, key: string) {

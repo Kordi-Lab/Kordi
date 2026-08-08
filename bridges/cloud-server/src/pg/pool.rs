@@ -202,6 +202,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "public Kordi ids and app invitations",
         sql: include_str!("../../migrations/0036_public_kordi_ids_and_app_invitations.sql"),
     },
+    EmbeddedMigration {
+        version: 42,
+        description: "provider auth refresh audit action",
+        sql: include_str!("../../migrations/0042_provider_auth_refresh_audit.sql"),
+    },
+    EmbeddedMigration {
+        version: 43,
+        description: "provider auth device restore audit action",
+        sql: include_str!("../../migrations/0043_provider_auth_device_restore_audit.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

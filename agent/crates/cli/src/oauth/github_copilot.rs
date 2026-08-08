@@ -66,16 +66,16 @@ pub(crate) struct CopilotEndpoints {
 }
 
 #[derive(Clone)]
-pub(crate) struct CopilotRuntimeSession {
-    pub(crate) login: Option<String>,
-    pub(crate) copilot_token: String,
-    pub(crate) copilot_expires_at_ms: i64,
-    pub(crate) api_base_url: String,
-    pub(crate) models: Vec<String>,
+pub struct CopilotRuntimeSession {
+    pub login: Option<String>,
+    pub copilot_token: String,
+    pub copilot_expires_at_ms: i64,
+    pub api_base_url: String,
+    pub models: Vec<String>,
     pub(crate) raw_endpoints: Option<CopilotEndpoints>,
-    pub(crate) organization_list: Vec<String>,
-    pub(crate) enterprise_list: Vec<String>,
-    pub(crate) sku: Option<String>,
+    pub organization_list: Vec<String>,
+    pub enterprise_list: Vec<String>,
+    pub sku: Option<String>,
 }
 
 impl std::fmt::Debug for AccessTokenResponse {
@@ -196,7 +196,7 @@ pub(crate) async fn login_github_copilot(
     })
 }
 
-pub(crate) async fn refresh_github_copilot_token(
+pub async fn refresh_github_copilot_token(
     refresh_token: &str,
     authority: &str,
 ) -> Result<OAuthCredentials> {
@@ -248,7 +248,7 @@ pub(crate) async fn refresh_github_copilot_token(
     })
 }
 
-pub(crate) async fn exchange_github_token_for_copilot_session(
+pub async fn exchange_github_token_for_copilot_session(
     authority: &str,
     github_access_token: &str,
 ) -> Result<CopilotRuntimeSession> {

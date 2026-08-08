@@ -115,6 +115,15 @@ pub trait CloudAgentRunClient {
         run_id: &str,
     ) -> Result<ProviderAuthMaterial, RunnerClientError>;
 
+    async fn persist_refreshed_provider_auth(
+        &self,
+        _run_id: &str,
+        _snapshot_id: &str,
+        _payload: &serde_json::Value,
+    ) -> Result<(), RunnerClientError> {
+        Ok(())
+    }
+
     async fn export_artifact(
         &self,
         run_id: &str,
@@ -261,6 +270,25 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             )
             .await?;
         Ok(envelope.provider_auth)
+    }
+
+    async fn persist_refreshed_provider_auth(
+        &self,
+        run_id: &str,
+        snapshot_id: &str,
+        payload: &serde_json::Value,
+    ) -> Result<(), RunnerClientError> {
+        let _: ProviderAuthEnvelope = self
+            .post_json(
+                &format!("/v1/cloud/agent-runs/{run_id}/provider-auth/refresh"),
+                serde_json::json!({
+                    "runnerId": self.runner_id,
+                    "snapshotId": snapshot_id,
+                    "payload": payload,
+                }),
+            )
+            .await?;
+        Ok(())
     }
 
     async fn export_artifact(

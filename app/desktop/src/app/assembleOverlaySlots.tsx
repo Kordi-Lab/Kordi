@@ -30,9 +30,7 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
         selectedProviderId={args.activeLoginProviderId}
         onSelectProvider={args.selectAuthProvider}
         onOpenLogin={args.openLoginFlow}
-        onRefresh={() => {
-          void args.refreshDesktopAuth();
-        }}
+        onRefresh={args.refreshDesktopAuth}
         onSelectAuthChoice={(providerId, choice) => {
           void args.handleSelectAuthChoice(providerId, choice);
         }}
