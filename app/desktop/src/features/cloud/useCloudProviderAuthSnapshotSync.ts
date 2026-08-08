@@ -122,7 +122,7 @@ export function useCloudProviderAuthSnapshotSync({
         const warningKey = error instanceof Error ? error.message : String(error);
         if (lastRestoreWarningRef.current !== warningKey) {
           lastRestoreWarningRef.current = warningKey;
-          reportWarning('[cloud-provider-auth-sync] restore failed', error);
+          reportWarning(`[cloud-provider-auth-sync] restore failed: ${warningKey}`, error);
         }
         throw error;
       }

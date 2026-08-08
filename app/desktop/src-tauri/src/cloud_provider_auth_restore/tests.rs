@@ -74,6 +74,26 @@ fn restored_legacy_oauth_profile_allows_missing_expiry() {
 }
 
 #[test]
+fn restored_unknown_expiry_survives_javascript_integer_rounding() {
+    let imported = auth_import_from_snapshot(RestoreSnapshot {
+        snapshot_id: "snap_rounded_expiry".to_string(),
+        provider: "openai-codex".to_string(),
+        auth_choice: "profile:rounded-expiry".to_string(),
+        payload: json!({
+            "apiMode": "openai-codex-oauth",
+            "accessToken": "rounded-expiry-access-secret",
+            "expiresAt": 9_223_372_036_854_776_000_u64,
+        }),
+    })
+    .unwrap();
+
+    let kordi_cli::login::CloudAuthProfileSecret::OAuth { expires, .. } = imported.secret else {
+        panic!("expected OAuth import");
+    };
+    assert_eq!(expires, i64::MAX);
+}
+
+#[test]
 fn restored_github_copilot_profile_preserves_durable_and_runtime_tokens() {
     let imported = auth_import_from_snapshot(RestoreSnapshot {
         snapshot_id: "snap_copilot".to_string(),

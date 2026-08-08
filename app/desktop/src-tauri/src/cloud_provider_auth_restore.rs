@@ -24,10 +24,17 @@ fn oauth_expiry_or_unknown(
 ) -> Result<i64, String> {
     match payload.get(key) {
         None | Some(Value::Null) => Ok(i64::MAX),
-        Some(value) => value
-            .as_i64()
-            .filter(|value| *value > 0)
-            .ok_or_else(|| format!("Cloud provider-auth restore field {key} is invalid")),
+        Some(value) => {
+            if let Some(expiry) = value.as_i64().filter(|value| *value > 0) {
+                return Ok(expiry);
+            }
+            if let Some(expiry) = value.as_u64().filter(|value| *value > 0) {
+                return Ok(i64::try_from(expiry).unwrap_or(i64::MAX));
+            }
+            Err(format!(
+                "Cloud provider-auth restore field {key} is invalid"
+            ))
+        }
     }
 }
 
