@@ -183,6 +183,13 @@ spec:
               value: "Kordi Support"
             - name: KORDI_SUPPORT_AGENT_SUBTITLE
               value: "Ask questions or suggest improvements"
+            - name: KORDI_SUPPORT_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-support-openai
+                  key: api-key
+            - name: KORDI_SUPPORT_OPENAI_MODEL
+              value: "gpt-5.6-luna"
             - name: KORDI_SUPPORT_SMTP_HOST
               value: "smtp.gmail.com"
             - name: KORDI_SUPPORT_SMTP_PORT

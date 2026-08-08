@@ -14,8 +14,8 @@ use crate::cloud_agent_runtime::claim_route::claim_cloud_agent_run;
 use crate::cloud_agent_runtime::provider_auth::{
     current_snapshot, provider_auth_for_run, publish_snapshot, revoke_snapshot,
     CurrentProviderAuthSnapshotQuery, CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher,
-    ProviderAuthForRunResult, PublishProviderAuthSnapshotRequest,
-    RunnerProviderAuthMaterialEnvelope,
+    ProviderAuthCipher, ProviderAuthForRunResult, PublishProviderAuthSnapshotRequest,
+    RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
 };
 use crate::cloud_agent_runtime::runs::{
     complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
@@ -188,9 +188,6 @@ async fn fail_runner_run(
         &runner_id,
         &input.error_code(),
         &input.message,
-        state
-            .support()
-            .map(|service| service.config().agent_id.as_str()),
     )
     .await
     {
@@ -215,19 +212,32 @@ async fn fetch_runner_provider_auth(
             StatusCode::BAD_REQUEST,
         );
     };
-    let cipher = match EnvProviderAuthCipher::from_env() {
-        Ok(cipher) => cipher,
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] provider auth cipher unavailable: {err}");
-            return error_response(
-                "provider_auth_not_configured",
-                "Cloud provider-auth snapshots are not configured on this server.",
-                StatusCode::SERVICE_UNAVAILABLE,
-            );
+    let cipher = EnvProviderAuthCipher::from_env().ok();
+    let service_auth = state.support().map(|support| {
+        let config = support.config();
+        let provider_auth = config.provider_auth();
+        ServiceProviderAuth {
+            owner_account_id: &config.owner_account_id,
+            snapshot_id: provider_auth.snapshot_id(),
+            provider: provider_auth.provider(),
+            auth_choice: provider_auth.auth_choice(),
+            api_key: provider_auth.api_key(),
+            base_url: provider_auth.base_url(),
+            model: provider_auth.model(),
         }
-    };
+    });
 
-    match provider_auth_for_run(state.db_pool(), &cipher, &run_id, &runner_id).await {
+    match provider_auth_for_run(
+        state.db_pool(),
+        cipher
+            .as_ref()
+            .map(|cipher| cipher as &dyn ProviderAuthCipher),
+        service_auth,
+        &run_id,
+        &runner_id,
+    )
+    .await
+    {
         Ok(ProviderAuthForRunResult::Found(provider_auth)) => {
             Json(RunnerProviderAuthMaterialEnvelope { provider_auth }).into_response()
         }
@@ -241,6 +251,14 @@ async fn fetch_runner_provider_auth(
             "Cloud provider-auth snapshot was not found for this run.",
             StatusCode::NOT_FOUND,
         ),
+        Ok(ProviderAuthForRunResult::ProviderAuthCipherUnavailable) => {
+            eprintln!("[cloud_agent_runtime] provider auth cipher unavailable");
+            error_response(
+                "provider_auth_not_configured",
+                "Cloud provider-auth snapshots are not configured on this server.",
+                StatusCode::SERVICE_UNAVAILABLE,
+            )
+        }
         Err(err) => {
             eprintln!("[cloud_agent_runtime] fetch provider auth for run: {err}");
             error_response(

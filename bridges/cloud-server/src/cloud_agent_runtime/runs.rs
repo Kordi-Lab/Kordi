@@ -16,6 +16,7 @@ pub use claims::{
     claim_run, lookup_run_for_request, ClaimRunRequest, CloudAgentRunLookupResponse,
     CloudAgentRunResponse,
 };
+pub(crate) use claims::{claim_run_with_provider_auth_source, ProviderAuthSource};
 pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest};
 #[cfg(test)]
 use delivery::{

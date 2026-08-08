@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
+use std::fmt;
 use uuid::Uuid;
 
 const NONCE_LEN: usize = 12;
@@ -140,7 +141,7 @@ pub struct RunnerProviderAuthMaterialEnvelope {
     pub provider_auth: RunnerProviderAuthMaterial,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 pub struct RunnerProviderAuthMaterial {
     #[serde(rename = "snapshotId")]
     pub snapshot_id: String,
@@ -150,11 +151,34 @@ pub struct RunnerProviderAuthMaterial {
     pub payload: Value,
 }
 
+impl fmt::Debug for RunnerProviderAuthMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RunnerProviderAuthMaterial")
+            .field("snapshot_id", &self.snapshot_id)
+            .field("provider", &self.provider)
+            .field("auth_choice", &self.auth_choice)
+            .field("payload", &"[REDACTED]")
+            .finish()
+    }
+}
+
+pub struct ServiceProviderAuth<'a> {
+    pub owner_account_id: &'a str,
+    pub snapshot_id: &'a str,
+    pub provider: &'a str,
+    pub auth_choice: &'a str,
+    pub api_key: &'a str,
+    pub base_url: &'a str,
+    pub model: &'a str,
+}
+
 #[derive(Debug)]
 pub enum ProviderAuthForRunResult {
     Found(RunnerProviderAuthMaterial),
     RunNotFound,
     ProviderAuthNotFound,
+    ProviderAuthCipherUnavailable,
 }
 
 #[derive(Debug, Deserialize)]
@@ -287,20 +311,47 @@ pub async fn revoke_snapshot(
 
 pub async fn provider_auth_for_run(
     pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
+    cipher: Option<&dyn ProviderAuthCipher>,
+    service_auth: Option<ServiceProviderAuth<'_>>,
     run_id: &str,
     runner_id: &str,
 ) -> Result<ProviderAuthForRunResult, sqlx_core::Error> {
-    let run: Option<(String,)> = query_as(
-        "SELECT owner_account_id FROM cloud_agent_fallback_runs \
+    let run: Option<(String, String)> = query_as(
+        "SELECT owner_account_id, provider_auth_source FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
     )
     .bind(run_id)
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    let Some((owner_account_id,)) = run else {
+    let Some((owner_account_id, provider_auth_source)) = run else {
         return Ok(ProviderAuthForRunResult::RunNotFound);
+    };
+
+    if provider_auth_source == "support_service" {
+        let Some(service_auth) =
+            service_auth.filter(|service_auth| service_auth.owner_account_id == owner_account_id)
+        else {
+            return Ok(ProviderAuthForRunResult::ProviderAuthNotFound);
+        };
+        return Ok(ProviderAuthForRunResult::Found(
+            RunnerProviderAuthMaterial {
+                snapshot_id: service_auth.snapshot_id.to_string(),
+                provider: service_auth.provider.to_string(),
+                auth_choice: service_auth.auth_choice.to_string(),
+                payload: serde_json::json!({
+                    "apiKey": service_auth.api_key,
+                    "baseUrl": service_auth.base_url,
+                    "model": service_auth.model,
+                }),
+            },
+        ));
+    }
+    if provider_auth_source != "owner_snapshot" {
+        return Ok(ProviderAuthForRunResult::ProviderAuthNotFound);
+    }
+    let Some(cipher) = cipher else {
+        return Ok(ProviderAuthForRunResult::ProviderAuthCipherUnavailable);
     };
 
     let row: Option<(String, String, String, Vec<u8>)> = query_as(
@@ -418,5 +469,19 @@ mod tests {
             payload: serde_json::json!({"token":"x"}),
         };
         assert!(request.normalized().is_none());
+    }
+
+    #[test]
+    fn runner_provider_auth_debug_redacts_secret_payloads() {
+        let material = RunnerProviderAuthMaterial {
+            snapshot_id: "support-service-openai".to_string(),
+            provider: "openai".to_string(),
+            auth_choice: "support-service-api-key".to_string(),
+            payload: serde_json::json!({"apiKey":"secret-support-key"}),
+        };
+
+        let debug = format!("{material:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("secret-support-key"));
     }
 }

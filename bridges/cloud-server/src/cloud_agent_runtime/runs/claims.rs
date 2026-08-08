@@ -11,6 +11,21 @@ use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
 use super::prompt_history::fallback_prompt_for_claim;
 use super::RunResult;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderAuthSource {
+    OwnerSnapshot,
+    SupportService,
+}
+
+impl ProviderAuthSource {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::OwnerSnapshot => "owner_snapshot",
+            Self::SupportService => "support_service",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ClaimRunRequest {
     #[serde(rename = "requestMessageId")]
@@ -83,6 +98,14 @@ pub async fn lookup_run_for_request(
 }
 
 pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<CloudAgentRunResponse> {
+    claim_run_with_provider_auth_source(pool, input, ProviderAuthSource::OwnerSnapshot).await
+}
+
+pub(crate) async fn claim_run_with_provider_auth_source(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    provider_auth_source: ProviderAuthSource,
+) -> RunResult<CloudAgentRunResponse> {
     let existing: Option<(String, String, Option<String>, String, String)> = query_as(
         "SELECT run_id, status, sandbox_id, created_at, updated_at \
          FROM cloud_agent_fallback_runs WHERE idempotency_key = $1",
@@ -113,8 +136,9 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     let row: (String, String, Option<String>, String, String) = query_as(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
-            requester_account_id, status, prompt, sandbox_id, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $9)
+            requester_account_id, status, prompt, sandbox_id, provider_auth_source,
+            created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $10, $10)
          ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = cloud_agent_fallback_runs.idempotency_key
          RETURNING run_id, status, sandbox_id, created_at, updated_at",
     )
@@ -126,6 +150,7 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     .bind(&input.requester_account_id)
     .bind(&prompt)
     .bind(&sandbox.sandbox_id)
+    .bind(provider_auth_source.as_str())
     .bind(&now)
     .fetch_one(pool)
     .await?;

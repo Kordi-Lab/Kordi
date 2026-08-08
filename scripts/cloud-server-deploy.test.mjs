@@ -68,6 +68,22 @@ test('cloud server manifest targets the hosted product public base', async () =>
   assert.doesNotMatch(manifest, /https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io/);
 });
 
+test('Kordi Support uses a dedicated server-side OpenAI API key secret', async () => {
+  const manifest = await readFile(cloudServerManifestPath, 'utf8');
+  const deploy = await readFile(deployScriptPath, 'utf8');
+
+  assert.match(
+    manifest,
+    /KORDI_SUPPORT_OPENAI_API_KEY[\s\S]*name: kordi-support-openai[\s\S]*key: api-key/,
+  );
+  assert.match(manifest, /KORDI_SUPPORT_OPENAI_MODEL[\s\S]*value: "gpt-5\.6-luna"/);
+  assert.doesNotMatch(manifest, /KORDI_SUPPORT_OPENAI_API_KEY[\s\S]*value: ["']?sk-/);
+  assert.match(
+    deploy,
+    /get secret kordi-support-openai -o jsonpath='\{\.data\.api-key\}' \| grep -q \./,
+  );
+});
+
 test('product origin serves desktop compatibility routes without redirects', async () => {
   const caddyfile = await readFile(caddyfilePath, 'utf8');
   const portForwardService = await readFile(portForwardServicePath, 'utf8');

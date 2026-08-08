@@ -80,6 +80,7 @@ pub(super) type RunnerRunRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    String,
 );
 
 pub async fn lease_next_run(
@@ -103,7 +104,7 @@ pub async fn lease_next_run(
              LIMIT 1 \
              FOR UPDATE SKIP LOCKED \
          ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message, provider_auth_source",
     )
     .bind(runner_id)
     .bind(&lease_expires_at)
@@ -134,7 +135,7 @@ pub async fn lease_canary_run(
                  AND lease_expires_at <= $3 \
              ) \
          ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message, provider_auth_source",
     )
     .bind(runner_id)
     .bind(&lease_expires_at)
@@ -159,7 +160,7 @@ pub async fn mark_run_running(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'running', lease_expires_at = $3, updated_at = $4 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message, provider_auth_source",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -177,14 +178,19 @@ pub(super) async fn runner_response_from_row(
     pool: &PgPool,
     row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
-    let provider_auth_available: Option<(String,)> = query_as(
-        "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
-         WHERE account_id = $1 AND revoked_at IS NULL \
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(&row.3)
-    .fetch_optional(pool)
-    .await?;
+    let provider_auth_available = if row.10 == "support_service" {
+        true
+    } else {
+        let snapshot: Option<(String,)> = query_as(
+            "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
+             WHERE account_id = $1 AND revoked_at IS NULL \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(&row.3)
+        .fetch_optional(pool)
+        .await?;
+        snapshot.is_some()
+    };
     Ok(RunnerRunResponse {
         run_id: row.0,
         status: row.1,
@@ -193,7 +199,7 @@ pub(super) async fn runner_response_from_row(
         requester_account_id: row.4,
         session_id: row.5,
         sandbox_id: row.6,
-        provider_auth_available: provider_auth_available.is_some(),
+        provider_auth_available,
         response_message_id: row.7,
         error_code: row.8,
         error_message: row.9,

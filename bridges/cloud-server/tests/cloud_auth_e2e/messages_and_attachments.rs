@@ -4,7 +4,7 @@ use super::*;
 async fn support_agent_accepts_messages_without_a_contact_relationship() {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use kordi_cloud_server::support::{
-        bootstrap_support_agent, PendingSupportConfig, SupportService,
+        bootstrap_support_agent, PendingSupportConfig, SupportProviderAuth, SupportService,
     };
 
     let Some(pool) = try_pool().await else { return };
@@ -19,9 +19,11 @@ async fn support_agent_accepts_messages_without_a_contact_relationship() {
             name: "Kordi Support".into(),
             subtitle: "Ask questions or suggest improvements".into(),
             inbox: unique_email("support-inbox"),
-            default_model: Some("gpt-5.6-luna".into()),
-            default_auth_provider: Some("openai-codex".into()),
-            default_auth_choice: Some("local-active-oauth".into()),
+            provider_auth: SupportProviderAuth::openai_api_key(
+                "support-service-test-key",
+                "gpt-5.6-luna",
+            )
+            .unwrap(),
         },
     )
     .await

@@ -284,7 +284,14 @@ pub(super) async fn send_message(
                 idempotency_key: format!("kordi-support:{}", summary.message_id),
             };
             tokio::spawn(async move {
-                if let Err(error) = claim_run(&pool, &input).await {
+                if let Err(error) =
+                    crate::cloud_agent_runtime::runs::claim_run_with_provider_auth_source(
+                        &pool,
+                        &input,
+                        crate::cloud_agent_runtime::runs::ProviderAuthSource::SupportService,
+                    )
+                    .await
+                {
                     eprintln!(
                         "[support] queue hosted response for {}: {error}",
                         input.request_message_id

@@ -105,6 +105,8 @@ kubectl -n kordi-cloud logs pod/release-store-check
 kubectl -n kordi-cloud delete pod/release-store-check --wait=true >/dev/null"
 
 echo "[deploy] applying manifest with image=${IMAGE}"
+echo "[deploy] verifying dedicated Kordi Support provider secret"
+"${GCLOUD_SSH[@]}" --command "kubectl -n kordi-cloud get secret kordi-support-openai -o jsonpath='{.data.api-key}' | grep -q ."
 "${GCLOUD_SSH[@]}" --command "cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests && \
     sed 's|image: kordi-cloud-server:dev|image: ${IMAGE}|' cloud-server-deployment.yaml | kubectl apply -f -"
 

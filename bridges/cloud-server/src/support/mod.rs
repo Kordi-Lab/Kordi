@@ -7,7 +7,7 @@ mod tickets;
 use std::sync::Arc;
 
 pub use agent::{bootstrap_support_agent, message_targets_support_agent, support_contact};
-pub use config::{PendingSupportConfig, SupportConfig, SupportConfigError};
+pub use config::{PendingSupportConfig, SupportConfig, SupportConfigError, SupportProviderAuth};
 pub use routes::routes;
 
 use mailer::SupportMailer;

@@ -125,17 +125,34 @@ kubectl -n kordi-cloud create secret generic kordi-support-smtp \
 unset KORDI_SUPPORT_GMAIL_APP_PASSWORD
 ```
 
-The hosted support chat also requires the support-owner account to have a
-current provider-auth snapshot. Sign in to Kordi as `trykordi@gmail.com`,
-connect the intended model provider, and confirm the snapshot reaches the
-hosted server before enabling live support traffic. The system agent is
-created and locked by the server; it is intentionally hidden from normal
-Factory edit/archive routes.
+The hosted support chat uses a dedicated OpenAI API key owned by the service.
+It never inherits a provider-auth snapshot from `trykordi@gmail.com` or from
+the person asking for help. Keep the key only in the `kordi-support-openai`
+Kubernetes Secret; the Cloud server releases it only to an authenticated
+runner for a server-created Support run.
+
+Create or rotate the Secret from a trusted operator shell before deploying
+the Cloud server. Do not pass the key as a command-line literal or commit it:
+
+```bash
+read -s -p "Kordi Support OpenAI API key: " KORDI_SUPPORT_OPENAI_API_KEY
+echo
+kubectl -n kordi-cloud create secret generic kordi-support-openai \
+  --from-literal=api-key="$KORDI_SUPPORT_OPENAI_API_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset KORDI_SUPPORT_OPENAI_API_KEY
+```
+
+`KORDI_SUPPORT_OPENAI_MODEL` selects the service model and defaults to
+`gpt-5.6-luna`. The server fails closed when Support is enabled without its
+dedicated API key. The system agent remains created and locked by the server
+and is intentionally hidden from normal Factory edit/archive routes.
 
 Verify without printing any secret values:
 
 ```bash
 kubectl -n kordi-cloud get secret kordi-support-smtp
+kubectl -n kordi-cloud get secret kordi-support-openai
 kubectl -n kordi-cloud rollout status deployment/kordi-cloud-server --timeout=180s
 kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m \
   | grep -E 'Kordi support|support tickets'

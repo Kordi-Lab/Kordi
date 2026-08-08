@@ -20,16 +20,9 @@ use super::envelopes::{
     encode_cloud_agent_response_body, encode_cloud_agent_response_body_with_state,
 };
 use super::leases::{runner_response_from_row, RunnerRunResponse, RunnerRunRow};
-use super::{RunError, RunResult};
+use super::{ProviderAuthSource, RunError, RunResult};
 
-type FailedRunRow = (
-    String,
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-);
+type FailedRunRow = (String, String, String, String, Option<String>, String);
 
 #[derive(Debug, Deserialize)]
 pub struct CompleteRunRequest {
@@ -240,7 +233,7 @@ pub async fn complete_run(
          SET status = 'completed', response_message_id = $3, \
              error_code = NULL, error_message = NULL, updated_at = $4, completed_at = $4 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message, provider_auth_source",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -264,10 +257,9 @@ pub async fn fail_run(
     runner_id: &str,
     error_code: &str,
     message: &str,
-    support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
     let existing: Option<FailedRunRow> = query_as(
-        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id, target_agent_id \
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id, provider_auth_source \
          FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
     )
@@ -281,13 +273,12 @@ pub async fn fail_run(
         session_id,
         request_message_id,
         _message_id,
-        target_agent_id,
+        provider_auth_source,
     )) = existing
     else {
         return Err(RunError::NotFound);
     };
-    let is_support_agent = support_agent_id
-        .is_some_and(|support_agent_id| target_agent_id.as_deref() == Some(support_agent_id));
+    let is_support_agent = provider_auth_source == ProviderAuthSource::SupportService.as_str();
     let failure_text = cloud_agent_failure_response_text(error_code, is_support_agent);
     let response_body =
         encode_failed_cloud_agent_response_body(&request_message_id, error_code, is_support_agent);
@@ -392,7 +383,7 @@ pub async fn fail_run(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message, provider_auth_source",
     )
     .bind(run_id)
     .bind(runner_id)

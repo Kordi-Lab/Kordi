@@ -203,6 +203,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         sql: include_str!("../../migrations/0036_public_kordi_ids_and_app_invitations.sql"),
     },
     EmbeddedMigration {
+        version: 37,
+        description: "cloud agent run provider auth source",
+        sql: include_str!("../../migrations/0037_cloud_agent_run_provider_auth_source.sql"),
+    },
+    EmbeddedMigration {
         version: 44,
         description: "explicit group invitations",
         sql: include_str!("../../migrations/0044_group_invitations.sql"),
