@@ -211,6 +211,11 @@ export function optionsFor(fixture, overrides = {}) {
     channel: 'beta',
     expectedCommit: '0123456789abcdef0123456789abcdef01234567',
     pubDate: PUB_DATE,
+    releaseNotes: [
+      '### Added',
+      '',
+      '- Added signed desktop updates for the beta channel.',
+    ].join('\n'),
     ...overrides,
   };
 }

@@ -1,0 +1,103 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.whats-new-visual-shell {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: 220px 1fr;
+  background: var(--app-main-bg);
+  color: var(--utility-foreground);
+}
+
+.whats-new-visual-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px 24px;
+  background: var(--app-session-bg);
+  border-right: 1px solid var(--app-divider);
+}
+
+.whats-new-visual-brand {
+  margin-bottom: 18px;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+}
+
+.whats-new-visual-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--app-sidebar-accent);
+}
+
+.whats-new-visual-nav {
+  width: 128px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--app-control-bg);
+}
+
+.whats-new-visual-nav-active {
+  width: 152px;
+  background: var(--app-control-active);
+}
+
+.whats-new-visual-workspace {
+  min-width: 0;
+  padding: 34px 42px;
+}
+
+.whats-new-visual-workspace header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 46px;
+  border-bottom: 1px solid var(--app-divider);
+}
+
+.whats-new-visual-workspace header span {
+  margin-right: auto;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.whats-new-visual-workspace header i {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--app-control-bg);
+}
+
+.whats-new-visual-content {
+  display: grid;
+  gap: 16px;
+  padding-top: 40px;
+}
+
+.whats-new-visual-content div {
+  width: min(560px, 72%);
+  height: 12px;
+  border-radius: 6px;
+  background: var(--app-control-bg);
+}
+
+.whats-new-visual-content div:nth-child(2) {
+  width: min(420px, 58%);
+}
+
+.whats-new-visual-content div:nth-child(3) {
+  width: min(620px, 82%);
+  margin-top: 34px;
+}
+
+.whats-new-visual-content div:nth-child(4) {
+  width: min(360px, 48%);
+}
