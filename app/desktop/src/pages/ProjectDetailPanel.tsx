@@ -212,6 +212,7 @@ export function ProjectDetailPanel({
           <div className="app-inspector-list">
             {[...activeProject.people, ...activeProject.agents].map((member) => {
               const isAgent = activeProject.agents.includes(member);
+              const isSelfHuman = !isAgent && /^(you|me)$/i.test(member.trim());
 
               return (
                 <div key={member} className="app-inspector-list-row">
@@ -219,6 +220,7 @@ export function ProjectDetailPanel({
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
                       seed={/^(you|me)$/i.test(member) ? (currentLocalProfileAvatarSeed || getLocalProfileAvatarSeed()) : isAgent ? (currentLocalAgentAvatarSeed || getLocalAgentAvatarSeed(member)) : member}
+                      isSelf={isSelfHuman}
                       name={member}
                       className="h-7 w-7 border border-white/10"
                     />

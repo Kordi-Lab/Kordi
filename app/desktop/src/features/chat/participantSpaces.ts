@@ -324,11 +324,11 @@ function avatarForParticipant(participant: ConversationParticipant): Participant
   return {
     kind: participant.kind === 'agent' ? 'agent' : 'human',
     seed: participant.avatarKey || participant.agentId || participant.humanId || participant.id || participant.name,
+    ...(isSelfParticipant(participant) ? { isSelf: true } : {}),
     imageUrl: participant.profileImageUrl ?? null,
     presenceStatus: participant.presenceStatus ?? null,
   };
 }
-
 function buildSession(conversation: Conversation, updatedAtMs: number): ParticipantSpaceSessionViewModel {
   return {
     id: conversation.id,
@@ -646,7 +646,7 @@ export function ensureSelfParticipantSpace(
     unread: 0,
     updatedAtMs: 0,
     preview: '',
-    avatarStack: [{ kind: 'human', seed: avatarSeed, imageUrl: selfParticipant.profileImageUrl ?? null }],
+    avatarStack: [{ kind: 'human', seed: avatarSeed, isSelf: true, imageUrl: selfParticipant.profileImageUrl ?? null }],
     sessions: [],
   };
 

@@ -197,10 +197,10 @@ export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'g
 export type ParticipantSpaceAvatar = {
   kind: 'human' | 'agent';
   seed: string;
+  isSelf?: boolean;
   imageUrl?: string | null;
   presenceStatus?: string | null;
 };
-
 export type ParticipantSpaceSessionViewModel = {
   id: string;
   canonicalSessionId?: string;

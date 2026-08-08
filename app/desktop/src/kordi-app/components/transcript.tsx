@@ -1229,7 +1229,7 @@ function MessageBubbleView({
             >
               <IdentityAvatar
                 kind={avatarKind}
-                seed={avatarSeed}
+                seed={avatarSeed} isSelf={isOwnHumanMessage}
                 name={avatarName}
                 imageUrl={msg.senderProfileImageUrl}
                 className={cn(
@@ -1241,7 +1241,7 @@ function MessageBubbleView({
           ) : (
             <IdentityAvatar
               kind={avatarKind}
-              seed={avatarSeed}
+              seed={avatarSeed} isSelf={isOwnHumanMessage}
               name={avatarName}
               imageUrl={msg.senderProfileImageUrl}
               className={cn(

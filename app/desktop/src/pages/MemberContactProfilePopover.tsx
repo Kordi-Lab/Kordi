@@ -148,6 +148,7 @@ export function MemberContactProfileContent({
         <IdentityAvatar
           kind="human"
           seed={participant.avatarKey ?? memberStableId(participant)}
+          isSelf={isSelf}
           name={participant.name}
           imageUrl={participant.profileImageUrl}
           className="h-10 w-10 border border-white/10"

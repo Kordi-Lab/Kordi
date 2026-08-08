@@ -158,6 +158,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
             <IdentityAvatar
               kind="human"
               seed={avatarSeedFor({ accountId: account.accountId, avatarUrl: account.avatarUrl })}
+              isSelf
               name={account.displayName ?? account.primaryEmail ?? 'You'}
               imageUrl={cloudAvatarImageUrl(account.avatarUrl)}
               avatarKey={`cloud-self:${account.accountId}`}

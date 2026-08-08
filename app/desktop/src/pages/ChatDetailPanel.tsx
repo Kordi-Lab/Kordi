@@ -100,8 +100,12 @@ function canonicalParticipantOwnerIsSelf(activeConv: ActiveConversation, partici
   )) ?? false;
 }
 
+function canonicalParticipantIsSelfHuman(participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) {
+  return participant.kind !== 'agent' && (participant.role === 'self' || isSelfReferenceName(participant.name));
+}
+
 function canonicalParticipantDisplayName(activeConv: ActiveConversation, participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) {
-  const isSelfHuman = participant.kind !== 'agent' && (participant.role === 'self' || isSelfReferenceName(participant.name));
+  const isSelfHuman = canonicalParticipantIsSelfHuman(participant);
   if (isSelfHuman) return selfDisplayName(participant.name, true);
   if (participant.kind === 'agent' && canonicalParticipantOwnerIsSelf(activeConv, participant)) {
     return firstPersonPossessiveLabel(participant.name, participant.ownerName);
@@ -121,7 +125,7 @@ function canonicalParticipantAvatarSeed(
   localAgentSeed?: string,
 ) {
   const fallbackSeed = participant.avatarKey?.trim() || participant.name;
-  const isSelfHuman = participant.kind !== 'agent' && (participant.role === 'self' || isSelfReferenceName(participant.name));
+  const isSelfHuman = canonicalParticipantIsSelfHuman(participant);
   if (isSelfHuman) return localProfileSeed || fallbackSeed;
 
   const isLocalOwnedAgent = participant.kind === 'agent'
@@ -278,6 +282,7 @@ function ChatDetailPanelView({
           <div className="app-inspector-list">
             {activeConv.canonicalParticipants?.length ? activeConv.canonicalParticipants.map((participant) => {
               const isAgent = participant.kind === 'agent';
+              const isSelfHuman = canonicalParticipantIsSelfHuman(participant);
               const displayName = canonicalParticipantDisplayName(activeConv, participant);
               const ownerLabel = canonicalParticipantOwnerLabel(activeConv, participant);
 
@@ -287,6 +292,7 @@ function ChatDetailPanelView({
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
                       seed={canonicalParticipantAvatarSeed(activeConv, participant, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
+                      isSelf={isSelfHuman}
                       imageUrl={participant.profileImageUrl}
                       name={displayName}
                       className="h-7 w-7 border border-white/10"
@@ -302,6 +308,7 @@ function ChatDetailPanelView({
               );
             }) : activeConv.participants.map((participant) => {
               const displayName = selfDisplayName(participant);
+              const isSelfHuman = /^(you|me)$/i.test(participant.trim());
               const isAgent = activeConv.type !== 'person' && /agent|bot|assistant|kordi/i.test(participant);
 
               return (
@@ -310,6 +317,7 @@ function ChatDetailPanelView({
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
                       seed={participantAvatarSeed(activeConv, participant, isAgent, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
+                      isSelf={isSelfHuman}
                       imageUrl={participantProfileImageUrl(activeConv, participant)}
                       name={displayName}
                       className="h-7 w-7 border border-white/10"

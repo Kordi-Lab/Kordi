@@ -13,6 +13,7 @@ export function ParticipantSpaceAvatarStack({
         {
           kind: space.kind === 'direct-agent' ? ('agent' as const) : ('human' as const),
           seed: space.id,
+          isSelf: space.kind === 'self',
           imageUrl: null,
         },
       ];
@@ -25,6 +26,7 @@ export function ParticipantSpaceAvatarStack({
         <IdentityAvatar
           kind={avatar.kind}
           seed={avatar.seed}
+          isSelf={avatar.isSelf}
           name={space.title}
           imageUrl={avatar.imageUrl ?? undefined}
           className="h-9 w-9"
@@ -50,6 +52,7 @@ export function ParticipantSpaceAvatarStack({
           <IdentityAvatar
             kind={avatar.kind}
             seed={avatar.seed}
+            isSelf={avatar.isSelf}
             name={space.title}
             imageUrl={avatar.imageUrl ?? undefined}
             className="h-7 w-7"

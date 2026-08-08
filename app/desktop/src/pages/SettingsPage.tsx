@@ -145,6 +145,7 @@ export function SettingsPage({
                   <EditableIdentityAvatar
                     kind="human"
                     seed={localProfileAvatarSeed || currentLocalProfileAvatarSeed}
+                    isSelf
                     name="Local profile"
                     label="Local profile"
                     className="h-16 w-16 border border-white/10"

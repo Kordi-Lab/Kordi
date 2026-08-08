@@ -8,6 +8,10 @@ import {
 } from '@/features/cloud/signupAvatar';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
+import {
+  resolveIdentityAvatarPresentation,
+  useActiveLocalProfileIdentity,
+} from './localProfileIdentity';
 import { shouldLoadAvatarThroughNativeProxy, useRemoteAvatarImage } from './remoteAvatarImage';
 
 export type IdentityAvatarKind = 'human' | 'agent';
@@ -15,6 +19,8 @@ export type IdentityAvatarKind = 'human' | 'agent';
 export type IdentityAvatarProps = {
   kind: IdentityAvatarKind;
   seed: string;
+  /** Resolve the visual identity from the signed-in profile, even when the UI label is "Me" or "You". */
+  isSelf?: boolean;
   name?: string | null;
   imageUrl?: string | null;
   avatarKey?: string | null;
@@ -69,7 +75,7 @@ function writeLocalStorageValue(key: string, value?: string | null) {
 
 function emitLocalAvatarSeedsChange() {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(LOCAL_AVATAR_SEEDS_CHANGE_EVENT));
+  window.dispatchEvent(new window.Event(LOCAL_AVATAR_SEEDS_CHANGE_EVENT));
 }
 
 function subscribeLocalAvatarSeeds(onStoreChange: () => void) {
@@ -238,11 +244,19 @@ export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, ava
   return avatarKey?.trim() || `${kind}:${seed.trim() || 'unknown'}`;
 }
 
-export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, className, generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
-  const normalizedSeed = seed.trim() || name?.trim() || `${kind}:unknown`;
-  const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, avatarKey);
+export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, avatarKey, className, generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
+  const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
+  const { fallbackLabel, normalizedSeed, resolvedImageUrl: identityImageUrl } = resolveIdentityAvatarPresentation({
+    kind,
+    seed,
+    isSelf,
+    name,
+    imageUrl,
+    activeLocalProfileIdentity,
+  });
+  const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, isSelf ? null : avatarKey);
   const localOverride = useAvatarOverride(resolvedAvatarKey);
-  const originalImageUrl = localOverride ?? imageUrl;
+  const originalImageUrl = localOverride ?? identityImageUrl;
   const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
   const remoteAvatar = useRemoteAvatarImage(originalImageUrl, needsNativeProxy);
   const resolvedImageUrl = needsNativeProxy
@@ -259,7 +273,6 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
       : needsNativeProxy && remoteAvatar.status === 'failed'
         ? 'failed'
         : 'fallback';
-  const fallbackLabel = name?.trim() || normalizedSeed;
   const label = name?.trim() ? `${name} avatar` : `${kind === 'agent' ? 'Agent' : 'Human'} avatar`;
 
   const normalizedPresenceStatus = presenceStatus?.trim().toLowerCase() === 'online' ? 'online' : presenceStatus ? 'offline' : null;

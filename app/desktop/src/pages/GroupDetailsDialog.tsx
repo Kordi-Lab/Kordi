@@ -652,7 +652,7 @@ export function GroupDetailsDialog({
                       <span className="relative mx-auto block h-9 w-9">
                         <IdentityAvatar
                           kind="human"
-                          seed={member.avatarKey ?? memberStableId(member)}
+                          seed={member.avatarKey ?? memberStableId(member)} isSelf={isSelfMember(member)}
                           name={member.name}
                           imageUrl={member.profileImageUrl}
                           className="h-9 w-9 border border-white/10"
