@@ -80,6 +80,30 @@ test('legacy support selection follows the locked agent when the server uses a r
   assert.equal(selected.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
 });
 
+test('a new scoped Support selection reuses a legacy message-backed Support thread', () => {
+  const existingConversation = {
+    ...supportConversationWithRealOwner(),
+    canonicalSessionId: 'session:direct-agent:acct_me:cloud_agent_kordi_support',
+    messages: [{
+      id: 'support-history',
+      role: 'person' as const,
+      sender: 'Kordi Support',
+      senderType: 'human' as const,
+      text: 'How can I help?',
+      time: '20:40',
+    }],
+  };
+  const activeScopedId = 'cloud:conversation:acct_real_support_owner:agent:session:session%3Adirect-system-agent%3Aacct_me%3Acloud_agent_kordi_support';
+  const selected = activeConversationForSelection(
+    activeScopedId,
+    [existingConversation],
+    { isNativeShell: true, nativeChatPlaceholder: existingConversation },
+  );
+
+  assert.equal(selected.id, existingConversation.id);
+  assert.equal(selected.messages.length, 1);
+});
+
 test('runtime-only support conversation does not show a permanent canonical loader', () => {
   const conversation = supportConversation();
   const selected = applyCanonicalHydrationPlaceholder(conversation, 'cold');

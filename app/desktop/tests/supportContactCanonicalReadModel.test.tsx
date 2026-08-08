@@ -191,6 +191,25 @@ test('canonical hydration preserves the fixed Kordi Support contact identity', (
   const spaces = buildParticipantSpaces([conversation as never]);
   assert.equal(filterParticipantSpaces(spaces, '', 'contact')[0]?.title, KORDI_SUPPORT_NAME);
   assert.equal(filterParticipantSpaces(spaces, '', 'agent').length, 0);
+
+  const scopedDraftSessionId = 'session:direct-system-agent:acct_me:cloud_agent_kordi_support';
+  const scopedDraft = {
+    ...sourceConversation,
+    id: `cloud:conversation:acct_real_support_owner:agent:session:${encodeURIComponent(scopedDraftSessionId)}`,
+    canonicalSessionId: scopedDraftSessionId,
+    subtitle: `cloud:conversation:acct_real_support_owner:agent:session:${encodeURIComponent(scopedDraftSessionId)}`,
+    messages: [],
+    _updatedAtMs: 10,
+  };
+  const collapsed = readModel?.buildChatConversations(
+    [sourceConversation as never, scopedDraft as never],
+    (messages, fallback) => messages.at(-1)?.text ?? fallback ?? '',
+  ) ?? [];
+
+  assert.equal(collapsed.length, 1);
+  assert.equal(collapsed[0]?.name, KORDI_SUPPORT_NAME);
+  assert.equal(collapsed[0]?.messages.length, 6);
+  assert.notEqual(collapsed[0]?.id, scopedDraft.id);
 });
 
 test('canonical hydration keeps runtime Kordi Support visible before its session materializes', () => {

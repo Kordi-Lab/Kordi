@@ -1,6 +1,7 @@
 import type { Conversation, Message } from '@/kordi-app/types';
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import {
+  isKordiSupportConversation,
   KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
 } from './supportIdentity';
@@ -71,4 +72,42 @@ export function normalizeSupportContactConversationPresentation(
     },
     messages: normalizeSupportContactMessages(conversation.messages),
   };
+}
+
+function supportConversationMessageCount(conversation: Conversation): number {
+  const visibleMessageCount = conversation.messages.filter(
+    (message) => message.role !== 'system',
+  ).length;
+  return Math.max(visibleMessageCount, conversation.canonicalMessageCount ?? 0);
+}
+
+function preferSupportConversation(
+  current: Conversation,
+  candidate: Conversation,
+): Conversation {
+  const currentMessageCount = supportConversationMessageCount(current);
+  const candidateMessageCount = supportConversationMessageCount(candidate);
+  if (currentMessageCount !== candidateMessageCount) {
+    return candidateMessageCount > currentMessageCount ? candidate : current;
+  }
+  if (Boolean(current.transientDraft) !== Boolean(candidate.transientDraft)) {
+    return candidate.transientDraft ? current : candidate;
+  }
+  return (candidate._updatedAtMs ?? 0) > (current._updatedAtMs ?? 0)
+    ? candidate
+    : current;
+}
+
+export function collapseDuplicateKordiSupportConversations(
+  conversations: Conversation[],
+): Conversation[] {
+  const supportConversations = conversations.filter((conversation) => (
+    isKordiSupportConversation(conversation)
+  ));
+  if (supportConversations.length <= 1) return conversations;
+
+  const preferred = supportConversations.reduce(preferSupportConversation);
+  return conversations.filter((conversation) => (
+    !isKordiSupportConversation(conversation) || conversation === preferred
+  ));
 }

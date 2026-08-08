@@ -15,6 +15,7 @@ import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
 import {
+  collapseDuplicateKordiSupportConversations,
   normalizeSupportContactConversationPresentation,
   normalizeSupportContactMessages,
 } from '@/features/support/supportConversationPresentation';
@@ -742,7 +743,7 @@ export function createCanonicalSessionReadModel(
         .map((conversation) => isKordiSupportConversation(conversation)
           ? normalizeSupportContactConversationPresentation(conversation)
           : conversation);
-      return [...hydrated, ...extras];
+      return collapseDuplicateKordiSupportConversations([...hydrated, ...extras]);
     },
   };
 }

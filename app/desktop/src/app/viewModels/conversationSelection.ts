@@ -42,15 +42,19 @@ function matchingConversation(
       : undefined);
 }
 
-function matchingLegacySupportConversation(
+function matchingSupportConversation(
   activeConvId: string,
   conversations: Conversation[],
 ): Conversation | undefined {
   if (
     !isCloudCollaborationConversationId(activeConvId)
     || cloudConversationKindFromConversationId(activeConvId) !== 'agent'
-    || cloudSessionIdFromConversationId(activeConvId)
   ) {
+    return undefined;
+  }
+  const activeSessionId = cloudSessionIdFromConversationId(activeConvId);
+  const activeSystemAgentId = cloudSystemAgentIdFromSessionId(activeSessionId);
+  if (activeSessionId && activeSystemAgentId !== KORDI_SUPPORT_AGENT_ID) {
     return undefined;
   }
   const supportAccountId = cloudPeerAccountIdFromConversationId(activeConvId);
@@ -58,13 +62,19 @@ function matchingLegacySupportConversation(
     isKordiSupportConversation(conversation)
     && conversation.collaborationTarget?.nodeId === supportAccountId
   ));
-  if (exactOwnerMatch || supportAccountId !== KORDI_SUPPORT_ACCOUNT_ID) {
+  if (exactOwnerMatch) {
     return exactOwnerMatch;
   }
 
-  // Older desktop builds persisted the synthetic Support account id. The
-  // server can own the built-in agent from a real operator account instead,
-  // so reconcile the legacy selection through the locked agent identity.
+  // Older desktop builds persisted either a synthetic owner id or a legacy
+  // Support session. The built-in agent identity is stable across both, so a
+  // new scoped selection must reuse the existing message-backed contact.
+  if (
+    supportAccountId !== KORDI_SUPPORT_ACCOUNT_ID
+    && activeSystemAgentId !== KORDI_SUPPORT_AGENT_ID
+  ) {
+    return undefined;
+  }
   return conversations.find((conversation) => (
     isKordiSupportConversation(conversation)
     && conversation.collaborationTarget?.agentId === KORDI_SUPPORT_AGENT_ID
@@ -96,11 +106,11 @@ export function activeConversationForSelection(
     }
     return selectedConversation;
   }
-  const legacySupportConversation = matchingLegacySupportConversation(
+  const supportConversation = matchingSupportConversation(
     activeConvId,
     chatConversations,
   );
-  if (legacySupportConversation) return legacySupportConversation;
+  if (supportConversation) return supportConversation;
   const pendingCloudConversation = pendingCloudCollaborationConversationForActiveId(activeConvId);
   if (pendingCloudConversation) return pendingCloudConversation;
   const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);
