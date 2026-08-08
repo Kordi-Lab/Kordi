@@ -49,6 +49,31 @@ fn restored_legacy_default_profile_gets_stable_cloud_id() {
 }
 
 #[test]
+fn restored_legacy_oauth_profile_allows_missing_expiry() {
+    let imported = auth_import_from_snapshot(RestoreSnapshot {
+        snapshot_id: "snap_legacy_no_expiry".to_string(),
+        provider: "openai-codex".to_string(),
+        auth_choice: "local-active-oauth".to_string(),
+        payload: json!({
+            "apiMode": "openai-codex-oauth",
+            "accessToken": "legacy-access-secret",
+            "accountId": "provider-account",
+            "model": "gpt-5.6-sol",
+        }),
+    })
+    .unwrap();
+
+    let kordi_cli::login::CloudAuthProfileSecret::OAuth { expires, .. } = imported.secret else {
+        panic!("expected OAuth import");
+    };
+    assert_eq!(expires, i64::MAX);
+    assert_eq!(
+        imported.profile_id,
+        "openai-codex-cloud-snap_legacy_no_expiry"
+    );
+}
+
+#[test]
 fn restored_github_copilot_profile_preserves_durable_and_runtime_tokens() {
     let imported = auth_import_from_snapshot(RestoreSnapshot {
         snapshot_id: "snap_copilot".to_string(),

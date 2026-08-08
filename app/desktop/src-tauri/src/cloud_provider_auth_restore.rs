@@ -18,6 +18,19 @@ const MAX_RESTORE_CIPHERTEXT_BYTES: usize = 1024 * 1024 + 4096;
 const DEVICE_KEY_SERVICE: &str = "com.kordi.cloud-provider-auth-device-key";
 const SYNC_STATE_FILENAME: &str = "provider-auth-sync.json";
 
+fn oauth_expiry_or_unknown(
+    payload: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<i64, String> {
+    match payload.get(key) {
+        None | Some(Value::Null) => Ok(i64::MAX),
+        Some(value) => value
+            .as_i64()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| format!("Cloud provider-auth restore field {key} is invalid")),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RestoreEnvelope {
@@ -406,7 +419,11 @@ fn auth_import_from_snapshot(
             secret: kordi_cli::login::CloudAuthProfileSecret::OAuth {
                 access: access_token,
                 refresh: refresh_token,
-                expires: required_i64(payload, "expiresAt")?,
+                // Early Cloud snapshots did not persist an expiry for OAuth
+                // credentials whose local source did not expose one. Preserve
+                // those snapshots as non-expiring, matching the local auth
+                // store's existing representation for an unknown expiry.
+                expires: oauth_expiry_or_unknown(payload, "expiresAt")?,
                 extra: json!({
                     "accountId": optional_value(payload, "accountId"),
                 }),
@@ -419,7 +436,7 @@ fn auth_import_from_snapshot(
             secret: kordi_cli::login::CloudAuthProfileSecret::OAuth {
                 access: access_token,
                 refresh: refresh_token,
-                expires: required_i64(payload, "expiresAt")?,
+                expires: oauth_expiry_or_unknown(payload, "expiresAt")?,
                 extra: json!({}),
             },
         }),
