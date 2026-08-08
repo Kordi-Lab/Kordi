@@ -113,8 +113,9 @@ export function useCloudAgentAvailability({
       claimedRunKeysRef.current.add(claim.idempotencyKey);
       return 'claimed';
     } catch (error) {
-      // Owner presence and invite propagation can race a fresh group send.
-      // Retry only the bounded transient set; terminal failures remain final.
+      // Invite propagation and an already-owned exact run can race a fresh
+      // group send. Retry only bounded transient failures; presence itself is
+      // capability state and never owns a request.
       const retryable = cloudFallbackClaimErrorIsRetryable(error);
       reportWarning(
         '[cloud-agent-fallback] claim failed',
@@ -294,14 +295,21 @@ export function useCloudAgentAvailability({
           return;
         }
 
-        const exactClaim = cloudFallbackRunClaimsForMessages({
-          account,
-          contacts,
-          messageIndex: messageIndexRef.current,
-        }).find((claim) => (
-          claim.requestMessageId === candidate.requestMessage.id
-          && claim.ownerAccountId === candidate.targetAccountId
-        )) ?? null;
+        const requestStillClaimable = (
+          Date.now() - candidate.requestMessage.createdAtMs
+          <= CLOUD_AGENT_MENTION_WINDOW_MS
+        );
+        const exactClaim = requestStillClaimable
+          ? cloudFallbackRunClaimsForMessages({
+            account,
+            contacts,
+            messageIndex: messageIndexRef.current,
+            recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
+          }).find((claim) => (
+            claim.requestMessageId === candidate.requestMessage.id
+            && claim.ownerAccountId === candidate.targetAccountId
+          )) ?? null
+          : null;
         let claimResult: CloudFallbackClaimAttemptResult = 'retryable-failure';
         if (exactClaim) {
           claimedRunKeysRef.current.delete(exactClaim.idempotencyKey);
@@ -405,6 +413,7 @@ export function useCloudAgentAvailability({
       account,
       contacts,
       messageIndex,
+      recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
     }).filter(
       (claim) => !claimedRunKeysRef.current.has(claim.idempotencyKey),
     );

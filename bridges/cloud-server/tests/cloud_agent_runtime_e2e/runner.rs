@@ -195,6 +195,88 @@ async fn runner_canary_lease_only_claims_requested_run_id() {
 }
 
 #[tokio::test]
+async fn expired_runner_lease_is_reclaimed_by_exactly_one_runtime() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "runner-expiry-owner", "Owner").await;
+    let requester = signup(&router, "runner-expiry-requester", "Requester").await;
+    accept_contacts(&router, &requester, &owner).await;
+
+    let claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_runner_expired_lease"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(claim.status(), StatusCode::OK);
+    let run_id = read_json(claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let first_lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": "runner-expired", "canaryRunId": run_id }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first_lease.status(), StatusCode::OK);
+    assert_eq!(read_json(first_lease).await["run"]["runId"], run_id);
+
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_fallback_runs \
+         SET lease_expires_at = $1 \
+         WHERE run_id = $2",
+    )
+    .bind("2000-01-01T00:00:00+00:00")
+    .bind(&run_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let runner_b = router.clone().oneshot(post_json_with_runner_token(
+        "/v1/cloud/agent-runs/lease",
+        "runner-test-token",
+        json!({ "runnerId": "runner-b", "canaryRunId": run_id }),
+    ));
+    let runner_c = router.clone().oneshot(post_json_with_runner_token(
+        "/v1/cloud/agent-runs/lease",
+        "runner-test-token",
+        json!({ "runnerId": "runner-c", "canaryRunId": run_id }),
+    ));
+    let (runner_b, runner_c) = tokio::join!(runner_b, runner_c);
+    let runner_b = runner_b.unwrap();
+    let runner_c = runner_c.unwrap();
+    assert_eq!(runner_b.status(), StatusCode::OK);
+    assert_eq!(runner_c.status(), StatusCode::OK);
+    let runner_b = read_json(runner_b).await;
+    let runner_c = read_json(runner_c).await;
+    assert_eq!(
+        [runner_b["run"].is_object(), runner_c["run"].is_object()]
+            .into_iter()
+            .filter(|leased| *leased)
+            .count(),
+        1,
+    );
+
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_fallback_runs SET status = 'cancelled' WHERE run_id = $1",
+    )
+    .bind(&run_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
 async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");

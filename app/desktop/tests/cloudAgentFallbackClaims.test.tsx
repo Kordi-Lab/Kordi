@@ -43,7 +43,7 @@ const message: CloudMessage = {
   direction: 'incoming',
 };
 
-test('cloud fallback claim retries transient presence, invite, and network races', () => {
+test('cloud fallback claim keeps legacy presence conflicts retryable during mixed-version rollout', () => {
   for (const code of ['network_error', 'owner_online', 'agent_not_available', 'rate_limited', 'server_error']) {
     assert.equal(cloudFallbackClaimErrorIsRetryable({ code }), true, code);
   }
@@ -232,4 +232,93 @@ test('cloud outgoing remote-agent mentions produce Cloud fallback run claims', (
     prompt: 'what is todays weather',
     idempotencyKey: 'cloud-agent-fallback:msg_agent_request_claim:acct_peer',
   }]);
+});
+
+test('background Cloud fallback recovery never creates a run for a stale request', () => {
+  const now = Date.now();
+  const staleRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_agent_request_stale',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi this request has expired',
+    direction: 'outgoing',
+    createdAt: new Date(now - 10 * 60_000 - 1).toISOString(),
+  };
+  const recentRequest: CloudMessage = {
+    ...staleRequest,
+    messageId: 'msg_agent_request_recent',
+    body: '@PeerPersonKordi this request is current',
+    createdAt: new Date(now - 1_000).toISOString(),
+  };
+
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [staleRequest, recentRequest] },
+    recentSinceMs: now - 10 * 60_000,
+  });
+
+  assert.deepEqual(
+    claims.map((claim) => claim.requestMessageId),
+    ['msg_agent_request_recent'],
+  );
+  assert.deepEqual(
+    cloudFallbackRunClaimsForMessages({
+      account,
+      contacts: [peer],
+      messagesByPeer: { acct_peer: [staleRequest, recentRequest] },
+    }).map((claim) => claim.requestMessageId),
+    ['msg_agent_request_stale', 'msg_agent_request_recent'],
+    'fresh exact claims remain independent of the recovery window',
+  );
+});
+
+test('background Cloud group handoff recovery uses envelope time, not wire replay time', () => {
+  const now = Date.now();
+  const groupId = 'session:group:stale-recovery';
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'admin' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' as const },
+  ];
+  const request = (
+    id: string,
+    createdAtMs: number,
+  ): CloudMessage => ({
+    ...message,
+    messageId: `wire_${id}`,
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    direction: 'outgoing',
+    createdAt: new Date(now).toISOString(),
+    sessionId: groupId,
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId,
+      groupSpaceId: groupId,
+      groupTitle: 'Recovery',
+      createdByAccountId: 'acct_me',
+      actor: participants[0],
+      participants,
+      message: {
+        id,
+        senderAccountId: 'acct_me',
+        senderKind: 'human',
+        text: '@PeerPersonKordi recover this',
+        createdAtMs,
+      },
+    }),
+  });
+  const stale = request('msg:ui:stale-group-request', now - 10 * 60_000 - 1);
+  const recent = request('msg:ui:recent-group-request', now - 1_000);
+
+  assert.deepEqual(
+    cloudFallbackRunClaimsForMessages({
+      account,
+      contacts: [peer],
+      messagesByPeer: { acct_peer: [stale, recent] },
+      recentSinceMs: now - 10 * 60_000,
+    }).map((claim) => claim.requestMessageId),
+    ['msg:ui:recent-group-request'],
+  );
 });

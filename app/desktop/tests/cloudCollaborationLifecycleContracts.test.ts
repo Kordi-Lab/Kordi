@@ -84,7 +84,7 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   );
   assert.match(
     recoveredReplay,
-    /useCloudGroupReplay\(\{[\s\S]*messageIndex,\s*applyControl,\s*flushCanonicalState,\s*reportWarning,\s*\}\);/,
+    /useCloudGroupReplay\(\{[\s\S]*messageIndex,\s*canonicalStateRef,\s*applyControl,\s*flushCanonicalState,\s*reportWarning,\s*\}\);/,
     'current group replay must receive stable callbacks after recovery settles',
   );
 });
@@ -111,7 +111,11 @@ test('Cloud group control replay uses bounded coordinator retries', () => {
   assert.match(replayEffect, /coordinator\.request\(/);
   assert.match(
     replayEffect,
-    /entries: replayRows\.map/,
+    /cloudGroupTerminalRepairReplayRows\(/,
+  );
+  assert.match(
+    replayEffect,
+    /key: cloudGroupTerminalRepairReplayKey\(row\)/,
   );
   assert.match(
     replayEffect,
