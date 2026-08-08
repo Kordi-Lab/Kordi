@@ -71,6 +71,19 @@ function matchingLegacySupportConversation(
   ));
 }
 
+function pendingLocalSelfAgentConversationForActiveId(
+  activeConvId: string,
+  nativeChatPlaceholder: Conversation,
+): Conversation | null {
+  const sessionId = activeConvId.trim();
+  if (!sessionId.startsWith('session:self-agent:')) return null;
+  return {
+    ...nativeChatPlaceholder,
+    id: sessionId,
+    canonicalSessionId: sessionId,
+  };
+}
+
 export function activeConversationForSelection(
   activeConvId: string,
   chatConversations: Conversation[],
@@ -101,6 +114,13 @@ export function activeConversationForSelection(
     chatConversations,
   );
   if (legacySupportConversation) return legacySupportConversation;
+  if (options.isNativeShell) {
+    const pendingLocalSelfAgentConversation = pendingLocalSelfAgentConversationForActiveId(
+      activeConvId,
+      options.nativeChatPlaceholder,
+    );
+    if (pendingLocalSelfAgentConversation) return pendingLocalSelfAgentConversation;
+  }
   const pendingCloudConversation = pendingCloudCollaborationConversationForActiveId(activeConvId);
   if (pendingCloudConversation) return pendingCloudConversation;
   const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);
