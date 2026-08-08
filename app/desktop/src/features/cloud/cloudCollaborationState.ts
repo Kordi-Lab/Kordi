@@ -876,9 +876,9 @@ export function buildCloudDesktopCollaborationState({
         systemAgentIds.get(peerId) ?? new Set(),
       );
       const hasMessages = messages.length > 0;
-      const isActivePeer = peerId === activePeerId;
+      const isActivePeer = isSystemAgent ? activeConversationId === cloudSystemAgentConversationId(account.accountId, peerId, contact.sourceAgentId ?? '') : peerId === activePeerId;
       const isSelfPeer = peerId === account.accountId;
-      if (!hasMessages && !isActivePeer && !isSystemAgent) return [];
+      if (!hasMessages && !isActivePeer) return [];
 
       const directPersonMessages = isSelfPeer || isSystemAgent
         ? []

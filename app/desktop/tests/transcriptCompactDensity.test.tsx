@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { SupportReportSubmissionProvider } from '../src/features/support/SupportReportSubmissionContext';
 import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
@@ -139,6 +140,92 @@ test('compact contact density hides peer sender names and uses squarer tighter h
   assert.match(markup, /h-7 w-7/);
   assert.doesNotMatch(markup, /app-message-inline-sender/);
   assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
+});
+
+test('Kordi Support answers use a normal contact bubble without agent reply UI', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Kordi Support',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: false,
+    supportContactResponse: true,
+    text: 'Hello! How can I help?',
+    time: '19:11',
+    senderProfileImageUrl: '/kordi-support-avatar.svg',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'contact-compact',
+  }));
+
+  assert.match(markup, /app-chat-bubble-peer/);
+  assert.match(markup, /Hello! How can I help\?/);
+  assert.match(markup, /kordi-support-avatar\.svg/);
+  assert.doesNotMatch(markup, /app-live-turn-response-panel/);
+  assert.doesNotMatch(markup, /Processing…/);
+  assert.doesNotMatch(markup, /Me:/);
+});
+
+test('pending Kordi Support replies use a contact typing indicator without agent controls', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Kordi Support',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: false,
+    supportContactResponse: true,
+    supportContactTyping: true,
+    text: '',
+    time: '19:12',
+    senderProfileImageUrl: '/kordi-support-avatar.svg',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'contact-compact',
+  }));
+
+  assert.match(markup, /app-chat-bubble-peer/);
+  assert.match(markup, /data-support-contact-typing="true"/);
+  assert.match(markup, /aria-label="Kordi Support is typing"/);
+  assert.equal((markup.match(/app-support-contact-typing-dot app-support-contact-typing-dot-/g) ?? []).length, 3);
+  assert.match(markup, /min-w-\[3\.25rem\]/);
+  assert.doesNotMatch(markup, /app-live-turn-response-panel/);
+  assert.doesNotMatch(markup, /Processing…|Me:|Stop/);
+});
+
+test('Kordi Support contact bubbles preserve reviewed report approval', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Kordi Support',
+    senderType: 'human',
+    isOwnMessage: false,
+    supportContactResponse: true,
+    text: `I drafted the issue for review.
+
+<kordi-support-report>
+{"category":"issue","subject":"Support reply UI","description":"Render Support as a normal contact message."}
+</kordi-support-report>`,
+    time: '19:12',
+  };
+
+  const markup = renderToStaticMarkup(createElement(
+    SupportReportSubmissionProvider,
+    {
+      accountId: 'acct-test',
+      sessionId: 'session-support',
+      onSubmit: async () => ({ ticketId: 'ticket-test', status: 'open' }),
+      onLookup: async () => null,
+    },
+    createElement(MessageBubble, { msg: message, densityMode: 'contact-compact' }),
+  ));
+
+  assert.match(markup, /I drafted the issue for review\./);
+  assert.match(markup, /data-support-report-permission-card="true"/);
+  assert.doesNotMatch(markup, /&lt;kordi-support-report&gt;/);
+  assert.doesNotMatch(markup, /app-live-turn-response-panel/);
 });
 
 test('compact agent density makes user request bubbles square and tight', () => {

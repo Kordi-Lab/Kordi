@@ -33,8 +33,10 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
 import { AttachmentPreview } from './transcriptAttachments';
+import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
+import { messageSnapshotKey } from './transcriptMessageSnapshot';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
-import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
+import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { MessageHoverTime } from './transcriptMessageTime';
 export { LiveChatTurnCard, LiveChatTurnMessage };
@@ -1158,7 +1160,7 @@ function MessageBubbleView({
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
-  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
+  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
@@ -1284,8 +1286,16 @@ function MessageBubbleView({
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
-                  ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[52rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
-                  : cn('w-fit min-w-[6.75rem] max-w-[52rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
+                  ? cn(
+                    'app-message-bubble-contact-compact w-fit max-w-[52rem] rounded-[8px] px-3 py-1.5',
+                    msg.supportContactTyping ? 'min-w-[3.25rem]' : 'min-w-[5.5rem]',
+                    humanMessageBubbleShapeClass('peer'),
+                  )
+                  : cn(
+                    'w-fit max-w-[52rem] px-4 py-2.5',
+                    msg.supportContactTyping ? 'min-w-[4rem]' : 'min-w-[6.75rem]',
+                    humanMessageBubbleShapeClass('peer'),
+                  )
               : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5',
           !hasOnlyImageAttachments && bubble,
         )}
@@ -1351,7 +1361,13 @@ function MessageBubbleView({
                       : undefined}
                   />
                 ) : null}
-                {hasText ? <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div> : null}
+                {msg.supportContactTyping ? (
+                  <SupportContactTypingIndicator />
+                ) : hasText ? (
+                  msg.supportContactResponse
+                    ? <SupportContactAnswer text={msg.text} />
+                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
+                ) : null}
               </div>
               {!hasOnlyImageAttachments ? (
                 <MessageFooter
@@ -1394,35 +1410,6 @@ function MessageBubbleView({
       ) : null}
     </MessageContextMenuHost>
   );
-}
-
-function messageSnapshotKey(msg: Message) {
-  return [
-    msg.id ?? '',
-    msg.entryId ?? '',
-    msg.role,
-    msg.sender ?? '',
-    msg.senderIdentityId ?? '',
-    msg.senderType ?? '',
-    msg.isOwnMessage ? 'own' : 'peer',
-    msg.showSenderMeta ? 'meta' : '',
-    msg.text,
-    msg.time,
-    msg.timestampMs ?? '',
-    msg.detail ?? '',
-    msg.senderAvatarSeed ?? '',
-    msg.senderProfileImageUrl ?? '',
-    msg.statusChips?.join(',') ?? '',
-    msg.replyToMessageId ?? '',
-    msg.replyAliasIds?.join('|') ?? '',
-    msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
-    msg.readReceiptSummary ? [msg.readReceiptSummary.count, msg.readReceiptSummary.participants.map((participant) => [participant.id, participant.name, participant.readAt ?? ''].join(':')).join('|')].join(':') : '',
-    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
-    msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
-    msg.mentions?.map((mention) => mention.label).join('|') ?? '',
-    msg.turn ? liveTurnSnapshotKey(msg.turn) : '',
-    msg.edit?.files.map((file) => [file.path, file.additions, file.deletions, file.lines.length].join(':')).join('|') ?? '',
-  ].join('\u0001');
 }
 
 export const MessageBubble = memo(

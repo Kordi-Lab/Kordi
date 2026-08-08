@@ -14,7 +14,7 @@ import {
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
-import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
+import { normalizeSupportContactConversationCollection, normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
 import {
   isKordiSupportConversation,
   KORDI_SUPPORT_AVATAR_URL,
@@ -735,7 +735,7 @@ export function createCanonicalSessionReadModel(
           && !groupedSessionIds.has(sessionId)
           && shouldKeepRuntimeChatConversationExtra(conversation, indexes);
       });
-      return [...hydrated, ...extras];
+      return normalizeSupportContactConversationCollection([...hydrated, ...extras]);
     },
   };
 }
