@@ -114,6 +114,7 @@ test('canonical quoted human messages map source metadata for transcript renderi
   assert.equal(mapped?.sourceMessage?.messageId, 'msg:source');
   assert.equal(mapped?.sourceMessage?.senderLabel, 'Alice');
   assert.equal(mapped?.sourceMessage?.text, 'Original question');
+  assert.equal(mapped?.timestampMs, 2);
 });
 
 

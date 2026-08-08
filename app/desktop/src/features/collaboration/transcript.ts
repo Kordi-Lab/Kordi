@@ -408,6 +408,7 @@ export function mapCollaborationConversationToViewModel(
           : null,
         text: '',
         time: message.timeLabel,
+        timestampMs: message.timestampMs,
         replyToMessageId,
         turn: {
           id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:${message.id}`,
@@ -429,7 +430,6 @@ export function mapCollaborationConversationToViewModel(
         },
       }];
     }
-
     const mappedMessage: Message = {
       id: messageId,
       role: isAgent
@@ -456,6 +456,7 @@ export function mapCollaborationConversationToViewModel(
       senderProfileImageUrl,
       text: displayText,
       time: message.timeLabel,
+      timestampMs: message.timestampMs,
       statusChips: isOutboundHuman
         ? outboundStatus
         : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1] && !isAgent
@@ -468,7 +469,6 @@ export function mapCollaborationConversationToViewModel(
       replyToMessageId: message.messageAction?.kind === 'quote' ? sourceMessage?.messageId ?? null : undefined,
       detail: message.detail ?? undefined,
     };
-
     if (isAgent && isOutboundHuman && isCancelledCollaborationState(message.deliveryState)) {
       return [mappedMessage, {
         id: `collaboration-live-turn:${conversation.id}:${message.id}:cancelled`,
@@ -480,6 +480,7 @@ export function mapCollaborationConversationToViewModel(
         senderAvatarSeed: remoteAgentAvatarSeed,
         text: '',
         time: message.timeLabel,
+        timestampMs: message.timestampMs,
         replyToMessageId,
         turn: {
           id: `collaboration-live-turn:${conversation.id}:${message.id}:cancelled`,
@@ -497,10 +498,8 @@ export function mapCollaborationConversationToViewModel(
         },
       }];
     }
-
     return [mappedMessage];
   });
-
   if ((((isAgent || isSupportContact) && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
     const outreachRequestId = conversation.outreach?.sourceRequestId?.trim();
     const requestMessageIds = [...requestMessageIdByRequestId.values()];
@@ -518,6 +517,7 @@ export function mapCollaborationConversationToViewModel(
       senderAvatarSeed: awaitingAgentOutreach ? outreachAgentAvatarSeed : remoteAgentAvatarSeed,
       text: '',
       time: conversation.updatedAtLabel,
+      timestampMs: conversation.updatedAtMs,
       replyToMessageId,
       turn: {
         id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:processing`,

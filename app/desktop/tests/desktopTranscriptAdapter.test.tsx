@@ -42,6 +42,8 @@ test('desktop transcript assigns stable ids before reply attribution so task jum
   const attributed = buildReplyAttribution(mapped).messages;
 
   assert.equal(mapped[1].id, 'desktop-message:session-status:20:1:assistant');
+  assert.equal(mapped[0].timestampMs, 10);
+  assert.equal(mapped[1].timestampMs, 20);
   assert.equal(attributed[1].id, mapped[1].id);
 });
 

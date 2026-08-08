@@ -132,6 +132,7 @@ export function mapDesktopMessagesForTranscript(
           : message.sender ?? null,
       text: message.text,
       time: message.timeLabel,
+      timestampMs: message.timestampMs,
       detail: message.role === 'assistant' ? undefined : (message.detail ?? undefined),
       senderAvatarSeed: message.role === 'assistant'
         ? assistantAvatarSeed

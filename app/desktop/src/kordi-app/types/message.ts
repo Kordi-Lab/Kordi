@@ -149,6 +149,10 @@ export type Message = {
   showSenderMeta?: boolean;
   text: string;
   time: string;
+  /** Exact source timestamp used for transcript ordering and time separators.
+   * Keep this value numeric instead of reconstructing it from the localized
+   * `time` label. */
+  timestampMs?: number | null;
   detail?: string;
   statusChips?: string[];
   attachments?: MessageAttachment[];

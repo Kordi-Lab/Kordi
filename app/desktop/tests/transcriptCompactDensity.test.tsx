@@ -72,7 +72,7 @@ test('renders human messages with a larger reading width than before', () => {
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, /max-w-\[34rem\]/);
+  assert.match(markup, /max-w-\[52rem\]/);
   assert.match(markup, /text-\[14px\]/);
   assert.doesNotMatch(markup, /max-w-\[26rem\]/);
 });
@@ -298,9 +298,9 @@ test('renders completed assistant responses as a compact contrast surface', () =
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
   assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
-  assert.match(markup, /max-w-\[min\(100%,42rem\)\]/);
+  assert.match(markup, /max-w-\[min\(100%,58rem\)\]/);
   assert.match(markup, /app-live-assistant-answer-markdown/);
-  assert.doesNotMatch(markup, /max-w-\[min\(100%,46rem\)\]/);
+  assert.doesNotMatch(markup, /max-w-\[min\(100%,42rem\)\]/);
 });
 
 test('renders request reply status as a compact icon and count without reply text', () => {

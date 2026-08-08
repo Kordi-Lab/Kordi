@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Split } from 'lucide-react';
 
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { transcriptTimeSeparatorLabels } from '@/features/chat/transcriptTimestamps';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { MessageBubble } from '@/kordi-app/components';
@@ -35,13 +36,22 @@ function humanTranscriptGroupKey(message?: Message) {
   return `${side}:${senderKey}`;
 }
 
-function isGroupedWithAdjacentHumanMessage(
+export function isGroupedWithAdjacentHumanMessage(
   messages: readonly Message[],
   index: number,
   offset: -1 | 1,
+  timeSeparators: readonly (string | null)[] = [],
 ) {
+  if (offset === -1 && timeSeparators[index]) return false;
+  if (offset === 1 && timeSeparators[index + 1]) return false;
   const currentKey = humanTranscriptGroupKey(messages[index]);
   return Boolean(currentKey && currentKey === humanTranscriptGroupKey(messages[index + offset]));
+}
+
+function transcriptTimestampDateTime(timestampMs?: number | null) {
+  if (typeof timestampMs !== 'number' || !Number.isFinite(timestampMs)) return undefined;
+  const date = new Date(timestampMs);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 export function useChatTranscriptViewport({
@@ -119,6 +129,10 @@ export function useChatTranscriptViewport({
   }, [onLoadOlderMessages]);
   const handleLoadOlderMessages = useCallback(() => loadOlderMessagesRef.current?.(), []);
   const canLoadOlderMessages = Boolean(onLoadOlderMessages);
+  const timeSeparators = useMemo(
+    () => transcriptTimeSeparatorLabels(transcriptMessages),
+    [transcriptMessages],
+  );
 
   return useMemo(() => (
     <VirtualTranscript
@@ -142,6 +156,14 @@ export function useChatTranscriptViewport({
       getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={({ message: msg, originalIndex: idx }) => (
         <div>
+          {timeSeparators[idx] ? (
+            <div
+              className="app-transcript-time-separator flex justify-center px-2 py-2 text-center text-[11px] font-normal leading-4 tabular-nums text-[color:var(--utility-muted-text)]"
+              data-transcript-time-separator="true"
+            >
+              <time dateTime={transcriptTimestampDateTime(msg.timestampMs)}>{timeSeparators[idx]}</time>
+            </div>
+          ) : null}
           <MessageBubble
             msg={msg}
             onOpenSource={onOpenSource}
@@ -172,8 +194,8 @@ export function useChatTranscriptViewport({
             onSelectionDragEnter={onSelectionDragEnter}
             onSelectionDragEnd={onSelectionDragEnd}
             plainAgentResponse={plainAgentResponse}
-            isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1)}
-            isGroupedWithNext={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1)}
+            isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, timeSeparators)}
+            isGroupedWithNext={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, timeSeparators)}
           />
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
@@ -260,6 +282,7 @@ export function useChatTranscriptViewport({
     sessionKey,
     transcriptEntries,
     transcriptMessages,
+    timeSeparators,
     transcriptTailKey,
   ]);
 }

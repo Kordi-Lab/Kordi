@@ -242,6 +242,57 @@ test('blank outgoing delivery status still renders the stable hidden glyph stack
   assert.match(markup, /lucide-check-check[^\"]*opacity-0/);
 });
 
+test('exact message time moves beside the bubble while delivery state stays inside', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hover for the exact time',
+    time: '20:25',
+    timestampMs: Date.parse('2026-08-04T20:25:00.000Z'),
+    statusChips: ['read'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const footerStart = markup.indexOf('app-message-footer');
+  const hoverTimeStart = markup.indexOf('app-message-hover-time pointer-events-none');
+
+  assert.ok(footerStart >= 0);
+  assert.ok(hoverTimeStart > footerStart);
+  assert.doesNotMatch(markup.slice(footerStart, hoverTimeStart), /20:25/);
+  assert.match(markup.slice(hoverTimeStart), />20:25<\/time>/);
+  assert.match(markup, /app-message-hover-time-trigger/);
+  assert.doesNotMatch(markup, /group-hover\/message:opacity-100/);
+  assert.match(markup, /data-message-delivery-glyph="double-check"/);
+});
+
+test('blank transcript-row space does not reveal the exact message time', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../src/styles/shell-transcript.css', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /group\/message/);
+  assert.match(source, /app-message-hover-time-trigger/);
+  assert.match(styles, /\.app-message-hover-time-trigger:is\(:hover, :focus-within\) \+ \.app-message-hover-time/);
+});
+
+test('short agent messages shrink-wrap the row so hover time stays beside the bubble', () => {
+  const message: Message = {
+    role: 'assistant',
+    sender: 'My Kordi',
+    senderType: 'agent',
+    text: 'Hi hi hi. What’s up?',
+    time: '19:59',
+    timestampMs: Date.parse('2026-08-08T19:59:00.000Z'),
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /flex items-end w-fit max-w-full gap-2/);
+  assert.doesNotMatch(markup, /flex items-end w-full gap-2/);
+  assert.match(markup, /app-message-hover-time/);
+});
+
 test('renders contact-gated failed sends as a centered notice instead of changing the message bubble', () => {
   const message: Message = {
     role: 'user',

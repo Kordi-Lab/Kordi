@@ -101,7 +101,8 @@ test('sent-message delivery glyph keeps one stable slot so status changes do not
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /app-message-delivery-footer ml-3/);
-  assert.match(markup, /min-w-\[2\.1rem\]/);
+  assert.match(markup, /inline-flex h-3\.5 w-4 shrink-0 justify-center/);
+  assert.doesNotMatch(markup, /min-w-\[2\.1rem\]/);
   assert.doesNotMatch(markup, /right-0/);
   assert.doesNotMatch(markup, /pr-\[3\.75rem\]/);
   assert.doesNotMatch(markup, /pb-4/);

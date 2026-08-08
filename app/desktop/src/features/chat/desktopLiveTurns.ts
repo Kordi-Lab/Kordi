@@ -65,6 +65,7 @@ export function buildDesktopLiveTurnTranscriptMessage(
   sender = 'My Kordi',
   fallbackTimestampMs = Date.now(),
 ): Message {
+  const timestampMs = desktopTurnDisplayTimestampMs(turn, fallbackTimestampMs);
   return {
     id: turn.id,
     entryId: null,
@@ -72,7 +73,8 @@ export function buildDesktopLiveTurnTranscriptMessage(
     sender,
     sourceSenderLabel: sender,
     text: turn.assistantText,
-    time: desktopTurnDisplayTimeLabel(turn, fallbackTimestampMs),
+    time: formatDesktopClockTime(new Date(timestampMs)),
+    timestampMs,
     turn,
   };
 }
