@@ -40,6 +40,25 @@ const peer = cloudContactToContact({
   createdAt: '2026-05-11T00:00:00Z',
 });
 
+function builtInSupportContact() {
+  return cloudContactToContact({
+    contactId: 'cloud-system:kordi-support',
+    contactKind: 'system_agent',
+    accountId: 'acct_support',
+    displayName: 'Kordi Support',
+    subtitle: 'Ask questions or suggest improvements',
+    avatarUrl: null,
+    nodeId: null,
+    createdAt: '2026-08-04T00:00:00Z',
+    locked: true,
+    targetCloudAgentId: 'cloud_agent_kordi_support',
+    targetCloudAgentName: 'Kordi Support',
+    targetCloudAgentOwnerAccountId: 'acct_support',
+    targetCloudAgentOwnerName: 'Kordi',
+    supportTicketEnabled: true,
+  });
+}
+
 const message: CloudMessage = {
   messageId: 'msg_1',
   fromAccountId: 'acct_peer',
@@ -265,6 +284,72 @@ test('Cloud collaboration ids are neutral while legacy Bridge ids remain readabl
   assert.equal(isCloudCollaborationConversationId('bridge:local:node:person'), false);
 });
 
+test('a fresh account keeps Kordi Support available without synthesizing chat activity', () => {
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [builtInSupportContact()],
+    messagesByPeer: {},
+    activeConversationId: null,
+  });
+
+  assert.deepEqual(state.conversations, []);
+  assert.equal(
+    state.hosts[0]?.visiblePeers.some((entry) => (
+      entry.agentId === 'cloud_agent_kordi_support'
+      && entry.isContact
+    )),
+    true,
+  );
+});
+
+test('selecting Kordi Support opens one empty conversation in the Contact channel', () => {
+  const activeConversationId = cloudSystemAgentConversationId(
+    account.accountId,
+    'acct_support',
+    'cloud_agent_kordi_support',
+  );
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [builtInSupportContact()],
+    messagesByPeer: {},
+    activeConversationId,
+  });
+
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0]?.id, activeConversationId);
+  assert.equal(state.conversations[0]?.messages.length, 0);
+  const supportView = mapCollaborationConversationToViewModel(
+    state.conversations[0]!,
+    state.hosts[0],
+    'Kordi',
+  );
+  assert.equal(supportView.type, 'person');
+  assert.equal(supportView.supportTicketEnabled, true);
+  const spaces = buildParticipantSpaces([supportView]);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact').map((space) => space.title), ['Kordi Support']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent'), []);
+});
+
+test('opening the support owner as a person does not synthesize a Support chat', () => {
+  const supportOwner = cloudContactToContact({
+    accountId: 'acct_support',
+    displayName: 'Support Owner',
+    avatarUrl: null,
+    nodeId: null,
+    createdAt: '2026-08-04T00:00:00Z',
+  });
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [builtInSupportContact(), supportOwner],
+    messagesByPeer: {},
+    activeConversationId: cloudCollaborationConversationId('acct_support', 'person'),
+  });
+
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0]?.peerRuntime, 'person');
+  assert.equal(state.conversations[0]?.supportTicketEnabled, false);
+});
+
 test('the built-in support agent keeps a stable thread separate from its owner human', () => {
   const supportOwner = cloudContactToContact({
     accountId: 'acct_support',
@@ -273,22 +358,7 @@ test('the built-in support agent keeps a stable thread separate from its owner h
     nodeId: null,
     createdAt: '2026-08-04T00:00:00Z',
   });
-  const supportAgent = cloudContactToContact({
-    contactId: 'cloud-system:kordi-support',
-    contactKind: 'system_agent',
-    accountId: 'acct_support',
-    displayName: 'Kordi Support',
-    subtitle: 'Ask questions or suggest improvements',
-    avatarUrl: null,
-    nodeId: null,
-    createdAt: '2026-08-04T00:00:00Z',
-    locked: true,
-    targetCloudAgentId: 'cloud_agent_kordi_support',
-    targetCloudAgentName: 'Kordi Support',
-    targetCloudAgentOwnerAccountId: 'acct_support',
-    targetCloudAgentOwnerName: 'Kordi',
-    supportTicketEnabled: true,
-  });
+  const supportAgent = builtInSupportContact();
   const supportSessionId = cloudSystemAgentSessionId(account.accountId, 'cloud_agent_kordi_support');
   const request: CloudMessage = {
     messageId: 'msg_support_request',
