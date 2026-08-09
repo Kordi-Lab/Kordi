@@ -119,7 +119,7 @@ async fn legacy_self_message_retries_use_the_source_timestamp_as_an_idempotency_
 }
 
 #[tokio::test]
-async fn legacy_self_messages_with_different_source_times_remain_distinct() {
+async fn legacy_self_messages_inside_the_replay_window_reuse_the_existing_row() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);
@@ -128,7 +128,39 @@ async fn legacy_self_messages_with_different_source_times_remain_distinct() {
     let base_time = chrono::Utc::now() - chrono::Duration::seconds(2);
     let mut ids = Vec::new();
 
-    for offset_ms in [0, 1] {
+    for offset_ms in [0, 650] {
+        let response = router
+            .clone()
+            .oneshot(post_json_with_token(
+                "/v1/cloud/messages",
+                &token,
+                json!({
+                    "peerAccountId": account_id,
+                    "body": "repeat this intentionally",
+                    "sessionId": session_id,
+                    "clientCreatedAt": (base_time + chrono::Duration::milliseconds(offset_ms)).to_rfc3339(),
+                }),
+            ))
+            .await
+            .unwrap();
+        let body = read_json(response).await;
+        ids.push(body["message"]["messageId"].as_str().unwrap().to_string());
+    }
+
+    assert_eq!(ids[0], ids[1]);
+}
+
+#[tokio::test]
+async fn legacy_self_messages_outside_the_replay_window_remain_distinct() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+    let (token, account_id) = signup_account(&router, "legacy-self-message-distinct").await;
+    let session_id = format!("session:{}", uuid::Uuid::new_v4().simple());
+    let base_time = chrono::Utc::now() - chrono::Duration::seconds(3);
+    let mut ids = Vec::new();
+
+    for offset_ms in [0, 1_500] {
         let response = router
             .clone()
             .oneshot(post_json_with_token(
@@ -151,7 +183,7 @@ async fn legacy_self_messages_with_different_source_times_remain_distinct() {
 }
 
 #[tokio::test]
-async fn message_list_collapses_preexisting_exact_legacy_self_replays() {
+async fn message_list_collapses_preexisting_near_time_legacy_self_replays() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);
@@ -161,8 +193,12 @@ async fn message_list_collapses_preexisting_exact_legacy_self_replays() {
     let created_at = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
 
     let mut legacy_message_ids = Vec::new();
-    for _ in 0..2 {
+    for offset_ms in [0, 650] {
         let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+        let row_created_at = (chrono::DateTime::parse_from_rfc3339(&created_at)
+            .unwrap()
+            + chrono::Duration::milliseconds(offset_ms))
+        .to_rfc3339();
         sqlx_core::query::query(
             "INSERT INTO cloud_messages \
              (message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id, client_message_id) \
@@ -171,7 +207,7 @@ async fn message_list_collapses_preexisting_exact_legacy_self_replays() {
         .bind(&message_id)
         .bind(&account_id)
         .bind(&body)
-        .bind(&created_at)
+        .bind(&row_created_at)
         .bind(&session_id)
         .execute(&pool)
         .await
@@ -202,12 +238,11 @@ async fn message_list_collapses_preexisting_exact_legacy_self_replays() {
     let raw_count: (i64,) = sqlx_core::query_as::query_as(
         "SELECT COUNT(*) FROM cloud_messages \
          WHERE from_account_id = $1 AND to_account_id = $1 \
-           AND session_id = $2 AND body = $3 AND created_at = $4",
+           AND session_id = $2 AND body = $3",
     )
     .bind(&account_id)
     .bind(&session_id)
     .bind(&body)
-    .bind(&created_at)
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -350,6 +385,7 @@ async fn cloud_message_idempotency_attachment_failure_leaves_no_message_row() {
             read_at: Some(&now),
             attachments: &attachments,
             claim_legacy_self_replay: false,
+            legacy_self_replay_lock_id: None,
         },
     )
     .await;

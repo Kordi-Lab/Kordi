@@ -40,6 +40,7 @@ pub struct PersistCloudMessageInput<'a> {
     pub read_at: Option<&'a str>,
     pub attachments: &'a [PersistedMessageAttachment],
     pub claim_legacy_self_replay: bool,
+    pub legacy_self_replay_lock_id: Option<&'a str>,
 }
 
 pub struct PersistCloudMessageOutcome {
@@ -172,11 +173,14 @@ pub async fn persist_cloud_message_in_transaction(
         let client_message_id = input
             .client_message_id
             .expect("legacy replay claim requires a client message id");
+        let lock_id = input
+            .legacy_self_replay_lock_id
+            .expect("legacy replay claim requires a lock id");
         // Serialize claims for this deterministic signature. Without the
         // transaction-scoped lock, two old clients could both miss the same
         // NULL-keyed row before either assigns the compatibility key.
         query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-            .bind(client_message_id)
+            .bind(lock_id)
             .execute(&mut **tx)
             .await?;
         let canonical_row_exists: Option<(String,)> = query_as(
@@ -192,8 +196,13 @@ pub async fn persist_cloud_message_in_transaction(
             let legacy_row: Option<(String,)> = query_as(
                 "SELECT cm.message_id FROM cloud_messages cm \
                  WHERE cm.from_account_id = $1 AND cm.to_account_id = $2 \
-                   AND cm.client_message_id IS NULL AND cm.body = $3 \
-                   AND cm.session_id IS NOT DISTINCT FROM $4 AND cm.created_at = $5 \
+                   AND (cm.client_message_id IS NULL OR cm.client_message_id LIKE 'legacy-self:%') \
+                   AND cm.body = $3 \
+                   AND cm.session_id IS NOT DISTINCT FROM $4 \
+                   AND NULLIF(cm.created_at, '')::TIMESTAMPTZ > \
+                       NULLIF($5, '')::TIMESTAMPTZ - INTERVAL '1 second' \
+                   AND NULLIF(cm.created_at, '')::TIMESTAMPTZ < \
+                       NULLIF($5, '')::TIMESTAMPTZ + INTERVAL '1 second' \
                    AND NOT EXISTS ( \
                        SELECT 1 FROM cloud_message_attachments cma \
                        WHERE cma.message_id = cm.message_id \
@@ -211,7 +220,8 @@ pub async fn persist_cloud_message_in_transaction(
             if let Some((message_id,)) = legacy_row {
                 query(
                     "UPDATE cloud_messages SET client_message_id = $1 \
-                     WHERE message_id = $2 AND client_message_id IS NULL",
+                     WHERE message_id = $2 \
+                       AND (client_message_id IS NULL OR client_message_id LIKE 'legacy-self:%')",
                 )
                 .bind(client_message_id)
                 .bind(message_id)

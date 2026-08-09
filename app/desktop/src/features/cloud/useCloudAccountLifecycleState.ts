@@ -306,7 +306,11 @@ export function useCloudAccountLifecycleState({
               peerReadAtByPeerRef.current,
             );
             const merged =
-              mergeCloudMessagesByPeerSnapshot(reconciledCached, current);
+              mergeCloudMessagesByPeerSnapshot(
+                reconciledCached,
+                current,
+                { collapseSelfAccountId: accountId },
+              );
             return cloudMessagesByPeerEqual(current, merged)
               ? current
               : merged;

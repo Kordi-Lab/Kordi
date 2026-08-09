@@ -28,6 +28,7 @@ import {
   type CloudUnreadReadinessSnapshot,
   type CloudUnreadReadinessStatus,
 } from './cloudMessageSyncState';
+import { collapseLegacyCloudSelfMessageReplaysByPeer } from './cloudSelfMessageReplay';
 import {
   syncCloudDiffOnce,
   type CloudSessionPinsById,
@@ -300,7 +301,10 @@ export function useCloudMessageSync({
         fallbackRequired = true;
         break;
       }
-      messagesByPeer = result.messagesByPeer;
+      messagesByPeer = collapseLegacyCloudSelfMessageReplaysByPeer(
+        result.messagesByPeer,
+        account.accountId,
+      );
       sessionActivity = result.sessionActivity;
       sessionForksById = result.sessionForksById;
       sessionPinsById = result.sessionPinsById;
@@ -321,9 +325,14 @@ export function useCloudMessageSync({
     messagesRef.current = mergeCloudMessagesByPeerSnapshot(
       messagesRef.current,
       messagesByPeer,
+      { collapseSelfAccountId: account.accountId },
     );
     setMessages((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
+      const merged = mergeCloudMessagesByPeerSnapshot(
+        current,
+        messagesByPeer,
+        { collapseSelfAccountId: account.accountId },
+      );
       if (cloudMessagesByPeerEqual(current, merged)) return current;
       return merged;
     });

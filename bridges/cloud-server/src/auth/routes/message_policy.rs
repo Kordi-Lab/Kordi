@@ -195,6 +195,19 @@ pub(super) fn legacy_self_message_client_id(
     )
 }
 
+pub(super) fn legacy_self_message_lock_id(
+    account_id: &str,
+    session_id: Option<&str>,
+    body: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    for value in [account_id, session_id.unwrap_or_default(), body] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    format!("legacy-self-lock:{}", hex::encode(hasher.finalize()))
+}
+
 pub(super) fn cloud_agent_control_request_id(body: &str) -> Option<String> {
     let body = body.trim();
     let (expected_kind, encoded) =

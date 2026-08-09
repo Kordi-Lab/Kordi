@@ -1,7 +1,9 @@
 mod catalog;
 mod delivery;
 mod groups;
+mod legacy_self_duplicates;
 mod lifecycle;
+mod self_agent_sync;
 
 #[cfg(test)]
 pub(super) use self::catalog::existing_message_sources_from_db;
@@ -34,6 +36,7 @@ pub(super) use self::groups::{
     desktop_canonical_remove_session_participant, desktop_canonical_rename_session,
     desktop_canonical_set_session_participant_role, desktop_canonical_update_session_metadata,
 };
+pub(super) use self::legacy_self_duplicates::desktop_canonical_prune_legacy_cloud_self_message_duplicates;
 pub(crate) use self::lifecycle::{archive_session, delete_session, session_exists};
 pub(super) use self::lifecycle::{
     desktop_canonical_adopt_cloud_profile_identity, desktop_canonical_mark_session_read,
@@ -41,6 +44,7 @@ pub(super) use self::lifecycle::{
     desktop_canonical_update_presence, desktop_canonical_upsert_identity,
     desktop_canonical_upsert_identity_fast,
 };
+pub(super) use self::self_agent_sync::desktop_canonical_apply_self_agent_sync_plan;
 
 #[cfg(test)]
 mod tests;

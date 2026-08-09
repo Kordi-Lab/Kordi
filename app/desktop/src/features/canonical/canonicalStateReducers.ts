@@ -291,35 +291,75 @@ export function mergeCanonicalMessageRow(
   state: CanonicalSessionState | null,
   row: CanonicalSessionMessage | null,
 ): CanonicalSessionState | null {
-  if (!state || !row) return state;
-  const existingIndex = state.messages.findIndex((message) => message.id === row.id);
-  const existing = existingIndex >= 0 ? state.messages[existingIndex] : null;
-  if (
-    existing
-    && (
-      existing.messageKind === 'agent-turn'
-      || row.messageKind === 'agent-turn'
-    )
-    && !canApplyCloudAgentTurnTransition(existing, row)
-  ) {
-    return state;
+  return mergeCanonicalMessageRows(state, row ? [row] : []);
+}
+
+export function mergeCanonicalMessageRows(
+  state: CanonicalSessionState | null,
+  rows: readonly CanonicalSessionMessage[],
+): CanonicalSessionState | null {
+  if (!state || rows.length === 0) return state;
+  const indexByMessageId = new Map(
+    state.messages.map((message, index) => [message.id, index]),
+  );
+  let messages: CanonicalSessionMessage[] | null = null;
+  const activityBySessionId = new Map<string, {
+    updatedAtMs: number;
+    lastMessageAtMs: number;
+  }>();
+  for (const row of rows) {
+    const existingIndex = indexByMessageId.get(row.id);
+    const existing = existingIndex === undefined
+      ? null
+      : (messages ?? state.messages)[existingIndex];
+    if (
+      existing
+      && (
+        existing.messageKind === 'agent-turn'
+        || row.messageKind === 'agent-turn'
+      )
+      && !canApplyCloudAgentTurnTransition(existing, row)
+    ) continue;
+
+    const previousActivity = activityBySessionId.get(row.sessionId);
+    activityBySessionId.set(row.sessionId, {
+      updatedAtMs: Math.max(
+        previousActivity?.updatedAtMs ?? 0,
+        row.updatedAtMs,
+      ),
+      lastMessageAtMs: Math.max(
+        previousActivity?.lastMessageAtMs ?? 0,
+        row.createdAtMs,
+      ),
+    });
+    if (existing && canonicalMessagesEqual(existing, row)) continue;
+    messages ??= state.messages.slice();
+    if (existingIndex === undefined) {
+      indexByMessageId.set(row.id, messages.length);
+      messages.push(row);
+    } else {
+      messages[existingIndex] = row;
+    }
   }
-  const messages = existingIndex >= 0
-    ? canonicalMessagesEqual(state.messages[existingIndex], row)
-      ? state.messages
-      : state.messages.map((message, index) => (index === existingIndex ? row : message))
-    : [...state.messages, row];
   const sessions = mapPreservingArray(state.sessions, (session) => {
-    if (session.id !== row.sessionId) return session;
-    const updatedAtMs = Math.max(session.updatedAtMs, row.updatedAtMs);
-    const lastMessageAtMs = Math.max(session.lastMessageAtMs ?? 0, row.createdAtMs);
+    const activity = activityBySessionId.get(session.id);
+    if (!activity) return session;
+    const updatedAtMs = Math.max(session.updatedAtMs, activity.updatedAtMs);
+    const lastMessageAtMs = Math.max(
+      session.lastMessageAtMs ?? 0,
+      activity.lastMessageAtMs,
+    );
     return updatedAtMs === session.updatedAtMs
       && lastMessageAtMs === session.lastMessageAtMs
       ? session
       : { ...session, updatedAtMs, lastMessageAtMs };
   });
-  if (messages === state.messages && sessions === state.sessions) return state;
-  return { ...state, sessions, messages };
+  if (!messages && sessions === state.sessions) return state;
+  return {
+    ...state,
+    sessions,
+    messages: messages ?? state.messages,
+  };
 }
 
 export function mergeCanonicalMessageDeliveryDelta(

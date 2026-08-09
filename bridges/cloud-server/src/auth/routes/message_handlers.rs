@@ -187,6 +187,13 @@ pub(super) async fn send_message(
                 })
             })
             .flatten();
+    let legacy_replay_lock_id = legacy_client_message_id.as_ref().map(|_| {
+        legacy_self_message_lock_id(
+            &session.account_id,
+            cloud_session_id.as_deref(),
+            &body,
+        )
+    });
     let client_message_id = supplied_client_message_id.or(legacy_client_message_id.as_deref());
     let delivered_at = server_received_at.to_rfc3339();
     let read_at = if is_self_message {
@@ -220,6 +227,7 @@ pub(super) async fn send_message(
             read_at: read_at.as_deref(),
             attachments: &persisted_attachments,
             claim_legacy_self_replay: legacy_client_message_id.is_some(),
+            legacy_self_replay_lock_id: legacy_replay_lock_id.as_deref(),
         },
     )
     .await

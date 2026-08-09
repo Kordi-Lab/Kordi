@@ -4,10 +4,6 @@ import type {
   CloudSessionForkSummary,
 } from './authClient';
 import {
-  parseCloudAgentCancel,
-  parseCloudAgentResponse,
-} from './cloudAgentMessages';
-import {
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
   parseCloudGroupControl,
@@ -18,6 +14,10 @@ import {
   mergeCloudMessageMonotonicState,
 } from './cloudDiffSync';
 import { latestCloudReceiptAt } from './cloudMessageMerge';
+import {
+  collapseLegacySelfMessageReplays,
+  selfSnapshotCurrentMessages,
+} from './cloudSelfMessageReplay';
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
 
@@ -25,6 +25,10 @@ export type CloudUnreadReadinessSnapshot = {
   status: CloudUnreadReadinessStatus;
   contextKey: string | null;
 };
+
+function cleanText(value?: string | null) {
+  return (value ?? '').trim();
+}
 
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
@@ -43,10 +47,6 @@ export function cloudBootstrapPeerIds(
     requests,
   });
   return [...new Set([selfPeerId, ...expandedPeerIds].filter(Boolean))].sort();
-}
-
-function cleanText(value?: string | null) {
-  return (value ?? '').trim();
 }
 
 function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[] = []): boolean {
@@ -68,56 +68,13 @@ export function cloudMessagesByPeerEqual(
   ));
 }
 
-function selfSnapshotCurrentMessages(
-  current: CloudMessage[],
-  snapshot: CloudMessage[],
-) {
-  if (current.length === 0) return current;
-  const snapshotIds = new Set(snapshot.map((message) => message.messageId));
-  const referencedRequestIds = new Set([...current, ...snapshot].flatMap((message) => {
-    const requestId = parseCloudAgentResponse(message.body)?.requestId
-      ?? parseCloudAgentCancel(message.body)?.requestId;
-    return requestId ? [requestId] : [];
-  }));
-  const replayKey = (message: CloudMessage) => [
-    message.sessionId ?? '',
-    message.body,
-    message.createdAt,
-  ].join('\u001f');
-  const referencedReplayKeys = new Set(current.flatMap((message) => (
-    message.fromAccountId === message.toAccountId
-    && !message.attachments?.length
-    && referencedRequestIds.has(message.messageId)
-      ? [replayKey(message)]
-      : []
-  )));
-  const snapshotReplayKeys = new Set<string>();
-  for (const message of snapshot) {
-    if (message.fromAccountId !== message.toAccountId || message.attachments?.length) continue;
-    snapshotReplayKeys.add(replayKey(message));
-  }
-  const keptUnsnapshottedKeys = new Set<string>();
-  const retained = current.filter((message) => {
-    if (
-      message.fromAccountId !== message.toAccountId
-      || message.attachments?.length
-      || snapshotIds.has(message.messageId)
-      || referencedRequestIds.has(message.messageId)
-    ) return true;
-    const key = replayKey(message);
-    if (referencedReplayKeys.has(key)) return false;
-    if (snapshotReplayKeys.has(key)) return false;
-    if (keptUnsnapshottedKeys.has(key)) return false;
-    keptUnsnapshottedKeys.add(key);
-    return true;
-  });
-  return retained.length === current.length ? current : retained;
-}
-
 export function mergeCloudMessagesByPeerSnapshot(
   current: Record<string, CloudMessage[]>,
   incoming: Record<string, CloudMessage[]>,
-  options: { authoritativeSelfAccountId?: string | null } = {},
+  options: {
+    authoritativeSelfAccountId?: string | null;
+    collapseSelfAccountId?: string | null;
+  } = {},
 ): Record<string, CloudMessage[]> {
   const peerIds = uniqueSortedPeerIds([...Object.keys(current), ...Object.keys(incoming)]);
   const merged: Record<string, CloudMessage[]> = {};
@@ -145,8 +102,13 @@ export function mergeCloudMessagesByPeerSnapshot(
         cloudMessagesEqual(previous, candidate) ? previous : candidate,
       );
     }
-    const messages = [...byMessageId.values()]
+    let messages = [...byMessageId.values()]
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const selfAccountId = options.collapseSelfAccountId
+      ?? options.authoritativeSelfAccountId;
+    if (peerId === selfAccountId) {
+      messages = collapseLegacySelfMessageReplays(messages);
+    }
     if (messages.length > 0) {
       const unchanged = cloudMessageListsEqual(previousMessages, messages);
       merged[peerId] = unchanged ? previousMessages : messages;

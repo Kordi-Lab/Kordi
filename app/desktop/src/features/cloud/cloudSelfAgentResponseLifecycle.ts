@@ -39,11 +39,31 @@ type IndexedLocalUserMessage = {
 export type CloudSelfAgentCanonicalMessageIndex = {
   byId: Map<string, CanonicalSessionMessage>;
   bySessionAndSourceEvent: Map<string, CanonicalSessionMessage>;
+  byExactReplay: Map<string, CanonicalSessionMessage>;
+  cloudReplaysBySessionRoleAndText: Map<string, IndexedLocalUserMessage[]>;
   localUsersBySessionAndText: Map<string, IndexedLocalUserMessage[]>;
 };
 
+const LEGACY_SELF_REPLAY_WINDOW_MS = 1_000;
+
 function sessionValueKey(sessionId: string, value: string): string {
   return `${sessionId}\u0000${value}`;
+}
+
+function exactReplayKey({
+  sessionId,
+  role,
+  text,
+  createdAtMs,
+}: Pick<
+  CloudSelfAgentCanonicalMatchInput,
+  'sessionId' | 'role' | 'text' | 'createdAtMs'
+>) {
+  return [sessionId, role, createdAtMs.toString(), text].join('\u0000');
+}
+
+function replayValueKey(sessionId: string, role: 'user' | 'agent', text: string) {
+  return [sessionId, role, text].join('\u0000');
 }
 
 export function cloudSelfAgentStableResponseId(
@@ -74,6 +94,9 @@ export function createCloudSelfAgentCanonicalMessageIndex(
 ): CloudSelfAgentCanonicalMessageIndex {
   const byId = new Map<string, CanonicalSessionMessage>();
   const bySessionAndSourceEvent = new Map<string, CanonicalSessionMessage>();
+  const byExactReplay = new Map<string, CanonicalSessionMessage>();
+  const cloudReplaysBySessionRoleAndText =
+    new Map<string, IndexedLocalUserMessage[]>();
   const localUsersBySessionAndText =
     new Map<string, IndexedLocalUserMessage[]>();
   messages.forEach((message, originalIndex) => {
@@ -88,6 +111,29 @@ export function createCloudSelfAgentCanonicalMessageIndex(
       }
     }
     const text = cleanText(message.contentText);
+    const replayRole = message.senderRole === 'user'
+      ? 'user'
+      : message.senderRole.includes('agent')
+          || message.messageKind === 'agent-turn'
+        ? 'agent'
+        : null;
+    if (
+      message.sourceTransport === 'cloud-self-agent'
+      && replayRole
+      && text
+    ) {
+      const key = exactReplayKey({
+        sessionId: message.sessionId,
+        role: replayRole,
+        text,
+        createdAtMs: message.createdAtMs,
+      });
+      if (!byExactReplay.has(key)) byExactReplay.set(key, message);
+      const replayKey = replayValueKey(message.sessionId, replayRole, text);
+      const replayEntries = cloudReplaysBySessionRoleAndText.get(replayKey) ?? [];
+      replayEntries.push({ message, originalIndex });
+      cloudReplaysBySessionRoleAndText.set(replayKey, replayEntries);
+    }
     if (
       message.senderRole !== 'user'
       || !text
@@ -99,13 +145,22 @@ export function createCloudSelfAgentCanonicalMessageIndex(
     entries.push({ message, originalIndex });
     localUsersBySessionAndText.set(key, entries);
   });
-  for (const entries of localUsersBySessionAndText.values()) {
+  for (const entries of [
+    ...cloudReplaysBySessionRoleAndText.values(),
+    ...localUsersBySessionAndText.values(),
+  ]) {
     entries.sort((left, right) => (
       left.message.createdAtMs - right.message.createdAtMs
       || left.originalIndex - right.originalIndex
     ));
   }
-  return { byId, bySessionAndSourceEvent, localUsersBySessionAndText };
+  return {
+    byId,
+    bySessionAndSourceEvent,
+    byExactReplay,
+    cloudReplaysBySessionRoleAndText,
+    localUsersBySessionAndText,
+  };
 }
 
 function firstMessageAtOrAfter(
@@ -139,6 +194,33 @@ export function findExistingCanonicalCloudSelfAgentMessage(
   if (source && existingCanonicalMessageMatchesCloudSelfAgent(source, input)) {
     return source;
   }
+  const exactReplay = index.byExactReplay.get(exactReplayKey(input));
+  if (exactReplay) return exactReplay;
+  const cloudReplayEntries = index.cloudReplaysBySessionRoleAndText.get(
+    replayValueKey(input.sessionId, input.role, input.text),
+  ) ?? [];
+  const cloudReplayAfterIndex = firstMessageAtOrAfter(
+    cloudReplayEntries,
+    input.createdAtMs,
+  );
+  const cloudReplayCandidates: IndexedLocalUserMessage[] = [];
+  if (cloudReplayAfterIndex < cloudReplayEntries.length) {
+    cloudReplayCandidates.push(cloudReplayEntries[cloudReplayAfterIndex]);
+  }
+  if (cloudReplayAfterIndex > 0) {
+    cloudReplayCandidates.push(cloudReplayEntries[cloudReplayAfterIndex - 1]);
+  }
+  cloudReplayCandidates.sort((left, right) => (
+    Math.abs(left.message.createdAtMs - input.createdAtMs)
+      - Math.abs(right.message.createdAtMs - input.createdAtMs)
+    || left.originalIndex - right.originalIndex
+  ));
+  const closestCloudReplay = cloudReplayCandidates[0]?.message ?? null;
+  if (
+    closestCloudReplay
+    && Math.abs(closestCloudReplay.createdAtMs - input.createdAtMs)
+      < LEGACY_SELF_REPLAY_WINDOW_MS
+  ) return closestCloudReplay;
   if (input.role === 'agent') return null;
   const entries = index.localUsersBySessionAndText.get(
     sessionValueKey(input.sessionId, input.text),

@@ -242,7 +242,7 @@ pub(crate) fn upsert_message_in_db(
     Ok(message)
 }
 
-fn upsert_message_in_transaction(
+pub(crate) fn upsert_message_in_transaction(
     conn: &Connection,
     mut request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionMessage, String> {
