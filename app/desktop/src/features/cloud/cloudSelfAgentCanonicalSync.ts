@@ -28,7 +28,8 @@ import { createCloudSelfAgentSessionPlanner } from './cloudSelfAgentSessionPlan'
 import {
   cloudSelfAgentStableResponseId,
   cloudSelfAgentResponseWouldDowngrade,
-  existingCanonicalMessageMatchesCloudSelfAgent,
+  createCloudSelfAgentCanonicalMessageIndex,
+  findExistingCanonicalCloudSelfAgentMessage,
   legacyCloudSelfAgentResponseIds,
   shouldReplacePlannedCloudSelfAgentResponse,
   type CloudSelfAgentResponseDeliveryState,
@@ -233,6 +234,8 @@ export function planCloudSelfAgentCanonicalSync({
   const plannedCanonicalMessageIdByDuplicateKey =
     new Map<string, string>();
   const plannedMessageIndexByCanonicalId = new Map<string, number>();
+  const existingCanonicalMessageIndex =
+    createCloudSelfAgentCanonicalMessageIndex(state.messages);
   const legacyResponseIdByStableCanonicalId =
     legacyCloudSelfAgentResponseIds({
       canonicalMessages: state.messages,
@@ -281,15 +284,16 @@ export function planCloudSelfAgentCanonicalSync({
       legacyResponseIdByStableCanonicalId.get(
         derivedStableCanonicalMessageId,
       ) ?? derivedStableCanonicalMessageId;
-    const existingMatch = state.messages.find((existing) =>
-      existingCanonicalMessageMatchesCloudSelfAgent(existing, {
+    const existingMatch = findExistingCanonicalCloudSelfAgentMessage(
+      existingCanonicalMessageIndex,
+      {
         sessionId,
         role,
         text,
         createdAtMs,
         cloudMessageId: message.messageId,
         canonicalMessageId: stableCanonicalMessageId,
-      })
+      },
     );
     if (existingMatch && !responseRequestId) {
       userTextByCloudMessageId.set(message.messageId, text);

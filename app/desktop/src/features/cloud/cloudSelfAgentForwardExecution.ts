@@ -166,6 +166,9 @@ export async function publishCloudSelfAgentOperations({
       cloudMessageId: response.messageId,
       syncedAtMs: Date.now(),
     };
+    if (parentLocalMessageId) {
+      delete ledger[cloudSelfAgentProcessingLedgerKey(parentLocalMessageId)];
+    }
     saveLedger(ledger);
     mergeMessage(response);
   }

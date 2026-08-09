@@ -38,6 +38,14 @@ function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
 
+function cloudMessageObservedAtMs(message: CloudMessage): number {
+  for (const value of [message.deliveredAt, message.createdAt]) {
+    const parsed = Date.parse(value ?? '');
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Number.NaN;
+}
+
 function cloudContactPeerAccountId(contact: Contact): string {
   return contact.sourceParticipantId?.trim()
     || contact.id.replace(/^cloud:/, '').trim();
@@ -263,13 +271,13 @@ export function cloudFallbackRunClaimsForMessages({
         requestIds.add(response.requestId);
         continue;
       }
-      const createdAtMs = Date.parse(message.createdAt);
-      if (Number.isFinite(createdAtMs)) {
+      const observedAtMs = cloudMessageObservedAtMs(message);
+      if (Number.isFinite(observedAtMs)) {
         processingByRequestId.set(
           response.requestId,
           Math.max(
             processingByRequestId.get(response.requestId) ?? 0,
-            createdAtMs,
+            observedAtMs,
           ),
         );
       }
@@ -291,17 +299,20 @@ export function cloudFallbackRunClaimsForMessages({
           || parseCloudAgentResponse(message.body)
           || parseCloudAgentCancel(message.body)
         ) continue;
-        const createdAtMs = Date.parse(message.createdAt);
+        const observedAtMs = cloudMessageObservedAtMs(message);
         if (
           recentSinceMs !== undefined
-          && (!Number.isFinite(createdAtMs) || createdAtMs < recentSinceMs)
+          && (
+            !Number.isFinite(observedAtMs)
+            || observedAtMs < recentSinceMs
+          )
         ) continue;
         if (
           terminalDirectRequestIdsByPeerId.get(peerId)?.has(message.messageId)
         ) continue;
         const processingAtMs = processingDirectRequestAtMsByPeerId
           .get(peerId)
-          ?.get(message.messageId) ?? createdAtMs;
+          ?.get(message.messageId) ?? observedAtMs;
         if (
           !Number.isFinite(processingAtMs)
           || processingAtMs > selfAgentFallbackBeforeMs

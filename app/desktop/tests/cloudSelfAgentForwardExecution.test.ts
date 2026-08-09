@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import { parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import {
+  cloudSelfAgentProcessingLedgerKey,
   publishCloudSelfAgentHeartbeat,
   publishCloudSelfAgentOperations,
 } from '../src/features/cloud/cloudSelfAgentForwardExecution';
@@ -76,7 +77,8 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
     });
   };
 
-  await publish({});
+  const completedLedger: CloudSelfAgentSyncLedger = {};
+  await publish(completedLedger);
   await publish({});
 
   assert.equal(messagesByClientId.size, 3);
@@ -91,6 +93,10 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
   assert.equal(processing?.requestId, 'cloud-1');
   assert.equal(completed?.requestId, processing?.requestId);
   assert.equal(completed?.text, 'one answer');
+  assert.equal(
+    completedLedger[cloudSelfAgentProcessingLedgerKey('local-request')],
+    undefined,
+  );
 });
 
 test('self-agent execution heartbeats are idempotent within one time bucket', async () => {

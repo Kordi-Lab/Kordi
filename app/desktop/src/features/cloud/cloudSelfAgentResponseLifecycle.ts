@@ -22,6 +22,30 @@ function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
 
+type CloudSelfAgentCanonicalMatchInput = {
+  sessionId: string;
+  role: 'user' | 'agent';
+  text: string;
+  createdAtMs: number;
+  cloudMessageId: string;
+  canonicalMessageId: string;
+};
+
+type IndexedLocalUserMessage = {
+  message: CanonicalSessionMessage;
+  originalIndex: number;
+};
+
+export type CloudSelfAgentCanonicalMessageIndex = {
+  byId: Map<string, CanonicalSessionMessage>;
+  bySessionAndSourceEvent: Map<string, CanonicalSessionMessage>;
+  localUsersBySessionAndText: Map<string, IndexedLocalUserMessage[]>;
+};
+
+function sessionValueKey(sessionId: string, value: string): string {
+  return `${sessionId}\u0000${value}`;
+}
+
 export function cloudSelfAgentStableResponseId(
   requestCloudMessageId: string,
 ): string {
@@ -30,14 +54,7 @@ export function cloudSelfAgentStableResponseId(
 
 export function existingCanonicalMessageMatchesCloudSelfAgent(
   existing: CanonicalSessionMessage,
-  input: {
-    sessionId: string;
-    role: 'user' | 'agent';
-    text: string;
-    createdAtMs: number;
-    cloudMessageId: string;
-    canonicalMessageId: string;
-  },
+  input: CloudSelfAgentCanonicalMatchInput,
 ): boolean {
   if (existing.sessionId !== input.sessionId) return false;
   if (existing.id === input.canonicalMessageId) return true;
@@ -50,6 +67,99 @@ export function existingCanonicalMessageMatchesCloudSelfAgent(
   if (!existingText || existingText !== input.text) return false;
   if (existing.senderRole !== 'user') return false;
   return Math.abs(existing.createdAtMs - input.createdAtMs) <= 5_000;
+}
+
+export function createCloudSelfAgentCanonicalMessageIndex(
+  messages: readonly CanonicalSessionMessage[],
+): CloudSelfAgentCanonicalMessageIndex {
+  const byId = new Map<string, CanonicalSessionMessage>();
+  const bySessionAndSourceEvent = new Map<string, CanonicalSessionMessage>();
+  const localUsersBySessionAndText =
+    new Map<string, IndexedLocalUserMessage[]>();
+  messages.forEach((message, originalIndex) => {
+    if (!byId.has(message.id)) byId.set(message.id, message);
+    if (
+      message.sourceTransport === 'cloud-self-agent'
+      && message.sourceEventId
+    ) {
+      const key = sessionValueKey(message.sessionId, message.sourceEventId);
+      if (!bySessionAndSourceEvent.has(key)) {
+        bySessionAndSourceEvent.set(key, message);
+      }
+    }
+    const text = cleanText(message.contentText);
+    if (
+      message.senderRole !== 'user'
+      || !text
+      || message.sourceTransport === 'cloud-self-agent'
+      || message.id.startsWith('msg:cloud:self:')
+    ) return;
+    const key = sessionValueKey(message.sessionId, text);
+    const entries = localUsersBySessionAndText.get(key) ?? [];
+    entries.push({ message, originalIndex });
+    localUsersBySessionAndText.set(key, entries);
+  });
+  for (const entries of localUsersBySessionAndText.values()) {
+    entries.sort((left, right) => (
+      left.message.createdAtMs - right.message.createdAtMs
+      || left.originalIndex - right.originalIndex
+    ));
+  }
+  return { byId, bySessionAndSourceEvent, localUsersBySessionAndText };
+}
+
+function firstMessageAtOrAfter(
+  entries: readonly IndexedLocalUserMessage[],
+  createdAtMs: number,
+): number {
+  let low = 0;
+  let high = entries.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (entries[middle].message.createdAtMs < createdAtMs) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low;
+}
+
+export function findExistingCanonicalCloudSelfAgentMessage(
+  index: CloudSelfAgentCanonicalMessageIndex,
+  input: CloudSelfAgentCanonicalMatchInput,
+): CanonicalSessionMessage | null {
+  const exact = index.byId.get(input.canonicalMessageId);
+  if (exact && existingCanonicalMessageMatchesCloudSelfAgent(exact, input)) {
+    return exact;
+  }
+  const source = index.bySessionAndSourceEvent.get(
+    sessionValueKey(input.sessionId, input.cloudMessageId),
+  );
+  if (source && existingCanonicalMessageMatchesCloudSelfAgent(source, input)) {
+    return source;
+  }
+  if (input.role === 'agent') return null;
+  const entries = index.localUsersBySessionAndText.get(
+    sessionValueKey(input.sessionId, input.text),
+  ) ?? [];
+  const afterIndex = firstMessageAtOrAfter(entries, input.createdAtMs);
+  const candidates: IndexedLocalUserMessage[] = [];
+  if (afterIndex < entries.length) candidates.push(entries[afterIndex]);
+  if (afterIndex > 0) {
+    const previousAt = entries[afterIndex - 1].message.createdAtMs;
+    candidates.push(entries[firstMessageAtOrAfter(entries, previousAt)]);
+  }
+  candidates.sort((left, right) => (
+    Math.abs(left.message.createdAtMs - input.createdAtMs)
+      - Math.abs(right.message.createdAtMs - input.createdAtMs)
+    || left.originalIndex - right.originalIndex
+  ));
+  const closest = candidates[0]?.message ?? null;
+  return closest
+    && existingCanonicalMessageMatchesCloudSelfAgent(closest, input)
+    ? closest
+    : null;
 }
 
 export function legacyCloudSelfAgentResponseIds({

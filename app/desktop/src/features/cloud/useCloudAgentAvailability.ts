@@ -435,7 +435,12 @@ export function useCloudAgentAvailability({
         if (cancelled) return;
         await claimCloudFallbackRun(claim, session.token);
       }
-    })();
+    })().catch((error) => {
+      reportWarning(
+        '[cloud-agent-fallback] self-agent recovery failed',
+        error,
+      );
+    });
     return () => {
       cancelled = true;
     };
@@ -445,6 +450,7 @@ export function useCloudAgentAvailability({
     contacts,
     initialMessagesSettled,
     messageIndex,
+    reportWarning,
     selfFallbackRevision,
   ]);
 

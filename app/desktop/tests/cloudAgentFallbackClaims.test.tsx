@@ -207,6 +207,22 @@ test('cloud local owner agent detects existing Cloud fallback response for reque
     message: request,
     peerMessages: [request, cloudResponse],
   }), false);
+
+  const processing = {
+    ...cloudResponse,
+    messageId: 'msg_processing_on_another_device',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'processing...',
+      deliveryState: 'processing',
+    }),
+  };
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request, processing],
+  }), false);
 });
 
 test('cloud outgoing remote-agent mentions produce Cloud fallback run claims', () => {
@@ -290,6 +306,51 @@ test('stale self-agent processing produces one durable Cloud fallback claim', ()
     },
     selfAgentFallbackBeforeMs: now,
   }), []);
+});
+
+test('self-agent fallback age uses server delivery time instead of client display time', () => {
+  const now = Date.now();
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_self_request_server_time',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'respect server time',
+    direction: 'outgoing',
+    sessionId: 'session:self-agent:server-time',
+    createdAt: new Date(now - 10 * 60_000).toISOString(),
+    deliveredAt: new Date(now - 1_000).toISOString(),
+  };
+  const processing: CloudMessage = {
+    ...request,
+    messageId: 'msg_self_processing_server_time',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'processing...',
+      deliveryState: 'processing',
+    }),
+    deliveredAt: new Date(now - 500).toISOString(),
+  };
+  const options = {
+    account,
+    contacts: [],
+    selfAgentFallbackBeforeMs: now - 120_000,
+  };
+
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    ...options,
+    messagesByPeer: { [account.accountId]: [request, processing] },
+  }), []);
+
+  const staleByServerTime = [request, processing].map((entry, index) => ({
+    ...entry,
+    createdAt: new Date(now + 60_000).toISOString(),
+    deliveredAt: new Date(now - 130_000 + index).toISOString(),
+  }));
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    ...options,
+    messagesByPeer: { [account.accountId]: staleByServerTime },
+  }).map((claim) => claim.requestMessageId), [request.messageId]);
 });
 
 test('background Cloud fallback recovery never creates a run for a stale request', () => {
