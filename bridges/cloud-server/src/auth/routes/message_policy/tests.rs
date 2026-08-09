@@ -1,8 +1,9 @@
 use super::{
-    cloud_direct_person_session_id, cloud_message_effective_created_at,
-    cloud_message_requires_accepted_contact, contact_acceptance_hello_sync_summaries,
-    normalize_cloud_message_body, sanitized_cloud_group_control_body, CLOUD_AGENT_RESPONSE_PREFIX,
-    CLOUD_GROUP_CONTROL_PREFIX,
+    cloud_agent_control_request_id, cloud_direct_person_session_id,
+    cloud_message_effective_created_at, cloud_message_requires_accepted_contact,
+    contact_acceptance_hello_sync_summaries, legacy_self_message_client_id,
+    normalize_cloud_message_body, sanitized_cloud_group_control_body, CLOUD_AGENT_CANCEL_PREFIX,
+    CLOUD_AGENT_RESPONSE_PREFIX, CLOUD_GROUP_CONTROL_PREFIX,
 };
 use base64::Engine as _;
 use chrono::{TimeZone, Utc};
@@ -42,6 +43,65 @@ fn cloud_message_effective_created_at_rejects_invalid_or_too_future_client_time(
         cloud_message_effective_created_at(Some("2026-05-14T12:10:01Z"), now),
         "2026-05-14T12:00:00+00:00"
     );
+}
+
+#[test]
+fn legacy_self_message_client_id_is_stable_and_session_scoped() {
+    let first = legacy_self_message_client_id(
+        "acct_me",
+        Some("session:a"),
+        "same prompt",
+        "2026-07-22T12:15:12.674+00:00",
+    );
+    assert_eq!(
+        first,
+        legacy_self_message_client_id(
+            "acct_me",
+            Some("session:a"),
+            "same prompt",
+            "2026-07-22T12:15:12.674+00:00",
+        )
+    );
+    assert_ne!(
+        first,
+        legacy_self_message_client_id(
+            "acct_me",
+            Some("session:b"),
+            "same prompt",
+            "2026-07-22T12:15:12.674+00:00",
+        )
+    );
+}
+
+#[test]
+fn cloud_agent_control_request_id_validates_the_envelope_kind() {
+    let response = format!(
+        "{CLOUD_AGENT_RESPONSE_PREFIX}{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+            serde_json::json!({
+                "kind": "agent-response",
+                "requestId": "msg_request",
+                "text": "answer",
+            })
+            .to_string()
+        )
+    );
+    let wrong_kind = format!(
+        "{CLOUD_AGENT_CANCEL_PREFIX}{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+            serde_json::json!({
+                "kind": "agent-response",
+                "requestId": "msg_request",
+            })
+            .to_string()
+        )
+    );
+
+    assert_eq!(
+        cloud_agent_control_request_id(&response).as_deref(),
+        Some("msg_request")
+    );
+    assert_eq!(cloud_agent_control_request_id(&wrong_kind), None);
 }
 
 #[test]

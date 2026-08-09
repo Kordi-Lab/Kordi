@@ -9,6 +9,7 @@ pub(super) const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
 pub(super) const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 pub(super) const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 pub(super) const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
+pub(super) const LEGACY_SELF_MESSAGE_CLIENT_ID_PREFIX: &str = "legacy-self:";
 
 pub(super) fn cloud_direct_person_session_id(
     left_account_id: &str,
@@ -139,26 +140,83 @@ pub(super) fn cloud_message_session_id(
     None
 }
 
+#[cfg(test)]
 pub(super) fn cloud_message_effective_created_at(
     client_created_at: Option<&str>,
     now: DateTime<Utc>,
 ) -> String {
-    let Some(raw) = client_created_at
+    cloud_message_valid_client_created_at(client_created_at, now)
+        .unwrap_or_else(|| now.to_rfc3339())
+}
+
+pub(super) fn cloud_message_valid_client_created_at(
+    client_created_at: Option<&str>,
+    now: DateTime<Utc>,
+) -> Option<String> {
+    let raw = client_created_at
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return now.to_rfc3339();
-    };
+        .filter(|value| !value.is_empty())?;
     let Ok(parsed) = DateTime::parse_from_rfc3339(raw) else {
-        return now.to_rfc3339();
+        return None;
     };
     let parsed_utc = parsed.with_timezone(&Utc);
     if parsed_utc
         > now + ChronoDuration::seconds(CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS)
     {
-        return now.to_rfc3339();
+        return None;
     }
-    parsed_utc.to_rfc3339()
+    Some(parsed_utc.to_rfc3339())
+}
+
+/// Older desktop builds retried self-agent history whenever their local
+/// persistence ledger was unavailable. They supplied a stable source time but
+/// no `clientMessageId`, so each retry became a new durable Cloud row. Give
+/// those requests a server-derived idempotency key without changing the
+/// semantics of ordinary sends that do not carry a source timestamp.
+pub(super) fn legacy_self_message_client_id(
+    account_id: &str,
+    session_id: Option<&str>,
+    body: &str,
+    client_created_at: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    for value in [
+        account_id,
+        session_id.unwrap_or_default(),
+        body,
+        client_created_at,
+    ] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    format!(
+        "{LEGACY_SELF_MESSAGE_CLIENT_ID_PREFIX}{}",
+        hex::encode(hasher.finalize())
+    )
+}
+
+pub(super) fn cloud_agent_control_request_id(body: &str) -> Option<String> {
+    let body = body.trim();
+    let (expected_kind, encoded) =
+        if let Some(encoded) = body.strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX) {
+            ("agent-response", encoded)
+        } else if let Some(encoded) = body.strip_prefix(CLOUD_AGENT_CANCEL_PREFIX) {
+            ("agent-cancel", encoded)
+        } else {
+            return None;
+        };
+    let decoded = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    let value: Value = serde_json::from_slice(&decoded).ok()?;
+    (value.get("kind").and_then(Value::as_str) == Some(expected_kind))
+        .then(|| {
+            value
+                .get("requestId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+        .flatten()
 }
 
 pub(super) fn cloud_message_requires_accepted_contact(body: &str) -> bool {

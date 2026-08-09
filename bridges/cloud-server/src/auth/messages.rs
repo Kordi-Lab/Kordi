@@ -39,6 +39,7 @@ pub struct PersistCloudMessageInput<'a> {
     pub delivered_at: &'a str,
     pub read_at: Option<&'a str>,
     pub attachments: &'a [PersistedMessageAttachment],
+    pub claim_legacy_self_replay: bool,
 }
 
 pub struct PersistCloudMessageOutcome {
@@ -167,6 +168,59 @@ pub async fn persist_cloud_message_in_transaction(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     input: PersistCloudMessageInput<'_>,
 ) -> Result<PersistCloudMessageOutcome, sqlx_core::Error> {
+    if input.claim_legacy_self_replay {
+        let client_message_id = input
+            .client_message_id
+            .expect("legacy replay claim requires a client message id");
+        // Serialize claims for this deterministic signature. Without the
+        // transaction-scoped lock, two old clients could both miss the same
+        // NULL-keyed row before either assigns the compatibility key.
+        query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(client_message_id)
+            .execute(&mut **tx)
+            .await?;
+        let canonical_row_exists: Option<(String,)> = query_as(
+            "SELECT message_id FROM cloud_messages \
+             WHERE from_account_id = $1 AND to_account_id = $2 AND client_message_id = $3",
+        )
+        .bind(input.from_account_id)
+        .bind(input.to_account_id)
+        .bind(client_message_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if canonical_row_exists.is_none() {
+            let legacy_row: Option<(String,)> = query_as(
+                "SELECT cm.message_id FROM cloud_messages cm \
+                 WHERE cm.from_account_id = $1 AND cm.to_account_id = $2 \
+                   AND cm.client_message_id IS NULL AND cm.body = $3 \
+                   AND cm.session_id IS NOT DISTINCT FROM $4 AND cm.created_at = $5 \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM cloud_message_attachments cma \
+                       WHERE cma.message_id = cm.message_id \
+                   ) \
+                 ORDER BY cm.server_received_at ASC, cm.message_id ASC \
+                 LIMIT 1 FOR UPDATE",
+            )
+            .bind(input.from_account_id)
+            .bind(input.to_account_id)
+            .bind(input.body)
+            .bind(input.session_id)
+            .bind(input.created_at)
+            .fetch_optional(&mut **tx)
+            .await?;
+            if let Some((message_id,)) = legacy_row {
+                query(
+                    "UPDATE cloud_messages SET client_message_id = $1 \
+                     WHERE message_id = $2 AND client_message_id IS NULL",
+                )
+                .bind(client_message_id)
+                .bind(message_id)
+                .execute(&mut **tx)
+                .await?;
+            }
+        }
+    }
+
     let inserted_id: Option<(String,)> = query_as(
         "INSERT INTO cloud_messages \
          (message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id, client_message_id) \
