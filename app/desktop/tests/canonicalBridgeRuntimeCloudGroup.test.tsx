@@ -263,6 +263,77 @@ test('canonical read model hides duplicated self-agent cloud echoes when local r
   ]);
 });
 
+test('canonical read model shows one error when local and Cloud self-agent failures repeat for one request', () => {
+  const sessionId = 'session:self-agent:failed-mirrors';
+  const requestId = 'msg:canonical-request';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:me',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'self-agent',
+      title: 'New chat',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'agent:me',
+      relationshipIdentityId: null,
+      metadata: { cloudSelfAgentSession: true },
+      createdAtMs: 1_000,
+      updatedAtMs: 3_000,
+      lastMessageAtMs: 3_000,
+    }],
+    participants: [
+      { sessionId, identityId: 'agent:me', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: requestId, sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Hihihi', content: null, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-request' },
+      { id: 'msg:cloud:self:legacy-failure', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: '', content: { deliveryState: 'failed', error: 'Cloud fallback could not complete this request because the configured provider/model failed.', requestId, replyToMessageId: requestId }, parentMessageId: requestId, status: 'failed', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-failure-1' },
+      { id: 'msg:cloud:self:response:cloud-request', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: '', content: { deliveryState: 'failed', error: 'Cloud fallback could not complete this request because the configured provider/model failed.', requestId, replyToMessageId: requestId }, parentMessageId: requestId, status: 'failed', sequenceNum: 3, createdAtMs: 3_000, updatedAtMs: 3_000, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-failure-2' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const runtimeConversation = {
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    desktopRuntimeBacked: true,
+    desktopRuntimeTranscriptLoaded: true,
+    messages: [
+      { id: 'msg:runtime-request', entryId: requestId, role: 'user', text: 'Hihihi', time: '22:01', timestampMs: 1_000 },
+      { id: 'turn:local-failure', role: 'owned-agent', sender: 'My Kordi', text: '', time: '22:01', timestampMs: 1_500, replyToMessageId: 'msg:runtime-request', turn: { id: 'turn:local-failure', sessionId, prompt: '', status: 'failed', message: 'Failed', assistantText: '', thinkingText: '', tools: [], completed: true, succeeded: false, error: 'Your authentication token has been invalidated.', replyToMessageId: 'msg:runtime-request' } },
+    ],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversation = readModel?.applyConversation(
+    runtimeConversation as never,
+    (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '',
+  );
+  const errors = conversation?.messages.filter(
+    (message) => message.turn?.status === 'failed',
+  ) ?? [];
+
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.id, 'msg:cloud:self:response:cloud-request');
+  assert.equal(
+    errors[0]?.turn?.error,
+    'Cloud fallback could not complete this request because the configured provider/model failed.',
+  );
+});
+
 test('canonical read model exposes cloud group agent stop controls to requester and model owner', () => {
   const sessionId = 'session:group:cloud-stop';
   const requestId = 'msg:request';

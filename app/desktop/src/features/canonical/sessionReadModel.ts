@@ -38,7 +38,7 @@ import {
 } from './readModel/conversationMapping';
 import type { ConversationSubtitleBuilder } from './readModel/conversationMapping';
 import type { CanonicalConversationLike } from './readModel/conversationTypes';
-
+import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 function messageResponseText(message: Message) {
   return message.turn?.assistantText.trim()
     || message.turn?.error?.trim()
@@ -557,7 +557,7 @@ export function createCanonicalSessionReadModel(
           ? canonicalMessages
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
-      const messages = isSupportContact ? normalizeSupportContactMessages(hydratedMessages) : hydratedMessages;
+      const messages = dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedMessages) : hydratedMessages);
       const rawCanonicalParticipants = this.participantDetails(sessionId);
       const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
       const participants = isSupportContact

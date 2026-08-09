@@ -127,6 +127,13 @@ export function useKordiAppFoundation({
   });
 
   const { mapDesktopMessages } = useDesktopTranscriptAdapter({ localAvatarSeedsRef });
+  const refreshCompletedCanonicalSession = useCallback(
+    (sessionId: string) => hydrateCanonicalSessionPage(
+      sessionId,
+      { force: true },
+    ),
+    [hydrateCanonicalSessionPage],
+  );
 
   const {
     desktopChatState,
@@ -155,6 +162,7 @@ export function useKordiAppFoundation({
   } = useDesktopChatState({
     isNativeShell,
     mapDesktopMessages,
+    refreshCanonicalSession: refreshCompletedCanonicalSession,
   });
 
   const projectRoutingGroups = useMemo(
@@ -308,6 +316,7 @@ export function useKordiAppFoundation({
     activeConversationId: activeConvId,
     canonicalSessionState,
     setCanonicalSessionState,
+    localTurnsBySessionId: desktopLiveTurnsBySession,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
   });
