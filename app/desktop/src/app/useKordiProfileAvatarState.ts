@@ -93,9 +93,9 @@ export function resolveKordiProfileAvatarState({
       || agent?.nodeId?.trim()
       || host?.nodeId?.trim()
       || null,
-    localAgentProfileImageUrl: agent?.profileImageUrl?.trim()
-      || canonicalLocalAgentProfileImageUrl(canonicalState)
-      || null,
+    // Agent images come only from the canonical agent identity. Collaboration
+    // runtime records historically copied the human account avatar here.
+    localAgentProfileImageUrl: canonicalLocalAgentProfileImageUrl(canonicalState),
     shouldPersistAgentSeed: Boolean(canonicalAgentAvatarSeed),
     shouldPersistProfileSeed: cloudProfileAvatar?.shouldPersistSeed ?? false,
   };
@@ -125,15 +125,12 @@ export function useKordiProfileAvatarState({
       avatarSeed: state.localProfileAvatarSeed,
       displayName: state.localProfileDisplayName,
       profileImageUrl: state.localProfileImageUrl,
-      agentAvatarSeed: state.localAgentAvatarSeed,
-      agentProfileImageUrl: state.localAgentProfileImageUrl,
     });
   }, [
+    state.localAgentAvatarSeed,
     state.localProfileAvatarSeed,
     state.localProfileDisplayName,
     state.localProfileImageUrl,
-    state.localAgentAvatarSeed,
-    state.localAgentProfileImageUrl,
     state.shouldPersistAgentSeed,
   ]);
 

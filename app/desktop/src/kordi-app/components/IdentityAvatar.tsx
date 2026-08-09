@@ -141,7 +141,7 @@ function AgentIdenticonAvatar({ seed, className }: { seed: string; className?: s
 }
 
 export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, avatarKey, className, generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
-  const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
+  const activeLocalProfileIdentity = useActiveLocalProfileIdentity(isSelf);
   const { fallbackLabel, normalizedSeed, resolvedImageUrl: identityImageUrl } = resolveIdentityAvatarPresentation({
     kind,
     seed,

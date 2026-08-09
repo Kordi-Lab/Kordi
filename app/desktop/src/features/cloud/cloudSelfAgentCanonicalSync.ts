@@ -24,6 +24,9 @@ import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
+import {
+  CloudSelfAgentRequestIdentityIndex,
+} from './cloudSelfAgentRequestIdentityIndex';
 import { createCloudSelfAgentSessionPlanner } from './cloudSelfAgentSessionPlan';
 import {
   cloudSelfAgentStableResponseId,
@@ -230,7 +233,7 @@ export function planCloudSelfAgentCanonicalSync({
   const userTextByCloudMessageId = new Map<string, string>();
   const requestLocalMessageIdByCloudMessageId =
     new Map<string, string>();
-  const requestCloudIdentityByCloudMessageId = new Map<string, string>();
+  const requestIdentityIndex = new CloudSelfAgentRequestIdentityIndex();
   const plannedCanonicalMessageIdByDuplicateKey =
     new Map<string, string>();
   const plannedMessageIndexByCanonicalId = new Map<string, number>();
@@ -274,7 +277,7 @@ export function planCloudSelfAgentCanonicalSync({
         ? 'canonical-fork-snapshot'
         : 'cloud-self-agent';
     const stableRequestCloudMessageId = responseRequestId
-      ? requestCloudIdentityByCloudMessageId.get(responseRequestId)
+      ? requestIdentityIndex.getByCloudMessageId(responseRequestId)
         ?? responseRequestId
       : message.messageId;
     const derivedStableCanonicalMessageId = responseRequestId
@@ -301,8 +304,9 @@ export function planCloudSelfAgentCanonicalSync({
         message.messageId,
         existingMatch.id,
       );
-      requestCloudIdentityByCloudMessageId.set(
+      requestIdentityIndex.remember(
         message.messageId,
+        existingMatch.id,
         existingMatch.sourceTransport === 'cloud-self-agent'
           ? cleanText(existingMatch.sourceEventId) || message.messageId
           : message.messageId,
@@ -352,13 +356,13 @@ export function planCloudSelfAgentCanonicalSync({
           message.messageId,
           plannedDuplicateMessageId,
         );
-        const duplicateCloudIdentity = [...requestLocalMessageIdByCloudMessageId]
-          .find(([, canonicalId]) => (
-            canonicalId === plannedDuplicateMessageId
-          ))?.[0] ?? message.messageId;
-        requestCloudIdentityByCloudMessageId.set(
+        const duplicateCloudIdentity =
+          requestIdentityIndex.getByCanonicalMessageId(
+            plannedDuplicateMessageId,
+          ) ?? message.messageId;
+        requestIdentityIndex.rememberCloudAlias(
           message.messageId,
-          requestCloudIdentityByCloudMessageId.get(duplicateCloudIdentity)
+          requestIdentityIndex.getByCloudMessageId(duplicateCloudIdentity)
             ?? duplicateCloudIdentity,
         );
       }
@@ -372,8 +376,9 @@ export function planCloudSelfAgentCanonicalSync({
         message.messageId,
         canonicalMessageId,
       );
-      requestCloudIdentityByCloudMessageId.set(
+      requestIdentityIndex.remember(
         message.messageId,
+        canonicalMessageId,
         message.messageId,
       );
     }

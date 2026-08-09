@@ -41,7 +41,11 @@ export function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | nul
 }
 
 export function canonicalLocalAgentProfileImageUrl(state: CanonicalSessionState | null | undefined) {
-  return canonicalLocalAgentIdentity(state)?.profileImageUrl?.trim() || null;
+  const agentProfileImageUrl = canonicalLocalAgentIdentity(state)?.profileImageUrl?.trim() || null;
+  const humanProfileImageUrl = canonicalProfileImageUrl(state, state?.profile.humanIdentityId);
+  return agentProfileImageUrl && agentProfileImageUrl !== humanProfileImageUrl
+    ? agentProfileImageUrl
+    : null;
 }
 
 export function localAgentConversationAvatarFields(

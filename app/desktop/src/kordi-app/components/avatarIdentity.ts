@@ -83,11 +83,14 @@ export function getPersistedLocalAgentAvatarSeed() {
   return readLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY);
 }
 
-export function getLocalAgentAvatarSeed(label?: string | null) {
+export function getLocalAgentAvatarSeed(_label?: string | null) {
   const identitySeed = getPersistedLocalAgentAvatarSeed();
   if (identitySeed) return identitySeed;
 
-  return `local-agent:${browserAvatarScope()}:${label?.trim() || 'kordi'}`;
+  // UI labels vary between surfaces ("Kordi", "My Kordi", a session title,
+  // or a runtime label). They are presentation, not identity, so they must
+  // never influence the generated avatar.
+  return `local-agent:${browserAvatarScope()}:kordi`;
 }
 
 export function setLocalAgentAvatarSeed(seed?: string | null) {
@@ -102,11 +105,11 @@ export function setLocalAgentAvatarSeed(seed?: string | null) {
   emitLocalAvatarSeedsChange();
 }
 
-export function useLocalAgentAvatarSeed(label?: string | null) {
+export function useLocalAgentAvatarSeed(_label?: string | null) {
   return useSyncExternalStore(
     subscribeLocalAvatarSeeds,
-    () => getLocalAgentAvatarSeed(label),
-    () => `local-agent:desktop:${label?.trim() || 'kordi'}`,
+    getLocalAgentAvatarSeed,
+    () => 'local-agent:desktop:kordi',
   );
 }
 

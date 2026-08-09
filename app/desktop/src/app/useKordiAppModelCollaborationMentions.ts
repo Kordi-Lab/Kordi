@@ -172,9 +172,7 @@ export function buildCollaborationMentionTargetsByScope({
         humanId: activeHost?.humanId ?? null,
         agentId: activeAgent?.id ?? null,
         ownerName: ownerName ?? null,
-        avatarImageUrl: activeAgent?.profileImageUrl
-          ?? localAgentProfileImageUrl
-          ?? null,
+        avatarImageUrl: localAgentProfileImageUrl ?? null,
         avatarSeed: localAgentAvatarSeed
           ?? activeAgent?.id
           ?? activeAgent?.nodeId

@@ -267,9 +267,7 @@ export function useWorkspaceViewModels({
       || activeHostAgent?.nodeId
       || activeHost?.nodeId
       || getLocalAgentAvatarSeed(localAgentLabel);
-    const localAgentProfileImageUrl = resolvedLocalAgentProfileImageUrl?.trim()
-      || activeHostAgent?.profileImageUrl?.trim()
-      || null;
+    const localAgentProfileImageUrl = resolvedLocalAgentProfileImageUrl?.trim() || null;
     const localHumanAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
       || activeHost?.humanId
       || canonicalSessionState?.profile.id
@@ -553,7 +551,7 @@ export function useWorkspaceViewModels({
         sourceHumanId: host.humanId,
         sourceAgentId: host.activeAgentId ?? undefined,
         avatarSeed: localAgentAvatarSeed,
-        profileImageUrl: resolvedLocalAgentProfileImageUrl?.trim() || activeHostAgent?.profileImageUrl?.trim() || null,
+        profileImageUrl: resolvedLocalAgentProfileImageUrl?.trim() || null,
       });
 
       for (const peer of host.visiblePeers) {
@@ -790,7 +788,9 @@ export function useWorkspaceViewModels({
           isCollaborationActive: agent.isActive,
           isCollaborationRegistered: agent.registered,
           avatarSeed: representsActiveLocalAgent ? (resolvedLocalAgentAvatarSeed?.trim() || agent.id) : agent.id,
-          profileImageUrl: agent.profileImageUrl?.trim() || (representsActiveLocalAgent ? resolvedLocalAgentProfileImageUrl?.trim() : null) || null,
+          profileImageUrl: representsActiveLocalAgent
+            ? resolvedLocalAgentProfileImageUrl?.trim() || null
+            : agent.profileImageUrl?.trim() || null,
           collaborationReachouts,
         });
       }

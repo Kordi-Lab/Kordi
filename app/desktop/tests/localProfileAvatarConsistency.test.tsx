@@ -18,8 +18,6 @@ const activeProfile = {
   avatarSeed: 'acct_shu',
   displayName: 'Shu Yang',
   profileImageUrl: 'https://images.test/shu.png',
-  agentAvatarSeed: null,
-  agentProfileImageUrl: null,
 };
 
 test('self avatar presentation ignores viewer-local aliases and stale canonical avatar data', () => {
@@ -63,30 +61,18 @@ test('remote avatar presentation is isolated from the signed-in profile', () => 
   });
 });
 
-test('active local agent presentation uses the shared uploaded image only for the matching stable seed', () => {
-  const localAgentProfile = {
-    ...activeProfile,
-    agentAvatarSeed: 'agent-avatar:stable',
-    agentProfileImageUrl: 'data:image/jpeg;base64,my-kordi',
-  };
+test('agent avatar presentation stays independent from the signed-in human profile', () => {
   assert.deepEqual(resolveIdentityAvatarPresentation({
     kind: 'agent',
     seed: 'agent-avatar:stable',
     name: 'My Kordi',
-    imageUrl: null,
-    activeLocalProfileIdentity: localAgentProfile,
+    imageUrl: 'data:image/jpeg;base64,my-kordi',
+    activeLocalProfileIdentity: activeProfile,
   }), {
     fallbackLabel: 'My Kordi',
     normalizedSeed: 'agent-avatar:stable',
     resolvedImageUrl: 'data:image/jpeg;base64,my-kordi',
   });
-  assert.equal(resolveIdentityAvatarPresentation({
-    kind: 'agent',
-    seed: 'agent-avatar:other',
-    name: 'Another agent',
-    imageUrl: null,
-    activeLocalProfileIdentity: localAgentProfile,
-  }).resolvedImageUrl, null);
 });
 
 test('active local profile updates the shared seed, display name, and image as one snapshot', () => {
