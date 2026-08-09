@@ -224,6 +224,21 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
           const invitation = await cloudAuthClient.createAppInvitation(session.token);
           return invitation.inviteUrl;
         },
+        onCreateGroupInvite: async (input) => {
+          const session = await loadSession();
+          if (!session?.token) throw new Error('Account is not ready yet.');
+          return cloudAuthClient.createGroupInvitation(session.token, input);
+        },
+        onListGroupInvites: async (groupSpaceId) => {
+          const session = await loadSession();
+          if (!session?.token) throw new Error('Account is not ready yet.');
+          return cloudAuthClient.listGroupInvitations(session.token, groupSpaceId);
+        },
+        onRevokeGroupInvite: async (invitationId) => {
+          const session = await loadSession();
+          if (!session?.token) throw new Error('Account is not ready yet.');
+          await cloudAuthClient.revokeGroupInvitation(session.token, invitationId);
+        },
       }}
     />
   );

@@ -5,7 +5,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { filterGroupManagementMembers, GroupDetailsDialog, groupManagementGeometry } from '../src/pages/GroupDetailsDialog';
+import { filterGroupManagementMembers, GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
+import { groupManagementGeometry } from '../src/pages/groupManagementGeometry';
 import { contactForGroupMember, groupMemberAccountId, MemberContactProfileContent } from '../src/pages/MemberContactProfilePopover';
 import { conversation, contact } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 

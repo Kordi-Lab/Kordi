@@ -7,9 +7,7 @@ import {
   useState,
 } from 'react';
 import type {
-  CSSProperties,
   FormEvent,
-  KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import {
   ArrowLeft,
@@ -27,6 +25,11 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import type {
+  CloudGroupInvitation,
+  CloudGroupInvitationCreateInput,
+  CloudGroupInvitationSummary,
+} from '@/features/cloud/authClient';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
   adminIdentityIdsFromMetadata,
@@ -38,14 +41,18 @@ import {
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { formatDesktopDate } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { GroupInvitationSharePanel } from '@/pages/GroupInvitationSharePanel';
+import {
+  COLLAPSED_MEMBER_GRID_ITEMS,
+  GROUP_MANAGEMENT_FOCUSABLE_SELECTOR,
+  groupManagementGeometry,
+  handleGridArrowNavigation,
+  type GroupManagementPopoverAnchor,
+  type ViewportSize,
+} from '@/pages/groupManagementGeometry';
 import { MemberContactProfileContent } from '@/pages/MemberContactProfilePopover';
 
-export type GroupManagementPopoverAnchor = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
+export type { GroupManagementPopoverAnchor } from '@/pages/groupManagementGeometry';
 
 export type GroupDetailsDialogProps = {
   isOpen: boolean;
@@ -58,96 +65,14 @@ export type GroupDetailsDialogProps = {
   onRemoveMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
   onSetAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
   onAddContact?: (accountId: string) => Promise<void> | void;
+  onCreateGroupInvitation?: (
+    input: CloudGroupInvitationCreateInput,
+  ) => Promise<CloudGroupInvitation>;
+  onListGroupInvitations?: (groupSpaceId: string) => Promise<CloudGroupInvitationSummary[]>;
+  onRevokeGroupInvitation?: (invitationId: string) => Promise<void>;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
 };
-
-type PopoverPlacement = 'right' | 'left' | 'floating';
-type GroupPopoverStyle = CSSProperties & {
-  '--app-group-management-enter-x'?: string;
-  '--app-group-management-origin'?: string;
-};
-
-type GroupPopoverGeometry = {
-  style: GroupPopoverStyle;
-  arrowStyle: CSSProperties;
-  placement: PopoverPlacement;
-};
-
-type ViewportSize = {
-  width: number;
-  height: number;
-};
-
-const FOCUSABLE_SELECTOR = [
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'textarea:not([disabled])',
-  'select:not([disabled])',
-  'a[href]',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
-const MEMBER_GRID_COLUMNS = 5;
-const COLLAPSED_MEMBER_GRID_ROWS = 4;
-const COLLAPSED_MEMBER_GRID_ITEMS = MEMBER_GRID_COLUMNS * COLLAPSED_MEMBER_GRID_ROWS;
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), Math.max(min, max));
-}
-
-export function groupManagementGeometry(
-  anchorRect?: GroupManagementPopoverAnchor | null,
-  viewport?: ViewportSize,
-): GroupPopoverGeometry {
-  const margin = 12;
-  const gap = 10;
-  const viewportWidth = viewport?.width
-    ?? (typeof window === 'undefined' ? 1280 : window.innerWidth);
-  const viewportHeight = viewport?.height
-    ?? (typeof window === 'undefined' ? 800 : window.innerHeight);
-  const width = Math.min(372, Math.max(0, viewportWidth - margin * 2));
-  const height = Math.min(760, Math.max(0, viewportHeight - margin * 2));
-  const floatingGeometry = (): GroupPopoverGeometry => ({
-    placement: 'floating',
-    arrowStyle: { top: 22 },
-    style: {
-      left: clamp((viewportWidth - width) / 2, margin, viewportWidth - width - margin),
-      top: clamp((viewportHeight - height) / 2, margin, viewportHeight - height - margin),
-      width,
-      maxHeight: height,
-      '--app-group-management-enter-x': '0px',
-      '--app-group-management-origin': 'center',
-    },
-  });
-
-  if (!anchorRect) return floatingGeometry();
-
-  const rightLeft = anchorRect.left + anchorRect.width + gap;
-  const leftLeft = anchorRect.left - width - gap;
-  const canFitRight = rightLeft + width <= viewportWidth - margin;
-  const canFitLeft = leftLeft >= margin;
-  if (!canFitRight && !canFitLeft) return floatingGeometry();
-  const placement: PopoverPlacement = canFitRight || !canFitLeft ? 'right' : 'left';
-  const unclampedLeft = placement === 'right' ? rightLeft : leftLeft;
-  const left = clamp(unclampedLeft, margin, viewportWidth - width - margin);
-  const top = clamp(anchorRect.top - 18, margin, viewportHeight - height - margin);
-  const anchorCenterY = anchorRect.top + anchorRect.height / 2;
-  const arrowTop = clamp(anchorCenterY - top - 6, 22, height - 34);
-
-  return {
-    placement,
-    arrowStyle: { top: arrowTop },
-    style: {
-      left,
-      top,
-      width,
-      maxHeight: height,
-      '--app-group-management-enter-x': placement === 'right' ? '-8px' : '8px',
-      '--app-group-management-origin': placement === 'right' ? 'left 26px' : 'right 26px',
-    },
-  };
-}
 
 function isHumanMember(participant: ConversationParticipant) {
   return participant.kind === 'human';
@@ -218,6 +143,18 @@ function contactStableId(contact: Contact) {
     || contact.id.trim();
 }
 
+function isOpaqueIdentityLabel(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized.startsWith('acct_')
+    || normalized.startsWith('human:acct_')
+    || normalized.startsWith('cloud:acct_');
+}
+
+function visibleIdentityLabel(value: string) {
+  const normalized = value.trim();
+  return normalized && !isOpaqueIdentityLabel(normalized) ? normalized : '';
+}
+
 function duplicateNameCounts(names: string[]) {
   const counts = new Map<string, number>();
   for (const name of names) {
@@ -262,35 +199,6 @@ function groupActionErrorMessage(error: unknown) {
   return 'The group could not be updated. Try again.';
 }
 
-function gridColumnCount(grid: HTMLElement) {
-  if (typeof window === 'undefined') return MEMBER_GRID_COLUMNS;
-  const columns = window.getComputedStyle(grid).gridTemplateColumns
-    .split(' ')
-    .filter(Boolean).length;
-  return Math.max(1, columns || MEMBER_GRID_COLUMNS);
-}
-
-function handleGridArrowNavigation(event: ReactKeyboardEvent<HTMLButtonElement>) {
-  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
-  const grid = event.currentTarget.closest<HTMLElement>('[data-group-member-grid]');
-  if (!grid) return;
-  const items = Array.from(grid.querySelectorAll<HTMLButtonElement>('[data-group-member-grid-item]'));
-  const currentIndex = items.indexOf(event.currentTarget);
-  if (currentIndex < 0 || items.length === 0) return;
-  const columns = gridColumnCount(grid);
-  let nextIndex = currentIndex;
-  if (event.key === 'ArrowLeft') nextIndex -= 1;
-  if (event.key === 'ArrowRight') nextIndex += 1;
-  if (event.key === 'ArrowUp') nextIndex -= columns;
-  if (event.key === 'ArrowDown') nextIndex += columns;
-  if (event.key === 'Home') nextIndex = 0;
-  if (event.key === 'End') nextIndex = items.length - 1;
-  nextIndex = clamp(nextIndex, 0, items.length - 1);
-  if (nextIndex === currentIndex) return;
-  event.preventDefault();
-  items[nextIndex]?.focus();
-}
-
 export function GroupDetailsDialog({
   isOpen,
   space,
@@ -302,6 +210,9 @@ export function GroupDetailsDialog({
   onRemoveMember,
   onSetAdmin,
   onAddContact,
+  onCreateGroupInvitation,
+  onListGroupInvitations,
+  onRevokeGroupInvitation,
   onMessageContact,
   anchorRect = null,
 }: GroupDetailsDialogProps) {
@@ -319,6 +230,7 @@ export function GroupDetailsDialog({
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [isAddPeopleOpen, setIsAddPeopleOpen] = useState(false);
+  const [addPeopleMode, setAddPeopleMode] = useState<'contacts' | 'link'>('contacts');
   const [isEditingName, setIsEditingName] = useState(false);
   const [confirmingRemovalId, setConfirmingRemovalId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -351,7 +263,12 @@ export function GroupDetailsDialog({
   const canManageMembers = currentMemberIsAdmin;
   const canManageGroup = canManageMembers;
   const canInvitePeople = Boolean(currentMember);
-  const adminCount = members.filter((member) => memberIsAdmin(member, adminIds, currentAccountId)).length;
+  const canShareInvitation = currentMemberIsAdmin && Boolean(onCreateGroupInvitation);
+  const adminMembers = members.filter((member) => memberIsAdmin(member, adminIds, currentAccountId));
+  const adminCount = adminMembers.length;
+  const invitationPermissionHint = adminMembers.length === 1
+    ? `Ask ${adminMembers[0].name} to share a link or make you an admin.`
+    : 'Ask a group admin to share a link or make you an admin.';
   const addOptions = useMemo(() => (
     buildChatCreateGroupPersonOptions(contacts).filter((option) => {
       const identityId = contactCanonicalIdentityRequest(option.contact).id;
@@ -419,6 +336,7 @@ export function GroupDetailsDialog({
     setSelectedMemberId(null);
     setSelectedContactIds([]);
     setIsAddPeopleOpen(false);
+    setAddPeopleMode('contacts');
     setIsEditingName(false);
     setConfirmingRemovalId(null);
     setPendingAction(null);
@@ -451,7 +369,7 @@ export function GroupDetailsDialog({
       if (event.key !== 'Tab') return;
       const dialog = dialogRef.current;
       if (!dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(GROUP_MANAGEMENT_FOCUSABLE_SELECTOR))
         .filter((element) => element.getAttribute('aria-hidden') !== 'true');
       if (focusable.length === 0) {
         event.preventDefault();
@@ -523,6 +441,7 @@ export function GroupDetailsDialog({
     setConfirmingRemovalId(null);
     setActionError(null);
     setIsAddPeopleOpen(true);
+    setAddPeopleMode('contacts');
     setAddQuery('');
   };
 
@@ -625,7 +544,7 @@ export function GroupDetailsDialog({
                 {visibleMembers.map((member) => {
                   const admin = memberIsAdmin(member, adminIds, currentAccountId);
                   const selected = selectedMember?.id === member.id;
-                  const identityLabel = memberStableId(member);
+                  const identityLabel = visibleIdentityLabel(memberStableId(member));
                   const showIdentityLabel = hasDuplicateName(member.name, duplicateNames)
                     && identityLabel
                     && identityLabel !== member.name;
@@ -836,7 +755,7 @@ export function GroupDetailsDialog({
             })() : null}
 
             {isAddPeopleOpen ? (
-              <section aria-labelledby={`${addSearchId}-heading`} className="app-group-management-add-panel mt-3 border-y py-2">
+              <section aria-labelledby={`${addSearchId}-heading`} className="app-group-management-add-panel mt-3 border-t pt-2">
                 <div className="flex items-center gap-2 px-1 py-1">
                   <button
                     type="button"
@@ -851,89 +770,140 @@ export function GroupDetailsDialog({
                   </button>
                   <div className="min-w-0 flex-1">
                     <h3 id={`${addSearchId}-heading`} className="text-[12px] font-semibold">Add people</h3>
-                    <p className="text-[9.5px] text-[color:var(--utility-muted-text)]">Approved contacts only</p>
                   </div>
-                  {selectedAddContactIds.length > 0 ? (
+                  {addPeopleMode === 'contacts' && selectedAddContactIds.length > 0 ? (
                     <span className="text-[10px] tabular-nums text-[color:var(--utility-muted-text)]">
                       {selectedAddContactIds.length} selected
                     </span>
                   ) : null}
                 </div>
 
-                <label htmlFor={addSearchId} className="sr-only">Search contacts to add</label>
-                <div className="app-group-management-search relative my-2">
-                  <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--utility-muted-text)]" />
-                  <input
-                    id={addSearchId}
-                    type="search"
-                    value={addQuery}
-                    onChange={(event) => setAddQuery(event.target.value)}
-                    placeholder="Search contacts"
-                    className="app-input-shell h-9 w-full rounded-[11px] py-2 pl-8 pr-3 text-[12px] outline-none"
-                  />
+                <div className="app-filter-tabs app-group-management-add-tabs my-2 w-full" role="tablist" aria-label="Ways to add people">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={addPeopleMode === 'contacts'}
+                    className={addPeopleMode === 'contacts' ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
+                    onClick={() => {
+                      setAddPeopleMode('contacts');
+                      setActionError(null);
+                    }}
+                  >
+                    Existing contacts
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={addPeopleMode === 'link'}
+                    className={addPeopleMode === 'link' ? 'app-filter-tab app-filter-tab-active' : 'app-filter-tab'}
+                    onClick={() => {
+                      setAddPeopleMode('link');
+                      setActionError(null);
+                    }}
+                  >
+                    Share link
+                  </button>
                 </div>
 
-                <div className="space-y-0.5" aria-label="Contacts available to add">
-                  {filteredAddOptions.length > 0 ? filteredAddOptions.map((option) => {
-                    const selected = selectedContactIds.includes(option.id);
-                    const identityLabel = contactStableId(option.contact);
-                    const showIdentityLabel = hasDuplicateName(option.label, duplicateNames)
-                      && identityLabel
-                      && identityLabel !== option.label;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        disabled={!canInvitePeople || Boolean(pendingAction)}
-                        aria-pressed={selected}
-                        onClick={() => toggleAddContact(option.id)}
-                        className={cn('app-group-management-contact-row flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-[11px] transition', selected && 'app-group-management-contact-row-selected')}
-                      >
-                        <IdentityAvatar
-                          kind="human"
-                          seed={option.avatarSeed ?? identityLabel}
-                          name={option.label}
-                          imageUrl={option.profileImageUrl}
-                          className="h-7 w-7 border border-white/10"
-                          presenceStatus={option.contact.presenceStatus}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{option.label}</span>
-                          <span className="block truncate text-[9.5px] text-[color:var(--utility-muted-text)]">
-                            {showIdentityLabel ? identityLabel : option.detail}
-                          </span>
-                        </span>
-                        <span className={cn('app-group-management-contact-check grid h-5 w-5 place-items-center rounded-full border', selected && 'app-group-management-contact-check-selected')}>
-                          {selected ? <Check className="h-3 w-3" /> : null}
-                        </span>
-                      </button>
-                    );
-                  }) : addOptions.length > 0 ? (
-                    <div className="app-group-management-empty rounded-[11px] px-2.5 py-3 text-center text-[11px]">
-                      No contacts match “{addQuery.trim()}”.
+                {addPeopleMode === 'contacts' ? (
+                  <>
+                    <label htmlFor={addSearchId} className="sr-only">Search contacts to add</label>
+                    <div className="app-group-management-search relative my-2">
+                      <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--utility-muted-text)]" />
+                      <input
+                        id={addSearchId}
+                        type="search"
+                        value={addQuery}
+                        onChange={(event) => setAddQuery(event.target.value)}
+                        placeholder="Search contacts"
+                        className="app-input-shell h-9 w-full rounded-[11px] py-2 pl-8 pr-3 text-[12px] outline-none"
+                      />
                     </div>
-                  ) : null}
-                </div>
 
-                <Button
-                  type="button"
-                  className="mt-2 h-9 w-full rounded-[11px] text-[11px]"
-                  disabled={!canInvitePeople || selectedAddContactIds.length === 0 || Boolean(pendingAction)}
-                  onClick={() => {
-                    void runAction(
-                      'add-members',
-                      () => onAddMembers(groupSessionIds, selectedAddContactIds),
-                      () => {
-                        setSelectedContactIds([]);
-                        setIsAddPeopleOpen(false);
-                      },
-                    );
-                  }}
-                >
-                  {pendingAction === 'add-members' ? (
-                    <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Adding…</>
-                  ) : selectedAddContactIds.length > 0 ? `Add ${selectedAddContactIds.length} ${selectedAddContactIds.length === 1 ? 'person' : 'people'}` : 'Select people to add'}
-                </Button>
+                    <div className="space-y-0.5" aria-label="Contacts available to add">
+                      {filteredAddOptions.length > 0 ? filteredAddOptions.map((option) => {
+                        const selected = selectedContactIds.includes(option.id);
+                        const rawIdentityLabel = contactStableId(option.contact);
+                        const identityLabel = visibleIdentityLabel(rawIdentityLabel);
+                        const detail = visibleIdentityLabel(option.detail ?? '');
+                        const showIdentityLabel = hasDuplicateName(option.label, duplicateNames)
+                          && identityLabel
+                          && identityLabel !== option.label;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            disabled={!canInvitePeople || Boolean(pendingAction)}
+                            aria-pressed={selected}
+                            onClick={() => toggleAddContact(option.id)}
+                            className={cn('app-group-management-contact-row flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-[11px] transition', selected && 'app-group-management-contact-row-selected')}
+                          >
+                            <IdentityAvatar
+                              kind="human"
+                              seed={option.avatarSeed ?? rawIdentityLabel}
+                              name={option.label}
+                              imageUrl={option.profileImageUrl}
+                              className="h-7 w-7 border border-white/10"
+                              presenceStatus={option.contact.presenceStatus}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{option.label}</span>
+                              {showIdentityLabel || detail ? (
+                                <span className="block truncate text-[9.5px] text-[color:var(--utility-muted-text)]">
+                                  {showIdentityLabel ? identityLabel : detail}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className={cn('app-group-management-contact-check grid h-5 w-5 place-items-center rounded-full border', selected && 'app-group-management-contact-check-selected')}>
+                              {selected ? <Check className="h-3 w-3" /> : null}
+                            </span>
+                          </button>
+                        );
+                      }) : addOptions.length > 0 ? (
+                        <div className="app-group-management-empty rounded-[11px] px-2.5 py-3 text-center text-[11px]">
+                          No contacts match “{addQuery.trim()}”.
+                        </div>
+                      ) : (
+                        <div className="app-group-management-empty rounded-[11px] px-2.5 py-3 text-center text-[11px]">
+                          No existing contacts are available to add.
+                        </div>
+                      )}
+                    </div>
+
+                    <Button
+                      type="button"
+                      className="mt-2 h-9 w-full rounded-[11px] text-[11px]"
+                      disabled={!canInvitePeople || selectedAddContactIds.length === 0 || Boolean(pendingAction)}
+                      onClick={() => {
+                        void runAction(
+                          'add-members',
+                          () => onAddMembers(groupSessionIds, selectedAddContactIds),
+                          () => {
+                            setSelectedContactIds([]);
+                            setIsAddPeopleOpen(false);
+                          },
+                        );
+                      }}
+                    >
+                      {pendingAction === 'add-members' ? (
+                        <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Adding…</>
+                      ) : selectedAddContactIds.length > 0 ? `Add ${selectedAddContactIds.length} ${selectedAddContactIds.length === 1 ? 'person' : 'people'}` : 'Select people to add'}
+                    </Button>
+                  </>
+                ) : (
+                  <GroupInvitationSharePanel
+                    hidden={false}
+                    space={space}
+                    canShareInvitation={canShareInvitation}
+                    permissionHint={invitationPermissionHint}
+                    pendingAction={pendingAction}
+                    onCreateGroupInvitation={onCreateGroupInvitation}
+                    onListGroupInvitations={onListGroupInvitations}
+                    onRevokeGroupInvitation={onRevokeGroupInvitation}
+                    runAction={runAction}
+                    onError={setActionError}
+                  />
+                )}
               </section>
             ) : null}
 

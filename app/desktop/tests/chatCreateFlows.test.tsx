@@ -418,6 +418,7 @@ test('group create options require approved bridge contacts', () => {
     contact({ id: 'contact:pending', name: 'Pending', sourceHostId: 'host-1', sourceParticipantId: 'kd_pending', contactStatus: 'pending' }),
     contact({ id: 'contact:visible', name: 'Visible', sourceHostId: 'host-1', sourceParticipantId: 'kd_visible', contactStatus: 'none' }),
     contact({ id: 'contact:local-only', name: 'Local' }),
+    contact({ id: 'cloud-system:kordi-support', name: 'Kordi Support', supportTicketEnabled: true }),
   ]);
 
   assert.deepEqual(options.map((option) => option.id), ['contact:approved', 'contact:local-only']);

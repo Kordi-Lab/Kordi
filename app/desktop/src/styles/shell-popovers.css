@@ -386,6 +386,46 @@
   color: var(--app-transient-muted-text);
 }
 
+.app-group-management-add-tabs {
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-group-management-add-tabs .app-filter-tab {
+  position: relative;
+  flex: 1 1 0;
+  border-radius: 6px;
+  padding-block: 7px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-group-management-add-tabs .app-filter-tab:hover,
+.app-group-management-add-tabs .app-filter-tab:focus-visible {
+  background: var(--app-transient-hover-bg);
+}
+
+.app-group-management-add-tabs .app-filter-tab-active {
+  background: transparent;
+  color: var(--app-transient-text);
+  font-weight: 600;
+}
+
+.app-group-management-add-tabs .app-filter-tab-active::after {
+  position: absolute;
+  right: 18%;
+  bottom: 0;
+  left: 18%;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  content: '';
+}
+
 .app-group-management-member-actions,
 .app-group-management-add-panel,
 .app-group-management-settings {
