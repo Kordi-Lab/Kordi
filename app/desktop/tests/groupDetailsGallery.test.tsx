@@ -59,7 +59,7 @@ test('GroupDetailsDialog renders a searchable member gallery with progressive co
   assert.doesNotMatch(markup, /Remove from group/);
 });
 
-test('GroupDetailsDialog keeps the member gallery to three compact columns and four rows until Show all is used', () => {
+test('GroupDetailsDialog keeps the member gallery to five compact columns and four rows until Show all is used', () => {
   const canonicalParticipants = [
     { id: 'human:me', name: 'Me', kind: 'human' as const, role: 'self' as const, source: 'local' as const, avatarKey: 'me' },
     ...Array.from({ length: 19 }, (_, index) => ({
@@ -94,18 +94,18 @@ test('GroupDetailsDialog keeps the member gallery to three compact columns and f
     onSetAdmin: () => {},
   }));
 
-  assert.equal(markup.match(/data-group-member-grid-item/g)?.length, 12);
+  assert.equal(markup.match(/data-group-member-grid-item/g)?.length, 20);
   assert.match(markup, /Show all/);
   assert.match(markup, /aria-expanded="false"/);
   assert.match(markup, /h-9 w-9/);
   assert.doesNotMatch(markup, /Member 19/);
   assert.ok(
-    markup.indexOf('aria-label="Member 10, member"') < markup.indexOf('aria-label="Add people"'),
-    'Add people should occupy the final (12th) collapsed-grid slot',
+    markup.indexOf('aria-label="Member 18, member"') < markup.indexOf('aria-label="Add people"'),
+    'Add people should occupy the final (20th) collapsed-grid slot',
   );
   assert.match(
     readDesktopShellCss(),
-    /\.app-group-management-member-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*72px\);[^}]*justify-content:\s*center;/s,
+    /\.app-group-management-member-grid\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s,
   );
   assert.match(
     readDesktopShellCss(),

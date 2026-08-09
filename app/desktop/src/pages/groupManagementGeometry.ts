@@ -8,7 +8,7 @@ export const GROUP_MANAGEMENT_FOCUSABLE_SELECTOR = [
   'a[href]',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
-export const GROUP_MEMBER_GRID_COLUMNS = 3;
+export const GROUP_MEMBER_GRID_COLUMNS = 5;
 const COLLAPSED_MEMBER_GRID_ROWS = 4;
 export const COLLAPSED_MEMBER_GRID_ITEMS = GROUP_MEMBER_GRID_COLUMNS * COLLAPSED_MEMBER_GRID_ROWS;
 
