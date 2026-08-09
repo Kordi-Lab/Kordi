@@ -77,3 +77,44 @@ test('deleting an unknown session preserves the Cloud message store identity', (
 
   assert.equal(result, current);
 });
+
+test('large Cloud history replay stays within the startup processing budget', () => {
+  const messageCount = 10_000;
+  const events: CloudSyncEvent[] = Array.from(
+    { length: messageCount },
+    (_, index) => {
+      const sequence = messageCount - index;
+      const suffix = String(sequence).padStart(5, '0');
+      return {
+        eventId: `event_${suffix}`,
+        eventType: 'message.upsert',
+        peerAccountId: 'acct_peer',
+        messageId: `msg_${suffix}`,
+        payload: {
+          message: {
+            ...incoming,
+            messageId: `msg_${suffix}`,
+            createdAt: `2026-05-13T00:00:${suffix}Z`,
+          },
+        },
+        occurredAt: `2026-05-13T00:00:${suffix}Z`,
+      };
+    },
+  );
+
+  const startedAt = performance.now();
+  const result = applyCloudSyncEventsToMessagesByPeer(
+    'acct_me',
+    {},
+    events,
+  );
+  const elapsedMs = performance.now() - startedAt;
+
+  assert.equal(result.acct_peer.length, messageCount);
+  assert.equal(result.acct_peer[0]?.messageId, 'msg_00001');
+  assert.equal(result.acct_peer.at(-1)?.messageId, 'msg_10000');
+  assert.ok(
+    elapsedMs < 2_000,
+    `expected 10,000 replay events to settle within 2s, received ${elapsedMs.toFixed(1)}ms`,
+  );
+});

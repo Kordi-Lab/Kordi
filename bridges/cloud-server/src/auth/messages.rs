@@ -158,6 +158,15 @@ pub async fn persist_cloud_message(
     input: PersistCloudMessageInput<'_>,
 ) -> Result<PersistCloudMessageOutcome, sqlx_core::Error> {
     let mut tx = pool.begin().await?;
+    let outcome = persist_cloud_message_in_transaction(&mut tx, input).await?;
+    tx.commit().await?;
+    Ok(outcome)
+}
+
+pub async fn persist_cloud_message_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    input: PersistCloudMessageInput<'_>,
+) -> Result<PersistCloudMessageOutcome, sqlx_core::Error> {
     let inserted_id: Option<(String,)> = query_as(
         "INSERT INTO cloud_messages \
          (message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id, client_message_id) \
@@ -175,7 +184,7 @@ pub async fn persist_cloud_message(
     .bind(input.read_at)
     .bind(input.session_id)
     .bind(input.client_message_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?;
 
     let inserted = inserted_id.is_some();
@@ -195,7 +204,7 @@ pub async fn persist_cloud_message(
             .bind(attachment.size_bytes)
             .bind(position as i32)
             .bind(attachment.preview_url.as_deref())
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         }
 
@@ -222,7 +231,7 @@ pub async fn persist_cloud_message(
             )
             .bind(input.from_account_id)
             .bind(session_id)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
             if input.to_account_id != input.from_account_id {
                 query(
@@ -231,13 +240,13 @@ pub async fn persist_cloud_message(
                 )
                 .bind(input.to_account_id)
                 .bind(session_id)
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
             }
         }
 
         insert_sync_event(
-            &mut tx,
+            tx,
             input.from_account_id,
             input.to_account_id,
             &message,
@@ -246,7 +255,7 @@ pub async fn persist_cloud_message(
         .await?;
         if input.to_account_id != input.from_account_id {
             insert_sync_event(
-                &mut tx,
+                tx,
                 input.to_account_id,
                 input.from_account_id,
                 &message,
@@ -265,9 +274,9 @@ pub async fn persist_cloud_message(
         .bind(input.from_account_id)
         .bind(input.to_account_id)
         .bind(client_message_id)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
-        let attachments = load_attachments(&mut tx, &row.0).await?;
+        let attachments = load_attachments(tx, &row.0).await?;
         PersistedCloudMessage {
             message_id: row.0,
             from_account_id: row.1,
@@ -281,6 +290,5 @@ pub async fn persist_cloud_message(
         }
     };
 
-    tx.commit().await?;
     Ok(PersistCloudMessageOutcome { message, inserted })
 }

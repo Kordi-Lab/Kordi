@@ -106,6 +106,47 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_online()
 }
 
 #[tokio::test]
+async fn cloud_agent_runtime_self_fallback_claim_has_one_durable_owner() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let account = signup(&router, "self-fallback", "Self").await;
+    let request_message_id = format!("msg_self_{}", uuid::Uuid::new_v4().simple());
+    let session_id = format!("session:self-agent:{}", uuid::Uuid::new_v4().simple());
+    let claim = claim_body_with_session(&account, &account, &request_message_id, &session_id);
+
+    let first = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &account.token,
+            claim.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_body = read_json(first).await;
+
+    let second = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &account.token,
+            claim.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let second_body = read_json(second).await;
+
+    assert_eq!(first_body["runId"], second_body["runId"]);
+    assert_eq!(
+        count_cloud_agent_runs_for_key(&pool, claim["idempotencyKey"].as_str().unwrap(),).await,
+        1,
+    );
+}
+
+#[tokio::test]
 async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool, EventBus::noop()));

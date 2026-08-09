@@ -31,14 +31,18 @@ test('What’s New renders concise highlights and both clear actions', () => {
     onOpenFullReleaseNotes: () => {},
   }));
 
-  assert.match(markup, /What’s New in Kordi 0\.0\.1-beta\.12/);
-  assert.match(markup, /Added a focused first-launch summary\./);
-  assert.match(markup, /View full release notes/);
+  assert.match(markup, /What’s New in Kordi/);
+  assert.match(markup, /2 product updates in the beta\.12 release/);
+  assert.match(markup, /Social sign-in stays available in packaged Cloud builds/);
+  assert.match(markup, /Group agents can mention people and their Kordi agents/);
+  assert.match(markup, /View full changelog/);
   assert.match(markup, />Continue</);
   assert.match(markup, /aria-label="Close What’s New"/);
   assert.match(markup, /role="dialog"/);
   assert.match(markup, /aria-modal="true"/);
   assert.doesNotMatch(markup, /#893/);
+  assert.doesNotMatch(markup, /release-signal|signal-node|aria-pressed/);
+  assert.equal((markup.match(/role="listitem"/g) ?? []).length, 2);
 });
 
 test('What’s New focuses Continue, reports presentation, and dismisses with Escape', async () => {
@@ -92,7 +96,7 @@ test('What’s New focuses Continue, reports presentation, and dismisses with Es
 test('the launch window is mounted only after sign-in and initial sync are ready', () => {
   const source = readFileSync(new URL('../src/KordiApp.tsx', import.meta.url), 'utf8');
   const signInGate = source.indexOf('shouldShowCloudLoginGate');
-  const signedInShell = source.indexOf('return <KordiAppShell');
+  const signedInShell = source.indexOf('<KordiAppShell');
   const readyGuard = source.indexOf("cloudInitialSync.status !== 'ready'");
   const launchWindow = source.indexOf('<WhatsNewLaunchWindow />');
 

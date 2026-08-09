@@ -247,12 +247,12 @@ test('planCloudSelfAgentSync backfills terminal local self-agent turns without r
   } as CanonicalSessionState;
 
   assert.deepEqual(planCloudSelfAgentSync(state, {}), [
-    { localMessageId: 'u1', sessionId: 'local-self-session', role: 'user', text: 'hello', parentLocalMessageId: null, createdAtMs: 10 },
-    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1', createdAtMs: 20 },
+    { localMessageId: 'u1', sessionId: 'local-self-session', role: 'user', text: 'hello', parentLocalMessageId: null, createdAtMs: 10, deliveryState: 'sent' },
+    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1', createdAtMs: 20, deliveryState: 'complete' },
   ]);
 
   assert.deepEqual(planCloudSelfAgentSync(state, { u1: { cloudMessageId: 'msg_remote', syncedAtMs: 123 } }), [
-    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1', createdAtMs: 20 },
+    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1', createdAtMs: 20, deliveryState: 'complete' },
   ]);
 
   assert.deepEqual(planCloudSelfAgentSync(state, {}, { allowLocalBackfill: false }), []);

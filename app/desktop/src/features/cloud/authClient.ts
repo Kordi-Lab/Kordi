@@ -8,11 +8,36 @@ import {
   type CloudMessageSnapshotResponse,
 } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
-import type { CloudAccount, CloudAppInvitation, CloudPublicProfile } from './cloudIdentityTypes';
+import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
+import type { CloudAuthErrorCode } from './cloudAuthError';
+import {
+  acceptCloudGroupInvitation,
+  createCloudGroupInvitation,
+  resolveCloudGroupInvitation,
+  revokeCloudGroupInvitation,
+} from './groupInvitationClient';
+import type {
+  CloudAccount,
+  CloudAppInvitation,
+  CloudGroupInvitationCreateInput,
+  CloudGroupInvitationSummary,
+  CloudPublicProfile,
+} from './cloudIdentityTypes';
 
 export type { CloudContactSummary } from './cloudContactTypes';
 export { parseCloudOAuthHashResult } from './cloudOAuthResult';
-export type { CloudAccount, CloudAppInvitation, CloudPublicProfile } from './cloudIdentityTypes';
+export { CloudAuthError } from './cloudAuthError';
+export type { CloudAuthErrorCode } from './cloudAuthError';
+export type {
+  CloudAccount,
+  CloudAppInvitation,
+  CloudGroupInvitation,
+  CloudGroupInvitationAcceptance,
+  CloudGroupInvitationCreateInput,
+  CloudGroupInvitationSummary,
+  CloudGroupInvitationPreview,
+  CloudPublicProfile,
+} from './cloudIdentityTypes';
 
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
@@ -42,32 +67,6 @@ export type CloudProfileUpdateInput = {
   displayName?: string;
   avatarUrl?: string;
 };
-
-export type CloudAuthErrorCode =
-  | 'invalid_email'
-  | 'weak_password'
-  | 'email_in_use'
-  | 'invalid_credentials'
-  | 'missing_avatar'
-  | 'invalid_avatar'
-  | 'invalid_session'
-  | 'invalid_session_id'
-  | 'invalid_attachment'
-  | 'invalid_provider_auth_snapshot'
-  | 'provider_auth_not_configured'
-  | 'provider_auth_snapshot_not_found'
-  | 'oauth_not_configured'
-  | 'requester_mismatch'
-  | 'agent_not_available'
-  | 'owner_online'
-  | 'rate_limited'
-  | 'account_missing'
-  | 'invalid_account_id'
-  | 'invalid_pubkey'
-  | 'self_contact'
-  | 'server_error'
-  | 'network_error'
-  | 'unknown';
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';
 export type CloudContactRequestStatus = 'pending' | 'accepted' | 'rejected';
@@ -311,18 +310,6 @@ export type CloudAgentRunLookup = {
   run: CloudAgentRun | null;
 };
 
-export class CloudAuthError extends Error {
-  readonly code: CloudAuthErrorCode;
-  readonly status: number;
-
-  constructor(code: CloudAuthErrorCode, message: string, status: number) {
-    super(message);
-    this.code = code;
-    this.status = status;
-    this.name = 'CloudAuthError';
-  }
-}
-
 function cleanBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '');
 }
@@ -412,35 +399,6 @@ export type CloudAuthClientOptions = {
   requestTimeoutMs?: number;
 };
 
-type ServerErrorBody = { errorCode?: string; message?: string };
-
-function isErrorCode(value: unknown): value is CloudAuthErrorCode {
-  return (
-    value === 'invalid_email' ||
-    value === 'weak_password' ||
-    value === 'email_in_use' ||
-    value === 'invalid_credentials' ||
-    value === 'missing_avatar' ||
-    value === 'invalid_avatar' ||
-    value === 'invalid_session' ||
-    value === 'invalid_session_id' ||
-    value === 'invalid_attachment' ||
-    value === 'invalid_provider_auth_snapshot' ||
-    value === 'provider_auth_not_configured' ||
-    value === 'provider_auth_snapshot_not_found' ||
-    value === 'oauth_not_configured' ||
-    value === 'requester_mismatch' ||
-    value === 'agent_not_available' ||
-    value === 'owner_online' ||
-    value === 'rate_limited' ||
-    value === 'account_missing' ||
-    value === 'invalid_account_id' ||
-    value === 'invalid_pubkey' ||
-    value === 'self_contact' ||
-    value === 'server_error'
-  );
-}
-
 async function readJsonSafe(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return null;
@@ -449,15 +407,6 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   } catch {
     return null;
   }
-}
-
-function buildError(status: number, body: unknown, fallbackMessage: string): CloudAuthError {
-  const data = (body as ServerErrorBody) ?? {};
-  const code = isErrorCode(data.errorCode) ? data.errorCode : 'unknown';
-  const message = typeof data.message === 'string' && data.message.length > 0
-    ? data.message
-    : fallbackMessage;
-  return new CloudAuthError(code, message, status);
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -515,7 +464,7 @@ export class CloudAuthClient {
     }
     const body = await readJsonSafe(response);
     if (!response.ok) {
-      throw buildError(response.status, body, fallbackMessage);
+      throw buildCloudAuthError(response.status, body, fallbackMessage);
     }
     return body as TResponse;
   }
@@ -730,6 +679,37 @@ export class CloudAuthClient {
     );
   }
 
+  async createGroupInvitation(
+    token: string,
+    input: CloudGroupInvitationCreateInput,
+  ) {
+    return createCloudGroupInvitation(this, token, input);
+  }
+
+  async listGroupInvitations(token: string, groupSpaceId: string): Promise<CloudGroupInvitationSummary[]> {
+    const response = await this.request<{ invitations: CloudGroupInvitationSummary[] }>(
+      `/v1/cloud/invitations/groups/active/${encodeURIComponent(groupSpaceId)}`,
+      { method: 'GET', headers: { authorization: `Bearer ${token}` } },
+      'Could not load active group invitations.',
+    );
+    return response.invitations;
+  }
+
+  async resolveGroupInvitation(invitationToken: string) {
+    return resolveCloudGroupInvitation(this, invitationToken);
+  }
+
+  async acceptGroupInvitation(
+    token: string,
+    invitationToken: string,
+  ) {
+    return acceptCloudGroupInvitation(this, token, invitationToken);
+  }
+
+  async revokeGroupInvitation(token: string, invitationId: string): Promise<void> {
+    await revokeCloudGroupInvitation(this, token, invitationId);
+  }
+
   async addContact(token: string, peerAccountId: string): Promise<void> {
     await this.send<void>(
       '/v1/cloud/contacts',
@@ -940,7 +920,7 @@ export class CloudAuthClient {
     }
     if (!response.ok) {
       const body = await readJsonSafe(response);
-      throw buildError(response.status, body, 'Could not download attachment.');
+      throw buildCloudAuthError(response.status, body, 'Could not download attachment.');
     }
     return response.blob();
   }

@@ -16,7 +16,7 @@ export type CloudAgentResponseEnvelope = {
   kind: 'agent-response';
   requestId: string;
   text: string;
-  deliveryState?: 'complete' | 'failed';
+  deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
 };
 
 export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
@@ -112,7 +112,11 @@ function decodeBase64Url(value: string): string {
   return new TextDecoder().decode(bytes);
 }
 
-export function encodeCloudAgentResponse(input: { requestId: string; text: string; deliveryState?: 'complete' | 'failed' }): string {
+export function encodeCloudAgentResponse(input: {
+  requestId: string;
+  text: string;
+  deliveryState?: CloudAgentResponseEnvelope['deliveryState'];
+}): string {
   const envelope: CloudAgentResponseEnvelope = {
     kind: 'agent-response',
     requestId: input.requestId,
@@ -128,7 +132,10 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
     if (parsed.kind !== 'agent-response') return null;
     if (typeof parsed.requestId !== 'string' || typeof parsed.text !== 'string') return null;
-    const deliveryState = parsed.deliveryState === 'failed' || parsed.deliveryState === 'complete'
+    const deliveryState = parsed.deliveryState === 'processing'
+      || parsed.deliveryState === 'failed'
+      || parsed.deliveryState === 'complete'
+      || parsed.deliveryState === 'cancelled'
       ? parsed.deliveryState
       : undefined;
     return {

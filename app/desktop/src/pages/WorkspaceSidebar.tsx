@@ -102,7 +102,12 @@ export function WorkspaceSidebar({
     contactRequestCount,
     displayedAgents,
   } = directory;
-  const { cloudAccount } = account;
+  const {
+    cloudAccount,
+    onCreateGroupInvite,
+    onListGroupInvites,
+    onRevokeGroupInvite,
+  } = account;
   const chatModel = useWorkspaceChatSidebarModel(chats);
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
 
@@ -397,6 +402,9 @@ export function WorkspaceSidebar({
         onRemoveMember={onRemoveChatGroupMember}
         onSetAdmin={onSetChatGroupAdmin}
         onAddContact={onAddContactByNodeId}
+        onCreateGroupInvitation={onCreateGroupInvite}
+        onListGroupInvitations={onListGroupInvites}
+        onRevokeGroupInvitation={onRevokeGroupInvite}
         onMessageContact={async (contact) => {
           setIsGroupDetailsDialogOpen(false);
           setGroupDetailsAnchor(null);

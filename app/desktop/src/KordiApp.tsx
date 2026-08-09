@@ -13,12 +13,17 @@ import {
   isSelectAllShortcut,
 } from '@/features/contentSelection';
 import { cloudAuthCapabilityDiscoveryEnabled } from '@/features/cloud/cloudAuthReleasePolicy';
+import {
+  dispatchCloudGroupInvitationAccepted,
+  usePendingGroupInvitation,
+} from '@/features/cloud/groupInvitationDeepLink';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
 import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
+import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
 
 const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 
@@ -205,6 +210,7 @@ function CloudEditionRoot({
   cloudSessionStatusOverride?: CloudSessionStatus;
   cloudSessionOverride?: CloudSessionGateResult;
 }) {
+  const pendingGroupInvitation = usePendingGroupInvitation();
   // Tests can hand us a stubbed session result; in production we use the hook.
   const liveSession = useCloudSession({
     enabled: cloudSessionOverride === undefined,
@@ -231,7 +237,12 @@ function CloudEditionRoot({
       </CloudGateShell>
     );
   }
-  return <KordiAppShell cloudSession={cloudSessionOverride === undefined ? liveSession : undefined} />;
+  return (
+    <KordiAppShell
+      cloudSession={cloudSessionOverride === undefined ? liveSession : undefined}
+      pendingGroupInvitation={pendingGroupInvitation}
+    />
+  );
 }
 
 export function CloudStartingScreen({
@@ -256,7 +267,13 @@ export function CloudStartingScreen({
   );
 }
 
-function KordiAppShell({ cloudSession }: { cloudSession?: UseCloudSessionResult }) {
+function KordiAppShell({
+  cloudSession,
+  pendingGroupInvitation,
+}: {
+  cloudSession?: UseCloudSessionResult;
+  pendingGroupInvitation: ReturnType<typeof usePendingGroupInvitation>;
+}) {
   useEffect(() => {
     void applyKordiMainWindowSize();
   }, []);
@@ -277,6 +294,17 @@ function KordiAppShell({ cloudSession }: { cloudSession?: UseCloudSessionResult 
     <>
       <AppShellFrame {...appShellFrameProps} />
       <WhatsNewLaunchWindow />
+      {pendingGroupInvitation.token ? (
+        <GroupInvitationDialog
+          key={pendingGroupInvitation.token}
+          invitationToken={pendingGroupInvitation.token}
+          onDismiss={pendingGroupInvitation.dismiss}
+          onJoined={(result) => {
+            dispatchCloudGroupInvitationAccepted(result);
+            pendingGroupInvitation.dismiss();
+          }}
+        />
+      ) : null}
     </>
   );
 }

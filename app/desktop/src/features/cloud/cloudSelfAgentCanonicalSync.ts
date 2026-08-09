@@ -1,6 +1,5 @@
 import type {
   AppendCanonicalMessageRequest,
-  CanonicalSessionMessage,
   CanonicalSessionState,
   MessageActionMetadata,
   OpenCanonicalSessionRequest,
@@ -26,6 +25,15 @@ import {
 } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { createCloudSelfAgentSessionPlanner } from './cloudSelfAgentSessionPlan';
+import {
+  cloudSelfAgentStableResponseId,
+  cloudSelfAgentResponseWouldDowngrade,
+  createCloudSelfAgentCanonicalMessageIndex,
+  findExistingCanonicalCloudSelfAgentMessage,
+  legacyCloudSelfAgentResponseIds,
+  shouldReplacePlannedCloudSelfAgentResponse,
+  type CloudSelfAgentResponseDeliveryState,
+} from './cloudSelfAgentResponseLifecycle';
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
@@ -40,6 +48,10 @@ function cloudSelfAgentCreatedAtMs(message: CloudMessage): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
+function cloudSelfAgentRestoreDependencyRank(message: CloudMessage) {
+  return parseCloudAgentResponse(message.body) ? 1 : 0;
+}
+
 type CloudSelfAgentRestoreMessage = {
   message: CloudMessage;
   sessionId: string;
@@ -47,6 +59,7 @@ type CloudSelfAgentRestoreMessage = {
   text: string;
   createdAtMs: number;
   responseRequestId: string | null;
+  responseDeliveryState: CloudSelfAgentResponseDeliveryState | null;
   messageAction: MessageActionMetadata | null;
 };
 
@@ -113,6 +126,9 @@ function normalizeCloudSelfAgentRestoreMessage(
     text,
     createdAtMs: cloudSelfAgentCreatedAtMs(message),
     responseRequestId: response?.requestId ?? null,
+    responseDeliveryState: response
+      ? response.deliveryState ?? 'complete'
+      : null,
     messageAction: response ? null : cloudDirectMessageAction(message.body),
   };
 }
@@ -158,35 +174,6 @@ function restoredForkSnapshotCloudMessageIds(
   return snapshotIds;
 }
 
-function existingCanonicalMessageMatchesCloudSelfAgent(
-  existing: CanonicalSessionMessage,
-  input: {
-    sessionId: string;
-    role: 'user' | 'agent';
-    text: string;
-    createdAtMs: number;
-    cloudMessageId: string;
-  },
-): boolean {
-  if (existing.sessionId !== input.sessionId) return false;
-  if (
-    existing.id
-    === cloudSelfAgentCanonicalMessageId(input.cloudMessageId)
-  ) return true;
-  if (
-    existing.sourceTransport === 'cloud-self-agent'
-    && existing.sourceEventId === input.cloudMessageId
-  ) return true;
-  const existingText = cleanText(existing.contentText);
-  if (!existingText || existingText !== input.text) return false;
-  const roleMatches = input.role === 'user'
-    ? existing.senderRole === 'user'
-    : existing.senderRole.includes('agent')
-      || existing.messageKind === 'agent-turn';
-  if (!roleMatches) return false;
-  return Math.abs(existing.createdAtMs - input.createdAtMs) <= 5_000;
-}
-
 export type CloudSelfAgentCanonicalSyncPlan = {
   agentIdentityRequest: UpsertCanonicalIdentityRequest;
   sessionRequests: OpenCanonicalSessionRequest[];
@@ -222,6 +209,8 @@ export function planCloudSelfAgentCanonicalSync({
     .sort((left, right) => (
       cloudSelfAgentCreatedAtMs(left)
       - cloudSelfAgentCreatedAtMs(right)
+      || cloudSelfAgentRestoreDependencyRank(left)
+      - cloudSelfAgentRestoreDependencyRank(right)
       || left.messageId.localeCompare(right.messageId)
     ));
   const normalizedMessages = sorted
@@ -241,8 +230,25 @@ export function planCloudSelfAgentCanonicalSync({
   const userTextByCloudMessageId = new Map<string, string>();
   const requestLocalMessageIdByCloudMessageId =
     new Map<string, string>();
+  const requestCloudIdentityByCloudMessageId = new Map<string, string>();
   const plannedCanonicalMessageIdByDuplicateKey =
     new Map<string, string>();
+  const plannedMessageIndexByCanonicalId = new Map<string, number>();
+  const existingCanonicalMessageIndex =
+    createCloudSelfAgentCanonicalMessageIndex(state.messages);
+  const legacyResponseIdByStableCanonicalId =
+    legacyCloudSelfAgentResponseIds({
+      canonicalMessages: state.messages,
+      responses: normalizedMessages.flatMap((normalized) => (
+        normalized.responseRequestId
+          ? [{
+              sessionId: normalized.sessionId,
+              requestCloudMessageId: normalized.responseRequestId,
+              responseCloudMessageId: normalized.message.messageId,
+            }]
+          : []
+      )),
+    });
   const sessionPlanner = createCloudSelfAgentSessionPlanner({
     state,
     forksBySessionId,
@@ -260,48 +266,54 @@ export function planCloudSelfAgentCanonicalSync({
       text,
       createdAtMs,
       responseRequestId,
+      responseDeliveryState,
       messageAction,
     } = restoreMessage;
     const sourceTransport =
       forkSnapshotCloudMessageIds.has(message.messageId)
         ? 'canonical-fork-snapshot'
         : 'cloud-self-agent';
-    const existingMatch = state.messages.find((existing) =>
-      existingCanonicalMessageMatchesCloudSelfAgent(existing, {
+    const stableRequestCloudMessageId = responseRequestId
+      ? requestCloudIdentityByCloudMessageId.get(responseRequestId)
+        ?? responseRequestId
+      : message.messageId;
+    const derivedStableCanonicalMessageId = responseRequestId
+      ? cloudSelfAgentStableResponseId(stableRequestCloudMessageId)
+      : cloudSelfAgentCanonicalMessageId(message.messageId);
+    const stableCanonicalMessageId =
+      legacyResponseIdByStableCanonicalId.get(
+        derivedStableCanonicalMessageId,
+      ) ?? derivedStableCanonicalMessageId;
+    const existingMatch = findExistingCanonicalCloudSelfAgentMessage(
+      existingCanonicalMessageIndex,
+      {
         sessionId,
         role,
         text,
         createdAtMs,
         cloudMessageId: message.messageId,
-      })
+        canonicalMessageId: stableCanonicalMessageId,
+      },
     );
-    if (existingMatch) {
-      if (!responseRequestId) {
-        userTextByCloudMessageId.set(message.messageId, text);
-        requestLocalMessageIdByCloudMessageId.set(
-          message.messageId,
-          existingMatch.id,
-        );
-        sessionPlanner.ensure(
-          sessionId,
-          sourceTransport === 'canonical-fork-snapshot' ? '' : text,
-          message.messageId,
-          createdAtMs,
-          sourceTransport === 'canonical-fork-snapshot',
-        );
-      } else {
-        sessionPlanner.ensure(
-          sessionId,
-          sourceTransport === 'canonical-fork-snapshot'
-            ? ''
-            : cleanText(
-                userTextByCloudMessageId.get(responseRequestId),
-              ) || '',
-          responseRequestId,
-          createdAtMs,
-          sourceTransport === 'canonical-fork-snapshot',
-        );
-      }
+    if (existingMatch && !responseRequestId) {
+      userTextByCloudMessageId.set(message.messageId, text);
+      requestLocalMessageIdByCloudMessageId.set(
+        message.messageId,
+        existingMatch.id,
+      );
+      requestCloudIdentityByCloudMessageId.set(
+        message.messageId,
+        existingMatch.sourceTransport === 'cloud-self-agent'
+          ? cleanText(existingMatch.sourceEventId) || message.messageId
+          : message.messageId,
+      );
+      sessionPlanner.ensure(
+        sessionId,
+        sourceTransport === 'canonical-fork-snapshot' ? '' : text,
+        message.messageId,
+        createdAtMs,
+        sourceTransport === 'canonical-fork-snapshot',
+      );
       if (
         sourceTransport === 'canonical-fork-snapshot'
         && existingMatch.sourceTransport !== sourceTransport
@@ -340,17 +352,29 @@ export function planCloudSelfAgentCanonicalSync({
           message.messageId,
           plannedDuplicateMessageId,
         );
+        const duplicateCloudIdentity = [...requestLocalMessageIdByCloudMessageId]
+          .find(([, canonicalId]) => (
+            canonicalId === plannedDuplicateMessageId
+          ))?.[0] ?? message.messageId;
+        requestCloudIdentityByCloudMessageId.set(
+          message.messageId,
+          requestCloudIdentityByCloudMessageId.get(duplicateCloudIdentity)
+            ?? duplicateCloudIdentity,
+        );
       }
       continue;
     }
 
-    const canonicalMessageId =
-      cloudSelfAgentCanonicalMessageId(message.messageId);
+    const canonicalMessageId = existingMatch?.id ?? stableCanonicalMessageId;
     if (!responseRequestId) {
       userTextByCloudMessageId.set(message.messageId, text);
       requestLocalMessageIdByCloudMessageId.set(
         message.messageId,
         canonicalMessageId,
+      );
+      requestCloudIdentityByCloudMessageId.set(
+        message.messageId,
+        message.messageId,
       );
     }
     const quoteSourceMessageId = messageAction?.kind === 'quote'
@@ -378,16 +402,34 @@ export function planCloudSelfAgentCanonicalSync({
       duplicateKey,
       canonicalMessageId,
     );
-    messageRequests.push({
+    const deliveryState = responseRequestId
+      ? responseDeliveryState ?? 'complete'
+      : null;
+    if (
+      existingMatch
+      && cloudSelfAgentResponseWouldDowngrade(
+        existingMatch.status,
+        deliveryState,
+      )
+    ) {
+      continue;
+    }
+    const request: AppendCanonicalMessageRequest = {
       id: canonicalMessageId,
       sessionId,
       senderIdentityId:
         responseRequestId ? agentIdentityId : localHumanIdentityId,
       senderRole: responseRequestId ? 'owned-agent' : 'user',
       messageKind: responseRequestId ? 'agent-turn' : 'text',
-      contentText: text,
+      contentText: deliveryState === 'failed' ? '' : text,
       content: responseRequestId
-        ? { cloudRequestMessageId: responseRequestId }
+        ? {
+            cloudRequestMessageId: stableRequestCloudMessageId,
+            requestId: parentMessageId ?? stableRequestCloudMessageId,
+            replyToMessageId: parentMessageId ?? stableRequestCloudMessageId,
+            deliveryState,
+            ...(deliveryState === 'failed' ? { error: text } : {}),
+          }
         : messageAction
           ? {
               messageAction,
@@ -397,11 +439,32 @@ export function planCloudSelfAgentCanonicalSync({
             }
           : null,
       parentMessageId,
-      status: responseRequestId ? 'complete' : 'sent',
+      status: responseRequestId ? deliveryState ?? 'complete' : 'sent',
       createdAtMs,
       sourceTransport,
       sourceEventId: message.messageId,
-    });
+    };
+    const plannedIndex = plannedMessageIndexByCanonicalId.get(
+      canonicalMessageId,
+    );
+    if (plannedIndex === undefined) {
+      plannedMessageIndexByCanonicalId.set(
+        canonicalMessageId,
+        messageRequests.length,
+      );
+      messageRequests.push(request);
+    } else {
+      const planned = messageRequests[plannedIndex];
+      if (
+        deliveryState
+        && shouldReplacePlannedCloudSelfAgentResponse(
+          planned.status,
+          deliveryState,
+        )
+      ) {
+        messageRequests[plannedIndex] = request;
+      }
+    }
   }
 
   return {

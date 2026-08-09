@@ -77,7 +77,7 @@ async fn lookup_app_invitation(
     }))
 }
 
-fn escape_html(value: &str) -> String {
+pub(super) fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -86,7 +86,7 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn configured_release_download_url() -> Option<String> {
+pub(super) fn configured_release_download_url() -> Option<String> {
     std::env::var("KORDI_RELEASE_CHANGELOG_URL")
         .ok()
         .map(|value| value.trim().to_string())
@@ -122,14 +122,40 @@ fn invitation_landing_document(
     message: &str,
     release_download_url: Option<&str>,
 ) -> String {
+    invitation_landing_document_with_open_action(title, message, None, release_download_url)
+}
+
+pub(super) fn invitation_landing_document_with_open_action(
+    title: &str,
+    message: &str,
+    open_action: Option<(&str, &str)>,
+    release_download_url: Option<&str>,
+) -> String {
     let escaped_title = escape_html(title);
     let escaped_message = escape_html(message);
     let download_url = safe_release_download_url(release_download_url);
+    let open_action = open_action
+        .map(|(label, url)| {
+            format!(
+                r#"<a class="button button-primary" href="{}">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4h9v9M16 4 5 15"></path></svg>
+          {}
+        </a>"#,
+                escape_html(url),
+                escape_html(label),
+            )
+        })
+        .unwrap_or_default();
+    let download_class = if open_action.is_empty() {
+        "button button-primary"
+    } else {
+        "button button-secondary"
+    };
     let download_action = download_url
         .as_deref()
         .map(|url| {
             format!(
-                r#"<a class="button button-primary" href="{}">
+                r#"<a class="{download_class}" href="{}">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m0 0 4-4m-4 4L6 8M3 15v2h14v-2"></path></svg>
           Download Kordi for Mac
         </a>"#,
@@ -137,7 +163,7 @@ fn invitation_landing_document(
             )
         })
         .unwrap_or_default();
-    let learn_more_class = if download_url.is_some() {
+    let learn_more_class = if download_url.is_some() || !open_action.is_empty() {
         "button button-secondary"
     } else {
         "button button-primary"
@@ -206,6 +232,7 @@ fn invitation_landing_document(
         <h1>{escaped_title}</h1>
         <p>{escaped_message}</p>
         <div class="actions">
+          {open_action}
           {download_action}
           <a class="{learn_more_class}" href="{KORDI_HOMEPAGE_URL}">Learn more</a>
         </div>
@@ -224,7 +251,25 @@ fn invitation_landing_html(
     message: &str,
     release_download_url: Option<&str>,
 ) -> Response {
-    let body = invitation_landing_document(title, message, release_download_url);
+    invitation_landing_html_with_open_action(status, title, message, None, release_download_url)
+}
+
+pub(super) fn invitation_landing_html_with_open_action(
+    status: StatusCode,
+    title: &str,
+    message: &str,
+    open_action: Option<(&str, &str)>,
+    release_download_url: Option<&str>,
+) -> Response {
+    let body = match open_action {
+        Some(action) => invitation_landing_document_with_open_action(
+            title,
+            message,
+            Some(action),
+            release_download_url,
+        ),
+        None => invitation_landing_document(title, message, release_download_url),
+    };
 
     (
         status,

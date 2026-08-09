@@ -28,17 +28,13 @@ createRoot(document.querySelector('#root')!).render(
       release={{
         version: '0.0.1-beta.12',
         notes: [
-          '### Added',
+          '### What changed',
           '',
-          '- Enabled group agents to mention conversation participants and their Kordi agents while preserving relevant reply history.',
-          '',
-          '### Fixed',
-          '',
-          '- Kept Google and GitHub sign-in available in packaged Cloud builds.',
-          '- Improved identity consistency across profile and conversation surfaces.',
+          '- Packaged Cloud builds keep Google and GitHub sign-in available when capability discovery is unavailable.',
+          '- Group agents can mention conversation participants and their Kordi agents while preserving relevant reply history.',
         ].join('\n'),
-        publishedAt: '2026-08-08T00:00:00Z',
-        changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta12',
+        publishedAt: '2026-08-06T00:00:00Z',
+        changelogUrl: 'https://kordi.ai/changelog#v0-0-1-beta-12',
       }}
       onDismiss={() => undefined}
       onOpenFullReleaseNotes={() => undefined}

@@ -148,7 +148,7 @@ test('GroupDetailsDialog uses the newest replicated admin revision for demotions
   assert.match(markup, /aria-label="Alice, member"/);
 });
 
-test('GroupDetailsDialog disambiguates same-name members before progressively opening add contacts', () => {
+test('GroupDetailsDialog never exposes internal account ids while disambiguating same-name members', () => {
   const chatConversations = [conversation({
     id: 'session:group:same-name',
     canonicalSessionId: 'session:group:same-name',
@@ -172,8 +172,7 @@ test('GroupDetailsDialog disambiguates same-name members before progressively op
     onSetAdmin: () => {},
   }));
 
-  assert.match(markup, /acct_a/);
-  assert.doesNotMatch(markup, /acct_b/);
+  assert.doesNotMatch(markup, /acct_a|acct_b/);
   assert.match(markup, /aria-label="Add people"/);
 });
 

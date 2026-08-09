@@ -9,6 +9,7 @@
 @import './styles/shell-inspector.css';
 @import './styles/shell-glass.css';
 @import './styles/shell-popovers.css';
+@import './styles/shell-group-invitations.css';
 @import './styles/shell-bubbles.css';
 @import './styles/shell-transcript.css';
 @import './styles/shell-transcript-timeline.css';
@@ -32,3 +33,4 @@
 @import './styles/theme-auth-controls.css';
 @import './styles/theme-auth-gate.css';
 @import './styles/transient-surfaces.css';
+@import './styles/whats-new.css';
