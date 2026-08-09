@@ -6,6 +6,7 @@ import {
   markWhatsNewPresented,
   parseWhatsNewRelease,
   releaseHighlightGroups,
+  releaseHighlights,
   WHATS_NEW_LAST_SHOWN_VERSION_KEY,
   whatsNewRequestUrl,
 } from '../src/features/updates/whatsNew';
@@ -155,4 +156,34 @@ test('release metadata and highlights stay safe and readable', () => {
     }, VERSION)?.changelogUrl,
     undefined,
   );
+});
+
+test('beta.12 uses the two customer-facing release highlights', () => {
+  const release = parseWhatsNewRelease(releaseMetadata(), VERSION);
+  assert.ok(release);
+  assert.deepEqual(releaseHighlights(release), [
+    {
+      category: 'Sign in',
+      title: 'Social sign-in stays available in packaged Cloud builds',
+      detail: 'Google and GitHub sign-in remain available when capability discovery is unavailable. Debug-only server guidance no longer leaks into the user build.',
+      kind: 'sign-in',
+    },
+    {
+      category: 'Group collaboration',
+      title: 'Group agents can mention people and their Kordi agents',
+      detail: 'Mentions now carry authorization, attribution, and reply-history handling across the shared conversation.',
+      kind: 'collaboration',
+    },
+  ]);
+});
+
+test('other releases fall back to clean, bounded Markdown highlights', () => {
+  assert.deepEqual(releaseHighlights({
+    version: '0.0.1-beta.13',
+    notes: '### Added\n\n- Added **What’s New** after upgrades. ([#893])\n- Kept `startup` available when metadata fails.',
+    publishedAt: '2026-08-09T00:00:00Z',
+  }), [
+    { category: 'Added', title: 'Added What’s New after upgrades.', kind: 'general' },
+    { category: 'Added', title: 'Kept startup available when metadata fails.', kind: 'general' },
+  ]);
 });
