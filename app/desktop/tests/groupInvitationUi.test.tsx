@@ -96,9 +96,9 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
     assert.ok(button('Share link'));
     await act(async () => { button('Share link')?.click(); });
 
-    step = 'check preview copy';
-    assert.match(host.textContent ?? '', /preview the group and choose whether to join/i);
-    assert.match(host.textContent ?? '', /No contact requests are created automatically/);
+    step = 'check compact share panel';
+    assert.doesNotMatch(host.textContent ?? '', /preview the group and choose whether to join/i);
+    assert.doesNotMatch(host.textContent ?? '', /No contact requests are created automatically/);
     step = 'create link';
     assert.ok(button('Create invitation link'));
     await act(async () => { button('Create invitation link')?.click(); });

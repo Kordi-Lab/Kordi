@@ -127,16 +127,13 @@ export function GroupInvitationSharePanel({
   if (hidden) return null;
   return (
     <div role="tabpanel" className="px-1 py-2">
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-center gap-2.5">
         <Link2
-          className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--utility-muted-text)]"
+          className="h-4 w-4 shrink-0 text-[color:var(--utility-muted-text)]"
           aria-hidden="true"
         />
         <div className="min-w-0">
           <p className="text-[11px] font-semibold">Invite people to “{space.title}”</p>
-          <p className="mt-1 text-[10px] leading-4 text-[color:var(--utility-muted-text)]">
-            Recipients preview the group and choose whether to join. No contact requests are created automatically.
-          </p>
         </div>
       </div>
 
