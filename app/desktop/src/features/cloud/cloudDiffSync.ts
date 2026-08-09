@@ -1,12 +1,18 @@
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
-import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import {
-  latestCloudReceiptAt,
-  mergeCloudMessageMonotonicState,
-} from './cloudMessageMerge';
+  applyCloudSyncEventsToMessagesByPeer,
+  cloudMessageSessionKeys,
+  cloudSyncEventSessionId,
+  payloadCloudSyncMessage,
+} from './cloudDiffSyncMessages';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
 import { cloudSyncCursorRequiresFallback } from './cloudSyncCursorProgress';
+
+export {
+  applyCloudSyncEventsToMessagesByPeer,
+  removeCloudSessionMessages,
+} from './cloudDiffSyncMessages';
 
 export {
   cloudMessageAttachmentsEqual,
@@ -119,219 +125,6 @@ export function saveCloudSessionVisibility(
   }
 }
 
-function normalizeCloudMessage(value: unknown): CloudMessage | null {
-  const record = objectRecord(value);
-  if (!record) return null;
-  const messageId = cleanText(record.messageId);
-  const fromAccountId = cleanText(record.fromAccountId);
-  const toAccountId = cleanText(record.toAccountId);
-  const createdAt = cleanText(record.createdAt);
-  if (!messageId || !fromAccountId || !toAccountId || !createdAt) return null;
-  const direction = record.direction === 'outgoing' ? 'outgoing' : 'incoming';
-  const attachments = Array.isArray(record.attachments) ? record.attachments as CloudMessage['attachments'] : undefined;
-  return cloudMessageMetadataOnly({
-    messageId,
-    fromAccountId,
-    toAccountId,
-    body: typeof record.body === 'string' ? record.body : '',
-    createdAt,
-    deliveredAt: typeof record.deliveredAt === 'string' ? record.deliveredAt : null,
-    readAt: typeof record.readAt === 'string' ? record.readAt : null,
-    direction,
-    ...(typeof record.sessionId === 'string' ? { sessionId: record.sessionId } : {}),
-    ...(attachments ? { attachments } : {}),
-  });
-}
-
-function messagePeerId(accountId: string, message: CloudMessage, eventPeerId?: string | null): string | null {
-  const eventPeer = eventPeerId?.trim() ?? '';
-  if (eventPeer) return eventPeer;
-  if (message.fromAccountId === accountId) return message.toAccountId;
-  if (message.toAccountId === accountId) return message.fromAccountId;
-  return null;
-}
-
-function payloadMessage(event: CloudSyncEvent): CloudMessage | null {
-  const payload = objectRecord(event.payload);
-  return normalizeCloudMessage(payload?.message);
-}
-
-function eventSessionId(event: CloudSyncEvent): string {
-  const payload = objectRecord(event.payload);
-  return cleanText(payload?.sessionId) || cleanText(event.peerAccountId);
-}
-
-function directPersonSessionId(accountId: string, peerId: string): string {
-  return `session:direct-person:${[accountId.trim(), peerId.trim()].filter(Boolean).sort().join(':')}`;
-}
-
-function messageSessionKeys(accountId: string, message: CloudMessage, eventPeerId?: string | null): string[] {
-  const keys = new Set<string>();
-  const sessionId = cleanText(message.sessionId);
-  if (sessionId) keys.add(sessionId);
-  const peerId = messagePeerId(accountId, message, eventPeerId);
-  if (peerId) {
-    keys.add(peerId);
-    keys.add(directPersonSessionId(accountId, peerId));
-  }
-  return [...keys];
-}
-
-function messageMatchesSession(accountId: string, message: CloudMessage, sessionId: string, peerId?: string | null): boolean {
-  return messageSessionKeys(accountId, message, peerId).includes(sessionId);
-}
-
-export function removeCloudSessionMessages(
-  accountId: string,
-  currentMessagesByPeer: Record<string, CloudMessage[]>,
-  sessionId: string,
-): Record<string, CloudMessage[]> {
-  const trimmedSessionId = sessionId.trim();
-  if (!trimmedSessionId) return currentMessagesByPeer;
-  const next: Record<string, CloudMessage[]> = {};
-  let changed = false;
-  for (const [peerId, messages] of Object.entries(currentMessagesByPeer)) {
-    const retained = messages.filter((message) => !messageMatchesSession(accountId, message, trimmedSessionId, peerId));
-    if (retained.length !== messages.length) changed = true;
-    if (retained.length > 0) next[peerId] = retained.length === messages.length ? messages : retained;
-  }
-  return changed ? next : currentMessagesByPeer;
-}
-
-function readReceiptPayload(event: CloudSyncEvent): { messageIds: string[]; readAt: string } | null {
-  const payload = objectRecord(event.payload);
-  if (!payload) return null;
-  const readAt = cleanText(payload.readAt);
-  const messageIds = Array.isArray(payload.messageIds)
-    ? payload.messageIds.map(cleanText).filter(Boolean)
-    : [];
-  if (!readAt || messageIds.length === 0) return null;
-  return { messageIds, readAt };
-}
-
-export function applyCloudSyncEventsToMessagesByPeer(
-  accountId: string,
-  currentMessagesByPeer: Record<string, CloudMessage[]>,
-  events: CloudSyncEvent[],
-  initialHiddenSessionIds: ReadonlySet<string> = new Set(),
-  initialDeletedSessionIds: ReadonlySet<string> = new Set(),
-): Record<string, CloudMessage[]> {
-  const hiddenSessionIds = new Set(initialHiddenSessionIds);
-  const deletedSessionIds = new Set(initialDeletedSessionIds);
-  const indexedMessagesByPeer = new Map<string, Map<string, CloudMessage>>();
-  const changedPeerIds = new Set<string>();
-
-  const indexedPeerMessages = (peerId: string) => {
-    const existing = indexedMessagesByPeer.get(peerId);
-    if (existing) return existing;
-    const indexed = new Map(
-      (currentMessagesByPeer[peerId] ?? []).map((message) => [
-        message.messageId,
-        message,
-      ]),
-    );
-    indexedMessagesByPeer.set(peerId, indexed);
-    return indexed;
-  };
-
-  const removeSessionMessages = (sessionId: string) => {
-    for (const peerId of new Set([
-      ...Object.keys(currentMessagesByPeer),
-      ...indexedMessagesByPeer.keys(),
-    ])) {
-      const indexed = indexedPeerMessages(peerId);
-      let changed = false;
-      for (const [messageId, message] of indexed) {
-        if (!messageMatchesSession(accountId, message, sessionId, peerId)) {
-          continue;
-        }
-        indexed.delete(messageId);
-        changed = true;
-      }
-      if (changed) changedPeerIds.add(peerId);
-    }
-  };
-
-  for (const event of events) {
-    if (event.eventType === 'session.hidden') {
-      const sessionId = eventSessionId(event);
-      if (sessionId && !deletedSessionIds.has(sessionId)) hiddenSessionIds.add(sessionId);
-      continue;
-    }
-
-    if (event.eventType === 'session.unhidden') {
-      const sessionId = eventSessionId(event);
-      if (sessionId) hiddenSessionIds.delete(sessionId);
-      continue;
-    }
-
-    if (event.eventType === 'session.deleted') {
-      const sessionId = eventSessionId(event);
-      if (!sessionId) continue;
-      hiddenSessionIds.delete(sessionId);
-      deletedSessionIds.add(sessionId);
-      removeSessionMessages(sessionId);
-      continue;
-    }
-
-    if (event.eventType === 'message.upsert') {
-      const message = payloadMessage(event);
-      if (!message) continue;
-      const peerId = messagePeerId(accountId, message, event.peerAccountId);
-      if (!peerId) continue;
-      const keys = messageSessionKeys(accountId, message, event.peerAccountId);
-      for (const key of keys) {
-        hiddenSessionIds.delete(key);
-        deletedSessionIds.delete(key);
-      }
-      const indexed = indexedPeerMessages(peerId);
-      const existing = indexed.get(message.messageId);
-      const merged = existing
-        ? mergeCloudMessageMonotonicState(existing, message)
-        : message;
-      if (merged !== existing) {
-        indexed.set(message.messageId, merged);
-        changedPeerIds.add(peerId);
-      }
-      continue;
-    }
-
-    if (event.eventType === 'message.read') {
-      const receipt = readReceiptPayload(event);
-      const peerId = event.peerAccountId?.trim() ?? '';
-      if (
-        !receipt
-        || !peerId
-        || (!(peerId in currentMessagesByPeer) && !indexedMessagesByPeer.has(peerId))
-      ) continue;
-      const indexed = indexedPeerMessages(peerId);
-      for (const messageId of receipt.messageIds) {
-        const message = indexed.get(messageId);
-        if (!message) continue;
-        const deliveredAt = message.deliveredAt ?? receipt.readAt;
-        const readAt = latestCloudReceiptAt(message.readAt, receipt.readAt);
-        if (message.deliveredAt === deliveredAt && message.readAt === readAt) {
-          continue;
-        }
-        indexed.set(messageId, { ...message, deliveredAt, readAt });
-        changedPeerIds.add(peerId);
-      }
-    }
-  }
-
-  if (changedPeerIds.size === 0) return currentMessagesByPeer;
-  const next = { ...currentMessagesByPeer };
-  for (const peerId of changedPeerIds) {
-    const messages = [...indexedPeerMessages(peerId).values()].sort((left, right) => (
-      left.createdAt.localeCompare(right.createdAt)
-      || left.messageId.localeCompare(right.messageId)
-    ));
-    if (messages.length > 0) next[peerId] = messages;
-    else delete next[peerId];
-  }
-  return next;
-}
-
 export function applyCloudSyncEventsToSessionVisibility(
   accountId: string,
   current: CloudSessionVisibilityState,
@@ -341,16 +134,16 @@ export function applyCloudSyncEventsToSessionVisibility(
   const deletedSessionIds = new Set(current.deletedSessionIds);
   for (const event of events) {
     if (event.eventType === 'message.upsert') {
-      const message = payloadMessage(event);
+      const message = payloadCloudSyncMessage(event);
       if (!message) continue;
-      for (const key of messageSessionKeys(accountId, message, event.peerAccountId)) {
+      for (const key of cloudMessageSessionKeys(accountId, message, event.peerAccountId)) {
         hiddenSessionIds.delete(key);
         deletedSessionIds.delete(key);
       }
       continue;
     }
 
-    const sessionId = eventSessionId(event);
+    const sessionId = cloudSyncEventSessionId(event);
     if (!sessionId) continue;
     if (event.eventType === 'session.hidden') {
       if (!deletedSessionIds.has(sessionId)) hiddenSessionIds.add(sessionId);
