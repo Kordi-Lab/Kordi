@@ -1,5 +1,8 @@
 use super::*;
 
+mod group_invitations;
+pub use group_invitations::*;
+
 #[derive(Debug, Clone)]
 pub struct CloudSession {
     pub token_id: String,

@@ -148,6 +148,8 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
 
 #[path = "cloud_auth_e2e/account_auth.rs"]
 mod account_auth;
+#[path = "cloud_auth_e2e/group_invitations.rs"]
+mod group_invitations;
 #[path = "cloud_auth_e2e/message_idempotency.rs"]
 mod message_idempotency;
 #[path = "cloud_auth_e2e/message_lookup.rs"]

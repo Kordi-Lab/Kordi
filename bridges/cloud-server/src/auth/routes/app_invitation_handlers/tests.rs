@@ -80,3 +80,17 @@ fn invitation_document_escapes_copy_and_degrades_without_a_release() {
         document.contains("class=\"button button-primary\" href=\"https://kordi.ai/\">Learn more")
     );
 }
+
+#[test]
+fn invitation_document_can_offer_a_safe_open_app_action() {
+    let document = invitation_landing_document_with_open_action(
+        "Join Product Team",
+        "Preview and confirm inside Kordi.",
+        Some(("Open Kordi", "kordi://group-invite/kordi_gi_token")),
+        Some(VERSIONED_DMG_URL),
+    );
+
+    assert!(document.contains("Open Kordi"));
+    assert!(document.contains("kordi://group-invite/kordi_gi_token"));
+    assert!(document.contains("Download Kordi for Mac"));
+}
