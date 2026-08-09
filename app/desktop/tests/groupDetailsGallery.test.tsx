@@ -105,7 +105,7 @@ test('GroupDetailsDialog keeps the member gallery to three compact columns and f
   );
   assert.match(
     readDesktopShellCss(),
-    /\.app-group-management-member-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s,
+    /\.app-group-management-member-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*72px\);[^}]*justify-content:\s*center;/s,
   );
   assert.match(
     readDesktopShellCss(),
