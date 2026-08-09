@@ -9,6 +9,7 @@ export const WHATS_NEW_LAST_SHOWN_VERSION_KEY = 'kordi.desktop.whatsNew.v1.lastS
 
 const SEMANTIC_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const MAX_RELEASE_NOTES_LENGTH = 16_384;
+const MAX_VISIBLE_HIGHLIGHTS = 4;
 
 export type WhatsNewRelease = {
   version: string;
@@ -22,6 +23,13 @@ export type WhatsNewHighlightGroup = {
   items: string[];
 };
 
+export type WhatsNewHighlight = {
+  category: string;
+  title: string;
+  detail?: string;
+  kind: 'sign-in' | 'collaboration' | 'general';
+};
+
 export type WhatsNewRuntime = {
   isNativeShell: boolean;
   currentVersion: () => Promise<string>;
@@ -29,6 +37,23 @@ export type WhatsNewRuntime = {
   baseUrl?: string;
   storage?: Storage | null;
   signal?: AbortSignal;
+};
+
+const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.1-beta.12': [
+    {
+      category: 'Sign in',
+      title: 'Social sign-in stays available in packaged Cloud builds',
+      detail: 'Google and GitHub sign-in remain available when capability discovery is unavailable. Debug-only server guidance no longer leaks into the user build.',
+      kind: 'sign-in',
+    },
+    {
+      category: 'Group collaboration',
+      title: 'Group agents can mention people and their Kordi agents',
+      detail: 'Mentions now carry authorization, attribution, and reply-history handling across the shared conversation.',
+      kind: 'collaboration',
+    },
+  ],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -139,6 +164,32 @@ function cleanReleaseNoteText(value: string) {
     .replace(/\s*\(\s*(?:\[#\d+]\s*(?:,\s*)?)+\)\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function highlightKind(category: string, item: string): WhatsNewHighlight['kind'] {
+  const text = `${category} ${item}`.toLowerCase();
+  if (/sign[ -]?in|auth|google|github/.test(text)) return 'sign-in';
+  if (/group|mention|collaborat|participant/.test(text)) return 'collaboration';
+  return 'general';
+}
+
+function splitHighlightText(value: string) {
+  const match = value.match(/^(.+?[.!?])(?:\s+|$)(.*)$/);
+  if (!match || !match[2]) return { title: value };
+  return { title: match[1], detail: match[2] };
+}
+
+export function releaseHighlights(release: WhatsNewRelease): WhatsNewHighlight[] {
+  const curated = CURATED_RELEASE_HIGHLIGHTS[release.version];
+  if (curated) return curated.map((highlight) => ({ ...highlight }));
+
+  return releaseHighlightGroups(release.notes)
+    .flatMap((group) => group.items.map((item) => ({
+      category: group.title,
+      ...splitHighlightText(item),
+      kind: highlightKind(group.title, item),
+    })))
+    .slice(0, MAX_VISIBLE_HIGHLIGHTS);
 }
 
 export function releaseHighlightGroups(notes: string): WhatsNewHighlightGroup[] {
