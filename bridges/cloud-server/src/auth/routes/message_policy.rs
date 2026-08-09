@@ -200,10 +200,11 @@ pub(super) fn cloud_agent_control_request_id(body: &str) -> Option<String> {
     let (expected_kind, encoded) =
         if let Some(encoded) = body.strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX) {
             ("agent-response", encoded)
-        } else if let Some(encoded) = body.strip_prefix(CLOUD_AGENT_CANCEL_PREFIX) {
-            ("agent-cancel", encoded)
         } else {
-            return None;
+            (
+                "agent-cancel",
+                body.strip_prefix(CLOUD_AGENT_CANCEL_PREFIX)?,
+            )
         };
     let decoded = URL_SAFE_NO_PAD.decode(encoded).ok()?;
     let value: Value = serde_json::from_slice(&decoded).ok()?;
