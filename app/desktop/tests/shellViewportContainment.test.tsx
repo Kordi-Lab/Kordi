@@ -37,8 +37,10 @@ test('main app shell and chat transcript contain scroll to the intended axis', (
   assert.match(scrollArea, /overflow-x-hidden/);
   assert.match(scrollArea, /overscroll-contain/);
 
-  assert.match(chatsPage, /scrollClassName:\s*'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3\.5 py-5 sm:px-4'/);
-  assert.match(chatsPage, /scrollClassName:\s*'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5'/);
+  assert.equal(
+    (chatsPage.match(/scrollClassName:\s*'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain'/g) ?? []).length,
+    2,
+  );
   assert.match(projectsPage, /h-full min-h-0 overflow-x-hidden overscroll-contain px-3\.5 py-3/);
 });
 

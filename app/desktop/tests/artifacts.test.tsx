@@ -7,6 +7,7 @@ import type { DesktopChatToolSnapshot, Message, SessionArtifact } from '../src/k
 import { extractSessionArtifacts } from '../src/features/chat/artifacts';
 import { MarkdownCodeBlock, MarkdownContent } from '../src/kordi-app/components';
 import { ArtifactInspector, ArtifactPreviewWindow, renderArtifactPreview } from '../src/pages/ArtifactInspector';
+import { artifactPreviewDocumentSource } from '../src/pages/artifactPreviewDocument';
 
 function toolSnapshot(overrides: Partial<DesktopChatToolSnapshot>): DesktopChatToolSnapshot {
   return {
@@ -191,6 +192,23 @@ test('artifact preview renders html and markdown as previewable documents', () =
   assert.match(markdownMarkup, /text-\[12px\]/);
   assert.doesNotMatch(markdownMarkup, /# Kordi Project Structure Report/);
   assert.doesNotMatch(markdownMarkup, />Copy</);
+});
+
+test('artifact preview contains wide html only in the narrow rail', () => {
+  const source = '<!doctype html><html><head><style>.timeline { min-width: 960px; overflow-x: auto; }</style></head><body><div class="timeline">Synchronized event lanes</div></body></html>';
+  const railSource = artifactPreviewDocumentSource(source, 'rail');
+  const railMarkup = renderToStaticMarkup(createElement('div', null, renderArtifactPreview({
+    path: 'content/wide-timeline.html',
+    lines: source.split('\n').map((text, index) => ({ number: index + 1, text })),
+    truncated: false,
+  }, 'rail')));
+
+  assert.match(railSource, /data-kordi-artifact-preview="rail"/);
+  assert.match(railSource, /data-kordi-artifact-rail-fit/);
+  assert.match(railSource, /max-inline-size: 100% !important/);
+  assert.match(railMarkup, /data-kordi-artifact-preview/);
+  assert.equal(artifactPreviewDocumentSource(source, 'panel'), source);
+  assert.equal(artifactPreviewDocumentSource(source, 'window'), source);
 });
 
 test('artifact inspector renders generated artifacts and related changed files, but hides memory', () => {

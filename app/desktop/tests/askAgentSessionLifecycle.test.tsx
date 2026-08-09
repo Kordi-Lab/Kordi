@@ -174,7 +174,7 @@ test('blank-agent deduplication keeps a message-free chat while its first turn r
   );
 });
 
-test('side Agent sends materialize the target runtime before starting its turn', () => {
+test('side Agent sends stay optimistic while materializing the target runtime', () => {
   const chatMessages = source('../src/features/chat/messageActions/chatMessages.ts');
   const materializer = source('../src/features/chat/messageActions/localAgentSessionTarget.ts');
   const targetedStart = chatMessages.indexOf('const sendTargetedChatMessage = useCallback');
@@ -182,12 +182,23 @@ test('side Agent sends materialize the target runtime before starting its turn',
     targetedStart,
     chatMessages.indexOf('const handleSendChatMessage = useCallback', targetedStart),
   );
+  const sharedSendStart = chatMessages.indexOf('const sendLocalAgentChatMessage = useCallback');
+  const sharedSendBlock = chatMessages.slice(sharedSendStart, targetedStart);
 
-  assert.ok(
-    targetedBlock.indexOf('await materializeLocalChatTarget(targetConversation.id)')
-      < targetedBlock.indexOf('await sendLocalAgentChatMessage({'),
+  assert.match(
+    targetedBlock,
+    /await sendLocalAgentChatMessage\(\{[\s\S]*materializeTarget: \(\) => materializeLocalChatTarget\(targetConversation\.id\)/,
   );
-  assert.match(targetedBlock, /materializedState,\s*setSendingState: false/);
+  assert.doesNotMatch(targetedBlock, /await materializeLocalChatTarget\(targetConversation\.id\)/);
+  assert.ok(
+    sharedSendBlock.indexOf('setCanonicalSessionState((current) => appendOptimisticCanonicalMessage')
+      < sharedSendBlock.indexOf('await materializeTarget()'),
+    'the visible user turn must be committed before background runtime loading can delay or fail',
+  );
+  assert.match(
+    sharedSendBlock,
+    /if \(materializeTarget\) resolvedMaterializedState = await materializeTarget\(\);[\s\S]*appendOptimisticOutboundMessage/,
+  );
   assert.match(materializer, /await fetchDesktopChatState\(sessionId\)/);
   assert.match(materializer, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/);
   assert.match(chatMessages, /if \(materializedState\) setDesktopChatState\(materializedState\)/);

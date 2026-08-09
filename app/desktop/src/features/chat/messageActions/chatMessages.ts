@@ -730,6 +730,7 @@ export function useChatMessageActions({
     contextMessages,
     clearDraftSessionIds,
     materializedState,
+    materializeTarget,
     setSendingState,
   }: {
     targetConversationId: string;
@@ -741,6 +742,7 @@ export function useChatMessageActions({
     contextMessages: DesktopChatContextMessage[];
     clearDraftSessionIds: string[];
     materializedState?: DesktopChatState | null;
+    materializeTarget?: () => Promise<DesktopChatState | null>;
     setSendingState: boolean;
   }) => {
     if (setSendingState) setIsDesktopChatSending(true);
@@ -760,15 +762,9 @@ export function useChatMessageActions({
       [],
       quote,
     );
+    let resolvedMaterializedState = materializedState;
 
     setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-    setDesktopChatState((current) => {
-      const currentTargetsConversation = current?.activeSessionId === targetConversationId
-        && current.activeSession.id === targetConversationId;
-      const baseState = materializedState && !currentTargetsConversation ? materializedState : current;
-      if (!baseState) return current;
-      return appendOptimisticOutboundMessage(baseState, targetConversationId, previewText, text, attachments, sentAt, [], quote);
-    });
     setComposerDrafts((current: ComposerDraftState) => (
       clearDraftSessionIds.reduce(
         (next, sessionId) => updateScopeDraft(next, 'chat', sessionId, ''),
@@ -779,6 +775,16 @@ export function useChatMessageActions({
     resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
 
     try {
+      if (materializeTarget) resolvedMaterializedState = await materializeTarget();
+      setDesktopChatState((current) => {
+        const currentTargetsConversation = current?.activeSessionId === targetConversationId
+          && current.activeSession.id === targetConversationId;
+        const baseState = resolvedMaterializedState && !currentTargetsConversation
+          ? resolvedMaterializedState
+          : current;
+        if (!baseState) return current;
+        return appendOptimisticOutboundMessage(baseState, targetConversationId, previewText, text, attachments, sentAt, [], quote);
+      });
       await persistCanonicalUserMessage(preparedCanonicalMessage);
       const turn = await startDesktopChatMessage(targetConversationId, text, attachmentPaths, null, contextMessages);
       const sentCanonicalMessage = sentPreparedCanonicalUserMessage(preparedCanonicalMessage);
@@ -1022,14 +1028,6 @@ export function useChatMessageActions({
       return;
     }
     localChatSendInFlightRef.current = { sessionId: targetConversation.id };
-    let materializedState: DesktopChatState | null = null;
-    try {
-      materializedState = await materializeLocalChatTarget(targetConversation.id);
-    } catch (error) {
-      localChatSendInFlightRef.current = null;
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to load that Agent session. Try again.');
-      return;
-    }
     await sendLocalAgentChatMessage({
       targetConversationId: targetConversation.id,
       canonicalSessionId: targetConversation.canonicalSessionId ?? targetConversation.id,
@@ -1039,7 +1037,7 @@ export function useChatMessageActions({
       quote: activeChatQuote,
       contextMessages,
       clearDraftSessionIds: [targetConversation.id],
-      materializedState,
+      materializeTarget: () => materializeLocalChatTarget(targetConversation.id),
       setSendingState: false,
     });
     clearTargetDraft();

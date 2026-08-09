@@ -203,7 +203,7 @@ export function ChatCompanionWorkspace({
           messages: transcriptMessages,
           scrollRef: session.refs.transcriptScroll,
           scrollClassName:
-            'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5',
+            'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
           hasOlderMessages: Boolean(
             canonicalHistorySessionId
               && transcript.canonicalHasOlderBySessionId?.[

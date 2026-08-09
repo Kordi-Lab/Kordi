@@ -5,6 +5,7 @@ import { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from '@/kordi-app/
 import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopArtifactPreview, SessionArtifact } from '@/kordi-app/types';
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { artifactPreviewDocumentSource, type ArtifactPreviewMode } from './artifactPreviewDocument';
 
 type ArtifactInspectorProps = {
   isNativeShell: boolean;
@@ -107,8 +108,6 @@ function parseDelimitedRows(source: string, delimiter: ',' | '\t') {
   });
 }
 
-type ArtifactPreviewMode = 'panel' | 'rail' | 'window';
-
 const ARTIFACT_MARKDOWN_PREVIEW_CLASS = 'app-artifact-markdown-preview app-artifact-preview-opaque-surface text-[12px] leading-5 [&_p]:text-[12px] [&_p]:leading-5 [&_p]:text-[color:var(--utility-foreground)] [&_div]:text-[12px] [&_div]:leading-5 [&_blockquote]:text-[12px] [&_blockquote]:leading-5 [&_ul]:space-y-0.5 [&_ol]:space-y-0.5 [&_li]:space-y-0.5 [&_pre]:text-[10.5px] [&_pre]:leading-5';
 
 function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: string; delimiter: ',' | '\t'; mode?: ArtifactPreviewMode }) {
@@ -159,7 +158,7 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
       <div data-artifact-preview-mode={mode} className={cn('bg-[color:var(--app-transcript-bg)] p-3', mode !== 'panel' && 'min-h-full')}>
         <iframe
           title={`${fileNameFromPath(preview.path)} preview`}
-          srcDoc={source}
+          srcDoc={artifactPreviewDocumentSource(source, mode)}
           sandbox="allow-forms allow-popups allow-scripts"
           className={cn('w-full rounded-[16px] border border-white/10 bg-white text-slate-950', mode === 'window' ? 'h-[calc(100vh-10rem)] min-h-[36rem]' : mode === 'rail' ? 'h-full min-h-[28rem]' : 'h-[32rem]')}
         />

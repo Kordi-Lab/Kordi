@@ -98,18 +98,23 @@ export function CompanionHeader({
 
   return (
     <div
-      className="app-page-header relative z-40 flex min-h-[84px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 pb-8 pt-2.5 active:cursor-grabbing"
+      className="app-page-header app-chat-pane-header relative z-40 flex shrink-0 cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
       draggable
       onDragStart={actions.onDragStart}
       onDragEnd={actions.onDragEnd}
       title={`Drag to move ${companionLabel(conversation)} left or right`}
       data-companion-side={side}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-col text-white">
-            <span className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6">Ask Agent · {conversation.name}</span>
-            <span data-chat-session-subtitle="true" className="text-[11px] leading-5 text-slate-400">Agent session</span>
+          <div className="flex min-w-0 w-full flex-col text-white">
+            <span
+              className="app-chat-pane-title-row min-w-0 w-full truncate text-[17px] font-semibold leading-6"
+              title={`Ask Agent · ${conversation.name}`}
+            >
+              Ask Agent · {conversation.name}
+            </span>
+            <span data-chat-session-subtitle="true" className="app-chat-pane-metadata-row text-[11px] leading-5 text-slate-400">Agent session</span>
           </div>
         </div>
       </div>
