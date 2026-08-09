@@ -85,7 +85,7 @@ export function WhatsNewDialog({
           </div>
           <button
             type="button"
-            className="app-button-quiet grid h-11 w-11 shrink-0 place-items-center rounded-[12px] p-0"
+            className="app-button-quiet grid h-9 w-9 shrink-0 place-items-center rounded-[10px] p-0"
             onClick={onDismiss}
             aria-label="Close What’s New"
           >
@@ -124,7 +124,7 @@ export function WhatsNewDialog({
           {release.changelogUrl && onOpenFullReleaseNotes ? (
             <button
               type="button"
-              className="app-transient-flat-action inline-flex min-h-11 items-center gap-2 rounded-[12px] px-3 text-[11.5px] font-semibold"
+              className="app-transient-flat-action app-whats-new-footer-action inline-flex items-center gap-2 rounded-[10px] px-3 font-semibold"
               onClick={onOpenFullReleaseNotes}
             >
               View full changelog
@@ -133,7 +133,7 @@ export function WhatsNewDialog({
           ) : <span />}
           <button
             type="button"
-            className="app-whats-new-continue min-h-11 rounded-[12px] px-5 text-[11.5px] font-semibold"
+            className="app-whats-new-continue app-whats-new-footer-action rounded-[10px] px-4 font-semibold"
             onClick={onDismiss}
             autoFocus
           >

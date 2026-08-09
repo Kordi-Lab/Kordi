@@ -33,11 +33,11 @@
           <div class="visual-underlay" aria-hidden="true">Composer and transcript content<br />remain behind this selector</div>
           <div class="visual-caption">Composer menu</div>
           <div class="app-transient-surface app-compact-model-menu app-composer-model-menu-layer visual-surface visual-model-menu">
-            <div class="visual-surface-title">Model</div>
-            <button class="app-composer-popover-item visual-row">GPT-5.6-Luna</button>
-            <button class="app-composer-popover-item app-composer-popover-item-active visual-row">GPT-5.6-Sol <span>selected</span></button>
-            <button class="app-composer-popover-item visual-row">Claude Opus 4.8</button>
-            <button class="app-composer-popover-item visual-row">Gemini 3 Pro</button>
+            <div class="app-transient-identity-title visual-surface-title">Model</div>
+            <button class="app-composer-popover-item app-transient-action-row visual-row"><span class="app-transient-action-label">GPT-5.6-Luna</span></button>
+            <button class="app-composer-popover-item app-composer-popover-item-active app-transient-action-row visual-row"><span class="app-transient-action-label">GPT-5.6-Sol</span><span class="app-transient-metadata">selected</span></button>
+            <button class="app-composer-popover-item app-transient-action-row visual-row"><span class="app-transient-action-label">Claude Opus 4.8</span></button>
+            <button class="app-composer-popover-item app-transient-action-row visual-row"><span class="app-transient-action-label">Gemini 3 Pro</span></button>
           </div>
         </section>
 
@@ -45,8 +45,41 @@
           <div class="visual-underlay" aria-hidden="true"># research notes<br />last message · 12 minutes ago</div>
           <div class="visual-caption">Context menu</div>
           <div class="app-transient-surface app-modal-panel visual-surface visual-context-menu">
-            <button class="app-transient-flat-action visual-row">Rename…</button>
-            <button class="app-transient-row app-transient-row-danger visual-row">Remove chat…</button>
+            <button class="app-transient-flat-action app-transient-action-row visual-row"><span class="app-transient-action-label">Rename…</span></button>
+            <button class="app-transient-row app-transient-row-danger app-transient-action-row visual-row"><span class="app-transient-action-label">Remove chat…</span></button>
+          </div>
+        </section>
+
+        <section class="visual-stage" data-visual-surface="attachment-actions">
+          <div class="visual-underlay" aria-hidden="true">Screenshot-2026-08-09.png<br />Image attachment preview</div>
+          <div class="visual-caption">Attachment actions</div>
+          <div class="app-transient-surface visual-surface visual-attachment-menu">
+            <button class="app-transient-flat-action app-transient-action-row visual-compact-action">
+              <svg class="app-transient-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
+              <span class="app-transient-action-label">Download</span>
+            </button>
+            <button class="app-transient-flat-action app-transient-action-row visual-compact-action" data-visual-long-action>
+              <svg class="app-transient-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5m0-5-8 8M19 14v5H5V5h5" /></svg>
+              <span class="app-transient-action-label">Open with local application on this device</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="visual-stage" data-visual-surface="contact-card">
+          <div class="visual-underlay" aria-hidden="true">Group member avatar<br />Participant identity details</div>
+          <div class="visual-caption">Identity card</div>
+          <div class="app-transient-surface visual-surface visual-contact-card">
+            <button class="visual-contact-close" aria-label="Close">×</button>
+            <span class="visual-contact-avatar" aria-hidden="true">TO</span>
+            <div class="visual-contact-copy">
+              <strong class="app-transient-identity-title">Tomorrow Liu</strong>
+              <span class="app-transient-metadata">Group participant</span>
+              <span class="app-transient-metadata">Kordi ID · tomorrow</span>
+            </div>
+            <button class="app-transient-flat-action app-transient-action-row visual-contact-action">
+              <svg class="app-transient-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 19a6 6 0 0 0-12 0m6-8a4 4 0 1 0 0-8m10 5v6m3-3h-6" /></svg>
+              <span class="app-transient-action-label">Add contact</span>
+            </button>
           </div>
         </section>
 

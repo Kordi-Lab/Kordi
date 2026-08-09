@@ -143,24 +143,24 @@ function CloudAppInviteCopyRow({ onCreateInvite }: { onCreateInvite: () => Promi
   return (
     <button
       type="button"
-      className="app-button-quiet app-transient-flat-action flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium disabled:cursor-wait disabled:opacity-70"
+      className="app-button-quiet app-transient-flat-action app-transient-action-row flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left disabled:cursor-wait disabled:opacity-70"
       onClick={() => { void handleCopy(); }}
       disabled={status === 'copying'}
       aria-label="Copy personal invitation link"
     >
       <span className="flex min-w-0 items-center gap-2.5">
-        <Share2 className="app-transient-muted h-4 w-4 shrink-0" aria-hidden="true" />
+        <Share2 className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
         <span className="min-w-0">
-          <span className="block truncate">Invite to Kordi</span>
-          <span className="app-transient-muted mt-0.5 block truncate text-[11px] font-normal" aria-live="polite">
+          <span className="app-transient-action-label block truncate">Invite to Kordi</span>
+          <span className="app-transient-metadata mt-0.5 block truncate" aria-live="polite">
             {detail}
           </span>
         </span>
       </span>
       {status === 'copied' ? (
-        <Check className="h-4 w-4 shrink-0 text-emerald-300" aria-hidden="true" />
+        <Check className="app-transient-action-icon text-emerald-300" aria-hidden="true" />
       ) : (
-        <Copy className="app-transient-subtle h-4 w-4 shrink-0" aria-hidden="true" />
+        <Copy className="app-transient-action-icon app-transient-subtle" aria-hidden="true" />
       )}
     </button>
   );
@@ -345,15 +345,15 @@ export function SidebarProfileControl({
               ) : null}
               <button
                 type="button"
-                className="app-button-quiet app-transient-flat-action flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium"
+                className="app-button-quiet app-transient-flat-action app-transient-action-row flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left"
                 onClick={() => openCloudAccountDialog('auth')}
                 aria-label="Open account settings"
               >
                 <span className="flex items-center gap-2.5">
-                  <Settings className="app-transient-muted h-4 w-4" />
-                  Settings
+                  <Settings className="app-transient-action-icon app-transient-muted" />
+                  <span className="app-transient-action-label">Settings</span>
                 </span>
-                <ChevronRightIcon className="app-transient-subtle h-4 w-4" />
+                <ChevronRightIcon className="app-transient-action-icon app-transient-subtle" />
               </button>
             </div>
           </div>,

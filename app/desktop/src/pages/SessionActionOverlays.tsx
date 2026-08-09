@@ -49,7 +49,7 @@ export function SessionContextMenu({
         {target.canRename !== false ? (
           <button
             type="button"
-            className="app-transient-flat-action w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition"
+            className="app-transient-flat-action app-transient-action-row w-full rounded-[12px] px-3 py-2 text-left transition"
             onClick={() => {
               onClose();
               onRename({
@@ -64,7 +64,7 @@ export function SessionContextMenu({
         ) : null}
         <button
           type="button"
-          className="app-transient-row app-transient-row-danger mt-1 w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition"
+          className="app-transient-row app-transient-row-danger app-transient-action-row mt-1 w-full rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => {
             onClose();
             onDelete({

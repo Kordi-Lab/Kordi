@@ -261,7 +261,7 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
   }
 
   if (variant === 'menu') {
-    const menuButtonClass = 'app-transient-row flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left text-[12px] transition disabled:cursor-not-allowed disabled:opacity-55';
+    const menuButtonClass = 'app-transient-row app-transient-action-row flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-55';
     return (
       <div className="flex min-w-[170px] flex-col gap-1">
         <button
@@ -271,8 +271,8 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
           className={menuButtonClass}
           aria-label={`Download ${attachment.name}`}
         >
-          <Download className="h-3.5 w-3.5" />
-          <span>{downloadedPath ? 'Download again' : 'Download'}</span>
+          <Download className="app-transient-action-icon" />
+          <span className="app-transient-action-label">{downloadedPath ? 'Download again' : 'Download'}</span>
         </button>
         {canOpen ? (
           <button
@@ -281,13 +281,13 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
             className={menuButtonClass}
             aria-label={`Open ${attachment.name} with local app`}
           >
-            <ExternalLink className="h-3.5 w-3.5" />
-            <span>Open with local app</span>
+            <ExternalLink className="app-transient-action-icon" />
+            <span className="app-transient-action-label">Open with local app</span>
           </button>
         ) : null}
-        {isDownloading ? <span className="app-transient-muted px-3 pb-1 text-[10px]">Downloading…</span> : null}
-        {downloadedPath && !isDownloading ? <span className="app-transient-muted px-3 pb-1 text-[10px]">Downloaded</span> : null}
-        {error ? <span className="app-error-text max-w-[190px] px-3 pb-1 text-[10px] text-rose-300">{error}</span> : null}
+        {isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloading…</span> : null}
+        {downloadedPath && !isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloaded</span> : null}
+        {error ? <span className="app-error-text app-transient-status max-w-[190px] px-2.5 pb-1 text-rose-300">{error}</span> : null}
       </div>
     );
   }

@@ -135,7 +135,7 @@ export function ComposerSlashMenu({
                   onSelect(item.value);
                 }}
                 className={cn(
-                  'app-transient-row flex w-full items-center gap-3 rounded-[12px] px-3 py-2 text-left text-[13px] transition',
+                  'app-transient-row app-transient-action-row flex w-full items-center gap-3 rounded-[12px] px-3 py-2 text-left transition',
                   active && 'app-transient-row-selected',
                 )}
               >
@@ -143,8 +143,8 @@ export function ComposerSlashMenu({
                   <Icon className={cn('h-4 w-4', active ? 'text-slate-100' : display.iconClassName)} />
                 </div>
                 <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                  <span className="shrink-0 font-medium">{item.label}</span>
-                  {item.detail ? <span className="app-transient-muted truncate text-[12px]">{item.detail}</span> : null}
+                  <span className="app-transient-action-label shrink-0">{item.label}</span>
+                  {item.detail ? <span className="app-transient-metadata truncate">{item.detail}</span> : null}
                 </div>
               </button>
             );
@@ -455,12 +455,12 @@ export function CompactComposerModelMenu({
       ref={menuRef}
       role="dialog"
       aria-label="Agent model"
-      className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] p-2.5 text-[12px] leading-[1.38]', menuThemeClass)}
+      className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] p-2.5', menuThemeClass)}
       style={menuStyle}
     >
       <div className="app-compact-model-menu-header mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold leading-5">Agent model</div>
+          <div className="app-transient-identity-title truncate">Agent model</div>
         </div>
         <button
           type="button"
@@ -473,10 +473,10 @@ export function CompactComposerModelMenu({
       </div>
       <div className="space-y-1">
         <details className="app-compact-model-menu-section">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
+          <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">provider</span>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="app-transient-muted min-w-0 truncate text-[11px]">{providerSummary}</span>
+              <span className="app-transient-metadata min-w-0 truncate">{providerSummary}</span>
               <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
             </span>
           </summary>
@@ -489,25 +489,25 @@ export function CompactComposerModelMenu({
                   type="button"
                   onClick={() => chooseProvider(option)}
                   className={cn(
-                    'app-composer-popover-item app-compact-model-menu-option flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    'app-composer-popover-item app-compact-model-menu-option app-transient-action-row flex w-full items-center justify-between px-3 py-2 text-left',
                     isSelected ? 'app-composer-popover-item-active' : '',
                   )}
                 >
                   <span className="min-w-0">
                     <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                    {option.detail ? <span className="app-transient-muted block truncate text-[11px]">{lowerComposerLabel(option.detail)}</span> : null}
+                    {option.detail ? <span className="app-transient-metadata block truncate">{lowerComposerLabel(option.detail)}</span> : null}
                   </span>
-                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'app-transient-muted' : 'text-transparent')}>selected</span>
+                  <span className={cn('shrink-0', isSelected ? 'app-transient-metadata' : 'app-transient-status text-transparent')}>selected</span>
                 </button>
               );
             })}
           </div>
         </details>
         <details className="app-compact-model-menu-section">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
+          <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">model</span>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="app-transient-muted min-w-0 truncate text-[11px]">{modelSummary}</span>
+              <span className="app-transient-metadata min-w-0 truncate">{modelSummary}</span>
               <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
             </span>
           </summary>
@@ -520,25 +520,25 @@ export function CompactComposerModelMenu({
                   type="button"
                   onClick={() => chooseModel(option)}
                   className={cn(
-                    'app-composer-popover-item app-compact-model-menu-option flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    'app-composer-popover-item app-compact-model-menu-option app-transient-action-row flex w-full items-center justify-between px-3 py-2 text-left',
                     isSelected ? 'app-composer-popover-item-active' : '',
                   )}
                 >
                   <span className="min-w-0">
                     <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                    {option.detail ? <span className="app-transient-muted block truncate text-[11px]">{lowerComposerLabel(option.detail)}</span> : null}
+                    {option.detail ? <span className="app-transient-metadata block truncate">{lowerComposerLabel(option.detail)}</span> : null}
                   </span>
-                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'app-transient-muted' : 'text-transparent')}>selected</span>
+                  <span className={cn('shrink-0', isSelected ? 'app-transient-metadata' : 'app-transient-status text-transparent')}>selected</span>
                 </button>
               );
             })}
           </div>
         </details>
         <details className="app-compact-model-menu-section">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
+          <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">thinking level</span>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="app-transient-muted min-w-0 truncate text-[11px]">{thinkingSummary}</span>
+              <span className="app-transient-metadata min-w-0 truncate">{thinkingSummary}</span>
               <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
             </span>
           </summary>
@@ -551,12 +551,12 @@ export function CompactComposerModelMenu({
                   type="button"
                   onClick={() => setStagedThinking(value)}
                   className={cn(
-                    'app-composer-popover-item app-compact-model-menu-option flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    'app-composer-popover-item app-compact-model-menu-option app-transient-action-row flex w-full items-center justify-between px-3 py-2 text-left',
                     isSelected ? 'app-composer-popover-item-active' : '',
                   )}
                 >
                   <span>{lowerComposerLabel(composerThinkingLabel(value))}</span>
-                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'app-transient-muted' : 'text-transparent')}>selected</span>
+                  <span className={cn('shrink-0', isSelected ? 'app-transient-metadata' : 'app-transient-status text-transparent')}>selected</span>
                 </button>
               );
             })}
@@ -565,8 +565,8 @@ export function CompactComposerModelMenu({
       </div>
       <div className="mt-2 flex items-center justify-end gap-1">
         <span className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={cancel} className="app-button-quiet rounded-[10px] px-3 py-1.5 text-[12px] font-medium">cancel</button>
-          <button type="button" onClick={save} className="app-button-primary rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition">save</button>
+          <button type="button" onClick={cancel} className="app-button-quiet app-transient-action-row rounded-[10px] px-3 py-1.5">cancel</button>
+          <button type="button" onClick={save} className="app-button-primary app-transient-action-row rounded-[10px] px-3 py-1.5 font-semibold transition">save</button>
         </span>
       </div>
     </div>

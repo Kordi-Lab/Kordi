@@ -56,6 +56,29 @@ test('shared surface classes own popup, row, state, focus, scroll, and fallback 
   assert.ok(indexCss.indexOf("theme-auth-gate.css") < indexCss.indexOf("transient-surfaces.css"), 'shared contract should be the final style layer');
 });
 
+test('compact transient typography uses shared rem-based action and identity roles', () => {
+  assert.match(transientCss, /\.app-transient-action-row\s*\{[\s\S]*?min-height:\s*1\.875rem;[\s\S]*?font-size:\s*0\.625rem;[\s\S]*?line-height:\s*0\.875rem;/);
+  assert.match(transientCss, /\.app-transient-action-label\s*\{[\s\S]*?overflow-wrap:\s*anywhere;/);
+  assert.match(transientCss, /\.app-transient-action-icon\s*\{[\s\S]*?width:\s*0\.8125rem;[\s\S]*?height:\s*0\.8125rem;/);
+  assert.match(transientCss, /\.app-transient-identity-title\s*\{[\s\S]*?font-size:\s*0\.6875rem;[\s\S]*?line-height:\s*0\.9375rem;/);
+  assert.match(transientCss, /\.app-transient-metadata,[\s\S]*?\.app-transient-status\s*\{[\s\S]*?font-size:\s*0\.5625rem;[\s\S]*?line-height:\s*0\.75rem;/);
+
+  const compactFamilies: Array<[string, RegExp]> = [
+    ['kordi-app/components/transcriptAttachments.tsx', /app-transient-action-row/],
+    ['pages/MemberContactProfilePopover.tsx', /app-transient-identity-title[\s\S]*app-transient-metadata[\s\S]*app-transient-action-row/],
+    ['pages/SessionActionOverlays.tsx', /app-transient-action-row/],
+    ['kordi-app/components/composer.tsx', /app-transient-action-row[\s\S]*app-transient-metadata/],
+    ['kordi-app/components/composerAttachments.tsx', /app-transient-action-row/],
+    ['pages/chatsPage.companionHeader.tsx', /app-transient-action-row/],
+    ['pages/workspaceSidebar.profile.tsx', /app-transient-action-row[\s\S]*app-transient-metadata/],
+    ['kordi-app/components/transcript.tsx', /app-transient-action-row/],
+  ];
+
+  for (const [path, role] of compactFamilies) {
+    assert.match(readSource(path), role, `${path} should use compact semantic type roles`);
+  }
+});
+
 test('representative popup families opt into the shared transient contract', () => {
   const surfaceInventory: Array<[string, RegExp]> = [
     ['pages/ChatCreateDialog.tsx', /app-transient-surface app-frosted-popover app-chat-create-popover/],

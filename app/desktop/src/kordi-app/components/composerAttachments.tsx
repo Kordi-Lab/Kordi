@@ -261,10 +261,10 @@ export function ComposerAttachmentAddMenu({
         type="button"
         role="menuitem"
         onClick={openFilePicker}
-        className="app-composer-attachment-add-menu-action app-transient-flat-action flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left font-medium"
+        className="app-composer-attachment-add-menu-action app-transient-flat-action app-transient-action-row flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left"
       >
-        <FolderOpen className="h-3 w-3 shrink-0" strokeWidth={1.8} aria-hidden="true" />
-        <span>Files and folders</span>
+        <FolderOpen className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
+        <span className="app-transient-action-label">Files and folders</span>
       </button>
     </div>
   );

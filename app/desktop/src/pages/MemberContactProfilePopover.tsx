@@ -149,13 +149,13 @@ export function MemberContactProfileContent({
           presenceLabel={`${participant.name} is ${resolvedPresence === 'online' ? 'online' : 'offline'}`}
         />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-semibold">{participant.name}</div>
-          <div className="mt-0.5 truncate text-[10px] text-[color:var(--utility-muted-text)]">
+          <div className="app-transient-identity-title truncate">{participant.name}</div>
+          <div className="app-transient-metadata mt-0.5 truncate">
             {[roleLabel, relationshipLabel].filter(Boolean).join(' · ')}
           </div>
           {identityDetail ? (
             <div
-              className="mt-0.5 truncate text-[9.5px] leading-3 text-[color:var(--utility-muted-text)]"
+              className="app-transient-metadata mt-0.5 truncate"
               title={profileDetail ? identityDetail : accountId}
             >
               {identityDetail}
@@ -178,7 +178,7 @@ export function MemberContactProfileContent({
             <span className="sr-only">{isOpeningMessage ? 'Opening…' : 'Send message'}</span>
           </button>
         ) : isExistingContact && !isSelf ? (
-          <div className="flex shrink-0 items-center gap-1.5 px-1.5 py-1 text-[10px] text-[color:var(--utility-muted-text)]">
+          <div className="app-transient-metadata flex shrink-0 items-center gap-1.5 px-1.5 py-1">
             <Check className="h-3 w-3" aria-hidden="true" />
             In contacts
           </div>
@@ -188,20 +188,20 @@ export function MemberContactProfileContent({
           <button
             type="button"
             data-member-contact-action="add"
-            className="app-transient-flat-action app-group-management-action-row inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[10.5px] font-medium transition"
+            className="app-transient-flat-action app-transient-action-row app-group-management-action-row inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-2.5 py-1 transition"
             disabled={requestState === 'sending' || requestPending}
             onClick={() => { void requestContact(); }}
           >
             {requestState === 'sending'
-              ? <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-              : <UserPlus className="h-3.5 w-3.5" />}
-            {requestState === 'sending' ? 'Sending…' : requestPending ? 'Request pending' : 'Add contact'}
+              ? <LoaderCircle className="app-transient-action-icon animate-spin motion-reduce:animate-none" />
+              : <UserPlus className="app-transient-action-icon" />}
+            <span className="app-transient-action-label">{requestState === 'sending' ? 'Sending…' : requestPending ? 'Request pending' : 'Add contact'}</span>
           </button>
         ) : null}
       </div>
 
       {requestError ? (
-        <p role="alert" className="mt-2 text-[10px] leading-4 text-rose-500">{requestError}</p>
+        <p role="alert" className="app-transient-status mt-2 text-rose-500">{requestError}</p>
       ) : null}
     </div>
   );

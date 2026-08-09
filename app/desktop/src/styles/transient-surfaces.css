@@ -76,6 +76,44 @@
   color: var(--app-transient-subtle-text) !important;
 }
 
+/* Compact transient type roles (issue #909). Menus and identity cards use
+ * these rem-based roles instead of inheriting dialog or transcript sizing. */
+.app-transient-action-row {
+  min-height: 1.875rem;
+  font-size: 0.625rem;
+  font-weight: 500;
+  line-height: 0.875rem;
+}
+
+.app-transient-action-label {
+  min-width: 0;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
+.app-transient-action-icon {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  flex: 0 0 auto;
+}
+
+.app-transient-identity-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 0.9375rem;
+}
+
+.app-transient-metadata,
+.app-transient-status {
+  font-size: 0.5625rem;
+  font-weight: 450;
+  line-height: 0.75rem;
+}
+
+.app-transient-metadata {
+  color: var(--app-transient-muted-text) !important;
+}
+
 .app-transient-divider {
   border-color: var(--app-transient-divider) !important;
 }
