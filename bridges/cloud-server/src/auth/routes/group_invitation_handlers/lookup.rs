@@ -2,6 +2,49 @@ use super::*;
 
 type GroupControlRow = (String, String);
 
+fn is_authorized_self_leave(
+    previous: &GroupInvitationSnapshot,
+    next: &GroupInvitationSnapshot,
+    control: &StoredGroupControlEnvelope,
+    message_sender_account_id: &str,
+) -> bool {
+    if control.kind != "group-update"
+        || control.member_leaves.len() != 1
+        || control.member_leaves[0].account_id.trim() != message_sender_account_id
+        || next.group_title != previous.group_title
+        || next
+            .participants
+            .iter()
+            .any(|participant| participant.account_id == message_sender_account_id)
+    {
+        return false;
+    }
+    let Some(previous_actor) = previous
+        .participants
+        .iter()
+        .find(|participant| participant.account_id == message_sender_account_id)
+    else {
+        return false;
+    };
+    let Some(actor) = clean_participant(control.actor.clone()) else {
+        return false;
+    };
+    if actor.role != previous_actor.role
+        || next.participants.len() + 1 != previous.participants.len()
+    {
+        return false;
+    }
+    previous
+        .participants
+        .iter()
+        .filter(|participant| participant.account_id != message_sender_account_id)
+        .all(|participant| {
+            next.participants.iter().any(|candidate| {
+                candidate.account_id == participant.account_id && candidate.role == participant.role
+            })
+        })
+}
+
 pub(super) fn authoritative_snapshot_from_rows(
     rows: Vec<GroupControlRow>,
     group_id: &str,
@@ -44,6 +87,9 @@ pub(super) fn authoritative_snapshot_from_rows(
                 participant.account_id == message_sender_account_id && participant.role == "admin"
             });
         if !sender_is_admin {
+            if is_authorized_self_leave(previous, &next, &control, &message_sender_account_id) {
+                *previous = next;
+            }
             continue;
         }
         let creator_remains = next
@@ -61,6 +107,13 @@ pub(super) fn authoritative_snapshot_from_rows(
                     .find(|current| current.account_id == participant.account_id)
                     .map(|current| current.role != participant.role)
                     .unwrap_or(participant.role == "admin")
+            }) || previous.participants.iter().any(|participant| {
+                participant.role == "admin"
+                    && participant.account_id != message_sender_account_id
+                    && !next
+                        .participants
+                        .iter()
+                        .any(|candidate| candidate.account_id == participant.account_id)
             });
             if non_creator_changed_roles {
                 continue;

@@ -50,6 +50,14 @@ struct StoredGroupControlEnvelope {
     actor: GroupInvitationParticipant,
     #[serde(default)]
     participants: Vec<GroupInvitationParticipant>,
+    #[serde(default)]
+    member_leaves: Vec<StoredGroupMemberLeave>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredGroupMemberLeave {
+    account_id: String,
 }
 
 struct GroupInvitationRecord {
@@ -171,8 +179,19 @@ fn invitation_snapshot_from_control(
     }
 
     let actor = clean_participant(control.actor)?;
+    let actor_left = control.kind == "group-update"
+        && control
+            .member_leaves
+            .iter()
+            .any(|leave| leave.account_id.trim() == message_sender_account_id)
+        && !control
+            .participants
+            .iter()
+            .any(|participant| participant.account_id.trim() == message_sender_account_id);
     let mut participants_by_account = HashMap::new();
-    participants_by_account.insert(actor.account_id.clone(), actor);
+    if !actor_left {
+        participants_by_account.insert(actor.account_id.clone(), actor);
+    }
     for participant in control.participants {
         let Some(participant) = clean_participant(participant) else {
             continue;
@@ -181,7 +200,8 @@ fn invitation_snapshot_from_control(
             .entry(participant.account_id.clone())
             .or_insert(participant);
     }
-    if participants_by_account.len() < 2 || participants_by_account.len() > GROUP_INVITE_MAX_MEMBERS
+    if participants_by_account.is_empty()
+        || participants_by_account.len() > GROUP_INVITE_MAX_MEMBERS
     {
         return None;
     }

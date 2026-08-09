@@ -86,6 +86,56 @@ fn encoded_transition(
     )
 }
 
+fn encoded_membership_transition(
+    kind: &str,
+    actor_account_id: &str,
+    actor_role: &str,
+    participants: &[(&str, &str)],
+    member_leaves: &[&str],
+) -> String {
+    let participants = participants
+        .iter()
+        .map(|(account_id, role)| {
+            serde_json::json!({
+                "accountId": account_id,
+                "displayName": account_id,
+                "avatarUrl": null,
+                "role": role,
+            })
+        })
+        .collect::<Vec<_>>();
+    let member_leaves = member_leaves
+        .iter()
+        .map(|account_id| {
+            serde_json::json!({
+                "eventId": format!("leave_{account_id}"),
+                "accountId": account_id,
+                "createdAtMs": 1_786_000_000_000_i64,
+            })
+        })
+        .collect::<Vec<_>>();
+    let envelope = serde_json::json!({
+        "kind": kind,
+        "groupId": "session:group:team",
+        "groupSpaceId": "session:group:team",
+        "groupTitle": "Product Team",
+        "createdByAccountId": "acct_creator",
+        "actor": {
+            "accountId": actor_account_id,
+            "displayName": actor_account_id,
+            "avatarUrl": null,
+            "role": actor_role,
+        },
+        "participants": participants,
+        "memberLeaves": member_leaves,
+        "message": null,
+    });
+    format!(
+        "{CLOUD_GROUP_CONTROL_PREFIX}{}",
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&envelope).unwrap())
+    )
+}
+
 #[test]
 fn group_invite_tokens_are_opaque_and_hash_only() {
     let first = new_group_invite_token();
@@ -195,6 +245,115 @@ fn non_creator_admin_cannot_promote_another_admin() {
     )
     .expect("authoritative snapshot");
     assert!(!snapshot_allows_group_invitation(&snapshot, "acct_member"));
+}
+
+#[test]
+fn non_creator_admin_cannot_remove_another_admin() {
+    let initial = encoded_membership_transition(
+        "group-invite",
+        "acct_creator",
+        "admin",
+        &[
+            ("acct_creator", "admin"),
+            ("acct_admin", "admin"),
+            ("acct_peer_admin", "admin"),
+            ("acct_member", "person"),
+        ],
+        &[],
+    );
+    let forged_removal = encoded_membership_transition(
+        "group-update",
+        "acct_admin",
+        "admin",
+        &[
+            ("acct_creator", "admin"),
+            ("acct_admin", "admin"),
+            ("acct_member", "person"),
+        ],
+        &["acct_peer_admin"],
+    );
+    let snapshot = authoritative_snapshot_from_rows(
+        vec![
+            ("acct_creator".to_string(), initial),
+            ("acct_admin".to_string(), forged_removal),
+        ],
+        "session:group:team",
+        "session:group:team",
+        "Product Team",
+    )
+    .expect("authoritative snapshot");
+    assert!(snapshot_allows_group_invitation(
+        &snapshot,
+        "acct_peer_admin"
+    ));
+}
+
+#[test]
+fn group_admin_can_remove_a_non_admin_member() {
+    let initial = encoded_membership_transition(
+        "group-invite",
+        "acct_creator",
+        "admin",
+        &[
+            ("acct_creator", "admin"),
+            ("acct_admin", "admin"),
+            ("acct_member", "person"),
+        ],
+        &[],
+    );
+    let removal = encoded_membership_transition(
+        "group-update",
+        "acct_admin",
+        "admin",
+        &[("acct_creator", "admin"), ("acct_admin", "admin")],
+        &["acct_member"],
+    );
+    let snapshot = authoritative_snapshot_from_rows(
+        vec![
+            ("acct_creator".to_string(), initial),
+            ("acct_admin".to_string(), removal),
+        ],
+        "session:group:team",
+        "session:group:team",
+        "Product Team",
+    )
+    .expect("authoritative snapshot");
+    assert!(!snapshot
+        .participants
+        .iter()
+        .any(|participant| participant.account_id == "acct_member"));
+}
+
+#[test]
+fn ordinary_member_self_leave_is_authoritative() {
+    let initial = encoded_membership_transition(
+        "group-invite",
+        "acct_creator",
+        "admin",
+        &[("acct_creator", "admin"), ("acct_member", "person")],
+        &[],
+    );
+    let self_leave = encoded_membership_transition(
+        "group-update",
+        "acct_member",
+        "person",
+        &[("acct_creator", "admin")],
+        &["acct_member"],
+    );
+    let snapshot = authoritative_snapshot_from_rows(
+        vec![
+            ("acct_creator".to_string(), initial),
+            ("acct_member".to_string(), self_leave),
+        ],
+        "session:group:team",
+        "session:group:team",
+        "Product Team",
+    )
+    .expect("authoritative snapshot");
+    assert!(!snapshot
+        .participants
+        .iter()
+        .any(|participant| participant.account_id == "acct_member"));
 }
 
 #[test]
