@@ -61,7 +61,7 @@ export function MainChatHeader({
   supportReport,
 }: MainHeaderProps) {
   return (
-    <div className="app-page-header relative flex min-h-[84px] shrink-0 items-start justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 pb-8 pt-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
+    <div className="app-page-header app-chat-pane-header relative flex shrink-0 items-start justify-between gap-3">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {layout.showSessionToggle ? (
           <button
@@ -79,7 +79,7 @@ export function MainChatHeader({
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
-          <div className="app-page-header-title-row flex min-w-0 items-center text-white">
+          <div className="app-page-header-title-row app-chat-pane-title-row flex min-w-0 items-center text-white">
             {rename.enabled ? (
               rename.editing ? (
                 <input
@@ -98,11 +98,11 @@ export function MainChatHeader({
                   onBlur={rename.commit}
                   autoFocus
                   data-kordi-window-drag="false"
-                  className="min-w-0 w-full max-w-[32rem] rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
+                  className="min-w-0 w-full rounded-lg bg-transparent px-1 py-0.5 text-left text-[17px] font-semibold text-white outline-none ring-1 ring-white/10 placeholder:text-slate-500 focus:ring-white/20"
                   placeholder="Session name"
                 />
               ) : (
-                <h2 className="min-w-0 w-full max-w-[32rem] text-[17px] font-semibold leading-6">
+                <h2 className="min-w-0 w-full text-[17px] font-semibold leading-6">
                   <button
                     type="button"
                     onDoubleClick={rename.begin}
@@ -125,7 +125,7 @@ export function MainChatHeader({
               )
             ) : (
               <h2
-                className="min-w-0 w-full max-w-[32rem] truncate text-[17px] font-semibold leading-6"
+                className="min-w-0 w-full truncate text-[17px] font-semibold leading-6"
                 data-kordi-window-drag="false"
                 title={conversation.name}
               >
@@ -135,7 +135,7 @@ export function MainChatHeader({
           </div>
           {metadata.subtitle || metadata.forkSourceSessionId ? (
             <div
-              className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"
+              className="app-chat-pane-metadata-row flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"
               data-chat-session-metadata="true"
             >
               {metadata.subtitle ? (

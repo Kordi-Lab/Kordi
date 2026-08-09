@@ -300,7 +300,7 @@ export function ChatsPage({
       <div
         ref={splitContainerRef}
         className={cn(
-          'relative min-h-0 flex-1 overflow-hidden',
+          'app-chat-split-workspace relative min-h-0 flex-1 overflow-hidden',
           chatSplitGridColumns && 'grid',
           isDraggingCompanion && 'ring-1 ring-sky-300/25',
           companionDropPreviewSide === 'left' && 'bg-gradient-to-r from-sky-400/10 via-transparent to-transparent',
@@ -308,6 +308,7 @@ export function ChatsPage({
         )}
         style={chatSplitGridColumns ? { gridTemplateColumns: chatSplitGridColumns } : undefined}
         data-chat-companion-side={showCompanionPane ? companionSide : 'folded'}
+        data-chat-split-workspace="true"
         data-chat-companion-drop-preview={companionDropPreviewSide ?? undefined}
         onDragOver={handleCompanionDragOver}
         onDrop={handleCompanionDrop}

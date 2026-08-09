@@ -275,7 +275,7 @@ export function ChatMainWorkspace({
                 messages: presentation.messages,
                 scrollRef: transcript.chatTranscriptScrollRef,
                 scrollClassName:
-                  'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4',
+                  'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
                 hasOlderMessages: Boolean(
                   canonicalHistorySessionId
                     && transcript.canonicalHasOlderBySessionId?.[

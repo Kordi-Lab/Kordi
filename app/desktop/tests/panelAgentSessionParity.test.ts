@@ -209,7 +209,7 @@ test('split-pane Agent bottom controls stay compact without changing composer he
   const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
 
   assert.match(composerSource, /compact\?: boolean/, 'ComposerModelControls should expose a compact density for narrow panes');
-  assert.match(side, /scrollClassName:\s*'min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5'/, 'side-panel transcript should flex like the main pane while preserving overflow containment so composer bottoms stay aligned during resize');
+  assert.match(side, /scrollClassName:\s*'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain'/, 'side-panel transcript should flex like the main pane while the shared split-pane inset keeps composer bottoms aligned during resize');
   assert.match(side, /data-companion-send-row="true"[\s\S]*flex-nowrap/, 'side-panel send row should stay single-line so resizing does not change composer height');
   assert.match(side, /data-companion-model-controls="true"[\s\S]*flex-nowrap/, 'side-panel model controls should stay single-line instead of wrapping under the input');
   assert.match(side, /<ComposerModelControls[\s\S]*compact=\{true\}/, 'side-panel model controls should use compact button widths');

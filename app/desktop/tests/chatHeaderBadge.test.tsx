@@ -87,7 +87,9 @@ test('chat header title text does not flex-grow away from fork or action pills',
 test('renameable chat title owns the available line before truncating its text', () => {
   const source = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /<h2 className="min-w-0 w-full max-w-\[32rem\]/);
+  assert.match(source, /<h2 className="min-w-0 w-full text-\[17px\]/);
+  assert.doesNotMatch(source, /<h2 className="[^"]*max-w-/);
+  assert.doesNotMatch(source, /<input[\s\S]*?className="[^"]*max-w-\[32rem\]/);
   assert.match(source, /app-button-quiet -ml-1 inline-block max-w-full truncate/);
   assert.doesNotMatch(source, /app-button-quiet -ml-1 block w-full truncate/);
 });
@@ -98,8 +100,9 @@ test('chat headers reserve a compact second row for quiet metadata', () => {
 
   assert.doesNotMatch(source, /min-h-\[112px\]/);
   assert.doesNotMatch(source, /min-h-\[100px\]/);
-  assert.equal((source.match(/min-h-\[84px\]/g) ?? []).length, 2, 'main and Ask Agent headers should share the compact height');
-  assert.match(shell, /\.app-right-detail-page-content\s*{[^}]*padding:\s*12px clamp\(20px, 4vw, 44px\) 40px;/s);
+  assert.equal((source.match(/app-page-header app-chat-pane-header/g) ?? []).length, 2, 'main and Ask Agent headers should share one geometry contract');
+  assert.match(shell, /\.app-chat-split-workspace\s*{[^}]*--app-chat-pane-header-height:\s*5\.75rem;/s);
+  assert.match(shell, /\.app-right-detail-page-content\s*{[^}]*padding:\s*var\(--app-chat-pane-detail-top\) var\(--app-chat-pane-detail-inline\) 2\.5rem;/s);
   assert.match(source, /data-chat-session-metadata="true"/);
   assert.match(source, /data-chat-session-subtitle="true"/);
   assert.doesNotMatch(source, /data-chat-session-subtitle-pill="true"/);
@@ -108,8 +111,8 @@ test('chat headers reserve a compact second row for quiet metadata', () => {
   assert.match(source, /icon: Info/);
   assert.match(source, /icon: FolderOpen/);
   assert.match(source, /icon: CheckCircle2/);
-  assert.match(source, /mt-0\.5 flex min-w-0 items-center gap-1 text-\[11px\] leading-5 text-slate-400/);
-  assert.match(source, /data-chat-session-subtitle="true"[^>]*className="text-\[11px\] leading-5 text-slate-400">Agent session/);
+  assert.equal((source.match(/app-chat-pane-metadata-row/g) ?? []).length, 2);
+  assert.match(source, /data-chat-session-subtitle="true"[^>]*className="app-chat-pane-metadata-row[^>]*>Agent session/);
 });
 
 test('Ask Agent remains a flat utility action while chat details move into destination subtitles', () => {
