@@ -144,7 +144,7 @@ test('side-panel Agent composer exposes the same visible attachment trigger and 
   assert.match(side, /<ComposerAttachmentAddMenu[\s\S]*inputRef=\{attachmentInputRef\}/, 'side-panel composer should expose the shared attachment add menu');
   assert.match(side, /<Plus\b/, 'shared attachment control should use a plus trigger');
   assert.match(side, /data-composer-attachment-add-menu="true"/, 'shared attachment control should expose an anchored menu');
-  assert.match(side, /<span>Files and folders<\/span>/, 'attachment menu should expose the currently supported picker action');
+  assert.match(side, /<span className="app-transient-action-label">Files and folders<\/span>/, 'attachment menu should expose the currently supported picker action');
   assert.match(side, /aria-label="Add attachment"/, 'side-panel attachment control should use the same accessible label as main composer');
   assert.match(side, /data-companion-attachment-control="true"/, 'side-panel attachment control should be identifiable for parity regression coverage');
   assert.match(side, /data-companion-composer-frame="true"[\s\S]*shrink-0 px-5 pb-4 pt-3/, 'side-panel composer should use the same outer frame spacing as the main composer so input blocks align');

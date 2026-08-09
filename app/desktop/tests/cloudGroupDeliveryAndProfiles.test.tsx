@@ -56,14 +56,15 @@ test('cloud group helpers split cloud recipients from bridge recipients', () => 
   assert.deepEqual(nonCloudGroupTargets(targets), [{ hostId: 'local-bridge', nodeId: 'node_c' }]);
 });
 
-test('cloud group profile hydration preserves large stored signup avatar images', () => {
+test('cloud group profile hydration preserves public Kordi IDs and large stored signup avatar images', () => {
   const avatarUrl = `data:image/png;base64,${'a'.repeat(100_000)}`;
   const participants = cloudGroupParticipantsWithProfiles(
     [{ accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' }],
-    [{ accountId: 'acct_peer', displayName: 'Korditest', avatarUrl }],
+    [{ accountId: 'acct_peer', kordiId: '123456789', displayName: 'Korditest', avatarUrl }],
   );
 
   assert.equal(participants[0]?.displayName, 'Korditest');
+  assert.equal(participants[0]?.kordiId, '123456789');
   assert.equal(participants[0]?.avatarUrl, avatarUrl);
 });
 
@@ -71,6 +72,7 @@ test('cloud group self identity uses the stable cloud account id and uploaded av
   const request = cloudGroupIdentityRequest(
     {
       accountId: 'acct_self',
+      kordiId: '987654321',
       displayName: 'Self',
       avatarUrl: 'data:image/jpeg;base64,self',
       role: 'self',
@@ -89,6 +91,7 @@ test('cloud group self identity uses the stable cloud account id and uploaded av
   assert.equal(request.id, 'human:acct_self');
   assert.equal(request.humanId, 'acct_self');
   assert.equal(request.avatarKey, 'acct_self');
+  assert.equal((request.metadata as Record<string, unknown>).kordiId, '987654321');
 });
 
 test('cloud group contact participant does not synthesize generated avatar urls', () => {
@@ -98,7 +101,7 @@ test('cloud group contact participant does not synthesize generated avatar urls'
     initials: 'BO',
     classType: 'other-users',
     entityType: 'user',
-    subtitle: 'acct_b',
+    subtitle: '@246813579',
     collaborationSources: [CLOUD_HOST_SENTINEL],
     status: 'online',
     discoverableOn: [CLOUD_HOST_SENTINEL],
@@ -113,4 +116,5 @@ test('cloud group contact participant does not synthesize generated avatar urls'
   });
 
   assert.equal(participant?.avatarUrl, null);
+  assert.equal(participant?.kordiId, '246813579');
 });

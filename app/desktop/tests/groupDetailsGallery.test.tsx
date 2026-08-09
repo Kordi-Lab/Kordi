@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { createElement } from 'react';
@@ -269,8 +270,52 @@ test('existing group contact profile offers Send message instead of a passive co
   const actionClass = /data-member-contact-action="message" class="([^"]+)"/.exec(markup)?.[1] ?? '';
   assert.ok(actionClass);
   assert.doesNotMatch(actionClass, /\bw-full\b/);
-  assert.match(actionClass, /\bh-8\b/);
-  assert.match(actionClass, /\bw-8\b/);
+  assert.match(actionClass, /\bh-7\b/);
+  assert.match(actionClass, /\bw-7\b/);
+});
+
+test('member profile popover is content-dense, preserves identity text, and dismisses outside', () => {
+  const source = readFileSync(
+    new URL('../src/pages/MemberContactProfilePopover.tsx', import.meta.url),
+    'utf8',
+  );
+  const markup = renderToStaticMarkup(createElement(MemberContactProfileContent, {
+    participant: {
+      id: 'human:tom-cohen',
+      kordiId: '123456789',
+      humanId: 'acct_tom_cohen',
+      name: 'Tom Cohen with a longer display name',
+      kind: 'human',
+      role: 'person',
+      source: 'bridge',
+      avatarKey: 'tom-cohen',
+    },
+    contacts: [],
+    metadataMode: 'kordi-handle',
+    onAddContact: () => undefined,
+  }));
+
+  assert.match(source, /const width = Math\.min\(256, viewportWidth - margin \* 2\);/);
+  assert.match(source, /fixed inset-0 z-\[75\][\s\S]*aria-label="Close member profile"[\s\S]*onClick=\{onClose\}/);
+  assert.doesNotMatch(source, /app-group-management-close absolute right-2 top-2/);
+  assert.doesNotMatch(source, /className=\{cn\('pr-8'/);
+  assert.match(markup, /app-transient-identity-title break-words/);
+  assert.match(markup, /app-transient-metadata mt-0\.5 break-words/);
+  assert.match(markup, /Tom Cohen with a longer display name/);
+  assert.match(markup, /@123456789/);
+  assert.doesNotMatch(markup, /Group member|Contact|Request pending/);
+  assert.equal(markup.match(/data-member-contact-secondary-line/g)?.length, 1);
+});
+
+test('group management member actions use Kordi handles and dismiss without a close control', () => {
+  const source = readFileSync(
+    new URL('../src/pages/GroupDetailsDialog.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /data-group-member-actions[\s\S]*metadataMode="kordi-handle"/);
+  assert.match(source, /target\.closest\('\[data-group-member-grid-item\], \[data-group-member-actions\]'\)/);
+  assert.doesNotMatch(source, /aria-label=\{`Close \$\{selectedMember\.name\} actions`\}/);
 });
 
 test('GroupDetailsDialog treats the signed-in account id as an alias of the local self identity', () => {

@@ -19,7 +19,7 @@ button {
 
 .visual-page {
   width: 1440px;
-  min-height: 1040px;
+  min-height: 1490px;
   padding: 34px 42px 42px;
   background: var(--app-native-main-bg);
   color: var(--app-transient-text);
@@ -102,6 +102,8 @@ button {
 .visual-popover,
 .visual-model-menu,
 .visual-context-menu,
+.visual-attachment-menu,
+.visual-contact-card,
 .visual-confirmation,
 .visual-auth,
 .visual-updater,
@@ -110,6 +112,65 @@ button {
   border: 1px solid var(--app-transient-border);
   border-radius: 18px;
   padding: 12px;
+}
+
+.visual-attachment-menu {
+  width: 254px;
+  padding: 6px;
+}
+
+.visual-compact-action,
+.visual-contact-action {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 0.625rem;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+}
+
+.visual-compact-action svg,
+.visual-contact-action svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.visual-contact-card {
+  display: grid;
+  width: 256px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.7rem;
+}
+
+.visual-contact-avatar {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--app-transient-icon-bg);
+  color: var(--app-transient-text);
+  font-size: 0.625rem;
+  font-weight: 650;
+}
+
+.visual-contact-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.visual-contact-action {
+  width: auto;
+  white-space: nowrap;
 }
 
 .visual-surface-title {
@@ -184,8 +245,15 @@ button {
 }
 
 .visual-model-menu .visual-row {
+  min-height: 1.875rem;
+  padding: 0.45rem 0.6rem;
   background: transparent;
   color: var(--app-transient-text);
+}
+
+.visual-context-menu .visual-row {
+  min-height: 1.875rem;
+  padding: 0.45rem 0.6rem;
 }
 
 .visual-model-menu .app-composer-popover-item-active {

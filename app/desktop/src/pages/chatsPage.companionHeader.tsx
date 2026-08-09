@@ -142,7 +142,7 @@ export function CompanionHeader({
           <div
             data-side-chat-options-menu="true"
             data-side-chat-root-menu="true"
-            className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-[18px] border p-1.5 text-[13px] font-medium"
+            className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-[18px] border p-1.5"
           >
             {menu.sessionListOpen ? (
               <div
@@ -152,7 +152,7 @@ export function CompanionHeader({
               >
                 <button
                   type="button"
-                  className="app-transient-row app-transient-flat-action mb-1 flex w-full shrink-0 items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition"
+                  className="app-transient-row app-transient-flat-action app-transient-action-row mb-1 flex w-full shrink-0 items-center gap-2 rounded-[12px] px-2 py-1.5 text-left transition"
                   onClick={actions.onCloseSessionList}
                 >
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -189,7 +189,7 @@ export function CompanionHeader({
                           data-side-chat-current-session={isCurrent ? 'true' : undefined}
                           data-side-chat-open-in-main={option.openInMain ? 'true' : undefined}
                           className={cn(
-                            'app-transient-row flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition',
+                            'app-transient-row app-transient-action-row flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left transition',
                             isCurrent && 'app-transient-row-selected',
                             !isCurrent && 'app-transient-flat-action',
                             option.openInMain && 'cursor-default opacity-60',

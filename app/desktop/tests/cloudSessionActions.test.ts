@@ -29,6 +29,30 @@ test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves 
   assert.equal(shouldUseCloudSessionAction('550e8400-e29b-41d4-a716-446655440000'), false);
 });
 
+test('canonical group participants retain the public Kordi ID from identity metadata', () => {
+  const state: CanonicalSessionState = {
+    profile: { id: 'profile:me', humanIdentityId: 'human:me' },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', humanId: 'acct_me', metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'cloud', humanId: 'acct_peer', metadata: { kordiId: '123456789' }, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: 'session:group:kordi-id', kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [
+      { sessionId: 'session:group:kordi-id', identityId: 'human:me', role: 'self', state: 'active', addedAtMs: 1 },
+      { sessionId: 'session:group:kordi-id', identityId: 'human:peer', role: 'person', state: 'active', addedAtMs: 1 },
+    ],
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const participants = buildCanonicalIndexes(state).canonicalParticipantsBySessionId.get('session:group:kordi-id') ?? [];
+  assert.equal(participants.find((participant) => participant.id === 'human:peer')?.kordiId, '123456789');
+});
+
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
   const source = readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
   const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));

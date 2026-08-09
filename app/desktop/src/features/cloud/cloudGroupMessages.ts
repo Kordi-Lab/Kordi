@@ -7,16 +7,15 @@ import type {
   CanonicalSession,
   CanonicalSessionMessage,
   DesktopCollaborationSessionParticipant,
-  UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
+import { normalizeKordiId } from './kordiId';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
@@ -24,12 +23,15 @@ export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-up
 
 export type CloudGroupParticipant = {
   accountId: string;
+  kordiId?: string | null;
   displayName: string;
   avatarUrl: string | null;
   role?: 'admin' | 'person' | 'self' | string | null;
 };
 
 export type CloudGroupActor = CloudGroupParticipant;
+
+export { cloudGroupIdentityRequest } from './cloudGroupIdentity';
 
 export type CloudGroupMemberJoin = {
   eventId: string;
@@ -361,16 +363,20 @@ function uniqueByAccount(
     const avatarUrl = avatarUrlForParticipant(participant.avatarUrl);
     const existing = byAccountId.get(accountId);
     if (existing) {
+      const kordiId = existing.kordiId || normalizeKordiId(participant.kordiId);
       byAccountId.set(accountId, {
         ...existing,
+        ...(kordiId ? { kordiId } : {}),
         displayName: existing.displayName === accountId ? displayName : existing.displayName,
         avatarUrl: existing.avatarUrl || avatarUrl,
         role: existing.role ?? participant.role ?? 'person',
       });
       continue;
     }
+    const kordiId = normalizeKordiId(participant.kordiId);
     byAccountId.set(accountId, {
       accountId,
+      ...(kordiId ? { kordiId } : {}),
       displayName,
       avatarUrl,
       role: participant.role ?? 'person',
@@ -395,14 +401,16 @@ export function cloudGroupOutgoingParticipantSnapshot(input: {
 
 export function cloudGroupParticipantsWithProfiles(
   participants: CloudGroupParticipant[],
-  profiles: Pick<CloudPublicProfile, 'accountId' | 'displayName' | 'avatarUrl'>[],
+  profiles: Pick<CloudPublicProfile, 'accountId' | 'kordiId' | 'displayName' | 'avatarUrl'>[],
 ): CloudGroupParticipant[] {
   const profileByAccountId = new Map(profiles.map((profile) => [profile.accountId, profile]));
   return uniqueByAccount(participants.map((participant) => {
     const profile = profileByAccountId.get(participant.accountId);
     if (!profile) return participant;
+    const kordiId = normalizeKordiId(profile.kordiId) || normalizeKordiId(participant.kordiId);
     return {
       ...participant,
+      ...(kordiId ? { kordiId } : {}),
       displayName: cleanText(profile.displayName) || participant.displayName,
       avatarUrl: storedCloudProfileAvatarUrl(profile.avatarUrl) || participant.avatarUrl,
     };
@@ -712,8 +720,10 @@ export function isCloudGroupControlMessage(body: string): boolean {
 
 export function cloudGroupNormalizeParticipant(participant: CloudGroupParticipant): CloudGroupParticipant {
   const accountId = cleanText(participant.accountId);
+  const kordiId = normalizeKordiId(participant.kordiId);
   return {
     accountId: isCloudAccountId(accountId) ? accountId : '',
+    ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(participant.displayName) || accountId || 'Cloud user',
     avatarUrl: syncableCloudGroupAvatarUrl(participant.avatarUrl),
     role: participant.role ?? 'person',
@@ -721,8 +731,10 @@ export function cloudGroupNormalizeParticipant(participant: CloudGroupParticipan
 }
 
 export function cloudGroupSelfParticipant(account: CloudAccount, role: CloudGroupParticipant['role'] = 'admin'): CloudGroupParticipant {
+  const kordiId = normalizeKordiId(account.kordiId);
   return {
     accountId: account.accountId,
+    ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(account.displayName) || cleanText(account.primaryEmail) || account.accountId,
     avatarUrl: syncableCloudGroupAvatarUrl(account.avatarUrl),
     role,
@@ -732,8 +744,10 @@ export function cloudGroupSelfParticipant(account: CloudAccount, role: CloudGrou
 export function cloudGroupParticipantFromContact(contact: Contact, role: CloudGroupParticipant['role'] = 'person'): CloudGroupParticipant | null {
   const accountId = cleanText(contact.sourceHumanId) || cleanText(contact.sourceParticipantId) || cleanText(contact.id.replace(/^cloud:/, ''));
   if (!accountId) return null;
+  const kordiId = normalizeKordiId(contact.detail) || normalizeKordiId(contact.subtitle);
   return {
     accountId,
+    ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(contact.name) || cleanText(contact.owner) || accountId,
     avatarUrl: syncableCloudGroupAvatarUrl(contact.profileImageUrl),
     role,
@@ -748,8 +762,10 @@ export function cloudGroupParticipantFromConversationParticipant(
   if (isSelf) return cloudGroupSelfParticipant(account, participant.role || 'self');
   const accountId = cleanText(participant.humanId) || cleanText(participant.sourceIdentityId);
   if (!accountId) return null;
+  const kordiId = normalizeKordiId(participant.kordiId);
   return {
     accountId,
+    ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(participant.name) || accountId,
     avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl),
     role: participant.role || 'person',
@@ -1284,29 +1300,4 @@ export function firstRequiredCloudGroupSendFailure(
   return results.find((result, index): result is PromiseRejectedResult => (
     result.status === 'rejected' && required.has(cleanText(recipientAccountIds[index]))
   ));
-}
-
-export function cloudGroupIdentityRequest(
-  participant: CloudGroupParticipant,
-  account: CloudAccount,
-  _localHumanIdentityId: string,
-): UpsertCanonicalIdentityRequest {
-  const isSelf = participant.accountId === account.accountId;
-  const id = `human:${participant.accountId}`;
-  return {
-    id,
-    kind: 'human',
-    displayName: participant.displayName,
-    source: isSelf ? 'local' : 'cloud',
-    sourceHostId: isSelf ? null : CLOUD_HOST_SENTINEL,
-    sourceIdentityId: isSelf ? null : participant.accountId,
-    humanId: participant.accountId,
-    agentId: null,
-    avatarKey: cloudAvatarSeedForAccount(participant.accountId, participant.avatarUrl),
-    profileImageUrl: cloudAvatarImageUrl(participant.avatarUrl),
-    metadata: {
-      accountId: participant.accountId,
-      cloudGroupParticipant: true,
-    },
-  };
 }

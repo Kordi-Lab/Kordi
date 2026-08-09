@@ -24,6 +24,8 @@ const release: WhatsNewRelease = {
   changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta12',
 };
 
+const whatsNewCss = readFileSync(new URL('../src/styles/whats-new.css', import.meta.url), 'utf8');
+
 test('What’s New renders concise highlights and both clear actions', () => {
   const markup = renderToStaticMarkup(createElement(WhatsNewDialog, {
     release,
@@ -43,6 +45,19 @@ test('What’s New renders concise highlights and both clear actions', () => {
   assert.doesNotMatch(markup, /#893/);
   assert.doesNotMatch(markup, /release-signal|signal-node|aria-pressed/);
   assert.equal((markup.match(/role="listitem"/g) ?? []).length, 2);
+  assert.equal((markup.match(/app-whats-new-footer-action/g) ?? []).length, 2);
+});
+
+test('What’s New sizes to its content while keeping a bounded, scrollable viewport', () => {
+  assert.match(whatsNewCss, /--app-whats-new-width:/);
+  assert.match(whatsNewCss, /--app-whats-new-max-height:/);
+  assert.match(whatsNewCss, /height:\s*auto;/);
+  assert.match(whatsNewCss, /max-height:\s*var\(--app-whats-new-max-height\);/);
+  assert.match(whatsNewCss, /\.app-whats-new-layout\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;/);
+  assert.match(whatsNewCss, /\.app-whats-new-content\s*\{[\s\S]*?align-content:\s*start;[\s\S]*?overflow-y:\s*auto;/);
+  assert.match(whatsNewCss, /\.app-whats-new-footer-action\s*\{[\s\S]*?min-height:\s*2\.25rem;[\s\S]*?font-size:\s*0\.6875rem;/);
+  assert.doesNotMatch(whatsNewCss, /height:\s*var\(--app-whats-new-size\)/);
+  assert.doesNotMatch(whatsNewCss, /align-content:\s*center/);
 });
 
 test('What’s New focuses Continue, reports presentation, and dismisses with Escape', async () => {

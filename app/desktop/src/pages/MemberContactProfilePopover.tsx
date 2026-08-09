@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, LoaderCircle, MessageCircle, UserPlus, X } from 'lucide-react';
+import { Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
+import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Contact, ConversationParticipant } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -70,6 +71,7 @@ type MemberContactProfileContentProps = {
   participant: ConversationParticipant;
   contacts: Contact[];
   roleLabel?: string;
+  metadataMode?: 'relationship' | 'kordi-handle';
   presenceStatus?: string | null;
   isSelf?: boolean;
   onAddContact?: (accountId: string) => Promise<void> | void;
@@ -81,6 +83,7 @@ export function MemberContactProfileContent({
   participant,
   contacts,
   roleLabel = 'Group member',
+  metadataMode = 'relationship',
   presenceStatus,
   isSelf = false,
   onAddContact,
@@ -103,6 +106,12 @@ export function MemberContactProfileContent({
   const relationshipLabel = isSelf ? 'You' : isExistingContact ? 'Contact' : requestPending ? 'Request pending' : '';
   const profileDetail = readableContactDetail(contact, accountId);
   const identityDetail = profileDetail;
+  const kordiHandle = formatKordiHandle(participant.kordiId)
+    || formatKordiHandle(contact?.detail)
+    || formatKordiHandle(contact?.subtitle);
+  const secondaryLine = metadataMode === 'kordi-handle'
+    ? kordiHandle
+    : [roleLabel, relationshipLabel].filter(Boolean).join(' · ');
 
   useEffect(() => {
     setRequestState('idle');
@@ -144,18 +153,20 @@ export function MemberContactProfileContent({
           isSelf={isSelf}
           name={participant.name}
           imageUrl={participant.profileImageUrl}
-          className="h-10 w-10 border border-white/10"
+          className="h-9 w-9 border border-white/10"
           presenceStatus={resolvedPresence}
           presenceLabel={`${participant.name} is ${resolvedPresence === 'online' ? 'online' : 'offline'}`}
         />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-semibold">{participant.name}</div>
-          <div className="mt-0.5 truncate text-[10px] text-[color:var(--utility-muted-text)]">
-            {[roleLabel, relationshipLabel].filter(Boolean).join(' · ')}
-          </div>
-          {identityDetail ? (
+          <div className="app-transient-identity-title break-words">{participant.name}</div>
+          {secondaryLine ? (
+            <div className="app-transient-metadata mt-0.5 break-words" data-member-contact-secondary-line>
+              {secondaryLine}
+            </div>
+          ) : null}
+          {metadataMode === 'relationship' && identityDetail ? (
             <div
-              className="mt-0.5 truncate text-[9.5px] leading-3 text-[color:var(--utility-muted-text)]"
+              className="app-transient-metadata mt-0.5 break-all"
               title={profileDetail ? identityDetail : accountId}
             >
               {identityDetail}
@@ -166,7 +177,7 @@ export function MemberContactProfileContent({
           <button
             type="button"
             data-member-contact-action="message"
-            className="app-member-contact-icon-action app-transient-flat-action inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] p-0 transition"
+            className="app-member-contact-icon-action app-transient-flat-action inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] p-0 transition"
             disabled={isOpeningMessage}
             onClick={() => { void openMessage(); }}
             aria-label={`${isOpeningMessage ? 'Opening conversation with' : 'Send message to'} ${participant.name}`}
@@ -178,7 +189,7 @@ export function MemberContactProfileContent({
             <span className="sr-only">{isOpeningMessage ? 'Opening…' : 'Send message'}</span>
           </button>
         ) : isExistingContact && !isSelf ? (
-          <div className="flex shrink-0 items-center gap-1.5 px-1.5 py-1 text-[10px] text-[color:var(--utility-muted-text)]">
+          <div className="app-transient-metadata flex shrink-0 items-center gap-1.5 px-1.5 py-1">
             <Check className="h-3 w-3" aria-hidden="true" />
             In contacts
           </div>
@@ -188,20 +199,20 @@ export function MemberContactProfileContent({
           <button
             type="button"
             data-member-contact-action="add"
-            className="app-transient-flat-action app-group-management-action-row inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[10.5px] font-medium transition"
+            className="app-transient-flat-action app-transient-action-row app-group-management-action-row inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] px-2 py-1 transition"
             disabled={requestState === 'sending' || requestPending}
             onClick={() => { void requestContact(); }}
           >
             {requestState === 'sending'
-              ? <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-              : <UserPlus className="h-3.5 w-3.5" />}
-            {requestState === 'sending' ? 'Sending…' : requestPending ? 'Request pending' : 'Add contact'}
+              ? <LoaderCircle className="app-transient-action-icon animate-spin motion-reduce:animate-none" />
+              : <UserPlus className="app-transient-action-icon" />}
+            <span className="app-transient-action-label">{requestState === 'sending' ? 'Sending…' : requestPending ? 'Request pending' : 'Add contact'}</span>
           </button>
         ) : null}
       </div>
 
       {requestError ? (
-        <p role="alert" className="mt-2 text-[10px] leading-4 text-rose-500">{requestError}</p>
+        <p role="alert" className="app-transient-status mt-2 text-rose-500">{requestError}</p>
       ) : null}
     </div>
   );
@@ -228,11 +239,11 @@ export function MemberContactProfilePopover({
   }, [onClose]);
 
   if (typeof document === 'undefined') return null;
-  const width = 280;
   const margin = 12;
   const gap = 8;
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
+  const width = Math.min(256, viewportWidth - margin * 2);
   const left = anchorRect.right + gap + width <= viewportWidth - margin
     ? anchorRect.right + gap
     : Math.max(margin, anchorRect.left - width - gap);
@@ -252,19 +263,11 @@ export function MemberContactProfilePopover({
       <section
         role="dialog"
         aria-label={`${contentProps.participant.name} profile`}
-        className="app-transient-surface app-frosted-popover fixed z-[80] rounded-[18px] p-3 shadow-[var(--app-shadow-float)]"
+        className="app-transient-surface app-frosted-popover fixed z-[80] rounded-[16px] p-2.5 shadow-[var(--app-shadow-float)]"
         style={{ left, top, width }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
-          className="app-button-quiet app-group-management-close absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-[9px] p-0"
-          aria-label="Close member profile"
-          onClick={onClose}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-        <MemberContactProfileContent {...contentProps} className={cn('pr-8', contentProps.className)} />
+        <MemberContactProfileContent {...contentProps} metadataMode="kordi-handle" />
       </section>
     </>,
     document.body,

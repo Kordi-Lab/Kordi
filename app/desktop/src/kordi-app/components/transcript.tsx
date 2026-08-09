@@ -363,12 +363,12 @@ function MessageContextMenuAction({ icon, label, action, onClick }: { icon: Reac
       type="button"
       role="menuitem"
       data-message-context-menu-action={action}
-      className="app-transient-flat-action app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] transition"
+      className="app-transient-flat-action app-transient-action-row app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left font-normal transition"
       style={messageContextMenuTextStyle}
       onClick={onClick}
     >
       <span className="grid h-4 w-4 shrink-0 place-items-center" aria-hidden="true">{icon}</span>
-      <span>{label}</span>
+      <span className="app-transient-action-label">{label}</span>
     </button>
   );
 }
