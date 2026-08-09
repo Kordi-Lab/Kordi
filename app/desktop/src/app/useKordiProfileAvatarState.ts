@@ -15,7 +15,7 @@ import {
   getPersistedLocalAgentAvatarSeed,
   setLocalAgentAvatarSeed,
   setLocalProfileAvatarSeed,
-} from '@/kordi-app/components/IdentityAvatar';
+} from '@/kordi-app/components/avatarIdentity';
 import { setActiveLocalProfileIdentity } from '@/kordi-app/components/localProfileIdentity';
 import type {
   CanonicalSessionState,

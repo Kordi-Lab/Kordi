@@ -29,7 +29,8 @@ import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/feat
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
-import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
+import { IdentityAvatar, type IdentityAvatarKind } from './IdentityAvatar';
+import { useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from './avatarIdentity';
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
 import { AttachmentPreview } from './transcriptAttachments';
@@ -50,7 +51,6 @@ import type {
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
-
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
 }

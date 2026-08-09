@@ -3,7 +3,8 @@ import { Bot, CheckCircle2, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/avatarIdentity';
 import type { ConversationParticipant, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';

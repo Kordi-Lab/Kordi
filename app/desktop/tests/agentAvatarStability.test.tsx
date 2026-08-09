@@ -10,7 +10,7 @@ import {
 import {
   getPersistedLocalAgentAvatarSeed,
   setLocalAgentAvatarSeed,
-} from '../src/kordi-app/components/IdentityAvatar';
+} from '../src/kordi-app/components/avatarIdentity';
 
 test('agent avatar override follows a canonical seed migration without overwriting a newer upload', () => {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {

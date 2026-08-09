@@ -29,7 +29,7 @@ import { buildParticipantSpaces, collapseBlankConversationShells, ensureSelfPart
 import {
   createTranscriptReferenceStabilizer,
 } from '@/features/chat/transcriptReferenceStability';
-import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/avatarIdentity';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
@@ -641,7 +641,7 @@ export function useWorkspaceViewModels({
     }
 
     return Array.from(byId.values());
-  }, [desktopCollaborationState?.hosts, desktopChatState?.localAgent, isNativeShell]);
+  }, [desktopCollaborationState?.hosts, desktopChatState?.localAgent, isNativeShell, resolvedLocalAgentAvatarSeed, resolvedLocalAgentProfileImageUrl]);
 
   const addableContacts = useMemo<Contact[]>(() => {
     if (!isNativeShell) return [];
@@ -692,7 +692,7 @@ export function useWorkspaceViewModels({
     }
 
     return Array.from(byId.values()).sort((left, right) => left.name.localeCompare(right.name));
-  }, [desktopCollaborationState?.hosts, isNativeShell, resolvedLocalAgentAvatarSeed, resolvedLocalAgentProfileImageUrl]);
+  }, [desktopCollaborationState?.hosts, isNativeShell]);
 
   const localAgentCollaborationReachoutsByAgentId = useMemo(() => {
     const byAgentId = new Map<string, Agent['collaborationReachouts']>();

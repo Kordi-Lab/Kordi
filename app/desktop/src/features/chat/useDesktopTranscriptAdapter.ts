@@ -1,6 +1,6 @@
 import { useCallback, type MutableRefObject } from 'react';
 
-import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/avatarIdentity';
 import { firstPersonPossessiveLabel, selfDisplayName } from '@/lib/identityLabels';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 

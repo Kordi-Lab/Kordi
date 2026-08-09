@@ -2,7 +2,8 @@ import { memo, useEffect, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
-import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalProfileAvatarSeed, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/avatarIdentity';
 import type { DesktopCollaborationIdentitySnapshot, DesktopCollaborationOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';

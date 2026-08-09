@@ -3,7 +3,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 import { SettingsValueControl } from '@/kordi-app/components';
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
-import { useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { useLocalProfileAvatarSeed } from '@/kordi-app/components/avatarIdentity';
 import type { SettingsSection } from '@/kordi-app/data/settings';
 import type {
   DesktopAuthState,
