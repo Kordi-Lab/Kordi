@@ -84,6 +84,13 @@ test('Kordi Support uses a dedicated server-side OpenAI API key secret', async (
   );
 });
 
+test('unpublished updater verification tolerates duplicate attach logs only', async () => {
+  const deploy = await readFile(deployScriptPath, 'utf8');
+
+  assert.match(deploy, /\[\[ ! "\$\{UPDATE_STATUS\}" =~ \^\(204\)\+\$ \]\]/);
+  assert.match(deploy, /expected unpublished updater status 204/);
+});
+
 test('product origin serves desktop compatibility routes without redirects', async () => {
   const caddyfile = await readFile(caddyfilePath, 'utf8');
   const portForwardService = await readFile(portForwardServicePath, 'utf8');

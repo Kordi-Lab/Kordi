@@ -135,7 +135,11 @@ echo legacy-manual-bootstrap-ready
 if [ "${EXPECT_UNPUBLISHED_RELEASE}" = "true" ]; then
     echo "[deploy] verifying unpublished beta channel returns 204"
     UPDATE_STATUS="$("${GCLOUD_SSH[@]}" --command "kubectl -n kordi-cloud run updater-${IMAGE_TAG} -i --rm --restart=Never --image=curlimages/curl:8.10.1 --quiet -- -sS -o /dev/null -w '%{http_code}' http://kordi-cloud-server.kordi-cloud.svc.cluster.local:17081/updates/desktop/darwin/aarch64/0.0.1-beta.5")"
-    if [ "${UPDATE_STATUS}" != "204" ]; then
+    # `kubectl run -i --rm` can print the completed pod's log twice when its
+    # initial attach races pod termination and falls back to log streaming.
+    # Accept one or more exact 204 reports, while still failing closed on any
+    # other output or status.
+    if [[ ! "${UPDATE_STATUS}" =~ ^(204)+$ ]]; then
         echo "[deploy] expected unpublished updater status 204, got ${UPDATE_STATUS}" >&2
         exit 1
     fi
