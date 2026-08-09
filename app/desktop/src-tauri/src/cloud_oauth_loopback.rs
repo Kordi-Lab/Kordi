@@ -8,6 +8,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 
+const KORDI_FAVICON_DATA_URL: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='10' r='9' fill='%231a1714' fill-opacity='.62'/%3E%3Ccircle cx='11' cy='22' r='9' fill='%231a1714' fill-opacity='.82'/%3E%3Ccircle cx='25' cy='22' r='9' fill='%231a1714'/%3E%3C/svg%3E";
+
 #[derive(Default)]
 pub struct CloudOAuthLoopbackState {
     pending: Mutex<HashMap<String, oneshot::Receiver<Result<String, String>>>>,
@@ -171,6 +173,7 @@ fn completion_page_html(request_id: &str) -> String {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
+  <link rel="icon" type="image/svg+xml" href="{favicon}" />
   <title>Kordi sign-in</title>
   <style>{style}</style>
 </head>
@@ -206,6 +209,7 @@ fn completion_page_html(request_id: &str) -> String {
 </html>"#,
         style = completion_page_css(),
         script = completion_page_script(request_id),
+        favicon = KORDI_FAVICON_DATA_URL,
     )
 }
 
@@ -332,7 +336,7 @@ fn completion_page_script(request_id: &str) -> String {
 
 #[cfg(test)]
 mod completion_page_tests {
-    use super::completion_page_html;
+    use super::{completion_page_html, KORDI_FAVICON_DATA_URL};
 
     #[test]
     fn renders_kordi_wordmark_and_boots_in_loading_state() {
@@ -351,6 +355,8 @@ mod completion_page_tests {
         );
 
         assert!(html.contains("<span>kordi</span>"));
+        assert!(html.contains("rel=\"icon\" type=\"image/svg+xml\""));
+        assert!(html.contains(KORDI_FAVICON_DATA_URL));
         assert_eq!(html.matches("<circle ").count(), 3);
         assert!(html.contains("&copy; Kordi 2026"));
         assert!(!html.contains("state-marker"));

@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 const APP_INVITE_TOKEN_PREFIX: &str = "kordi_ai_";
 const APP_INVITE_LIFETIME_DAYS: i64 = 7;
 const KORDI_HOMEPAGE_URL: &str = "https://kordi.ai/";
+const KORDI_FAVICON_URL: &str = "/assets/favicon.png";
 
 struct AppInvitationRecord {
     display_name: Option<String>,
@@ -175,6 +176,7 @@ pub(super) fn invitation_landing_document_with_open_action(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="512x512" href="{favicon_url}">
   <title>{escaped_title} · Kordi</title>
   <style>
     @font-face {{ font-family: "Marcellus"; src: url("/assets/fonts/marcellus-latin.woff2") format("woff2"); font-display: swap; }}
@@ -241,7 +243,8 @@ pub(super) fn invitation_landing_document_with_open_action(
     <footer class="wrap">&copy; Kordi 2026</footer>
   </div>
 </body>
-</html>"#
+</html>"#,
+        favicon_url = KORDI_FAVICON_URL,
     )
 }
 
@@ -277,7 +280,7 @@ pub(super) fn invitation_landing_html_with_open_action(
             ("cache-control", "no-store"),
             (
                 "content-security-policy",
-                "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             ),
             ("referrer-policy", "no-referrer"),
             ("x-content-type-options", "nosniff"),
