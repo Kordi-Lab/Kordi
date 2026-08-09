@@ -47,6 +47,10 @@ function cloudSelfAgentCreatedAtMs(message: CloudMessage): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
+function cloudSelfAgentRestoreDependencyRank(message: CloudMessage) {
+  return parseCloudAgentResponse(message.body) ? 1 : 0;
+}
+
 type CloudSelfAgentRestoreMessage = {
   message: CloudMessage;
   sessionId: string;
@@ -204,6 +208,8 @@ export function planCloudSelfAgentCanonicalSync({
     .sort((left, right) => (
       cloudSelfAgentCreatedAtMs(left)
       - cloudSelfAgentCreatedAtMs(right)
+      || cloudSelfAgentRestoreDependencyRank(left)
+      - cloudSelfAgentRestoreDependencyRank(right)
       || left.messageId.localeCompare(right.messageId)
     ));
   const normalizedMessages = sorted
