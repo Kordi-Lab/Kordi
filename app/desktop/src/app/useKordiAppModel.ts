@@ -19,6 +19,7 @@ export function useKordiAppModel({
     humanProfileImageUrl: foundation.profile.localProfileImageUrl,
     agent: foundation.profile.localAgentAvatarSeed,
     agentDisplayName: foundation.profile.localAgentDisplayName,
+    agentProfileImageUrl: foundation.profile.localAgentProfileImageUrl,
   });
   const workspace = useKordiWorkspaceState(foundation);
   const actions = useKordiAppActions({ foundation, workspace });

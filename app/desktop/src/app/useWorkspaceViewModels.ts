@@ -50,6 +50,11 @@ import type {
   SessionTaskActivity,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
+import {
+  canonicalAvatarSeed,
+  canonicalLocalAgentAvatarSeed,
+  localAgentConversationAvatarFields,
+} from './viewModels/canonicalIdentityAvatars';
 import { applyCloudPresenceToConversations } from './viewModels/cloudConversationPresence';
 import {
   collaborationProfileImageUrl,
@@ -73,25 +78,6 @@ import {
 } from './viewModels/helpers';
 
 const EMPTY_DESKTOP_SESSION_IDS: ReadonlySet<string> = new Set();
-
-function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
-  const id = identityId?.trim();
-  if (!state || !id) return null;
-  return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
-}
-
-function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | undefined) {
-  if (!state) return null;
-  const activeAgentSeed = canonicalAvatarSeed(state, state.profile.activeAgentIdentityId);
-  if (activeAgentSeed) return activeAgentSeed;
-  const profileHumanIdentityId = state.profile.humanIdentityId?.trim();
-  if (!profileHumanIdentityId) return null;
-  return state.identities.find((identity) => (
-    identity.kind === 'agent'
-    && identity.source === 'local'
-    && identity.ownerIdentityId === profileHumanIdentityId
-  ))?.avatarKey?.trim() || null;
-}
 
 export { findCollaborationProjectForWorkspace } from './viewModels/helpers';
 export {
@@ -159,6 +145,8 @@ type UseWorkspaceViewModelsArgs = {
   cloudPresence?: CloudPresenceStore;
   cloudUnreadReady?: boolean;
   transientChatConversations?: Conversation[];
+  localAgentAvatarSeed?: string | null;
+  localAgentProfileImageUrl?: string | null;
 };
 
 export function useWorkspaceViewModels({
@@ -193,6 +181,8 @@ export function useWorkspaceViewModels({
   cloudPresence = {},
   cloudUnreadReady = true,
   transientChatConversations = [],
+  localAgentAvatarSeed: resolvedLocalAgentAvatarSeed,
+  localAgentProfileImageUrl: resolvedLocalAgentProfileImageUrl,
 }: UseWorkspaceViewModelsArgs) {
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
   const canonicalReadModel = useMemo(
@@ -270,12 +260,16 @@ export function useWorkspaceViewModels({
       ?? activeHost?.agents.find((agent) => agent.isDefault)
       ?? activeHost?.agents[0]
       ?? null;
-    const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
+    const localAgentAvatarSeed = resolvedLocalAgentAvatarSeed?.trim()
+      || canonicalLocalAgentAvatarSeed(canonicalSessionState)
       || activeHostAgent?.id
       || activeHost?.activeAgentId
       || activeHostAgent?.nodeId
       || activeHost?.nodeId
       || getLocalAgentAvatarSeed(localAgentLabel);
+    const localAgentProfileImageUrl = resolvedLocalAgentProfileImageUrl?.trim()
+      || activeHostAgent?.profileImageUrl?.trim()
+      || null;
     const localHumanAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
       || activeHost?.humanId
       || canonicalSessionState?.profile.id
@@ -350,28 +344,20 @@ export function useWorkspaceViewModels({
         collaborationSources: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft' : 'Agent chat',
-        participants: ['Me', 'My Kordi'],
-        participantAvatarSeeds: {
-          Me: localHumanAvatarSeed,
-          You: localHumanAvatarSeed,
-          [localAgentLabel]: localAgentAvatarSeed,
-          'My Kordi': localAgentAvatarSeed,
-          Kordi: localAgentAvatarSeed,
-        },
+        ...localAgentConversationAvatarFields(localAgentLabel, localHumanAvatarSeed, localAgentAvatarSeed, localAgentProfileImageUrl),
         messages,
         reflectionLessonArtifacts,
         previewLiveTurn: desktopLiveTurnsForViewModel[session.id] ?? null,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
         collaborationTarget: undefined,
-        avatarSeed: localAgentAvatarSeed,
         outreachThreads,
         forkedFromSessionId: session.forkedFromSessionId ?? null,
         forkedFromMessageId: session.forkedFromMessageId ?? null,
         _updatedAtMs: session.updatedAtMs,
       };
     });
-  }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, hydratedDesktopSessionIds, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
+  }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, hydratedDesktopSessionIds, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession, resolvedLocalAgentAvatarSeed, resolvedLocalAgentProfileImageUrl]);
 
   const localAgentCollaborationReachoutConversations = useMemo(() => {
     if (!isNativeShell) return [];
@@ -543,7 +529,12 @@ export function useWorkspaceViewModels({
         ?? host.agents.find((agent) => agent.isDefault)
         ?? host.agents[0]
         ?? null;
-      const localAgentAvatarSeed = activeHostAgent?.id || host.activeAgentId || activeHostAgent?.nodeId || host.nodeId || host.id;
+      const localAgentAvatarSeed = resolvedLocalAgentAvatarSeed?.trim()
+        || activeHostAgent?.id
+        || host.activeAgentId
+        || activeHostAgent?.nodeId
+        || host.nodeId
+        || host.id;
       byId.set(`collaboration-self:${host.id}`, {
         id: `collaboration-self:${host.id}`,
         name: host.displayName,
@@ -562,6 +553,7 @@ export function useWorkspaceViewModels({
         sourceHumanId: host.humanId,
         sourceAgentId: host.activeAgentId ?? undefined,
         avatarSeed: localAgentAvatarSeed,
+        profileImageUrl: resolvedLocalAgentProfileImageUrl?.trim() || activeHostAgent?.profileImageUrl?.trim() || null,
       });
 
       for (const peer of host.visiblePeers) {
@@ -700,7 +692,7 @@ export function useWorkspaceViewModels({
     }
 
     return Array.from(byId.values()).sort((left, right) => left.name.localeCompare(right.name));
-  }, [desktopCollaborationState?.hosts, isNativeShell]);
+  }, [desktopCollaborationState?.hosts, isNativeShell, resolvedLocalAgentAvatarSeed, resolvedLocalAgentProfileImageUrl]);
 
   const localAgentCollaborationReachoutsByAgentId = useMemo(() => {
     const byAgentId = new Map<string, Agent['collaborationReachouts']>();
@@ -744,6 +736,7 @@ export function useWorkspaceViewModels({
         if (seen.has(key)) continue;
         seen.add(key);
 
+        const representsActiveLocalAgent = agent.isActive || agent.id === host.activeAgentId;
         const runtimeAgent = agent.isActive ? localAgent : undefined;
         const collaborationReachouts = [
           ...(localAgentCollaborationReachoutsByAgentId.get(agent.id) ?? []),
@@ -796,7 +789,8 @@ export function useWorkspaceViewModels({
           isCollaborationDefault: agent.isDefault,
           isCollaborationActive: agent.isActive,
           isCollaborationRegistered: agent.registered,
-          avatarSeed: agent.id,
+          avatarSeed: representsActiveLocalAgent ? (resolvedLocalAgentAvatarSeed?.trim() || agent.id) : agent.id,
+          profileImageUrl: agent.profileImageUrl?.trim() || (representsActiveLocalAgent ? resolvedLocalAgentProfileImageUrl?.trim() : null) || null,
           collaborationReachouts,
         });
       }
@@ -834,7 +828,8 @@ export function useWorkspaceViewModels({
         exposesLoadedPlugins: true,
         isOwned: true,
         isCollaborationActive: true,
-        avatarSeed: getLocalAgentAvatarSeed(localAgent.label),
+        avatarSeed: resolvedLocalAgentAvatarSeed?.trim() || getLocalAgentAvatarSeed(localAgent.label),
+        profileImageUrl: resolvedLocalAgentProfileImageUrl?.trim() || null,
       });
     }
 
@@ -848,7 +843,7 @@ export function useWorkspaceViewModels({
     }
 
     return items;
-  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentCollaborationReachoutsByAgentId]);
+  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentCollaborationReachoutsByAgentId, resolvedLocalAgentAvatarSeed, resolvedLocalAgentProfileImageUrl]);
 
   const groupedContacts = useMemo(
     () =>

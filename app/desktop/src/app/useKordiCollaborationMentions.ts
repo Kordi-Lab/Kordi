@@ -37,6 +37,8 @@ type UseKordiCollaborationMentionsArgs = {
   refreshSharedCloudAgents:
     UseCloudCollaborationStateResult['refreshSharedCloudAgents'];
   sharedCloudAgents: SharedCloudAgentSummary[];
+  localAgentAvatarSeed?: string | null;
+  localAgentProfileImageUrl?: string | null;
 };
 
 export function useKordiCollaborationMentions({
@@ -50,6 +52,8 @@ export function useKordiCollaborationMentions({
   isNativeShell,
   refreshSharedCloudAgents,
   sharedCloudAgents,
+  localAgentAvatarSeed,
+  localAgentProfileImageUrl,
 }: UseKordiCollaborationMentionsArgs) {
   const activeConversationScope = useMemo(
     () => mentionScopeConversationForActiveConversation(
@@ -117,6 +121,8 @@ export function useKordiCollaborationMentions({
       activeConvMentionScope: activeConversationScope,
       conversations,
       sharedCloudAgents: mentionableCloudAgents,
+      localAgentAvatarSeed,
+      localAgentProfileImageUrl,
     }),
     [
       activeConversationScope,
@@ -124,6 +130,8 @@ export function useKordiCollaborationMentions({
       conversations,
       desktopChatState,
       isNativeShell,
+      localAgentAvatarSeed,
+      localAgentProfileImageUrl,
       mentionableCloudAgents,
     ],
   );

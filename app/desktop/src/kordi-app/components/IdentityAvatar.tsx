@@ -7,7 +7,7 @@ import {
   cloudSignupAvatarPalette,
 } from '@/features/cloud/signupAvatar';
 import { cn } from '@/lib/utils';
-import { useAvatarOverride } from './avatarOverrides';
+import { migrateAvatarOverride, useAvatarOverride } from './avatarOverrides';
 import {
   resolveIdentityAvatarPresentation,
   useActiveLocalProfileIdentity,
@@ -117,17 +117,24 @@ export function useLocalProfileAvatarSeed() {
 }
 
 export function getLocalAgentAvatarSeed(label?: string | null) {
-  if (localAgentAvatarSeedSnapshot?.trim()) return localAgentAvatarSeedSnapshot;
-
-  const identitySeed = readLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY);
+  const identitySeed = getPersistedLocalAgentAvatarSeed();
   if (identitySeed) return identitySeed;
 
   return `local-agent:${browserAvatarScope()}:${label?.trim() || 'kordi'}`;
 }
 
+export function getPersistedLocalAgentAvatarSeed() {
+  if (localAgentAvatarSeedSnapshot?.trim()) return localAgentAvatarSeedSnapshot;
+  return readLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY);
+}
+
 export function setLocalAgentAvatarSeed(seed?: string | null) {
   const normalized = seed?.trim();
   if (!normalized || normalized === localAgentAvatarSeedSnapshot) return;
+  const previous = getPersistedLocalAgentAvatarSeed();
+  if (previous && previous !== normalized) {
+    migrateAvatarOverride(`agent:${previous}`, `agent:${normalized}`);
+  }
   localAgentAvatarSeedSnapshot = normalized;
   writeLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY, normalized);
   emitLocalAvatarSeedsChange();

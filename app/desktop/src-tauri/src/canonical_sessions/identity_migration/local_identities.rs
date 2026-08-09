@@ -1,6 +1,6 @@
 //! Stable local human and delegate identity creation and stale-agent reassignment.
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::super::{
     ensure_local_profile, hash_hex, now_ms, upsert_identity_in_db, UpsertCanonicalIdentityRequest,
@@ -76,6 +76,56 @@ fn local_agent_external_id(profile_id: &str, workspace_root: &str) -> String {
         "local:{}",
         hash_hex(&format!("{profile_id}|{workspace_root}"), 16)
     )
+}
+
+fn local_agent_avatar_identity(
+    conn: &Connection,
+    profile_id: &str,
+    owner_identity_id: &str,
+    target_identity_id: &str,
+) -> Result<(String, Option<String>), String> {
+    let order = "ORDER BY
+        CASE
+            WHEN id = (SELECT active_agent_identity_id FROM local_profile WHERE id = ?2) THEN 0
+            WHEN id = ?3 THEN 1
+            ELSE 2
+        END,
+        updated_at_ms DESC
+        LIMIT 1";
+    let avatar_key = conn
+        .query_row(
+            &format!(
+                "SELECT avatar_key FROM identities
+                 WHERE kind = 'agent'
+                   AND source = 'local'
+                   AND owner_identity_id = ?1
+                   AND json_extract(metadata_json, '$.profileId') = ?2
+                 {order}"
+            ),
+            params![owner_identity_id, profile_id, target_identity_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?
+        .unwrap_or_else(|| format!("local-agent:{profile_id}"));
+    let profile_image_url = conn
+        .query_row(
+            &format!(
+                "SELECT profile_image_url FROM identities
+                 WHERE kind = 'agent'
+                   AND source = 'local'
+                   AND owner_identity_id = ?1
+                   AND json_extract(metadata_json, '$.profileId') = ?2
+                   AND profile_image_url IS NOT NULL
+                   AND TRIM(profile_image_url) <> ''
+                 {order}"
+            ),
+            params![owner_identity_id, profile_id, target_identity_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    Ok((avatar_key, profile_image_url))
 }
 
 fn reassign_stale_local_agent_identities(
@@ -179,10 +229,13 @@ pub(in crate::canonical_sessions) fn local_agent_identity_id(
     let runtime_label_metadata = (!runtime_label.is_empty()).then(|| runtime_label.to_string());
     let delegate_agent_name = local_delegate_agent_name();
     let agent_id = local_agent_external_id(&profile.id, workspace_root);
+    let identity_id = format!("agent:{agent_id}");
+    let (avatar_key, profile_image_url) =
+        local_agent_avatar_identity(conn, &profile.id, human_identity_id, &identity_id)?;
     let identity = upsert_identity_in_db(
         conn,
         UpsertCanonicalIdentityRequest {
-            id: Some(format!("agent:{agent_id}")),
+            id: Some(identity_id),
             kind: "agent".to_string(),
             display_name: delegate_agent_name.to_string(),
             owner_identity_id: Some(human_identity_id.to_string()),
@@ -191,8 +244,8 @@ pub(in crate::canonical_sessions) fn local_agent_identity_id(
             bridge_node_id: None,
             human_id: None,
             agent_id: Some(agent_id.clone()),
-            avatar_key: Some(agent_id.clone()),
-            profile_image_url: None,
+            avatar_key: Some(avatar_key),
+            profile_image_url,
             metadata: Some(serde_json::json!({
                 "profileId": profile.id,
                 "workspaceRoot": workspace_root,

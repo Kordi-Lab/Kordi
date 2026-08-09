@@ -73,6 +73,19 @@ export function removeAvatarOverride(avatarKey: string) {
   writeOverrides(nextOverrides);
 }
 
+export function migrateAvatarOverride(fromAvatarKey: string, toAvatarKey: string) {
+  const fromKey = fromAvatarKey.trim();
+  const toKey = toAvatarKey.trim();
+  if (!fromKey || !toKey || fromKey === toKey) return;
+  const overrides = readOverrides();
+  const existing = overrides[fromKey];
+  if (!existing || overrides[toKey]) return;
+  writeOverrides({
+    ...overrides,
+    [toKey]: existing,
+  });
+}
+
 export function useAvatarOverride(avatarKey?: string | null) {
   const normalizedKey = avatarKey?.trim() || '';
 

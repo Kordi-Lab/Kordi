@@ -1,14 +1,18 @@
 import { useEffect, useLayoutEffect } from 'react';
 
 import {
-  canonicalAvatarSeed,
   canonicalIdentityDisplayName,
-  canonicalLocalAgentAvatarSeed,
-  canonicalProfileImageUrl,
 } from '@/app/useKordiAppModelHelpers';
+import {
+  canonicalAvatarSeed,
+  canonicalLocalAgentAvatarSeed,
+  canonicalLocalAgentProfileImageUrl,
+  canonicalProfileImageUrl,
+} from '@/app/viewModels/canonicalIdentityAvatars';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import {
+  getPersistedLocalAgentAvatarSeed,
   setLocalAgentAvatarSeed,
   setLocalProfileAvatarSeed,
 } from '@/kordi-app/components/IdentityAvatar';
@@ -63,6 +67,7 @@ export function resolveKordiProfileAvatarState({
     && identity.source === 'local'
     && identity.ownerIdentityId === canonicalState.profile.humanIdentityId
   ));
+  const canonicalAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalState);
 
   return {
     localProfileAvatarSeed:
@@ -81,12 +86,17 @@ export function resolveKordiProfileAvatarState({
       || agent?.label?.trim()
       || host?.displayName?.trim()
       || null,
-    localAgentAvatarSeed: canonicalLocalAgentAvatarSeed(canonicalState)
+    localAgentAvatarSeed: canonicalAgentAvatarSeed
+      || getPersistedLocalAgentAvatarSeed()
       || agent?.id?.trim()
       || host?.activeAgentId?.trim()
       || agent?.nodeId?.trim()
       || host?.nodeId?.trim()
       || null,
+    localAgentProfileImageUrl: agent?.profileImageUrl?.trim()
+      || canonicalLocalAgentProfileImageUrl(canonicalState)
+      || null,
+    shouldPersistAgentSeed: Boolean(canonicalAgentAvatarSeed),
     shouldPersistProfileSeed: cloudProfileAvatar?.shouldPersistSeed ?? false,
   };
 }
@@ -108,20 +118,24 @@ export function useKordiProfileAvatarState({
   }, [state.localProfileAvatarSeed, state.shouldPersistProfileSeed]);
 
   useLayoutEffect(() => {
+    if (state.shouldPersistAgentSeed) {
+      setLocalAgentAvatarSeed(state.localAgentAvatarSeed);
+    }
     setActiveLocalProfileIdentity({
       avatarSeed: state.localProfileAvatarSeed,
       displayName: state.localProfileDisplayName,
       profileImageUrl: state.localProfileImageUrl,
+      agentAvatarSeed: state.localAgentAvatarSeed,
+      agentProfileImageUrl: state.localAgentProfileImageUrl,
     });
   }, [
     state.localProfileAvatarSeed,
     state.localProfileDisplayName,
     state.localProfileImageUrl,
+    state.localAgentAvatarSeed,
+    state.localAgentProfileImageUrl,
+    state.shouldPersistAgentSeed,
   ]);
-
-  useEffect(() => {
-    setLocalAgentAvatarSeed(state.localAgentAvatarSeed);
-  }, [state.localAgentAvatarSeed]);
 
   return state;
 }

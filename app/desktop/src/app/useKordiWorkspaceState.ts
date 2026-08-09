@@ -171,6 +171,8 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     cloudPresence: cloudPresence.snapshot,
     cloudUnreadReady: initialMessagesSettled,
     transientChatConversations,
+    localAgentAvatarSeed: foundation.profile.localAgentAvatarSeed,
+    localAgentProfileImageUrl: foundation.profile.localAgentProfileImageUrl,
   });
 
   const {
@@ -227,6 +229,8 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     isNativeShell,
     refreshSharedCloudAgents,
     sharedCloudAgents,
+    localAgentAvatarSeed: foundation.profile.localAgentAvatarSeed,
+    localAgentProfileImageUrl: foundation.profile.localAgentProfileImageUrl,
   });
 
   useEffect(() => {

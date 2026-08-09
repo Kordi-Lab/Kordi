@@ -61,7 +61,7 @@ fn local_agent_identity_uses_delegate_name_stable_agent_id_and_owner() {
         .as_deref()
         .unwrap_or_default()
         .starts_with("local:"));
-    assert_eq!(identity.avatar_key, identity.agent_id.clone().unwrap());
+    assert!(identity.avatar_key.starts_with("local-agent:"));
     assert_eq!(
         identity
             .metadata
@@ -69,6 +69,51 @@ fn local_agent_identity_uses_delegate_name_stable_agent_id_and_owner() {
             .and_then(|metadata| metadata.get("delegateAgentName"))
             .and_then(|value| value.as_str()),
         Some("Kordi"),
+    );
+
+    conn.execute(
+        "UPDATE identities
+         SET avatar_key = 'agent-avatar:chosen',
+             profile_image_url = 'data:image/jpeg;base64,chosen'
+         WHERE id = ?1",
+        params![agent_identity_id],
+    )
+    .expect("assign agent avatar");
+    let unrelated_agent = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("agent:unrelated-local-agent".to_string()),
+            kind: "agent".to_string(),
+            display_name: "Another agent".to_string(),
+            owner_identity_id: Some(human_identity_id.clone()),
+            source: Some("local".to_string()),
+            source_host_id: None,
+            bridge_node_id: None,
+            human_id: None,
+            agent_id: Some("unrelated-local-agent".to_string()),
+            avatar_key: Some("agent-avatar:unrelated".to_string()),
+            profile_image_url: Some("data:image/jpeg;base64,unrelated".to_string()),
+            metadata: Some(serde_json::json!({ "customAgent": true })),
+        },
+    )
+    .expect("unrelated local agent");
+    update_local_profile_identities(&conn, None, Some(&unrelated_agent.id), None)
+        .expect("select unrelated local agent");
+    let other_workspace_identity_id = local_agent_identity_id(
+        &conn,
+        &human_identity_id,
+        "another-runtime-label",
+        "/tmp/kordi/other-workspace",
+    )
+    .expect("other workspace identity");
+    assert_ne!(agent_identity_id, other_workspace_identity_id);
+    let other_workspace_identity = select_identity(&conn, &other_workspace_identity_id)
+        .expect("select other workspace identity")
+        .expect("other workspace identity exists");
+    assert_eq!(other_workspace_identity.avatar_key, "agent-avatar:chosen");
+    assert_eq!(
+        other_workspace_identity.profile_image_url.as_deref(),
+        Some("data:image/jpeg;base64,chosen"),
     );
 }
 

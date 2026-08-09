@@ -4,6 +4,8 @@ export type ActiveLocalProfileIdentity = Readonly<{
   avatarSeed: string | null;
   displayName: string | null;
   profileImageUrl: string | null;
+  agentAvatarSeed: string | null;
+  agentProfileImageUrl: string | null;
 }>;
 
 type IdentityAvatarPresentationInput = {
@@ -22,6 +24,8 @@ const EMPTY_ACTIVE_LOCAL_PROFILE_IDENTITY: ActiveLocalProfileIdentity = {
   avatarSeed: null,
   displayName: null,
   profileImageUrl: null,
+  agentAvatarSeed: null,
+  agentProfileImageUrl: null,
 };
 
 let activeLocalProfileIdentitySnapshot = EMPTY_ACTIVE_LOCAL_PROFILE_IDENTITY;
@@ -48,17 +52,25 @@ export function setActiveLocalProfileIdentity({
   avatarSeed,
   displayName,
   profileImageUrl,
+  agentAvatarSeed,
+  agentProfileImageUrl,
 }: Partial<ActiveLocalProfileIdentity>) {
   const next: ActiveLocalProfileIdentity = {
     avatarSeed: avatarSeed?.trim() || null,
     displayName: displayName?.trim() || null,
     profileImageUrl: profileImageUrl?.trim() || null,
+    agentAvatarSeed: agentAvatarSeed?.trim() || null,
+    agentProfileImageUrl: agentProfileImageUrl?.trim() || null,
   };
   if (
     next.avatarSeed === activeLocalProfileIdentitySnapshot.avatarSeed
     && next.displayName === activeLocalProfileIdentitySnapshot.displayName
     && next.profileImageUrl
       === activeLocalProfileIdentitySnapshot.profileImageUrl
+    && next.agentAvatarSeed
+      === activeLocalProfileIdentitySnapshot.agentAvatarSeed
+    && next.agentProfileImageUrl
+      === activeLocalProfileIdentitySnapshot.agentProfileImageUrl
   ) return;
 
   activeLocalProfileIdentitySnapshot = next;
@@ -95,8 +107,12 @@ export function resolveIdentityAvatarPresentation({
       ? activeLocalProfileIdentity.displayName?.trim() || name?.trim()
       : name?.trim()
   ) || normalizedSeed;
+  const isActiveLocalAgent = kind === 'agent'
+    && normalizedSeed === activeLocalProfileIdentity.agentAvatarSeed?.trim();
   const resolvedImageUrl = isSelf
     ? activeLocalProfileIdentity.profileImageUrl?.trim() || imageUrl
-    : imageUrl;
+    : isActiveLocalAgent
+      ? activeLocalProfileIdentity.agentProfileImageUrl?.trim() || imageUrl
+      : imageUrl;
   return { fallbackLabel, normalizedSeed, resolvedImageUrl };
 }

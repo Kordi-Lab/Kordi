@@ -164,10 +164,15 @@ test('generic persisted Kordi identity keeps the live My Kordi sender label', ()
   }], {
     agent: 'agent-local',
     agentDisplayName: 'Kordi',
+    agentProfileImageUrl: 'data:image/jpeg;base64,my-kordi',
   });
 
   assert.equal(mapped.sender, 'My Kordi');
   assert.equal(mapped.sourceSenderLabel, 'My Kordi');
+  assert.equal(
+    mapped.senderProfileImageUrl,
+    'data:image/jpeg;base64,my-kordi',
+  );
 });
 
 test('desktop transcript keeps an empty cancelled assistant turn as visible history', () => {
