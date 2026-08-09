@@ -1,0 +1,75 @@
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--app-canvas-bg);
+}
+
+.group-invitation-visual-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--app-canvas-bg);
+  color: var(--utility-foreground);
+}
+
+.group-invitation-visual-sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(31vw, 320px);
+  background: var(--app-sidebar-bg);
+  border-right: 1px solid var(--app-divider);
+}
+
+.group-invitation-visual-sidebar::before,
+.group-invitation-visual-sidebar::after,
+.group-invitation-visual-workspace::before,
+.group-invitation-visual-workspace::after {
+  position: absolute;
+  content: '';
+  border-radius: 12px;
+  background: var(--app-control-bg);
+}
+
+.group-invitation-visual-sidebar::before {
+  inset: 72px 24px auto;
+  height: 42px;
+}
+
+.group-invitation-visual-sidebar::after {
+  inset: 136px 24px auto;
+  height: 168px;
+}
+
+.group-invitation-visual-workspace {
+  position: absolute;
+  inset: 0 0 0 min(31vw, 320px);
+}
+
+.group-invitation-visual-workspace::before {
+  inset: 32px 32px auto;
+  height: 56px;
+}
+
+.group-invitation-visual-workspace::after {
+  inset: 118px 32px 32px;
+}
+
+@media (max-width: 520px) {
+  .group-invitation-visual-sidebar {
+    width: 76px;
+  }
+
+  .group-invitation-visual-workspace {
+    left: 76px;
+  }
+
+  .group-invitation-visual-sidebar::before,
+  .group-invitation-visual-sidebar::after {
+    inset-inline: 16px;
+  }
+}

@@ -24,7 +24,8 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::messages::{
-    persist_cloud_message, PersistCloudMessageInput, PersistedMessageAttachment,
+    persist_cloud_message, persist_cloud_message_in_transaction, PersistCloudMessageInput,
+    PersistedMessageAttachment,
 };
 use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
@@ -52,6 +53,7 @@ mod app_invitation_handlers;
 mod contact_acceptance;
 mod contact_handlers;
 mod contact_request_handlers;
+mod group_invitation_handlers;
 mod identity_handlers;
 mod message_handlers;
 mod message_list_handlers;
@@ -73,6 +75,7 @@ use app_invitation_handlers::*;
 use contact_acceptance::*;
 use contact_handlers::*;
 use contact_request_handlers::*;
+use group_invitation_handlers::*;
 use identity_handlers::*;
 use message_handlers::*;
 use message_list_handlers::*;
@@ -117,7 +120,12 @@ pub fn routes_with_config(
             "/v1/cloud/invitations/app/resolve/:token",
             get(get_app_invitation),
         )
+        .route(
+            "/v1/cloud/invitations/groups/resolve/:token",
+            get(get_group_invitation),
+        )
         .route("/i/:token", get(app_invitation_landing))
+        .route("/g/:token", get(group_invitation_landing))
         .route("/v1/cloud/auth/oauth/:provider/start", get(oauth_start))
         .route(
             "/v1/cloud/auth/oauth/:provider/callback",
@@ -135,6 +143,22 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/invitations/app/:invitation_id",
             delete(revoke_app_invitation),
+        )
+        .route(
+            "/v1/cloud/invitations/groups",
+            post(create_group_invitation),
+        )
+        .route(
+            "/v1/cloud/invitations/groups/accept/:token",
+            post(accept_group_invitation),
+        )
+        .route(
+            "/v1/cloud/invitations/groups/active/:group_space_id",
+            get(list_active_group_invitations),
+        )
+        .route(
+            "/v1/cloud/invitations/groups/:invitation_id",
+            delete(revoke_group_invitation),
         )
         .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
         .route(

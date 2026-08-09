@@ -202,6 +202,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "public Kordi ids and app invitations",
         sql: include_str!("../../migrations/0036_public_kordi_ids_and_app_invitations.sql"),
     },
+    EmbeddedMigration {
+        version: 44,
+        description: "explicit group invitations",
+        sql: include_str!("../../migrations/0044_group_invitations.sql"),
+    },
+    EmbeddedMigration {
+        version: 45,
+        description: "server ordered cloud messages",
+        sql: include_str!("../../migrations/0045_cloud_message_server_received_at.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

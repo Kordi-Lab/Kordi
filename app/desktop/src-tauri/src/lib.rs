@@ -48,7 +48,6 @@ fn configure_cloud_app_data_dir(app: &tauri::App, is_cloud_edition: bool) {
     let Ok(app_data_dir) = app.path().app_data_dir() else {
         return;
     };
-    // Hosted sessions must not read/write the local/localhost Kordi stores under
     // ~/.korde. The Cloud bundle uses a separate identifier, so Tauri's app
     // data dir is isolated from the local build and from retired collaboration state.
     unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
@@ -381,6 +380,7 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 pub fn run() {
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())

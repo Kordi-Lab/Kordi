@@ -14,6 +14,7 @@
     "core:window:allow-set-background-color",
     "core:window:allow-start-dragging",
     "core:webview:allow-create-webview-window",
+    "deep-link:default",
     "updater:default",
     "process:allow-restart"
   ]
