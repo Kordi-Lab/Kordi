@@ -118,6 +118,30 @@ pub(crate) async fn accept_group_invitation(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
+    let record = match lookup_group_invitation_in_transaction(&mut tx, &token).await {
+        Ok(GroupInvitationLookup::Valid(record)) => *record,
+        Ok(GroupInvitationLookup::Invalid) => {
+            return err(
+                "invalid_group_invitation",
+                "This group invitation is invalid or was revoked.",
+                StatusCode::NOT_FOUND,
+            );
+        }
+        Ok(GroupInvitationLookup::Expired) => {
+            return err(
+                "group_invitation_expired",
+                "This group invitation has expired. Ask a group admin for a new link.",
+                StatusCode::GONE,
+            );
+        }
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not revalidate the group invitation.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
     let record = match refresh_group_invitation_record_in_transaction(&mut tx, record).await {
         Ok(Some(record)) => record,
         Ok(None) => {

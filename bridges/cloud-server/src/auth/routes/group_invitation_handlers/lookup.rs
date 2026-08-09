@@ -221,6 +221,32 @@ pub(super) async fn lookup_group_invitation(
     .fetch_optional(pool)
     .await?;
 
+    Ok(group_invitation_lookup_from_row(row))
+}
+
+pub(super) async fn lookup_group_invitation_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    token: &str,
+) -> Result<GroupInvitationLookup, sqlx_core::Error> {
+    if !token.starts_with(GROUP_INVITE_TOKEN_PREFIX) {
+        return Ok(GroupInvitationLookup::Invalid);
+    }
+    let row: Option<GroupInvitationRow> = query_as(
+        "SELECT invite.invitation_id, invite.inviter_account_id, account.display_name, \
+                account.public_account_number, account.avatar_url, invite.group_snapshot, invite.expires_at \
+         FROM cloud_group_invitations invite \
+         JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id \
+         WHERE invite.token_hash = $1 AND invite.revoked_at IS NULL \
+         FOR UPDATE OF invite",
+    )
+    .bind(hash_group_invite_token(token))
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(group_invitation_lookup_from_row(row))
+}
+
+fn group_invitation_lookup_from_row(row: Option<GroupInvitationRow>) -> GroupInvitationLookup {
     let Some((
         invitation_id,
         inviter_account_id,
@@ -231,28 +257,26 @@ pub(super) async fn lookup_group_invitation(
         expires_at,
     )) = row
     else {
-        return Ok(GroupInvitationLookup::Invalid);
+        return GroupInvitationLookup::Invalid;
     };
     let is_expired = DateTime::parse_from_rfc3339(&expires_at)
         .map(|value| value.with_timezone(&Utc) <= Utc::now())
         .unwrap_or(true);
     if is_expired {
-        return Ok(GroupInvitationLookup::Expired);
+        return GroupInvitationLookup::Expired;
     }
     let Ok(snapshot) = serde_json::from_value::<GroupInvitationSnapshot>(snapshot) else {
-        return Ok(GroupInvitationLookup::Invalid);
+        return GroupInvitationLookup::Invalid;
     };
-    Ok(GroupInvitationLookup::Valid(Box::new(
-        GroupInvitationRecord {
-            invitation_id,
-            inviter_account_id,
-            inviter_display_name,
-            inviter_public_account_number,
-            inviter_avatar_url,
-            snapshot,
-            expires_at,
-        },
-    )))
+    GroupInvitationLookup::Valid(Box::new(GroupInvitationRecord {
+        invitation_id,
+        inviter_account_id,
+        inviter_display_name,
+        inviter_public_account_number,
+        inviter_avatar_url,
+        snapshot,
+        expires_at,
+    }))
 }
 
 pub(super) fn group_invitation_preview(

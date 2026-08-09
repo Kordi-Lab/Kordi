@@ -156,7 +156,7 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     assert_eq!(create_status, StatusCode::OK, "got body {create_body}");
     let invitation_id = create_body["invitationId"].as_str().unwrap();
     let invite_url = create_body["inviteUrl"].as_str().unwrap();
-    let token = invite_url.rsplit('/').next().unwrap();
+    let token = invite_url.rsplit('/').next().unwrap().to_string();
     assert!(token.starts_with("kordi_gi_"));
 
     let active = router
@@ -298,6 +298,46 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     assert!(participant_ids.contains(&second_id.as_str()));
     assert!(participant_ids.contains(&third_id.as_str()));
 
+    let mut blocker = pool.begin().await.unwrap();
+    sqlx_core::query::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(&group_id)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let pending_accept = tokio::spawn({
+        let router = router.clone();
+        let token = token.clone();
+        let member_token = member_token.clone();
+        async move {
+            router
+                .oneshot(post_with_token(
+                    &format!("/v1/cloud/invitations/groups/accept/{token}"),
+                    &member_token,
+                ))
+                .await
+                .unwrap()
+        }
+    });
+    let mut accept_is_waiting = false;
+    for _ in 0..100 {
+        let waiting: (bool,) = sqlx_core::query_as::query_as(
+            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity \
+             WHERE wait_event = 'advisory' AND query LIKE '%pg_advisory_xact_lock(hashtextextended%')",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        if waiting.0 {
+            accept_is_waiting = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        accept_is_waiting,
+        "acceptance did not reach the group lock before revocation"
+    );
+
     let revoke = router
         .clone()
         .oneshot(delete_with_token(
@@ -307,6 +347,10 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
         .await
         .unwrap();
     assert_eq!(revoke.status(), StatusCode::NO_CONTENT);
+    blocker.commit().await.unwrap();
+
+    let raced_accept = pending_accept.await.unwrap();
+    assert_eq!(raced_accept.status(), StatusCode::NOT_FOUND);
 
     let active_after_revoke = router
         .clone()
@@ -320,6 +364,7 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     assert_eq!(active_after_revoke["invitations"], json!([]));
 
     let revoked_preview = router
+        .clone()
         .oneshot(get(&format!(
             "/v1/cloud/invitations/groups/resolve/{token}"
         )))
