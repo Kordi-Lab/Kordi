@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useMemo,
   useReducer,
   useRef,
   type Dispatch,
@@ -25,14 +24,6 @@ import {
 } from './cloudSelfAgentCanonicalSyncExecution';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 
-function stableRecordRevision<T>(record: Record<string, T>) {
-  return JSON.stringify(
-    Object.entries(record).sort(([left], [right]) => (
-      left.localeCompare(right)
-    )),
-  );
-}
-
 export function useCloudSelfAgentCanonicalSync({
   account,
   canonicalState,
@@ -56,18 +47,6 @@ export function useCloudSelfAgentCanonicalSync({
   initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;
 }) {
-  const accountId = account?.accountId ?? null;
-  const selfMessagesRevision = accountId
-    ? messageIndex.peerRevisionByPeerId.get(accountId) ?? '0::'
-    : '0::';
-  const forksRevision = useMemo(
-    () => stableRecordRevision(forksBySessionId),
-    [forksBySessionId],
-  );
-  const titlesRevision = useMemo(
-    () => stableRecordRevision(titlesBySessionId),
-    [titlesBySessionId],
-  );
   const latestInputRef = useRef({
     account,
     canonicalState,
@@ -125,53 +104,48 @@ export function useCloudSelfAgentCanonicalSync({
   ]);
 
   useEffect(() => {
-    const input = latestInputRef.current;
-    const currentAccount = input.account;
     if (
-      !currentAccount
-      || !input.canonicalState
-      || !input.setCanonicalState
-      || !input.initialMessagesSettled
+      !account
+      || !canonicalState
+      || !setCanonicalState
+      || !initialMessagesSettled
     ) return;
-    const selfMessages = input.messagesByPeer[currentAccount.accountId] ?? [];
+    const selfMessages = messagesByPeer[account.accountId] ?? [];
     if (selfMessages.length === 0) return;
-    // Persistence may take many IPC calls for a large history. Do not rebuild
-    // and re-sort the full plan on every unrelated render while that batch is
-    // already in flight.
-    if (inFlightRef.current) return;
     const plan = planCloudSelfAgentCanonicalSync({
-      account: currentAccount,
+      account,
       messages: selfMessages,
-      state: input.canonicalState,
-      forksBySessionId: input.forksBySessionId,
+      state: canonicalState,
+      forksBySessionId,
       groupRowByWireMessageId:
-        input.messageIndex.groupRowByWireMessageId,
-      cloudTitlesBySessionId: input.titlesBySessionId,
+        messageIndex.groupRowByWireMessageId,
+      cloudTitlesBySessionId: titlesBySessionId,
     });
     if (
       plan.sessionRequests.length === 0
       && plan.messageRequests.length === 0
     ) return;
     const signature = cloudSelfAgentCanonicalSyncPlanSignature(plan);
+    if (inFlightRef.current) return;
     if (
-      completedRef.current?.accountId === currentAccount.accountId
+      completedRef.current?.accountId === account.accountId
       && completedRef.current.signature === signature
     ) return;
 
-    const syncingAccountId = currentAccount.accountId;
-    inFlightRef.current = { accountId: syncingAccountId, signature };
+    const accountId = account.accountId;
+    inFlightRef.current = { accountId, signature };
     void persistCloudSelfAgentCanonicalSyncPlan(plan, {
       shouldContinue: () => (
         mountedRef.current
-        && latestInputRef.current.account?.accountId === syncingAccountId
+        && latestInputRef.current.account?.accountId === accountId
       ),
     }).then((batch) => {
       if (
         !batch
         || !mountedRef.current
-        || latestInputRef.current.account?.accountId !== syncingAccountId
+        || latestInputRef.current.account?.accountId !== accountId
       ) return;
-      completedRef.current = { accountId: syncingAccountId, signature };
+      completedRef.current = { accountId, signature };
       latestInputRef.current.setCanonicalState?.((current) => (
         mergeCloudSelfAgentCanonicalSyncBatch(current, batch)
       ));
@@ -182,7 +156,7 @@ export function useCloudSelfAgentCanonicalSync({
       );
     }).finally(() => {
       if (
-        inFlightRef.current?.accountId === syncingAccountId
+        inFlightRef.current?.accountId === accountId
         && inFlightRef.current.signature === signature
       ) {
         inFlightRef.current = null;
@@ -190,13 +164,15 @@ export function useCloudSelfAgentCanonicalSync({
       if (mountedRef.current) requestFollowUp();
     });
   }, [
-    accountId,
+    account,
     canonicalState,
-    forksRevision,
+    forksBySessionId,
     initialMessagesSettled,
     followUpRevision,
-    selfMessagesRevision,
+    messageIndex,
+    messagesByPeer,
+    reportWarning,
     setCanonicalState,
-    titlesRevision,
+    titlesBySessionId,
   ]);
 }
