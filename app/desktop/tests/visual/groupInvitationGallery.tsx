@@ -22,11 +22,13 @@ const [space] = buildParticipantSpaces([conversation({
     groupCreatorIdentityId: mode === 'nonadmin' ? 'human:jiaxin' : 'human:me',
     adminIdentityIds: [mode === 'nonadmin' ? 'human:jiaxin' : 'human:me'],
   },
-  participants: ['Me', 'Jiaxin Pei', 'Shenzhe Zhu'],
+  participants: ['Me', 'Jiaxin Pei', 'Shenzhe Zhu', 'C UFishAI', 'Tom Cohen'],
   canonicalParticipants: [
     { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
     { id: 'human:jiaxin', name: 'Jiaxin Pei', kind: 'human', role: mode === 'nonadmin' ? 'admin' : 'person', source: 'bridge', avatarKey: 'jiaxin' },
     { id: 'human:shenzhe', name: 'Shenzhe Zhu', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shenzhe' },
+    { id: 'human:ufish', name: 'C UFishAI', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'ufish' },
+    { id: 'human:tom', name: 'Tom Cohen', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'tom' },
   ],
 })]);
 

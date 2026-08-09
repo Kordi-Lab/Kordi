@@ -8,7 +8,7 @@ export const GROUP_MANAGEMENT_FOCUSABLE_SELECTOR = [
   'a[href]',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
-export const GROUP_MEMBER_GRID_COLUMNS = 5;
+export const GROUP_MEMBER_GRID_COLUMNS = 3;
 const COLLAPSED_MEMBER_GRID_ROWS = 4;
 export const COLLAPSED_MEMBER_GRID_ITEMS = GROUP_MEMBER_GRID_COLUMNS * COLLAPSED_MEMBER_GRID_ROWS;
 
@@ -50,7 +50,7 @@ export function groupManagementGeometry(
     ?? (typeof window === 'undefined' ? 1280 : window.innerWidth);
   const viewportHeight = viewport?.height
     ?? (typeof window === 'undefined' ? 800 : window.innerHeight);
-  const width = Math.min(372, Math.max(0, viewportWidth - margin * 2));
+  const width = Math.min(304, Math.max(0, viewportWidth - margin * 2));
   const height = Math.min(760, Math.max(0, viewportHeight - margin * 2));
   const floatingGeometry = (): GroupPopoverGeometry => ({
     placement: 'floating',

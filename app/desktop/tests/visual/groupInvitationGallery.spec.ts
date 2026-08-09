@@ -20,6 +20,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
 
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=admin');
   await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('group-management-members-desktop.png') });
   await page.getByRole('button', { name: 'Add people' }).click();
   await page.getByRole('tab', { name: 'Share link' }).click();
   await page.getByRole('button', { name: 'Create invitation link' }).click();

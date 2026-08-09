@@ -59,7 +59,7 @@ test('GroupDetailsDialog renders a searchable member gallery with progressive co
   assert.doesNotMatch(markup, /Remove from group/);
 });
 
-test('GroupDetailsDialog keeps the member gallery to five compact columns and four rows until Show all is used', () => {
+test('GroupDetailsDialog keeps the member gallery to three compact columns and four rows until Show all is used', () => {
   const canonicalParticipants = [
     { id: 'human:me', name: 'Me', kind: 'human' as const, role: 'self' as const, source: 'local' as const, avatarKey: 'me' },
     ...Array.from({ length: 19 }, (_, index) => ({
@@ -94,18 +94,18 @@ test('GroupDetailsDialog keeps the member gallery to five compact columns and fo
     onSetAdmin: () => {},
   }));
 
-  assert.equal(markup.match(/data-group-member-grid-item/g)?.length, 20);
+  assert.equal(markup.match(/data-group-member-grid-item/g)?.length, 12);
   assert.match(markup, /Show all/);
   assert.match(markup, /aria-expanded="false"/);
   assert.match(markup, /h-9 w-9/);
   assert.doesNotMatch(markup, /Member 19/);
   assert.ok(
-    markup.indexOf('aria-label="Member 18, member"') < markup.indexOf('aria-label="Add people"'),
-    'Add people should occupy the final (20th) collapsed-grid slot',
+    markup.indexOf('aria-label="Member 10, member"') < markup.indexOf('aria-label="Add people"'),
+    'Add people should occupy the final (12th) collapsed-grid slot',
   );
   assert.match(
     readDesktopShellCss(),
-    /\.app-group-management-member-grid\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s,
+    /\.app-group-management-member-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s,
   );
   assert.match(
     readDesktopShellCss(),
@@ -165,7 +165,7 @@ test('GroupDetailsDialog geometry stays tall, narrow, and inside small and large
     { left: 120, top: 90, width: 28, height: 28 },
     { width: 1280, height: 800 },
   );
-  assert.equal(desktop.style.width, 372);
+  assert.equal(desktop.style.width, 304);
   assert.equal(desktop.style.maxHeight, 760);
   assert.equal(desktop.style.height, undefined);
   assert.ok(Number(desktop.style.left) >= 12);
@@ -183,13 +183,13 @@ test('GroupDetailsDialog geometry stays tall, narrow, and inside small and large
   assert.equal(compact.style.left, 12);
   assert.equal(compact.style.top, 12);
 
-  const centered = groupManagementGeometry(
+  const constrained = groupManagementGeometry(
     { left: 320, top: 180, width: 32, height: 32 },
     { width: 680, height: 600 },
   );
-  assert.equal(centered.placement, 'floating');
-  assert.equal(centered.style.left, 154);
-  assert.equal(centered.style.top, 12);
+  assert.equal(constrained.placement, 'right');
+  assert.equal(constrained.style.left, 362);
+  assert.equal(constrained.style.top, 12);
 });
 
 test('GroupDetailsDialog member filtering stays bounded and useful with 50 people', () => {
