@@ -4,6 +4,10 @@ import type {
   CloudSessionForkSummary,
 } from './authClient';
 import {
+  parseCloudAgentCancel,
+  parseCloudAgentResponse,
+} from './cloudAgentMessages';
+import {
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
   parseCloudGroupControl,
@@ -64,15 +68,69 @@ export function cloudMessagesByPeerEqual(
   ));
 }
 
+function selfSnapshotCurrentMessages(
+  current: CloudMessage[],
+  snapshot: CloudMessage[],
+) {
+  if (current.length === 0) return current;
+  const snapshotIds = new Set(snapshot.map((message) => message.messageId));
+  const referencedRequestIds = new Set([...current, ...snapshot].flatMap((message) => {
+    const requestId = parseCloudAgentResponse(message.body)?.requestId
+      ?? parseCloudAgentCancel(message.body)?.requestId;
+    return requestId ? [requestId] : [];
+  }));
+  const replayKey = (message: CloudMessage) => [
+    message.sessionId ?? '',
+    message.body,
+    message.createdAt,
+  ].join('\u001f');
+  const referencedReplayKeys = new Set(current.flatMap((message) => (
+    message.fromAccountId === message.toAccountId
+    && !message.attachments?.length
+    && referencedRequestIds.has(message.messageId)
+      ? [replayKey(message)]
+      : []
+  )));
+  const snapshotReplayKeys = new Set<string>();
+  for (const message of snapshot) {
+    if (message.fromAccountId !== message.toAccountId || message.attachments?.length) continue;
+    snapshotReplayKeys.add(replayKey(message));
+  }
+  const keptUnsnapshottedKeys = new Set<string>();
+  const retained = current.filter((message) => {
+    if (
+      message.fromAccountId !== message.toAccountId
+      || message.attachments?.length
+      || snapshotIds.has(message.messageId)
+      || referencedRequestIds.has(message.messageId)
+    ) return true;
+    const key = replayKey(message);
+    if (referencedReplayKeys.has(key)) return false;
+    if (snapshotReplayKeys.has(key)) return false;
+    if (keptUnsnapshottedKeys.has(key)) return false;
+    keptUnsnapshottedKeys.add(key);
+    return true;
+  });
+  return retained.length === current.length ? current : retained;
+}
+
 export function mergeCloudMessagesByPeerSnapshot(
   current: Record<string, CloudMessage[]>,
   incoming: Record<string, CloudMessage[]>,
+  options: { authoritativeSelfAccountId?: string | null } = {},
 ): Record<string, CloudMessage[]> {
   const peerIds = uniqueSortedPeerIds([...Object.keys(current), ...Object.keys(incoming)]);
   const merged: Record<string, CloudMessage[]> = {};
   let changed = peerIds.length !== Object.keys(current).length;
   for (const peerId of peerIds) {
-    const currentMessages = current[peerId] ?? [];
+    const previousMessages = current[peerId] ?? [];
+    const currentMessages = peerId === options.authoritativeSelfAccountId
+      ? selfSnapshotCurrentMessages(
+          previousMessages,
+          incoming[peerId] ?? [],
+        )
+      : previousMessages;
+    if (currentMessages !== previousMessages) changed = true;
     const byMessageId = new Map<string, CloudMessage>();
     for (const message of currentMessages) byMessageId.set(message.messageId, message);
     for (const message of incoming[peerId] ?? []) {
@@ -90,8 +148,8 @@ export function mergeCloudMessagesByPeerSnapshot(
     const messages = [...byMessageId.values()]
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
     if (messages.length > 0) {
-      const unchanged = cloudMessageListsEqual(currentMessages, messages);
-      merged[peerId] = unchanged ? currentMessages : messages;
+      const unchanged = cloudMessageListsEqual(previousMessages, messages);
+      merged[peerId] = unchanged ? previousMessages : messages;
       if (!unchanged) changed = true;
     }
   }

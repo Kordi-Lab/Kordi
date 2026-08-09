@@ -220,12 +220,14 @@ export function useCloudMessageSync({
     messagesRef.current = mergeCloudMessagesByPeerSnapshot(
       reconcileReadState(messagesRef.current),
       loaded.messagesByPeer,
+      { authoritativeSelfAccountId: account.accountId },
     );
     if (publishMessages) {
       setMessages((current) => {
         const merged = mergeCloudMessagesByPeerSnapshot(
           reconcileReadState(current),
           loaded.messagesByPeer,
+          { authoritativeSelfAccountId: account.accountId },
         );
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
