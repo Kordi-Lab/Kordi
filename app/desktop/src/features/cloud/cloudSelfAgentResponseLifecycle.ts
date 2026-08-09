@@ -64,20 +64,29 @@ export function legacyCloudSelfAgentResponseIds({
   }[];
 }): Map<string, string> {
   const legacyByStableId = new Map<string, string>();
-  for (const response of responses) {
-    const legacy = canonicalMessages.find((candidate) => (
-      candidate.sessionId === response.sessionId
-      && candidate.sourceTransport === 'cloud-self-agent'
-      && candidate.sourceEventId === response.responseCloudMessageId
-      && (
-        candidate.senderRole.includes('agent')
-        || candidate.messageKind === 'agent-turn'
+  const legacyBySessionAndSourceEvent = new Map<string, string>();
+  for (const candidate of canonicalMessages) {
+    if (
+      candidate.sourceTransport !== 'cloud-self-agent'
+      || !candidate.sourceEventId
+      || (
+        !candidate.senderRole.includes('agent')
+        && candidate.messageKind !== 'agent-turn'
       )
-    ));
-    if (legacy) {
+    ) continue;
+    legacyBySessionAndSourceEvent.set(
+      `${candidate.sessionId}\u0000${candidate.sourceEventId}`,
+      candidate.id,
+    );
+  }
+  for (const response of responses) {
+    const legacyId = legacyBySessionAndSourceEvent.get(
+      `${response.sessionId}\u0000${response.responseCloudMessageId}`,
+    );
+    if (legacyId) {
       legacyByStableId.set(
         cloudSelfAgentStableResponseId(response.requestCloudMessageId),
-        legacy.id,
+        legacyId,
       );
     }
   }
