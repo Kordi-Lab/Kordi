@@ -104,6 +104,14 @@ fn group_invite_tokens_are_opaque_and_hash_only() {
 }
 
 #[test]
+fn group_invitation_landing_copy_is_concise() {
+    let message = creation::group_invitation_landing_message("Shu Yang");
+    assert_eq!(message, "Shu Yang invited you to this group.");
+    assert!(!message.contains("member"));
+    assert!(!message.contains("Preview"));
+}
+
+#[test]
 fn only_a_verified_admin_snapshot_can_create_a_group_link() {
     let admin = invitation_snapshot_from_control(
         &encoded_control("admin"),

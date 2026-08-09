@@ -263,14 +263,7 @@ pub(crate) async fn group_invitation_landing(
                         .map(str::trim)
                         .filter(|name| !name.is_empty())
                         .unwrap_or("A Kordi user");
-                    let member_label = if record.snapshot.participants.len() == 1 {
-                        "1 member".to_string()
-                    } else {
-                        format!("{} members", record.snapshot.participants.len())
-                    };
-                    let message = format!(
-                        "{inviter} invited you to this group. {member_label}. Preview the invitation in Kordi and choose Join group; opening this page does not add you."
-                    );
+                    let message = group_invitation_landing_message(inviter);
                     let deep_link = group_invite_deep_link(&token);
                     invitation_landing_html_with_open_action(
                         StatusCode::OK,
@@ -318,4 +311,8 @@ pub(crate) async fn group_invitation_landing(
             release_download_url.as_deref(),
         ),
     }
+}
+
+pub(super) fn group_invitation_landing_message(inviter: &str) -> String {
+    format!("{inviter} invited you to this group.")
 }

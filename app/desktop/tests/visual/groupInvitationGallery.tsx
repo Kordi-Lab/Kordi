@@ -9,7 +9,7 @@ const theme = new URLSearchParams(window.location.search).get('theme') === 'dark
   ? 'dark'
   : 'light';
 const requestedMode = new URLSearchParams(window.location.search).get('mode');
-const mode = requestedMode === 'recipient' || requestedMode === 'nonadmin'
+const mode = requestedMode === 'recipient' || requestedMode === 'nonadmin' || requestedMode === 'active'
   ? requestedMode
   : 'admin';
 const [space] = buildParticipantSpaces([conversation({
@@ -53,6 +53,10 @@ createRoot(document.querySelector('#root')!).render(
           inviteUrl: `https://kordi.ai/g/kordi_gi_${'a'.repeat(43)}`,
           expiresAt: '2026-08-15T00:00:00Z',
         })}
+        onListGroupInvitations={mode === 'active' ? async () => ([{
+          invitationId: 'groupinv_active_visual',
+          expiresAt: '2026-08-15T00:00:00Z',
+        }]) : undefined}
         onRevokeGroupInvitation={async () => undefined}
       />
     ) : (

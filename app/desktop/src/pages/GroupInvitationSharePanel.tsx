@@ -173,31 +173,31 @@ export function GroupInvitationSharePanel({
           <div className="mt-2 flex items-center justify-between gap-3 text-[9.5px] text-[color:var(--utility-muted-text)]">
             <span>{invitationExpiryLabel(invitation.expiresAt)}</span>
             {onRevokeGroupInvitation ? (
-              <button
+              <Button
                 type="button"
-                className="app-button-quiet rounded-[8px] px-2 py-1 text-[9.5px]"
+                variant="quiet"
+                size="sm"
+                className="h-7 rounded-[8px] px-2.5 text-[10.5px] font-medium"
                 disabled={Boolean(pendingAction)}
                 onClick={() => revokeInvitation(invitation.invitationId)}
               >
                 {pendingAction === 'revoke-group-invitation' ? 'Revoking…' : 'Revoke link'}
-              </button>
+              </Button>
             ) : null}
           </div>
         </>
       ) : activeInvitations[0] ? (
-        <div className="mt-3 border-t border-[color:var(--app-divider)] pt-3">
-          <p className="text-[10.5px] font-medium">An invitation link is already active.</p>
-          <p className="mt-1 text-[9.5px] leading-4 text-[color:var(--utility-muted-text)]">
-            {invitationExpiryLabel(activeInvitations[0].expiresAt)}. Revoke it before creating another link.
-          </p>
-          <button
+        <div className="mt-3">
+          <Button
             type="button"
-            className="app-button-quiet mt-2 rounded-[8px] px-2 py-1 text-[9.5px]"
+            className="h-9 w-full rounded-[11px] text-[11px]"
             disabled={Boolean(pendingAction)}
-            onClick={() => revokeInvitation(activeInvitations[0].invitationId)}
+            onClick={createInvitation}
           >
-            {pendingAction === 'revoke-group-invitation' ? 'Revoking…' : 'Revoke active link'}
-          </button>
+            {pendingAction === 'create-group-invitation' ? (
+              <><LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Creating…</>
+            ) : 'Create new share link'}
+          </Button>
         </div>
       ) : (
         <Button

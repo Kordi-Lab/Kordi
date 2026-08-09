@@ -119,10 +119,18 @@ test('a group admin can create and revoke a preview-first invitation link', asyn
     await act(async () => { button('Add')?.click(); });
     await act(async () => { button('Share link')?.click(); });
     await act(async () => { await Promise.resolve(); });
-    assert.match(host.textContent ?? '', /invitation link is already active/i);
-    step = 'revoke active link';
-    assert.ok(button('Revoke active link'));
-    await act(async () => { button('Revoke active link')?.click(); });
+    assert.doesNotMatch(host.textContent ?? '', /invitation link is already active/i);
+    assert.doesNotMatch(host.textContent ?? '', /revoke it before creating another link/i);
+    step = 'replace active link';
+    assert.ok(button('Create new share link'));
+    await act(async () => { button('Create new share link')?.click(); });
+    assert.equal(
+      host.querySelector<HTMLInputElement>('input[aria-label="Group invitation link"]')?.value,
+      'https://kordi.ai/g/kordi_gi_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12',
+    );
+    step = 'revoke generated link';
+    assert.ok(button('Revoke link'));
+    await act(async () => { button('Revoke link')?.click(); });
     assert.equal(revokedId, 'groupinv_ui');
     assert.ok(button('Create invitation link'));
   } catch (error) {

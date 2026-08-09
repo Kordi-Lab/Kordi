@@ -29,6 +29,15 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await page.setViewportSize({ width: 430, height: 820 });
   await page.screenshot({ path: testInfo.outputPath('group-invitation-admin-narrow.png') });
 
+  await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=active');
+  await page.getByRole('button', { name: 'Add people' }).click();
+  await page.getByRole('tab', { name: 'Share link' }).click();
+  await expect(page.getByRole('button', { name: 'Create new share link' })).toBeVisible();
+  await expect(page.getByText('Revoke it before creating another link')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('group-invitation-active-narrow.png') });
+  await page.getByRole('button', { name: 'Create new share link' }).click();
+  await expect(page.getByLabel('Group invitation link')).toHaveValue(`https://kordi.ai/g/${token}`);
+
   await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=nonadmin');
   await page.getByRole('button', { name: 'Add people' }).click();
   await page.getByRole('tab', { name: 'Share link' }).click();
