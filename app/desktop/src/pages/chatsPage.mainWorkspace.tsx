@@ -383,7 +383,6 @@ export function ChatMainWorkspace({
         <MemberContactProfilePopover
           participant={models.senderProfiles.target.participant}
           contacts={models.senderProfiles.contacts}
-          roleLabel="Group member"
           presenceStatus={
             models.senderProfiles.target.participant.presenceStatus
           }

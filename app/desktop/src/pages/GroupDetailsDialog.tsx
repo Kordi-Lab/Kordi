@@ -499,7 +499,16 @@ export function GroupDetailsDialog({
             </button>
           </header>
 
-          <div className="app-transient-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-3">
+          <div
+            className="app-transient-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-3"
+            onClick={(event) => {
+              const target = event.target;
+              if (!(target instanceof Element)) return;
+              if (target.closest('[data-group-member-grid-item], [data-group-member-actions]')) return;
+              setSelectedMemberId(null);
+              setConfirmingRemovalId(null);
+            }}
+          >
             {actionError ? (
               <div role="alert" className="app-group-management-error mb-3 rounded-[11px] px-2.5 py-2 text-[11px] leading-4">
                 {actionError}
@@ -655,30 +664,19 @@ export function GroupDetailsDialog({
                 <section
                   id={`${memberSearchId}-member-actions`}
                   aria-label={`Manage ${selectedMember.name}`}
+                  data-group-member-actions
                   className="app-group-management-member-actions mt-2 border-b pb-2"
                 >
-                  <div className="relative py-1">
+                  <div className="py-1">
                     <MemberContactProfileContent
                       participant={selectedMember}
                       contacts={contacts}
-                      roleLabel={isCreator ? 'Group creator · admin' : admin ? 'Group admin' : 'Group member'}
+                      metadataMode="kordi-handle"
                       presenceStatus={memberPresence(selectedMember)}
                       isSelf={isSelf}
                       onAddContact={onAddContact}
                       onMessageContact={onMessageContact}
-                      className="pr-9"
                     />
-                    <button
-                      type="button"
-                      className="app-button-quiet app-group-management-close absolute right-0 top-0 grid h-7 w-7 place-items-center rounded-[9px] p-0"
-                      aria-label={`Close ${selectedMember.name} actions`}
-                      onClick={() => {
-                        setSelectedMemberId(null);
-                        setConfirmingRemovalId(null);
-                      }}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
                   </div>
 
                   {canChangeAdminRole ? (

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
+import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Contact, ConversationParticipant } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -70,6 +71,7 @@ type MemberContactProfileContentProps = {
   participant: ConversationParticipant;
   contacts: Contact[];
   roleLabel?: string;
+  metadataMode?: 'relationship' | 'kordi-handle';
   presenceStatus?: string | null;
   isSelf?: boolean;
   onAddContact?: (accountId: string) => Promise<void> | void;
@@ -81,6 +83,7 @@ export function MemberContactProfileContent({
   participant,
   contacts,
   roleLabel = 'Group member',
+  metadataMode = 'relationship',
   presenceStatus,
   isSelf = false,
   onAddContact,
@@ -103,6 +106,12 @@ export function MemberContactProfileContent({
   const relationshipLabel = isSelf ? 'You' : isExistingContact ? 'Contact' : requestPending ? 'Request pending' : '';
   const profileDetail = readableContactDetail(contact, accountId);
   const identityDetail = profileDetail;
+  const kordiHandle = formatKordiHandle(participant.kordiId)
+    || formatKordiHandle(contact?.detail)
+    || formatKordiHandle(contact?.subtitle);
+  const secondaryLine = metadataMode === 'kordi-handle'
+    ? kordiHandle
+    : [roleLabel, relationshipLabel].filter(Boolean).join(' · ');
 
   useEffect(() => {
     setRequestState('idle');
@@ -150,10 +159,12 @@ export function MemberContactProfileContent({
         />
         <div className="min-w-0 flex-1">
           <div className="app-transient-identity-title break-words">{participant.name}</div>
-          <div className="app-transient-metadata mt-0.5 break-words">
-            {[roleLabel, relationshipLabel].filter(Boolean).join(' · ')}
-          </div>
-          {identityDetail ? (
+          {secondaryLine ? (
+            <div className="app-transient-metadata mt-0.5 break-words" data-member-contact-secondary-line>
+              {secondaryLine}
+            </div>
+          ) : null}
+          {metadataMode === 'relationship' && identityDetail ? (
             <div
               className="app-transient-metadata mt-0.5 break-all"
               title={profileDetail ? identityDetail : accountId}
@@ -256,7 +267,7 @@ export function MemberContactProfilePopover({
         style={{ left, top, width }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <MemberContactProfileContent {...contentProps} />
+        <MemberContactProfileContent {...contentProps} metadataMode="kordi-handle" />
       </section>
     </>,
     document.body,

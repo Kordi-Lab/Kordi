@@ -79,6 +79,7 @@ export function cloudGroupSessionPreparationSignature(
 ) {
   const participantsByAccount = new Map<string, {
     accountId: string;
+    kordiId: string | null;
     displayName: string;
     avatarUrl: string | null;
     role: string | null;
@@ -92,6 +93,7 @@ export function cloudGroupSessionPreparationSignature(
     if (!accountId || participantsByAccount.has(accountId)) continue;
     participantsByAccount.set(accountId, {
       accountId,
+      kordiId: participant.kordiId?.trim() || null,
       displayName: participant.displayName.trim(),
       avatarUrl: participant.avatarUrl?.trim() || null,
       role: participant.role?.trim() || null,
@@ -208,6 +210,7 @@ export async function applyCloudGroupSessionControl({
           const profile = accountId === account.accountId
             ? {
                 accountId: account.accountId,
+                kordiId: account.kordiId,
                 displayName: account.displayName,
                 avatarUrl: account.avatarUrl,
                 nodeId: account.nodeId,

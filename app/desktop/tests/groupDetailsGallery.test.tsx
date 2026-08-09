@@ -282,6 +282,7 @@ test('member profile popover is content-dense, preserves identity text, and dism
   const markup = renderToStaticMarkup(createElement(MemberContactProfileContent, {
     participant: {
       id: 'human:tom-cohen',
+      kordiId: '123456789',
       humanId: 'acct_tom_cohen',
       name: 'Tom Cohen with a longer display name',
       kind: 'human',
@@ -290,7 +291,7 @@ test('member profile popover is content-dense, preserves identity text, and dism
       avatarKey: 'tom-cohen',
     },
     contacts: [],
-    roleLabel: 'Group member with a longer localized role',
+    metadataMode: 'kordi-handle',
     onAddContact: () => undefined,
   }));
 
@@ -301,7 +302,20 @@ test('member profile popover is content-dense, preserves identity text, and dism
   assert.match(markup, /app-transient-identity-title break-words/);
   assert.match(markup, /app-transient-metadata mt-0\.5 break-words/);
   assert.match(markup, /Tom Cohen with a longer display name/);
-  assert.match(markup, /Group member with a longer localized role/);
+  assert.match(markup, /@123456789/);
+  assert.doesNotMatch(markup, /Group member|Contact|Request pending/);
+  assert.equal(markup.match(/data-member-contact-secondary-line/g)?.length, 1);
+});
+
+test('group management member actions use Kordi handles and dismiss without a close control', () => {
+  const source = readFileSync(
+    new URL('../src/pages/GroupDetailsDialog.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /data-group-member-actions[\s\S]*metadataMode="kordi-handle"/);
+  assert.match(source, /target\.closest\('\[data-group-member-grid-item\], \[data-group-member-actions\]'\)/);
+  assert.doesNotMatch(source, /aria-label=\{`Close \$\{selectedMember\.name\} actions`\}/);
 });
 
 test('GroupDetailsDialog treats the signed-in account id as an alias of the local self identity', () => {

@@ -103,6 +103,13 @@ test('group replay preparation signature invalidates when membership or title ch
       updatedAtMs: 20,
     },
   });
+  const publicIdentityUpdated = groupMessage({
+    participants: original.participants.map((participant) => (
+      participant.accountId === 'acct_peer'
+        ? { ...participant, kordiId: '123456789' }
+        : participant
+    )),
+  });
 
   const signature = cloudGroupSessionPreparationSignature(original, account);
   assert.notEqual(
@@ -112,5 +119,9 @@ test('group replay preparation signature invalidates when membership or title ch
   assert.notEqual(
     signature,
     cloudGroupSessionPreparationSignature(renamed, account),
+  );
+  assert.notEqual(
+    signature,
+    cloudGroupSessionPreparationSignature(publicIdentityUpdated, account),
   );
 });

@@ -25,8 +25,8 @@ for (const theme of ['light', 'dark'] as const) {
 
     const identityCard = page.locator('[data-visual-surface="contact-card"] .visual-contact-card');
     await expect(identityCard.getByText('Tomorrow Liu')).toBeVisible();
-    await expect(identityCard.getByText('Group participant')).toBeVisible();
-    await expect(identityCard.getByText('Kordi ID · tomorrow')).toBeVisible();
+    await expect(identityCard.getByText('@123456789')).toBeVisible();
+    await expect(identityCard.getByText('Group participant')).toHaveCount(0);
     const contactActionIsContained = await identityCard.evaluate((element) => {
       const action = element.querySelector<HTMLElement>('.visual-contact-action');
       if (!action) return false;
