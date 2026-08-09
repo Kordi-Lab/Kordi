@@ -74,8 +74,7 @@ export type OutreachThreadSummary = {
 
 export type ConversationParticipant = {
   id: string;
-  /** Public nine-digit Kordi identity, distinct from the private cloud account id. */
-  kordiId?: string | null;
+  kordiId?: string | null; // Public nine-digit identity, not the private Cloud account id.
   name: string;
   /** Canonical profile name used where viewer-local labels such as "Me" would diverge. */
   publicName?: string | null;
@@ -93,7 +92,6 @@ export type ConversationParticipant = {
   presenceStatus?: string | null;
   presenceDetail?: string | null;
 };
-
 export type ConversationCollaborationTarget = {
   hostId: string;
   nodeId: string;

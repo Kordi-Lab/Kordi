@@ -7,14 +7,12 @@ import type {
   CanonicalSession,
   CanonicalSessionMessage,
   DesktopCollaborationSessionParticipant,
-  UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { normalizeKordiId } from './kordiId';
@@ -32,6 +30,8 @@ export type CloudGroupParticipant = {
 };
 
 export type CloudGroupActor = CloudGroupParticipant;
+
+export { cloudGroupIdentityRequest } from './cloudGroupIdentity';
 
 export type CloudGroupMemberJoin = {
   eventId: string;
@@ -1300,30 +1300,4 @@ export function firstRequiredCloudGroupSendFailure(
   return results.find((result, index): result is PromiseRejectedResult => (
     result.status === 'rejected' && required.has(cleanText(recipientAccountIds[index]))
   ));
-}
-
-export function cloudGroupIdentityRequest(
-  participant: CloudGroupParticipant,
-  account: CloudAccount,
-  _localHumanIdentityId: string,
-): UpsertCanonicalIdentityRequest {
-  const isSelf = participant.accountId === account.accountId;
-  const id = `human:${participant.accountId}`;
-  return {
-    id,
-    kind: 'human',
-    displayName: participant.displayName,
-    source: isSelf ? 'local' : 'cloud',
-    sourceHostId: isSelf ? null : CLOUD_HOST_SENTINEL,
-    sourceIdentityId: isSelf ? null : participant.accountId,
-    humanId: participant.accountId,
-    agentId: null,
-    avatarKey: cloudAvatarSeedForAccount(participant.accountId, participant.avatarUrl),
-    profileImageUrl: cloudAvatarImageUrl(participant.avatarUrl),
-    metadata: {
-      accountId: participant.accountId,
-      kordiId: normalizeKordiId(participant.kordiId),
-      cloudGroupParticipant: true,
-    },
-  };
 }

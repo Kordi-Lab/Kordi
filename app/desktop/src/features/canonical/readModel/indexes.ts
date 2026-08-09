@@ -946,7 +946,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     if (participant.state !== 'active') continue;
     pushMapArray(participantsBySessionId, participant.sessionId, participant);
   }
-
   const canonicalParticipantsBySessionId = new Map<string, ConversationParticipant[]>();
   for (const [sessionId, participants] of participantsBySessionId) {
     const seenParticipantKeys = new Set<string>();
@@ -957,7 +956,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       const name = ownerScopedAgentName(identity, identityById, canonicalState.profile.humanIdentityId) ?? identity.displayName;
       const ownerName = owner ? (ownerScopedAgentName(owner, identityById, canonicalState.profile.humanIdentityId) ?? owner.displayName) : null;
-      const identityMetadata = contentRecord(identity.metadata);
       const role = identity.id === canonicalState.profile.humanIdentityId
         ? 'self'
         : participant.role === 'self'
@@ -973,7 +971,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       seenParticipantKeys.add(participantKey);
       return [{
         id: identity.id,
-        kordiId: stringValue(identityMetadata.kordiId)?.trim() || null,
+        kordiId: stringValue(contentRecord(identity.metadata).kordiId)?.trim() || null,
         name,
         publicName: identity.displayName,
         kind: identity.kind,
