@@ -5,6 +5,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
+const KORDI_FAVICON_DATA_URL: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='10' r='9' fill='%231a1714' fill-opacity='.62'/%3E%3Ccircle cx='11' cy='22' r='9' fill='%231a1714' fill-opacity='.82'/%3E%3Ccircle cx='25' cy='22' r='9' fill='%231a1714'/%3E%3C/svg%3E";
+
 /// Result received from the browser redirect.
 #[derive(Debug, Clone)]
 pub struct CallbackParams {
@@ -203,6 +205,7 @@ fn render_auth_response_page(title: &str, body: &str) -> String {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/svg+xml" href="{favicon}" />
   <title>{title}</title>
   <style>
     :root {{ color-scheme: dark light; }}
@@ -265,6 +268,7 @@ fn render_auth_response_page(title: &str, body: &str) -> String {
   </main>
 </body>
 </html>"#,
+        favicon = KORDI_FAVICON_DATA_URL,
     )
 }
 
@@ -302,6 +306,8 @@ mod tests {
 
         assert!(html.contains("Signed in"));
         assert!(html.contains("return to the app"));
+        assert!(html.contains("rel=\"icon\" type=\"image/svg+xml\""));
+        assert!(html.contains(KORDI_FAVICON_DATA_URL));
         assert!(!html.contains("Close window"));
         assert!(!html.contains("<button"));
         assert!(!html.contains("Kordi Authentication"));

@@ -54,6 +54,9 @@ fn invitation_document_matches_the_approved_kordi_surface() {
     );
 
     assert!(document.contains("<span>kordi</span>"));
+    assert!(document.contains(
+        "<link rel=\"icon\" type=\"image/png\" sizes=\"512x512\" href=\"/assets/favicon.png\">"
+    ));
     assert!(document.contains("Download Kordi for Mac"));
     assert!(document.contains(VERSIONED_DMG_URL));
     assert!(document.contains("href=\"https://kordi.ai/\">Learn more</a>"));
@@ -93,4 +96,22 @@ fn invitation_document_can_offer_a_safe_open_app_action() {
     assert!(document.contains("Open Kordi"));
     assert!(document.contains("kordi://group-invite/kordi_gi_token"));
     assert!(document.contains("Download Kordi for Mac"));
+}
+
+#[test]
+fn invitation_response_allows_the_same_origin_favicon() {
+    let response = invitation_landing_html(
+        StatusCode::OK,
+        "Join Kordi",
+        "Continue in the Kordi app.",
+        None,
+    );
+    let policy = response
+        .headers()
+        .get("content-security-policy")
+        .expect("invitation response should set a content security policy")
+        .to_str()
+        .expect("content security policy should be valid header text");
+
+    assert!(policy.contains("img-src 'self'"));
 }
