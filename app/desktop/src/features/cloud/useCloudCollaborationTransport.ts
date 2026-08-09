@@ -81,6 +81,8 @@ export function useCloudCollaborationTransport({
           setState: stores.messages.setByPeer,
           peerReadAtByPeerRef:
             stores.messages.peerReadAtByPeerRef,
+          authoritativeSelfSnapshotRef:
+            stores.messages.authoritativeSelfSnapshotRef,
         },
         activity: {
           stateRef: stores.activity.valueRef,

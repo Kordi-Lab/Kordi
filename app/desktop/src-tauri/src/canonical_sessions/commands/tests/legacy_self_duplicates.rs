@@ -1,5 +1,6 @@
 use super::super::legacy_self_duplicates::prune_legacy_cloud_self_message_duplicates_in_db;
 use super::*;
+use std::collections::HashSet;
 
 fn seed_legacy_self_message(
     conn: &Connection,
@@ -130,7 +131,7 @@ fn legacy_cloud_self_repair_repoints_references_before_pruning_near_time_replays
     )
     .expect("seed duplicate response reference");
 
-    let deleted = prune_legacy_cloud_self_message_duplicates_in_db(&mut conn)
+    let deleted = prune_legacy_cloud_self_message_duplicates_in_db(&mut conn, &HashSet::new())
         .expect("prune near-time legacy replays");
     assert_eq!(
         deleted,
@@ -192,7 +193,217 @@ fn legacy_cloud_self_repair_repoints_references_before_pruning_near_time_replays
             ),
         ]
     );
-    assert!(prune_legacy_cloud_self_message_duplicates_in_db(&mut conn)
-        .expect("repeat repair is idempotent")
-        .is_empty());
+    assert!(
+        prune_legacy_cloud_self_message_duplicates_in_db(&mut conn, &HashSet::new())
+            .expect("repeat repair is idempotent")
+            .is_empty()
+    );
+}
+
+#[test]
+fn authoritative_cloud_snapshot_wins_over_a_referenced_stale_replay() {
+    let mut conn = test_conn();
+    seed_identity(&conn);
+    conn.execute(
+        "INSERT INTO sessions (
+            id, kind, title, status, created_by_identity_id,
+            created_at_ms, updated_at_ms, last_message_at_ms
+         ) VALUES (
+            'session:self', 'self-agent', 'Self', 'active', 'human:me',
+            1, 10, 10
+         )",
+        [],
+    )
+    .expect("seed session");
+    seed_legacy_self_message(
+        &conn,
+        "message:stale-referenced",
+        1,
+        10_000,
+        "same prompt",
+        None,
+        "cloud-self-agent",
+    );
+    seed_legacy_self_message(
+        &conn,
+        "message:server-keeper",
+        2,
+        10_000,
+        "same prompt",
+        None,
+        "cloud-self-agent",
+    );
+    conn.execute(
+        r#"INSERT INTO session_messages (
+            id, session_id, sender_identity_id, sender_role, message_kind,
+            content_text, content_json, parent_message_id, status, sequence_num,
+            created_at_ms, updated_at_ms, source_transport, source_event_id
+         ) VALUES (
+            'message:response', 'session:self', 'agent:self', 'owned-agent',
+            'agent-turn', 'done', '{"requestId":"message:stale-referenced"}',
+            'message:stale-referenced', 'complete', 3, 11_000, 11_000,
+            'cloud-self-agent', 'response:stale'
+         )"#,
+        [],
+    )
+    .expect("seed response reference");
+
+    let authoritative = HashSet::from(["message:server-keeper".to_string()]);
+    let deleted = prune_legacy_cloud_self_message_duplicates_in_db(&mut conn, &authoritative)
+        .expect("prefer authoritative server keeper");
+
+    assert_eq!(deleted, vec!["message:stale-referenced"]);
+    let references = conn
+        .query_row(
+            "SELECT parent_message_id, json_extract(content_json, '$.requestId')
+             FROM session_messages WHERE id = 'message:response'",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .expect("load repointed response");
+    assert_eq!(
+        references,
+        (
+            "message:server-keeper".to_string(),
+            "message:server-keeper".to_string(),
+        )
+    );
+}
+
+#[test]
+fn multiple_authoritative_rapid_messages_are_preserved() {
+    let mut conn = test_conn();
+    seed_identity(&conn);
+    conn.execute(
+        "INSERT INTO sessions (
+            id, kind, title, status, created_by_identity_id,
+            created_at_ms, updated_at_ms, last_message_at_ms
+         ) VALUES (
+            'session:self', 'self-agent', 'Self', 'active', 'human:me',
+            1, 10, 10
+         )",
+        [],
+    )
+    .expect("seed session");
+    for (id, sequence_num) in [
+        ("message:server-one", 1),
+        ("message:stale", 2),
+        ("message:server-two", 3),
+    ] {
+        seed_legacy_self_message(
+            &conn,
+            id,
+            sequence_num,
+            10_000,
+            "same prompt",
+            None,
+            "cloud-self-agent",
+        );
+    }
+
+    let authoritative = HashSet::from([
+        "message:server-one".to_string(),
+        "message:server-two".to_string(),
+    ]);
+    let deleted = prune_legacy_cloud_self_message_duplicates_in_db(&mut conn, &authoritative)
+        .expect("preserve authoritative rapid sends");
+
+    assert_eq!(deleted, vec!["message:stale"]);
+    let retained = conn
+        .prepare("SELECT id FROM session_messages ORDER BY sequence_num")
+        .expect("prepare retained messages")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query retained messages")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect retained messages");
+    assert_eq!(retained, vec!["message:server-one", "message:server-two"]);
+}
+
+#[test]
+fn authoritative_agent_response_replaces_a_stale_repointed_response() {
+    let mut conn = test_conn();
+    seed_identity(&conn);
+    conn.execute(
+        "INSERT INTO sessions (
+            id, kind, title, status, created_by_identity_id,
+            created_at_ms, updated_at_ms, last_message_at_ms
+         ) VALUES (
+            'session:self', 'self-agent', 'Self', 'active', 'human:me',
+            1, 10, 10
+         )",
+        [],
+    )
+    .expect("seed session");
+    seed_legacy_self_message(
+        &conn,
+        "message:stale-request",
+        1,
+        10_000,
+        "same prompt",
+        None,
+        "cloud-self-agent",
+    );
+    seed_legacy_self_message(
+        &conn,
+        "message:server-request",
+        2,
+        10_500,
+        "same prompt",
+        None,
+        "cloud-self-agent",
+    );
+    for (id, request_id, sequence_num, source_event_id) in [
+        (
+            "message:stale-response",
+            "message:stale-request",
+            3,
+            "response:stale",
+        ),
+        (
+            "message:server-response",
+            "message:server-request",
+            4,
+            "response:server",
+        ),
+    ] {
+        conn.execute(
+            r#"INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, content_json, parent_message_id, status, sequence_num,
+                created_at_ms, updated_at_ms, source_transport, source_event_id
+             ) VALUES (
+                ?1, 'session:self', 'agent:self', 'owned-agent', 'agent-turn',
+                'same answer', json_object('requestId', ?2), ?2, 'complete', ?3,
+                11_000, 11_000, 'cloud-self-agent', ?4
+             )"#,
+            params![id, request_id, sequence_num, source_event_id],
+        )
+        .expect("seed agent response");
+    }
+
+    let authoritative = HashSet::from([
+        "message:server-request".to_string(),
+        "response:server".to_string(),
+    ]);
+    let deleted = prune_legacy_cloud_self_message_duplicates_in_db(&mut conn, &authoritative)
+        .expect("prefer authoritative server request and response");
+
+    assert_eq!(
+        deleted,
+        vec![
+            "message:stale-request".to_string(),
+            "message:stale-response".to_string(),
+        ]
+    );
+    let retained = conn
+        .prepare("SELECT id FROM session_messages ORDER BY sequence_num")
+        .expect("prepare retained messages")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query retained messages")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect retained messages");
+    assert_eq!(
+        retained,
+        vec!["message:server-request", "message:server-response"]
+    );
 }

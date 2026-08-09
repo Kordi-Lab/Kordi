@@ -29,9 +29,12 @@ export async function applyCanonicalSelfAgentSyncPlan(request: {
   });
 }
 
-export async function pruneCanonicalLegacyCloudSelfMessageDuplicates() {
+export async function pruneCanonicalLegacyCloudSelfMessageDuplicates(
+  authoritativeMessageIds: string[],
+) {
   if (!isNativeDesktopShell()) return [];
   return invokeDesktop<string[]>(
     'desktop_canonical_prune_legacy_cloud_self_message_duplicates',
+    { authoritativeMessageIds },
   );
 }

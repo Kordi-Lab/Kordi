@@ -14,12 +14,8 @@ import {
   type CloudMessage,
   type CloudSessionTitle,
 } from './authClient';
-import {
-  CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-} from './cloudAgentMessages';
-import {
-  type CloudGroupReadCursor,
-} from './cloudGroupMessages';
+import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
+import { type CloudGroupReadCursor } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
   type CloudMessageIndex,
@@ -27,15 +23,14 @@ import {
 } from './cloudMessageIndex';
 import { defaultCloudAgentsClient } from './cloudAgentsClient';
 import { defaultCloudMessageCache } from './cloudMessageCache';
+import type { CloudSelfAgentAuthoritativeSnapshot } from './cloudSelfAgentAuthoritativeSnapshot';
 import {
   CloudGroupOutbox,
   defaultCloudGroupOutboxPersistence,
 } from './cloudGroupOutbox';
 import { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import { CloudProfileIdentityAdoptionCoordinator, CloudSyncCoordinator } from './cloudSyncCoordinator';
-import {
-  type CloudSessionActivityStore,
-} from './cloudSessionActivity';
+import { type CloudSessionActivityStore } from './cloudSessionActivity';
 import {
   useCloudAgentCancellation,
   useCloudAgentRequestCancellation,
@@ -192,6 +187,8 @@ function useCloudCollaborationMessageStore(
   const cacheAccountRef = useRef<string | null>(null);
   const hydratedCacheAccountRef = useRef<string | null>(null);
   const peerReadAtByPeerRef = useRef<Record<string, string>>({});
+  const authoritativeSelfSnapshotRef =
+    useRef<CloudSelfAgentAuthoritativeSnapshot>(null);
   const belongsToCurrentAccount = Boolean(account?.accountId
     && cacheAccountRef.current === account.accountId);
   const currentAccountMessagesByPeer = belongsToCurrentAccount
@@ -219,6 +216,7 @@ function useCloudCollaborationMessageStore(
     cacheAccountRef,
     hydratedCacheAccountRef,
     peerReadAtByPeerRef,
+    authoritativeSelfSnapshotRef,
   };
 }
 
@@ -275,6 +273,7 @@ export function useCloudCollaborationState({
       belongsToCurrentAccount: messagesBelongToCurrentAccount,
       index: cloudMessageIndex,
       indexRef: cloudMessageIndexRef,
+      authoritativeSelfSnapshotRef,
     },
     unread: {
       readiness: cloudUnreadReadiness,
@@ -559,6 +558,7 @@ export function useCloudCollaborationState({
     setCanonicalState: setCanonicalSessionState,
     messagesByPeer,
     messageIndex: cloudMessageIndex,
+    authoritativeSelfSnapshotRef,
     forksBySessionId: cloudSessionForksById,
     titlesBySessionId: cloudSessionTitlesById,
     initialMessagesSettled,

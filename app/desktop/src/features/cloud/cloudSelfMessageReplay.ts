@@ -56,6 +56,12 @@ function sortedTimesContainNear(times: number[] | undefined, target: number) {
       && Math.abs(times[low - 1] - target) < LEGACY_SELF_REPLAY_WINDOW_MS);
 }
 
+function cloudAgentRequestId(message: CloudMessage) {
+  return parseCloudAgentResponse(message.body)?.requestId
+    ?? parseCloudAgentCancel(message.body)?.requestId
+    ?? null;
+}
+
 export function selfSnapshotCurrentMessages(
   current: CloudMessage[],
   snapshot: CloudMessage[],
@@ -63,24 +69,42 @@ export function selfSnapshotCurrentMessages(
   if (current.length === 0) return current;
   const snapshotIds = new Set(snapshot.map((message) => message.messageId));
   const referencedRequestIds = new Set([...current, ...snapshot].flatMap((message) => {
-    const requestId = parseCloudAgentResponse(message.body)?.requestId
-      ?? parseCloudAgentCancel(message.body)?.requestId;
+    const requestId = cloudAgentRequestId(message);
     return requestId ? [requestId] : [];
+  }));
+  const snapshotReplayTimes = replayTimesByBaseKey(snapshot);
+  const hiddenReferencedRequestIds = new Set(current.flatMap((message) => {
+    if (
+      message.fromAccountId !== message.toAccountId
+      || message.attachments?.length
+      || snapshotIds.has(message.messageId)
+      || !referencedRequestIds.has(message.messageId)
+      || cloudAgentRequestId(message)
+    ) return [];
+    const createdAtMs = cloudMessageCreatedAtMs(message);
+    if (createdAtMs === null) return [];
+    return sortedTimesContainNear(
+      snapshotReplayTimes.get(selfReplayBaseKey(message)),
+      createdAtMs,
+    ) ? [message.messageId] : [];
   }));
   const referencedReplayTimes = replayTimesByBaseKey(current.filter((message) => (
     message.fromAccountId === message.toAccountId
     && !message.attachments?.length
     && referencedRequestIds.has(message.messageId)
+    && !hiddenReferencedRequestIds.has(message.messageId)
   )));
-  const snapshotReplayTimes = replayTimesByBaseKey(snapshot);
   const keptUnsnapshottedTimes = new Map<string, number[]>();
   const retained = current.filter((message) => {
     if (
       message.fromAccountId !== message.toAccountId
       || message.attachments?.length
       || snapshotIds.has(message.messageId)
-      || referencedRequestIds.has(message.messageId)
     ) return true;
+    if (hiddenReferencedRequestIds.has(message.messageId)) return false;
+    const requestId = cloudAgentRequestId(message);
+    if (requestId && hiddenReferencedRequestIds.has(requestId)) return false;
+    if (referencedRequestIds.has(message.messageId)) return true;
     const createdAtMs = cloudMessageCreatedAtMs(message);
     if (createdAtMs === null) return true;
     const key = selfReplayBaseKey(message);

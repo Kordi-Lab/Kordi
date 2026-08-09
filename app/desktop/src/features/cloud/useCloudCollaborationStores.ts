@@ -19,6 +19,7 @@ import type {
 } from './authClient';
 import type { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import type { CloudMessageCache } from './cloudMessageCache';
+import type { CloudSelfAgentAuthoritativeSnapshot } from './cloudSelfAgentAuthoritativeSnapshot';
 import {
   type CloudMessageIndex,
   type IndexedCloudGroupRow,
@@ -46,6 +47,7 @@ export type CloudCollaborationMessageStore = {
   cacheAccountRef: MutableRefObject<string | null>;
   hydratedCacheAccountRef: MutableRefObject<string | null>;
   peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
+  authoritativeSelfSnapshotRef: MutableRefObject<CloudSelfAgentAuthoritativeSnapshot>;
 };
 
 export function useCloudCollaborationStores({
@@ -80,6 +82,7 @@ export function useCloudCollaborationStores({
     cacheAccountRef: messagesCacheAccountRef,
     hydratedCacheAccountRef: hydratedMessagesCacheAccountRef,
     peerReadAtByPeerRef,
+    authoritativeSelfSnapshotRef,
   } = messageStore;
   const [unreadReadiness, setUnreadReadiness] =
     useState<CloudUnreadReadinessSnapshot>(() => ({
@@ -128,6 +131,7 @@ export function useCloudCollaborationStores({
       cacheAccountRef: messagesCacheAccountRef,
       hydratedCacheAccountRef: hydratedMessagesCacheAccountRef,
       peerReadAtByPeerRef,
+      authoritativeSelfSnapshotRef,
     },
     unread: {
       setReadiness: setUnreadReadiness,
@@ -172,6 +176,7 @@ export function useCloudCollaborationStores({
       index: messageIndex,
       indexRef: messageIndexRef,
       peerReadAtByPeerRef,
+      authoritativeSelfSnapshotRef,
     },
     unread: {
       readiness: unreadReadiness,

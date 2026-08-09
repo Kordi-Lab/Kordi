@@ -40,6 +40,7 @@ import type {
 import type {
   CloudMessageCache,
 } from './cloudMessageCache';
+import type { CloudSelfAgentAuthoritativeSnapshot } from './cloudSelfAgentAuthoritativeSnapshot';
 import type {
   CloudGroupReplayCoordinator,
 } from './cloudGroupReplayCoordinator';
@@ -73,6 +74,7 @@ type CloudAccountMessageStore = {
   cacheAccountRef: MutableRefObject<string | null>;
   hydratedCacheAccountRef: MutableRefObject<string | null>;
   peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
+  authoritativeSelfSnapshotRef: MutableRefObject<CloudSelfAgentAuthoritativeSnapshot>;
 };
 
 type CloudAccountUnreadStore = {
@@ -126,6 +128,7 @@ export function useCloudAccountLifecycleState({
     cacheAccountRef: messagesCacheAccountRef,
     hydratedCacheAccountRef,
     peerReadAtByPeerRef,
+    authoritativeSelfSnapshotRef,
   } = messages;
   const {
     setReadiness: setUnreadReadiness,
@@ -275,6 +278,7 @@ export function useCloudAccountLifecycleState({
     messagesCacheAccountRef.current = accountId;
     hydratedCacheAccountRef.current = null;
     peerReadAtByPeerRef.current = {};
+    authoritativeSelfSnapshotRef.current = null;
     messagesByPeerRef.current = {};
     setMessagesByPeer({});
     setUnreadReadiness({
@@ -354,6 +358,7 @@ export function useCloudAccountLifecycleState({
     hiddenSessionIdsRef,
     hydratedCacheAccountRef,
     peerReadAtByPeerRef,
+    authoritativeSelfSnapshotRef,
     messageCache,
     messagesByPeerRef,
     messagesCacheAccountRef,

@@ -4,6 +4,7 @@ import {
   useReducer,
   useRef,
   type Dispatch,
+  type MutableRefObject,
   type SetStateAction,
 } from 'react';
 import type { CanonicalSessionState } from '@/kordi-app/types';
@@ -25,6 +26,7 @@ import {
   persistCloudSelfAgentCanonicalSyncPlan,
 } from './cloudSelfAgentCanonicalSyncExecution';
 import type { CloudMessageIndex } from './cloudMessageIndex';
+import type { CloudSelfAgentAuthoritativeSnapshot } from './cloudSelfAgentAuthoritativeSnapshot';
 import { pruneCanonicalLegacyCloudSelfMessageDuplicates } from './cloudSelfAgentDesktopPersistence';
 
 function stableRecordRevision<T>(record: Record<string, T>) {
@@ -41,6 +43,7 @@ export function useCloudSelfAgentCanonicalSync({
   setCanonicalState,
   messagesByPeer,
   messageIndex,
+  authoritativeSelfSnapshotRef,
   forksBySessionId,
   titlesBySessionId,
   initialMessagesSettled,
@@ -53,6 +56,7 @@ export function useCloudSelfAgentCanonicalSync({
   >;
   messagesByPeer: Record<string, CloudMessage[]>;
   messageIndex: CloudMessageIndex;
+  authoritativeSelfSnapshotRef: MutableRefObject<CloudSelfAgentAuthoritativeSnapshot>;
   forksBySessionId: Record<string, CloudSessionForkSummary>;
   titlesBySessionId: CloudSessionTitlesById;
   initialMessagesSettled: boolean;
@@ -76,6 +80,7 @@ export function useCloudSelfAgentCanonicalSync({
     setCanonicalState,
     messagesByPeer,
     messageIndex,
+    authoritativeSelfSnapshotRef,
     forksBySessionId,
     titlesBySessionId,
     initialMessagesSettled,
@@ -112,6 +117,7 @@ export function useCloudSelfAgentCanonicalSync({
       setCanonicalState,
       messagesByPeer,
       messageIndex,
+      authoritativeSelfSnapshotRef,
       forksBySessionId,
       titlesBySessionId,
       initialMessagesSettled,
@@ -123,6 +129,7 @@ export function useCloudSelfAgentCanonicalSync({
     forksBySessionId,
     initialMessagesSettled,
     messageIndex,
+    authoritativeSelfSnapshotRef,
     messagesByPeer,
     reportWarning,
     setCanonicalState,
@@ -204,13 +211,18 @@ export function useCloudSelfAgentCanonicalSync({
       currentAccount.accountId,
       input.canonicalState.storagePath,
     ].join('\u001f');
+    const authoritativeSnapshot =
+      input.authoritativeSelfSnapshotRef.current;
+    if (authoritativeSnapshot?.accountId !== currentAccount.accountId) return;
     if (
       completedRepairRef.current === repairKey
       || repairInFlightRef.current
       || failedRepairRef.current === repairKey
     ) return;
     repairInFlightRef.current = repairKey;
-    void pruneCanonicalLegacyCloudSelfMessageDuplicates()
+    void pruneCanonicalLegacyCloudSelfMessageDuplicates(
+      [...authoritativeSnapshot.messageIds],
+    )
       .then((deletedMessageIds) => {
         if (
           !mountedRef.current

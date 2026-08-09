@@ -19,6 +19,13 @@ struct LegacySelfReplayCandidate {
     key: LegacySelfReplayKey,
     sequence_num: i64,
     created_at_ms: i64,
+    source_event_id: Option<String>,
+}
+
+impl LegacySelfReplayCandidate {
+    fn requires_authoritative_keeper(&self) -> bool {
+        self.key.sender_role == "owned-agent" && self.key.message_kind == "agent-turn"
+    }
 }
 
 const LEGACY_SELF_REPLAY_WINDOW_MS: i64 = 1_000;
@@ -131,6 +138,7 @@ fn repoint_canonical_message_references(
 
 pub(crate) fn prune_legacy_cloud_self_message_duplicates_in_db(
     conn: &mut Connection,
+    authoritative_source_event_ids: &HashSet<String>,
 ) -> Result<Vec<String>, String> {
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -139,12 +147,18 @@ pub(crate) fn prune_legacy_cloud_self_message_duplicates_in_db(
         let mut statement = tx
             .prepare(
                 "SELECT id, session_id, sender_identity_id, sender_role,
-                        message_kind, content_text, created_at_ms, sequence_num
+                        message_kind, content_text, created_at_ms, sequence_num,
+                        source_event_id
                  FROM session_messages
                  WHERE source_transport = 'cloud-self-agent'
-                   AND sender_role = 'user'
-                   AND message_kind = 'text'
-                   AND content_json IS NULL
+                   AND (
+                     (sender_role = 'user'
+                      AND message_kind = 'text'
+                      AND content_json IS NULL)
+                     OR
+                     (sender_role = 'owned-agent'
+                      AND message_kind = 'agent-turn')
+                   )
                  ORDER BY sequence_num ASC, id ASC",
             )
             .map_err(|error| error.to_string())?;
@@ -161,6 +175,7 @@ pub(crate) fn prune_legacy_cloud_self_message_duplicates_in_db(
                     },
                     sequence_num: row.get(7)?,
                     created_at_ms: row.get(6)?,
+                    source_event_id: row.get(8)?,
                 })
             })
             .map_err(|error| error.to_string())?;
@@ -211,14 +226,44 @@ pub(crate) fn prune_legacy_cloud_self_message_duplicates_in_db(
             }
             let cluster = &candidates[cluster_start..cluster_end];
             if cluster.len() > 1 {
-                let keeper_id = cluster
+                let authoritative_candidates = cluster
                     .iter()
-                    .find(|candidate| referenced_ids.contains(&candidate.id))
+                    .filter(|candidate| {
+                        candidate
+                            .source_event_id
+                            .as_ref()
+                            .is_some_and(|source_event_id| {
+                                authoritative_source_event_ids.contains(source_event_id)
+                            })
+                    })
+                    .collect::<Vec<_>>();
+                if cluster[0].requires_authoritative_keeper() && authoritative_candidates.len() != 1
+                {
+                    cluster_start = cluster_end;
+                    continue;
+                }
+                let keeper_id = authoritative_candidates
+                    .first()
+                    .copied()
+                    .or_else(|| {
+                        cluster
+                            .iter()
+                            .find(|candidate| referenced_ids.contains(&candidate.id))
+                    })
                     .or_else(|| cluster.first())
                     .map(|candidate| candidate.id.as_str())
                     .expect("duplicate candidate cluster is non-empty");
                 for candidate in cluster {
-                    if candidate.id == keeper_id {
+                    let is_authoritative =
+                        candidate
+                            .source_event_id
+                            .as_ref()
+                            .is_some_and(|source_event_id| {
+                                authoritative_source_event_ids.contains(source_event_id)
+                            });
+                    if candidate.id == keeper_id
+                        || (authoritative_candidates.len() > 1 && is_authoritative)
+                    {
                         continue;
                     }
                     repoint_canonical_message_references(&tx, &candidate.id, keeper_id)?;
@@ -245,7 +290,9 @@ pub(crate) fn prune_legacy_cloud_self_message_duplicates_in_db(
 }
 
 pub(crate) fn desktop_canonical_prune_legacy_cloud_self_message_duplicates(
+    authoritative_message_ids: Vec<String>,
 ) -> Result<Vec<String>, String> {
     let mut conn = open_db()?;
-    prune_legacy_cloud_self_message_duplicates_in_db(&mut conn)
+    let authoritative_message_ids = authoritative_message_ids.into_iter().collect();
+    prune_legacy_cloud_self_message_duplicates_in_db(&mut conn, &authoritative_message_ids)
 }

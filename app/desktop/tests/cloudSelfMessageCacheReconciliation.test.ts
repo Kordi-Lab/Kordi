@@ -122,6 +122,40 @@ test('self snapshot cache cleanup preserves referenced requests and attachments'
   );
 });
 
+test('authoritative self snapshots prune stale referenced replays and their controls', () => {
+  const keeper = selfMessage(
+    'msg_keeper',
+    'same request',
+    '2026-05-11T09:59:00.000Z',
+  );
+  const staleReferencedReplay = selfMessage(
+    'msg_stale_referenced',
+    'same request',
+    '2026-05-11T09:59:00.650Z',
+  );
+  const staleResponse = selfMessage(
+    'msg_stale_response',
+    encodeCloudAgentResponse({
+      requestId: staleReferencedReplay.messageId,
+      text: 'stale answer',
+      deliveryState: 'complete',
+    }),
+    '2026-05-11T10:00:00Z',
+  );
+  const merged = mergeCloudMessagesByPeerSnapshot(
+    {
+      [accountId]: [keeper, staleReferencedReplay, staleResponse],
+    },
+    { [accountId]: [keeper] },
+    { authoritativeSelfAccountId: accountId },
+  );
+
+  assert.deepEqual(
+    merged[accountId]?.map((item) => item.messageId),
+    ['msg_keeper'],
+  );
+});
+
 test('cached and diff replay batches collapse before entering React state', () => {
   const referenced = selfMessage('msg_referenced', 'same request');
   const duplicateRows = Array.from({ length: 20_000 }, (_, index) => ({

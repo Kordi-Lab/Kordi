@@ -379,9 +379,14 @@ pub async fn desktop_canonical_apply_self_agent_sync_plan(
 
 #[tauri::command]
 pub async fn desktop_canonical_prune_legacy_cloud_self_message_duplicates(
+    authoritative_message_ids: Vec<String>,
 ) -> Result<Vec<String>, String> {
-    run_canonical_blocking(commands::desktop_canonical_prune_legacy_cloud_self_message_duplicates)
-        .await
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_prune_legacy_cloud_self_message_duplicates(
+            authoritative_message_ids,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
