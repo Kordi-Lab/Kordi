@@ -1,14 +1,14 @@
-import { useEffect } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { ExternalLink, LockKeyhole, Sparkles, Users, X } from 'lucide-react';
 
 import {
   AppDialog,
-  AppDialogActions,
   AppDialogDescription,
   AppDialogTitle,
 } from '@/components/ui/dialog';
 import {
-  releaseHighlightGroups,
+  releaseHighlights,
+  type WhatsNewHighlight,
   type WhatsNewRelease,
 } from '@/features/updates/whatsNew';
 
@@ -19,13 +19,34 @@ type WhatsNewDialogProps = {
   onOpenFullReleaseNotes?: () => void;
 };
 
+function highlightIcon(kind: WhatsNewHighlight['kind']) {
+  const className = 'h-[18px] w-[18px]';
+  if (kind === 'sign-in') return <LockKeyhole className={className} aria-hidden="true" />;
+  if (kind === 'collaboration') return <Users className={className} aria-hidden="true" />;
+  return <Sparkles className={className} aria-hidden="true" />;
+}
+
+function releaseDateLabel(publishedAt: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(publishedAt));
+}
+
+function releaseChannelLabel(version: string) {
+  return version.split('-', 2)[1] ?? version;
+}
+
 export function WhatsNewDialog({
   release,
   onDismiss,
   onPresented,
   onOpenFullReleaseNotes,
 }: WhatsNewDialogProps) {
-  const groups = releaseHighlightGroups(release.notes);
+  const highlights = useMemo(() => releaseHighlights(release), [release]);
+  const updateCountLabel = `${highlights.length} product ${highlights.length === 1 ? 'update' : 'updates'}`;
 
   useEffect(() => {
     onPresented?.();
@@ -36,80 +57,89 @@ export function WhatsNewDialog({
       titleId="whats-new-title"
       descriptionId="whats-new-description"
       onDismiss={onDismiss}
-      className="app-whats-new-dialog w-[min(38rem,calc(100vw-1.5rem))] max-w-none overflow-hidden rounded-[22px] p-0"
+      className="app-whats-new-dialog max-w-none overflow-hidden p-0"
     >
-      <article className="flex max-h-[min(42rem,calc(100dvh-1.5rem))] min-h-0 flex-col">
-        <header className="app-transient-divider flex shrink-0 items-start justify-between gap-5 border-b px-6 py-5">
+      <article className="app-whats-new-layout">
+        <header className="app-whats-new-header">
           <div className="min-w-0">
-            <AppDialogTitle id="whats-new-title">
-              What’s New in Kordi {release.version}
+            <AppDialogTitle
+              id="whats-new-title"
+              className="text-[24px] leading-[1.1] tracking-[-0.03em]"
+            >
+              What’s New in Kordi
             </AppDialogTitle>
             <AppDialogDescription
               id="whats-new-description"
-              className="mt-1 max-w-[34rem]"
+              className="mt-1.5 text-[12px] font-medium leading-4"
             >
-              A quick look at the changes included in this version.
+              {updateCountLabel} in the {releaseChannelLabel(release.version)} release.
             </AppDialogDescription>
+            <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="inline-flex min-h-7 items-center rounded-full bg-[color:var(--app-transient-raised-bg)] px-2.5 text-[10.5px] font-semibold">
+                {release.version}
+              </span>
+              <span className="text-[10.5px] font-medium text-[color:var(--app-transient-muted-text)]">
+                {releaseDateLabel(release.publishedAt)}
+              </span>
+            </div>
           </div>
           <button
             type="button"
-            className="app-button-quiet grid h-8 w-8 shrink-0 place-items-center rounded-[10px]"
+            className="app-button-quiet grid h-11 w-11 shrink-0 place-items-center rounded-[12px] p-0"
             onClick={onDismiss}
             aria-label="Close What’s New"
           >
-            <X className="h-4 w-4" aria-hidden="true" />
+            <X className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div className="grid gap-6">
-            {groups.map((group, index) => (
-              <section key={`${group.title}-${index}`} aria-labelledby={`whats-new-section-${index}`}>
-                <h3
-                  id={`whats-new-section-${index}`}
-                  className="m-0 text-[12px] font-semibold leading-5 text-[color:var(--app-transient-text)]"
-                >
-                  {group.title}
+        <div className="app-whats-new-content app-scroll-area" role="list" aria-label="Release highlights">
+          {highlights.map((highlight) => (
+            <article
+              key={`${highlight.category}:${highlight.title}`}
+              className="app-whats-new-item"
+              role="listitem"
+            >
+              <span className="app-whats-new-icon" aria-hidden="true">
+                {highlightIcon(highlight.kind)}
+              </span>
+              <div className="min-w-0">
+                <span className="block text-[10.5px] font-semibold leading-4 text-[color:var(--app-transient-focus-ring)]">
+                  {highlight.category}
+                </span>
+                <h3 className="mt-1 mb-0 text-[13px] font-semibold leading-[1.4] text-[color:var(--app-transient-text)]">
+                  {highlight.title}
                 </h3>
-                <ul className="mt-2.5 grid list-none gap-3 p-0">
-                  {group.items.map((item) => (
-                    <li
-                      key={item}
-                      className="flex items-start gap-3 text-[13px] leading-5 text-[color:var(--app-transient-muted-text)]"
-                    >
-                      <span
-                        className="app-whats-new-bullet mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full"
-                        aria-hidden="true"
-                      />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
+                {highlight.detail ? (
+                  <p className="mt-1.5 mb-0 max-w-[68ch] text-[11px] leading-[1.5] text-[color:var(--app-transient-muted-text)]">
+                    {highlight.detail}
+                  </p>
+                ) : null}
+              </div>
+            </article>
+          ))}
         </div>
 
-        <AppDialogActions className="app-transient-divider mt-0 shrink-0 items-center border-t px-6 py-4">
+        <footer className="app-whats-new-footer">
           {release.changelogUrl && onOpenFullReleaseNotes ? (
             <button
               type="button"
-              className="app-transient-flat-action app-whats-new-action mr-auto inline-flex min-h-9 items-center gap-2 rounded-[10px] px-3 font-medium"
+              className="app-transient-flat-action inline-flex min-h-11 items-center gap-2 rounded-[12px] px-3 text-[11.5px] font-semibold"
               onClick={onOpenFullReleaseNotes}
             >
-              View full release notes
+              View full changelog
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
-          ) : null}
+          ) : <span />}
           <button
             type="button"
-            className="app-button-primary app-whats-new-action min-h-9 rounded-[10px] px-4 font-semibold"
+            className="app-whats-new-continue min-h-11 rounded-[12px] px-5 text-[11.5px] font-semibold"
             onClick={onDismiss}
             autoFocus
           >
             Continue
           </button>
-        </AppDialogActions>
+        </footer>
       </article>
     </AppDialog>
   );
