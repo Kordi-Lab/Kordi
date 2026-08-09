@@ -92,7 +92,7 @@ test('What’s New focuses Continue, reports presentation, and dismisses with Es
 test('the launch window is mounted only after sign-in and initial sync are ready', () => {
   const source = readFileSync(new URL('../src/KordiApp.tsx', import.meta.url), 'utf8');
   const signInGate = source.indexOf('shouldShowCloudLoginGate');
-  const signedInShell = source.indexOf('return <KordiAppShell');
+  const signedInShell = source.indexOf('<KordiAppShell');
   const readyGuard = source.indexOf("cloudInitialSync.status !== 'ready'");
   const launchWindow = source.indexOf('<WhatsNewLaunchWindow />');
 

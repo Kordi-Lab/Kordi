@@ -1,7 +1,12 @@
 import type { Dispatch, SetStateAction } from 'react';
 
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
-import type { CloudAccount } from '@/features/cloud/authClient';
+import type {
+  CloudAccount,
+  CloudGroupInvitation,
+  CloudGroupInvitationCreateInput,
+  CloudGroupInvitationSummary,
+} from '@/features/cloud/authClient';
 import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
 import type {
   Agent,
@@ -142,6 +147,11 @@ export type WorkspaceSidebarAccount = {
   onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
   onCreateAppInvite?: () => Promise<string>;
+  onCreateGroupInvite?: (
+    input: CloudGroupInvitationCreateInput,
+  ) => Promise<CloudGroupInvitation>;
+  onListGroupInvites?: (groupSpaceId: string) => Promise<CloudGroupInvitationSummary[]>;
+  onRevokeGroupInvite?: (invitationId: string) => Promise<void>;
 };
 
 export type WorkspaceSidebarProps = {

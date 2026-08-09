@@ -24,3 +24,36 @@ export type CloudAppInvitation = {
   inviteUrl: string;
   expiresAt: string;
 };
+
+export type CloudGroupInvitationCreateInput = {
+  groupId: string;
+  groupSpaceId: string;
+  groupTitle: string;
+};
+
+export type CloudGroupInvitation = CloudAppInvitation;
+
+export type CloudGroupInvitationSummary = {
+  invitationId: string;
+  expiresAt: string;
+};
+
+export type CloudGroupInvitationPreview = {
+  inviter: {
+    displayName: string | null;
+    kordiId: string;
+    avatarUrl: string | null;
+  };
+  group: {
+    name: string;
+    memberCount: number;
+  };
+  expiresAt: string;
+};
+
+export type CloudGroupInvitationAcceptance = {
+  status: 'joined' | 'already_joined';
+  groupId: string;
+  groupSpaceId: string;
+  groupTitle: string;
+};

@@ -109,7 +109,7 @@ export function isApprovedCollaborationContact(contact: Contact) {
 }
 
 export function buildChatCreateGroupPersonOptions(contacts: Contact[]): ChatCreatePersonOption[] {
-  return buildChatCreatePersonOptions(contacts).filter((option) => isApprovedCollaborationContact(option.contact));
+  return buildChatCreatePersonOptions(contacts).filter(({ contact }) => isApprovedCollaborationContact(contact) && !contact.supportTicketEnabled);
 }
 
 export function buildChatCreatePeopleContactLookup(contacts: Contact[]): Map<string, Contact> {

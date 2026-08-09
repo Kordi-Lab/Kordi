@@ -48,13 +48,6 @@ export function groupMemberAccountId(member: ConversationParticipant, contact: C
   return candidates.map((value) => value?.trim() ?? '').find((value) => value.startsWith('acct_')) ?? '';
 }
 
-function compactAccountId(accountId: string) {
-  const prefix = accountId.startsWith('acct_') ? 'acct_' : '';
-  const value = prefix ? accountId.slice(prefix.length) : accountId;
-  if (value.length <= 10) return accountId;
-  return `${prefix}${value.slice(0, 4)}…${value.slice(-4)}`;
-}
-
 function readableContactDetail(contact: Contact | null, accountId: string) {
   if (!contact) return '';
   const opaqueValues = [
@@ -109,7 +102,7 @@ export function MemberContactProfileContent({
   const resolvedPresence = presenceStatus ?? contact?.presenceStatus ?? participant.presenceStatus ?? 'offline';
   const relationshipLabel = isSelf ? 'You' : isExistingContact ? 'Contact' : requestPending ? 'Request pending' : '';
   const profileDetail = readableContactDetail(contact, accountId);
-  const identityDetail = profileDetail || (accountId ? `Kordi · ${compactAccountId(accountId)}` : '');
+  const identityDetail = profileDetail;
 
   useEffect(() => {
     setRequestState('idle');

@@ -5,7 +5,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { filterGroupManagementMembers, GroupDetailsDialog, groupManagementGeometry } from '../src/pages/GroupDetailsDialog';
+import { filterGroupManagementMembers, GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
+import { groupManagementGeometry } from '../src/pages/groupManagementGeometry';
 import { contactForGroupMember, groupMemberAccountId, MemberContactProfileContent } from '../src/pages/MemberContactProfilePopover';
 import { conversation, contact } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
@@ -164,7 +165,7 @@ test('GroupDetailsDialog geometry stays tall, narrow, and inside small and large
     { left: 120, top: 90, width: 28, height: 28 },
     { width: 1280, height: 800 },
   );
-  assert.equal(desktop.style.width, 372);
+  assert.equal(desktop.style.width, 304);
   assert.equal(desktop.style.maxHeight, 760);
   assert.equal(desktop.style.height, undefined);
   assert.ok(Number(desktop.style.left) >= 12);
@@ -182,13 +183,13 @@ test('GroupDetailsDialog geometry stays tall, narrow, and inside small and large
   assert.equal(compact.style.left, 12);
   assert.equal(compact.style.top, 12);
 
-  const centered = groupManagementGeometry(
+  const constrained = groupManagementGeometry(
     { left: 320, top: 180, width: 32, height: 32 },
     { width: 680, height: 600 },
   );
-  assert.equal(centered.placement, 'floating');
-  assert.equal(centered.style.left, 154);
-  assert.equal(centered.style.top, 12);
+  assert.equal(constrained.placement, 'right');
+  assert.equal(constrained.style.left, 362);
+  assert.equal(constrained.style.top, 12);
 });
 
 test('GroupDetailsDialog member filtering stays bounded and useful with 50 people', () => {

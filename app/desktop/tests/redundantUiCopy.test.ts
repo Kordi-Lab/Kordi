@@ -72,6 +72,7 @@ test('desktop surfaces do not narrate obvious product structure or adjacent cont
     'Choose the default and fallback now.',
     'Saved locally until this agent is connected to hosted collaboration',
     'People contacting this agent directly appear here instead of in your person chats.',
+    'Approved contacts only',
   ];
 
   for (const copy of forbiddenCopy) {
@@ -85,7 +86,6 @@ test('copy cleanup preserves operational guidance and recovery states', () => {
 
   assert.match(readSource('pages/ChatCreateDialog.tsx'), /Select at least 2 contacts\./);
   assert.match(readSource('pages/SessionActionOverlays.tsx'), /Use a folder path without spaces\./);
-  assert.match(readSource('pages/GroupDetailsDialog.tsx'), /Approved contacts only/);
   assert.match(readSource('pages/chatsPage.mainWorkspace.tsx'), /No provider connected yet/);
   assert.match(
     readSource('kordi-app/cloud/CloudSocialUnavailableNotice.tsx'),

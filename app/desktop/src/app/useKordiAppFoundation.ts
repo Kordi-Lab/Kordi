@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -33,6 +34,10 @@ import {
   type UseCloudSessionResult,
 } from '@/features/cloud/useCloudSession';
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
+import {
+  CLOUD_GROUP_INVITATION_ACCEPTED_EVENT,
+  type CloudGroupInvitationAcceptedDetail,
+} from '@/features/cloud/groupInvitationDeepLink';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { ComposerScope } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -315,6 +320,24 @@ export function useKordiAppFoundation({
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
   });
+
+  useEffect(() => {
+    const openAcceptedGroup = (event: Event) => {
+      const detail = (event as CustomEvent<CloudGroupInvitationAcceptedDetail>).detail;
+      const groupSpaceId = detail?.groupSpaceId?.trim();
+      if (!groupSpaceId) return;
+      void refreshCloudMessages()
+        .then(() => {
+          setActiveNav('chats');
+          setActiveConvId(`group:${groupSpaceId}`);
+        })
+        .catch((error) => {
+          setDesktopChatError(error instanceof Error ? error.message : 'The group joined, but Kordi could not open it yet.');
+        });
+    };
+    window.addEventListener(CLOUD_GROUP_INVITATION_ACCEPTED_EVENT, openAcceptedGroup);
+    return () => window.removeEventListener(CLOUD_GROUP_INVITATION_ACCEPTED_EVENT, openAcceptedGroup);
+  }, [refreshCloudMessages, setActiveConvId, setActiveNav, setDesktopChatError]);
 
   // The desktop collaboration read model is derived only from hosted Cloud data.
   const isCollaborationSyncing = false;
