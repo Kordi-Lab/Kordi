@@ -106,9 +106,7 @@ pub(super) fn collapse_legacy_self_message_replays(
                         })
                         .expect("referenced duplicate cluster is not empty")
                 };
-                hidden_indexes.extend(
-                    cluster.iter().copied().filter(|index| *index != keeper),
-                );
+                hidden_indexes.extend(cluster.iter().copied().filter(|index| *index != keeper));
             }
             cluster_start = cluster_end;
         }

@@ -195,8 +195,7 @@ async fn message_list_collapses_preexisting_near_time_legacy_self_replays() {
     let mut legacy_message_ids = Vec::new();
     for offset_ms in [0, 650] {
         let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
-        let row_created_at = (chrono::DateTime::parse_from_rfc3339(&created_at)
-            .unwrap()
+        let row_created_at = (chrono::DateTime::parse_from_rfc3339(&created_at).unwrap()
             + chrono::Duration::milliseconds(offset_ms))
         .to_rfc3339();
         sqlx_core::query::query(

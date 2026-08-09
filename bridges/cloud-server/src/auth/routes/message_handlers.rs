@@ -188,11 +188,7 @@ pub(super) async fn send_message(
             })
             .flatten();
     let legacy_replay_lock_id = legacy_client_message_id.as_ref().map(|_| {
-        legacy_self_message_lock_id(
-            &session.account_id,
-            cloud_session_id.as_deref(),
-            &body,
-        )
+        legacy_self_message_lock_id(&session.account_id, cloud_session_id.as_deref(), &body)
     });
     let client_message_id = supplied_client_message_id.or(legacy_client_message_id.as_deref());
     let delivered_at = server_received_at.to_rfc3339();
