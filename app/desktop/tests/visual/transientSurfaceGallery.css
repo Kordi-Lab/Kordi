@@ -143,20 +143,11 @@ button {
 
 .visual-contact-card {
   display: grid;
-  width: 264px;
+  width: 256px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.625rem;
   padding: 0.7rem;
-}
-
-.visual-contact-close {
-  position: absolute;
-  top: 0.35rem;
-  left: 0.4rem;
-  border: 0;
-  background: transparent;
-  color: var(--app-transient-muted-text);
 }
 
 .visual-contact-avatar {
@@ -175,13 +166,6 @@ button {
   display: grid;
   min-width: 0;
   gap: 0.1rem;
-}
-
-.visual-contact-copy > * {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .visual-contact-action {

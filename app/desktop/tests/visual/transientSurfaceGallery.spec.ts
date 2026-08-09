@@ -23,6 +23,17 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.locator(`[data-visual-surface="${surface}"]`)).toBeVisible();
     }
 
+    const identityCard = page.locator('[data-visual-surface="contact-card"] .visual-contact-card');
+    await expect(identityCard.getByText('Tomorrow Liu')).toBeVisible();
+    await expect(identityCard.getByText('Group participant')).toBeVisible();
+    await expect(identityCard.getByText('Kordi ID · tomorrow')).toBeVisible();
+    const contactActionIsContained = await identityCard.evaluate((element) => {
+      const action = element.querySelector<HTMLElement>('.visual-contact-action');
+      if (!action) return false;
+      return action.getBoundingClientRect().right <= element.getBoundingClientRect().right;
+    });
+    expect(contactActionIsContained).toBe(true);
+
     await expect(page.locator('[data-visual-gallery]')).toHaveScreenshot(`transient-surfaces-${theme}.png`);
   });
 }

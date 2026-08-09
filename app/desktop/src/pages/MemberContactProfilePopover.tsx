@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, LoaderCircle, MessageCircle, UserPlus, X } from 'lucide-react';
+import { Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
@@ -144,18 +144,18 @@ export function MemberContactProfileContent({
           isSelf={isSelf}
           name={participant.name}
           imageUrl={participant.profileImageUrl}
-          className="h-10 w-10 border border-white/10"
+          className="h-9 w-9 border border-white/10"
           presenceStatus={resolvedPresence}
           presenceLabel={`${participant.name} is ${resolvedPresence === 'online' ? 'online' : 'offline'}`}
         />
         <div className="min-w-0 flex-1">
-          <div className="app-transient-identity-title truncate">{participant.name}</div>
-          <div className="app-transient-metadata mt-0.5 truncate">
+          <div className="app-transient-identity-title break-words">{participant.name}</div>
+          <div className="app-transient-metadata mt-0.5 break-words">
             {[roleLabel, relationshipLabel].filter(Boolean).join(' · ')}
           </div>
           {identityDetail ? (
             <div
-              className="app-transient-metadata mt-0.5 truncate"
+              className="app-transient-metadata mt-0.5 break-all"
               title={profileDetail ? identityDetail : accountId}
             >
               {identityDetail}
@@ -166,7 +166,7 @@ export function MemberContactProfileContent({
           <button
             type="button"
             data-member-contact-action="message"
-            className="app-member-contact-icon-action app-transient-flat-action inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] p-0 transition"
+            className="app-member-contact-icon-action app-transient-flat-action inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] p-0 transition"
             disabled={isOpeningMessage}
             onClick={() => { void openMessage(); }}
             aria-label={`${isOpeningMessage ? 'Opening conversation with' : 'Send message to'} ${participant.name}`}
@@ -188,7 +188,7 @@ export function MemberContactProfileContent({
           <button
             type="button"
             data-member-contact-action="add"
-            className="app-transient-flat-action app-transient-action-row app-group-management-action-row inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-2.5 py-1 transition"
+            className="app-transient-flat-action app-transient-action-row app-group-management-action-row inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] px-2 py-1 transition"
             disabled={requestState === 'sending' || requestPending}
             onClick={() => { void requestContact(); }}
           >
@@ -228,11 +228,11 @@ export function MemberContactProfilePopover({
   }, [onClose]);
 
   if (typeof document === 'undefined') return null;
-  const width = 280;
   const margin = 12;
   const gap = 8;
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
+  const width = Math.min(256, viewportWidth - margin * 2);
   const left = anchorRect.right + gap + width <= viewportWidth - margin
     ? anchorRect.right + gap
     : Math.max(margin, anchorRect.left - width - gap);
@@ -252,19 +252,11 @@ export function MemberContactProfilePopover({
       <section
         role="dialog"
         aria-label={`${contentProps.participant.name} profile`}
-        className="app-transient-surface app-frosted-popover fixed z-[80] rounded-[18px] p-3 shadow-[var(--app-shadow-float)]"
+        className="app-transient-surface app-frosted-popover fixed z-[80] rounded-[16px] p-2.5 shadow-[var(--app-shadow-float)]"
         style={{ left, top, width }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
-          className="app-button-quiet app-group-management-close absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-[9px] p-0"
-          aria-label="Close member profile"
-          onClick={onClose}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-        <MemberContactProfileContent {...contentProps} className={cn('pr-8', contentProps.className)} />
+        <MemberContactProfileContent {...contentProps} />
       </section>
     </>,
     document.body,
