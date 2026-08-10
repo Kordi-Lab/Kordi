@@ -18,9 +18,10 @@ use crate::cloud_agent_runtime::provider_auth::{
     RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
-    complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
-    lookup_run_for_request, mark_run_running, run_error_response, runner_unauthorized,
-    CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
+    cancel_run_for_request, complete_run, error_response, fail_run, lease_canary_run,
+    lease_next_run, lookup_run_for_request, mark_run_running, run_error_response,
+    runner_unauthorized, CompleteRunRequest, FailRunRequest, RunnerLeaseResponse,
+    RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::server::ServerState;
 
@@ -30,6 +31,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
+        )
+        .route(
+            "/v1/cloud/agent-runs/request/:request_message_id/cancel",
+            post(cancel_cloud_agent_run_for_request),
         )
         .route(
             "/v1/cloud/agent-provider-auth/snapshots",
@@ -303,6 +308,29 @@ async fn lookup_cloud_agent_run_for_request(
         Err(error) => run_error_response(
             "lookup run for request",
             "Could not load Cloud fallback status.",
+            error,
+        ),
+    }
+}
+
+async fn cancel_cloud_agent_run_for_request(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(request_message_id): Path<String>,
+) -> Response {
+    let trimmed = request_message_id.trim();
+    if trimmed.is_empty() {
+        return error_response(
+            "missing_request_message_id",
+            "Request message id is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    match cancel_run_for_request(state.db_pool(), trimmed, &session.account_id).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => run_error_response(
+            "cancel run for request",
+            "Could not cancel Cloud fallback run.",
             error,
         ),
     }

@@ -9,6 +9,8 @@ use serde_json::json;
 pub enum RunError {
     #[error("Cloud agent run was not found for the requested transition")]
     NotFound,
+    #[error("Cloud agent run idempotency key is bound to a different request")]
+    IdempotencyConflict,
     #[error("Cloud agent run persistence failed: {0}")]
     Persistence(#[from] sqlx_core::Error),
 }
@@ -21,7 +23,9 @@ impl RunError {
     pub fn into_persistence_error(self) -> sqlx_core::Error {
         match self {
             Self::Persistence(error) => error,
-            Self::NotFound => sqlx_core::Error::Protocol(self.to_string()),
+            Self::NotFound | Self::IdempotencyConflict => {
+                sqlx_core::Error::Protocol(self.to_string())
+            }
         }
     }
 }
@@ -59,6 +63,11 @@ pub(crate) fn run_error_response(
             "agent_run_not_found",
             "Cloud agent run was not found for this runner.",
             StatusCode::NOT_FOUND,
+        ),
+        RunError::IdempotencyConflict => error_response(
+            "agent_run_idempotency_conflict",
+            "This Cloud agent run key is already bound to a different request.",
+            StatusCode::CONFLICT,
         ),
         RunError::Persistence(source) => {
             eprintln!("[cloud_agent_runtime] {context}: {source}");

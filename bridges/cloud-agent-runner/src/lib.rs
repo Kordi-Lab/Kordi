@@ -2,6 +2,7 @@ pub mod artifacts;
 pub mod client;
 pub mod config;
 pub mod k8s_sandbox;
+mod lease_heartbeat;
 pub mod model_loop;
 pub mod prompt;
 pub mod runtime;

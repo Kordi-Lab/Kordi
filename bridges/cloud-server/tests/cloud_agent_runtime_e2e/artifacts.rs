@@ -235,7 +235,17 @@ async fn export_before_completion_uses_stable_response_message_that_completion_u
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(message.0, "Here is the exported report.");
+    let encoded = message
+        .0
+        .strip_prefix("kordi-cloud-agent-response:")
+        .expect("agent response envelope");
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(encoded)
+        .unwrap();
+    let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+    assert_eq!(envelope["requestId"], "msg_artifact_complete");
+    assert_eq!(envelope["text"], "Here is the exported report.");
+    assert_eq!(envelope["deliveryState"], "complete");
 }
 
 #[tokio::test]

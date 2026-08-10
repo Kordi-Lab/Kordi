@@ -44,6 +44,43 @@ creation. Network delivery may repeat; applying a committed message does not.
 | `applied` | desktop projection/cache | `eventId` / `messageId` | Merge monotonically and persist the cursor only after applying the page. |
 | `consumed` | read endpoint | peer/session read cursor | Commit the cursor, message `read_at`, and sender sync event together. |
 
+### Agent-run processing lifecycle
+
+Agent execution has a separate server-owned state machine. Desktop
+`requesting` and `processing` rows are projections of this state; they are not
+authority for whether work may start, restart, or finish.
+
+```text
+request message committed
+  -> queued
+  -> leased (one runner, 120-second renewable lease)
+  -> running (runner heartbeat refreshes the lease every 30 seconds)
+  -> completed | failed | cancelled
+       one transaction commits:
+         terminal run state
+         deterministic response delivery row(s), except cancellation
+         account sync event(s)
+         scheduled-run terminal state when applicable
+```
+
+Only `queued` work or work whose `leased`/`running` lease has expired may be
+claimed. The active runner renews `running` while model or tool work is in
+flight. Losing the lease or observing server cancellation aborts that runner's
+local model future; a late completion cannot reopen a terminal run.
+
+Completion, failure, and authenticated cancellation lock the run row before
+checking its current state. Completion/failure response fanout uses a stable
+`cloud-agent-run:<runId>:<recipientAccountId>` operation ID and shares the
+terminal transaction. Thus clients cannot observe a response whose run is
+still active, or a terminal run whose required response was only partially
+committed.
+
+On restart or reconnect, a desktop checks the run before repairing a stale
+processing projection. Active state stays processing, completed/cancelled
+state removes stale pending UI, failed state permits the owner's local agent to
+repair the response, and an unavailable lookup fails closed instead of
+fabricating a failure.
+
 ## Invariants
 
 1. A producer creates the operation ID before the first network attempt.
@@ -66,6 +103,12 @@ creation. Network delivery may repeat; applying a committed message does not.
 10. A terminal agent-run retry returns its already-committed result. Concurrent
     terminal requests converge on one response message and one event per
     observer.
+11. A runner must renew a long-running lease before expiry. Client UI state,
+    presence, and WebSocket connectivity never extend or transfer execution
+    ownership.
+12. Cancellation is a server terminal transition. A runner heartbeat or late
+    completion after cancellation cannot change the run back to `running` or
+    `completed`.
 
 ## Logical message versus directed delivery
 
@@ -120,6 +163,9 @@ used for rendering and legacy clients.
 | Process exits after publish but before marking published | Wakeup may repeat; cursor/message application is idempotent. |
 | WebSocket disconnects or misses a frame | Reconnect sync and the periodic cursor poll read the durable event log. |
 | Two agent runners finish the same run concurrently | Run-row lock and terminal transaction select one response; the other returns the committed result. |
+| Model or tool execution exceeds the original run lease | The active runner heartbeat renews `running`; another runner cannot reclaim live work. |
+| Cancellation races model completion | Both lock the same run row; exactly one terminal state commits and the loser cannot publish a response. |
+| Desktop restarts with a stale processing row | It reads the authoritative run state before deciding to preserve, remove, retry, or repair the projection. |
 | Local cache or sync ledger is lost | Snapshot/cursor restoration rebuilds the projection without replaying writes. |
 
 ## Producer rules

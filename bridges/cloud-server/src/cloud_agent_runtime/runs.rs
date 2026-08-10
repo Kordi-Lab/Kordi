@@ -13,8 +13,8 @@ pub use authorization::{
     validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
 };
 pub use claims::{
-    claim_run, lookup_run_for_request, ClaimRunRequest, CloudAgentRunLookupResponse,
-    CloudAgentRunResponse,
+    cancel_run_for_request, claim_run, lookup_run_for_request, ClaimRunRequest,
+    CloudAgentRunLookupResponse, CloudAgentRunResponse,
 };
 pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest};
 #[cfg(test)]

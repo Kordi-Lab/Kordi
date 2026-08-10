@@ -47,7 +47,6 @@ import type {
 } from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
-  cloudFallbackRunAlreadyOwnsRequest,
   cloudGroupAgentResponseExistsForRequest,
   isCloudAgentProcessingPlaceholderText,
   removeCanonicalMessageById,
@@ -55,6 +54,7 @@ import {
   removeCloudGroupPendingRowsForTerminalResponse,
   removeCloudGroupTimeoutPlaceholderForTerminalResponse,
 } from './cloudAgentRequestState';
+import { cloudFallbackRunAlreadyOwnsRequest } from './cloudAgentRunLifecycle';
 import {
   isRecentCloudAgentMention,
 } from './cloudAgentMentionPolicy';

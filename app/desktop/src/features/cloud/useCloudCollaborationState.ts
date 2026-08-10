@@ -128,9 +128,9 @@ export {
 export {
   CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE,
   cloudAgentResponseExistsForRequest,
-  cloudAgentRunStatusAlreadyOwnsRequest,
   cloudGroupAgentResponseExistsForRequest,
 } from './cloudAgentRequestState';
+export { cloudAgentRunStatusAlreadyOwnsRequest } from './cloudAgentRunLifecycle';
 export {
   cloudFallbackClaimErrorIsRetryable,
   cloudFallbackClaimFailureDiagnostic,

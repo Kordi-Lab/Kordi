@@ -47,6 +47,7 @@ export function useRecoveredCloudGroupReplay({
 }) {
   const recoverySettled = useCloudAgentTurnRecovery({
     account,
+    client,
     canonicalStateRef,
     setCanonicalState,
     initialMessagesSettled,

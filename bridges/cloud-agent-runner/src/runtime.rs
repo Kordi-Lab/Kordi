@@ -1,9 +1,9 @@
-use std::path::PathBuf;
-
 use crate::client::{CloudAgentRun, CloudAgentRunClient, RunnerClientError};
 use crate::k8s_sandbox::K8sSandboxBackend;
-use crate::model_loop::{run_model_loop, CloudModelProvider, OpenAiCompatibleProvider};
+use crate::lease_heartbeat::run_with_heartbeat;
+use crate::model_loop::{CloudModelProvider, OpenAiCompatibleProvider};
 use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunnerStepOutcome {
@@ -174,20 +174,20 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
-    let response_text = match run_model_loop(client, provider, &run, &sandbox, auth_material).await
-    {
-        Ok(response_text) => response_text,
-        Err(err) => {
-            client
-                .fail_run(
-                    &run.run_id,
-                    "model_provider_error",
-                    &format!("Cloud fallback model loop failed: {err}"),
-                )
-                .await?;
-            return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
-        }
-    };
+    let response_text =
+        match run_with_heartbeat(client, provider, &run, &sandbox, auth_material).await? {
+            Ok(response_text) => response_text,
+            Err(err) => {
+                client
+                    .fail_run(
+                        &run.run_id,
+                        "model_provider_error",
+                        &format!("Cloud fallback model loop failed: {err}"),
+                    )
+                    .await?;
+                return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
+            }
+        };
     client.complete_run(&run.run_id, &response_text).await?;
     Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
 }

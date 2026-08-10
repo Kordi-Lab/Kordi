@@ -215,6 +215,15 @@ export function useCloudAgentRequestCancellation({
     }
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
+    const cloudRun = await client.cancelCloudAgentRunForRequest(
+      session.token,
+      trimmedRequestId,
+    ).catch(() => null);
+    if (cloudRun?.status === 'completed' || cloudRun?.status === 'failed') {
+      await syncDiff();
+      setCollaborationOverride(null);
+      return;
+    }
 
     const groupId =
       cloudGroupIdFromAgentConversationId(conversationId);

@@ -1,7 +1,5 @@
 import type {
   CloudAccount,
-  CloudAgentRun,
-  CloudAuthClient,
   CloudMessage,
 } from './authClient';
 import {
@@ -33,6 +31,7 @@ export type CloudAgentRequestCandidate = {
 export type CloudFallbackClaimAttemptResult =
   | 'claimed'
   | 'already-claimed'
+  | 'terminal'
   | 'in-flight'
   | 'retryable-failure'
   | 'terminal-failure'
@@ -458,34 +457,4 @@ export function cloudGroupAgentResponseExistsForRequest({
       || cleanText(envelope.message.replyToMessageId);
     return linkedRequestId === trimmedRequestMessageId;
   });
-}
-
-export function cloudAgentRunStatusAlreadyOwnsRequest(
-  status: string | null | undefined,
-): boolean {
-  return status === 'queued'
-    || status === 'leased'
-    || status === 'running'
-    || status === 'completed';
-}
-
-export function cloudAgentRunAlreadyOwnsRequest(
-  run: CloudAgentRun | null | undefined,
-): boolean {
-  return cloudAgentRunStatusAlreadyOwnsRequest(run?.status);
-}
-
-export async function cloudFallbackRunAlreadyOwnsRequest({
-  client,
-  token,
-  requestMessageId,
-}: {
-  client: CloudAuthClient;
-  token: string;
-  requestMessageId: string;
-}): Promise<boolean> {
-  const run = await client
-    .lookupCloudAgentRunForRequest(token, requestMessageId)
-    .catch(() => null);
-  return cloudAgentRunAlreadyOwnsRequest(run);
 }

@@ -2,17 +2,17 @@
 
 use chrono::Utc;
 use sqlx_core::query::query;
-use sqlx_postgres::PgPool;
+use sqlx_core::query_as::query_as;
+use sqlx_core::transaction::Transaction;
+use sqlx_postgres::Postgres;
 use uuid::Uuid;
 
 use crate::auth::messages::{
-    persist_cloud_message_in_transaction, PersistCloudMessageError, PersistCloudMessageInput,
+    append_cloud_message_sync_events_in_transaction, persist_cloud_message_in_transaction,
+    PersistCloudMessageError, PersistCloudMessageInput,
 };
 
-use super::envelopes::{
-    cloud_group_request_envelope_for_run, cloud_group_response_body,
-    latest_cloud_group_envelope_for_session, CloudGroupEnvelope,
-};
+use super::envelopes::{cloud_group_response_body, CloudGroupEnvelope};
 use super::{RunError, RunResult};
 
 fn run_persistence_error(error: PersistCloudMessageError) -> RunError {
@@ -82,134 +82,55 @@ pub(super) struct GroupResponse<'a> {
     pub(super) delivery_state: &'a str,
 }
 
-pub(super) async fn ensure_group_response_messages(
-    pool: &PgPool,
-    response: GroupResponse<'_>,
-) -> RunResult<Option<String>> {
-    let request_envelope = if is_scheduled_run_request_id(response.request_message_id) {
-        latest_cloud_group_envelope_for_session(pool, response.session_id).await?
-    } else {
-        cloud_group_request_envelope_for_run(pool, response.session_id, response.request_message_id)
-            .await?
-    };
-    let Some(request_envelope) = request_envelope else {
-        return Ok(None);
-    };
-    let mut tx = pool.begin().await?;
-    let existing_response: Option<(Option<String>,)> = sqlx_core::query_as::query_as(
-        "SELECT response_message_id FROM cloud_agent_fallback_runs \
-             WHERE run_id = $1 FOR UPDATE",
-    )
-    .bind(response.run_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some((existing_response_message_id,)) = existing_response else {
-        return Err(RunError::NotFound);
-    };
-    if let Some(message_id) = existing_response_message_id {
-        tx.commit().await?;
-        return Ok(Some(message_id));
-    }
-
-    let response_group_message_id = format!("cloudrunmsg_{}", response.run_id);
-    let now = Utc::now();
-    let now_string = now.to_rfc3339();
-    let now_ms = now.timestamp_millis();
-    let response_body = cloud_group_response_body(
-        &request_envelope,
-        response.owner_account_id,
-        response.request_message_id,
-        &response_group_message_id,
-        response.response_text,
-        response.delivery_state,
-        now_ms,
-    );
-    let recipients = cloud_group_response_recipients(&request_envelope);
-    let mut first_message_id = None;
-    for recipient_account_id in recipients {
-        let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
-        let client_message_id = format!(
-            "cloud-agent-run:{}:{}",
-            response.run_id, recipient_account_id
-        );
-        let read_at =
-            (recipient_account_id == response.owner_account_id).then_some(now_string.as_str());
-        let outcome = persist_cloud_message_in_transaction(
-            &mut tx,
-            PersistCloudMessageInput {
-                message_id: &message_id,
-                from_account_id: response.owner_account_id,
-                to_account_id: &recipient_account_id,
-                client_message_id: Some(&client_message_id),
-                body: &response_body,
-                session_id: Some(response.session_id),
-                created_at: &now_string,
-                delivered_at: &now_string,
-                read_at,
-                attachments: &[],
-                claim_legacy_self_replay: false,
-                legacy_self_replay_lock_id: None,
-            },
-        )
-        .await
-        .map_err(run_persistence_error)?;
-        if first_message_id.is_none() {
-            first_message_id = Some(outcome.message.message_id);
-        }
-    }
-    if let Some(message_id) = &first_message_id {
-        query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
-            .bind(response.run_id)
-            .bind(message_id)
-            .bind(&now_string)
-            .execute(&mut *tx)
-            .await?;
-    }
-    tx.commit().await?;
-    Ok(first_message_id)
-}
-
-pub(super) async fn ensure_scheduled_direct_person_response_message(
-    pool: &PgPool,
+async fn upsert_response_message_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
     run_id: &str,
     owner_account_id: &str,
+    recipient_account_id: &str,
     session_id: &str,
     response_body: &str,
-) -> RunResult<Option<String>> {
-    let Some(peer_account_id) = direct_person_peer_account_id(session_id, owner_account_id) else {
-        return Ok(None);
-    };
-    let mut tx = pool.begin().await?;
-    let existing_response: Option<(Option<String>,)> = sqlx_core::query_as::query_as(
-        "SELECT response_message_id FROM cloud_agent_fallback_runs \
-             WHERE run_id = $1 FOR UPDATE",
+    now: &str,
+) -> RunResult<String> {
+    let client_message_id = format!("cloud-agent-run:{run_id}:{recipient_account_id}");
+    let existing: Option<(String, Option<String>)> = query_as(
+        "SELECT message_id, session_id FROM cloud_messages \
+         WHERE from_account_id = $1 AND to_account_id = $2 \
+           AND client_message_id = $3 FOR UPDATE",
     )
-    .bind(run_id)
-    .fetch_optional(&mut *tx)
+    .bind(owner_account_id)
+    .bind(recipient_account_id)
+    .bind(&client_message_id)
+    .fetch_optional(&mut **tx)
     .await?;
-    let Some((existing_response_message_id,)) = existing_response else {
-        return Err(RunError::NotFound);
-    };
-    if let Some(message_id) = existing_response_message_id {
-        tx.commit().await?;
-        return Ok(Some(message_id));
+    if let Some((message_id, existing_session_id)) = existing {
+        if existing_session_id.as_deref() != Some(session_id) {
+            return Err(RunError::Persistence(sqlx_core::Error::Protocol(
+                "cloud agent response delivery changed session".to_string(),
+            )));
+        }
+        query("UPDATE cloud_messages SET body = $2 WHERE message_id = $1")
+            .bind(&message_id)
+            .bind(response_body)
+            .execute(&mut **tx)
+            .await?;
+        append_cloud_message_sync_events_in_transaction(tx, &message_id).await?;
+        return Ok(message_id);
     }
 
     let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
-    let client_message_id = format!("cloud-agent-run:{run_id}:{peer_account_id}");
-    let now = Utc::now().to_rfc3339();
+    let read_at = (recipient_account_id == owner_account_id).then_some(now);
     let outcome = persist_cloud_message_in_transaction(
-        &mut tx,
+        tx,
         PersistCloudMessageInput {
             message_id: &message_id,
             from_account_id: owner_account_id,
-            to_account_id: &peer_account_id,
+            to_account_id: recipient_account_id,
             client_message_id: Some(&client_message_id),
             body: response_body,
             session_id: Some(session_id),
-            created_at: &now,
-            delivered_at: &now,
-            read_at: None,
+            created_at: now,
+            delivered_at: now,
+            read_at,
             attachments: &[],
             claim_legacy_self_replay: false,
             legacy_self_replay_lock_id: None,
@@ -217,12 +138,91 @@ pub(super) async fn ensure_scheduled_direct_person_response_message(
     )
     .await
     .map_err(run_persistence_error)?;
-    query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
-        .bind(run_id)
-        .bind(&outcome.message.message_id)
-        .bind(&now)
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
-    Ok(Some(outcome.message.message_id))
+    Ok(outcome.message.message_id)
+}
+
+pub(super) async fn ensure_direct_response_message_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    run_id: &str,
+    owner_account_id: &str,
+    requester_account_id: &str,
+    session_id: &str,
+    response_body: &str,
+    now: &str,
+) -> RunResult<String> {
+    upsert_response_message_in_transaction(
+        tx,
+        run_id,
+        owner_account_id,
+        requester_account_id,
+        session_id,
+        response_body,
+        now,
+    )
+    .await
+}
+
+pub(super) async fn ensure_group_response_messages_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    response: GroupResponse<'_>,
+    request_envelope: &CloudGroupEnvelope,
+    preferred_message_id: Option<&str>,
+    now: &str,
+) -> RunResult<Option<String>> {
+    let response_group_message_id = format!("cloudrunmsg_{}", response.run_id);
+    let now_ms = chrono::DateTime::parse_from_rfc3339(now)
+        .map(|value| value.timestamp_millis())
+        .unwrap_or_else(|_| Utc::now().timestamp_millis());
+    let response_body = cloud_group_response_body(
+        request_envelope,
+        response.owner_account_id,
+        response.request_message_id,
+        &response_group_message_id,
+        response.response_text,
+        response.delivery_state,
+        now_ms,
+    );
+    let mut message_ids = Vec::new();
+    for recipient_account_id in cloud_group_response_recipients(request_envelope) {
+        message_ids.push(
+            upsert_response_message_in_transaction(
+                tx,
+                response.run_id,
+                response.owner_account_id,
+                &recipient_account_id,
+                response.session_id,
+                &response_body,
+                now,
+            )
+            .await?,
+        );
+    }
+    Ok(preferred_message_id
+        .filter(|preferred| message_ids.iter().any(|id| id == preferred))
+        .map(ToString::to_string)
+        .or_else(|| message_ids.into_iter().next()))
+}
+
+pub(super) async fn ensure_scheduled_direct_person_response_message_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    run_id: &str,
+    owner_account_id: &str,
+    session_id: &str,
+    response_body: &str,
+    now: &str,
+) -> RunResult<Option<String>> {
+    let Some(peer_account_id) = direct_person_peer_account_id(session_id, owner_account_id) else {
+        return Ok(None);
+    };
+    upsert_response_message_in_transaction(
+        tx,
+        run_id,
+        owner_account_id,
+        &peer_account_id,
+        session_id,
+        response_body,
+        now,
+    )
+    .await
+    .map(Some)
 }

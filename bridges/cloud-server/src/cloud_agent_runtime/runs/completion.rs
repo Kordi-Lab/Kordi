@@ -1,34 +1,98 @@
 //! Completion/failure DTOs and terminal Cloud run state transitions.
 
-use chrono::Utc;
-use serde::Deserialize;
-use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
-
-use crate::auth::messages::append_cloud_message_sync_events_in_transaction;
 use crate::scheduled_tasks::store::{
     mark_scheduled_task_run_completed_in_transaction, mark_scheduled_task_run_failed_in_transaction,
 };
+use chrono::Utc;
+use serde::Deserialize;
+use sqlx_core::query_as::query_as;
+use sqlx_core::transaction::Transaction;
+use sqlx_postgres::{PgPool, Postgres};
 
 use super::delivery::{
-    ensure_group_response_messages, ensure_scheduled_direct_person_response_message,
-    is_scheduled_run_request_id, GroupResponse,
+    ensure_direct_response_message_in_transaction, ensure_group_response_messages_in_transaction,
+    ensure_scheduled_direct_person_response_message_in_transaction, is_scheduled_run_request_id,
+    GroupResponse,
 };
 use super::envelopes::{
+    cloud_agent_target_id_for_request_in_transaction, cloud_group_delivery_envelope_in_transaction,
     encode_cloud_agent_response_body, encode_cloud_agent_response_body_with_state,
 };
 use super::leases::{runner_response_from_row, RunnerRunResponse, RunnerRunRow};
 use super::{RunError, RunResult};
 
-type FailedRunLookupRow = (
-    String,
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    String,
-);
+type LockedRunRow = (String, String, String, String, Option<String>, String);
+
+struct TerminalDelivery<'a> {
+    run_id: &'a str,
+    owner_account_id: &'a str,
+    requester_account_id: &'a str,
+    session_id: &'a str,
+    request_message_id: &'a str,
+    preferred_message_id: Option<&'a str>,
+    response_text: &'a str,
+    response_body: &'a str,
+    delivery_state: &'a str,
+    now: &'a str,
+}
+
+async fn ensure_terminal_response_message_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    delivery: TerminalDelivery<'_>,
+) -> RunResult<String> {
+    if is_scheduled_run_request_id(delivery.request_message_id) {
+        if let Some(message_id) = ensure_scheduled_direct_person_response_message_in_transaction(
+            tx,
+            delivery.run_id,
+            delivery.owner_account_id,
+            delivery.session_id,
+            delivery.response_body,
+            delivery.now,
+        )
+        .await?
+        {
+            return Ok(message_id);
+        }
+    }
+
+    if let Some(request_envelope) = cloud_group_delivery_envelope_in_transaction(
+        tx,
+        delivery.session_id,
+        delivery.request_message_id,
+    )
+    .await?
+    {
+        if let Some(message_id) = ensure_group_response_messages_in_transaction(
+            tx,
+            GroupResponse {
+                run_id: delivery.run_id,
+                owner_account_id: delivery.owner_account_id,
+                session_id: delivery.session_id,
+                request_message_id: delivery.request_message_id,
+                response_text: delivery.response_text,
+                delivery_state: delivery.delivery_state,
+            },
+            &request_envelope,
+            delivery.preferred_message_id,
+            delivery.now,
+        )
+        .await?
+        {
+            return Ok(message_id);
+        }
+    }
+
+    ensure_direct_response_message_in_transaction(
+        tx,
+        delivery.run_id,
+        delivery.owner_account_id,
+        delivery.requester_account_id,
+        delivery.session_id,
+        delivery.response_body,
+        delivery.now,
+    )
+    .await
+}
 
 async fn terminal_run_response(
     pool: &PgPool,
@@ -139,105 +203,57 @@ pub async fn complete_run(
     if trimmed.is_empty() {
         return Err(RunError::NotFound);
     }
-    let existing: Option<(String, String, String, String, String)> = query_as(
-        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status \
+    let mut tx = pool.begin().await?;
+    let existing: Option<LockedRunRow> = query_as(
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, \
+                response_message_id, status \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2",
+         WHERE run_id = $1 AND claimed_by = $2 FOR UPDATE",
     )
     .bind(run_id)
     .bind(runner_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
-    let Some((owner_account_id, requester_account_id, session_id, request_message_id, status)) =
-        existing
+    let Some((
+        owner_account_id,
+        requester_account_id,
+        session_id,
+        request_message_id,
+        existing_message_id,
+        status,
+    )) = existing
     else {
+        tx.rollback().await?;
         return Err(RunError::NotFound);
     };
     if status == "completed" {
+        tx.commit().await?;
         return terminal_run_response(pool, run_id, runner_id, "completed").await;
     }
     if status != "leased" && status != "running" {
+        tx.rollback().await?;
         return Err(RunError::NotFound);
     }
-    let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
-    let mut direct_response_sync_event: Option<String> = None;
-    let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
-        if let Some(message_id) = ensure_scheduled_direct_person_response_message(
-            pool,
-            run_id,
-            &owner_account_id,
-            &session_id,
-            &response_body,
-        )
-        .await?
-        {
-            message_id
-        } else if let Some(message_id) = ensure_group_response_messages(
-            pool,
-            GroupResponse {
-                run_id,
-                owner_account_id: &owner_account_id,
-                session_id: &session_id,
-                request_message_id: &request_message_id,
-                response_text: trimmed,
-                delivery_state: "complete",
-            },
-        )
-        .await?
-        {
-            message_id
-        } else {
-            let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
-                pool,
-                run_id,
-                &owner_account_id,
-                &requester_account_id,
-                &session_id,
-                &response_body,
-            )
-            .await?;
-            direct_response_sync_event = Some(message_id.clone());
-            message_id
-        }
-    } else if let Some(message_id) = ensure_group_response_messages(
-        pool,
-        GroupResponse {
-            run_id,
-            owner_account_id: &owner_account_id,
-            session_id: &session_id,
-            request_message_id: &request_message_id,
-            response_text: trimmed,
-            delivery_state: "complete",
-        },
-    )
-    .await?
-    {
-        message_id
-    } else {
-        let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
-            pool,
-            run_id,
-            &owner_account_id,
-            &requester_account_id,
-            &session_id,
-            &response_body,
-        )
-        .await?;
-        direct_response_sync_event = Some(message_id.clone());
-        message_id
-    };
+
     let now = Utc::now();
     let now_text = now.to_rfc3339();
-    let mut tx = pool.begin().await?;
-    if let Some(message_id) = direct_response_sync_event.as_deref() {
-        crate::cloud_agent_runtime::artifacts::update_response_message_body_in_transaction(
-            &mut tx,
-            message_id,
-            &response_body,
-        )
-        .await?;
-        append_cloud_message_sync_events_in_transaction(&mut tx, message_id).await?;
-    }
+    let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
+    let response_message_id = ensure_terminal_response_message_in_transaction(
+        &mut tx,
+        TerminalDelivery {
+            run_id,
+            owner_account_id: &owner_account_id,
+            requester_account_id: &requester_account_id,
+            session_id: &session_id,
+            request_message_id: &request_message_id,
+            preferred_message_id: existing_message_id.as_deref(),
+            response_text: trimmed,
+            response_body: &response_body,
+            delivery_state: "complete",
+            now: &now_text,
+        },
+    )
+    .await?;
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'completed', response_message_id = $3, \
@@ -265,7 +281,7 @@ pub async fn complete_run(
         }
         None => {
             tx.rollback().await?;
-            terminal_run_response(pool, run_id, runner_id, "completed").await
+            Err(RunError::NotFound)
         }
     }
 }
@@ -278,116 +294,62 @@ pub async fn fail_run(
     message: &str,
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
-    let existing: Option<FailedRunLookupRow> = query_as(
-        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id, target_agent_id, status \
+    let mut tx = pool.begin().await?;
+    let existing: Option<LockedRunRow> = query_as(
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id, status \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2",
+         WHERE run_id = $1 AND claimed_by = $2 FOR UPDATE",
     )
     .bind(run_id)
     .bind(runner_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((
         owner_account_id,
         requester_account_id,
         session_id,
         request_message_id,
-        _message_id,
-        target_agent_id,
+        existing_message_id,
         status,
     )) = existing
     else {
+        tx.rollback().await?;
         return Err(RunError::NotFound);
     };
     if status == "failed" {
+        tx.commit().await?;
         return terminal_run_response(pool, run_id, runner_id, "failed").await;
     }
     if status != "leased" && status != "running" {
+        tx.rollback().await?;
         return Err(RunError::NotFound);
     }
+    let target_agent_id =
+        cloud_agent_target_id_for_request_in_transaction(&mut tx, &session_id, &request_message_id)
+            .await?;
     let is_support_agent = support_agent_id
         .is_some_and(|support_agent_id| target_agent_id.as_deref() == Some(support_agent_id));
     let failure_text = cloud_agent_failure_response_text(error_code, is_support_agent);
     let response_body =
         encode_failed_cloud_agent_response_body(&request_message_id, error_code, is_support_agent);
-    let mut direct_response_sync_event: Option<String> = None;
-    let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
-        if let Some(message_id) = ensure_scheduled_direct_person_response_message(
-            pool,
-            run_id,
-            &owner_account_id,
-            &session_id,
-            &response_body,
-        )
-        .await?
-        {
-            message_id
-        } else if let Some(message_id) = ensure_group_response_messages(
-            pool,
-            GroupResponse {
-                run_id,
-                owner_account_id: &owner_account_id,
-                session_id: &session_id,
-                request_message_id: &request_message_id,
-                response_text: failure_text,
-                delivery_state: "failed",
-            },
-        )
-        .await?
-        {
-            message_id
-        } else {
-            let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
-                pool,
-                run_id,
-                &owner_account_id,
-                &requester_account_id,
-                &session_id,
-                &response_body,
-            )
-            .await?;
-            direct_response_sync_event = Some(message_id.clone());
-            message_id
-        }
-    } else if let Some(message_id) = ensure_group_response_messages(
-        pool,
-        GroupResponse {
-            run_id,
-            owner_account_id: &owner_account_id,
-            session_id: &session_id,
-            request_message_id: &request_message_id,
-            response_text: failure_text,
-            delivery_state: "failed",
-        },
-    )
-    .await?
-    {
-        message_id
-    } else {
-        let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
-            pool,
-            run_id,
-            &owner_account_id,
-            &requester_account_id,
-            &session_id,
-            &response_body,
-        )
-        .await?;
-        direct_response_sync_event = Some(message_id.clone());
-        message_id
-    };
     let now = Utc::now();
     let now_text = now.to_rfc3339();
-    let mut tx = pool.begin().await?;
-    if let Some(message_id) = direct_response_sync_event.as_deref() {
-        crate::cloud_agent_runtime::artifacts::update_response_message_body_in_transaction(
-            &mut tx,
-            message_id,
-            &response_body,
-        )
-        .await?;
-        append_cloud_message_sync_events_in_transaction(&mut tx, message_id).await?;
-    }
+    let response_message_id = ensure_terminal_response_message_in_transaction(
+        &mut tx,
+        TerminalDelivery {
+            run_id,
+            owner_account_id: &owner_account_id,
+            requester_account_id: &requester_account_id,
+            session_id: &session_id,
+            request_message_id: &request_message_id,
+            preferred_message_id: existing_message_id.as_deref(),
+            response_text: failure_text,
+            response_body: &response_body,
+            delivery_state: "failed",
+            now: &now_text,
+        },
+    )
+    .await?;
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
@@ -417,7 +379,7 @@ pub async fn fail_run(
         }
         None => {
             tx.rollback().await?;
-            terminal_run_response(pool, run_id, runner_id, "failed").await
+            Err(RunError::NotFound)
         }
     }
 }

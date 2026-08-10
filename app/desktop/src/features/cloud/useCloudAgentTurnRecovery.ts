@@ -14,9 +14,10 @@ import type {
 } from '@/kordi-app/types';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { cloudAgentTurnLifecycleState } from '@/features/canonical/cloudAgentTurnLifecycle';
-import type { CloudAccount } from './authClient';
+import type { CloudAccount, CloudAgentRun, CloudAuthClient } from './authClient';
 import { cloudGroupAgentConversationId } from './cloudGroupMessages';
 import { removeCloudGroupPendingRowsForTerminalResponse } from './cloudAgentRequestState';
+import { loadSession } from './session';
 
 export const CLOUD_AGENT_INTERRUPTED_TURN_NOTICE =
   'This reply was interrupted before it completed. Try again.';
@@ -119,8 +120,29 @@ export function interruptedCloudGroupAgentTurnRecoveries({
   return recoveries;
 }
 
+export type InterruptedCloudAgentTurnDisposition =
+  | 'interrupted-locally'
+  | 'retry-after-cloud-failure'
+  | 'server-active'
+  | 'server-terminal';
+
+export function interruptedCloudAgentTurnDisposition(
+  run: CloudAgentRun | null | undefined,
+): InterruptedCloudAgentTurnDisposition {
+  if (run === null) return 'interrupted-locally';
+  if (run?.status === 'failed') return 'retry-after-cloud-failure';
+  if (run?.status === 'completed' || run?.status === 'cancelled') {
+    return 'server-terminal';
+  }
+  // `undefined` means the lookup itself was unavailable, so preserve
+  // Processing instead of fabricating a terminal failure while Cloud may
+  // still own the request.
+  return 'server-active';
+}
+
 export function useCloudAgentTurnRecovery({
   account,
+  client,
   canonicalStateRef,
   setCanonicalState,
   initialMessagesSettled,
@@ -128,6 +150,7 @@ export function useCloudAgentTurnRecovery({
   reportWarning,
 }: {
   account: CloudAccount | null;
+  client: CloudAuthClient;
   canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
   setCanonicalState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>
@@ -163,11 +186,54 @@ export function useCloudAgentTurnRecovery({
         });
         if (recoveries.length === 0) return;
 
+        const session = await loadSession().catch((error) => {
+          reportWarningRef.current(
+            '[cloud-group-agent] recovery session lookup failed',
+            error,
+          );
+          return null;
+        });
+        const checkedRecoveries = await Promise.all(recoveries.map(
+          async (recovery) => {
+            if (!session?.token) return { recovery, run: undefined };
+            const run = await client.lookupCloudAgentRunForRequest(
+              session.token,
+              recovery.requestId,
+            ).catch((error) => {
+              reportWarningRef.current(
+                '[cloud-group-agent] recovery run lookup failed',
+                error,
+              );
+              return undefined;
+            });
+            return { recovery, run };
+          },
+        ));
+        const classifiedRecoveries = checkedRecoveries.map((checked) => ({
+          ...checked,
+          disposition: interruptedCloudAgentTurnDisposition(checked.run),
+        }));
+        const recoverable = classifiedRecoveries.filter(({ disposition }) =>
+          disposition === 'interrupted-locally'
+        ).map(({ recovery }) => recovery);
+        const pendingRemoval = classifiedRecoveries.filter(
+          ({ disposition }) =>
+            disposition === 'retry-after-cloud-failure'
+            || disposition === 'server-terminal',
+        ).map(({ recovery }) => recovery);
+        classifiedRecoveries.filter(({ disposition }) =>
+          disposition === 'server-active'
+          || disposition === 'server-terminal'
+        ).forEach(({ recovery }) => {
+          processedRequestIdsRef.current.add(recovery.requestId);
+        });
+        if (recoverable.length === 0 && pendingRemoval.length === 0) return;
+
         const persistedRows = await Promise.all(
-          recoveries.map(({ request }) => upsertCanonicalMessageFast(request)),
+          recoverable.map(({ request }) => upsertCanonicalMessageFast(request)),
         );
         if (!active) return;
-        recoveries.forEach(({ requestId }) => {
+        recoverable.forEach(({ requestId }) => {
           processedRequestIdsRef.current.add(requestId);
         });
         setCanonicalState((current) => {
@@ -177,7 +243,14 @@ export function useCloudAgentTurnRecovery({
             if (!next) return;
             next = removeCloudGroupPendingRowsForTerminalResponse(
               next,
-              recoveries[index].requestId,
+              recoverable[index].requestId,
+              contextKey,
+            );
+          });
+          pendingRemoval.forEach(({ requestId }) => {
+            next = removeCloudGroupPendingRowsForTerminalResponse(
+              next,
+              requestId,
               contextKey,
             );
           });
@@ -200,6 +273,7 @@ export function useCloudAgentTurnRecovery({
     };
   }, [
     canonicalStateRef,
+    client,
     contextKey,
     initialMessagesSettled,
     processedRequestIdsRef,

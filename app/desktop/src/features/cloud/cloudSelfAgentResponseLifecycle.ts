@@ -304,8 +304,12 @@ export function cloudSelfAgentResponseWouldDowngrade(
 ): boolean {
   const existingDeliveryState = normalizedDeliveryState(existingStatus);
   if (!existingDeliveryState || !nextDeliveryState) return false;
-  return DELIVERY_STATE_PRIORITY[nextDeliveryState]
-    < DELIVERY_STATE_PRIORITY[existingDeliveryState];
+  if (existingDeliveryState === nextDeliveryState) return false;
+  if (existingDeliveryState === 'processing') return false;
+  return !(
+    existingDeliveryState === 'failed'
+    && nextDeliveryState === 'complete'
+  );
 }
 
 export function shouldReplacePlannedCloudSelfAgentResponse(
@@ -314,11 +318,10 @@ export function shouldReplacePlannedCloudSelfAgentResponse(
 ): boolean {
   const currentDeliveryState = normalizedDeliveryState(currentStatus);
   if (!currentDeliveryState) return true;
-  const currentPriority = DELIVERY_STATE_PRIORITY[currentDeliveryState];
-  const nextPriority = DELIVERY_STATE_PRIORITY[nextDeliveryState];
-  return nextPriority > currentPriority
-    || (
-      nextPriority === currentPriority
-      && nextDeliveryState !== 'processing'
-    );
+  if (currentDeliveryState === nextDeliveryState) {
+    return nextDeliveryState !== 'processing';
+  }
+  if (currentDeliveryState === 'processing') return true;
+  return currentDeliveryState === 'failed'
+    && nextDeliveryState === 'complete';
 }

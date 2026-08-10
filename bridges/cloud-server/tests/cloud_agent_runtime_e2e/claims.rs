@@ -54,6 +54,45 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 }
 
 #[tokio::test]
+async fn cloud_agent_runtime_rejects_idempotency_key_reuse_for_another_request() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "claim-conflict-owner", "Owner").await;
+    let requester = signup(&router, "claim-conflict-requester", "Requester").await;
+    accept_contacts(&router, &requester, &owner).await;
+
+    let first_claim = claim_body(&owner, &requester, "msg_claim_original");
+    let first = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            first_claim.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let mut conflicting_claim = claim_body(&owner, &requester, "msg_claim_other");
+    conflicting_claim["idempotencyKey"] = first_claim["idempotencyKey"].clone();
+    let conflict = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            conflicting_claim,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(conflict.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        read_json(conflict).await["errorCode"],
+        "agent_run_idempotency_conflict",
+    );
+}
+
+#[tokio::test]
 async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_online() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));

@@ -14,8 +14,8 @@ import type {
 } from './authClient';
 import {
   cloudAgentResponseExistsForRequest,
-  cloudFallbackRunAlreadyOwnsRequest,
 } from './cloudAgentRequestState';
+import { cloudFallbackRunAlreadyOwnsRequest } from './cloudAgentRunLifecycle';
 import {
   deriveCloudActivityFromTurn,
   normalizeCloudSessionActivitySnapshot,
