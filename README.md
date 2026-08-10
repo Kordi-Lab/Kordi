@@ -84,6 +84,8 @@ Kordi opens in account login mode against an isolated Docker backend on your mac
 > VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 > ```
 
+Core-maintainer operator work has an additional mandatory preflight. If the requested settings, code, or test will affect or require restarting the product server, develop and test on the corresponding product-server machine and run the first end-to-end validation through `https://coordinar.io`—never `https://kordi.ai`. Desktop-only remote previews continue to use the allowlisted `https://kordi.ai` operator launcher. See [Required preflight before preview or debug](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug).
+
 For prerequisites, multi-user testing, logs, troubleshooting, and cleanup, follow the [local development guide](docs/self-hosted-debug.md).
 
 ## How Kordi works

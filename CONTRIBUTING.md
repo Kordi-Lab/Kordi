@@ -33,6 +33,8 @@ The local stack generates its own credentials and stores all test accounts and p
 
 Follow [Local development with an isolated Kordi backend](docs/self-hosted-debug.md) for prerequisites, multi-user testing, logs, proxy troubleshooting, validation, and cleanup.
 
+An isolated contributor run does not count as product-server validation. Approved operator work that will affect or restart the product server must follow the [required environment preflight](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), run on the corresponding product-server machine, and use `https://coordinar.io` for the first end-to-end test—never `https://kordi.ai`.
+
 ## Branch workflow
 
 1. Start from an issue.

@@ -16,6 +16,8 @@ For development/QA, use:
 
 or host your own compatible hosted server.
 
+Before any remote operator work, follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Hosted-server changes or behavior requiring a product-server restart must be developed and tested on the corresponding product-server machine, with the first end-to-end validation through `https://coordinar.io`, never `https://kordi.ai` or a local community/debug server. Isolated development does not substitute for this product-server validation.
+
 ## Status
 
 The local app server was an earlier app-facing orchestration experiment for local runtime and Bridge integration. It should not be presented as the default product path, and default developer commands should not start it.

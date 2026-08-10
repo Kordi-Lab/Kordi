@@ -48,6 +48,8 @@ Add `--preview-data` to the Kordi scheme's launch arguments to open the complete
 
 Without a preview argument, the app uses a real Kordi account and the production service. Use a dedicated test account and never run destructive, load, or throwaway multi-account tests against production.
 
+That client origin does not authorize product-server development. If an operator session will affect or restart the product server, follow the [required environment preflight](../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), work on the corresponding product-server machine, and run the first end-to-end test through `https://coordinar.io`, never `https://kordi.ai`.
+
 ## Build and test
 
 From the repository root:

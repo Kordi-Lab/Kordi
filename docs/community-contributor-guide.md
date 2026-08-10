@@ -188,6 +188,8 @@ If a maintainer asks for shared-environment validation, use only the approved no
 
 The core-maintainer operator launcher is GitHub-allowlisted and is not part of the community workflow. Do not modify its allowlist or endpoint safeguards to make a contributor test pass.
 
+The isolated contributor backend cannot substitute for product-server validation. If approved core-maintainer work will affect or restart the product server, the operator must follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), work on the corresponding product-server machine, and run the first end-to-end test through `https://coordinar.io`, never `https://kordi.ai`.
+
 ## Where to ask for help
 
 - Use the relevant GitHub issue for implementation and reproduction questions.

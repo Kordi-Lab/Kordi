@@ -1,10 +1,61 @@
 # Kordi Hosted Developer Guide
 
-This guide explains how developers should test and deploy against a hosted environment.
+This guide explains how developers should choose an environment, test, and deploy against a hosted environment. It is the canonical policy for Kordi preview and debug sessions that may use remote hosted infrastructure.
 
-Production API is `https://kordi.ai`. Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized. For development and QA, use an operator-provided public test API base or host your own compatible server.
+Production API is `https://kordi.ai`, but that does not make it the correct target for every operator session. Apply the preflight below before launching a preview, debug session, tunnel, deploy, or server restart.
 
 Do not put tokens, provider credentials, database credentials, account secrets, or private operator host details in GitHub issues, PRs, screenshots, commits, or shared logs.
+
+## Required preflight before preview or debug
+
+Determine whether the requested settings, code, or test can affect a product server before launching anything. Treat the work as product-server-affecting when the current session will apply hosted server or runner code, routes, auth/runtime behavior, schema or data changes, server configuration, destructive/load/recovery behavior, a deploy, or anything that requires restarting the product server. When the impact is uncertain, stop before connecting to remote infrastructure.
+
+| Classification | Required path |
+| --- | --- |
+| Product-server-affecting operator work | Develop, deploy, restart, inspect, and test on the corresponding product-server machine. The first end-to-end validation must use `https://coordinar.io`, never `https://kordi.ai`. |
+| Desktop-only remote operator preview | Check the active GitHub account against `deploy/dev/operator-github-allowlist.txt`, then use the approved operator launcher against `https://kordi.ai`. |
+| Isolated contributor work | Use the loopback Docker backend or an explicitly approved non-production staging API. This path cannot substitute for product-server validation. |
+| Unknown impact or missing required access | Fail closed. Do not switch origins, bypass endpoint/account checks, or silently launch a local community/debug-server profile as if it validated the product server. |
+
+### Product-server-affecting path
+
+For product-server-affecting work:
+
+1. Obtain approved access to the corresponding product-server machine. Keep its identity and credentials private.
+2. Verify the public diagnostic route before making a change:
+
+   ```bash
+   curl -fsS https://coordinar.io/health
+   ```
+
+3. Develop, deploy, restart, and inspect the affected service on that corresponding product-server machine.
+4. After every required restart or deploy, verify rollout state and redacted server logs on that machine, then run the health check again.
+5. Run the first end-to-end validation through `https://coordinar.io` and confirm the desktop logs show that exact API base. After the server-side work is complete, launch the client with the allowlisted wrapper:
+
+   ```bash
+   KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
+     pnpm dev:cloud:operator -- "https://coordinar.io"
+   ```
+
+Never route this path through `https://kordi.ai`. A public test API, self-hosted API, local tunnel, or community/debug-server profile may be useful for separate isolated work, but it is not a substitute for this required product-server validation. If the product-server access or approval is missing, stop.
+
+### Desktop-only remote operator path
+
+For a remote preview that cannot affect the product server, verify the active GitHub login against the staged allowlist before launch:
+
+```bash
+gh api user --jq .login
+sed -n '1,120p' deploy/dev/operator-github-allowlist.txt
+```
+
+If the account is listed, use the approved wrapper and acknowledgement against `https://kordi.ai`:
+
+```bash
+KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
+  pnpm dev:cloud:operator -- "https://kordi.ai"
+```
+
+If the account is not listed, fail closed. Do not edit the allowlist, bypass the launcher, or expose production credentials. The isolated contributor workflow remains available for genuinely local work, but it does not count as a remote operator or product-server test.
 
 ## Mental model
 
@@ -61,7 +112,7 @@ The operator profile exists for approved core-maintainer diagnostics against a r
 
 The launcher verifies the account currently authenticated in GitHub CLI against [`../deploy/dev/operator-github-allowlist.txt`](../deploy/dev/operator-github-allowlist.txt). The staged allowlist contains only `shuyhere`. A local source edit is not authorization; server-side controls remain mandatory.
 
-Authenticate GitHub CLI, then launch with an explicit acknowledgement against the current production API at `https://kordi.ai`:
+Authenticate GitHub CLI, then launch a desktop-only remote preview with an explicit acknowledgement against the current production API at `https://kordi.ai`:
 
 ```bash
 gh auth login
@@ -69,7 +120,7 @@ KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
   pnpm dev:cloud:operator -- "https://kordi.ai"
 ```
 
-`coordinar.io` is retained only for compatibility with already-released updater clients. Do not use it as the API origin for new operator previews.
+For normal product clients, `coordinar.io` is retained for compatibility with already-released updater clients. The required exception is product-server-affecting development: after working on the corresponding product-server machine, use `coordinar.io` for the first end-to-end validation. Do not use it for routine desktop-only operator previews.
 
 The launcher fails closed unless all of these are true:
 
@@ -98,7 +149,7 @@ Do not add `--identifier io.kordi.desktop.<name>`. If this error appears, quit t
 
 ## Internal/operator local tunnel debug pipeline
 
-Use this path only when an operator explicitly asks you to test against a private hosted backend through a local tunnel. Keep all real operator hostnames, projects, account names, private IPs, and credentials out of commits, PRs, screenshots, and shared logs.
+Use this path only when an operator explicitly asks you to test against a private, non-product hosted backend through a local tunnel. It is not permitted for product-server-affecting work; use the corresponding product-server machine and `https://coordinar.io` for that work. Keep all real operator hostnames, projects, account names, private IPs, and credentials out of commits, PRs, screenshots, and shared logs.
 
 Set the operator-provided values in your shell. Use placeholders in docs and bug reports:
 
@@ -129,7 +180,7 @@ When debugging sync or login failures in this mode:
 1. Confirm `/health` succeeds on the local tunnel endpoint.
 2. Confirm each desktop log shows the expected `VITE_KORDI_CLOUD_API_BASE` value for that launch.
 3. Confirm the local desktop URLs are only UI windows; they are not backend URLs.
-4. Check whether the change path requires a hosted server deploy: use Path C for server code changes and Path D for schema changes.
+4. Check whether the change path requires a hosted server deploy. If it does, stop the tunnel path and use Path C or D on the corresponding product-server machine through `https://coordinar.io`.
 5. If the tunnel drops, restart the tunnel or relaunch the tunnel helper. Do not silently switch to production as a workaround.
 6. Redact tokens, account IDs when needed, private hostnames, project names, database details, and local filesystem paths before sharing logs.
 
@@ -239,11 +290,11 @@ If a message, pin, read receipt, group update, or presence change does not sync:
 4. For backend changes, verify the server deploy and migration state before retesting.
 5. Only then inspect redacted desktop/server logs for the event or API request.
 
-## Decision tree: do we need to redeploy the hosted server?
+## Decision tree after the required preflight
 
 ### Path A: no database change and no hosted server backend change
 
-Use the existing deployed hosted server service. Do not redeploy the hosted server.
+Use the existing deployed hosted server service. Do not redeploy the hosted server. A remote operator preview uses the allowlisted `https://kordi.ai` wrapper; isolated contributor work uses its explicit loopback or approved non-production origin.
 
 This path applies to:
 
@@ -256,9 +307,10 @@ This path applies to:
 Developer action:
 
 1. Pull the branch or commit under test.
-2. Set the API environment variables listed above.
-3. Restart the local desktop instance or multi-instance launcher.
-4. Test against the existing hosted backend.
+2. Confirm the session cannot affect the product server.
+3. For a remote operator preview, check the active GitHub account against `deploy/dev/operator-github-allowlist.txt` and use `pnpm dev:cloud:operator -- "https://kordi.ai"` with the required acknowledgement.
+4. For isolated contributor work, set the explicit loopback or approved non-production API variables listed above.
+5. Restart the local desktop instance or multi-instance launcher and test against the selected existing backend.
 
 Example:
 
@@ -285,7 +337,7 @@ What this does not redeploy:
 
 ### Path B: hosted agent runner change only
 
-Use this when only the hosted runner changes and the hosted server/database schema do not change.
+Use this when only the hosted runner changes and the hosted server/database schema do not change. A runner deploy affects the hosted product, so perform it on the corresponding product-server machine and validate through `https://coordinar.io`.
 
 Examples:
 
@@ -296,10 +348,11 @@ Examples:
 
 Developer action:
 
-1. Build/test runner changes.
-2. Redeploy the hosted agent runner only.
+1. Build/test runner changes on the corresponding product-server machine.
+2. Redeploy the hosted agent runner only on that machine.
 3. Do not redeploy the hosted server unless server code also changed.
-4. Test from local desktop instances against the same hosted backend.
+4. Verify rollout and redacted logs, then confirm `https://coordinar.io/health` succeeds.
+5. Run the first end-to-end test from a desktop instance connected to `https://coordinar.io`, never `https://kordi.ai`.
 
 Use the project runner deploy script if available in the branch:
 
@@ -319,7 +372,7 @@ Do not paste runner tokens into logs or chat.
 
 ### Path C: hosted server code change without database schema change
 
-Use this when `bridges/cloud-server` code changed but there is no new migration and no database schema requirement.
+Use this when `bridges/cloud-server` code or server configuration changed but there is no new migration and no database schema requirement. This is product-server-affecting work.
 
 Examples:
 
@@ -327,15 +380,16 @@ Examples:
 - Presence behavior change
 - Auth behavior change without schema change
 - Runtime status behavior change without schema change
+- Server settings or behavior that requires a restart
 
 Developer action:
 
-1. Verify there are no migration changes.
-2. Deploy the hosted server with a rolling restart.
+1. Switch to the approved corresponding product-server machine and verify there are no migration changes.
+2. Develop and deploy the hosted server there with a rolling restart.
 3. Verify health and logs.
-4. Test from local desktop instances.
+4. Run the first end-to-end test through `https://coordinar.io`; do not test this change through `https://kordi.ai`.
 
-Commands, with real host details provided privately by the operator:
+Run these commands on, or explicitly targeting, the corresponding product-server machine. Real access details are provided privately by the operator:
 
 ```bash
 bridges/cloud-server/deploy/sync-and-build.sh
@@ -349,12 +403,12 @@ Verify:
 ```bash
 kubectl -n kordi-cloud rollout status deployment/kordi-cloud-server --timeout=180s
 kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m
-curl -fsS "<HOSTED_CLOUD_API_BASE>/health"
+curl -fsS https://coordinar.io/health
 ```
 
 ### Path D: database schema changed
 
-A database change requires a hosted server deploy.
+A database change requires a hosted server deploy and is always product-server-affecting. Develop, deploy, and validate it on the corresponding product-server machine through `https://coordinar.io`, never through `https://kordi.ai`.
 
 This path applies when any of these changed:
 
@@ -377,7 +431,7 @@ Important implementation note:
 
 The hosted server migration runner applies embedded migrations at server startup. If a new SQL migration file is added, make sure the server code includes it in the embedded migration list, for example in the Postgres pool/migration module.
 
-Deploy steps:
+Run the deploy steps on, or explicitly targeting, the corresponding product-server machine:
 
 ```bash
 bridges/cloud-server/deploy/sync-and-build.sh
@@ -391,7 +445,7 @@ Watch rollout:
 ```bash
 kubectl -n kordi-cloud rollout status deployment/kordi-cloud-server --timeout=180s
 kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m
-curl -fsS "<HOSTED_CLOUD_API_BASE>/health"
+curl -fsS https://coordinar.io/health
 ```
 
 Verify migration state using operator-only database access. Do not share credentials.
@@ -416,7 +470,7 @@ Never run a destructive migration without a tested rollback or restore plan.
 
 ## Hosted test matrix
 
-Run these after any backend-related change.
+Run these after any backend-related change. Paths B, C, and D must run against `https://coordinar.io` after the affected service is deployed or restarted on the corresponding product-server machine. A remote Path A operator preview uses the allowlisted `https://kordi.ai` launcher.
 
 ### Login persistence
 

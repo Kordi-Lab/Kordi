@@ -24,6 +24,8 @@ For development or QA, use an operator-provided public test API base or host you
 <PUBLIC_TEST_CLOUD_API_BASE>
 ```
 
+Before a remote operator preview or debug session, follow the [required environment preflight](../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Work that can affect or require restarting the product server must be developed and tested on the corresponding product-server machine, with the first end-to-end validation through `https://coordinar.io`, never `https://kordi.ai`. Desktop-only remote previews use the allowlisted `https://kordi.ai` operator launcher. Isolated contributor testing remains documented separately and does not substitute for product-server validation.
+
 ## Commands from the repository root
 
 ```bash

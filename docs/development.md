@@ -16,6 +16,17 @@ cd /path/to/kordi
 pnpm install --frozen-lockfile
 ```
 
+## Required environment preflight
+
+Before any preview or debug session, decide whether the current work is isolated or can affect a product server.
+
+- **Product-server-affecting operator work:** if the session will apply hosted server/runner code, routes, schema/data, server configuration, destructive/recovery behavior, a deploy, or anything requiring a product-server restart, develop and test on the corresponding product-server machine. The first end-to-end validation must use `https://coordinar.io`, never `https://kordi.ai` or a local community/debug-server profile.
+- **Desktop-only remote operator preview:** check the active GitHub account against `deploy/dev/operator-github-allowlist.txt`, then use `KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 pnpm dev:cloud:operator -- "https://kordi.ai"`.
+- **Isolated contributor work:** use the loopback Docker backend or an explicitly approved non-production staging origin. It cannot substitute for product-server validation.
+- **Unknown impact or missing required access:** stop and fail closed; do not change origins or bypass checks.
+
+See [Required preflight before preview or debug](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) for the canonical policy and full decision tree.
+
 ## Desktop
 
 ### Start the product app
@@ -130,5 +141,7 @@ For overlong-file thresholds and refactor boundaries, see [`development/maintain
 
 - Kordi Desktop is the primary product surface on `main`.
 - Production defaults point to `https://kordi.ai`.
+- Product-server-affecting operator work must be developed and first tested on the corresponding product-server machine through `https://coordinar.io`, never `https://kordi.ai`.
+- Desktop-only remote operator previews must use the allowlisted launcher against `https://kordi.ai`.
 - Development tests should set `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted API explicitly.
 - Do not commit tokens, local account sessions, provider credentials, database credentials, or private operator infrastructure details.

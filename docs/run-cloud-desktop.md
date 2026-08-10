@@ -16,6 +16,15 @@ For development, use the isolated backend from the current checkout. For approve
 
 Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized.
 
+## Required environment preflight
+
+Before launching a preview or debug session, follow the [canonical environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug):
+
+- If the current operator session can affect or require restarting the product server, develop and test on the corresponding product-server machine. Run the first end-to-end validation through `https://coordinar.io`, never `https://kordi.ai` or a local community/debug-server profile.
+- If the remote operator preview is desktop-only, check the active GitHub account against `deploy/dev/operator-github-allowlist.txt` and use the approved `https://kordi.ai` launcher.
+- Isolated loopback or explicitly approved staging work remains valid for non-product development, but it does not substitute for product-server validation.
+- If impact is uncertain or required access is missing, stop and fail closed.
+
 ## Prerequisites
 
 - macOS development machine with Tauri prerequisites installed.
@@ -74,7 +83,7 @@ VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
 pnpm dev:cloud:multi -- --reset --users user1,user2,user3
 ```
 
-Only use tunnel/local backend options if you have explicit operator access or are running your own compatible hosted API. For operator tunnel debugging, use environment placeholders and keep real private host details out of docs, PRs, issues, and shared logs. See [Internal/operator local tunnel debug pipeline](hosted-cloud-developer-guide.md#internaloperator-local-tunnel-debug-pipeline).
+Never use a tunnel/local backend as product-server validation. Use tunnel/local options only with explicit operator authorization or for an intentionally isolated compatible API. Product-server-affecting work moves to the corresponding product-server machine and `https://coordinar.io`. Keep real private host details out of docs, PRs, issues, and shared logs. See [Internal/operator local tunnel debug pipeline](hosted-cloud-developer-guide.md#internaloperator-local-tunnel-debug-pipeline).
 
 ## Environment variables
 
@@ -96,6 +105,7 @@ Only use tunnel/local backend options if you have explicit operator access or ar
   ```
 
 - For operator tunnel debugging, verify the local tunnel endpoint and each desktop log's `VITE_KORDI_CLOUD_API_BASE` before changing code. Do not switch to production as a workaround unless an operator explicitly asks.
+- For product-server-affecting work, verify `https://coordinar.io/health` before the change and after every restart/deploy, then confirm the desktop logs show `https://coordinar.io` for the first end-to-end test.
 - If Tauri fails before the app opens, run `pnpm install` again and confirm the Rust toolchain is installed.
 - If multi-instance ports are already in use, stop old instances or choose a smaller user set.
 - Do not use `--reset` unless you intentionally want to delete that local test user's desktop state.

@@ -81,3 +81,39 @@ test('public docs use neutral product wording and safe host guidance', () => {
   assert.doesNotMatch(publicDocs, /KORDI_EDITION|VITE_KORDI_EDITION|dev:local|tauri:dev:local|build:local|tauri:build:local/);
   assert.doesNotMatch(publicDocs, /Cloud-first|Cloud-only|Cloud Edition|Cloud Desktop|Cloud desktop|Cloud product|Cloud build|Cloud package|only product mode/i);
 });
+
+test('development docs enforce the product-server impact preflight', () => {
+  const policy = readText('docs/hosted-cloud-developer-guide.md');
+  const entrypoints = [
+    'README.md',
+    'CONTRIBUTING.md',
+    'app/desktop/README.md',
+    'app/ios/README.md',
+    'docs/development.md',
+    'docs/run-cloud-desktop.md',
+    'docs/cloud-edition.md',
+    'docs/app-server.md',
+    'docs/architecture.md',
+    'docs/self-hosted-debug.md',
+    'docs/community-contributor-guide.md',
+    'docs/ios-development.md',
+    'docs/cloud-mobile-v1.md',
+  ];
+
+  assert.match(policy, /anything that requires restarting the product server/);
+  assert.match(policy, /corresponding product-server machine/);
+  assert.match(policy, /first end-to-end validation must use `https:\/\/coordinar\.io`, never `https:\/\/kordi\.ai`/);
+  assert.match(policy, /Never route this path through `https:\/\/kordi\.ai`/);
+  assert.match(policy, /pnpm dev:cloud:operator -- "https:\/\/kordi\.ai"/);
+  assert.match(policy, /Unknown impact or missing required access[\s\S]*Fail closed/);
+  assert.match(policy, /community\/debug-server profile[\s\S]*not a substitute/);
+
+  for (const path of entrypoints) {
+    const contents = readText(path);
+    assert.match(
+      contents,
+      /hosted-cloud-developer-guide\.md#required-preflight-before-preview-or-debug/,
+      `${path} must link to the canonical environment preflight`,
+    );
+  }
+});

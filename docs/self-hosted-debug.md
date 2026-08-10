@@ -4,6 +4,8 @@ This is the recommended setup for contributors working on the desktop app, accou
 
 The environment runs the current checkout of the Kordi server with Postgres, Redis, NATS JetStream, and MinIO on the developer's machine. It never copies production data, credentials, snapshots, or configuration.
 
+This isolated workflow does not authorize or replace product-server validation. If an approved operator session will apply a change to, or restart, the product server, stop the local path and follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug): work on the corresponding product-server machine and run the first end-to-end test through `https://coordinar.io`, never `https://kordi.ai`.
+
 ## Safety model
 
 The local stack is intentionally separated from the hosted product:
