@@ -1,9 +1,9 @@
+use crate::client::{CloudAgentRunClient, RunnerClientError};
+use crate::config::{sandbox_backend_mode_from_env, SandboxBackendMode};
+use crate::lease_heartbeat::run_with_heartbeat;
+use crate::model_loop::{CloudModelProvider, ConfiguredCloudProvider};
+use crate::sandbox_backend::sandbox_backend_for_run;
 use std::path::PathBuf;
-
-use crate::client::{CloudAgentRun, CloudAgentRunClient, RunnerClientError};
-use crate::k8s_sandbox::K8sSandboxBackend;
-use crate::model_loop::{run_model_loop, CloudModelProvider, OpenAiCompatibleProvider};
-use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunnerStepOutcome {
@@ -13,19 +13,6 @@ pub enum RunnerStepOutcome {
     FailedProviderError { run_id: String },
     FailedMissingSandbox { run_id: String },
     SkippedCancelled { run_id: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SandboxBackendMode {
-    Local,
-    K8s,
-}
-
-pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
-    match std::env::var("KORDI_CLOUD_SANDBOX_BACKEND") {
-        Ok(value) if value.trim().eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
-        _ => SandboxBackendMode::Local,
-    }
 }
 
 fn sentence_case_first(text: &str) -> String {
@@ -78,35 +65,27 @@ fn scheduled_reminder_response_text(prompt: &str) -> Option<String> {
     Some(ensure_terminal_punctuation(&sentence_case_first(reminder)))
 }
 
-pub fn sandbox_backend_for_run(
-    run: &CloudAgentRun,
-    local_root: PathBuf,
-) -> Result<SandboxBackendHandle, &'static str> {
-    match sandbox_backend_mode_from_env() {
-        SandboxBackendMode::Local => Ok(std::sync::Arc::new(LocalSandboxBackend::new(local_root))),
-        SandboxBackendMode::K8s => {
-            let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;
-            Ok(std::sync::Arc::new(K8sSandboxBackend::from_env(
-                sandbox_id.to_string(),
-            )))
-        }
-    }
-}
-
 pub async fn process_one_run<C: CloudAgentRunClient + Sync>(
     client: &C,
 ) -> Result<RunnerStepOutcome, RunnerClientError> {
-    let provider = OpenAiCompatibleProvider::default();
+    let provider = ConfiguredCloudProvider::default();
     let sandbox_root = std::env::var("KORDI_CLOUD_SANDBOX_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::temp_dir().join("kordi-cloud-runner-sandbox"));
-    process_one_run_with_provider(client, &provider, sandbox_root).await
+    process_one_run_with_provider(
+        client,
+        &provider,
+        sandbox_root,
+        sandbox_backend_mode_from_env(),
+    )
+    .await
 }
 
 pub async fn process_one_run_with_provider<C, P>(
     client: &C,
     provider: &P,
     sandbox_root: PathBuf,
+    backend_mode: SandboxBackendMode,
 ) -> Result<RunnerStepOutcome, RunnerClientError>
 where
     C: CloudAgentRunClient + Sync,
@@ -138,7 +117,7 @@ where
     }
 
     client.mark_running(&run.run_id).await?;
-    let sandbox = match sandbox_backend_for_run(&run, sandbox_root) {
+    let sandbox = match sandbox_backend_for_run(&run, sandbox_root, backend_mode) {
         Ok(sandbox) => sandbox,
         Err("missing_sandbox") => {
             client
@@ -174,20 +153,20 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
-    let response_text = match run_model_loop(client, provider, &run, &sandbox, auth_material).await
-    {
-        Ok(response_text) => response_text,
-        Err(err) => {
-            client
-                .fail_run(
-                    &run.run_id,
-                    "model_provider_error",
-                    &format!("Cloud fallback model loop failed: {err}"),
-                )
-                .await?;
-            return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
-        }
-    };
+    let response_text =
+        match run_with_heartbeat(client, provider, &run, &sandbox, auth_material).await? {
+            Ok(response_text) => response_text,
+            Err(err) => {
+                client
+                    .fail_run(
+                        &run.run_id,
+                        "model_provider_error",
+                        &format!("Cloud fallback model loop failed: {err}"),
+                    )
+                    .await?;
+                return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
+            }
+        };
     client.complete_run(&run.run_id, &response_text).await?;
     Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
 }
@@ -195,8 +174,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CloudAgentRun;
     use crate::model_loop::{
-        CloudModelProvider, ModelLoopError, ModelProviderResponse, OpenAiProviderConfig,
+        CloudModelProvider, CloudProviderConfig, ModelLoopError, ModelProviderResponse,
     };
     use async_trait::async_trait;
     use serde_json::Value;
@@ -217,7 +197,7 @@ mod tests {
     impl CloudModelProvider for FakeModelProvider {
         async fn next_response(
             &self,
-            _auth: &OpenAiProviderConfig,
+            _auth: &CloudProviderConfig,
             _messages: &[Value],
             _tools: &[Value],
         ) -> Result<ModelProviderResponse, ModelLoopError> {
@@ -338,15 +318,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn sandbox_backend_selection_defaults_to_local() {
-        std::env::remove_var("KORDI_CLOUD_SANDBOX_BACKEND");
-        assert_eq!(sandbox_backend_mode_from_env(), SandboxBackendMode::Local);
-    }
-
     #[tokio::test]
     async fn k8s_backend_requires_sandbox_id() {
-        std::env::set_var("KORDI_CLOUD_SANDBOX_BACKEND", "k8s");
         let client = FakeClient::with_run(CloudAgentRun {
             sandbox_id: None,
             ..leased_run("car_no_sandbox", true)
@@ -355,9 +328,14 @@ mod tests {
             response: ModelProviderResponse::FinalText("unused".to_string()),
         };
 
-        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
-            .await
-            .unwrap();
+        let outcome = process_one_run_with_provider(
+            &client,
+            &provider,
+            temp_sandbox(),
+            SandboxBackendMode::K8s,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             outcome,
@@ -373,7 +351,6 @@ mod tests {
                 "fail:car_no_sandbox:missing_sandbox"
             ]
         );
-        std::env::remove_var("KORDI_CLOUD_SANDBOX_BACKEND");
     }
 
     #[test]
@@ -404,9 +381,14 @@ mod tests {
             response: ModelProviderResponse::FinalText("wrong model answer".to_string()),
         };
 
-        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
-            .await
-            .unwrap();
+        let outcome = process_one_run_with_provider(
+            &client,
+            &provider,
+            temp_sandbox(),
+            SandboxBackendMode::Local,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             outcome,
@@ -431,9 +413,14 @@ mod tests {
             response: ModelProviderResponse::FinalText("real model answer".to_string()),
         };
 
-        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
-            .await
-            .unwrap();
+        let outcome = process_one_run_with_provider(
+            &client,
+            &provider,
+            temp_sandbox(),
+            SandboxBackendMode::Local,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             outcome,
@@ -460,9 +447,14 @@ mod tests {
             response: ModelProviderResponse::FinalText("unused".to_string()),
         };
 
-        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
-            .await
-            .unwrap();
+        let outcome = process_one_run_with_provider(
+            &client,
+            &provider,
+            temp_sandbox(),
+            SandboxBackendMode::Local,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             outcome,

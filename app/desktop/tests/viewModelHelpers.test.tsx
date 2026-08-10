@@ -142,37 +142,6 @@ test('buildConversationPreview uses the latest agent turn response when message 
   assert.equal(buildConversationPreview(messages, 'Shu Yang'), 'I’m not sure yet, but I can help check.');
 });
 
-test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
-  const [conversation] = hideRawConversationIds([{
-    id: 'bridge:host:peer:person',
-    canonicalSessionId: 'session:bridge:humans:01cdf04168888ea08ffd7069',
-    name: 'Bob',
-    type: 'person',
-    subtitle: 'Direct human chat',
-    unread: 0,
-    collaborationSources: ['Bridge'],
-    trust: 'Bridge',
-    directness: 'Direct person chat',
-    participants: ['Me', 'Bob'],
-    messages: [{
-      role: 'user',
-      text: 'Please keep this message out of the row title.',
-      time: '23:34',
-    }],
-  }]);
-
-  assert.equal(
-    conversation.name,
-    'Bob',
-    'canonical bridge human ids must not replace user-facing conversation names',
-  );
-  assert.equal(
-    conversation.subtitle,
-    'session:bridge:humans:01cdf04168888ea08ffd7069',
-    'canonical session id should remain available for subtitle/debug display',
-  );
-});
-
 test('hideRawConversationIds replaces raw names with stable friendly fallbacks', () => {
   const [rawNamedConversation, draftConversation] = hideRawConversationIds([{
     id: 'session:bridge:humans:01cdf04168888ea08ffd7069',

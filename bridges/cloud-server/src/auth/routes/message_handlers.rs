@@ -153,12 +153,12 @@ pub(super) async fn send_message(
         );
     }
 
-    let client_message_id = req
+    let supplied_client_message_id = req
         .client_message_id
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    if client_message_id.is_some_and(|value| value.chars().count() > 512) {
+    if supplied_client_message_id.is_some_and(|value| value.chars().count() > 512) {
         return err(
             "invalid_message",
             "clientMessageId is too long.",
@@ -169,8 +169,28 @@ pub(super) async fn send_message(
     let cloud_session_id =
         cloud_message_session_id(req.session_id.as_deref(), &session.account_id, &peer, &body);
     let server_received_at = Utc::now();
-    let created_at =
-        cloud_message_effective_created_at(req.client_created_at.as_deref(), server_received_at);
+    let valid_client_created_at =
+        cloud_message_valid_client_created_at(req.client_created_at.as_deref(), server_received_at);
+    let created_at = valid_client_created_at
+        .clone()
+        .unwrap_or_else(|| server_received_at.to_rfc3339());
+    let legacy_client_message_id =
+        (supplied_client_message_id.is_none() && is_self_message && attachments.is_empty())
+            .then(|| {
+                valid_client_created_at.as_deref().map(|client_created_at| {
+                    legacy_self_message_client_id(
+                        &session.account_id,
+                        cloud_session_id.as_deref(),
+                        &body,
+                        client_created_at,
+                    )
+                })
+            })
+            .flatten();
+    let legacy_replay_lock_id = legacy_client_message_id.as_ref().map(|_| {
+        legacy_self_message_lock_id(&session.account_id, cloud_session_id.as_deref(), &body)
+    });
+    let client_message_id = supplied_client_message_id.or(legacy_client_message_id.as_deref());
     let delivered_at = server_received_at.to_rfc3339();
     let read_at = if is_self_message {
         Some(delivered_at.clone())
@@ -202,12 +222,21 @@ pub(super) async fn send_message(
             delivered_at: &delivered_at,
             read_at: read_at.as_deref(),
             attachments: &persisted_attachments,
+            claim_legacy_self_replay: legacy_client_message_id.is_some(),
+            legacy_self_replay_lock_id: legacy_replay_lock_id.as_deref(),
         },
     )
     .await
     {
         Ok(value) => value,
-        Err(error) => {
+        Err(PersistCloudMessageError::IdempotencyConflict) => {
+            return err(
+                "idempotency_conflict",
+                "clientMessageId was already used for a different message.",
+                StatusCode::CONFLICT,
+            );
+        }
+        Err(PersistCloudMessageError::Database(error)) => {
             eprintln!("[cloud-messages] transactional write failed: {error}");
             return err(
                 "server_error",

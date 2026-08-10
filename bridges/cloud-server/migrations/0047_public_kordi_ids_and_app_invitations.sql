@@ -1,4 +1,4 @@
--- Migration 36: public identity remains separate from the canonical account_id used by
+-- Migration 47: public identity remains separate from the canonical account_id used by
 -- storage and protocols. The allocator uses a transaction-scoped advisory
 -- lock so concurrent signups cannot choose the same nine-digit number.
 

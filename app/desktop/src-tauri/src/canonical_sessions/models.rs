@@ -309,6 +309,22 @@ pub struct AppendCanonicalMessageRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ApplyCanonicalSelfAgentSyncPlanRequest {
+    pub agent_identity_request: UpsertCanonicalIdentityRequest,
+    pub session_requests: Vec<OpenCanonicalSessionRequest>,
+    pub message_requests: Vec<AppendCanonicalMessageRequest>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalSelfAgentSyncBatch {
+    pub identity: CanonicalIdentity,
+    pub sessions: Vec<OpenCanonicalSessionFastResult>,
+    pub messages: Vec<CanonicalSessionMessage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClassifyLegacyCloudGroupTitleNoticeRequest {
     pub cloud_message_id: String,
     pub source_control_kind: String,

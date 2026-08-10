@@ -178,7 +178,13 @@ pub(super) async fn oauth_callback(
             url.push_str(&encode_oauth_fragment(&body));
             Redirect::to(&url).into_response()
         }
-        Err(_) => redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login."),
+        Err(error) => {
+            eprintln!(
+                "[cloud-auth] OAuth login completion failed for {}: {error}",
+                provider.id()
+            );
+            redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login.")
+        }
     }
 }
 

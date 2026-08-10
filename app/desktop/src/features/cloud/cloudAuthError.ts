@@ -8,6 +8,7 @@ export type CloudAuthErrorCode =
   | 'invalid_session'
   | 'invalid_session_id'
   | 'invalid_attachment'
+  | 'idempotency_conflict'
   | 'invalid_provider_auth_snapshot'
   | 'provider_auth_not_configured'
   | 'provider_auth_snapshot_not_found'
@@ -48,7 +49,7 @@ type ServerErrorBody = { errorCode?: string; message?: string };
 const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'invalid_email', 'weak_password', 'email_in_use', 'invalid_credentials',
   'missing_avatar', 'invalid_avatar', 'invalid_session', 'invalid_session_id',
-  'invalid_attachment', 'invalid_provider_auth_snapshot', 'provider_auth_not_configured',
+  'invalid_attachment', 'idempotency_conflict', 'invalid_provider_auth_snapshot', 'provider_auth_not_configured',
   'provider_auth_snapshot_not_found', 'oauth_not_configured', 'requester_mismatch',
   'agent_not_available', 'owner_online', 'rate_limited', 'account_missing',
   'invalid_account_id', 'invalid_pubkey', 'self_contact', 'invalid_group_invitation',

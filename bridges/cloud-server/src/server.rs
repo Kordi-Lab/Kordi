@@ -240,6 +240,7 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
+    crate::realtime_outbox::spawn_realtime_outbox_worker(state.clone());
     crate::support::spawn_ticket_worker(state.clone());
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     let sweeper_state = state.clone();

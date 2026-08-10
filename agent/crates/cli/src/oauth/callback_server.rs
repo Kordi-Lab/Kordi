@@ -5,7 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-const KORDI_FAVICON_DATA_URL: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='10' r='9' fill='%231a1714' fill-opacity='.62'/%3E%3Ccircle cx='11' cy='22' r='9' fill='%231a1714' fill-opacity='.82'/%3E%3Ccircle cx='25' cy='22' r='9' fill='%231a1714'/%3E%3C/svg%3E";
+use super::callback_page::render_kordi_callback_page;
 
 /// Result received from the browser redirect.
 #[derive(Debug, Clone)]
@@ -142,8 +142,8 @@ async fn handle_connection(
     send_response(
         &mut stream,
         200,
-        "Signed in",
-        "Your account is connected. You can close this window and return to the app.",
+        "Signed in.",
+        "Your account is connected. You can close this window and return to Kordi.",
     )
     .await;
 
@@ -187,93 +187,8 @@ fn url_decode(s: &str) -> String {
     result
 }
 
-fn html_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
-fn render_auth_response_page(title: &str, body: &str) -> String {
-    let title = html_escape(title);
-    let body = html_escape(body);
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" type="image/svg+xml" href="{favicon}" />
-  <title>{title}</title>
-  <style>
-    :root {{ color-scheme: dark light; }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-      background:
-        radial-gradient(circle at 50% -18%, color-mix(in oklab, #f5f7fb 16%, transparent), transparent 34rem),
-        linear-gradient(180deg, #222427 0%, #111316 62%, #0c0d0f 100%);
-      color: #f7f8fb;
-    }}
-    main {{
-      width: min(100%, 470px);
-      border: 1px solid color-mix(in oklab, white 13%, transparent);
-      border-radius: 30px;
-      background: linear-gradient(180deg, rgba(35, 37, 41, .88), rgba(18, 19, 22, .96));
-      box-shadow: 0 28px 88px rgba(0, 0, 0, .32), inset 0 1px 0 rgba(255, 255, 255, .035);
-      padding: 36px 32px;
-    }}
-    h1 {{
-      margin: 0 0 12px;
-      font-size: clamp(34px, 8vw, 46px);
-      line-height: .96;
-      letter-spacing: -.055em;
-      color: #ffffff;
-    }}
-    p {{
-      margin: 0;
-      max-width: 34ch;
-      color: #c4cbd6;
-      font-size: 15px;
-      line-height: 1.62;
-    }}
-    @media (prefers-color-scheme: light) {{
-      body {{
-        background:
-          radial-gradient(circle at 50% -18%, rgba(120, 133, 155, .18), transparent 34rem),
-          linear-gradient(180deg, #f6f7f9, #eceff3);
-        color: #15181d;
-      }}
-      main {{
-        border-color: rgba(31, 41, 55, .10);
-        background: rgba(255, 255, 255, .94);
-        box-shadow: 0 24px 72px rgba(31, 41, 55, .13), inset 0 1px 0 rgba(255, 255, 255, .8);
-      }}
-      h1 {{ color: #15181d; }}
-      p {{ color: #5b6472; }}
-    }}
-  </style>
-</head>
-<body>
-  <main>
-    <h1>{title}</h1>
-    <p>{body}</p>
-  </main>
-</body>
-</html>"#,
-        favicon = KORDI_FAVICON_DATA_URL,
-    )
-}
-
 async fn send_response(stream: &mut tokio::net::TcpStream, status: u16, title: &str, body: &str) {
-    let html = render_auth_response_page(title, body);
+    let html = render_kordi_callback_page(title, body);
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
@@ -299,15 +214,15 @@ mod tests {
 
     #[test]
     fn auth_success_page_is_compact_and_has_no_brand_label_box() {
-        let html = render_auth_response_page(
-            "Signed in",
-            "Your account is connected. You can close this window and return to the app.",
+        let html = render_kordi_callback_page(
+            "Signed in.",
+            "Your account is connected. You can close this window and return to Kordi.",
         );
 
-        assert!(html.contains("Signed in"));
-        assert!(html.contains("return to the app"));
+        assert!(html.contains("Signed in."));
+        assert!(html.contains("return to Kordi"));
         assert!(html.contains("rel=\"icon\" type=\"image/svg+xml\""));
-        assert!(html.contains(KORDI_FAVICON_DATA_URL));
+        assert!(html.contains("<span>kordi</span>"));
         assert!(!html.contains("Close window"));
         assert!(!html.contains("<button"));
         assert!(!html.contains("Kordi Authentication"));
@@ -318,7 +233,7 @@ mod tests {
 
     #[test]
     fn auth_error_page_uses_clear_retry_copy_without_internal_details() {
-        let html = render_auth_response_page(
+        let html = render_kordi_callback_page(
             "Couldn’t sign in",
             "The provider did not return a valid code. Try again from the app.",
         );

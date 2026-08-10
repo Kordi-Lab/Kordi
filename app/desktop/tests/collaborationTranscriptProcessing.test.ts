@@ -61,6 +61,16 @@ function processingConversation(timestampMs: number, requestId: string) {
   });
 }
 
+test('materialized collaboration conversations expose one canonical session identity', () => {
+  const view = mapCollaborationConversationToViewModel(conversation());
+
+  assert.equal(view.id, 'session:bridge:agents:peer');
+  assert.equal(view.canonicalSessionId, 'session:bridge:agents:peer');
+  assert.equal(view.collaborationTarget?.hostId, 'cloud');
+  assert.equal(view.collaborationTarget?.nodeId, 'node-peer');
+  assert.equal(view.collaborationTarget?.runtime, 'kordi-desktop');
+});
+
 test('bridge transcript expires an orphaned historical processing response with its request', () => {
   const nowMs = Date.parse('2026-08-02T12:00:00Z');
   const oldTimestampMs = nowMs - COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS - 1;

@@ -19,13 +19,14 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::messages::{
-    persist_cloud_message, persist_cloud_message_in_transaction, PersistCloudMessageInput,
-    PersistedMessageAttachment,
+    persist_cloud_message, persist_cloud_message_in_transaction, PersistCloudMessageError,
+    PersistCloudMessageInput, PersistedMessageAttachment,
 };
 use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
@@ -55,6 +56,7 @@ mod contact_handlers;
 mod contact_request_handlers;
 mod group_invitation_handlers;
 mod identity_handlers;
+mod legacy_self_replays;
 mod message_handlers;
 mod message_list_handlers;
 mod message_policy;
@@ -77,6 +79,7 @@ use contact_handlers::*;
 use contact_request_handlers::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
+use legacy_self_replays::collapse_legacy_self_message_replays;
 use message_handlers::*;
 use message_list_handlers::*;
 use message_policy::*;

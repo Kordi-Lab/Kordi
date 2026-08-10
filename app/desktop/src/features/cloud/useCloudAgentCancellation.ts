@@ -39,6 +39,10 @@ import {
 } from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
+  cloudAgentCancelOperationId,
+  cloudMessageRecipientOperationId,
+} from './cloudMessageLifecycle';
+import {
   collapseCloudAgentOfflinePlaceholderForRequest,
 } from './cloudAgentRequestState';
 import {
@@ -211,6 +215,15 @@ export function useCloudAgentRequestCancellation({
     }
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
+    const cloudRun = await client.cancelCloudAgentRunForRequest(
+      session.token,
+      trimmedRequestId,
+    ).catch(() => null);
+    if (cloudRun?.status === 'completed' || cloudRun?.status === 'failed') {
+      await syncDiff();
+      setCollaborationOverride(null);
+      return;
+    }
 
     const groupId =
       cloudGroupIdFromAgentConversationId(conversationId);
@@ -291,6 +304,12 @@ export function useCloudAgentRequestCancellation({
             session.token,
             targetAccountId,
             cancelBody,
+            {
+              clientMessageId: cloudMessageRecipientOperationId(
+                cloudAgentCancelOperationId(trimmedRequestId),
+                targetAccountId,
+              ),
+            },
           ),
         ),
       );
@@ -318,6 +337,12 @@ export function useCloudAgentRequestCancellation({
       session.token,
       peerId,
       encodeCloudAgentCancel({ requestId: trimmedRequestId }),
+      {
+        clientMessageId: cloudMessageRecipientOperationId(
+          cloudAgentCancelOperationId(trimmedRequestId),
+          peerId,
+        ),
+      },
     );
     mergeMessage(message);
     await syncDiff();

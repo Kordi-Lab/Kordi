@@ -34,6 +34,8 @@ pub(super) type MessageRecordRow = (
     String,
     Option<String>,
     Option<String>,
+    Option<String>,
+    chrono::DateTime<chrono::Utc>,
 );
 pub(super) type MessageAttachmentRow = (
     String,

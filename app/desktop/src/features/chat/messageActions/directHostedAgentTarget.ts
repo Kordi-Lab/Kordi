@@ -32,13 +32,19 @@ export function resolvedCloudConversationIdForCollaborationSend(
   conversationId: string,
   canonicalSessionId?: string | null,
   resolvedPeerAccountId?: string | null,
+  resolvedTarget?: Pick<ConversationCollaborationTarget, 'hostId' | 'runtime'> | null,
 ): string {
+  const normalizedSessionId = canonicalSessionId?.trim() ?? '';
+  if (!isCloudCollaborationConversationId(conversationId)) {
+    const peerAccountId = resolvedPeerAccountId?.trim() ?? '';
+    return resolvedTarget?.hostId === 'cloud' && peerAccountId && normalizedSessionId.startsWith('session:')
+      ? cloudCollaborationConversationId(peerAccountId, resolvedTarget.runtime ?? undefined, normalizedSessionId)
+      : conversationId;
+  }
   if (
-    !isCloudCollaborationConversationId(conversationId)
-    || cloudSessionIdFromConversationId(conversationId)
+    cloudSessionIdFromConversationId(conversationId)
   ) return conversationId;
 
-  const normalizedSessionId = canonicalSessionId?.trim() ?? '';
   if (!isCloudSystemAgentSessionId(normalizedSessionId)) return conversationId;
   const peerAccountId = resolvedPeerAccountId?.trim()
     || cloudPeerAccountIdFromConversationId(conversationId);

@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useRef,
 } from 'react';
 import {
   buildDesktopCloudProviderAuthSnapshotPayload,
@@ -17,6 +16,8 @@ import {
   loadSession,
 } from './session';
 
+const PROVIDER_AUTH_SNAPSHOT_REFRESH_MS = 30 * 60 * 1_000;
+
 export function useCloudProviderAuthSnapshotSync({
   account,
   client,
@@ -30,22 +31,18 @@ export function useCloudProviderAuthSnapshotSync({
   initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;
 }) {
-  const syncedKeysRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    syncedKeysRef.current.clear();
-  }, [account?.accountId]);
-
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
     const syncKey = cloudProviderAuthSnapshotRouteSignature(
       account.accountId,
       route,
     );
-    if (!syncKey || syncedKeysRef.current.has(syncKey)) return;
-    syncedKeysRef.current.add(syncKey);
+    if (!syncKey) return;
     let cancelled = false;
-    void (async () => {
+    let publishing = false;
+    const publish = async () => {
+      if (publishing || cancelled) return;
+      publishing = true;
       const session = await loadSession();
       if (!session?.token || cancelled) return;
       const input =
@@ -59,15 +56,27 @@ export function useCloudProviderAuthSnapshotSync({
         session.token,
         input,
       );
-    })().catch((error) => {
-      syncedKeysRef.current.delete(syncKey);
-      reportWarning(
-        '[cloud-provider-auth-sync] publish failed',
-        error,
-      );
-    });
+    };
+    const runPublish = () => {
+      void publish()
+        .catch((error) => {
+          reportWarning(
+            '[cloud-provider-auth-sync] publish failed',
+            error,
+          );
+        })
+        .finally(() => {
+          publishing = false;
+        });
+    };
+    runPublish();
+    const refreshInterval = window.setInterval(
+      runPublish,
+      PROVIDER_AUTH_SNAPSHOT_REFRESH_MS,
+    );
     return () => {
       cancelled = true;
+      window.clearInterval(refreshInterval);
     };
   }, [
     account,

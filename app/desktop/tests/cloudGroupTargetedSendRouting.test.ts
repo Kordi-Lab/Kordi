@@ -13,15 +13,17 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
   assert.notEqual(sendTargetedEnd, -1, 'expected end of targeted chat send handler');
   const targetedHandler = source.slice(sendTargetedStart, sendTargetedEnd);
 
-  const directCloudBranch = targetedHandler.indexOf('if (isCloudCollaborationConversationId(targetConversation.id))');
+  const directCloudRoute = targetedHandler.indexOf('const directCloudConversationId = cloudCollaborationRouteIdForConversation(targetConversation)');
+  const directCloudBranch = targetedHandler.indexOf('if (directCloudConversationId)', directCloudRoute);
   const groupTargets = targetedHandler.indexOf('const groupTargets = isCollaborationGroupSession(targetGroupScope)');
   const groupTransportSend = targetedHandler.indexOf("kind: 'group-message'", groupTargets);
 
+  assert.notEqual(directCloudRoute, -1, 'expected canonical sessions to resolve their hidden Cloud transport route');
   assert.notEqual(directCloudBranch, -1, 'expected direct Cloud bridge branch');
   assert.notEqual(groupTargets, -1, 'expected group target resolution before sending');
   assert.notEqual(groupTransportSend, -1, 'expected Cloud group transport send');
   assert.ok(
-    groupTargets < directCloudBranch && groupTransportSend < directCloudBranch,
+    groupTargets < directCloudRoute && groupTransportSend < directCloudRoute,
     'targeted sends must prefer Cloud group transport before direct Cloud bridge sends; otherwise group sessions can be stored as plain direct messages',
   );
 

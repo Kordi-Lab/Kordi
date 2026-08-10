@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 
-import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
@@ -10,7 +9,8 @@ import { friendlyAttachmentName } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
 import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotices';
 
-import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
+import { isProjectDraftSessionId } from './draftSessions';
+import { composerConfigTargetSessionId } from './composerConfigTarget';
 
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
@@ -36,30 +36,6 @@ import type {
 
 export function desktopChatStateAfterConfigUpdate<T>(current: T, next: T, isolated: boolean): T {
   return isolated ? current : next;
-}
-
-export function composerConfigTargetSessionId({
-  scope,
-  activeConvId,
-  activeConvCanonicalSessionId,
-  activeProjectSessionId,
-  desktopActiveSessionId,
-}: {
-  scope: ComposerScope;
-  activeConvId: string;
-  activeConvCanonicalSessionId?: string | null;
-  activeProjectSessionId: string;
-  desktopActiveSessionId?: string | null;
-}) {
-  if (scope === 'project') return activeProjectSessionId;
-  if (isLocalDraftChatConversationId(activeConvId)) return activeConvId;
-
-  const sessionId = activeConvCanonicalSessionId?.trim() || activeConvId.trim();
-  if (!sessionId) return desktopActiveSessionId ?? null;
-  if (activeConvId.startsWith('bridge:') || isLegacyCanonicalCollaborationSessionId(sessionId) || isCanonicalCloudSessionId(sessionId)) {
-    return null;
-  }
-  return activeConvId;
 }
 
 function appendOptimisticSessionConfigMessage({
@@ -242,7 +218,11 @@ export function useComposerInputActions({
   messageRuntime,
 }: UseComposerInputActionsArgs) {
   const { isNativeShell } = environment;
-  const { activeConvId, activeConvCanonicalSessionId } = conversation;
+  const {
+    activeConversationUsesCollaboration,
+    activeConvId,
+    activeConvCanonicalSessionId,
+  } = conversation;
   const { activeProjectSessionId } = project;
   const { desktopChatState } = runtime;
   const {
@@ -323,6 +303,7 @@ export function useComposerInputActions({
       : isolatedTarget?.sessionId;
     const targetSessionId = overrideSessionId?.trim() || composerConfigTargetSessionId({
       scope,
+      activeConversationUsesCollaboration,
       activeConvId,
       activeConvCanonicalSessionId,
       activeProjectSessionId,
@@ -377,6 +358,7 @@ export function useComposerInputActions({
   }, [
     activeConvId,
     activeConvCanonicalSessionId,
+    activeConversationUsesCollaboration,
     activeProjectSessionId,
     chatModelOptions,
     composerSelections,

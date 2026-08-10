@@ -329,3 +329,149 @@ test('large self-agent restore matches existing local requests within the startu
   assert.equal(plan.messageRequests.length, 0);
   assert.ok(durationMs < 1_000, `large restore took ${durationMs}ms`);
 });
+
+test('large duplicate Cloud history is indexed without quadratic restore work', () => {
+  const sessionId = 'session:self-agent:duplicate-restore';
+  const createdAt = '2026-08-09T09:00:00.000Z';
+  const state = {
+    sessions: [],
+    identities: [],
+    participants: [],
+    profile: {
+      id: 'profile',
+      storageRoot: '/tmp/device-b',
+      humanIdentityId: 'human:acct_me',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/device-b/canonical.sqlite3',
+  } as CanonicalSessionState;
+  const messages: CloudMessage[] = Array.from(
+    { length: 8_000 },
+    (_, index) => ({
+      messageId: `duplicate-cloud-request-${index}`,
+      fromAccountId: account.accountId,
+      toAccountId: account.accountId,
+      body: 'same repeated prompt',
+      createdAt,
+      deliveredAt: null,
+      readAt: null,
+      sessionId,
+    }),
+  );
+
+  const startedAt = performance.now();
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages, state });
+  const durationMs = performance.now() - startedAt;
+
+  assert.equal(plan.sessionRequests.length, 1);
+  assert.equal(plan.messageRequests.length, 1);
+  assert.ok(durationMs < 1_000, `duplicate restore took ${durationMs}ms`);
+});
+
+test('near-time alternate legacy replay ids converge onto the existing canonical keeper', () => {
+  const sessionId = 'session:self-agent:legacy-keeper';
+  const requestAt = '2026-08-09T10:00:00.000Z';
+  const responseAt = '2026-08-09T10:00:01.000Z';
+  const requestAtMs = Date.parse(requestAt);
+  const responseAtMs = Date.parse(responseAt);
+  const canonicalRequestId = 'msg:cloud:self:cloud-request-keeper';
+  const canonicalResponseId =
+    'msg:cloud:self:response:cloud-request-keeper';
+  const state = {
+    sessions: [{
+      id: sessionId,
+      kind: 'self-agent',
+      title: 'same request',
+      status: 'active',
+      createdByIdentityId: 'human:acct_me',
+      primaryIdentityId: 'agent:cloud-self:acct_me',
+      createdAtMs: requestAtMs,
+      updatedAtMs: responseAtMs,
+    }],
+    identities: [],
+    participants: [],
+    profile: {
+      id: 'profile',
+      storageRoot: '/tmp/device-c',
+      humanIdentityId: 'human:acct_me',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    messages: [{
+      id: canonicalRequestId,
+      sessionId,
+      senderIdentityId: 'human:acct_me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'same request',
+      content: null,
+      parentMessageId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: requestAtMs,
+      updatedAtMs: requestAtMs,
+      sourceTransport: 'cloud-self-agent',
+      sourceEventId: 'cloud-request-keeper',
+    }, {
+      id: canonicalResponseId,
+      sessionId,
+      senderIdentityId: 'agent:cloud-self:acct_me',
+      senderRole: 'owned-agent',
+      messageKind: 'agent-turn',
+      contentText: 'done',
+      content: {
+        cloudRequestMessageId: 'cloud-request-keeper',
+        requestId: canonicalRequestId,
+        replyToMessageId: canonicalRequestId,
+        deliveryState: 'complete',
+      },
+      parentMessageId: canonicalRequestId,
+      status: 'complete',
+      sequenceNum: 2,
+      createdAtMs: responseAtMs,
+      updatedAtMs: responseAtMs,
+      sourceTransport: 'cloud-self-agent',
+      sourceEventId: 'cloud-response-keeper',
+    }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/device-c/canonical.sqlite3',
+  } as CanonicalSessionState;
+  const alternateRequest: CloudMessage = {
+    messageId: 'cloud-request-alternate',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'same request',
+    createdAt: '2026-08-09T10:00:00.650Z',
+    deliveredAt: '2026-08-09T10:00:00.650Z',
+    readAt: '2026-08-09T10:00:00.650Z',
+    sessionId,
+  };
+  const alternateResponse: CloudMessage = {
+    ...alternateRequest,
+    messageId: 'cloud-response-alternate',
+    body: encodeCloudAgentResponse({
+      requestId: alternateRequest.messageId,
+      text: 'done',
+      deliveryState: 'complete',
+    }),
+    createdAt: responseAt,
+    deliveredAt: responseAt,
+    readAt: responseAt,
+  };
+
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [alternateRequest, alternateResponse],
+    state,
+  });
+
+  assert.equal(plan.sessionRequests.length, 0);
+  assert.equal(plan.messageRequests.length, 0);
+});

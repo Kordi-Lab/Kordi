@@ -6,6 +6,7 @@ import { buildCloudDesktopCollaborationState } from '../src/features/cloud/cloud
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
+import { cloudAgentRunLifecycleState } from '../src/features/cloud/cloudAgentRunLifecycle';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { shouldRunLocalCloudAgentForCloudMessage, cloudAgentRunStatusAlreadyOwnsRequest } from '../src/features/cloud/useCloudCollaborationState';
 
@@ -329,5 +330,10 @@ test('cloud local owner agent treats active Cloud fallback run as already owned 
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('running'), true);
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('completed'), true);
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('failed'), false);
-  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('cancelled'), false);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('cancelled'), true);
+  assert.equal(cloudAgentRunLifecycleState('queued'), 'processing');
+  assert.equal(cloudAgentRunLifecycleState('running'), 'processing');
+  assert.equal(cloudAgentRunLifecycleState('completed'), 'complete');
+  assert.equal(cloudAgentRunLifecycleState('failed'), 'failed');
+  assert.equal(cloudAgentRunLifecycleState('cancelled'), 'cancelled');
 });

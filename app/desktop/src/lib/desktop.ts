@@ -42,12 +42,12 @@ import {
   desktopUpdaterController,
   type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
+import { canonicalMessageRequestForIpc } from '@/features/canonical/canonicalMessageIpc';
 
 export function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
-
 function extractDesktopErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
@@ -779,7 +779,7 @@ export async function upsertCanonicalMessage(request: AppendCanonicalMessageRequ
 }
 
 export async function upsertCanonicalMessageFast(request: AppendCanonicalMessageRequest) {
-  return invokeDesktop<CanonicalSessionMessage>('desktop_canonical_upsert_message_fast', { request });
+  return invokeDesktop<CanonicalSessionMessage>('desktop_canonical_upsert_message_fast', { request: canonicalMessageRequestForIpc(request) });
 }
 
 export async function updateCanonicalMessageDelivery(request: UpdateCanonicalMessageDeliveryRequest) {

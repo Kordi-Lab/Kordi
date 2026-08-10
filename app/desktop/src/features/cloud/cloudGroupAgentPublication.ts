@@ -16,6 +16,7 @@ import type {
 } from './cloudGroupControlContext';
 import type { CloudGroupAgentHandoff } from './cloudGroupMentions';
 import type { CloudGroupAgentPolicy } from './cloudGroupAgentControl.types';
+import { cloudMessageRecipientOperationId } from './cloudMessageLifecycle';
 
 export async function publishCloudGroupAgentTerminalAfterGuards({
   context,
@@ -108,6 +109,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
         },
       }),
       sessionId: envelope.groupId,
+      operationId: responseMessageId,
       createdAtMs: responseCreatedAtMs,
       signal,
     });
@@ -135,6 +137,7 @@ export async function publishCloudGroupAgentEnvelope({
   targetAccountIds,
   body,
   sessionId,
+  operationId,
   createdAtMs,
   signal,
 }: {
@@ -143,6 +146,7 @@ export async function publishCloudGroupAgentEnvelope({
   targetAccountIds: string[];
   body: string;
   sessionId: string;
+  operationId: string;
   createdAtMs: number;
   signal?: AbortSignal;
 }): Promise<{ sentCount: number; failedCount: number }> {
@@ -150,6 +154,10 @@ export async function publishCloudGroupAgentEnvelope({
     runtime.client.sendMessage(token, targetAccountId, body, {
       sessionId,
       clientCreatedAt: new Date(createdAtMs).toISOString(),
+      clientMessageId: cloudMessageRecipientOperationId(
+        operationId,
+        targetAccountId,
+      ),
     })
   )));
   sent.forEach((result) => {

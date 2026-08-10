@@ -146,7 +146,7 @@ export type UseComposerInputActionsArgs = {
   environment: Pick<ComposerEnvironmentContext, 'isNativeShell'>;
   conversation: Pick<
     ComposerConversationContext,
-    'activeConvId' | 'activeConvCanonicalSessionId'
+    'activeConversationUsesCollaboration' | 'activeConvId' | 'activeConvCanonicalSessionId'
   >;
   project: Pick<ComposerProjectContext, 'activeProjectSessionId'>;
   runtime: Pick<ComposerRuntimeContext, 'desktopChatState'>;

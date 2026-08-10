@@ -80,7 +80,7 @@ pub(crate) use self::message_lookup::{
 pub(crate) use self::message_visibility::latest_readable_session_message_id;
 pub(crate) use self::persistence::{
     append_message_in_db, create_delegated_exchange_in_db, select_delegated_exchange,
-    select_message, select_message_by_source, upsert_message_in_db,
+    select_message, select_message_by_source, upsert_message_in_db, upsert_message_in_transaction,
 };
 use self::persistence::{
     enforce_only_local_group_self, open_or_create_session_in_db, select_identity, select_session,
@@ -367,6 +367,26 @@ pub async fn desktop_canonical_upsert_message_fast(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionMessage, String> {
     run_canonical_blocking(move || commands::desktop_canonical_upsert_message_fast(request)).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_apply_self_agent_sync_plan(
+    request: ApplyCanonicalSelfAgentSyncPlanRequest,
+) -> Result<CanonicalSelfAgentSyncBatch, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_apply_self_agent_sync_plan(request))
+        .await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_prune_legacy_cloud_self_message_duplicates(
+    authoritative_message_ids: Vec<String>,
+) -> Result<Vec<String>, String> {
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_prune_legacy_cloud_self_message_duplicates(
+            authoritative_message_ids,
+        )
+    })
+    .await
 }
 
 #[tauri::command]

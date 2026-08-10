@@ -12,6 +12,8 @@ import type {
 } from './cloudGroupMessages';
 
 export type SendCloudGroupControlInput = {
+  /** Stable identity for one logical control mutation and all of its retries. */
+  operationId?: string | null;
   targetAccountIds: string[];
   kind: CloudGroupControlEnvelope['kind'];
   groupId: string;

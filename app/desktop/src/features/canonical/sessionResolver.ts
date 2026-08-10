@@ -107,6 +107,10 @@ export function isLegacyCanonicalCollaborationSessionId(value?: string | null) {
   return (value ?? '').trim().startsWith(LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX);
 }
 
+export function isCanonicalSessionId(value?: string | null) {
+  return (value ?? '').trim().startsWith('session:');
+}
+
 export function isCanonicalCloudSessionId(value?: string | null) {
   const normalized = (value ?? '').trim();
   return normalized.startsWith(CANONICAL_CLOUD_DIRECT_PERSON_SESSION_PREFIX)

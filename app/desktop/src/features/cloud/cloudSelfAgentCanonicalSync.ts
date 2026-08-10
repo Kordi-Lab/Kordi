@@ -1,7 +1,6 @@
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
-  MessageActionMetadata,
   OpenCanonicalSessionRequest,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
@@ -12,15 +11,6 @@ import type {
   CloudSessionTitle,
 } from './authClient';
 import {
-  parseCloudAgentCancel,
-  parseCloudAgentResponse,
-} from './cloudAgentMessages';
-import {
-  cloudDirectMessageAction,
-  cloudDirectMessageDisplayText,
-} from './cloudDirectMessages';
-import {
-  parseCloudGroupControl,
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
@@ -32,8 +22,15 @@ import {
   findExistingCanonicalCloudSelfAgentMessage,
   legacyCloudSelfAgentResponseIds,
   shouldReplacePlannedCloudSelfAgentResponse,
-  type CloudSelfAgentResponseDeliveryState,
 } from './cloudSelfAgentResponseLifecycle';
+import {
+  cloudSelfAgentCreatedAtMs,
+  cloudSelfAgentRestoreDependencyRank,
+  existingCanonicalMessageMatchesRestoreRequest,
+  normalizeCloudSelfAgentRestoreMessage,
+  restoredForkSnapshotCloudMessageIds,
+  type CloudSelfAgentRestoreMessage,
+} from './cloudSelfAgentRestore';
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
@@ -42,26 +39,6 @@ function cleanText(value?: string | null) {
 function cloudSelfAgentCanonicalMessageId(messageId: string): string {
   return `msg:cloud:self:${messageId}`;
 }
-
-function cloudSelfAgentCreatedAtMs(message: CloudMessage): number {
-  const parsed = Date.parse(message.createdAt);
-  return Number.isFinite(parsed) ? parsed : Date.now();
-}
-
-function cloudSelfAgentRestoreDependencyRank(message: CloudMessage) {
-  return parseCloudAgentResponse(message.body) ? 1 : 0;
-}
-
-type CloudSelfAgentRestoreMessage = {
-  message: CloudMessage;
-  sessionId: string;
-  role: 'user' | 'agent';
-  text: string;
-  createdAtMs: number;
-  responseRequestId: string | null;
-  responseDeliveryState: CloudSelfAgentResponseDeliveryState | null;
-  messageAction: MessageActionMetadata | null;
-};
 
 export function isSharedCloudSessionId(sessionId: string): boolean {
   const trimmed = cleanText(sessionId);
@@ -96,82 +73,6 @@ export function cloudGroupReadCursorsBySessionId(
     };
   }
   return cursors;
-}
-
-function normalizeCloudSelfAgentRestoreMessage(
-  message: CloudMessage,
-  isGroupControl?: boolean,
-): CloudSelfAgentRestoreMessage | null {
-  const sessionId = cleanText(message.sessionId);
-  if (!sessionId || isSharedCloudSessionId(sessionId)) return null;
-  const response = parseCloudAgentResponse(message.body);
-  if (
-    !response
-    && (
-      parseCloudAgentCancel(message.body)
-      || (
-        isGroupControl
-        ?? Boolean(parseCloudGroupControl(message.body))
-      )
-    )
-  ) return null;
-  const text = cleanText(
-    response?.text ?? cloudDirectMessageDisplayText(message.body),
-  );
-  if (!text) return null;
-  return {
-    message,
-    sessionId,
-    role: response ? 'agent' : 'user',
-    text,
-    createdAtMs: cloudSelfAgentCreatedAtMs(message),
-    responseRequestId: response?.requestId ?? null,
-    responseDeliveryState: response
-      ? response.deliveryState ?? 'complete'
-      : null,
-    messageAction: response ? null : cloudDirectMessageAction(message.body),
-  };
-}
-
-function restoredForkSnapshotCloudMessageIds(
-  messages: CloudSelfAgentRestoreMessage[],
-  forksBySessionId: Record<string, CloudSessionForkSummary>,
-): Set<string> {
-  const messagesBySessionId =
-    new Map<string, CloudSelfAgentRestoreMessage[]>();
-  for (const message of messages) {
-    const bucket = messagesBySessionId.get(message.sessionId) ?? [];
-    bucket.push(message);
-    messagesBySessionId.set(message.sessionId, bucket);
-  }
-
-  const snapshotIds = new Set<string>();
-  for (const fork of Object.values(forksBySessionId)) {
-    const forkSessionId = cleanText(fork.forkSessionId);
-    const parentSessionId = cleanText(fork.parentSessionId);
-    if (!forkSessionId || !parentSessionId) continue;
-    const forkMessages = messagesBySessionId.get(forkSessionId) ?? [];
-    const parentMessages =
-      messagesBySessionId.get(parentSessionId) ?? [];
-    if (forkMessages.length === 0 || parentMessages.length === 0) {
-      continue;
-    }
-
-    for (
-      let index = 0;
-      index < forkMessages.length && index < parentMessages.length;
-      index += 1
-    ) {
-      const forkMessage = forkMessages[index];
-      const parentMessage = parentMessages[index];
-      if (
-        forkMessage.role !== parentMessage.role
-        || forkMessage.text !== parentMessage.text
-      ) break;
-      snapshotIds.add(forkMessage.message.messageId);
-    }
-  }
-  return snapshotIds;
 }
 
 export type CloudSelfAgentCanonicalSyncPlan = {
@@ -216,6 +117,7 @@ export function planCloudSelfAgentCanonicalSync({
   const normalizedMessages = sorted
     .map((message) => normalizeCloudSelfAgentRestoreMessage(
       message,
+      isSharedCloudSessionId,
       groupRowByWireMessageId?.has(message.messageId),
     ))
     .filter((
@@ -231,6 +133,8 @@ export function planCloudSelfAgentCanonicalSync({
   const requestLocalMessageIdByCloudMessageId =
     new Map<string, string>();
   const requestCloudIdentityByCloudMessageId = new Map<string, string>();
+  const requestCloudIdentityByCanonicalMessageId =
+    new Map<string, string>();
   const plannedCanonicalMessageIdByDuplicateKey =
     new Map<string, string>();
   const plannedMessageIndexByCanonicalId = new Map<string, number>();
@@ -301,11 +205,17 @@ export function planCloudSelfAgentCanonicalSync({
         message.messageId,
         existingMatch.id,
       );
-      requestCloudIdentityByCloudMessageId.set(
-        message.messageId,
+      const requestCloudIdentity =
         existingMatch.sourceTransport === 'cloud-self-agent'
           ? cleanText(existingMatch.sourceEventId) || message.messageId
-          : message.messageId,
+          : message.messageId;
+      requestCloudIdentityByCloudMessageId.set(
+        message.messageId,
+        requestCloudIdentity,
+      );
+      requestCloudIdentityByCanonicalMessageId.set(
+        existingMatch.id,
+        requestCloudIdentity,
       );
       sessionPlanner.ensure(
         sessionId,
@@ -352,10 +262,10 @@ export function planCloudSelfAgentCanonicalSync({
           message.messageId,
           plannedDuplicateMessageId,
         );
-        const duplicateCloudIdentity = [...requestLocalMessageIdByCloudMessageId]
-          .find(([, canonicalId]) => (
-            canonicalId === plannedDuplicateMessageId
-          ))?.[0] ?? message.messageId;
+        const duplicateCloudIdentity =
+          requestCloudIdentityByCanonicalMessageId.get(
+            plannedDuplicateMessageId,
+          ) ?? message.messageId;
         requestCloudIdentityByCloudMessageId.set(
           message.messageId,
           requestCloudIdentityByCloudMessageId.get(duplicateCloudIdentity)
@@ -374,6 +284,10 @@ export function planCloudSelfAgentCanonicalSync({
       );
       requestCloudIdentityByCloudMessageId.set(
         message.messageId,
+        message.messageId,
+      );
+      requestCloudIdentityByCanonicalMessageId.set(
+        canonicalMessageId,
         message.messageId,
       );
     }
@@ -444,6 +358,13 @@ export function planCloudSelfAgentCanonicalSync({
       sourceTransport,
       sourceEventId: message.messageId,
     };
+    if (
+      existingMatch
+      && existingCanonicalMessageMatchesRestoreRequest(
+        existingMatch,
+        request,
+      )
+    ) continue;
     const plannedIndex = plannedMessageIndexByCanonicalId.get(
       canonicalMessageId,
     );

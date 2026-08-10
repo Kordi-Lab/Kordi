@@ -141,8 +141,9 @@ export function useCloudConversation(
     };
   }, [account, peerAccountId, fetchMessages]);
 
-  // WebSocket subscription for live push of kordi.events.message.arrived.<self>.
-  // Filter to messages whose other party is the active peer.
+  // Realtime frames are wakeups only. The HTTP snapshot remains the single
+  // authoritative projection, so duplicate or reordered broker delivery can
+  // never create a second message row in this legacy peer-only surface.
   useEffect(() => {
     if (!account || !peerAccountId || !cloudRealtimeWebSocketEnabled()) return;
     let ws: WebSocket | null = null;
@@ -156,30 +157,12 @@ export function useCloudConversation(
         try {
           const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
           const subject: string | undefined = frame?.subject;
-          if (!subject?.startsWith('kordi.events.message.arrived.')) return;
-          const payload = frame?.payload;
-          if (!payload || typeof payload !== 'object') return;
-          const from = payload.from_account_id as string | undefined;
-          const to = payload.to_account_id as string | undefined;
-          if (!from || !to) return;
-          // Only messages in *this* conversation
-          if (from !== peerAccountId && to !== peerAccountId) return;
-          const direction = to === account.accountId ? 'incoming' : 'outgoing';
-          const attachments = Array.isArray(payload.attachments)
-            ? payload.attachments.map(cloudMessageAttachmentToMessageAttachment)
-            : [];
-          mergeMessage({
-            messageId: payload.message_id,
-            fromAccountId: from,
-            toAccountId: to,
-            body: payload.body,
-            createdAt: payload.created_at,
-            deliveredAt: null,
-            readAt: null,
-            direction,
-            attachments,
-            sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
-          });
+          if (
+            !subject?.startsWith('kordi.events.sync.changed.')
+            && !subject?.startsWith('kordi.events.message.arrived.')
+            && !subject?.startsWith('kordi.events.message.read.')
+          ) return;
+          void fetchMessages();
         } catch (err) {
           console.warn('[cloud-ws] frame parse failed', err);
         }
@@ -194,7 +177,7 @@ export function useCloudConversation(
       cancelled = true;
       ws?.close();
     };
-  }, [account, peerAccountId, mergeMessage]);
+  }, [account, fetchMessages, peerAccountId]);
 
   const send = useCallback(
     async (body: string, attachments: File[] = []) => {

@@ -1,4 +1,8 @@
 use async_trait::async_trait;
+use kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID;
+use kordi_provider::anthropic::capabilities::DEFAULT_ANTHROPIC_MODEL_ID;
+use kordi_provider::anthropic::AnthropicProvider;
+use kordi_provider::openai::OpenAiProvider;
 use kordi_provider::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -9,24 +13,86 @@ use crate::client::ProviderAuthMaterial;
 use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelToolCall};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OpenAiApiMode {
-    ChatCompletions,
-    CodexOAuth,
+pub enum CloudProviderApi {
+    OpenAiCompatible,
+    Anthropic,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenAiProviderConfig {
+#[derive(Clone, PartialEq, Eq)]
+pub struct CloudProviderConfig {
+    pub api: CloudProviderApi,
     pub provider: String,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
-    pub api_mode: OpenAiApiMode,
+    pub auth_mode: ProviderAuthMode,
     pub account_id: Option<String>,
 }
 
-impl OpenAiProviderConfig {
+impl std::fmt::Debug for CloudProviderConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CloudProviderConfig")
+            .field("api", &self.api)
+            .field("provider", &self.provider)
+            .field("api_key", &"[redacted]")
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("auth_mode", &self.auth_mode)
+            .field("account_id", &self.account_id)
+            .finish()
+    }
+}
+
+impl CloudProviderConfig {
     pub fn from_material(material: &ProviderAuthMaterial) -> Result<Self, ModelLoopError> {
         let payload = &material.payload;
+        let provider = material.provider.trim().to_ascii_lowercase();
+        let api_mode = payload
+            .get("apiMode")
+            .and_then(Value::as_str)
+            .map(str::trim);
+        let (api, auth_mode, default_base_url) = match provider.as_str() {
+            "openai-codex" if api_mode == Some("openai-codex-oauth") => (
+                CloudProviderApi::OpenAiCompatible,
+                ProviderAuthMode::OAuth,
+                "https://chatgpt.com/backend-api",
+            ),
+            "openai" => (
+                CloudProviderApi::OpenAiCompatible,
+                ProviderAuthMode::ApiKey,
+                "https://api.openai.com/v1",
+            ),
+            "openrouter" => (
+                CloudProviderApi::OpenAiCompatible,
+                ProviderAuthMode::ApiKey,
+                "https://openrouter.ai/api/v1",
+            ),
+            "groq" => (
+                CloudProviderApi::OpenAiCompatible,
+                ProviderAuthMode::ApiKey,
+                "https://api.groq.com/openai/v1",
+            ),
+            "xai" => (
+                CloudProviderApi::OpenAiCompatible,
+                ProviderAuthMode::ApiKey,
+                "https://api.x.ai/v1",
+            ),
+            "anthropic" => (
+                CloudProviderApi::Anthropic,
+                if api_mode == Some("anthropic-oauth") {
+                    ProviderAuthMode::OAuth
+                } else {
+                    ProviderAuthMode::ApiKey
+                },
+                "https://api.anthropic.com",
+            ),
+            _ => {
+                return Err(ModelLoopError::Provider(format!(
+                    "Cloud fallback provider is unsupported: {provider}"
+                )));
+            }
+        };
         let api_key = payload
             .get("apiKey")
             .or_else(|| payload.get("accessToken"))
@@ -40,20 +106,12 @@ impl OpenAiProviderConfig {
                     .to_string(),
             ));
         }
-        let api_mode = match payload
-            .get("apiMode")
-            .and_then(Value::as_str)
-            .map(str::trim)
-        {
-            Some("openai-codex-oauth") => OpenAiApiMode::CodexOAuth,
-            _ => OpenAiApiMode::ChatCompletions,
-        };
         let base_url = payload
             .get("baseUrl")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| default_base_url_for_mode(&material.provider, api_mode))
+            .unwrap_or(default_base_url)
             .trim_end_matches('/')
             .to_string();
         if is_owner_local_provider_endpoint(&base_url) {
@@ -67,8 +125,11 @@ impl OpenAiProviderConfig {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .unwrap_or("gpt-4.1-mini");
-        let model = normalize_model_for_mode(model, api_mode).to_string();
+            .unwrap_or(match api {
+                CloudProviderApi::Anthropic => DEFAULT_ANTHROPIC_MODEL_ID,
+                CloudProviderApi::OpenAiCompatible => DEFAULT_OPENAI_MODEL_ID,
+            });
+        let model = normalize_model_for_provider(model, &provider);
         let account_id = payload
             .get("accountId")
             .and_then(Value::as_str)
@@ -76,11 +137,12 @@ impl OpenAiProviderConfig {
             .filter(|value| !value.is_empty())
             .map(ToString::to_string);
         Ok(Self {
-            provider: material.provider.clone(),
+            api,
+            provider,
             api_key,
             base_url,
             model,
-            api_mode,
+            auth_mode,
             account_id,
         })
     }
@@ -89,10 +151,7 @@ impl OpenAiProviderConfig {
         RequestOptions {
             provider: self.provider.clone(),
             api_key: self.api_key.clone(),
-            auth_mode: match self.api_mode {
-                OpenAiApiMode::ChatCompletions => ProviderAuthMode::ApiKey,
-                OpenAiApiMode::CodexOAuth => ProviderAuthMode::OAuth,
-            },
+            auth_mode: self.auth_mode,
             auth_account_id: self.account_id.clone(),
             base_url: self.base_url.clone(),
             headers: HashMap::new(),
@@ -105,24 +164,27 @@ impl OpenAiProviderConfig {
     }
 }
 
-fn normalize_model_for_mode(model: &str, api_mode: OpenAiApiMode) -> &str {
-    if api_mode == OpenAiApiMode::CodexOAuth {
-        return model.strip_prefix("openai/").unwrap_or(model);
+fn normalize_model_for_provider(model: &str, provider: &str) -> String {
+    if provider == "openai-codex" {
+        let model = model
+            .strip_prefix("openai-codex/")
+            .or_else(|| model.strip_prefix("openai/"))
+            .unwrap_or(model);
+        return if model.starts_with("claude-") {
+            DEFAULT_OPENAI_MODEL_ID.to_string()
+        } else {
+            model.to_string()
+        };
     }
-    model
-}
-
-fn default_base_url_for_mode(provider: &str, api_mode: OpenAiApiMode) -> &'static str {
-    if api_mode == OpenAiApiMode::CodexOAuth {
-        return "https://chatgpt.com/backend-api";
+    if provider == "anthropic" {
+        let model = model.strip_prefix("anthropic/").unwrap_or(model);
+        return if model.starts_with("claude-") {
+            model.to_string()
+        } else {
+            DEFAULT_ANTHROPIC_MODEL_ID.to_string()
+        };
     }
-    match provider {
-        "openai" => "https://api.openai.com/v1",
-        "openrouter" => "https://openrouter.ai/api/v1",
-        "groq" => "https://api.groq.com/openai/v1",
-        "xai" => "https://api.x.ai/v1",
-        _ => "https://api.openai.com/v1",
-    }
+    model.to_string()
 }
 
 fn is_owner_local_provider_endpoint(base_url: &str) -> bool {
@@ -157,30 +219,37 @@ fn is_owner_local_provider_endpoint(base_url: &str) -> bool {
 }
 
 #[derive(Default)]
-pub struct OpenAiCompatibleProvider {
-    provider: kordi_provider::openai::OpenAiProvider,
+pub struct ConfiguredCloudProvider {
+    openai: OpenAiProvider,
+    anthropic: AnthropicProvider,
 }
 
 #[async_trait]
-impl CloudModelProvider for OpenAiCompatibleProvider {
+impl CloudModelProvider for ConfiguredCloudProvider {
     async fn next_response(
         &self,
-        auth: &OpenAiProviderConfig,
+        auth: &CloudProviderConfig,
         messages: &[Value],
         tools: &[Value],
     ) -> Result<ModelProviderResponse, ModelLoopError> {
         let request = completion_request_from_cloud_messages(auth, messages, tools);
-        let events = self
-            .provider
-            .complete(request, auth.request_options())
-            .await
-            .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
+        let events = match auth.api {
+            CloudProviderApi::OpenAiCompatible => {
+                self.openai.complete(request, auth.request_options()).await
+            }
+            CloudProviderApi::Anthropic => {
+                self.anthropic
+                    .complete(request, auth.request_options())
+                    .await
+            }
+        }
+        .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
         model_response_from_stream_events(events)
     }
 }
 
 fn completion_request_from_cloud_messages(
-    auth: &OpenAiProviderConfig,
+    auth: &CloudProviderConfig,
     messages: &[Value],
     tools: &[Value],
 ) -> CompletionRequest {
@@ -299,169 +368,4 @@ fn model_response_from_stream_events(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn openai_config_rejects_missing_provider_tokens() {
-        let material = ProviderAuthMaterial {
-            snapshot_id: "snap".to_string(),
-            provider: "openai".to_string(),
-            auth_choice: "default".to_string(),
-            payload: json!({ "baseUrl": "https://api.openai.com/v1" }),
-        };
-
-        let error = OpenAiProviderConfig::from_material(&material).unwrap_err();
-        assert!(error.to_string().contains("provider token"));
-    }
-
-    #[test]
-    fn openai_config_allows_public_hosts_that_contain_localhost_text() {
-        let material = ProviderAuthMaterial {
-            snapshot_id: "snap".to_string(),
-            provider: "openai".to_string(),
-            auth_choice: "default".to_string(),
-            payload: json!({
-                "apiKey": "key",
-                "baseUrl": "https://localhost-docs.example.com/v1"
-            }),
-        };
-
-        let config = OpenAiProviderConfig::from_material(&material).unwrap();
-        assert_eq!(config.base_url, "https://localhost-docs.example.com/v1");
-    }
-
-    #[test]
-    fn openai_config_rejects_owner_local_provider_endpoints() {
-        let material = ProviderAuthMaterial {
-            snapshot_id: "snap".to_string(),
-            provider: "openai".to_string(),
-            auth_choice: "default".to_string(),
-            payload: json!({ "apiKey": "key", "baseUrl": "http://localhost:1234/v1" }),
-        };
-
-        let error = OpenAiProviderConfig::from_material(&material).unwrap_err();
-        assert!(error.to_string().contains("owner-local provider endpoints"));
-    }
-
-    #[test]
-    fn openai_config_accepts_codex_oauth_material_and_preserves_model() {
-        let material = ProviderAuthMaterial {
-            snapshot_id: "snap".to_string(),
-            provider: "openai-codex".to_string(),
-            auth_choice: "local-active-oauth".to_string(),
-            payload: json!({
-                "apiMode": "openai-codex-oauth",
-                "accessToken": "oauth-token",
-                "accountId": "account-123",
-                "model": "gpt-5.5"
-            }),
-        };
-
-        let config = OpenAiProviderConfig::from_material(&material).unwrap();
-        assert_eq!(config.api_mode, OpenAiApiMode::CodexOAuth);
-        assert_eq!(config.api_key, "oauth-token");
-        assert_eq!(config.account_id.as_deref(), Some("account-123"));
-        assert_eq!(config.model, "gpt-5.5");
-
-        let options = config.request_options();
-        assert_eq!(options.auth_mode, ProviderAuthMode::OAuth);
-        assert_eq!(options.auth_account_id.as_deref(), Some("account-123"));
-        assert_eq!(options.base_url, "https://chatgpt.com/backend-api");
-    }
-
-    #[test]
-    fn codex_oauth_snapshot_strips_provider_prefix_from_route_model() {
-        let material = ProviderAuthMaterial {
-            snapshot_id: "snap".to_string(),
-            provider: "openai-codex".to_string(),
-            auth_choice: "local-active-oauth".to_string(),
-            payload: json!({
-                "apiMode": "openai-codex-oauth",
-                "accessToken": "oauth-token",
-                "accountId": "account-123",
-                "model": "openai/gpt-5.5"
-            }),
-        };
-
-        let config = OpenAiProviderConfig::from_material(&material).unwrap();
-
-        assert_eq!(config.model, "gpt-5.5");
-    }
-
-    #[test]
-    fn completion_request_uses_shared_provider_shape_without_rewriting_model() {
-        let auth = OpenAiProviderConfig {
-            provider: "openai".to_string(),
-            api_key: "token".to_string(),
-            base_url: "https://chatgpt.com/backend-api".to_string(),
-            model: "gpt-5.5".to_string(),
-            api_mode: OpenAiApiMode::CodexOAuth,
-            account_id: Some("acct".to_string()),
-        };
-        let request = completion_request_from_cloud_messages(
-            &auth,
-            &[
-                json!({"role":"system","content":"System A"}),
-                json!({"role":"user","content":"Hello"}),
-            ],
-            &[json!({"type":"function","function":{"name":"read"}})],
-        );
-
-        assert_eq!(request.model, "gpt-5.5");
-        assert_eq!(request.system_prompt, "System A");
-        assert_eq!(
-            request.messages,
-            vec![json!({"role":"user","content":"Hello"})]
-        );
-        assert_eq!(request.tools.len(), 1);
-        assert_eq!(request.thinking.as_deref(), Some("default"));
-    }
-
-    #[test]
-    fn stream_events_convert_to_tool_call_response() {
-        let response = model_response_from_stream_events(vec![
-            StreamEvent::ToolCallStart {
-                id: "call_1".to_string(),
-                name: "read".to_string(),
-            },
-            StreamEvent::ToolCallDelta {
-                id: "call_1".to_string(),
-                arguments_delta: "{\"path\":\"file.txt\"}".to_string(),
-            },
-            StreamEvent::ToolCallEnd {
-                id: "call_1".to_string(),
-            },
-            StreamEvent::Done,
-        ])
-        .unwrap();
-
-        assert_eq!(
-            response,
-            ModelProviderResponse::ToolCalls(vec![ModelToolCall {
-                id: "call_1".to_string(),
-                name: "read".to_string(),
-                arguments: json!({"path":"file.txt"}),
-            }])
-        );
-    }
-
-    #[test]
-    fn stream_events_convert_to_final_text() {
-        let response = model_response_from_stream_events(vec![
-            StreamEvent::TextDelta {
-                text: "hello".to_string(),
-            },
-            StreamEvent::TextDelta {
-                text: " world".to_string(),
-            },
-            StreamEvent::Done,
-        ])
-        .unwrap();
-
-        assert_eq!(
-            response,
-            ModelProviderResponse::FinalText("hello world".to_string())
-        );
-    }
-}
+mod tests;

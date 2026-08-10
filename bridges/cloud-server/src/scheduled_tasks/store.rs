@@ -275,8 +275,8 @@ pub async fn create_scheduled_task_run_now(
     Ok(Some(run))
 }
 
-pub async fn mark_scheduled_task_run_completed(
-    pool: &PgPool,
+pub async fn mark_scheduled_task_run_completed_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     run_id: &str,
     result_message: &str,
     now: DateTime<Utc>,
@@ -299,13 +299,13 @@ pub async fn mark_scheduled_task_run_completed(
     .bind(run_id)
     .bind(result_message)
     .bind(ts(now))
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-pub async fn mark_scheduled_task_run_failed(
-    pool: &PgPool,
+pub async fn mark_scheduled_task_run_failed_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     run_id: &str,
     error_code: &str,
     error_message: &str,
@@ -330,7 +330,7 @@ pub async fn mark_scheduled_task_run_failed(
     .bind(error_code)
     .bind(error_message)
     .bind(ts(now))
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
     Ok(())
 }

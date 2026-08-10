@@ -68,6 +68,16 @@ async fn cloud_sync_returns_read_receipt_events() {
         .await
         .unwrap();
     assert_eq!(read_resp.status(), StatusCode::NO_CONTENT);
+    let retry_read_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages/read",
+            &peer_token,
+            json!({ "peerAccountId": account_id }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(retry_read_resp.status(), StatusCode::NO_CONTENT);
 
     let reader_list_resp = router
         .clone()
@@ -87,12 +97,14 @@ async fn cloud_sync_returns_read_receipt_events() {
         .unwrap();
     assert_eq!(sync_resp.status(), StatusCode::OK);
     let sync = read_json(sync_resp).await;
-    let read_event = sync["events"]
+    let read_events = sync["events"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|event| event["eventType"] == "message.read")
-        .unwrap();
+        .filter(|event| event["eventType"] == "message.read")
+        .collect::<Vec<_>>();
+    assert_eq!(read_events.len(), 1);
+    let read_event = read_events[0];
     assert_eq!(read_event["peerAccountId"], peer_account_id);
     assert_eq!(read_event["payload"]["readerAccountId"], peer_account_id);
     assert_eq!(

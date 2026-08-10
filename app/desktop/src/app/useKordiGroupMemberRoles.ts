@@ -334,6 +334,8 @@ export function useKordiGroupMemberRoles({
       );
     try {
       await sendCloudGroupControl({
+        operationId:
+          `group-admin:${rootSessionId}:${identityId}:${groupAdminUpdatedAtMs}`,
         targetAccountIds,
         kind: 'group-update',
         groupId: rootSessionId,

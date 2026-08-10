@@ -169,6 +169,7 @@ export async function respondToCloudGroupAgentMention(
       },
     }),
     sessionId: envelope.groupId,
+    operationId: processingMessageId,
     createdAtMs: processingCreatedAtMs,
     signal,
   });

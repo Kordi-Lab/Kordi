@@ -4,7 +4,7 @@ import type {
   CanonicalSessionState,
   OpenCanonicalSessionFastResult,
 } from '@/kordi-app/types';
-import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
+import { mergeCanonicalMessageRows } from '@/features/canonical/canonicalStateReducers';
 import {
   canonicalArraysEqual,
   canonicalIdentitiesEqual,
@@ -16,6 +16,20 @@ export type CloudSelfAgentCanonicalSyncBatch = {
   sessions: OpenCanonicalSessionFastResult[];
   messages: CanonicalSessionMessage[];
 };
+
+export function removeCanonicalMessagesById(
+  current: CanonicalSessionState | null,
+  messageIds: readonly string[],
+): CanonicalSessionState | null {
+  if (!current || messageIds.length === 0) return current;
+  const removedIds = new Set(messageIds);
+  const messages = current.messages.filter(
+    (message) => !removedIds.has(message.id),
+  );
+  return messages.length === current.messages.length
+    ? current
+    : { ...current, messages };
+}
 
 export function upsertCanonicalIdentityIntoLocalState(
   current: CanonicalSessionState | null,
@@ -91,8 +105,5 @@ export function mergeCloudSelfAgentCanonicalSyncBatch(
       session,
     );
   }
-  for (const message of batch.messages) {
-    next = mergeCanonicalMessageRow(next, message);
-  }
-  return next;
+  return mergeCanonicalMessageRows(next, batch.messages);
 }

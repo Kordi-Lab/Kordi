@@ -214,9 +214,7 @@ export function buildOutreachInlineMessages(conversation: DesktopCollaborationCo
 
 function isRawConversationId(value?: string | null) {
   const trimmed = value?.trim() ?? '';
-  return trimmed.startsWith('session:')
-    || trimmed.startsWith('bridge:')
-    || trimmed.startsWith('draft:');
+  return /^(?:session:|bridge:|draft:|cloud:conversation:)/.test(trimmed);
 }
 
 function nonSelfParticipantNames(participants: string[]) {
@@ -316,7 +314,9 @@ export function hideRawConversationIds(conversations: Conversation[]) {
   return conversations.map((conversation) => ({
     ...conversation,
     name: conversationDisplayName(conversation),
-    subtitle: conversationSessionId(conversation),
+    subtitle: isRawConversationId(conversation.subtitle)
+      ? ''
+      : conversation.subtitle,
   }));
 }
 

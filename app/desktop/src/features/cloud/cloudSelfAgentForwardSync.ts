@@ -155,8 +155,8 @@ export function saveCloudSelfAgentSyncLedger(
       JSON.stringify(ledger),
     );
   } catch {
-    // Best effort. A failed ledger write may cause a future duplicate sync,
-    // but should not block local chat or Cloud refresh.
+    // Best effort. A failed ledger write may cause a future retry, but the
+    // stable producer operation id prevents another server message row.
   }
 }
 

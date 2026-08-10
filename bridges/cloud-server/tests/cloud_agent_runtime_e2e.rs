@@ -435,3 +435,5 @@ mod runner;
 mod sandboxes;
 #[path = "cloud_agent_runtime_e2e/scheduled_runs.rs"]
 mod scheduled_runs;
+#[path = "cloud_agent_runtime_e2e/terminal_state.rs"]
+mod terminal_state;

@@ -19,6 +19,14 @@ pub(super) async fn list_messages(
         .limit
         .unwrap_or(MESSAGE_LIST_DEFAULT_LIMIT)
         .clamp(1, MESSAGE_LIST_MAX_LIMIT);
+    // Legacy self-agent replays are collapsed after loading because their
+    // original rows have no idempotency key. Over-fetch the bounded self
+    // conversation so duplicates do not crowd real messages out of a page.
+    let query_limit = if peer == session.account_id {
+        MESSAGE_LIST_MAX_LIMIT
+    } else {
+        limit
+    };
 
     let pool = state.db_pool();
 
@@ -43,10 +51,10 @@ pub(super) async fn list_messages(
                          AND created_at <= session_read_cursor \
                         THEN session_read_cursor \
                     END \
-                ) AS read_at \
+                ) AS read_at, client_message_id, server_received_at \
          FROM ( \
              SELECT cm.message_id, cm.from_account_id, cm.to_account_id, cm.body, cm.session_id, cm.created_at, \
-                    cm.delivered_at, cm.read_at, \
+                    cm.delivered_at, cm.read_at, cm.client_message_id, cm.server_received_at, \
                     peer_read_cursor.read_at AS peer_read_cursor, \
                     session_read_cursor.read_at AS session_read_cursor \
              FROM cloud_messages cm \
@@ -60,14 +68,14 @@ pub(super) async fn list_messages(
                AND session_read_cursor.scope_id = cm.session_id \
              WHERE (cm.from_account_id = $1 AND cm.to_account_id = $2) \
                 OR (cm.from_account_id = $2 AND cm.to_account_id = $1) \
-             ORDER BY cm.created_at DESC \
+             ORDER BY cm.created_at DESC, cm.server_received_at DESC, cm.message_id DESC \
              LIMIT $3 \
          ) recent_messages \
-         ORDER BY created_at ASC",
+         ORDER BY created_at ASC, server_received_at ASC, message_id ASC",
     )
     .bind(&session.account_id)
     .bind(&peer)
-    .bind(limit)
+    .bind(query_limit)
     .fetch_all(pool)
     .await
     {
@@ -125,11 +133,35 @@ pub(super) async fn list_messages(
             });
     }
 
+    let message_ids_with_attachments = attachments_by_message_id
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let mut rows = collapse_legacy_self_message_replays(
+        rows,
+        &session.account_id,
+        &message_ids_with_attachments,
+    );
+    if rows.len() > limit as usize {
+        rows = rows.split_off(rows.len() - limit as usize);
+    }
+
     let me = &session.account_id;
     let messages: Vec<MessageSummary> = rows
         .into_iter()
         .map(
-            |(message_id, from_id, to_id, body, session_id, created_at, delivered_at, read_at)| {
+            |(
+                message_id,
+                from_id,
+                to_id,
+                body,
+                session_id,
+                created_at,
+                delivered_at,
+                read_at,
+                _client_message_id,
+                _server_received_at,
+            )| {
                 let direction = if from_id == *me {
                     "outgoing"
                 } else {

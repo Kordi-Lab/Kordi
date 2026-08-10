@@ -160,6 +160,17 @@ test('legacy support selection resolves canonical hydration through the scoped c
   assert.equal(resolved, canonicalSessionId);
 });
 
+test('scoped Cloud route resolves its embedded canonical session before the conversation read model loads', () => {
+  const canonicalSessionId = 'session:self-agent:cloud-session';
+  const resolved = resolveCanonicalPageSessionId(
+    'cloud:conversation:acct_me:agent:session:session%3Aself-agent%3Acloud-session',
+    new Set([canonicalSessionId]),
+    [],
+  );
+
+  assert.equal(resolved, canonicalSessionId);
+});
+
 test('legacy pending support selection preserves its product identity and direct route', () => {
   const conversation = pendingCloudCollaborationConversationForActiveId(
     'cloud:conversation:acct_kordi_support:agent',

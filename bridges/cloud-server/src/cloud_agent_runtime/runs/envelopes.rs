@@ -3,7 +3,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
+use sqlx_core::transaction::Transaction;
+use sqlx_postgres::{PgPool, Postgres};
 
 use super::group_mentions::{resolve_agent_mention, CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH};
 
@@ -305,23 +306,70 @@ pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
     }))
 }
 
-pub(super) async fn latest_cloud_group_envelope_for_session(
-    pool: &PgPool,
+/// Resolve the group envelope used to fan out a terminal agent response while
+/// the caller holds the run row lock. Keeping this read on the caller's
+/// transaction prevents response delivery from escaping the terminal run
+/// transition that makes it externally authoritative.
+pub(super) async fn cloud_group_delivery_envelope_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
     session_id: &str,
+    request_message_id: &str,
 ) -> Result<Option<CloudGroupEnvelope>, sqlx_core::Error> {
     if !session_id.trim().starts_with("session:group:") {
         return Ok(None);
     }
+    let scheduled = request_message_id.trim().starts_with("scheduled_run_");
     let rows = query_as::<_, (String,)>(
-        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at DESC",
+        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at ASC",
     )
     .bind(session_id)
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await?;
-    Ok(rows.into_iter().find_map(|(body,)| {
+    let matching = |body: String| {
         let envelope = parse_cloud_group_envelope(&body)?;
-        (envelope.kind == "group-message" && !envelope.participants.is_empty()).then_some(envelope)
-    }))
+        let is_match = if scheduled {
+            envelope.kind == "group-message" && !envelope.participants.is_empty()
+        } else {
+            envelope.kind == "group-message"
+                && envelope
+                    .message
+                    .as_ref()
+                    .is_some_and(|message| message.id == request_message_id)
+        };
+        is_match.then_some(envelope)
+    };
+    Ok(if scheduled {
+        rows.into_iter().rev().find_map(|(body,)| matching(body))
+    } else {
+        rows.into_iter().find_map(|(body,)| matching(body))
+    })
+}
+
+pub(super) async fn cloud_agent_target_id_for_request_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    session_id: &str,
+    request_message_id: &str,
+) -> Result<Option<String>, sqlx_core::Error> {
+    if request_message_id.trim().starts_with("scheduled_run_") {
+        return Ok(None);
+    }
+    if session_id.trim().starts_with("session:group:") {
+        return Ok(cloud_group_delivery_envelope_in_transaction(
+            tx,
+            session_id,
+            request_message_id,
+        )
+        .await?
+        .and_then(|envelope| envelope.message)
+        .and_then(|message| message.target_cloud_agent_id));
+    }
+    let body: Option<(String,)> =
+        query_as("SELECT body FROM cloud_messages WHERE message_id = $1 AND session_id = $2")
+            .bind(request_message_id)
+            .bind(session_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    Ok(body.and_then(|(body,)| direct_cloud_agent_target(&body).map(|target| target.agent_id)))
 }
 
 #[cfg(test)]

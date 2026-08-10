@@ -8,6 +8,7 @@ import type {
 } from '../src/kordi-app/types';
 import {
   mergeCloudSelfAgentCanonicalSyncBatch,
+  removeCanonicalMessagesById,
 } from '../src/features/cloud/cloudCanonicalStateMerge';
 import {
   cloudSelfAgentCanonicalSyncPlanSignature,
@@ -145,6 +146,35 @@ test('self-agent canonical persistence returns one batch after ordered writes', 
   });
 });
 
+test('desktop self-agent restore uses one atomic persistence call when available', async () => {
+  let applyCount = 0;
+  const batch = await persistCloudSelfAgentCanonicalSyncPlan(plan, {
+    persistence: {
+      applyPlan: async (request) => {
+        applyCount += 1;
+        assert.equal(request, plan);
+        return {
+          identity,
+          sessions: [sessionResult],
+          messages: [restoredMessage],
+        };
+      },
+      upsertIdentity: async () => {
+        throw new Error('atomic path must not upsert identity separately');
+      },
+      openSession: async () => {
+        throw new Error('atomic path must not open sessions separately');
+      },
+      upsertMessage: async () => {
+        throw new Error('atomic path must not upsert messages separately');
+      },
+    },
+  });
+
+  assert.equal(applyCount, 1);
+  assert.deepEqual(batch?.messages, [restoredMessage]);
+});
+
 test('self-agent canonical batch merges into the latest state without replacing newer history', () => {
   const latest = stateWithNewerHistory();
   const merged = mergeCloudSelfAgentCanonicalSyncBatch(latest, {
@@ -189,4 +219,46 @@ test('self-agent canonical plan signatures change with persisted content', () =>
     }],
   });
   assert.notEqual(signature, changed);
+});
+
+test('legacy duplicate repair removes only the native-confirmed canonical rows', () => {
+  const current = stateWithNewerHistory();
+  current.messages.push(restoredMessage, {
+    ...restoredMessage,
+    id: 'msg:cloud:self:duplicate',
+    sourceEventId: 'duplicate',
+  });
+
+  const repaired = removeCanonicalMessagesById(current, [
+    'msg:cloud:self:duplicate',
+  ]);
+
+  assert.ok(repaired);
+  assert.deepEqual(
+    repaired.messages.map((message) => message.id),
+    ['msg:newer-local-page', restoredMessage.id],
+  );
+  assert.equal(removeCanonicalMessagesById(repaired, ['missing']), repaired);
+  assert.equal(removeCanonicalMessagesById(repaired, []), repaired);
+});
+
+test('large native self-agent batches merge into React state in linear time', () => {
+  const messageCount = 8_000;
+  const messages = Array.from({ length: messageCount }, (_, index) => ({
+    ...restoredMessage,
+    id: `msg:cloud:self:batch-${index}`,
+    sourceEventId: `batch-${index}`,
+    sequenceNum: index + 1,
+    createdAtMs: index + 10,
+    updatedAtMs: index + 10,
+  }));
+  const startedAt = performance.now();
+  const merged = mergeCloudSelfAgentCanonicalSyncBatch(
+    stateWithNewerHistory(),
+    { identity, sessions: [sessionResult], messages },
+  );
+  const durationMs = performance.now() - startedAt;
+
+  assert.equal(merged?.messages.length, messageCount + 1);
+  assert.ok(durationMs < 1_000, `large batch merge took ${durationMs}ms`);
 });

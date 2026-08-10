@@ -52,6 +52,7 @@ import type { CloudMessageIndex } from './cloudMessageIndex';
 import {
   shouldRunLocalCloudAgentForCloudMessage,
 } from './cloudAgentMentionPolicy';
+import { cloudAgentResponseOperationId } from './cloudMessageLifecycle';
 import { cloudSessionIdForCollaborationSend } from './cloudCollaborationState';
 import { loadSession } from './session';
 
@@ -331,7 +332,12 @@ export function useCloudDirectAgentExecution({
                 text: responseText,
                 deliveryState: responseSucceeded ? 'complete' : 'failed',
               }),
-              { sessionId: message.sessionId ?? null },
+              {
+                sessionId: message.sessionId ?? null,
+                clientMessageId: cloudAgentResponseOperationId(
+                  finalTurn.id,
+                ),
+              },
             );
             mergeMessage(response);
             void syncMessages();

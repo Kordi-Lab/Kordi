@@ -14,6 +14,10 @@ import {
   mergeCloudMessageMonotonicState,
 } from './cloudDiffSync';
 import { latestCloudReceiptAt } from './cloudMessageMerge';
+import {
+  collapseLegacySelfMessageReplays,
+  selfSnapshotCurrentMessages,
+} from './cloudSelfMessageReplay';
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
 
@@ -21,6 +25,10 @@ export type CloudUnreadReadinessSnapshot = {
   status: CloudUnreadReadinessStatus;
   contextKey: string | null;
 };
+
+function cleanText(value?: string | null) {
+  return (value ?? '').trim();
+}
 
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
@@ -39,10 +47,6 @@ export function cloudBootstrapPeerIds(
     requests,
   });
   return [...new Set([selfPeerId, ...expandedPeerIds].filter(Boolean))].sort();
-}
-
-function cleanText(value?: string | null) {
-  return (value ?? '').trim();
 }
 
 function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[] = []): boolean {
@@ -67,12 +71,23 @@ export function cloudMessagesByPeerEqual(
 export function mergeCloudMessagesByPeerSnapshot(
   current: Record<string, CloudMessage[]>,
   incoming: Record<string, CloudMessage[]>,
+  options: {
+    authoritativeSelfAccountId?: string | null;
+    collapseSelfAccountId?: string | null;
+  } = {},
 ): Record<string, CloudMessage[]> {
   const peerIds = uniqueSortedPeerIds([...Object.keys(current), ...Object.keys(incoming)]);
   const merged: Record<string, CloudMessage[]> = {};
   let changed = peerIds.length !== Object.keys(current).length;
   for (const peerId of peerIds) {
-    const currentMessages = current[peerId] ?? [];
+    const previousMessages = current[peerId] ?? [];
+    const currentMessages = peerId === options.authoritativeSelfAccountId
+      ? selfSnapshotCurrentMessages(
+          previousMessages,
+          incoming[peerId] ?? [],
+        )
+      : previousMessages;
+    if (currentMessages !== previousMessages) changed = true;
     const byMessageId = new Map<string, CloudMessage>();
     for (const message of currentMessages) byMessageId.set(message.messageId, message);
     for (const message of incoming[peerId] ?? []) {
@@ -87,11 +102,16 @@ export function mergeCloudMessagesByPeerSnapshot(
         cloudMessagesEqual(previous, candidate) ? previous : candidate,
       );
     }
-    const messages = [...byMessageId.values()]
+    let messages = [...byMessageId.values()]
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const selfAccountId = options.collapseSelfAccountId
+      ?? options.authoritativeSelfAccountId;
+    if (peerId === selfAccountId) {
+      messages = collapseLegacySelfMessageReplays(messages);
+    }
     if (messages.length > 0) {
-      const unchanged = cloudMessageListsEqual(currentMessages, messages);
-      merged[peerId] = unchanged ? currentMessages : messages;
+      const unchanged = cloudMessageListsEqual(previousMessages, messages);
+      merged[peerId] = unchanged ? previousMessages : messages;
       if (!unchanged) changed = true;
     }
   }

@@ -330,13 +330,10 @@
   },
   "src/features/cloud/useCloudConversation.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 9
-    },
-    "@typescript-eslint/no-unsafe-call": {
-      "count": 1
+      "count": 2
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 11
+      "count": 1
     },
     "no-console": {
       "count": 2

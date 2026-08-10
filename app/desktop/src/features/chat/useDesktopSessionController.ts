@@ -1,7 +1,8 @@
 import { useCallback, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
+import { isCanonicalSessionId } from '@/features/canonical/sessionResolver';
+import { isCloudCollaborationConversationId } from '@/features/collaboration/conversationIds';
 import type { DesktopChatState } from '@/kordi-app/types';
 import { startSessionClickToFirstMessage } from '@/features/performance/chatPerformance';
 import {
@@ -95,8 +96,7 @@ export function useDesktopSessionController({
     if (!isNativeShell) return true;
     try {
       if (
-        isLegacyCanonicalCollaborationSessionId(sessionId)
-        || isCanonicalCloudSessionId(sessionId)
+        isCanonicalSessionId(sessionId)
       ) {
         await hydrateCanonicalSessionPage(sessionId);
         return true;
@@ -122,8 +122,8 @@ export function useDesktopSessionController({
 
     if (
       isLocalDraftChatConversationId(sessionId)
-      || isLegacyCanonicalCollaborationSessionId(sessionId)
-      || isCanonicalCloudSessionId(sessionId)
+      || isCanonicalSessionId(sessionId)
+      || isCloudCollaborationConversationId(sessionId)
       || sessionId.startsWith('bridge:')
     ) {
       setActiveConvId(sessionId);

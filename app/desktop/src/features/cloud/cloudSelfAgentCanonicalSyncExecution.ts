@@ -13,8 +13,12 @@ import type {
 } from '@/kordi-app/types';
 import type { CloudSelfAgentCanonicalSyncBatch } from './cloudCanonicalStateMerge';
 import type { CloudSelfAgentCanonicalSyncPlan } from './cloudSelfAgentCanonicalSync';
+import { applyCanonicalSelfAgentSyncPlan } from './cloudSelfAgentDesktopPersistence';
 
 export type CloudSelfAgentCanonicalPersistence = {
+  applyPlan?: (
+    plan: CloudSelfAgentCanonicalSyncPlan,
+  ) => Promise<CloudSelfAgentCanonicalSyncBatch>;
   upsertIdentity: (
     request: UpsertCanonicalIdentityRequest,
   ) => Promise<CanonicalIdentity>;
@@ -27,6 +31,7 @@ export type CloudSelfAgentCanonicalPersistence = {
 };
 
 const desktopPersistence: CloudSelfAgentCanonicalPersistence = {
+  applyPlan: applyCanonicalSelfAgentSyncPlan,
   upsertIdentity: upsertCanonicalIdentityFast,
   openSession: openOrCreateCanonicalSessionFast,
   upsertMessage: upsertCanonicalMessageFast,
@@ -53,6 +58,9 @@ export async function persistCloudSelfAgentCanonicalSyncPlan(
   } = {},
 ): Promise<CloudSelfAgentCanonicalSyncBatch | null> {
   if (!shouldContinue()) return null;
+  if (persistence.applyPlan) {
+    return persistence.applyPlan(plan);
+  }
   const identity = await persistence.upsertIdentity(
     plan.agentIdentityRequest,
   );

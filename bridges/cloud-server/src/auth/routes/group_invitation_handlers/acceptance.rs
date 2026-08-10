@@ -264,6 +264,8 @@ pub(crate) async fn accept_group_invitation(
                 delivered_at: &now,
                 read_at,
                 attachments: &[],
+                claim_legacy_self_replay: false,
+                legacy_self_replay_lock_id: None,
             },
         )
         .await;

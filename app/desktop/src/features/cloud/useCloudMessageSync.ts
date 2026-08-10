@@ -28,6 +28,8 @@ import {
   type CloudUnreadReadinessSnapshot,
   type CloudUnreadReadinessStatus,
 } from './cloudMessageSyncState';
+import { collapseLegacyCloudSelfMessageReplaysByPeer } from './cloudSelfMessageReplay';
+import { cloudSelfAgentAuthoritativeSnapshot, type CloudSelfAgentAuthoritativeSnapshot } from './cloudSelfAgentAuthoritativeSnapshot';
 import {
   syncCloudDiffOnce,
   type CloudSessionPinsById,
@@ -61,6 +63,7 @@ type CloudSyncStore<T> = {
 export type CloudMessageSyncStores = {
   messages: CloudSyncStore<Record<string, CloudMessage[]>> & {
     peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
+    authoritativeSelfSnapshotRef: MutableRefObject<CloudSelfAgentAuthoritativeSnapshot>;
   };
   activity: CloudSyncStore<CloudSessionActivityStore>;
   forks: CloudSyncStore<Record<string, CloudSessionForkSummary>>;
@@ -117,6 +120,7 @@ export function useCloudMessageSync({
     stateRef: messagesRef,
     setState: setMessages,
     peerReadAtByPeerRef,
+    authoritativeSelfSnapshotRef,
   } = stores.messages;
   const { stateRef: activityRef, setState: setActivity } = stores.activity;
   const { stateRef: forksRef, setState: setForks } = stores.forks;
@@ -170,6 +174,7 @@ export function useCloudMessageSync({
     if (!account || initialPeerIds.length === 0) {
       if (!coordinator.isCurrentGeneration(generation)) return;
       messagesRef.current = {};
+      authoritativeSelfSnapshotRef.current = null;
       if (publishMessages) {
         setMessages((current) => (
           Object.keys(current).length === 0 ? current : {}
@@ -201,7 +206,12 @@ export function useCloudMessageSync({
           CLOUD_MESSAGE_SNAPSHOT_LIMIT,
         );
         fetchedPeerReadAtByPeer[peerId] = snapshot.peerReadAt;
-        return snapshot.messages.map(cloudMessageMetadataOnly);
+        const messages = snapshot.messages.map(cloudMessageMetadataOnly);
+        if (peerId === account.accountId) {
+          authoritativeSelfSnapshotRef.current =
+            cloudSelfAgentAuthoritativeSnapshot(account.accountId, messages);
+        }
+        return messages;
       },
     });
 
@@ -220,12 +230,14 @@ export function useCloudMessageSync({
     messagesRef.current = mergeCloudMessagesByPeerSnapshot(
       reconcileReadState(messagesRef.current),
       loaded.messagesByPeer,
+      { authoritativeSelfAccountId: account.accountId },
     );
     if (publishMessages) {
       setMessages((current) => {
         const merged = mergeCloudMessagesByPeerSnapshot(
           reconcileReadState(current),
           loaded.messagesByPeer,
+          { authoritativeSelfAccountId: account.accountId },
         );
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
@@ -239,6 +251,7 @@ export function useCloudMessageSync({
     }
   }, [
     account,
+    authoritativeSelfSnapshotRef,
     bootstrapPeerKey,
     cancelledRef,
     client,
@@ -298,7 +311,10 @@ export function useCloudMessageSync({
         fallbackRequired = true;
         break;
       }
-      messagesByPeer = result.messagesByPeer;
+      messagesByPeer = collapseLegacyCloudSelfMessageReplaysByPeer(
+        result.messagesByPeer,
+        account.accountId,
+      );
       sessionActivity = result.sessionActivity;
       sessionForksById = result.sessionForksById;
       sessionPinsById = result.sessionPinsById;
@@ -319,9 +335,14 @@ export function useCloudMessageSync({
     messagesRef.current = mergeCloudMessagesByPeerSnapshot(
       messagesRef.current,
       messagesByPeer,
+      { collapseSelfAccountId: account.accountId },
     );
     setMessages((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
+      const merged = mergeCloudMessagesByPeerSnapshot(
+        current,
+        messagesByPeer,
+        { collapseSelfAccountId: account.accountId },
+      );
       if (cloudMessagesByPeerEqual(current, merged)) return current;
       return merged;
     });

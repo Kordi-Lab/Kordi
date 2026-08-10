@@ -4,9 +4,11 @@ import { test } from 'node:test';
 import type { CanonicalSessionMessage } from '../src/kordi-app/types';
 import {
   CLOUD_AGENT_INTERRUPTED_TURN_NOTICE,
+  interruptedCloudAgentTurnDisposition,
   interruptedCloudGroupAgentTurnRecovery,
   interruptedCloudGroupAgentTurnRecoveries,
 } from '../src/features/cloud/useCloudAgentTurnRecovery';
+import type { CloudAgentRun } from '../src/features/cloud/authClient';
 
 function turn(
   state: 'queued' | 'processing' | 'complete',
@@ -90,4 +92,37 @@ test('startup recovery filters ordinary transcript history before lifecycle work
   assert.equal(recoveries.length, 1);
   assert.equal(recoveries[0]?.request.id, interrupted.id);
   assert.equal(ordinaryHistory[0]?.status, 'complete');
+});
+
+test('startup recovery follows the authoritative Cloud run lifecycle', () => {
+  const activeRun: CloudAgentRun = {
+    runId: 'run:one',
+    status: 'running',
+    sandboxId: null,
+    createdAt: '2026-08-10T00:00:00Z',
+    updatedAt: '2026-08-10T00:01:00Z',
+  };
+  assert.equal(
+    interruptedCloudAgentTurnDisposition(activeRun),
+    'server-active',
+  );
+  assert.equal(
+    interruptedCloudAgentTurnDisposition({
+      ...activeRun,
+      status: 'completed',
+    }),
+    'server-terminal',
+  );
+  assert.equal(
+    interruptedCloudAgentTurnDisposition({ ...activeRun, status: 'failed' }),
+    'retry-after-cloud-failure',
+  );
+  assert.equal(
+    interruptedCloudAgentTurnDisposition(undefined),
+    'server-active',
+  );
+  assert.equal(
+    interruptedCloudAgentTurnDisposition(null),
+    'interrupted-locally',
+  );
 });

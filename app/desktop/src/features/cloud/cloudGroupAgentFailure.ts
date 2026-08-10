@@ -20,6 +20,7 @@ import {
 } from './cloudGroupMessages';
 import { loadSession } from './session';
 import { cloudAgentLocalFailureMessage } from './cloudAgentLocalExecution';
+import { cloudMessageRecipientOperationId } from './cloudMessageLifecycle';
 import type {
   CanonicalSessionStateSetter,
   CloudGroupAgentRuntime,
@@ -247,6 +248,10 @@ async function publishCloudGroupAgentFailure({
       {
         sessionId: envelope.groupId,
         clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
+        clientMessageId: cloudMessageRecipientOperationId(
+          responseMessageId,
+          targetAccountId,
+        ),
       },
     )),
   );

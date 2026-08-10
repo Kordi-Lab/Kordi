@@ -8,8 +8,13 @@ import {
   type CloudMessageSnapshotResponse,
 } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
-import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
-import type { CloudAuthErrorCode } from './cloudAuthError';
+import { buildCloudAuthError, CloudAuthError, type CloudAuthErrorCode } from './cloudAuthError';
+import { createCloudMessageOperationId } from './cloudMessageLifecycle';
+import type {
+  CloudAgentRun,
+  CloudAgentRunClaimInput,
+  CloudAgentRunLookup,
+} from './cloudAgentRunTypes';
 import {
   acceptCloudGroupInvitation,
   createCloudGroupInvitation,
@@ -25,7 +30,13 @@ import type {
 } from './cloudIdentityTypes';
 
 export type { CloudContactSummary } from './cloudContactTypes';
-export { parseCloudOAuthHashResult } from './cloudOAuthResult';
+export type {
+  CloudAgentRun,
+  CloudAgentRunClaimInput,
+  CloudAgentRunLookup,
+  CloudAgentRunStatus,
+} from './cloudAgentRunTypes';
+export { parseCloudOAuthHashError, parseCloudOAuthHashResult } from './cloudOAuthResult';
 export { CloudAuthError } from './cloudAuthError';
 export type { CloudAuthErrorCode } from './cloudAuthError';
 export type {
@@ -284,30 +295,6 @@ export type CloudProviderAuthSnapshot = {
   authChoice: string;
   createdAt: string;
   revokedAt: string | null;
-};
-
-export type CloudAgentRunClaimInput = {
-  requestMessageId: string;
-  sessionId: string;
-  ownerAccountId: string;
-  requesterAccountId: string;
-  prompt: string;
-  idempotencyKey: string;
-  targetCloudAgentId?: string | null;
-};
-
-export type CloudAgentRunStatus = string;
-
-export type CloudAgentRun = {
-  runId: string;
-  status: CloudAgentRunStatus;
-  sandboxId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type CloudAgentRunLookup = {
-  run: CloudAgentRun | null;
 };
 
 function cleanBaseUrl(value: string): string {
@@ -813,6 +800,19 @@ export class CloudAuthClient {
     return response?.run ?? null;
   }
 
+  async cancelCloudAgentRunForRequest(token: string, requestMessageId: string): Promise<CloudAgentRun | null> {
+    const encoded = encodeURIComponent(requestMessageId.trim());
+    const response = await this.send<CloudAgentRunLookup>(
+      `/v1/cloud/agent-runs/request/${encoded}/cancel`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not cancel Kordi fallback.',
+    );
+    return response?.run ?? null;
+  }
+
   async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[]; clientCreatedAt?: string | null; clientMessageId?: string | null } = {}): Promise<CloudMessage> {
     const trimmedSessionId = options.sessionId?.trim() ?? '';
     const attachments = options.attachments ?? [];
@@ -827,7 +827,7 @@ export class CloudAuthClient {
           ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}),
           ...(attachments.length > 0 ? { attachments } : {}),
           ...(options.clientCreatedAt?.trim() ? { clientCreatedAt: options.clientCreatedAt.trim() } : {}),
-          ...(options.clientMessageId?.trim() ? { clientMessageId: options.clientMessageId.trim() } : {}),
+          clientMessageId: options.clientMessageId?.trim() || createCloudMessageOperationId(),
         }),
       },
       'Could not send message.',

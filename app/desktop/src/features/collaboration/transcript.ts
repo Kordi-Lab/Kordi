@@ -550,9 +550,9 @@ export function mapCollaborationConversationToViewModel(
     agentId: conversation.identity?.remoteAgentId,
   };
   return {
-    id: conversation.id,
+    id: conversation.canonicalSessionId?.trim().startsWith('session:') ? (conversation.canonicalSessionId?.trim() ?? conversation.id) : conversation.id,
     supportTicketEnabled: isSupportContact,
-    canonicalSessionId: conversation.canonicalSessionId,
+    canonicalSessionId: conversation.canonicalSessionId?.trim() ?? '',
     name: isSupportContact ? remoteAgentLabel : conversation.title,
     type: isCloudSelfAgent ? 'owned-agent' : isAgent ? 'external-agent' : 'person',
     subtitle: outreachPrefix

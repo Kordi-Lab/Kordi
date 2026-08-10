@@ -31,4 +31,6 @@ fn seed_identity(conn: &Connection) {
 
 mod catalog;
 mod delivery;
+mod legacy_self_duplicates;
 mod membership;
+mod self_agent_sync;

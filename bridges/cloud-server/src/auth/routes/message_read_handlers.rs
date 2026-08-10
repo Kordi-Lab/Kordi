@@ -22,7 +22,17 @@ pub(super) async fn mark_messages_read(
 
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
-    if upsert_cloud_read_cursor(pool, &session.account_id, "peer", &peer, &now)
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not start read transaction.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if upsert_cloud_read_cursor_in_transaction(&mut tx, &session.account_id, "peer", &peer, &now)
         .await
         .is_err()
     {
@@ -42,7 +52,7 @@ pub(super) async fn mark_messages_read(
     .bind(&now)
     .bind(&peer)
     .bind(&session.account_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await;
     let Ok(read_rows) = read_rows else {
         return err(
@@ -53,9 +63,9 @@ pub(super) async fn mark_messages_read(
     };
 
     let message_ids: Vec<String> = read_rows.into_iter().map(|row| row.0).collect();
-    if !message_ids.is_empty() {
-        if append_cloud_sync_event(
-            pool,
+    if !message_ids.is_empty()
+        && append_cloud_sync_event_in_transaction(
+            &mut tx,
             &peer,
             "message.read",
             Some(&session.account_id),
@@ -69,14 +79,23 @@ pub(super) async fn mark_messages_read(
         )
         .await
         .is_err()
-        {
-            return err(
-                "server_error",
-                "Could not record sync event.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
+    {
+        return err(
+            "server_error",
+            "Could not record sync event.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
 
+    if tx.commit().await.is_err() {
+        return err(
+            "server_error",
+            "Could not commit read transaction.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    if !message_ids.is_empty() {
         let events = state.events().clone();
         let reader = session.account_id.clone();
         let sender = peer.clone();
@@ -111,8 +130,18 @@ pub(super) async fn mark_session_messages_read(
 
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
-    if upsert_cloud_read_cursor(
-        pool,
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not start read transaction.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if upsert_cloud_read_cursor_in_transaction(
+        &mut tx,
         &session.account_id,
         "session",
         &source_session_id,
@@ -137,7 +166,7 @@ pub(super) async fn mark_session_messages_read(
     .bind(&now)
     .bind(&source_session_id)
     .bind(&session.account_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await;
     let Ok(read_rows) = read_rows else {
         return err(
@@ -156,8 +185,8 @@ pub(super) async fn mark_session_messages_read(
     }
 
     for (peer, message_ids) in &message_ids_by_peer {
-        if append_cloud_sync_event(
-            pool,
+        if append_cloud_sync_event_in_transaction(
+            &mut tx,
             peer,
             "message.read",
             Some(&session.account_id),
@@ -179,7 +208,17 @@ pub(super) async fn mark_session_messages_read(
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
+    }
 
+    if tx.commit().await.is_err() {
+        return err(
+            "server_error",
+            "Could not commit read transaction.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    for peer in message_ids_by_peer.keys() {
         let events = state.events().clone();
         let reader = session.account_id.clone();
         let sender = peer.clone();

@@ -58,6 +58,16 @@ async fn cloud_sync_returns_message_events_after_cursor() {
     let sent = read_json(send_resp).await;
     let message_id = sent["message"]["messageId"].as_str().unwrap();
 
+    let pending_outbox: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_sync_events \
+         WHERE message_id = $1 AND realtime_published_at IS NULL",
+    )
+    .bind(message_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pending_outbox.0, 2);
+
     let sync_resp = router
         .clone()
         .oneshot(get_with_token("/v1/cloud/sync?cursor=0", &token))

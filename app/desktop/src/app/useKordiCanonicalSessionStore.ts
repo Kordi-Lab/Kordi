@@ -53,6 +53,12 @@ export function resolveCanonicalPageSessionId(
   const id = candidate?.trim() ?? '';
   if (!id) return null;
   if (catalogSessionIds.has(id)) return id;
+  const routedCloudSessionId = isCloudCollaborationConversationId(id)
+    ? cloudSessionIdFromConversationId(id)
+    : null;
+  if (routedCloudSessionId && catalogSessionIds.has(routedCloudSessionId)) {
+    return routedCloudSessionId;
+  }
   const matchedConversation = conversations.find((conversation) => (
     conversation.id === id
     || conversation.canonicalSessionId === id
@@ -63,7 +69,7 @@ export function resolveCanonicalPageSessionId(
   }
   if (
     !isCloudCollaborationConversationId(id)
-    || cloudSessionIdFromConversationId(id)
+    || routedCloudSessionId
   ) {
     return null;
   }

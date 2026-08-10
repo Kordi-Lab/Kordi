@@ -5,7 +5,7 @@ mod prompt;
 mod provider;
 
 pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
-pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
+pub use provider::{CloudProviderConfig, ConfiguredCloudProvider};
 
 use crate::artifacts::export_sandbox_file;
 use crate::client::{CloudAgentRun, CloudAgentRunClient, ProviderAuthMaterial, RunnerClientError};
@@ -43,7 +43,7 @@ pub enum ModelLoopError {
 pub trait CloudModelProvider {
     async fn next_response(
         &self,
-        auth: &OpenAiProviderConfig,
+        auth: &CloudProviderConfig,
         messages: &[Value],
         tools: &[Value],
     ) -> Result<ModelProviderResponse, ModelLoopError>;
@@ -60,7 +60,7 @@ where
     C: CloudAgentRunClient + Sync,
     P: CloudModelProvider + Sync,
 {
-    let auth = OpenAiProviderConfig::from_material(&auth_material)?;
+    let auth = CloudProviderConfig::from_material(&auth_material)?;
     let tools = prompt::tool_catalog();
     let executor = CloudToolExecutor::new(sandbox.clone());
     let mut messages = vec![

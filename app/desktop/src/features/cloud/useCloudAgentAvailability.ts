@@ -19,6 +19,7 @@ import type {
   CloudAuthClient,
 } from './authClient';
 import { cloudFallbackRunClaimsForMessages } from './cloudAgentFallbackClaims';
+import { CloudAgentFallbackClaimCoordinator } from './cloudAgentFallbackClaimCoordinator';
 import {
   CLOUD_AGENT_MENTION_WINDOW_MS,
   cloudAgentMentionCandidates,
@@ -26,8 +27,6 @@ import {
 import {
   appendCloudGroupRequestingPlaceholder,
   cloudAgentRequestReachedCloud,
-  cloudAgentRunAlreadyOwnsRequest,
-  cloudFallbackRunAlreadyOwnsRequest,
   cloudGroupAgentUnavailableFallbackRequest,
   removeCloudGroupOfflinePlaceholder,
   removeCloudGroupPendingRowsForTerminalResponse,
@@ -35,10 +34,7 @@ import {
   upsertCanonicalRequestIntoLocalState,
   type CloudFallbackClaimAttemptResult,
 } from './cloudAgentRequestState';
-import {
-  cloudFallbackClaimErrorIsRetryable,
-  cloudFallbackClaimFailureDiagnostic,
-} from './cloudFallbackClaimDiagnostics';
+import { cloudAgentRunLifecycleState } from './cloudAgentRunLifecycle';
 import {
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentRequestingNoticeRequest,
@@ -81,16 +77,14 @@ export function useCloudAgentAvailability({
   reportWarning: (message: string, error: unknown) => void;
 }): CloudFallbackRunClaimer {
   const offlineTimersRef = useRef<Map<string, number>>(new Map());
-  const claimedRunKeysRef = useRef<Set<string>>(new Set());
-  const claimingRunKeysRef = useRef<Set<string>>(new Set());
+  const claimCoordinatorRef = useRef(new CloudAgentFallbackClaimCoordinator());
   const [selfFallbackRevision, checkSelfFallback] = useReducer(
     (revision: number) => revision + 1,
     0,
   );
 
   useEffect(() => {
-    claimedRunKeysRef.current.clear();
-    claimingRunKeysRef.current.clear();
+    claimCoordinatorRef.current.reset();
   }, [account?.accountId]);
 
   useEffect(() => () => {
@@ -103,35 +97,13 @@ export function useCloudAgentAvailability({
   const claimCloudFallbackRun = useCallback(async (
     claim: CloudAgentRunClaimInput,
     tokenOverride?: string | null,
-  ): Promise<CloudFallbackClaimAttemptResult> => {
-    if (claimedRunKeysRef.current.has(claim.idempotencyKey)) {
-      return 'already-claimed';
-    }
-    if (claimingRunKeysRef.current.has(claim.idempotencyKey)) {
-      return 'in-flight';
-    }
-    const token = tokenOverride?.trim() || (await loadSession())?.token?.trim();
-    if (!token) return 'not-signed-in';
-    claimingRunKeysRef.current.add(claim.idempotencyKey);
-    try {
-      const run = await client.claimCloudAgentRun(token, claim);
-      if (!cloudAgentRunAlreadyOwnsRequest(run)) return 'terminal-failure';
-      claimedRunKeysRef.current.add(claim.idempotencyKey);
-      return 'claimed';
-    } catch (error) {
-      // Invite propagation and an already-owned exact run can race a fresh
-      // group send. Retry only bounded transient failures; presence itself is
-      // capability state and never owns a request.
-      const retryable = cloudFallbackClaimErrorIsRetryable(error);
-      reportWarning(
-        '[cloud-agent-fallback] claim failed',
-        cloudFallbackClaimFailureDiagnostic(error),
-      );
-      return retryable ? 'retryable-failure' : 'terminal-failure';
-    } finally {
-      claimingRunKeysRef.current.delete(claim.idempotencyKey);
-    }
-  }, [client, reportWarning]);
+  ): Promise<CloudFallbackClaimAttemptResult> =>
+    claimCoordinatorRef.current.claim({
+      client,
+      claim,
+      tokenOverride,
+      reportWarning,
+    }), [client, reportWarning]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState || !setCanonicalSessionState) {
@@ -283,19 +255,31 @@ export function useCloudAgentAvailability({
         }
 
         const session = await loadSession();
-        if (
-          session?.token
-          && await cloudFallbackRunAlreadyOwnsRequest({
-            client,
-            token: session.token,
-            requestMessageId: candidate.requestMessage.id,
-          })
-        ) {
+        const fallbackRun = session?.token
+          ? await client.lookupCloudAgentRunForRequest(
+            session.token,
+            candidate.requestMessage.id,
+          ).catch(() => null)
+          : null;
+        const fallbackLifecycle = cloudAgentRunLifecycleState(
+          fallbackRun?.status,
+        );
+        if (fallbackLifecycle === 'processing') {
           setCanonicalSessionState((current) =>
             setCloudGroupRequestPlaceholderProcessing(
               current,
               candidate,
               noticeId,
+            )
+          );
+          return;
+        }
+        if (fallbackLifecycle) {
+          setCanonicalSessionState((current) =>
+            removeCloudGroupPendingRowsForTerminalResponse(
+              current,
+              candidate.requestMessage.id,
+              candidate.targetAccountId,
             )
           );
           return;
@@ -318,7 +302,7 @@ export function useCloudAgentAvailability({
           : null;
         let claimResult: CloudFallbackClaimAttemptResult = 'retryable-failure';
         if (exactClaim) {
-          claimedRunKeysRef.current.delete(exactClaim.idempotencyKey);
+          claimCoordinatorRef.current.forget(exactClaim.idempotencyKey);
           claimResult = await claimCloudFallbackRun(
             exactClaim,
             session?.token,
@@ -333,6 +317,16 @@ export function useCloudAgentAvailability({
               current,
               candidate,
               noticeId,
+            )
+          );
+          return;
+        }
+        if (claimResult === 'terminal') {
+          setCanonicalSessionState((current) =>
+            removeCloudGroupPendingRowsForTerminalResponse(
+              current,
+              candidate.requestMessage.id,
+              candidate.targetAccountId,
             )
           );
           return;
@@ -424,7 +418,7 @@ export function useCloudAgentAvailability({
       recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
       selfAgentFallbackBeforeMs,
     }).filter(
-      (claim) => !claimedRunKeysRef.current.has(claim.idempotencyKey),
+      (claim) => !claimCoordinatorRef.current.hasClaim(claim.idempotencyKey),
     );
     if (claims.length === 0) return;
     let cancelled = false;

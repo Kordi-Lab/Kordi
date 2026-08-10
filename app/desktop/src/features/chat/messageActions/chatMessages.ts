@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
-import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
+import { cloudCollaborationRouteIdForConversation, isCloudCollaborationConversationId } from '@/features/collaboration/conversationIds';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
+import { createCloudMessageOperationId } from '@/features/cloud/cloudMessageLifecycle';
 import {
   cloudGroupMessageSessionId,
   cloudGroupTargetAccountIds,
@@ -545,7 +545,7 @@ export function useChatMessageActions({
     resolvedCloudConversationIdForCollaborationSend(
       activeConvId,
       activeConvCanonicalSessionId,
-      activeConvCollaborationTarget?.nodeId,
+      activeConvCollaborationTarget?.nodeId, activeConvCollaborationTarget,
     );
   const lockedSupportAgentTarget = useMemo(() => (
     resolveLockedKordiSupportAgentTarget({
@@ -978,19 +978,19 @@ export function useChatMessageActions({
       }
       return;
     }
-
-    if (isCloudCollaborationConversationId(targetConversation.id)) {
+    const directCloudConversationId = cloudCollaborationRouteIdForConversation(targetConversation);
+    if (directCloudConversationId) {
       if (!sendCloudCollaborationMessage || !setCloudCollaborationState) {
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const optimisticMessageId = createCloudMessageOperationId('direct-user');
       try {
         shouldAutoFollowChatRef.current = true;
         setDesktopChatError(null);
         setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(
           current,
-          targetConversation.id,
+          directCloudConversationId,
           text,
           sentAt,
           optimisticMessageId,
@@ -1000,7 +1000,7 @@ export function useChatMessageActions({
         clearTargetDraft();
         setChatComposerAttachments([]);
         await sendCloudCollaborationMessage(
-          targetConversation.id,
+          directCloudConversationId,
           text,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
@@ -1008,7 +1008,7 @@ export function useChatMessageActions({
         setCloudCollaborationState(null);
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
-        setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
+        setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, directCloudConversationId, optimisticMessageId, failureDetail));
         setDesktopChatError(failureDetail);
       }
       return;
@@ -1449,7 +1449,7 @@ export function useChatMessageActions({
         return;
       }
       const sentAt = formatDesktopEventTime();
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const optimisticMessageId = createCloudMessageOperationId('direct-user');
       const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
       try {
         shouldAutoFollowChatRef.current = true;

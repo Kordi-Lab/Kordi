@@ -18,7 +18,7 @@ test('realtime read frames request a Cloud refresh', () => {
   );
 });
 
-test('realtime arrival frames preserve message metadata and direction', () => {
+test('realtime arrival frames request authoritative cursor sync', () => {
   assert.deepEqual(
     decodeCloudRealtimeMessageFrame(
       JSON.stringify({
@@ -36,20 +36,23 @@ test('realtime arrival frames preserve message metadata and direction', () => {
       }),
       'acct_self',
     ),
-    {
-      kind: 'message',
-      message: {
-        messageId: 'msg_1',
-        fromAccountId: 'acct_peer',
-        toAccountId: 'acct_self',
-        body: 'hello',
-        createdAt: '2026-07-29T12:00:00Z',
-        deliveredAt: '2026-07-29T12:00:01Z',
-        readAt: null,
-        direction: 'incoming',
-        sessionId: 'session_1',
-      },
-    },
+    { kind: 'refresh' },
+  );
+});
+
+test('transactional outbox frames request authoritative cursor sync', () => {
+  assert.deepEqual(
+    decodeCloudRealtimeMessageFrame(
+      JSON.stringify({
+        subject: 'kordi.events.sync.changed.acct_self',
+        payload: {
+          event_type: 'sync.changed',
+          event_id: '42',
+        },
+      }),
+      'acct_self',
+    ),
+    { kind: 'refresh' },
   );
 });
 
@@ -57,16 +60,6 @@ test('realtime decoder ignores unrelated and incomplete frames', () => {
   assert.equal(
     decodeCloudRealtimeMessageFrame(
       JSON.stringify({ subject: 'kordi.events.presence.changed' }),
-      'acct_self',
-    ),
-    null,
-  );
-  assert.equal(
-    decodeCloudRealtimeMessageFrame(
-      JSON.stringify({
-        subject: 'kordi.events.message.arrived.acct_self',
-        payload: { from_account_id: 'acct_peer' },
-      }),
       'acct_self',
     ),
     null,

@@ -81,10 +81,13 @@ impl EventBus {
         self.inner.as_ref().map(|inner| inner.client.clone())
     }
 
-    /// Publish `payload` on `subject`. Errors are intentionally swallowed
-    /// (logged to stderr) — the HTTP request that triggered this should
-    /// not fail just because the bus is briefly unavailable. When we
-    /// build the outbox in a later session, this becomes durable.
+    pub fn is_enabled(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    /// Publish a legacy best-effort UI notification. Durable state changes
+    /// also create `cloud_sync_events`; the transactional outbox below is the
+    /// recovery path when this compatibility notification is unavailable.
     async fn publish_raw(&self, subject: String, payload: Bytes) {
         let Some(inner) = self.inner.as_ref() else {
             return;
@@ -97,6 +100,39 @@ impl EventBus {
             }
             Err(err) => eprintln!("[events] publish {subject}: {err}"),
         }
+    }
+
+    /// Publish a durable sync-cursor wakeup from the Postgres outbox.
+    ///
+    /// Unlike legacy UI notifications, failures are returned to the caller so
+    /// the outbox can retry them. The JetStream message id suppresses a
+    /// duplicate publish inside the broker's configured duplicate window; the
+    /// cursor consumer remains idempotent outside that window as well.
+    pub async fn publish_sync_changed(&self, event: SyncChanged<'_>) -> Result<(), String> {
+        let Some(inner) = self.inner.as_ref() else {
+            return Err("NATS is not configured".to_string());
+        };
+        let payload = SyncChangedEvent {
+            event_type: "sync.changed",
+            event_id: event.event_id.to_string(),
+            account_id: event.account_id,
+            sync_event_type: event.sync_event_type,
+            message_id: event.message_id,
+            occurred_at: event.occurred_at,
+        };
+        let body = serde_json::to_vec(&payload)
+            .map(Bytes::from)
+            .map_err(|error| format!("serialize sync.changed: {error}"))?;
+        let subject = format!("kordi.events.sync.changed.{}", event.account_id);
+        let mut headers = async_nats::HeaderMap::new();
+        headers.insert("Nats-Msg-Id", format!("cloud-sync:{}", event.event_id));
+        let ack = inner
+            .js
+            .publish_with_headers(subject, headers, body)
+            .await
+            .map_err(|error| error.to_string())?;
+        ack.await.map_err(|error| error.to_string())?;
+        Ok(())
     }
 
     /// Fire `kordi.events.account.signed_up.<account_id>` with a small
@@ -272,6 +308,14 @@ pub struct MessageArrived<'a> {
     pub attachments: serde_json::Value,
 }
 
+pub struct SyncChanged<'a> {
+    pub event_id: i64,
+    pub account_id: &'a str,
+    pub sync_event_type: &'a str,
+    pub message_id: Option<&'a str>,
+    pub occurred_at: &'a str,
+}
+
 impl EventBus {
     /// Fire `kordi.events.message.arrived.<recipient_account_id>` with
     /// the minimum payload needed for a chat client to render the new
@@ -340,6 +384,16 @@ struct MessageArrivedEvent<'a> {
     created_at: &'a str,
     session_id: Option<&'a str>,
     attachments: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct SyncChangedEvent<'a> {
+    event_type: &'static str,
+    event_id: String,
+    account_id: &'a str,
+    sync_event_type: &'a str,
+    message_id: Option<&'a str>,
+    occurred_at: &'a str,
 }
 
 #[derive(Serialize)]
