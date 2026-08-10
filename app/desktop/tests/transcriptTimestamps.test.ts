@@ -17,13 +17,13 @@ function message(timestampMs: number | null, overrides: Partial<Message> = {}): 
   };
 }
 
-test('transcript separators follow the five-minute last-label rule', () => {
+test('transcript separators follow the thirty-minute last-label rule', () => {
   const start = Date.parse('2026-08-08T10:00:00.000Z');
   const messages = [
     message(start),
-    message(start + 4 * 60_000 + 59_000),
-    message(start + 5 * 60_000),
-    message(start + 5 * 60_000 + 1),
+    message(start + 29 * 60_000 + 59_000),
+    message(start + 30 * 60_000),
+    message(start + 30 * 60_000 + 1),
   ];
 
   assert.deepEqual(
@@ -32,11 +32,11 @@ test('transcript separators follow the five-minute last-label rule', () => {
       timeZone: 'UTC',
       locales: 'en-US',
     }),
-    ['10:00', null, null, '10:05'],
+    ['10:00', null, '10:30', null],
   );
 });
 
-test('transcript separators appear across a calendar change even inside five minutes', () => {
+test('transcript separators appear across a calendar change inside thirty minutes', () => {
   const messages = [
     message(Date.parse('2026-08-07T23:59:00.000Z')),
     message(Date.parse('2026-08-08T00:01:00.000Z')),
