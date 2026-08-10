@@ -253,4 +253,43 @@ mod loopback_transport_tests {
         );
         server.await.expect("server task");
     }
+
+    #[tokio::test]
+    async fn decodes_a_chunked_webkit_completion_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let address = listener.local_addr().expect("address");
+        let (tx, rx) = oneshot::channel();
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut sender = Some(tx);
+            assert!(handle_loopback_connection(stream, "cloud_oauth_chunked", &mut sender).await);
+        });
+
+        let mut client = TcpStream::connect(address).await.expect("connect");
+        client
+            .write_all(
+                b"POST /complete/cloud_oauth_chunked HTTP/1.1\r\n\
+                  Host: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+            )
+            .await
+            .expect("headers");
+        client
+            .write_all(b"12\r\n#kordi_cloud_oauth\r\n")
+            .await
+            .expect("first chunk");
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        client
+            .write_all(b"8\r\n=payload\r\n0\r\n\r\n")
+            .await
+            .expect("last chunk");
+
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).await.expect("response");
+        assert_eq!(
+            rx.await.expect("callback result").expect("fragment"),
+            "#kordi_cloud_oauth=payload"
+        );
+        server.await.expect("server task");
+    }
 }
