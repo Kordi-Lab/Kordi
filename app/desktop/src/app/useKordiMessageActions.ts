@@ -3,7 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { cloudGroupMessageSessionId, cloudGroupTargetAccountIds } from '@/features/cloud/cloudGroupMessages';
-import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
+import { cloudCollaborationRouteIdForConversation } from '@/features/collaboration/conversationIds';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import type { UseCloudCollaborationStateResult } from '@/features/cloud/useCloudCollaborationState';
@@ -244,11 +244,12 @@ export function useKordiMessageActions({
     setForwardDialog(null);
     onCancelMessageSelection();
     const directCloudConversationId =
-      isCloudCollaborationConversationId(destination.conversationId)
-        ? destination.conversationId
-        : null;
+      cloudCollaborationRouteIdForConversation(destinationConversation);
     if (directCloudConversationId) {
-      setActiveConversationId(directCloudConversationId);
+      setActiveConversationId(
+        destinationConversation.canonicalSessionId
+          ?? destinationConversation.id,
+      );
       void (async () => {
         for (const draft of drafts) {
           const attachments = await prepareCloudForwardAttachments(
@@ -266,7 +267,10 @@ export function useKordiMessageActions({
             attachments,
           );
         }
-        revealForward(directCloudConversationId);
+        revealForward(
+          destinationConversation.canonicalSessionId
+            ?? destinationConversation.id,
+        );
       })().catch((error: unknown) => {
         setDesktopChatError(
           error instanceof Error

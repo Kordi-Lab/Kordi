@@ -9,8 +9,8 @@ use kordi_cloud_agent_runner::client::{
     ProviderAuthMaterial, RunnerClientError,
 };
 use kordi_cloud_agent_runner::model_loop::{
-    run_model_loop, tool_catalog, CloudModelProvider, ModelProviderResponse, ModelToolCall,
-    OpenAiProviderConfig,
+    run_model_loop, tool_catalog, CloudModelProvider, CloudProviderConfig, ModelProviderResponse,
+    ModelToolCall,
 };
 use kordi_cloud_agent_runner::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
@@ -94,7 +94,7 @@ impl FakeProvider {
 impl CloudModelProvider for FakeProvider {
     async fn next_response(
         &self,
-        _auth: &OpenAiProviderConfig,
+        _auth: &CloudProviderConfig,
         messages: &[Value],
         _tools: &[Value],
     ) -> Result<ModelProviderResponse, kordi_cloud_agent_runner::model_loop::ModelLoopError> {

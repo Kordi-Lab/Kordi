@@ -29,11 +29,15 @@ test('desktop entry point uses the canonical three-circle Kordi favicon', () => 
 test('self-contained OAuth pages embed the same Kordi favicon', () => {
   const desktopCallback = readDesktopSource('src-tauri/src/cloud_oauth_loopback.rs');
   const cliCallback = readRepositorySource('agent/crates/cli/src/oauth/callback_server.rs');
+  const sharedCallbackPage = readRepositorySource('agent/crates/cli/src/oauth/callback_page.rs');
+  const sharedFavicon = faviconDataUrl(sharedCallbackPage);
 
-  assert.equal(faviconDataUrl(desktopCallback), faviconDataUrl(cliCallback));
-  assert.match(faviconDataUrl(desktopCallback), /%3Ccircle cx='18' cy='10' r='9'/);
-  assert.match(faviconDataUrl(desktopCallback), /fill='%231a1714'/);
-  assert.doesNotMatch(faviconDataUrl(desktopCallback), /^https?:/);
+  assert.match(desktopCallback, /KORDI_FAVICON_DATA_URL/);
+  assert.match(desktopCallback, /kordi_callback_page_css/);
+  assert.match(cliCallback, /render_kordi_callback_page/);
+  assert.match(sharedFavicon, /%3Ccircle cx='18' cy='10' r='9'/);
+  assert.match(sharedFavicon, /fill='%231a1714'/);
+  assert.doesNotMatch(sharedFavicon, /^https?:/);
 });
 
 test('hosted invitation pages reuse the homepage favicon asset', () => {

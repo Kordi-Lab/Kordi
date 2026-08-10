@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod callback_page;
 pub mod callback_server;
 pub mod github_copilot;
 pub mod openai_codex;

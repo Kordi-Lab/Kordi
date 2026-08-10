@@ -47,3 +47,24 @@ test('legacy support selection sends through its scoped system-agent conversatio
     'cloud:conversation:acct_peer:person',
   );
 });
+
+test('canonical Cloud session selection rebuilds only its hidden Cloud transport route', () => {
+  assert.equal(
+    resolvedCloudConversationIdForCollaborationSend(
+      'session:self-agent:abc',
+      'session:self-agent:abc',
+      'acct_me',
+      { hostId: 'cloud', runtime: 'kordi-desktop' },
+    ),
+    'cloud:conversation:acct_me:agent:session:session%3Aself-agent%3Aabc',
+  );
+  assert.equal(
+    resolvedCloudConversationIdForCollaborationSend(
+      'session:bridge:humans:abc',
+      'session:bridge:humans:abc',
+      'node_peer',
+      { hostId: 'bridge-host', runtime: 'person' },
+    ),
+    'session:bridge:humans:abc',
+  );
+});

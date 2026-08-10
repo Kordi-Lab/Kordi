@@ -88,6 +88,29 @@ export function isCloudCollaborationConversationId(
   return Boolean(conversationId && conversationParts(conversationId));
 }
 
+export function cloudCollaborationRouteIdForConversation(conversation: {
+  id?: string | null;
+  canonicalSessionId?: string | null;
+  collaborationTarget?: {
+    hostId?: string | null;
+    nodeId?: string | null;
+    runtime?: string | null;
+  } | null;
+}): string | null {
+  const currentId = conversation.id?.trim() ?? '';
+  if (isCloudCollaborationConversationId(currentId)) return currentId;
+  const target = conversation.collaborationTarget;
+  if (target?.hostId !== CLOUD_HOST_SENTINEL) return null;
+  const peerAccountId = target.nodeId?.trim() ?? '';
+  if (!peerAccountId) return null;
+  const canonicalSessionId = conversation.canonicalSessionId?.trim() ?? '';
+  return cloudCollaborationConversationId(
+    peerAccountId,
+    target.runtime ?? 'person',
+    canonicalSessionId.startsWith('session:') ? canonicalSessionId : null,
+  );
+}
+
 export function cloudDirectPersonSessionId(
   localAccountId: string,
   peerAccountId: string,

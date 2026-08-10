@@ -27,10 +27,10 @@ test('canonical Cloud chat selection does not invoke native desktop chat reload'
   assert.notEqual(handlerStart, -1, 'expected chat selection handler');
   assert.notEqual(handlerEnd, -1, 'expected end of chat selection handler');
   const handler = source.slice(handlerStart, handlerEnd);
-  const cloudGuardIndex = handler.indexOf('isCanonicalCloudSessionId(sessionId)');
+  const cloudGuardIndex = handler.indexOf('isCanonicalSessionId(sessionId)');
   const refreshIndex = handler.indexOf('await refreshDesktopChat(sessionId)');
 
-  assert.notEqual(cloudGuardIndex, -1, 'canonical Cloud session ids need a local-only selection fast path');
+  assert.notEqual(cloudGuardIndex, -1, 'all canonical session ids need a local-only selection fast path');
   assert.notEqual(refreshIndex, -1, 'local runtime session ids should still refresh native desktop chat');
   assert.ok(
     cloudGuardIndex < refreshIndex,

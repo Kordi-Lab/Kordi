@@ -1100,7 +1100,7 @@ export function useWorkspaceViewModels({
   }, [desktopCollaborationState]);
 
   const activeCollaborationConversation = useMemo(
-    () => (desktopCollaborationState?.conversations ?? []).find((conversation) => conversation.id === activeConvId) ?? null,
+    () => (desktopCollaborationState?.conversations ?? []).find((conversation) => conversation.id === activeConvId || conversation.canonicalSessionId === activeConvId) ?? null,
     [activeConvId, desktopCollaborationState?.conversations],
   );
 

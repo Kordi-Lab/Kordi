@@ -13,6 +13,7 @@ import {
   cloudSystemAgentSessionId,
   isCloudCollaborationConversationId,
 } from '../src/features/cloud/cloudCollaborationState';
+import { cloudCollaborationRouteIdForConversation } from '../src/features/collaboration/conversationIds';
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
 import { cloudGroupForkPayloadFromSessionMetadata } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
@@ -282,6 +283,15 @@ test('Cloud collaboration ids are neutral while legacy Bridge ids remain readabl
   assert.equal(cloudSessionIdFromConversationId('bridge:cloud:acct_peer:session:session%3Aself'), 'session:self');
   assert.equal(isCloudCollaborationConversationId('bridge:cloud:acct_peer:person'), true);
   assert.equal(isCloudCollaborationConversationId('bridge:local:node:person'), false);
+  assert.equal(cloudCollaborationRouteIdForConversation({
+    id: 'session:self-agent:abc',
+    canonicalSessionId: 'session:self-agent:abc',
+    collaborationTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_me',
+      runtime: 'kordi-desktop',
+    },
+  }), 'cloud:conversation:acct_me:agent:session:session%3Aself-agent%3Aabc');
 });
 
 test('a fresh account keeps Kordi Support available without synthesizing chat activity', () => {

@@ -1,3 +1,4 @@
+mod cloud_provider_snapshot;
 pub mod lm_studio;
 mod local_providers;
 pub mod ollama;
@@ -6,7 +7,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use serde_json::json;
 use tauri::State;
 
 #[derive(Clone, Serialize)]
@@ -357,50 +357,10 @@ pub fn desktop_cloud_provider_auth_snapshot_payload(
         None => kordi_cli::login::resolve_provider_auth(provider)
             .ok_or_else(|| format!("Could not resolve local auth for {provider}"))?,
     };
-    let model = cloud_provider_auth_snapshot_model(model.as_deref());
-
-    let (provider, auth_choice, payload) = match auth.method {
-        kordi_cli::login::ProviderAuthMethod::ApiKey => (
-            auth.credential_provider.clone(),
-            "local-active-api-key".to_string(),
-            json!({
-                "apiKey": auth.credential,
-                "model": model,
-            }),
-        ),
-        kordi_cli::login::ProviderAuthMethod::OAuth => {
-            if auth.credential_provider != "openai-codex" {
-                return Err(format!(
-                    "Cloud fallback provider-auth sync only supports OpenAI Codex OAuth right now; resolved {}",
-                    auth.credential_provider
-                ));
-            }
-            (
-                "openai-codex".to_string(),
-                "local-active-oauth".to_string(),
-                json!({
-                    "apiMode": "openai-codex-oauth",
-                    "accessToken": auth.credential,
-                    "accountId": auth.account_id,
-                    "model": model,
-                }),
-            )
-        }
-    };
-
-    Ok(json!({
-        "provider": provider,
-        "authChoice": auth_choice,
-        "payload": payload,
-    }))
-}
-
-fn cloud_provider_auth_snapshot_model(model: Option<&str>) -> String {
-    model
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID)
-        .to_string()
+    cloud_provider_snapshot::payload_from_resolved(
+        auth,
+        cloud_provider_snapshot::snapshot_model(model.as_deref()),
+    )
 }
 
 #[tauri::command]
@@ -696,18 +656,4 @@ pub async fn desktop_cancel_auth_attempt(
         state.succeeded = false;
     });
     snapshot_attempt(&attempt.snapshot)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cloud_provider_auth_snapshot_model;
-
-    #[test]
-    fn cloud_auth_snapshot_uses_root_openai_default() {
-        assert_eq!(cloud_provider_auth_snapshot_model(None), "gpt-5.6-sol");
-        assert_eq!(
-            cloud_provider_auth_snapshot_model(Some("gpt-5.4")),
-            "gpt-5.4"
-        );
-    }
 }

@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   activateDesktopCloudAccountStorage,
-  openDesktopExternalUrl,
   prepareDesktopCloudOAuthLoopback,
-  waitForDesktopCloudOAuthLoopback,
   type DesktopCloudAccountStorageActivation,
 } from '@/lib/desktop';
 
@@ -15,7 +13,6 @@ import {
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
-  parseCloudOAuthHashError,
   type CloudAccount,
   type CloudAuthResult,
   type CloudOAuthProvider,
@@ -23,6 +20,7 @@ import {
 } from './authClient';
 import { applyCloudSessionProfileUpdate, cloudAccountsEqual } from './cloudAccountState';
 import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
+import { completeDesktopCloudOAuthLoopback } from './cloudOAuthLoopback';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
   CLOUD_SESSION_SIGNED_OUT_EVENT,
@@ -382,17 +380,7 @@ export function useCloudSession({
       try {
         const loopback = await prepareDesktopCloudOAuthLoopback();
         if (loopback) {
-          const result = await authClient.startOAuth(provider, loopback.redirectUrl);
-          await openDesktopExternalUrl(result.authUrl);
-          const fragment = await waitForDesktopCloudOAuthLoopback(loopback.requestId);
-          const oauthError = parseCloudOAuthHashError(fragment);
-          if (oauthError) {
-            throw new CloudAuthError('unknown', oauthError, 0);
-          }
-          const oauthResult = parseCloudOAuthHashResult(fragment);
-          if (!oauthResult) {
-            throw new CloudAuthError('unknown', 'OAuth sign-in did not return a valid Kordi session.', 0);
-          }
+          const oauthResult = await completeDesktopCloudOAuthLoopback(authClient, provider, loopback);
           await completeCloudAuthResult({
             result: oauthResult,
             currentAccountId: accountIdRef.current,

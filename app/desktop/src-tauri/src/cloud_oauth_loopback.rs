@@ -8,7 +8,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 
-const KORDI_FAVICON_DATA_URL: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='10' r='9' fill='%231a1714' fill-opacity='.62'/%3E%3Ccircle cx='11' cy='22' r='9' fill='%231a1714' fill-opacity='.82'/%3E%3Ccircle cx='25' cy='22' r='9' fill='%231a1714'/%3E%3C/svg%3E";
+use kordi_cli::oauth::callback_page::{
+    kordi_callback_brand_html, kordi_callback_page_css, KORDI_FAVICON_DATA_URL,
+};
 
 #[derive(Default)]
 pub struct CloudOAuthLoopbackState {
@@ -334,14 +336,7 @@ fn completion_page_html(request_id: &str) -> String {
   <div class="page">
     <header>
       <div class="wrap">
-        <div class="brand" aria-label="Kordi">
-          <svg viewBox="0 0 36 36" aria-hidden="true">
-            <circle cx="18" cy="10" r="9" fill="currentColor" opacity=".62"></circle>
-            <circle cx="11" cy="22" r="9" fill="currentColor" opacity=".82"></circle>
-            <circle cx="25" cy="22" r="9" fill="currentColor"></circle>
-          </svg>
-          <span>kordi</span>
-        </div>
+        {brand}
       </div>
     </header>
     <main class="wrap" role="status" aria-live="polite">
@@ -363,106 +358,27 @@ fn completion_page_html(request_id: &str) -> String {
         style = completion_page_css(),
         script = completion_page_script(request_id),
         favicon = KORDI_FAVICON_DATA_URL,
+        brand = kordi_callback_brand_html(),
     )
 }
 
 // This callback is served by a short-lived loopback listener, so it must remain
 // self-contained. Its visual language mirrors Kordi's public web surfaces
 // without loading external fonts or assets.
-fn completion_page_css() -> &'static str {
-    r#"
-    :root {
-      color-scheme: light dark;
-      --paper: #faf9f7;
-      --ink: #1a1714;
-      --ink-muted: #655e56;
-      --footer-ink: #81786f;
-      --rule: rgba(26, 23, 20, .09);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { min-height: 100%; margin: 0; }
-    body {
-      min-height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      color: var(--ink);
-      background: var(--paper);
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      text-rendering: geometricPrecision;
-    }
-
-    .page {
-      min-height: 100vh;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-    }
-    .wrap { width: min(calc(100% - 4.25rem), 520px); margin-inline: auto; }
-    header { min-height: 68px; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }
-    header .wrap { width: min(calc(100% - 4.25rem), 1312px); }
-    .brand {
-      width: fit-content;
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      color: var(--ink);
-      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-      font-size: 24px;
-      line-height: 1;
-    }
-    .brand svg { width: 30px; height: 30px; flex: 0 0 auto; }
-    main { display: flex; align-items: center; padding-block: 3.5rem 4.5rem; }
-    .copy { width: 100%; }
-    h1 {
-      display: none;
-      max-width: 11ch;
-      margin: 0;
-      color: var(--ink);
-      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-      font-size: clamp(48px, 8vw, 72px);
-      font-weight: 400;
-      line-height: .98;
-      letter-spacing: -.035em;
-      text-wrap: balance;
-    }
-    p {
-      display: none;
-      max-width: 43ch;
-      margin: 18px 0 0;
-      color: var(--ink-muted);
-      font-size: 15px;
-      line-height: 1.65;
-      text-wrap: balance;
-    }
+fn completion_page_css() -> String {
+    format!(
+        "{}{}",
+        kordi_callback_page_css(),
+        r#"
+    .copy > h1, .copy > p { display: none; }
     [data-status="loading"] [data-title-loading],
     [data-status="loading"] [data-sub-loading],
     [data-status="success"] [data-title-success],
     [data-status="success"] [data-sub-success],
     [data-status="error"]   [data-title-error],
     [data-status="error"]   [data-sub-error] { display: block; }
-    footer {
-      padding: 16px 34px 18px;
-      border-top: 1px solid var(--rule);
-      color: var(--footer-ink);
-      font-size: 11px;
-      text-align: center;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --paper: #191814;
-        --ink: #f2efe9;
-        --ink-muted: #b8b0a7;
-        --footer-ink: #938b82;
-        --rule: rgba(242, 239, 233, .09);
-      }
-    }
-    @media (max-width: 520px) {
-      .wrap, header .wrap { width: calc(100% - 3.5rem); }
-      main { align-items: flex-start; padding-block: 5.5rem 3.5rem; }
-      h1 { font-size: clamp(48px, 16vw, 62px); }
-    }
-    "#
+    "#,
+    )
 }
 
 fn completion_page_script(request_id: &str) -> String {

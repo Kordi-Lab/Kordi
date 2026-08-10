@@ -1,7 +1,7 @@
 use crate::client::{CloudAgentRunClient, RunnerClientError};
 use crate::config::{sandbox_backend_mode_from_env, SandboxBackendMode};
 use crate::lease_heartbeat::run_with_heartbeat;
-use crate::model_loop::{CloudModelProvider, OpenAiCompatibleProvider};
+use crate::model_loop::{CloudModelProvider, ConfiguredCloudProvider};
 use crate::sandbox_backend::sandbox_backend_for_run;
 use std::path::PathBuf;
 
@@ -68,7 +68,7 @@ fn scheduled_reminder_response_text(prompt: &str) -> Option<String> {
 pub async fn process_one_run<C: CloudAgentRunClient + Sync>(
     client: &C,
 ) -> Result<RunnerStepOutcome, RunnerClientError> {
-    let provider = OpenAiCompatibleProvider::default();
+    let provider = ConfiguredCloudProvider::default();
     let sandbox_root = std::env::var("KORDI_CLOUD_SANDBOX_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::temp_dir().join("kordi-cloud-runner-sandbox"));
@@ -176,7 +176,7 @@ mod tests {
     use super::*;
     use crate::client::CloudAgentRun;
     use crate::model_loop::{
-        CloudModelProvider, ModelLoopError, ModelProviderResponse, OpenAiProviderConfig,
+        CloudModelProvider, CloudProviderConfig, ModelLoopError, ModelProviderResponse,
     };
     use async_trait::async_trait;
     use serde_json::Value;
@@ -197,7 +197,7 @@ mod tests {
     impl CloudModelProvider for FakeModelProvider {
         async fn next_response(
             &self,
-            _auth: &OpenAiProviderConfig,
+            _auth: &CloudProviderConfig,
             _messages: &[Value],
             _tools: &[Value],
         ) -> Result<ModelProviderResponse, ModelLoopError> {

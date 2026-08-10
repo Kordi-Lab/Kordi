@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { composerAttachmentItemFromStoredPath, composerConfigTargetSessionId } from '../src/features/chat/useComposerInputActions';
+import { composerAttachmentItemFromStoredPath } from '../src/features/chat/useComposerInputActions';
+import { composerConfigTargetSessionId } from '../src/features/chat/composerConfigTarget';
 import * as composerInputActions from '../src/features/chat/useComposerInputActions';
 import { localAgentComposerConfigTargetSessionId } from '../src/pages/ChatsPage';
 
@@ -24,6 +25,7 @@ test('isolated companion config updates preserve the active main desktop state',
 test('composer config routing does not target canonical Cloud direct or group sessions', () => {
   assert.equal(composerConfigTargetSessionId({
     scope: 'chat',
+    activeConversationUsesCollaboration: true,
     activeConvId: 'session:direct-person:acct_me:acct_peer',
     activeConvCanonicalSessionId: 'session:direct-person:acct_me:acct_peer',
     activeProjectSessionId: 'project-session',
@@ -32,6 +34,7 @@ test('composer config routing does not target canonical Cloud direct or group se
 
   assert.equal(composerConfigTargetSessionId({
     scope: 'chat',
+    activeConversationUsesCollaboration: true,
     activeConvId: 'session:group:cloud-child',
     activeConvCanonicalSessionId: 'session:group:cloud-child',
     activeProjectSessionId: 'project-session',
@@ -73,6 +76,7 @@ test('composer path image attachments include a compressed preview for optimisti
 test('composer config routing still targets local chat and project sessions', () => {
   assert.equal(composerConfigTargetSessionId({
     scope: 'chat',
+    activeConversationUsesCollaboration: false,
     activeConvId: 'local-agent-session',
     activeConvCanonicalSessionId: 'local-agent-session',
     activeProjectSessionId: 'project-session',
@@ -81,11 +85,23 @@ test('composer config routing still targets local chat and project sessions', ()
 
   assert.equal(composerConfigTargetSessionId({
     scope: 'project',
+    activeConversationUsesCollaboration: true,
     activeConvId: 'session:group:cloud-child',
     activeConvCanonicalSessionId: 'session:group:cloud-child',
     activeProjectSessionId: 'project-session',
     desktopActiveSessionId: 'local-agent-session',
   }), 'project-session');
+});
+
+test('composer config routing never treats a collaboration self-agent session as local runtime state', () => {
+  assert.equal(composerConfigTargetSessionId({
+    scope: 'chat',
+    activeConversationUsesCollaboration: true,
+    activeConvId: 'session:self-agent:cloud-owned-agent',
+    activeConvCanonicalSessionId: 'session:self-agent:cloud-owned-agent',
+    activeProjectSessionId: 'project-session',
+    desktopActiveSessionId: 'local-agent-session',
+  }), null);
 });
 
 test('local agent composer config targets the canonical runtime session when available', () => {
