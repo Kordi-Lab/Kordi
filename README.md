@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://github.com/Kordi-AI/Kordi/releases"><img src="https://img.shields.io/badge/release-beta-111111?style=flat-square" alt="Beta releases"></a>
   <img src="https://img.shields.io/badge/platform-macOS-111111?style=flat-square" alt="macOS">
+  <img src="https://img.shields.io/badge/platform-iPhone-111111?style=flat-square" alt="iPhone">
   <img src="https://img.shields.io/badge/desktop-Tauri%20%2B%20React-111111?style=flat-square" alt="Tauri and React">
 </p>
 
@@ -28,7 +29,7 @@
 
 AI assistants are usually designed as private, one-person tools. Collaboration is not. Real work happens in shared conversations—with teammates, decisions, context, and different agents that can help at the right moment.
 
-Kordi treats AI as a participant in the conversation. People can chat one-to-one or in groups, bring personal agents into the same shared space, and keep the experience synchronized through a native desktop app.
+Kordi treats AI as a participant in the conversation. People can chat one-to-one or in groups, bring personal agents into the same shared space, and keep the experience synchronized through native desktop and iPhone apps.
 
 | | |
 | --- | --- |
@@ -90,6 +91,7 @@ For prerequisites, multi-user testing, logs, troubleshooting, and cleanup, follo
 ```mermaid
 flowchart LR
     desktop["Kordi Desktop<br/>React + Tauri"] --> api["Hosted API"]
+    iphone["Kordi for iPhone<br/>SwiftUI"] --> api
     api --> social["Accounts, contacts,<br/>chats, groups & sync"]
     api --> runner["Hosted agent runner"]
     runner --> execution["Sandbox, model loop,<br/>tools & artifacts"]
@@ -100,6 +102,7 @@ The repository contains the complete product stack:
 ```text
 kordi/
   app/desktop/                 # React + Tauri desktop application
+  app/ios/                     # Native SwiftUI iPhone application
   bridges/cloud-server/        # Auth, chat, sync, and runner coordination API
   bridges/cloud-agent-runner/  # Hosted agent execution and sandboxing
   agent/                       # Shared agent/runtime internals
@@ -118,6 +121,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | Start the isolated backend | `pnpm debug:cloud:up` |
 | Check the isolated backend | `pnpm debug:cloud:smoke` |
 | Start Kordi Desktop | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev` |
+| Test Kordi for iPhone | `xcodebuild -project app/ios/Kordi.xcodeproj -scheme Kordi -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test` |
 | Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev:cloud:multi -- --reset --users user1,user2` |
 | Build the desktop package | `pnpm build:desktop` |
 | Build the web UI | `pnpm build:web` |
@@ -132,6 +136,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | [Community contributor guide](docs/community-contributor-guide.md) | Contribution areas, issues, safe setup, testing, bug reports, and review expectations |
 | [Local development](docs/self-hosted-debug.md) | Isolated Docker backend, desktop launch, multi-user testing, safety, and cleanup |
 | [Run Kordi Desktop](docs/run-cloud-desktop.md) | Local startup, API selection, multi-user testing, and troubleshooting |
+| [Develop Kordi for iPhone](docs/ios-development.md) | Xcode setup, previews, tests, physical devices, architecture, and TestFlight |
 | [Development commands](docs/development.md) | Full command map and package-specific workflows |
 | [Architecture](docs/architecture.md) | Product topology and layer responsibilities |
 | [Hosted cloud guide](docs/hosted-cloud-developer-guide.md) | Hosted testing, deployment, and redaction rules |
@@ -142,4 +147,4 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 
 Contributions start with a GitHub issue and land through a reviewed pull request. If this is your first Kordi contribution, read the [community contributor guide](docs/community-contributor-guide.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for the detailed branch workflow, validation commands, and PR checklist.
 
-Kordi currently targets macOS and is in beta. Product behavior, hosted interfaces, and contributor workflows may evolve as the project approaches a stable release.
+Kordi currently targets macOS and iPhone and is in beta. Product behavior, hosted interfaces, and contributor workflows may evolve as the project approaches a stable release.

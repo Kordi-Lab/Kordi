@@ -67,6 +67,32 @@ pnpm build:web
 
 The web preview is for frontend iteration only. Native Tauri behavior, keychain/session storage, OAuth loopback, and packaged updater behavior require a Tauri run/build.
 
+## iPhone app
+
+The native SwiftUI client lives in `app/ios`, targets iOS 17 and later, and uses `app/ios/project.yml` as the XcodeGen source of truth.
+
+```bash
+cd app/ios
+xcodegen generate
+open Kordi.xcodeproj
+```
+
+Run the simulator test suite from the repository root:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+xcodebuild \
+  -project app/ios/Kordi.xcodeproj \
+  -scheme Kordi \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -derivedDataPath .build/ios \
+  test
+```
+
+Use `--preview-data` for deterministic, network-free UI work. Physical-device and TestFlight builds require a locally selected Apple Development team; the repository does not store contributor signing identities.
+
+See [`ios-development.md`](ios-development.md) for setup, preview arguments, architecture, physical-device deployment, production boundaries, and TestFlight.
+
 ## Internal runtime/tooling commands
 
 These commands remain for internal runtime, runner, and infrastructure development. They are not the default product quick start.
@@ -94,6 +120,7 @@ pnpm check
 ```
 
 For hosted desktop debugging, multi-user sync checks, and operator tunnel rules, see [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md).
+For native iPhone development, see [`ios-development.md`](ios-development.md).
 For the isolated Docker backend and contributor access model, see [`self-hosted-debug.md`](self-hosted-debug.md).
 For community contribution areas, issue preparation, and review expectations, see [`community-contributor-guide.md`](community-contributor-guide.md).
 For Rust artifact size notes and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
