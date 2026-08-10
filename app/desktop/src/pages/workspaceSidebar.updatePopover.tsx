@@ -52,7 +52,7 @@ function updateDialogTitle(state: DesktopUpdaterState) {
 }
 
 type SidebarUpdatePopoverProps = {
-  anchor: { left: number; top: number } | null;
+  anchor: { left: number; bottom: number } | null;
   popoverRef: RefObject<HTMLDivElement | null>;
   state: DesktopUpdaterState;
   canInstall: boolean;
@@ -80,7 +80,7 @@ export function SidebarUpdatePopover({
       style={{
         position: 'fixed',
         left: anchor.left,
-        top: anchor.top,
+        bottom: anchor.bottom,
         zIndex: 180,
       }}
       className={cn(

@@ -194,16 +194,17 @@ test('WorkspaceSidebar hides group-derived fork unread from the contact tab and 
   assert.doesNotMatch(markup, /data-unread-scope="participant-space" data-unread-count="1"/);
 });
 
-test('WorkspaceSidebar shows Bridge message sync progress inline in the chats subtitle', () => {
+test('WorkspaceSidebar shows icon-only Bridge message sync progress beside the Chats title', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     isCollaborationSyncing: true,
   }) as never));
 
-  assert.match(markup, /2 total/);
-  assert.match(markup, /syncing…/);
+  assert.doesNotMatch(markup, /2 total/);
   assert.match(markup, /data-collaboration-sync-status="syncing"/);
-  assert.match(markup, /app-collaboration-sync-dot/);
-  assert.doesNotMatch(markup, /Syncing messages/);
+  assert.match(markup, /app-collaboration-sync-arc/);
+  assert.match(markup, /aria-label="Messages are syncing"/);
+  assert.doesNotMatch(markup, /app-collaboration-sync-label/);
+  assert.doesNotMatch(markup, />syncing…</);
   assert.doesNotMatch(markup, /pulling missed Bridge updates/);
 });
 
@@ -238,7 +239,7 @@ test('Cloud self-agent reachouts stay in the contact chat rail instead of routin
   })), false);
 });
 
-test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () => {
+test('WorkspaceSidebar hides collaboration status entirely when idle', () => {
   const caughtUpConversations = [
     conversation({ id: 'chat-1', name: 'Alice', unread: 0 }),
     conversation({ id: 'chat-2', name: 'Bob', unread: 0 }),
@@ -248,8 +249,21 @@ test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () =
     isCollaborationSyncing: false,
   }) as never));
 
-  assert.match(markup, /2 total/);
-  assert.match(markup, /all caught up/);
-  assert.match(markup, /data-collaboration-sync-status="idle"/);
+  assert.doesNotMatch(markup, /2 total/);
+  assert.doesNotMatch(markup, /all caught up/);
+  assert.doesNotMatch(markup, /data-collaboration-sync-status/);
   assert.doesNotMatch(markup, /syncing…/);
+});
+
+test('WorkspaceSidebar shows a red broken-orbit status when collaboration sync is unavailable', () => {
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    isCollaborationSyncing: true,
+    isCollaborationSyncUnavailable: true,
+  }) as never));
+
+  assert.match(markup, /data-collaboration-sync-status="unavailable"/);
+  assert.match(markup, /aria-label="Messages cannot sync right now"/);
+  assert.match(markup, /M5\.2 3\.3a5\.4 5\.4 0 0 1 7\.5 2\.3/);
+  assert.doesNotMatch(markup, /app-collaboration-sync-arc/);
+  assert.doesNotMatch(markup, /data-collaboration-sync-status="syncing"/);
 });

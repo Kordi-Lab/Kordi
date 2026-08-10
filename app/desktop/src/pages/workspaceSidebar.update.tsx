@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { SidebarUpdatePopover } from '@/pages/workspaceSidebar.updatePopover';
 import { desktopUpdateButtonPresentation } from '@/pages/workspaceSidebar.updatePresentation';
 
-type SidebarUpdaterProps = {
+export type SidebarUpdaterProps = {
   isNativeShell: boolean;
   onCheckForUpdates?: () => Promise<DesktopUpdaterState>;
   onInstallUpdate?: () => Promise<void>;
@@ -37,7 +37,7 @@ export function SidebarUpdater({
   const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
   const [updateConfirmAnchor, setUpdateConfirmAnchor] = useState<{
     left: number;
-    top: number;
+    bottom: number;
   } | null>(null);
   const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
   const buttonPresentation = desktopUpdateButtonPresentation(
@@ -116,9 +116,9 @@ export function SidebarUpdater({
     setUpdateConfirmAnchor({
       left: Math.max(
         12,
-        Math.min(rect.right - popoverWidth, window.innerWidth - popoverWidth - 12),
+        Math.min(rect.right + 8, window.innerWidth - popoverWidth - 12),
       ),
-      top: rect.bottom + 8,
+      bottom: Math.max(12, window.innerHeight - rect.bottom),
     });
   }, [updateState.status]);
 
@@ -201,7 +201,7 @@ export function SidebarUpdater({
         disabled={buttonPresentation.disabled}
         data-update-status={updateState.status}
         className={cn(
-          'app-update-logo-button app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition',
+          'app-update-logo-button app-update-rail-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-[14px] p-0',
           (updateState.status === 'checking' || isUpdateCheckPending)
             && 'cursor-wait opacity-80',
         )}
@@ -211,7 +211,7 @@ export function SidebarUpdater({
       >
         <RefreshCw
           className={cn(
-            'h-4 w-4 stroke-[2.2]',
+            'h-[18px] w-[18px] stroke-[1.9]',
             buttonPresentation.isSpinning && 'animate-spin',
           )}
           aria-hidden="true"
