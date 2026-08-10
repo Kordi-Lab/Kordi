@@ -1,0 +1,183 @@
+import Foundation
+
+struct CloudGroupParticipant: Codable, Hashable, Identifiable {
+    let accountId: String
+    let displayName: String
+    let avatarUrl: String?
+    let role: String?
+
+    var id: String { accountId }
+}
+
+struct CloudGroupMessagePayload: Codable, Hashable {
+    let id: String
+    let senderAccountId: String
+    let text: String
+    let createdAtMs: Double
+    let senderKind: String?
+    let senderDisplayName: String?
+    let deliveryState: String?
+    let replyToMessageId: String?
+    let requestId: String?
+    let attachments: [CloudMessageAttachment]?
+    let messageAction: MessageActionMetadata?
+    let targetCloudAgentId: String?
+    let targetCloudAgentName: String?
+    let targetCloudAgentOwnerAccountId: String?
+    let targetCloudAgentOwnerName: String?
+    let agentRuntimeRoute: CloudModelRouting?
+
+    init(
+        id: String,
+        senderAccountId: String,
+        text: String,
+        createdAtMs: Double,
+        senderKind: String?,
+        senderDisplayName: String?,
+        deliveryState: String?,
+        replyToMessageId: String?,
+        requestId: String?,
+        attachments: [CloudMessageAttachment]? = nil,
+        messageAction: MessageActionMetadata? = nil,
+        targetCloudAgentId: String? = nil,
+        targetCloudAgentName: String? = nil,
+        targetCloudAgentOwnerAccountId: String? = nil,
+        targetCloudAgentOwnerName: String? = nil,
+        agentRuntimeRoute: CloudModelRouting? = nil
+    ) {
+        self.id = id
+        self.senderAccountId = senderAccountId
+        self.text = text
+        self.createdAtMs = createdAtMs
+        self.senderKind = senderKind
+        self.senderDisplayName = senderDisplayName
+        self.deliveryState = deliveryState
+        self.replyToMessageId = replyToMessageId
+        self.requestId = requestId
+        self.attachments = attachments
+        self.messageAction = messageAction
+        self.targetCloudAgentId = targetCloudAgentId
+        self.targetCloudAgentName = targetCloudAgentName
+        self.targetCloudAgentOwnerAccountId = targetCloudAgentOwnerAccountId
+        self.targetCloudAgentOwnerName = targetCloudAgentOwnerName
+        self.agentRuntimeRoute = agentRuntimeRoute
+    }
+}
+
+struct CloudGroupForkPayload: Codable, Hashable {
+    let forkSessionId: String
+    let parentSessionId: String
+    let parentMessageId: String?
+    let createdAtMs: Double?
+}
+
+struct CloudGroupControlEnvelope: Codable, Hashable {
+    let kind: String
+    let groupId: String
+    let groupSpaceId: String?
+    let groupTitle: String?
+    let createdByAccountId: String
+    let actor: CloudGroupParticipant
+    let participants: [CloudGroupParticipant]
+    let fork: CloudGroupForkPayload?
+    let message: CloudGroupMessagePayload?
+
+    init(
+        kind: String,
+        groupId: String,
+        groupSpaceId: String?,
+        groupTitle: String?,
+        createdByAccountId: String,
+        actor: CloudGroupParticipant,
+        participants: [CloudGroupParticipant],
+        fork: CloudGroupForkPayload? = nil,
+        message: CloudGroupMessagePayload?
+    ) {
+        self.kind = kind
+        self.groupId = groupId
+        self.groupSpaceId = groupSpaceId
+        self.groupTitle = groupTitle
+        self.createdByAccountId = createdByAccountId
+        self.actor = actor
+        self.participants = participants
+        self.fork = fork
+        self.message = message
+    }
+}
+
+enum CloudGroupMessageCodec {
+    static let prefix = "kordi-cloud-group:"
+    private static let supportedKinds: Set<String> = [
+        "group-invite",
+        "group-message",
+        "group-update",
+        "group-title-update",
+        "session-title-update",
+        "session-fork"
+    ]
+    private final class ParsedEnvelopeBox: NSObject {
+        let envelope: CloudGroupControlEnvelope?
+
+        init(_ envelope: CloudGroupControlEnvelope?) {
+            self.envelope = envelope
+        }
+    }
+    private static let parsedEnvelopeCache: NSCache<NSString, ParsedEnvelopeBox> = {
+        let cache = NSCache<NSString, ParsedEnvelopeBox>()
+        cache.countLimit = 4_096
+        cache.totalCostLimit = 16 * 1_024 * 1_024
+        return cache
+    }()
+
+    static func encode(_ envelope: CloudGroupControlEnvelope) throws -> String {
+        prefix + base64URL(try JSONEncoder().encode(envelope))
+    }
+
+    static func parse(_ body: String) -> CloudGroupControlEnvelope? {
+        guard body.hasPrefix(prefix) else { return nil }
+        let cacheKey = body as NSString
+        if let cached = parsedEnvelopeCache.object(forKey: cacheKey) {
+            return cached.envelope
+        }
+
+        let parsed: CloudGroupControlEnvelope? = {
+            guard let data = dataFromBase64URL(String(body.dropFirst(prefix.count))),
+                  let envelope = try? JSONDecoder().decode(CloudGroupControlEnvelope.self, from: data),
+                  supportedKinds.contains(envelope.kind),
+                  !envelope.groupId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !envelope.createdByAccountId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !envelope.actor.accountId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !envelope.participants.isEmpty else {
+                return nil
+            }
+            if envelope.kind == "group-message", envelope.message == nil { return nil }
+            return envelope
+        }()
+        parsedEnvelopeCache.setObject(
+            ParsedEnvelopeBox(parsed),
+            forKey: cacheKey,
+            cost: min(body.utf8.count, 256 * 1_024)
+        )
+        return parsed
+    }
+
+    static func displayText(_ body: String) -> String? {
+        parse(body)?.message?.text
+    }
+
+    private static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func dataFromBase64URL(_ value: String) -> Data? {
+        var normalized = value
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = normalized.count % 4
+        if remainder > 0 { normalized += String(repeating: "=", count: 4 - remainder) }
+        return Data(base64Encoded: normalized)
+    }
+}

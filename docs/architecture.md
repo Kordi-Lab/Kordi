@@ -1,12 +1,13 @@
 # Architecture
 
-Kordi `main` contains the desktop product, hosted backend, and hosted runner/sandbox stack.
+Kordi `main` contains the desktop and iPhone clients, hosted backend, and hosted runner/sandbox stack.
 
 ## Top-level shape
 
 ```text
 kordi/
   app/desktop              # desktop product shell
+  app/ios                  # native SwiftUI iPhone client
   bridges/cloud-server     # Hosted API
   bridges/cloud-agent-runner # Hosted runner/sandbox
   agent                    # Agent/runtime source shared with runner/internal tooling
@@ -16,7 +17,7 @@ kordi/
 ## Product runtime
 
 ```text
-desktop app
+desktop app / iPhone app
   -> hosted API
     -> hosted database / sync events
     -> hosted agent runner
@@ -36,6 +37,10 @@ Development/QA should use `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted compat
 ### `app/desktop`
 
 Owns the product UI, Tauri shell, login/session restoration, chats, contacts, groups, and sync integration.
+
+### `app/ios`
+
+Owns the native iPhone client: account authentication, Contact/Agent chat timelines, messages, groups, attachments, provider-auth settings, offline cache, and ordered foreground sync. It never runs an agent locally or publishes desktop-runtime presence; execution remains on a connected Mac or the hosted runner.
 
 ### `bridges/cloud-server`
 
