@@ -9,7 +9,8 @@ import { Check, Copy, Settings, Share2 } from 'lucide-react';
 
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
-import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { useLocalProfileAvatarSeed } from '@/kordi-app/components/avatarIdentity';
 import { cn } from '@/lib/utils';
 import {
   CloudAccountSettingsDialog,

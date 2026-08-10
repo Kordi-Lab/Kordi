@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useState } from 'react';
 
 import { Avatar } from '@/components/ui/avatar';
 import {
@@ -8,6 +8,7 @@ import {
 } from '@/features/cloud/signupAvatar';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
+import { getIdentityAvatarKey } from './avatarIdentity';
 import {
   resolveIdentityAvatarPresentation,
   useActiveLocalProfileIdentity,
@@ -40,107 +41,6 @@ const AGENT_IDENTICON_PALETTES = [
   { background: '#0d1117', foreground: '#7ee787', accent: '#d29922' },
   { background: '#0d1117', foreground: '#ffa657', accent: '#79c0ff' },
 ];
-const LOCAL_PROFILE_AVATAR_SEED_KEY = 'kordi.localProfileAvatarSeed.v1';
-const LOCAL_PROFILE_IDENTITY_SEED_KEY = 'kordi.localProfileIdentitySeed.v1';
-const LOCAL_AGENT_IDENTITY_SEED_KEY = 'kordi.localAgentIdentitySeed.v1';
-const LOCAL_AVATAR_SEEDS_CHANGE_EVENT = 'kordi-local-avatar-seeds-change';
-
-let localProfileAvatarSeedSnapshot: string | null = null;
-let localAgentAvatarSeedSnapshot: string | null = null;
-
-function browserAvatarScope() {
-  if (typeof window === 'undefined') return 'desktop';
-  return window.location.origin || 'desktop';
-}
-
-function readLocalStorageValue(key: string) {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(key)?.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-function writeLocalStorageValue(key: string, value?: string | null) {
-  if (typeof window === 'undefined') return;
-  const normalized = value?.trim();
-  if (!normalized) return;
-  try {
-    window.localStorage.setItem(key, normalized);
-  } catch {
-    // Ignore storage failures; deterministic fallbacks keep generated avatars stable.
-  }
-}
-
-function emitLocalAvatarSeedsChange() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new window.Event(LOCAL_AVATAR_SEEDS_CHANGE_EVENT));
-}
-
-function subscribeLocalAvatarSeeds(onStoreChange: () => void) {
-  if (typeof window === 'undefined') return () => {};
-  window.addEventListener(LOCAL_AVATAR_SEEDS_CHANGE_EVENT, onStoreChange);
-  window.addEventListener('storage', onStoreChange);
-  return () => {
-    window.removeEventListener(LOCAL_AVATAR_SEEDS_CHANGE_EVENT, onStoreChange);
-    window.removeEventListener('storage', onStoreChange);
-  };
-}
-
-export function getLocalProfileAvatarSeed() {
-  if (localProfileAvatarSeedSnapshot?.trim()) return localProfileAvatarSeedSnapshot;
-
-  const identitySeed = readLocalStorageValue(LOCAL_PROFILE_IDENTITY_SEED_KEY);
-  if (identitySeed) return identitySeed;
-
-  const legacySeed = readLocalStorageValue(LOCAL_PROFILE_AVATAR_SEED_KEY);
-  if (legacySeed) return `local-human-profile:${browserAvatarScope()}:${legacySeed}`;
-
-  return `local-human-profile:${browserAvatarScope()}`;
-}
-
-export function setLocalProfileAvatarSeed(seed?: string | null) {
-  const normalized = seed?.trim();
-  if (!normalized || normalized === localProfileAvatarSeedSnapshot) return;
-  localProfileAvatarSeedSnapshot = normalized;
-  writeLocalStorageValue(LOCAL_PROFILE_IDENTITY_SEED_KEY, normalized);
-  emitLocalAvatarSeedsChange();
-}
-
-export function useLocalProfileAvatarSeed() {
-  return useSyncExternalStore(
-    subscribeLocalAvatarSeeds,
-    getLocalProfileAvatarSeed,
-    () => 'local-human-profile',
-  );
-}
-
-export function getLocalAgentAvatarSeed(label?: string | null) {
-  if (localAgentAvatarSeedSnapshot?.trim()) return localAgentAvatarSeedSnapshot;
-
-  const identitySeed = readLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY);
-  if (identitySeed) return identitySeed;
-
-  return `local-agent:${browserAvatarScope()}:${label?.trim() || 'kordi'}`;
-}
-
-export function setLocalAgentAvatarSeed(seed?: string | null) {
-  const normalized = seed?.trim();
-  if (!normalized || normalized === localAgentAvatarSeedSnapshot) return;
-  localAgentAvatarSeedSnapshot = normalized;
-  writeLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY, normalized);
-  emitLocalAvatarSeedsChange();
-}
-
-export function useLocalAgentAvatarSeed(label?: string | null) {
-  return useSyncExternalStore(
-    subscribeLocalAvatarSeeds,
-    () => getLocalAgentAvatarSeed(label),
-    () => `local-agent:desktop:${label?.trim() || 'kordi'}`,
-  );
-}
-
 function hashString(value: string) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -240,12 +140,8 @@ function AgentIdenticonAvatar({ seed, className }: { seed: string; className?: s
   );
 }
 
-export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, avatarKey?: string | null) {
-  return avatarKey?.trim() || `${kind}:${seed.trim() || 'unknown'}`;
-}
-
 export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, avatarKey, className, generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
-  const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
+  const activeLocalProfileIdentity = useActiveLocalProfileIdentity(isSelf);
   const { fallbackLabel, normalizedSeed, resolvedImageUrl: identityImageUrl } = resolveIdentityAvatarPresentation({
     kind,
     seed,

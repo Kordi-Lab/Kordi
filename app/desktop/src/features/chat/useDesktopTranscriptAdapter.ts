@@ -1,6 +1,6 @@
 import { useCallback, type MutableRefObject } from 'react';
 
-import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/avatarIdentity';
 import { firstPersonPossessiveLabel, selfDisplayName } from '@/lib/identityLabels';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
@@ -10,6 +10,7 @@ type LocalAvatarSeedsRef = MutableRefObject<{
   humanProfileImageUrl?: string | null;
   agent?: string | null;
   agentDisplayName?: string | null;
+  agentProfileImageUrl?: string | null;
 }>;
 
 type UseDesktopTranscriptAdapterArgs = {
@@ -22,6 +23,7 @@ type DesktopTranscriptAvatarSeeds = {
   humanProfileImageUrl?: string | null;
   agent?: string | null;
   agentDisplayName?: string | null;
+  agentProfileImageUrl?: string | null;
 };
 
 type DesktopTranscriptSessionContext = {
@@ -141,7 +143,9 @@ export function mapDesktopMessagesForTranscript(
           : undefined,
       senderProfileImageUrl: message.role === 'user'
         ? (avatarSeeds?.humanProfileImageUrl?.trim() || null)
-        : undefined,
+        : message.role === 'assistant' && !cloudAgentIdentity
+          ? (avatarSeeds?.agentProfileImageUrl?.trim() || null)
+          : undefined,
       attachments: message.attachments?.map((attachment) => {
         const mapped = {
           kind: attachment.kind,

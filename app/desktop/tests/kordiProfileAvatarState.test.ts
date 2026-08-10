@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { resolveKordiProfileAvatarState } from '../src/app/useKordiProfileAvatarState';
 import type {
+  CanonicalSessionState,
   DesktopCollaborationAgent,
   DesktopCollaborationHost,
   DesktopCollaborationState,
@@ -63,6 +64,7 @@ test('profile avatar state uses the active collaboration host and agent', () => 
     label: 'Active Kordi',
     isActive: true,
     nodeId: 'active-agent-node',
+    profileImageUrl: 'data:image/jpeg;base64,active-agent',
   });
   const activeHost = collaborationHost('active', {
     activeAgentId: activeAgent.id,
@@ -88,6 +90,92 @@ test('profile avatar state uses the active collaboration host and agent', () => 
   );
   assert.equal(state.localAgentAvatarSeed, activeAgent.id);
   assert.equal(state.localAgentDisplayName, 'Active Kordi');
+  assert.equal(state.localAgentProfileImageUrl, null);
+  assert.equal(state.shouldPersistAgentSeed, false);
+});
+
+test('canonical local agent identity keeps its own seed and image instead of inheriting the runtime account avatar', () => {
+  const activeAgent = collaborationAgent('transient-runtime-agent', {
+    isActive: true,
+    profileImageUrl: 'data:image/jpeg;base64,current-upload',
+  });
+  const canonicalState = {
+    profile: {
+      id: 'profile-one',
+      humanIdentityId: 'human:one',
+      activeAgentIdentityId: 'agent:stable',
+    },
+    identities: [{
+      id: 'agent:stable',
+      kind: 'agent',
+      displayName: 'My Kordi',
+      ownerIdentityId: 'human:one',
+      source: 'local',
+      avatarKey: 'agent-avatar:stable',
+      profileImageUrl: 'data:image/jpeg;base64,persisted-upload',
+    }],
+  } as unknown as CanonicalSessionState;
+
+  const state = resolveKordiProfileAvatarState({
+    account: null,
+    canonicalState,
+    collaborationState: collaborationState([
+      collaborationHost('host', {
+        activeAgentId: activeAgent.id,
+        agents: [activeAgent],
+      }),
+    ]),
+  });
+
+  assert.equal(state.localAgentAvatarSeed, 'agent-avatar:stable');
+  assert.equal(
+    state.localAgentProfileImageUrl,
+    'data:image/jpeg;base64,persisted-upload',
+  );
+  assert.equal(state.shouldPersistAgentSeed, true);
+});
+
+test('a selected unrelated agent cannot replace the My Kordi avatar identity', () => {
+  const canonicalState = {
+    profile: { id: 'profile-one', humanIdentityId: 'human:one', activeAgentIdentityId: 'agent:other' },
+    identities: [
+      {
+        id: 'agent:other', kind: 'agent', displayName: 'Other agent', ownerIdentityId: 'human:one',
+        source: 'cloud', avatarKey: 'agent-avatar:other', profileImageUrl: 'data:image/jpeg;base64,other',
+      },
+      {
+        id: 'agent:stable', kind: 'agent', displayName: 'My Kordi', ownerIdentityId: 'human:one',
+        source: 'local', avatarKey: 'agent-avatar:stable', profileImageUrl: 'data:image/jpeg;base64,stable',
+        metadata: { profileId: 'profile-one', delegateAgentName: 'Kordi' },
+      },
+    ],
+  } as unknown as CanonicalSessionState;
+
+  const state = resolveKordiProfileAvatarState({ account: null, canonicalState, collaborationState: null });
+  assert.deepEqual(
+    [state.localAgentAvatarSeed, state.localAgentProfileImageUrl],
+    ['agent-avatar:stable', 'data:image/jpeg;base64,stable'],
+  );
+});
+
+test('a canonical My Kordi image that duplicates the human image is rejected', () => {
+  const canonicalState = {
+    profile: { id: 'profile-one', humanIdentityId: 'human:one', activeAgentIdentityId: 'agent:stable' },
+    identities: [
+      {
+        id: 'human:one', kind: 'human', displayName: 'Owner', source: 'cloud',
+        avatarKey: 'human-avatar', profileImageUrl: 'https://images.test/owner.png',
+      },
+      {
+        id: 'agent:stable', kind: 'agent', displayName: 'My Kordi', ownerIdentityId: 'human:one',
+        source: 'local', avatarKey: 'agent-avatar:stable', profileImageUrl: 'https://images.test/owner.png',
+        metadata: { profileId: 'profile-one', delegateAgentName: 'Kordi' },
+      },
+    ],
+  } as unknown as CanonicalSessionState;
+
+  const state = resolveKordiProfileAvatarState({ account: null, canonicalState, collaborationState: null });
+  assert.equal(state.localAgentProfileImageUrl, null);
 });
 
 test('cloud account profile identity takes precedence over host fallbacks', () => {

@@ -1,17 +1,21 @@
 import { useEffect, useLayoutEffect } from 'react';
 
 import {
-  canonicalAvatarSeed,
   canonicalIdentityDisplayName,
-  canonicalLocalAgentAvatarSeed,
-  canonicalProfileImageUrl,
 } from '@/app/useKordiAppModelHelpers';
+import {
+  canonicalAvatarSeed,
+  canonicalLocalAgentAvatarSeed,
+  canonicalLocalAgentProfileImageUrl,
+  canonicalProfileImageUrl,
+} from '@/app/viewModels/canonicalIdentityAvatars';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import {
+  getPersistedLocalAgentAvatarSeed,
   setLocalAgentAvatarSeed,
   setLocalProfileAvatarSeed,
-} from '@/kordi-app/components/IdentityAvatar';
+} from '@/kordi-app/components/avatarIdentity';
 import { setActiveLocalProfileIdentity } from '@/kordi-app/components/localProfileIdentity';
 import type {
   CanonicalSessionState,
@@ -63,6 +67,7 @@ export function resolveKordiProfileAvatarState({
     && identity.source === 'local'
     && identity.ownerIdentityId === canonicalState.profile.humanIdentityId
   ));
+  const canonicalAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalState);
 
   return {
     localProfileAvatarSeed:
@@ -81,12 +86,17 @@ export function resolveKordiProfileAvatarState({
       || agent?.label?.trim()
       || host?.displayName?.trim()
       || null,
-    localAgentAvatarSeed: canonicalLocalAgentAvatarSeed(canonicalState)
+    localAgentAvatarSeed: canonicalAgentAvatarSeed
+      || getPersistedLocalAgentAvatarSeed()
       || agent?.id?.trim()
       || host?.activeAgentId?.trim()
       || agent?.nodeId?.trim()
       || host?.nodeId?.trim()
       || null,
+    // Agent images come only from the canonical agent identity. Collaboration
+    // runtime records historically copied the human account avatar here.
+    localAgentProfileImageUrl: canonicalLocalAgentProfileImageUrl(canonicalState),
+    shouldPersistAgentSeed: Boolean(canonicalAgentAvatarSeed),
     shouldPersistProfileSeed: cloudProfileAvatar?.shouldPersistSeed ?? false,
   };
 }
@@ -108,20 +118,21 @@ export function useKordiProfileAvatarState({
   }, [state.localProfileAvatarSeed, state.shouldPersistProfileSeed]);
 
   useLayoutEffect(() => {
+    if (state.shouldPersistAgentSeed) {
+      setLocalAgentAvatarSeed(state.localAgentAvatarSeed);
+    }
     setActiveLocalProfileIdentity({
       avatarSeed: state.localProfileAvatarSeed,
       displayName: state.localProfileDisplayName,
       profileImageUrl: state.localProfileImageUrl,
     });
   }, [
+    state.localAgentAvatarSeed,
     state.localProfileAvatarSeed,
     state.localProfileDisplayName,
     state.localProfileImageUrl,
+    state.shouldPersistAgentSeed,
   ]);
-
-  useEffect(() => {
-    setLocalAgentAvatarSeed(state.localAgentAvatarSeed);
-  }, [state.localAgentAvatarSeed]);
 
   return state;
 }

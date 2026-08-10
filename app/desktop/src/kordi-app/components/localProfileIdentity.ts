@@ -24,6 +24,9 @@ const EMPTY_ACTIVE_LOCAL_PROFILE_IDENTITY: ActiveLocalProfileIdentity = {
   profileImageUrl: null,
 };
 
+const EMPTY_SUBSCRIBE = () => () => {};
+const getEmptyActiveLocalProfileIdentity = () => EMPTY_ACTIVE_LOCAL_PROFILE_IDENTITY;
+
 let activeLocalProfileIdentitySnapshot = EMPTY_ACTIVE_LOCAL_PROFILE_IDENTITY;
 
 function subscribeActiveLocalProfileIdentity(onStoreChange: () => void) {
@@ -69,11 +72,11 @@ export function setActiveLocalProfileIdentity({
   }
 }
 
-export function useActiveLocalProfileIdentity() {
+export function useActiveLocalProfileIdentity(enabled = true) {
   return useSyncExternalStore(
-    subscribeActiveLocalProfileIdentity,
-    getActiveLocalProfileIdentity,
-    () => EMPTY_ACTIVE_LOCAL_PROFILE_IDENTITY,
+    enabled ? subscribeActiveLocalProfileIdentity : EMPTY_SUBSCRIBE,
+    enabled ? getActiveLocalProfileIdentity : getEmptyActiveLocalProfileIdentity,
+    getEmptyActiveLocalProfileIdentity,
   );
 }
 

@@ -526,9 +526,6 @@
   "src/kordi-app/components/IdentityAvatar.tsx": {
     "@typescript-eslint/no-redundant-type-constituents": {
       "count": 2
-    },
-    "react-refresh/only-export-components": {
-      "count": 7
     }
   },
   "src/kordi-app/components/avatarOverrides.ts": {

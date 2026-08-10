@@ -103,14 +103,14 @@ test('buildCollaborationMentionTargetsByScope exposes product-facing mention det
     desktopCollaborationState: state,
     desktopChatState: desktopChatState(),
     activeConvMentionScope: null,
+    localAgentAvatarSeed: 'agent-avatar:canonical', localAgentProfileImageUrl: 'https://images.test/my-kordi.png',
   });
 
   const localAgent = targets.chat.find((target) => target.label === 'My Kordi');
   const person = targets.chat.find((target) => target.label === 'Bob' && target.targetKind === 'person');
   const agent = targets.chat.find((target) => target.label === "Bob's Kordi");
-
   assert.equal(localAgent?.detail, 'Your agent');
-  assert.equal(localAgent?.avatarImageUrl, 'https://images.test/alice.png');
+  assert.deepEqual([localAgent?.avatarSeed, localAgent?.avatarImageUrl], ['agent-avatar:canonical', 'https://images.test/my-kordi.png']);
   assert.equal(person?.detail, 'Person');
   assert.equal(person?.avatarImageUrl, 'https://images.test/bob.png');
   assert.equal(agent?.detail, 'Agent');

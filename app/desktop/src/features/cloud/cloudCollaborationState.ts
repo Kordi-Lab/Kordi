@@ -427,7 +427,7 @@ export function buildCloudCollaborationHost(
       fallbackAuthChoice: null,
       thinking: localAgentRuntimeRoute?.thinking ?? null,
       reachabilityPolicy: 'contacts',
-      profileImageUrl: cloudAvatarImageUrl(account.avatarUrl),
+      profileImageUrl: null,
     }],
     visiblePeers: peers,
     visiblePeerCount: peers.length,

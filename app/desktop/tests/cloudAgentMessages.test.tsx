@@ -126,6 +126,8 @@ test('cloud agent runtime route is reflected on the synthetic local cloud agent 
   assert.equal(agent?.defaultAuthProvider, 'anthropic');
   assert.equal(agent?.defaultAuthChoice, 'work');
   assert.equal(agent?.thinking, 'high');
+  assert.equal(host.profileImageUrl, account.avatarUrl);
+  assert.equal(agent?.profileImageUrl, null);
   assert.equal(buildCloudCollaborationHost(account, []).agents[0]?.defaultModel, null);
 });
 

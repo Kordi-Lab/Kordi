@@ -88,6 +88,7 @@ export function useKordiAppFoundation({
     humanProfileImageUrl?: string | null;
     agent?: string | null;
     agentDisplayName?: string | null;
+    agentProfileImageUrl?: string | null;
   }>({});
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
   const participantSpaceDraftByKeyRef =
@@ -358,6 +359,7 @@ export function useKordiAppFoundation({
     localProfileImageUrl,
     localAgentAvatarSeed,
     localAgentDisplayName,
+    localAgentProfileImageUrl,
   } = useKordiProfileAvatarState({
     account: cloudSession.account,
     canonicalState: canonicalSessionState,
@@ -372,6 +374,8 @@ export function useKordiAppFoundation({
       seeds.humanProfileImageUrl;
     localAvatarSeedsRef.current.agent = seeds.agent;
     localAvatarSeedsRef.current.agentDisplayName = seeds.agentDisplayName;
+    localAvatarSeedsRef.current.agentProfileImageUrl =
+      seeds.agentProfileImageUrl;
   };
   useKordiCanonicalPageHydration({
     activeConversationId: activeConvId,
@@ -483,7 +487,7 @@ export function useKordiAppFoundation({
     },
     profile: {
       localProfileAvatarSeed, localProfileDisplayName, localProfileImageUrl,
-      localAgentAvatarSeed, localAgentDisplayName,
+      localAgentAvatarSeed, localAgentDisplayName, localAgentProfileImageUrl,
     },
     cloudAgentActions: {
       handleArchiveCloudAgent, handleCreateCloudAgent, handleUpdateCloudAgent,

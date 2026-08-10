@@ -61,6 +61,20 @@ test('remote avatar presentation is isolated from the signed-in profile', () => 
   });
 });
 
+test('agent avatar presentation stays independent from the signed-in human profile', () => {
+  assert.deepEqual(resolveIdentityAvatarPresentation({
+    kind: 'agent',
+    seed: 'agent-avatar:stable',
+    name: 'My Kordi',
+    imageUrl: 'data:image/jpeg;base64,my-kordi',
+    activeLocalProfileIdentity: activeProfile,
+  }), {
+    fallbackLabel: 'My Kordi',
+    normalizedSeed: 'agent-avatar:stable',
+    resolvedImageUrl: 'data:image/jpeg;base64,my-kordi',
+  });
+});
+
 test('active local profile updates the shared seed, display name, and image as one snapshot', () => {
   setActiveLocalProfileIdentity(activeProfile);
 

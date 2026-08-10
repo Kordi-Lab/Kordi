@@ -26,7 +26,7 @@ import {
   ComposerAttachmentAddMenu,
   ComposerAttachmentList,
 } from '../components/composerAttachments';
-import { getLocalProfileAvatarSeed } from '../components/IdentityAvatar';
+import { getLocalProfileAvatarSeed } from '../components/avatarIdentity';
 import type { ComposerScope, ComposerSelectorType, DesktopChatSessionDetail, DesktopChatTurnSnapshot, Message } from '../types';
 
 type BuilderRouteSelection = {

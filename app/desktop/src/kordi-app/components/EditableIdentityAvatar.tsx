@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fileToAvatarDataUrl, setAvatarOverride } from './avatarOverrides';
-import { getIdentityAvatarKey, IdentityAvatar, type IdentityAvatarProps } from './IdentityAvatar';
+import { IdentityAvatar, type IdentityAvatarProps } from './IdentityAvatar';
+import { getIdentityAvatarKey } from './avatarIdentity';
 
 type EditableIdentityAvatarProps = IdentityAvatarProps & {
   label?: string;

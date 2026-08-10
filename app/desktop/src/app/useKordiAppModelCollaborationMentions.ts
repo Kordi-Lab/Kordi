@@ -28,6 +28,8 @@ export type BuildCollaborationMentionTargetsParams = {
   activeConvMentionScope: MentionScopeConversation | null | undefined;
   conversations?: Conversation[];
   sharedCloudAgents?: SharedCloudAgentSummary[];
+  localAgentAvatarSeed?: string | null;
+  localAgentProfileImageUrl?: string | null;
 };
 
 export type SharedCloudAgentOwnerScopeConversation = MentionScopeConversation & Partial<Pick<Conversation, 'collaborationTarget'>>;
@@ -109,6 +111,8 @@ export function buildCollaborationMentionTargetsByScope({
   activeConvMentionScope,
   conversations = [],
   sharedCloudAgents = [],
+  localAgentAvatarSeed,
+  localAgentProfileImageUrl,
 }: BuildCollaborationMentionTargetsParams): CollaborationMentionTargetsByScope {
   if (!isNativeShell) return { chat: [], project: [] };
 
@@ -168,8 +172,12 @@ export function buildCollaborationMentionTargetsByScope({
         humanId: activeHost?.humanId ?? null,
         agentId: activeAgent?.id ?? null,
         ownerName: ownerName ?? null,
-        avatarImageUrl: activeAgent?.profileImageUrl ?? activeHost?.profileImageUrl ?? null,
-        avatarSeed: activeAgent?.id ?? activeAgent?.nodeId ?? activeHost?.nodeId ?? localAgentHandle,
+        avatarImageUrl: localAgentProfileImageUrl ?? null,
+        avatarSeed: localAgentAvatarSeed
+          ?? activeAgent?.id
+          ?? activeAgent?.nodeId
+          ?? activeHost?.nodeId
+          ?? localAgentHandle,
         unreadCount: 0,
       });
     }

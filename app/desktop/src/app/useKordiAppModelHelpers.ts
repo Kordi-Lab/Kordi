@@ -23,31 +23,6 @@ export function shouldUseCloudSessionAction(sessionId: string) {
   return trimmed.startsWith('session:') || trimmed.startsWith('bridge:cloud:');
 }
 
-export function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
-  const id = identityId?.trim();
-  if (!state || !id) return null;
-  return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
-}
-
-export function canonicalProfileImageUrl(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
-  const id = identityId?.trim();
-  if (!state || !id) return null;
-  return state.identities.find((identity) => identity.id === id)?.profileImageUrl?.trim() || null;
-}
-
-export function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | undefined) {
-  if (!state) return null;
-  const activeSeed = canonicalAvatarSeed(state, state.profile.activeAgentIdentityId);
-  if (activeSeed) return activeSeed;
-  const profileHumanIdentityId = state.profile.humanIdentityId?.trim();
-  if (!profileHumanIdentityId) return null;
-  return state.identities.find((identity) => (
-    identity.kind === 'agent'
-    && identity.source === 'local'
-    && identity.ownerIdentityId === profileHumanIdentityId
-  ))?.avatarKey?.trim() || null;
-}
-
 export type MentionQuery = {
   normalized: string;
   raw: string;
