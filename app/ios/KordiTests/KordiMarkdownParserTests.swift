@@ -176,15 +176,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
-    func testPullToRefreshStartsOnceOnlyAfterCrossingTheThreshold() {
-        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 24, isRefreshing: false))
-        XCTAssertTrue(ChatPullToRefreshBehavior.shouldStart(
-            distance: ChatPullToRefreshBehavior.triggerDistance,
-            isRefreshing: false
-        ))
-        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 120, isRefreshing: true))
-    }
-
     func testChatSearchNormalizesWhitespaceAndMatchesContactIdentity() {
         let conversation = searchConversation(
             displayName: "C UFishAI",
@@ -231,21 +222,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "maya"))
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "budget"))
         XCTAssertFalse(ChatHomeSearch.matches(space, query: "roadmap"))
-    }
-
-    func testPullDistanceUsesNativeScrollGeometryInsets() {
-        XCTAssertEqual(
-            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -59, contentInsetTop: 59),
-            0
-        )
-        XCTAssertEqual(
-            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -93, contentInsetTop: 59),
-            34
-        )
-        XCTAssertEqual(
-            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: 20, contentInsetTop: 0),
-            0
-        )
     }
 
     func testPullProgressIsClampedToTheRefreshThreshold() {

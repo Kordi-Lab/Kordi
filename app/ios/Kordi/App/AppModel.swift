@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var providerAuthSnapshot: CloudProviderAuthSnapshot?
     @Published private(set) var providerAuthSnapshots: [String: CloudProviderAuthSnapshot] = [:]
     @Published private(set) var isRefreshingProviderAuthentication = false
+    @Published private(set) var isRefreshingFactory = false
     @Published private(set) var providerAuthenticationErrorMessage: String?
     @Published private(set) var isRefreshing = false
     @Published private(set) var agentRunState: [String: AgentActivity] = [:]
@@ -56,7 +57,7 @@ final class AppModel: ObservableObject {
     private var cloudMessagesByPeer: [String: [CloudMessageDTO]] = [:]
     private var cloudMessageIndicesByPeer: [String: [String: Int]] = [:]
     private var sessionForksById: [String: CloudSessionForkSummary] = [:]
-    private var ownedCloudAgents: [CloudAgent] = []
+    @Published private var ownedCloudAgents: [CloudAgent] = []
     private var sharedCloudAgents: [CloudAgent] = []
     private var hiddenCloudSessionIds = Set<String>()
     private var deletedCloudSessionIds = Set<String>()
@@ -1208,6 +1209,74 @@ final class AppModel: ObservableObject {
     }
 
     var ownedAgents: [CloudAgent] { ownedCloudAgents }
+
+    func refreshFactory() async {
+        guard let token, !isRefreshingFactory else { return }
+        isRefreshingFactory = true
+        defer { isRefreshingFactory = false }
+        do {
+            let refreshed = try await api.listAgents(token: token)
+            guard self.token == token else { return }
+            ownedCloudAgents = refreshed
+            await rebuildConversationCatalog()
+            cloudConnectionState = .connected
+            errorMessage = nil
+        } catch {
+            cloudConnectionState = .unavailable
+            errorMessage = userFacing(error, fallback: "Could not sync Factory with Kordi Cloud.")
+        }
+    }
+
+    func ownedAgent(id: String) -> CloudAgent? {
+        ownedCloudAgents.first { $0.agentId == id }
+    }
+
+    func createAgent(_ draft: CloudAgentDraft) async -> CloudAgent? {
+        guard let token, draft.isValid else { return nil }
+        do {
+            let created = try await api.createAgent(token: token, draft: draft)
+            ownedCloudAgents.removeAll { $0.agentId == created.agentId }
+            ownedCloudAgents.insert(created, at: 0)
+            await rebuildConversationCatalog()
+            errorMessage = nil
+            return created
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not create this agent.")
+            return nil
+        }
+    }
+
+    func updateAgent(id: String, draft: CloudAgentDraft) async -> CloudAgent? {
+        guard let token, draft.isValid else { return nil }
+        do {
+            let updated = try await api.updateAgent(token: token, agentId: id, draft: draft)
+            if let index = ownedCloudAgents.firstIndex(where: { $0.agentId == updated.agentId }) {
+                ownedCloudAgents[index] = updated
+            } else {
+                ownedCloudAgents.insert(updated, at: 0)
+            }
+            await rebuildConversationCatalog()
+            errorMessage = nil
+            return updated
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not save this agent.")
+            return nil
+        }
+    }
+
+    func archiveAgent(id: String) async -> Bool {
+        guard let token else { return false }
+        do {
+            _ = try await api.archiveAgent(token: token, agentId: id)
+            ownedCloudAgents.removeAll { $0.agentId == id }
+            await rebuildConversationCatalog()
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not delete this agent.")
+            return false
+        }
+    }
 
     func updateAgentRouting(
         for conversation: ConversationSummary,

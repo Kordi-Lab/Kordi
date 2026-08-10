@@ -1,9 +1,9 @@
 /*
- THESIS: The macOS Contact/Agent chat model becomes two native iPhone pages without losing ownership or routing context.
+ THESIS: Contact chats, the people directory, and agent work become three compact iPhone destinations without losing ownership or routing context.
  OWN-WORLD: Native grouped canvases, Signal Blue actions, Agent Violet identity, circular avatars, continuous list rows, and explicit state labels.
- STORY: Sign in, switch between Contact and Agent chats, open the right conversation, send text, and understand delivery or execution state.
- FIRST VIEWPORT: Native large Chats title, search, and the desktop-mirroring Contact/Agent segmented pager; shared agents remain nested under their owner contact.
- FORM: Native segmented pages with continuous lists; assigned surface structure, seed a5fd657b. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+ STORY: Sign in, switch among Chats, Contacts, and Factory, open the right conversation, send text, and understand delivery or execution state.
+ FIRST VIEWPORT: Search and a continuous chat timeline sit above a compact floating destination bar; agent sessions remain available from Factory.
+ FORM: Native navigation stacks with a compact floating destination bar and continuous lists; assigned surface structure, seed a5fd657b. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
  */
 import SwiftUI
 
@@ -119,17 +119,72 @@ private struct LaunchingView: View {
 }
 
 struct MainTabView: View {
-    var body: some View {
-        TabView {
-            NavigationStack {
-                ChatHomeView()
-            }
-            .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
+    @State private var selection: MainTab = {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview-factory-tab") {
+            return .factory
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts-tab") {
+            return .contacts
+        }
+#endif
+        return .chats
+    }()
+    @State private var chatsPath = NavigationPath()
+    @State private var contactsPath = NavigationPath()
+    @State private var factoryPath = NavigationPath()
 
-            NavigationStack {
+    var body: some View {
+        TabView(selection: $selection) {
+            NavigationStack(path: $chatsPath) {
+                ChatHomeView(
+                    onOpenConversation: { chatsPath.append($0) }
+                )
+            }
+            .tabItem { Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol) }
+            .tag(MainTab.chats)
+
+            NavigationStack(path: $contactsPath) {
                 ContactsView()
             }
-            .tabItem { Label("Contacts", systemImage: "person.2") }
+            .tabItem { Label(MainTab.contacts.rawValue, systemImage: MainTab.contacts.symbol) }
+            .tag(MainTab.contacts)
+
+            NavigationStack(path: $factoryPath) {
+                FactoryView()
+            }
+            .tabItem { Label(MainTab.factory.rawValue, systemImage: MainTab.factory.symbol) }
+            .tag(MainTab.factory)
+        }
+        .sensoryFeedback(.selection, trigger: selection)
+#if DEBUG
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--preview-factory-tab") {
+                selection = .factory
+            } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts-tab") {
+                selection = .contacts
+            } else if ProcessInfo.processInfo.arguments.contains("--preview-chats-tab") {
+                selection = .chats
+            }
+        }
+#endif
+    }
+}
+
+private enum MainTab: String, CaseIterable, Identifiable {
+    case chats = "Chats"
+    case contacts = "Contacts"
+    case factory = "Factory"
+
+    var id: Self { self }
+
+    var symbol: String {
+        switch self {
+        case .chats:
+            "bubble.left.and.bubble.right"
+        case .contacts:
+            "person.2"
+        case .factory:
+            "sparkles.rectangle.stack"
         }
     }
 }

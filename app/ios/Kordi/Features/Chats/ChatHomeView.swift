@@ -20,13 +20,16 @@ struct ChatHomeView: View {
     @State private var renameDraft = ""
     @State private var deleteTarget: ConversationSummary?
     @State private var groupManagementPresentation: GroupManagementPresentation?
-    @State private var contactPullState: ChatPullRefreshVisualState = .idle
-    @State private var agentPullState: ChatPullRefreshVisualState = .idle
+    private let onOpenConversation: ((ConversationSummary) -> Void)?
 
-    init(initialChannel: ChatChannel? = nil) {
+    init(
+        initialChannel: ChatChannel? = nil,
+        onOpenConversation: ((ConversationSummary) -> Void)? = nil
+    ) {
         let previewChannel: ChatChannel = ProcessInfo.processInfo.arguments.contains("--preview-agent-page") ? .agent : .contact
         _channel = State(initialValue: initialChannel ?? previewChannel)
         _showNewChat = State(initialValue: ProcessInfo.processInfo.arguments.contains("--preview-new-chat"))
+        self.onOpenConversation = onOpenConversation
     }
 
     private var searchQuery: String {
@@ -79,10 +82,6 @@ struct ChatHomeView: View {
             }
     }
 
-    private var activePullState: ChatPullRefreshVisualState {
-        channel == .contact ? contactPullState : agentPullState
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             chatPageHeader
@@ -99,6 +98,9 @@ struct ChatHomeView: View {
         .background(Color(uiColor: .systemBackground))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--preview-agent-page") {
+                channel = .agent
+            }
             if ProcessInfo.processInfo.arguments.contains("--preview-group-management"),
                groupManagementPresentation == nil,
                let space = groupSpaces.first {
@@ -125,9 +127,6 @@ struct ChatHomeView: View {
                     accountButton
                 }
             }
-            ToolbarItem(placement: .principal) {
-                MessageSyncStatusView(pullState: activePullState)
-            }
             if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .topBarTrailing) {
                     newChatButton
@@ -142,7 +141,7 @@ struct ChatHomeView: View {
         .sheet(isPresented: $showAccount) { AccountSheet() }
         .sheet(isPresented: $showNewChat) {
             NewChatSheet { selected in
-                composedConversation = selected
+                openConversation(selected)
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -223,12 +222,13 @@ struct ChatHomeView: View {
     }
 
     private var chatPageHeader: some View {
-        VStack(spacing: 12) {
-            ChatHomeSearchField(
-                text: $searchText,
-                prompt: "Search chats"
-            )
-
+        KordiPageSearchHeader(
+            text: $searchText,
+            prompt: channel == .contact ? "Search chats" : "Search agent sessions",
+            accessibilityLabel: channel == .contact
+                ? "Search contact and group chats"
+                : "Search agents, sessions, owners, and messages"
+        ) {
             Picker("Chat channel", selection: $channel) {
                 ForEach(ChatChannel.allCases) { item in
                     Text(item.rawValue).tag(item)
@@ -236,103 +236,100 @@ struct ChatHomeView: View {
             }
             .pickerStyle(.segmented)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 10)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
-        .background(Color(uiColor: .systemBackground))
-        .accessibilityElement(children: .contain)
     }
 
     private var contactPage: some View {
-        ChatPullToRefreshScrollView(
-            coordinateSpaceName: "chat-contact-scroll",
-            visualState: $contactPullState
-        ) {
-            await model.refreshWorkspace()
-        } content: {
-            if contactItems.isEmpty {
-                ContentUnavailableView(
-                    searchQuery.isEmpty ? "No contact conversations yet" : "No chats found",
-                    systemImage: searchQuery.isEmpty ? "person.2" : "magnifyingglass",
-                    description: Text(searchQuery.isEmpty ? "Start a chat with a contact to see it here." : "Try another name, Kordi ID, or message.")
-                )
-                .frame(maxWidth: .infinity, minHeight: 360)
-            } else {
-                ForEach(contactItems) { item in
-                    switch item {
-                    case let .conversation(conversation):
-                        destination(for: conversation)
-                    case let .group(space):
-                            let isExpanded = groupIsExpanded(space)
-                            Button {
-                                toggleGroupSpace(space)
-                            } label: {
-                                GroupSpaceRow(space: space, isExpanded: isExpanded)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button {
-                                    groupManagementPresentation = GroupManagementPresentation(
-                                        space: space,
-                                        startsInInviteMode: false
-                                    )
-                                } label: {
-                                    Label("Manage group", systemImage: "person.2")
-                                }
-                                Button {
-                                    groupManagementPresentation = GroupManagementPresentation(
-                                        space: space,
-                                        startsInInviteMode: true
-                                    )
-                                } label: {
-                                    Label("Invite people", systemImage: "person.badge.plus")
-                                }
-                                Button {
-                                    Task { await model.markGroupSpaceRead(space) }
-                                } label: {
-                                    Label("Mark as read", systemImage: "checkmark.circle")
-                                }
-                            }
-                            .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
-                            .chatHomeRow(separatorLeading: 71)
-
-                            if isExpanded {
-                                ForEach(space.sessions) { session in
-                                    sessionActionRow(for: session) {
-                                        GroupSessionRow(session: session)
-                                    }
-                                }
-                            }
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if contactItems.isEmpty {
+                    ContentUnavailableView(
+                        searchQuery.isEmpty ? "No contact conversations yet" : "No chats found",
+                        systemImage: searchQuery.isEmpty ? "person.2" : "magnifyingglass",
+                        description: Text(searchQuery.isEmpty ? "Start a chat with a contact to see it here." : "Try another name, Kordi ID, or message.")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 360)
+                } else {
+                    ForEach(contactItems) { item in
+                        contactItemRow(item)
                     }
                 }
             }
         }
+        .scrollBounceBehavior(.always)
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await model.refreshWorkspace() }
         .accessibilityLabel("Contact chats")
     }
 
-    private var agentPage: some View {
-        ChatPullToRefreshScrollView(
-            coordinateSpaceName: "chat-agent-scroll",
-            visualState: $agentPullState
-        ) {
-            await model.refreshWorkspace()
-        } content: {
-            if agentSessions.isEmpty {
-                ContentUnavailableView(
-                    searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
-                    systemImage: searchQuery.isEmpty ? "sparkles" : "magnifyingglass",
-                    description: Text(searchQuery.isEmpty ? "Use + to start a session with an available agent." : "Try another agent, session, owner, or message.")
-                )
-                .frame(maxWidth: .infinity, minHeight: 360)
-            } else {
-                ForEach(agentSessions) { item in
-                    agentSessionActionRow(item)
+    @ViewBuilder
+    private func contactItemRow(_ item: ContactListItem) -> some View {
+        switch item {
+        case let .conversation(conversation):
+            destination(for: conversation)
+        case let .group(space):
+            let isExpanded = groupIsExpanded(space)
+            Button {
+                toggleGroupSpace(space)
+            } label: {
+                GroupSpaceRow(space: space, isExpanded: isExpanded)
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Button {
+                    groupManagementPresentation = GroupManagementPresentation(
+                        space: space,
+                        startsInInviteMode: false
+                    )
+                } label: {
+                    Label("Manage group", systemImage: "person.2")
+                }
+                Button {
+                    groupManagementPresentation = GroupManagementPresentation(
+                        space: space,
+                        startsInInviteMode: true
+                    )
+                } label: {
+                    Label("Invite people", systemImage: "person.badge.plus")
+                }
+                Button {
+                    Task { await model.markGroupSpaceRead(space) }
+                } label: {
+                    Label("Mark as read", systemImage: "checkmark.circle")
+                }
+            }
+            .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
+            .chatHomeRow(separatorLeading: 71)
+
+            if isExpanded {
+                ForEach(space.sessions) { session in
+                    sessionActionRow(for: session) {
+                        GroupSessionRow(session: session)
+                    }
                 }
             }
         }
+    }
+
+    private var agentPage: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if agentSessions.isEmpty {
+                    ContentUnavailableView(
+                        searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
+                        systemImage: searchQuery.isEmpty ? "sparkles" : "magnifyingglass",
+                        description: Text(searchQuery.isEmpty ? "Use + to start a session with an available agent." : "Try another agent, session, owner, or message.")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 360)
+                } else {
+                    ForEach(agentSessions) { item in
+                        agentSessionActionRow(item)
+                    }
+                }
+            }
+        }
+        .scrollBounceBehavior(.always)
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await model.refreshWorkspace() }
         .accessibilityLabel("Agent chats")
     }
 
@@ -347,7 +344,7 @@ struct ChatHomeView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         Button {
-            composedConversation = conversation
+            openConversation(conversation)
         } label: {
             content()
         }
@@ -378,7 +375,7 @@ struct ChatHomeView: View {
     private func agentSessionActionRow(_ item: AgentSessionListItem) -> some View {
         HStack(spacing: 0) {
             Button {
-                composedConversation = item.conversation
+                openConversation(item.conversation)
             } label: {
                 AgentSessionRow(conversation: item.conversation, isFork: item.isFork)
                     .padding(.leading, CGFloat(item.depth) * 16)
@@ -461,6 +458,14 @@ struct ChatHomeView: View {
         }
     }
 
+    private func openConversation(_ conversation: ConversationSummary) {
+        if let onOpenConversation {
+            onOpenConversation(conversation)
+        } else {
+            composedConversation = conversation
+        }
+    }
+
 }
 
 enum ChatHomeSearch {
@@ -500,176 +505,6 @@ enum ChatHomeSearch {
         return space.sessions.contains {
             matches($0, query: query)
         }
-    }
-}
-
-enum ChatPullToRefreshBehavior {
-    static let triggerDistance: CGFloat = 68
-
-    static func pullDistance(contentOffsetY: CGFloat, contentInsetTop: CGFloat) -> CGFloat {
-        max(0, -(contentOffsetY + contentInsetTop))
-    }
-
-    static func shouldStart(distance: CGFloat, isRefreshing: Bool) -> Bool {
-        !isRefreshing && distance >= triggerDistance
-    }
-}
-
-private struct ChatPullToRefreshScrollView<Content: View>: View {
-    let coordinateSpaceName: String
-    let onRefresh: () async -> Void
-    let content: Content
-    @Binding var visualState: ChatPullRefreshVisualState
-    @State private var pullDistance: CGFloat = 0
-    @State private var isRefreshing = false
-
-    init(
-        coordinateSpaceName: String,
-        visualState: Binding<ChatPullRefreshVisualState>,
-        onRefresh: @escaping () async -> Void,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.coordinateSpaceName = coordinateSpaceName
-        _visualState = visualState
-        self.onRefresh = onRefresh
-        self.content = content()
-    }
-
-    @ViewBuilder
-    var body: some View {
-        if #available(iOS 18.0, *) {
-            scrollView(includeLegacyOffsetProbe: false)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    ChatPullToRefreshBehavior.pullDistance(
-                        contentOffsetY: geometry.contentOffset.y,
-                        contentInsetTop: geometry.contentInsets.top
-                    )
-                } action: { _, distance in
-                    updatePullDistance(distance)
-                }
-                .onScrollPhaseChange { oldPhase, newPhase in
-                    guard oldPhase == .interacting, newPhase != .interacting else { return }
-                    finishPullGesture()
-                }
-        } else {
-            scrollView(includeLegacyOffsetProbe: true)
-                .coordinateSpace(.named(coordinateSpaceName))
-                .onPreferenceChange(ChatPullOffsetPreferenceKey.self) { offset in
-                    updatePullDistance(max(0, offset))
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 8).onEnded { _ in
-                        finishPullGesture()
-                    }
-                )
-        }
-    }
-
-    private func scrollView(includeLegacyOffsetProbe: Bool) -> some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                if includeLegacyOffsetProbe {
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: ChatPullOffsetPreferenceKey.self,
-                            value: proxy.frame(in: .named(coordinateSpaceName)).minY
-                        )
-                    }
-                    .frame(height: 0)
-                }
-
-                LazyVStack(spacing: 0) {
-                    content
-                }
-            }
-        }
-        .scrollBounceBehavior(.always)
-        .scrollDismissesKeyboard(.interactively)
-    }
-
-    private func updatePullDistance(_ distance: CGFloat) {
-        guard !isRefreshing else { return }
-        pullDistance = distance
-        if distance > 0.5 {
-            visualState = .pulling(progress: KordiSyncMarkGeometry.pullProgress(
-                for: distance,
-                triggerDistance: ChatPullToRefreshBehavior.triggerDistance
-            ))
-        } else if visualState != .idle {
-            visualState = .idle
-        }
-    }
-
-    private func finishPullGesture() {
-        guard ChatPullToRefreshBehavior.shouldStart(
-            distance: pullDistance,
-            isRefreshing: isRefreshing
-        ) else { return }
-        beginRefresh()
-    }
-
-    private func beginRefresh() {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        pullDistance = 0
-        visualState = .refreshing
-        Task {
-            await onRefresh()
-            withAnimation(.smooth(duration: 0.24)) {
-                isRefreshing = false
-                visualState = .idle
-            }
-        }
-    }
-}
-
-private struct ChatHomeSearchField: View {
-    @Binding var text: String
-    let prompt: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.body.weight(.medium))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-
-            TextField(prompt, text: $text)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.leading, 14)
-        .padding(.trailing, text.isEmpty ? 14 : 0)
-        .frame(minHeight: 44)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.42), lineWidth: 0.5)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Search contacts, groups, agents, sessions, and messages")
-    }
-}
-
-private struct ChatPullOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 

@@ -97,8 +97,185 @@ struct CloudModelRouting: Codable, Hashable {
     var fallbackAuthProvider: String?
     var fallbackAuthChoice: String?
     var thinking: String?
+    var tools: [String]?
+    var plugins: [String]?
 
     static let empty = CloudModelRouting()
+}
+
+enum CloudAgentAccessScope: String, CaseIterable, Codable, Hashable, Identifiable {
+    case privateAgent = "private"
+    case participantConversations = "participant_conversations"
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .privateAgent:
+            "Only me"
+        case .participantConversations:
+            "People in my chats can mention it"
+        }
+    }
+}
+
+struct CloudAgentResource: Codable, Hashable {
+    let kind: String
+    let value: String
+    let title: String?
+    let summary: String?
+}
+
+struct CloudAgentSkill: Codable, Hashable {
+    let name: String
+    let description: String
+    let content: String?
+
+    init(name: String, description: String, content: String? = nil) {
+        self.name = name
+        self.description = description
+        self.content = content
+    }
+}
+
+struct CloudAgentBoundaryDraft: Identifiable, Equatable {
+    let id: UUID
+    var value: String
+
+    init(id: UUID = UUID(), value: String = "") {
+        self.id = id
+        self.value = value
+    }
+}
+
+struct CloudAgentResourceDraft: Identifiable, Equatable {
+    let id: UUID
+    var kind: String
+    var value: String
+    var title: String
+    var summary: String
+
+    init(
+        id: UUID = UUID(),
+        kind: String = "text",
+        value: String = "",
+        title: String = "",
+        summary: String = ""
+    ) {
+        self.id = id
+        self.kind = kind
+        self.value = value
+        self.title = title
+        self.summary = summary
+    }
+
+    init(resource: CloudAgentResource) {
+        self.init(
+            kind: resource.kind,
+            value: resource.value,
+            title: resource.title ?? "",
+            summary: resource.summary ?? ""
+        )
+    }
+}
+
+struct CloudAgentSkillDraft: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var description: String
+    var content: String
+
+    init(id: UUID = UUID(), name: String = "", description: String = "", content: String = "") {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.content = content
+    }
+
+    init(skill: CloudAgentSkill) {
+        self.init(name: skill.name, description: skill.description, content: skill.content ?? "")
+    }
+}
+
+struct CloudAgentCapabilityDraft: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+
+    init(id: UUID = UUID(), name: String = "") {
+        self.id = id
+        self.name = name
+    }
+}
+
+struct CloudAgentDraft: Equatable {
+    var accessScope = CloudAgentAccessScope.privateAgent
+    var name = ""
+    var role = ""
+    var description = ""
+    var systemPrompt = ""
+    var sourceSummary = ""
+    var boundaries: [CloudAgentBoundaryDraft] = []
+    var resources: [CloudAgentResourceDraft] = []
+    var skills: [CloudAgentSkillDraft] = []
+    var tools: [CloudAgentCapabilityDraft] = []
+    var plugins: [CloudAgentCapabilityDraft] = []
+    var modelRouting = CloudModelRouting.empty
+
+    init() {}
+
+    init(agent: CloudAgent) {
+        accessScope = CloudAgentAccessScope(rawValue: agent.accessScope) ?? .privateAgent
+        name = agent.name
+        role = agent.role
+        description = agent.description ?? ""
+        systemPrompt = agent.systemPrompt
+        sourceSummary = agent.sourceSummary ?? ""
+        boundaries = agent.boundaries.map { CloudAgentBoundaryDraft(value: $0) }
+        resources = agent.resources.map(CloudAgentResourceDraft.init(resource:))
+        skills = agent.skills.map(CloudAgentSkillDraft.init(skill:))
+        tools = (agent.modelRouting.tools ?? []).map { CloudAgentCapabilityDraft(name: $0) }
+        plugins = (agent.modelRouting.plugins ?? []).map { CloudAgentCapabilityDraft(name: $0) }
+        var routing = agent.modelRouting
+        routing.tools = nil
+        routing.plugins = nil
+        modelRouting = routing
+    }
+
+    var validationMessage: String? {
+        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Agent name is required."
+        }
+        if role.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Agent role is required."
+        }
+        if systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "System prompt is required."
+        }
+        if boundaries.contains(where: { $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return "Complete or delete each empty boundary."
+        }
+        if resources.contains(where: {
+            $0.kind.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            return "Each resource needs a type and source."
+        }
+        if skills.contains(where: {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || $0.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            return "Each skill needs a name and description."
+        }
+        if tools.contains(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return "Complete or delete each empty tool."
+        }
+        if plugins.contains(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return "Complete or delete each empty plugin."
+        }
+        return nil
+    }
+
+    var isValid: Bool { validationMessage == nil }
 }
 
 struct CloudAgent: Codable, Hashable, Identifiable {
@@ -109,7 +286,14 @@ struct CloudAgent: Codable, Hashable, Identifiable {
     let name: String
     let role: String
     let description: String?
+    let systemPrompt: String
+    let sourceSummary: String?
+    let boundaries: [String]
+    let resources: [CloudAgentResource]
+    let skills: [CloudAgentSkill]
     let updatedAt: String
+    let createdAt: String?
+    let archivedAt: String?
     let ownerDisplayName: String?
     let avatarUrl: String?
     let modelRouting: CloudModelRouting
@@ -117,7 +301,9 @@ struct CloudAgent: Codable, Hashable, Identifiable {
     var id: String { agentId }
 
     enum CodingKeys: String, CodingKey {
-        case agentId, ownerAccountId, accessScope, status, name, role, description, updatedAt, ownerDisplayName, avatarUrl, modelRouting
+        case agentId, ownerAccountId, accessScope, status, name, role, description
+        case systemPrompt, sourceSummary, boundaries, resources, skills
+        case createdAt, updatedAt, archivedAt, ownerDisplayName, avatarUrl, modelRouting
     }
 
     init(
@@ -128,7 +314,14 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         name: String,
         role: String,
         description: String?,
+        systemPrompt: String = "",
+        sourceSummary: String? = nil,
+        boundaries: [String] = [],
+        resources: [CloudAgentResource] = [],
+        skills: [CloudAgentSkill] = [],
         updatedAt: String,
+        createdAt: String? = nil,
+        archivedAt: String? = nil,
         ownerDisplayName: String?,
         avatarUrl: String? = nil,
         modelRouting: CloudModelRouting = .empty
@@ -140,7 +333,14 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         self.name = name
         self.role = role
         self.description = description
+        self.systemPrompt = systemPrompt
+        self.sourceSummary = sourceSummary
+        self.boundaries = boundaries
+        self.resources = resources
+        self.skills = skills
         self.updatedAt = updatedAt
+        self.createdAt = createdAt
+        self.archivedAt = archivedAt
         self.ownerDisplayName = ownerDisplayName
         self.avatarUrl = avatarUrl
         self.modelRouting = modelRouting
@@ -155,7 +355,14 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         name = try container.decode(String.self, forKey: .name)
         role = try container.decode(String.self, forKey: .role)
         description = try container.decodeIfPresent(String.self, forKey: .description)
+        systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? ""
+        sourceSummary = try container.decodeIfPresent(String.self, forKey: .sourceSummary)
+        boundaries = try container.decodeIfPresent([String].self, forKey: .boundaries) ?? []
+        resources = try container.decodeIfPresent([CloudAgentResource].self, forKey: .resources) ?? []
+        skills = try container.decodeIfPresent([CloudAgentSkill].self, forKey: .skills) ?? []
         updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+        archivedAt = try container.decodeIfPresent(String.self, forKey: .archivedAt)
         ownerDisplayName = try container.decodeIfPresent(String.self, forKey: .ownerDisplayName)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         modelRouting = try container.decodeIfPresent(CloudModelRouting.self, forKey: .modelRouting) ?? .empty

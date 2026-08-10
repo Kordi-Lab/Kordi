@@ -23,19 +23,27 @@ struct ContactsView: View {
     }
 
     var body: some View {
-        List {
-            if !incomingRequests.isEmpty || !outgoingRequests.isEmpty {
-                Section("Requests") {
-                    ForEach(incomingRequests) { request in
-                        ContactRequestRow(request: request)
-                    }
-                    ForEach(outgoingRequests) { request in
-                        ContactRequestRow(request: request)
-                    }
-                }
+        VStack(spacing: 0) {
+            KordiPageSearchHeader(
+                text: $searchText,
+                prompt: "Name or Kordi ID",
+                accessibilityLabel: "Search contacts by name or Kordi ID"
+            ) {
+                EmptyView()
             }
 
-            Section("Contacts") {
+            List {
+                if !incomingRequests.isEmpty || !outgoingRequests.isEmpty {
+                    Section("Requests") {
+                        ForEach(incomingRequests) { request in
+                            ContactRequestRow(request: request)
+                        }
+                        ForEach(outgoingRequests) { request in
+                            ContactRequestRow(request: request)
+                        }
+                    }
+                }
+
                 if contacts.isEmpty {
                     ContentUnavailableView(
                         searchText.isEmpty ? "No contacts yet" : "No contacts found",
@@ -54,10 +62,12 @@ struct ContactsView: View {
                     }
                 }
             }
+            .listStyle(.plain)
+            .scrollBounceBehavior(.always)
+            .scrollDismissesKeyboard(.interactively)
+            .refreshable { await model.refreshWorkspace() }
         }
-        .listStyle(.insetGrouped)
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Name or Kordi ID")
         .navigationDestination(for: ConversationSummary.self) { conversation in
             ConversationView(conversation: conversation)
         }
