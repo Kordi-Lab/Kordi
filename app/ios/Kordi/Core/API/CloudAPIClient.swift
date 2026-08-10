@@ -172,6 +172,38 @@ actor CloudAPIClient {
         return response.agents
     }
 
+    func createAgent(token: String, draft: CloudAgentDraft) async throws -> CloudAgent {
+        let response: AgentResponse = try await send(
+            path: "/v1/cloud/agents",
+            method: "POST",
+            token: token,
+            body: CloudAgentDefinitionRequest(draft: draft),
+            fallback: "Could not create this agent."
+        )
+        return response.agent
+    }
+
+    func updateAgent(token: String, agentId: String, draft: CloudAgentDraft) async throws -> CloudAgent {
+        let response: AgentResponse = try await send(
+            path: "/v1/cloud/agents/\(agentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? agentId)",
+            method: "PUT",
+            token: token,
+            body: CloudAgentDefinitionRequest(draft: draft),
+            fallback: "Could not save this agent."
+        )
+        return response.agent
+    }
+
+    func archiveAgent(token: String, agentId: String) async throws -> CloudAgent {
+        let response: AgentResponse = try await send(
+            path: "/v1/cloud/agents/\(agentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? agentId)",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not delete this agent."
+        )
+        return response.agent
+    }
+
     func listMessages(token: String, peerAccountId: String, limit: Int = 200) async throws -> [CloudMessageDTO] {
         let response: MessagesResponse = try await send(
             path: "/v1/cloud/messages",
@@ -606,6 +638,47 @@ private struct ContactRequestResponse: Decodable { let request: CloudContactRequ
 private struct SendContactRequest: Encodable { let peerAccountId: String; let message: String? }
 private struct AgentsResponse: Decodable { let agents: [CloudAgent] }
 private struct AgentResponse: Decodable { let agent: CloudAgent }
+private struct CloudAgentDefinitionRequest: Encodable {
+    let accessScope: String
+    let name: String
+    let role: String
+    let description: String
+    let systemPrompt: String
+    let sourceSummary: String
+    let boundaries: [String]
+    let resources: [CloudAgentResource]
+    let skills: [CloudAgentSkill]
+    let modelRouting: CloudModelRouting
+
+    init(draft: CloudAgentDraft) {
+        accessScope = draft.accessScope.rawValue
+        name = draft.name
+        role = draft.role
+        description = draft.description
+        systemPrompt = draft.systemPrompt
+        sourceSummary = draft.sourceSummary
+        boundaries = draft.boundaries.map(\.value)
+        resources = draft.resources.map {
+            CloudAgentResource(
+                kind: $0.kind,
+                value: $0.value,
+                title: $0.title.nonEmpty,
+                summary: $0.summary.nonEmpty
+            )
+        }
+        skills = draft.skills.map {
+            CloudAgentSkill(
+                name: $0.name,
+                description: $0.description,
+                content: $0.content.nonEmpty
+            )
+        }
+        var routing = draft.modelRouting
+        routing.tools = draft.tools.map(\.name)
+        routing.plugins = draft.plugins.map(\.name)
+        modelRouting = routing
+    }
+}
 private struct UpdateAgentRoutingRequest: Encodable { let modelRouting: CloudModelRouting }
 private struct ProviderAuthSnapshotResponse: Decodable { let snapshot: CloudProviderAuthSnapshot? }
 private struct PublishProviderAuthSnapshotRequest: Encodable {

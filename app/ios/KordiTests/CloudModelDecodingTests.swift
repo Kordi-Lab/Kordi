@@ -21,7 +21,7 @@ final class CloudModelDecodingTests: XCTestCase {
     }
 
     func testOwnedAndSharedAgentShapesDecodeThroughOneModel() throws {
-        let owned = Data(#"{"agentId":"cloud_agent_owned","ownerAccountId":"acct_me","accessScope":"private","status":"active","name":"Research Agent","role":"Researcher","description":null,"systemPrompt":"Help","sourceSummary":null,"boundaries":[],"resources":[],"skills":[],"modelRouting":{"defaultModel":"codex/gpt-5.6-sol","thinking":"high"},"createdAt":"2026-08-08T00:00:00Z","updatedAt":"2026-08-08T00:00:00Z","archivedAt":null}"#.utf8)
+        let owned = Data(#"{"agentId":"cloud_agent_owned","ownerAccountId":"acct_me","accessScope":"participant_conversations","status":"active","name":"Research Agent","role":"Researcher","description":null,"systemPrompt":"Help","sourceSummary":null,"boundaries":[],"resources":[],"skills":[{"name":"research","description":"Research sources","content":"Verify every source."}],"modelRouting":{"defaultModel":"codex/gpt-5.6-sol","thinking":"high","tools":["web-search"],"plugins":["citations"]},"createdAt":"2026-08-08T00:00:00Z","updatedAt":"2026-08-08T00:00:00Z","archivedAt":null}"#.utf8)
         let shared = Data(#"{"agentId":"cloud_agent_shared","ownerAccountId":"acct_maya","ownerDisplayName":"Maya","accessScope":"participant_conversations","name":"Support Agent","role":"Support","description":"Answers product questions","updatedAt":"2026-08-08T00:00:00Z"}"#.utf8)
 
         let decoder = JSONDecoder()
@@ -29,6 +29,14 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(ownedAgent.status, "active")
         XCTAssertEqual(ownedAgent.modelRouting.defaultModel, "codex/gpt-5.6-sol")
         XCTAssertEqual(ownedAgent.modelRouting.thinking, "high")
+        XCTAssertEqual(ownedAgent.modelRouting.tools, ["web-search"])
+        XCTAssertEqual(ownedAgent.modelRouting.plugins, ["citations"])
+        XCTAssertEqual(ownedAgent.skills.first?.content, "Verify every source.")
+        let draft = CloudAgentDraft(agent: ownedAgent)
+        XCTAssertEqual(draft.tools.map(\.name), ["web-search"])
+        XCTAssertEqual(draft.plugins.map(\.name), ["citations"])
+        XCTAssertNil(draft.modelRouting.tools)
+        XCTAssertNil(draft.modelRouting.plugins)
         XCTAssertEqual(try decoder.decode(CloudAgent.self, from: shared).ownerDisplayName, "Maya")
     }
 

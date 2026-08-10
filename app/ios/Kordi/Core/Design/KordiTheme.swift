@@ -42,6 +42,90 @@ extension View {
     }
 }
 
+struct KordiPullDownSearchField: View {
+    @Binding var text: String
+    let prompt: String
+    let accessibilityLabel: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.body.weight(.medium))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            TextField(prompt, text: $text)
+                .font(.body)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 36, height: 42)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, text.isEmpty ? 14 : 4)
+        .frame(minHeight: 44)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color(uiColor: .separator).opacity(0.36), lineWidth: 0.5)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
+struct KordiPageSearchHeader<Controls: View>: View {
+    @Binding var text: String
+    let prompt: String
+    let accessibilityLabel: String
+    private let controls: Controls
+
+    init(
+        text: Binding<String>,
+        prompt: String,
+        accessibilityLabel: String,
+        @ViewBuilder controls: () -> Controls
+    ) {
+        _text = text
+        self.prompt = prompt
+        self.accessibilityLabel = accessibilityLabel
+        self.controls = controls()
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            KordiPullDownSearchField(
+                text: $text,
+                prompt: prompt,
+                accessibilityLabel: accessibilityLabel
+            )
+
+            controls
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .background(Color(uiColor: .systemBackground))
+        .accessibilityElement(children: .contain)
+    }
+}
+
 private struct KordiListRowModifier: ViewModifier {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
