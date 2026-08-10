@@ -110,6 +110,7 @@ export type WorkspaceSidebarChats = {
   ) => Promise<void> | void;
   onDeleteChatSession: (sessionId: string) => void | Promise<void>;
   isCollaborationSyncing: boolean;
+  isCollaborationSyncUnavailable?: boolean;
 };
 
 export type WorkspaceSidebarProjects = {

@@ -80,73 +80,98 @@
 }
 
 .app-collaboration-sync-status {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.3125rem;
-  color: color-mix(in oklab, var(--app-markdown-link) 68%, var(--utility-muted-text));
-  transition: color 160ms var(--app-motion-ease);
+  position: relative;
+  display: inline-grid;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  outline: none;
 }
 
-.app-collaboration-sync-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.app-collaboration-sync-status::after {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.375rem);
+  left: 50%;
+  padding: 0.25rem 0.4375rem;
+  transform: translate(-50%, -0.125rem);
+  border: 1px solid var(--app-control-border);
+  border-radius: 0.4375rem;
+  background: color-mix(in oklab, var(--utility-background) 94%, transparent);
+  box-shadow: var(--app-shadow-soft);
+  color: var(--utility-foreground);
+  content: attr(data-tooltip);
+  font-size: 0.625rem;
+  font-weight: 500;
+  line-height: 1rem;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms var(--app-motion-ease),
+    transform 120ms var(--app-motion-ease);
   white-space: nowrap;
 }
 
-.app-collaboration-sync-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: conic-gradient(
-    from 38deg,
-    oklch(76% 0.13 190),
-    oklch(74% 0.15 145),
-    oklch(78% 0.12 76),
-    oklch(76% 0.13 190)
-  );
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--app-divider) 28%, transparent),
-    0 1px 3px color-mix(in oklab, var(--app-markdown-link) 18%, transparent);
+.app-collaboration-sync-status:hover::after,
+.app-collaboration-sync-status:focus-visible::after {
+  transform: translate(-50%, 0);
+  opacity: 1;
 }
 
-.app-collaboration-sync-status[data-collaboration-sync-status="idle"] {
-  color: color-mix(in oklab, var(--utility-muted-text) 80%, var(--app-markdown-link));
+.app-collaboration-sync-status:focus-visible {
+  outline: 2px solid var(--app-nav-rail-focus-ring);
+  outline-offset: 1px;
 }
 
-.app-collaboration-sync-status[data-collaboration-sync-status="idle"] .app-collaboration-sync-dot {
-  background: radial-gradient(circle at 38% 32%, oklch(86% 0.08 152), oklch(62% 0.07 175));
-  opacity: 0.82;
+.app-collaboration-sync-icon {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  overflow: visible;
+}
+
+.app-collaboration-sync-icon :where(circle, path) {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.6;
 }
 
 .app-collaboration-sync-status[data-collaboration-sync-status="syncing"] {
-  color: color-mix(in oklab, var(--app-markdown-link) 82%, var(--utility-foreground));
+  color: oklch(74% 0.045 174);
 }
 
-.app-collaboration-sync-status[data-collaboration-sync-status="syncing"] .app-collaboration-sync-dot {
-  animation: app-collaboration-sync-pulse 1200ms var(--app-motion-ease) infinite;
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--app-markdown-link) 40%, transparent),
-    0 2px 7px color-mix(in oklab, var(--app-markdown-link) 26%, transparent);
+.app-collaboration-sync-track {
+  opacity: 0.22;
 }
 
-@keyframes app-collaboration-sync-pulse {
-  0%,
-  100% {
-    opacity: 0.78;
-    transform: scale(0.86);
-  }
+.app-collaboration-sync-arc {
+  animation: app-collaboration-sync-orbit 900ms linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
 
-  45% {
-    opacity: 1;
-    transform: scale(1.08);
+.app-collaboration-sync-status[data-collaboration-sync-status="unavailable"] {
+  color: oklch(72% 0.16 25);
+}
+
+@keyframes app-collaboration-sync-orbit {
+  to {
+    transform: rotate(360deg);
   }
+}
+
+.kordi-app.theme-light .app-collaboration-sync-status[data-collaboration-sync-status="syncing"] {
+  color: oklch(48% 0.055 174);
+}
+
+.kordi-app.theme-light .app-collaboration-sync-status[data-collaboration-sync-status="unavailable"] {
+  color: oklch(52% 0.17 25);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-collaboration-sync-status[data-collaboration-sync-status="syncing"] .app-collaboration-sync-dot {
+  .app-collaboration-sync-arc {
     animation: none;
   }
 }

@@ -5,6 +5,10 @@ import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import type { NavId } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { SidebarProfileControl } from '@/pages/workspaceSidebar.profile';
+import {
+  SidebarUpdater,
+  type SidebarUpdaterProps,
+} from '@/pages/workspaceSidebar.update';
 import type { WorkspaceSidebarAccount } from '@/pages/workspaceSidebar.types';
 
 function formatUnreadCount(value: number) {
@@ -18,6 +22,7 @@ export function WorkspaceNavigationRail({
   totalUnread,
   pendingContactRequestCount,
   account,
+  updater,
 }: {
   isNativeShell: boolean;
   activeNav: NavId;
@@ -25,6 +30,7 @@ export function WorkspaceNavigationRail({
   totalUnread: number;
   pendingContactRequestCount: number;
   account: WorkspaceSidebarAccount;
+  updater: Omit<SidebarUpdaterProps, 'isNativeShell'>;
 }) {
   return (
     <div
@@ -79,7 +85,11 @@ export function WorkspaceNavigationRail({
         </div>
       </div>
 
-      <div className="flex w-full flex-col items-center gap-2">
+      <div className="app-nav-rail-bottom flex w-full flex-col items-center gap-2">
+        <SidebarUpdater
+          isNativeShell={isNativeShell}
+          {...updater}
+        />
         <SidebarProfileControl
           localProfileAvatarSeed={account.localProfileAvatarSeed}
           cloudAccount={account.cloudAccount}
