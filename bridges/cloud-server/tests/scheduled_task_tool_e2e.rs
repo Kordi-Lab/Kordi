@@ -296,7 +296,13 @@ fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
 fn cloud_agent_scheduled_responses_use_the_shared_message_sync_projection() {
     let completion_source = std::fs::read_to_string("src/cloud_agent_runtime/runs/completion.rs")
         .expect("read cloud agent completion source");
-    assert!(completion_source.contains("append_cloud_message_sync_events_in_transaction"));
+    assert!(completion_source.contains("ensure_terminal_response_message_in_transaction"));
+
+    let delivery_source = std::fs::read_to_string("src/cloud_agent_runtime/runs/delivery.rs")
+        .expect("read cloud agent delivery source");
+    assert!(delivery_source.contains("persist_cloud_message_in_transaction"));
+    assert!(delivery_source.contains("append_cloud_message_sync_events_in_transaction"));
+    assert!(!delivery_source.contains("tx.commit()"));
 
     let sync_source =
         std::fs::read_to_string("src/auth/messages.rs").expect("read shared message sync source");
