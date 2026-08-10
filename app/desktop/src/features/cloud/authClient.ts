@@ -8,8 +8,8 @@ import {
   type CloudMessageSnapshotResponse,
 } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
-import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
-import type { CloudAuthErrorCode } from './cloudAuthError';
+import { buildCloudAuthError, CloudAuthError, type CloudAuthErrorCode } from './cloudAuthError';
+import { createCloudMessageOperationId } from './cloudMessageLifecycle';
 import {
   acceptCloudGroupInvitation,
   createCloudGroupInvitation,
@@ -827,7 +827,7 @@ export class CloudAuthClient {
           ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}),
           ...(attachments.length > 0 ? { attachments } : {}),
           ...(options.clientCreatedAt?.trim() ? { clientCreatedAt: options.clientCreatedAt.trim() } : {}),
-          ...(options.clientMessageId?.trim() ? { clientMessageId: options.clientMessageId.trim() } : {}),
+          clientMessageId: options.clientMessageId?.trim() || createCloudMessageOperationId(),
         }),
       },
       'Could not send message.',

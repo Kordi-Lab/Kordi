@@ -125,9 +125,6 @@ export function useCloudRealtimeMessages({
               accountIdAtOpen,
             );
             if (!action) return;
-            if (action.kind === 'message') {
-              mergeMessageRef.current(action.message);
-            }
             void syncCloudCollaborationDiffRef.current();
           } catch (error) {
             reportWarning(

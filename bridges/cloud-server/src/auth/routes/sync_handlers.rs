@@ -25,8 +25,33 @@ pub(super) async fn append_cloud_sync_event(
     Ok(())
 }
 
-pub(super) async fn upsert_cloud_read_cursor(
-    pool: &PgPool,
+pub(super) async fn append_cloud_sync_event_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    account_id: &str,
+    event_type: &str,
+    peer_account_id: Option<&str>,
+    message_id: Option<&str>,
+    payload: serde_json::Value,
+    occurred_at: &str,
+) -> Result<(), sqlx_core::error::Error> {
+    query(
+        "INSERT INTO cloud_sync_events \
+         (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(account_id)
+    .bind(event_type)
+    .bind(peer_account_id)
+    .bind(message_id)
+    .bind(payload)
+    .bind(occurred_at)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+pub(super) async fn upsert_cloud_read_cursor_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     account_id: &str,
     scope_kind: &str,
     scope_id: &str,
@@ -47,7 +72,7 @@ pub(super) async fn upsert_cloud_read_cursor(
     .bind(scope_kind)
     .bind(scope_id)
     .bind(read_at)
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
     Ok(())
 }

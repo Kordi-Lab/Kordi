@@ -229,7 +229,14 @@ pub(super) async fn send_message(
     .await
     {
         Ok(value) => value,
-        Err(error) => {
+        Err(PersistCloudMessageError::IdempotencyConflict) => {
+            return err(
+                "idempotency_conflict",
+                "clientMessageId was already used for a different message.",
+                StatusCode::CONFLICT,
+            );
+        }
+        Err(PersistCloudMessageError::Database(error)) => {
             eprintln!("[cloud-messages] transactional write failed: {error}");
             return err(
                 "server_error",

@@ -212,6 +212,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "server ordered cloud messages",
         sql: include_str!("../../migrations/0045_cloud_message_server_received_at.sql"),
     },
+    EmbeddedMigration {
+        version: 46,
+        description: "durable cloud sync realtime outbox",
+        sql: include_str!("../../migrations/0046_cloud_sync_realtime_outbox.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

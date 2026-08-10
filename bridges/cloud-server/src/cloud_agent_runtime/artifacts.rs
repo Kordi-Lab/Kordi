@@ -184,61 +184,60 @@ pub async fn ensure_response_message(
     session_id: &str,
     body: &str,
 ) -> Result<String, sqlx_core::Error> {
-    if let Some((message_id,)) = query_as::<_, (String,)>(
-        "SELECT response_message_id FROM cloud_agent_fallback_runs WHERE run_id = $1 AND response_message_id IS NOT NULL",
+    let mut tx = pool.begin().await?;
+    let existing: Option<(Option<String>,)> = query_as(
+        "SELECT response_message_id FROM cloud_agent_fallback_runs \
+         WHERE run_id = $1 FOR UPDATE",
     )
     .bind(run_id)
-    .fetch_optional(pool)
-    .await?
-    {
-        query(
-            "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-             VALUES ($1, $2, $3, $4, $5, $5, $6) \
-             ON CONFLICT (message_id) DO NOTHING",
-        )
-        .bind(&message_id)
-        .bind(owner_account_id)
-        .bind(requester_account_id)
-        .bind(body)
-        .bind(Utc::now().to_rfc3339())
-        .bind(session_id)
-        .execute(pool)
-        .await?;
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((existing_message_id,)) = existing else {
+        return Err(sqlx_core::Error::RowNotFound);
+    };
+    if let Some(message_id) = existing_message_id {
+        tx.commit().await?;
         return Ok(message_id);
     }
 
     let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
+    let client_message_id = format!("cloud-agent-run:{run_id}:{requester_account_id}");
     let now = Utc::now().to_rfc3339();
+    let read_at = (owner_account_id == requester_account_id).then_some(now.as_str());
     query(
-        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6)",
+        "INSERT INTO cloud_messages \
+         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id, client_message_id) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8)",
     )
     .bind(&message_id)
     .bind(owner_account_id)
     .bind(requester_account_id)
     .bind(body)
     .bind(&now)
+    .bind(read_at)
     .bind(session_id)
-    .execute(pool)
+    .bind(&client_message_id)
+    .execute(&mut *tx)
     .await?;
     query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
         .bind(run_id)
         .bind(&message_id)
         .bind(&now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(message_id)
 }
 
-pub async fn update_response_message_body(
-    pool: &PgPool,
+pub async fn update_response_message_body_in_transaction(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     message_id: &str,
     body: &str,
 ) -> Result<(), sqlx_core::Error> {
     query("UPDATE cloud_messages SET body = $2 WHERE message_id = $1")
         .bind(message_id)
         .bind(body)
-        .execute(pool)
+        .execute(&mut **tx)
         .await?;
     Ok(())
 }
@@ -299,7 +298,7 @@ pub async fn export_run_artifact(
         session_id,
         _status,
         sandbox_id,
-        existing_message_id,
+        _existing_message_id,
     )) = run_for_export(pool, run_id, runner_id)
         .await
         .map_err(|_| ExportArtifactError {
@@ -322,8 +321,6 @@ pub async fn export_run_artifact(
         });
     };
 
-    let message_id =
-        existing_message_id.unwrap_or_else(|| format!("cloudrunmsg_{}", Uuid::new_v4().simple()));
     let attachment_id = format!("att_{}", Uuid::new_v4().simple());
     let artifact_id = format!("carartifact_{}", Uuid::new_v4().simple());
     let activity_id = format!("artifact_activity_{}", Uuid::new_v4().simple());
@@ -338,9 +335,30 @@ pub async fn export_run_artifact(
         status: StatusCode::INTERNAL_SERVER_ERROR,
     })?;
 
+    let locked_response: (Option<String>,) = query_as(
+        "SELECT response_message_id FROM cloud_agent_fallback_runs \
+         WHERE run_id = $1 AND claimed_by = $2 \
+         AND status IN ('leased', 'running', 'completed') FOR UPDATE",
+    )
+    .bind(&run_id)
+    .bind(runner_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| ExportArtifactError {
+        code: "server_error",
+        message: "Could not lock Cloud agent response.",
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+    })?;
+    let message_id = locked_response
+        .0
+        .unwrap_or_else(|| format!("cloudrunmsg_{}", Uuid::new_v4().simple()));
+    let client_message_id = format!("cloud-agent-run:{run_id}:{requester_account_id}");
+    let read_at = (owner_account_id == requester_account_id).then_some(now.as_str());
+
     query(
-        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6) \
+        "INSERT INTO cloud_messages \
+         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id, client_message_id) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8) \
          ON CONFLICT (message_id) DO NOTHING",
     )
     .bind(&message_id)
@@ -348,7 +366,9 @@ pub async fn export_run_artifact(
     .bind(&requester_account_id)
     .bind(PLACEHOLDER_RESPONSE_BODY)
     .bind(&now)
+    .bind(read_at)
     .bind(&session_id)
+    .bind(&client_message_id)
     .execute(&mut *tx)
     .await
     .map_err(|_| ExportArtifactError { code: "server_error", message: "Could not create run response message.", status: StatusCode::INTERNAL_SERVER_ERROR })?;

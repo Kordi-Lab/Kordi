@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
+import { createCloudMessageOperationId } from '@/features/cloud/cloudMessageLifecycle';
 import {
   cloudGroupMessageSessionId,
   cloudGroupTargetAccountIds,
@@ -984,7 +984,7 @@ export function useChatMessageActions({
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const optimisticMessageId = createCloudMessageOperationId('direct-user');
       try {
         shouldAutoFollowChatRef.current = true;
         setDesktopChatError(null);
@@ -1449,7 +1449,7 @@ export function useChatMessageActions({
         return;
       }
       const sentAt = formatDesktopEventTime();
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const optimisticMessageId = createCloudMessageOperationId('direct-user');
       const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
       try {
         shouldAutoFollowChatRef.current = true;

@@ -13,6 +13,7 @@ pub mod events;
 pub mod messages;
 pub mod pg;
 pub mod presence;
+pub mod realtime_outbox;
 pub mod scheduled_tasks;
 pub mod server;
 pub mod support;

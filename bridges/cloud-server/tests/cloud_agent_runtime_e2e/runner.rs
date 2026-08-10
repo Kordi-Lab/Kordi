@@ -77,7 +77,54 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
     assert_eq!(running.status(), StatusCode::OK);
     assert_eq!(read_json(running).await["run"]["status"], "running");
 
-    let complete = router
+    let complete_a = router.clone().oneshot(post_json_with_runner_token(
+        &format!("/v1/cloud/agent-runs/{run_id}/complete"),
+        "runner-test-token",
+        json!({ "runnerId": "runner-a", "responseText": "runner skeleton complete" }),
+    ));
+    let complete_b = router.clone().oneshot(post_json_with_runner_token(
+        &format!("/v1/cloud/agent-runs/{run_id}/complete"),
+        "runner-test-token",
+        json!({ "runnerId": "runner-a", "responseText": "runner skeleton complete" }),
+    ));
+    let (complete_a, complete_b) = tokio::join!(complete_a, complete_b);
+    let complete_a = complete_a.unwrap();
+    let complete_b = complete_b.unwrap();
+    assert_eq!(complete_a.status(), StatusCode::OK);
+    assert_eq!(complete_b.status(), StatusCode::OK);
+    let completed = read_json(complete_a).await;
+    let completed_retry = read_json(complete_b).await;
+    assert_eq!(completed["run"]["status"], "completed");
+    assert_eq!(completed_retry["run"]["status"], "completed");
+    let response_message_id = completed["run"]["responseMessageId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        completed_retry["run"]["responseMessageId"],
+        response_message_id
+    );
+    assert!(response_message_id.starts_with("cloudrunmsg_"));
+    let (message_count,): (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_messages WHERE client_message_id = $1",
+    )
+    .bind(format!("cloud-agent-run:{run_id}:{}", requester.account_id))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(message_count, 1);
+    let (sync_event_count,): (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_sync_events \
+         WHERE account_id = $1 AND event_type = 'message.upsert' AND message_id = $2",
+    )
+    .bind(&requester.account_id)
+    .bind(&response_message_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(sync_event_count, 1);
+
+    let retry_after_ack_loss = router
         .clone()
         .oneshot(post_json_with_runner_token(
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
@@ -86,14 +133,11 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
         ))
         .await
         .unwrap();
-    assert_eq!(complete.status(), StatusCode::OK);
-    let completed = read_json(complete).await;
-    assert_eq!(completed["run"]["status"], "completed");
-    let response_message_id = completed["run"]["responseMessageId"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    assert!(response_message_id.starts_with("cloudrunmsg_"));
+    assert_eq!(retry_after_ack_loss.status(), StatusCode::OK);
+    assert_eq!(
+        read_json(retry_after_ack_loss).await["run"]["responseMessageId"],
+        response_message_id
+    );
     let (body,): (String,) =
         sqlx_core::query_as::query_as("SELECT body FROM cloud_messages WHERE message_id = $1")
             .bind(&response_message_id)

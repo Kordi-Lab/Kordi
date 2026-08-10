@@ -66,6 +66,49 @@ async fn cloud_message_idempotency_returns_the_existing_message() {
 }
 
 #[tokio::test]
+async fn cloud_message_idempotency_rejects_a_changed_command() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let router = fast_router(state);
+    let (token, account_id) = signup_account(&router, "message-idempotency-conflict").await;
+    let client_message_id = format!("operation:{}", uuid::Uuid::new_v4().simple());
+
+    let first = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &token,
+            json!({
+                "peerAccountId": account_id,
+                "body": "original command",
+                "sessionId": "session:original",
+                "clientMessageId": client_message_id,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::CREATED);
+
+    let conflict = router
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &token,
+            json!({
+                "peerAccountId": account_id,
+                "body": "mutated command",
+                "sessionId": "session:original",
+                "clientMessageId": client_message_id,
+            }),
+        ))
+        .await
+        .unwrap();
+    let status = conflict.status();
+    let body = read_json(conflict).await;
+    assert_eq!(status, StatusCode::CONFLICT, "got body {body}");
+    assert_eq!(body["errorCode"], "idempotency_conflict");
+}
+
+#[tokio::test]
 async fn legacy_self_message_retries_use_the_source_timestamp_as_an_idempotency_key() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));

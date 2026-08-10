@@ -237,10 +237,6 @@ pub(super) fn cloud_message_requires_accepted_contact(body: &str) -> bool {
     !body.trim_start().starts_with(CLOUD_GROUP_CONTROL_PREFIX)
 }
 
-pub(super) fn message_sync_payload(message: &MessageSummary) -> serde_json::Value {
-    serde_json::json!({ "message": message })
-}
-
 pub(super) fn contact_acceptance_hello_sync_summaries(
     message_id: &str,
     request_from_account_id: &str,

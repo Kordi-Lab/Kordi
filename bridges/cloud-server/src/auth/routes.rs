@@ -25,8 +25,8 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::messages::{
-    persist_cloud_message, persist_cloud_message_in_transaction, PersistCloudMessageInput,
-    PersistedMessageAttachment,
+    persist_cloud_message, persist_cloud_message_in_transaction, PersistCloudMessageError,
+    PersistCloudMessageInput, PersistedMessageAttachment,
 };
 use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,

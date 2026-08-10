@@ -49,6 +49,10 @@ import {
   cleanCloudText,
 } from './cloudValue';
 import {
+  cloudMessageRecipientOperationId,
+  createCloudMessageOperationId,
+} from './cloudMessageLifecycle';
+import {
   loadSession,
 } from './session';
 import type {
@@ -265,6 +269,25 @@ export function useCloudGroupControlSender({
     const canonicalMessageId = cleanCloudText(
       initialPayload.message?.id,
     );
+    const mutationEventIds = [
+      ...(input.memberJoins ?? []).map((event) => event.eventId),
+      ...(input.memberLeaves ?? []).map((event) => event.eventId),
+    ].map(cleanCloudText).filter(Boolean).sort();
+    const stableMutationId = mutationEventIds.length > 0
+      ? `${mutationEventIds[0]}-${mutationEventIds.length}`
+      : cleanCloudText(input.fork?.forkSessionId)
+        || (
+          sessionTitle
+            ? `title-${sessionTitle.titleRevision}-${sessionTitle.updatedAtMs}`
+            : ''
+        );
+    const operationId = cleanCloudText(input.operationId)
+      || canonicalMessageId
+      || (stableMutationId
+        ? `group-control:${input.kind}:${input.groupId}:${stableMutationId}`
+        : input.kind === 'group-invite'
+          ? `group-control:group-invite:${input.groupId}`
+          : createCloudMessageOperationId(`group-${input.kind}`));
     if (
       input.kind === 'group-message'
       && canonicalMessageId
@@ -371,6 +394,10 @@ export function useCloudGroupControlSender({
             sessionId: input.groupId,
             attachments: uploadedAttachments,
             ...(clientCreatedAt ? { clientCreatedAt } : {}),
+            clientMessageId: cloudMessageRecipientOperationId(
+              operationId,
+              peerId,
+            ),
           },
         );
         recordFirstAck(

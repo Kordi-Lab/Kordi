@@ -150,13 +150,31 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
     let request_id = request["request"]["requestId"].as_str().unwrap();
     let b_token = b["session"]["token"].as_str().unwrap();
     let accept_path = format!("/v1/cloud/contacts/requests/{request_id}/accept");
-    let accept_status = router
+    let accept_a = router
         .clone()
-        .oneshot(post_with_token(&accept_path, b_token))
-        .await
-        .unwrap()
-        .status();
-    assert_eq!(accept_status, StatusCode::OK);
+        .oneshot(post_with_token(&accept_path, b_token));
+    let accept_b = router
+        .clone()
+        .oneshot(post_with_token(&accept_path, b_token));
+    let (accept_a, accept_b) = tokio::join!(accept_a, accept_b);
+    let accept_a = accept_a.unwrap();
+    let accept_b = accept_b.unwrap();
+    assert_eq!(accept_a.status(), StatusCode::OK);
+    assert_eq!(accept_b.status(), StatusCode::OK);
+    let accepted_a = read_json(accept_a).await;
+    let accepted_b = read_json(accept_b).await;
+    assert_eq!(
+        accepted_a["helloMessage"]["messageId"],
+        accepted_b["helloMessage"]["messageId"]
+    );
+    let (hello_count,): (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_messages WHERE client_message_id = $1",
+    )
+    .bind(format!("contact-acceptance:{request_id}:hello"))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(hello_count, 1);
 
     let online_status = router
         .clone()
