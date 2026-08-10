@@ -103,14 +103,10 @@ async fn handle_loopback_connection(
     request_id: &str,
     sender: &mut Option<oneshot::Sender<Result<String, String>>>,
 ) -> bool {
-    let mut buffer = vec![0_u8; 64 * 1024];
-    let Ok(read) = stream.read(&mut buffer).await else {
+    let Ok(request_bytes) = read_http_request(&mut stream).await else {
         return false;
     };
-    if read == 0 {
-        return false;
-    }
-    let request = String::from_utf8_lossy(&buffer[..read]);
+    let request = String::from_utf8_lossy(&request_bytes);
     let mut lines = request.lines();
     let first = lines.next().unwrap_or_default();
 
@@ -148,6 +144,64 @@ async fn handle_loopback_connection(
     )
     .await;
     false
+}
+
+const MAX_LOOPBACK_REQUEST_BYTES: usize = 128 * 1024;
+
+async fn read_http_request(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
+    let mut request = Vec::with_capacity(4 * 1024);
+    let mut chunk = [0_u8; 4 * 1024];
+    let mut expected_len = None;
+
+    loop {
+        let read = tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk))
+            .await
+            .map_err(|_| "Local OAuth callback request timed out.".to_string())?
+            .map_err(|err| format!("Unable to read local OAuth callback: {err}"))?;
+        if read == 0 {
+            return if expected_len.is_some_and(|len| request.len() >= len) {
+                Ok(request)
+            } else {
+                Err("Local OAuth callback closed before the request was complete.".to_string())
+            };
+        }
+
+        request.extend_from_slice(&chunk[..read]);
+        if request.len() > MAX_LOOPBACK_REQUEST_BYTES {
+            return Err("Local OAuth callback request was too large.".to_string());
+        }
+
+        if expected_len.is_none() {
+            let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let body_start = header_end + 4;
+            let headers = String::from_utf8_lossy(&request[..header_end]);
+            let content_length = headers
+                .lines()
+                .skip(1)
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            let total_len = body_start
+                .checked_add(content_length)
+                .ok_or_else(|| "Local OAuth callback request was too large.".to_string())?;
+            if total_len > MAX_LOOPBACK_REQUEST_BYTES {
+                return Err("Local OAuth callback request was too large.".to_string());
+            }
+            expected_len = Some(total_len);
+        }
+
+        if expected_len.is_some_and(|len| request.len() >= len) {
+            request.truncate(expected_len.expect("expected length was checked"));
+            return Ok(request);
+        }
+    }
 }
 
 async fn write_response(
