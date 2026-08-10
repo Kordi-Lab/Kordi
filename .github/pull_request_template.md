@@ -23,6 +23,14 @@ Closes #<!-- issue number -->
 - [ ] Docs
 - [ ] Refactor / internal cleanup
 
+## App scope
+
+<!-- Check one. -->
+
+- [ ] iOS
+- [ ] macOS
+- [ ] Both iOS and macOS
+
 ## Project board
 
 - Status before merge: <!-- In Review / Testing -->

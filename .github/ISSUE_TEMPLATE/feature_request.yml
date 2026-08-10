@@ -56,6 +56,17 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: app_scope
+    attributes:
+      label: App scope
+      description: Which Kordi app should support this feature?
+      options:
+        - iOS
+        - macOS
+        - Both iOS and macOS
+    validations:
+      required: true
+  - type: dropdown
     id: area
     attributes:
       label: Area
@@ -92,7 +103,7 @@ body:
       description: List likely files, crates, APIs, data model changes, or architecture concerns if known.
       placeholder: |
         Likely areas:
-        - app/desktop/...
+        - app/ios/... or app/desktop/...
         - agent/crates/...
         - shared protocol / session model / settings
   - type: textarea
