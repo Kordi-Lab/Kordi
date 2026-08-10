@@ -1,0 +1,256 @@
+import XCTest
+@testable import Kordi
+
+final class AgentSessionPresentationTests: XCTestCase {
+    func testOnlyAgentSessionsDisableQuotedReplies() {
+        XCTAssertFalse(ConversationKind.agent.supportsQuotedReplies)
+        XCTAssertTrue(ConversationKind.person.supportsQuotedReplies)
+        XCTAssertTrue(ConversationKind.group.supportsQuotedReplies)
+    }
+
+    func testAgentChoicesIncludeOwnedAndSharedAgentsButNeverKordiSupport() {
+        let first = conversation(
+            id: "one",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Plan the launch",
+            preview: "Start with TestFlight",
+            date: Date(timeIntervalSince1970: 10)
+        )
+        let second = conversation(
+            id: "two",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Review the design",
+            preview: "The layout is ready",
+            date: Date(timeIntervalSince1970: 20)
+        )
+        let shared = conversation(
+            id: "shared",
+            peerAccountId: "acct_maya",
+            agentId: "agent_support",
+            agentName: "Support Agent",
+            title: "Support Agent",
+            preview: "How can I help?",
+            date: Date(timeIntervalSince1970: 30)
+        )
+        let support = conversation(
+            id: "support",
+            peerAccountId: KordiSupportIdentity.accountId,
+            agentId: KordiSupportIdentity.agentId,
+            agentName: KordiSupportIdentity.displayName,
+            title: KordiSupportIdentity.displayName,
+            preview: "Welcome",
+            date: Date(timeIntervalSince1970: 40)
+        )
+
+        let sections = AgentSessionPresentationCatalog.build(
+            conversations: [first, second, shared, support],
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(sections.count, 2)
+        XCTAssertEqual(Set(sections.map(\.displayName)), ["Research Agent", "Support Agent"])
+        XCTAssertEqual(
+            sections.first { $0.displayName == "Research Agent" }?.sessions.map(\.sessionId),
+            [second.sessionId, first.sessionId]
+        )
+    }
+
+    func testSearchMatchesSessionMessageWithoutDroppingItsAgentIdentity() {
+        let launch = conversation(
+            id: "launch",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Plan the launch",
+            preview: "TestFlight checklist",
+            date: Date(timeIntervalSince1970: 10)
+        )
+        let design = conversation(
+            id: "design",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Review the layout",
+            preview: "Spacing is ready",
+            date: Date(timeIntervalSince1970: 20)
+        )
+
+        let sections = AgentSessionPresentationCatalog.build(
+            conversations: [launch, design],
+            ownAccountId: "acct_me",
+            searchText: "TestFlight"
+        )
+
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertEqual(sections[0].displayName, "Research Agent")
+        XCTAssertEqual(sections[0].sessions.map(\.sessionId), [launch.sessionId])
+    }
+
+    func testNewSessionUsesFreshMacCompatibleRoutingAndPreservesAgentIdentity() {
+        let template = conversation(
+            id: "template",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Existing session",
+            preview: "Previous message",
+            date: Date(timeIntervalSince1970: 10)
+        )
+
+        let draft = AgentSessionFactory.make(
+            from: template,
+            ownAccountId: "acct_me",
+            randomId: "fresh-session",
+            now: Date(timeIntervalSince1970: 30)
+        )
+
+        XCTAssertEqual(draft.id, "agent-session:session:self-agent:fresh-session")
+        XCTAssertEqual(draft.sessionId, "session:self-agent:fresh-session")
+        XCTAssertEqual(draft.agentId, "agent_research")
+        XCTAssertEqual(draft.agentDisplayName, "Research Agent")
+        XCTAssertEqual(draft.displayName, "Research Agent")
+        XCTAssertEqual(draft.lastMessage, "New session")
+        XCTAssertEqual(draft.agentActivity, .ready)
+    }
+
+    func testTimelineFlattensAgentsByActivityAndKeepsForksUnderTheirParent() {
+        let root = conversation(
+            id: "root",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Root plan",
+            preview: "Original thread",
+            date: Date(timeIntervalSince1970: 30)
+        )
+        var fork = conversation(
+            id: "fork",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Alternative plan",
+            preview: "Fork reply",
+            date: Date(timeIntervalSince1970: 40)
+        )
+        fork = replacingForkParent(fork, parentSessionId: root.sessionId)
+        let shared = conversation(
+            id: "shared",
+            peerAccountId: "acct_maya",
+            agentId: "agent_writer",
+            agentName: "Writer",
+            title: "Draft copy",
+            preview: "Ready for review",
+            date: Date(timeIntervalSince1970: 20)
+        )
+
+        let rows = AgentSessionTimelineCatalog.build(conversations: [shared, fork, root])
+
+        XCTAssertEqual(rows.map(\.conversation.sessionId), [root.sessionId, fork.sessionId, shared.sessionId])
+        XCTAssertEqual(rows.map(\.depth), [0, 1, 0])
+        XCTAssertEqual(rows.map(\.childCount), [1, 0, 0])
+    }
+
+    func testTimelineCollapsesForksAndExcludesSupportAndContactForks() {
+        let root = conversation(
+            id: "root",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Root",
+            preview: "Root",
+            date: Date(timeIntervalSince1970: 30)
+        )
+        let child = replacingForkParent(
+            conversation(
+                id: "child",
+                peerAccountId: "acct_me",
+                agentId: "agent_research",
+                agentName: "Research Agent",
+                title: "Child",
+                preview: "Child",
+                date: Date(timeIntervalSince1970: 40)
+            ),
+            parentSessionId: root.sessionId
+        )
+        let contactFork = replacingForkParent(
+            conversation(
+                id: "contact-fork",
+                peerAccountId: "acct_me",
+                agentId: "agent_research",
+                agentName: "Research Agent",
+                title: "Private contact fork",
+                preview: "Fork",
+                date: Date(timeIntervalSince1970: 50)
+            ),
+            parentSessionId: "session:direct-person:acct_me:acct_maya"
+        )
+        let support = conversation(
+            id: "support",
+            peerAccountId: KordiSupportIdentity.accountId,
+            agentId: KordiSupportIdentity.agentId,
+            agentName: KordiSupportIdentity.displayName,
+            title: KordiSupportIdentity.displayName,
+            preview: "Welcome",
+            date: Date(timeIntervalSince1970: 60)
+        )
+
+        let rows = AgentSessionTimelineCatalog.build(
+            conversations: [root, child, contactFork, support],
+            collapsedForkParentIds: [root.sessionId]
+        )
+
+        XCTAssertEqual(rows.map(\.conversation.sessionId), [root.sessionId])
+    }
+
+    private func conversation(
+        id: String,
+        peerAccountId: String,
+        agentId: String,
+        agentName: String,
+        title: String,
+        preview: String,
+        date: Date
+    ) -> ConversationSummary {
+        ConversationSummary(
+            id: "agent-session:session:\(id)",
+            kind: .agent,
+            peerAccountId: peerAccountId,
+            agentId: agentId,
+            ownerDisplayName: peerAccountId == "acct_me" ? "Shuyang" : "Maya",
+            displayName: title,
+            lastMessage: preview,
+            lastActivityAt: date,
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: "session:\(id)",
+            agentDisplayName: agentName
+        )
+    }
+
+    private func replacingForkParent(
+        _ conversation: ConversationSummary,
+        parentSessionId: String
+    ) -> ConversationSummary {
+        ConversationSummary(
+            id: conversation.id,
+            kind: conversation.kind,
+            peerAccountId: conversation.peerAccountId,
+            agentId: conversation.agentId,
+            ownerDisplayName: conversation.ownerDisplayName,
+            displayName: conversation.displayName,
+            lastMessage: conversation.lastMessage,
+            lastActivityAt: conversation.lastActivityAt,
+            unreadCount: conversation.unreadCount,
+            avatarSource: conversation.avatarSource,
+            agentActivity: conversation.agentActivity,
+            sessionId: conversation.sessionId,
+            agentDisplayName: conversation.agentDisplayName,
+            forkedFromSessionId: parentSessionId
+        )
+    }
+}

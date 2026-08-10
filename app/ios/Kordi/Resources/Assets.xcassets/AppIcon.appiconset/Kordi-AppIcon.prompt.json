@@ -1,0 +1,5 @@
+{
+  "prompt": "Remove only the baked-in rounded-square border and shadow from Kordi's established three-circle icon. Preserve the pink, cyan, and amber mark on a clean opaque full-bleed neutral field; iOS applies the outer mask.",
+  "generated": true,
+  "source": "imagegen edit of Kordi-AppIcon-MacAligned.png"
+}

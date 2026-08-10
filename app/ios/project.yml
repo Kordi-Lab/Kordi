@@ -1,0 +1,74 @@
+name: Kordi
+options:
+  minimumXcodeGenVersion: 2.46.0
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+    IPHONEOS_DEPLOYMENT_TARGET: 17.0
+    TARGETED_DEVICE_FAMILY: 1
+    SUPPORTS_MACCATALYST: NO
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 35
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Kordi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Kordi
+        excludes:
+          - Supporting/Preview Content
+    resources:
+      - path: Kordi/Resources/Assets.xcassets
+      - path: Kordi/Supporting/Preview Content
+        optional: true
+    info:
+      path: Kordi/Supporting/Info.plist
+      properties:
+        CFBundleDisplayName: Kordi
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: Kordi uses the camera when you choose to attach a new photo to a message.
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: ai.kordi.ios.oauth
+            CFBundleURLSchemes:
+              - kordi
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Kordi/Supporting/Info.plist
+        PRODUCT_NAME: Kordi
+    scheme:
+      testTargets:
+        - KordiTests
+      gatherCoverageData: true
+  KordiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: KordiTests
+    dependencies:
+      - target: Kordi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
