@@ -223,13 +223,13 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.doesNotMatch(themeOverrideCss, /\.kordi-app\.theme-light \.app-workspace-sidebar \.app-session-row-active,[\s\S]*?\{\s*box-shadow:\s*none;/s);
 });
 
-test('Bridge sync subtitle CSS uses color and reduced-motion-safe animation', () => {
+test('Bridge sync status CSS distinguishes syncing and unavailable icon states', () => {
   const shellCss = readDesktopShellCss();
 
-  assert.match(shellCss, /\.app-collaboration-sync-status\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 68%, var\(--utility-muted-text\)\)/s);
-  assert.match(shellCss, /\.app-collaboration-sync-dot\s*{[^}]*background:\s*conic-gradient/s);
-  assert.match(shellCss, /\.app-collaboration-sync-status\[data-collaboration-sync-status="syncing"\]\s+\.app-collaboration-sync-dot\s*{[^}]*animation:\s*app-collaboration-sync-pulse/s);
-  assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)\s*{[^}]*\.app-collaboration-sync-status\[data-collaboration-sync-status="syncing"\]\s+\.app-collaboration-sync-dot\s*{[^}]*animation:\s*none/s);
+  assert.match(shellCss, /\.app-collaboration-sync-status\[data-collaboration-sync-status="syncing"\]\s*{[^}]*color:\s*oklch\(74% 0\.045 174\)/s);
+  assert.match(shellCss, /\.app-collaboration-sync-status\[data-collaboration-sync-status="unavailable"\]\s*{[^}]*color:\s*oklch\(72% 0\.16 25\)/s);
+  assert.match(shellCss, /\.app-collaboration-sync-arc\s*{[^}]*animation:\s*app-collaboration-sync-orbit 900ms linear infinite/s);
+  assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)\s*{[^}]*\.app-collaboration-sync-arc\s*{[^}]*animation:\s*none/s);
 });
 
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {

@@ -12,11 +12,16 @@ import type {
   WorkspaceSidebarParticipantSpace as ParticipantSpaceItem,
 } from '@/pages/workspaceSidebar.types';
 
-function formatUnreadCount(value: number) {
-  return value > 99 ? '99+' : `${value}`;
-}
+export type CollaborationSyncStatus = 'idle' | 'syncing' | 'unavailable';
 
-export function useWorkspaceChatSidebarModel(chats: WorkspaceSidebarChats) {
+type WorkspaceChatSidebarModelOptions = {
+  isCollaborationSyncUnavailable?: boolean;
+};
+
+export function useWorkspaceChatSidebarModel(
+  chats: WorkspaceSidebarChats,
+  options: WorkspaceChatSidebarModelOptions = {},
+) {
   const {
     chatConversations,
     participantSpaces,
@@ -316,17 +321,17 @@ export function useWorkspaceChatSidebarModel(chats: WorkspaceSidebarChats) {
         : sum + Math.max(0, conversation.unread ?? 0),
     0,
   );
-  const collaborationSyncStatus = isCollaborationSyncing ? 'syncing' : 'idle';
-  const chatStatusLabel = isCollaborationSyncing
-    ? 'syncing…'
-    : totalUnread > 0
-      ? `${formatUnreadCount(totalUnread)} unread`
-      : 'all caught up';
-  const collaborationSyncAriaLabel = isCollaborationSyncing
-    ? 'Messages are syncing'
-    : totalUnread > 0
-      ? `Messages idle, ${formatUnreadCount(totalUnread)} unread`
-      : 'Messages idle, all caught up';
+  const collaborationSyncStatus: CollaborationSyncStatus =
+    options.isCollaborationSyncUnavailable
+      ? 'unavailable'
+      : isCollaborationSyncing
+        ? 'syncing'
+        : 'idle';
+  const collaborationSyncAriaLabel = collaborationSyncStatus === 'unavailable'
+    ? 'Messages cannot sync right now'
+    : collaborationSyncStatus === 'syncing'
+      ? 'Messages are syncing'
+      : null;
 
   return {
     visibleParticipantSpaces,
@@ -354,7 +359,6 @@ export function useWorkspaceChatSidebarModel(chats: WorkspaceSidebarChats) {
     agentForkLineage,
     totalUnread,
     collaborationSyncStatus,
-    chatStatusLabel,
     collaborationSyncAriaLabel,
   };
 }

@@ -91,14 +91,14 @@
   color: rgb(31 27 25);
 }
 
-/* The Chats header actions share one quiet utility-button geometry. Update
- * state is communicated with a restrained tint and a small availability dot,
- * not a second button shape or a floating white surface. */
+/* The Chats header keeps page-local actions on one quiet geometry. */
 .kordi-app .app-chat-sidebar-actions .app-icon-button:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--app-sidebar-accent) 72%, transparent);
   outline-offset: 2px;
 }
 
+/* Update checking is application-level, so it adopts the global navigation
+ * rail geometry above the profile while preserving its state colors. */
 .kordi-app .app-update-logo-button {
   --app-update-control-active: oklch(0.78 0.09 255);
   --app-update-control-success: oklch(0.79 0.1 158);
@@ -137,6 +137,11 @@
   border-radius: 9999px;
   background: currentColor;
   content: '';
+}
+
+.kordi-app .app-update-rail-button[data-update-status='available']::after {
+  top: 8px;
+  right: 8px;
 }
 
 .kordi-app.theme-light .app-input-shell {

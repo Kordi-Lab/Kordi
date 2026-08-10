@@ -22,7 +22,10 @@ import type {
   SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
 import { WorkspaceChatLists } from '@/pages/workspaceSidebar.chatLists';
-import { useWorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
+import {
+  type CollaborationSyncStatus,
+  useWorkspaceChatSidebarModel,
+} from '@/pages/workspaceSidebar.chatModel';
 import { WorkspaceNavigationRail } from '@/pages/workspaceSidebar.navigation';
 import {
   SidebarAgentsPanel,
@@ -32,7 +35,6 @@ import {
 } from '@/pages/workspaceSidebar.panels';
 import { SidebarUnreadBadge } from '@/pages/workspaceSidebar.shared';
 import type { WorkspaceSidebarProps } from '@/pages/workspaceSidebar.types';
-import { SidebarUpdater } from '@/pages/workspaceSidebar.update';
 
 export type { WorkspaceSidebarProps } from '@/pages/workspaceSidebar.types';
 export { desktopUpdateButtonPresentation } from '@/pages/workspaceSidebar.updatePresentation';
@@ -48,6 +50,82 @@ export {
   participantSpaceSessionRowTitle,
   sessionContextMenuTargetForConversation,
 } from '@/pages/workspaceSidebar.chatHelpers';
+
+function browserHasNetworkAccess() {
+  return typeof navigator === 'undefined' || navigator.onLine !== false;
+}
+
+function useBrowserOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(browserHasNetworkAccess);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOnline(browserHasNetworkAccess());
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
+  return isOnline;
+}
+
+function CollaborationSyncIndicator({
+  status,
+  ariaLabel,
+}: {
+  status: CollaborationSyncStatus;
+  ariaLabel: string | null;
+}) {
+  if (status === 'idle' || !ariaLabel) return null;
+
+  const tooltip = status === 'syncing' ? 'Syncing messages' : 'Sync unavailable';
+
+  return (
+    <span
+      className="app-collaboration-sync-status"
+      data-collaboration-sync-status={status}
+      data-tooltip={tooltip}
+      role="status"
+      aria-live="polite"
+      aria-label={ariaLabel}
+      tabIndex={0}
+    >
+      <svg
+        className="app-collaboration-sync-icon"
+        viewBox="0 0 16 16"
+        fill="none"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {status === 'syncing' ? (
+          <>
+            <circle
+              className="app-collaboration-sync-track"
+              cx="8"
+              cy="8"
+              r="5.5"
+            />
+            <circle
+              className="app-collaboration-sync-arc"
+              cx="8"
+              cy="8"
+              r="5.5"
+              strokeDasharray="13 22"
+            />
+          </>
+        ) : (
+          <>
+            <path d="M5.2 3.3a5.4 5.4 0 0 1 7.5 2.3" />
+            <path d="M10.8 12.7a5.4 5.4 0 0 1-7.5-2.3" />
+            <path d="M6.2 8h3.6" />
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
 
 export function WorkspaceSidebar({
   layout,
@@ -71,7 +149,6 @@ export function WorkspaceSidebar({
     onOpenUpdateUrl,
   } = layout;
   const {
-    chatConversations,
     chatSearch,
     setChatSearch,
     desktopChatError,
@@ -108,7 +185,11 @@ export function WorkspaceSidebar({
     onListGroupInvites,
     onRevokeGroupInvite,
   } = account;
-  const chatModel = useWorkspaceChatSidebarModel(chats);
+  const isBrowserOnline = useBrowserOnlineStatus();
+  const chatModel = useWorkspaceChatSidebarModel(chats, {
+    isCollaborationSyncUnavailable:
+      chats.isCollaborationSyncUnavailable === true || !isBrowserOnline,
+  });
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
 
   const [sessionContextMenu, setSessionContextMenu] =
@@ -180,6 +261,13 @@ export function WorkspaceSidebar({
             totalUnread={chatModel.totalUnread}
             pendingContactRequestCount={pendingContactRequestCount}
             account={account}
+            updater={{
+              onCheckForUpdates,
+              onInstallUpdate,
+              onRetryUpdate,
+              onSubscribeToUpdate,
+              onOpenUpdateUrl,
+            }}
           />
 
           {showSessionRail && !collapseChatSessions ? (
@@ -194,41 +282,16 @@ export function WorkspaceSidebar({
                 {activeNav === 'chats' ? (
                   <div className="flex h-full flex-col p-2.5">
                     <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
-                      <div>
-                        <div className="text-[15px] font-semibold text-white">
+                      <div className="flex min-w-0 items-center gap-1">
+                        <div className="shrink-0 text-[15px] font-semibold text-white">
                           Chats
                         </div>
-                        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-slate-400">
-                          <span>{chatConversations.length} total</span>
-                          <span aria-hidden="true">•</span>
-                          <span
-                            className="app-collaboration-sync-status"
-                            data-collaboration-sync-status={
-                              chatModel.collaborationSyncStatus
-                            }
-                            role="status"
-                            aria-live="polite"
-                            aria-label={chatModel.collaborationSyncAriaLabel}
-                          >
-                            <span
-                              className="app-collaboration-sync-dot"
-                              aria-hidden="true"
-                            />
-                            <span className="app-collaboration-sync-label">
-                              {chatModel.chatStatusLabel}
-                            </span>
-                          </span>
-                        </div>
+                        <CollaborationSyncIndicator
+                          status={chatModel.collaborationSyncStatus}
+                          ariaLabel={chatModel.collaborationSyncAriaLabel}
+                        />
                       </div>
                       <div className="app-chat-sidebar-actions flex shrink-0 items-center gap-2">
-                        <SidebarUpdater
-                          isNativeShell={isNativeShell}
-                          onCheckForUpdates={onCheckForUpdates}
-                          onInstallUpdate={onInstallUpdate}
-                          onRetryUpdate={onRetryUpdate}
-                          onSubscribeToUpdate={onSubscribeToUpdate}
-                          onOpenUpdateUrl={onOpenUpdateUrl}
-                        />
                         <button
                           type="button"
                           onClick={openChatCreateDialog}

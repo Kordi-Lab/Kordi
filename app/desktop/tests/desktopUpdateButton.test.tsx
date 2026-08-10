@@ -108,7 +108,7 @@ test('WorkspaceSidebar keeps the update button visible while the native updater 
   assert.doesNotMatch(markup, /<span>Update<\/span>/);
 });
 
-test('WorkspaceSidebar centers and visually unifies the Chats header actions', () => {
+test('WorkspaceSidebar places the updater in the global rail above the profile', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
     onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
   }) as never));
@@ -117,14 +117,27 @@ test('WorkspaceSidebar centers and visually unifies the Chats header actions', (
     readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
   ].join('\n');
   const css = readDesktopShellCss();
+  const updateButtonIndex = markup.indexOf('app-update-logo-button');
+  const profileButtonIndex = markup.indexOf('app-nav-rail-profile');
+  const chatsHeaderStart = markup.indexOf('app-chat-sidebar-header');
+  const chatsHeaderEnd = markup.indexOf('app-workspace-search', chatsHeaderStart);
+  const chatsHeaderMarkup = markup.slice(chatsHeaderStart, chatsHeaderEnd);
 
   assert.match(markup, /class="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2\.5"/);
   assert.match(markup, /class="app-chat-sidebar-actions flex shrink-0 items-center gap-2"/);
-  assert.match(source, /app-update-logo-button app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
+  assert.match(markup, /app-nav-rail-bottom/);
+  assert.ok(updateButtonIndex >= 0, 'update button should render');
+  assert.ok(
+    updateButtonIndex < profileButtonIndex,
+    'update button should render above the profile in rail order',
+  );
+  assert.doesNotMatch(chatsHeaderMarkup, /app-update-logo-button/);
+  assert.match(source, /app-update-logo-button app-update-rail-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-\[14px\] p-0/);
   assert.match(source, /app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
-  assert.match(source, /h-4 w-4 stroke-\[2\.2\]/);
+  assert.match(source, /h-\[18px\] w-\[18px\] stroke-\[1\.9\]/);
   assert.doesNotMatch(source, /border border-slate-300\/70 bg-white text-slate-950/);
   assert.match(css, /\.app-update-logo-button\[data-update-status='available'\]::after/);
+  assert.match(css, /\.app-update-rail-button\[data-update-status='available'\]::after/);
   assert.match(css, /--app-update-control-active: oklch/);
   assert.match(css, /\.app-chat-sidebar-actions \.app-icon-button:focus-visible/);
 });
@@ -200,7 +213,10 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /app-update-popover-action-primary/);
   assert.match(source, /app-update-popover-action-secondary/);
   assert.match(source, /updateConfirmAnchor/);
+  assert.match(source, /Math\.min\(rect\.right \+ 8/);
+  assert.match(source, /bottom: Math\.max\(12, window\.innerHeight - rect\.bottom\)/);
   assert.match(source, /position: 'fixed'/);
+  assert.match(source, /bottom: anchor\.bottom/);
   assert.match(source, /if \(!anchor \|\| typeof document === 'undefined'\) return null/);
   assert.doesNotMatch(source, /src="\/favicon\.svg"/);
 });
