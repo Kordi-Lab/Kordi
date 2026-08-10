@@ -22,6 +22,11 @@ use sqlx_postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 pub enum PgPoolError {
     Connect(sqlx_core::Error),
     Migrate(sqlx_core::Error),
+    MigrationVersionConflict {
+        version: i64,
+        expected: &'static str,
+        actual: String,
+    },
 }
 
 impl fmt::Display for PgPoolError {
@@ -29,6 +34,14 @@ impl fmt::Display for PgPoolError {
         match self {
             Self::Connect(err) => write!(f, "connect to postgres: {err}"),
             Self::Migrate(err) => write!(f, "apply migrations: {err}"),
+            Self::MigrationVersionConflict {
+                version,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "migration version {version} is already recorded as '{actual}', expected '{expected}'"
+            ),
         }
     }
 }
@@ -198,11 +211,6 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         sql: include_str!("../../migrations/0035_global_support.sql"),
     },
     EmbeddedMigration {
-        version: 36,
-        description: "public Kordi ids and app invitations",
-        sql: include_str!("../../migrations/0036_public_kordi_ids_and_app_invitations.sql"),
-    },
-    EmbeddedMigration {
         version: 44,
         description: "explicit group invitations",
         sql: include_str!("../../migrations/0044_group_invitations.sql"),
@@ -216,6 +224,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         version: 46,
         description: "durable cloud sync realtime outbox",
         sql: include_str!("../../migrations/0046_cloud_sync_realtime_outbox.sql"),
+    },
+    EmbeddedMigration {
+        version: 47,
+        description: "public Kordi ids and app invitations",
+        sql: include_str!("../../migrations/0047_public_kordi_ids_and_app_invitations.sql"),
     },
 ];
 
@@ -250,14 +263,21 @@ async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
     .map_err(PgPoolError::Migrate)?;
 
     for migration in EMBEDDED_MIGRATIONS {
-        let already: Option<(i64,)> =
-            query_as("SELECT version FROM cloud_schema_versions WHERE version = $1")
+        let already: Option<(String,)> =
+            query_as("SELECT description FROM cloud_schema_versions WHERE version = $1")
                 .bind(migration.version)
                 .fetch_optional(pool)
                 .await
                 .map_err(PgPoolError::Migrate)?;
 
-        if already.is_some() {
+        if let Some((actual,)) = already {
+            if actual != migration.description {
+                return Err(PgPoolError::MigrationVersionConflict {
+                    version: migration.version,
+                    expected: migration.description,
+                    actual,
+                });
+            }
             continue;
         }
 
@@ -280,4 +300,35 @@ async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EMBEDDED_MIGRATIONS;
+    use std::collections::HashSet;
+
+    #[test]
+    fn embedded_migration_versions_and_descriptions_are_unique_and_ordered() {
+        let mut versions = HashSet::new();
+        let mut descriptions = HashSet::new();
+        let mut previous = 0;
+
+        for migration in EMBEDDED_MIGRATIONS {
+            assert!(
+                migration.version > previous,
+                "migration versions must be strictly increasing"
+            );
+            assert!(
+                versions.insert(migration.version),
+                "duplicate migration version {}",
+                migration.version
+            );
+            assert!(
+                descriptions.insert(migration.description),
+                "duplicate migration description {}",
+                migration.description
+            );
+            previous = migration.version;
+        }
+    }
 }

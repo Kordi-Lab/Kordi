@@ -36,7 +36,7 @@ export type {
   CloudAgentRunLookup,
   CloudAgentRunStatus,
 } from './cloudAgentRunTypes';
-export { parseCloudOAuthHashResult } from './cloudOAuthResult';
+export { parseCloudOAuthHashError, parseCloudOAuthHashResult } from './cloudOAuthResult';
 export { CloudAuthError } from './cloudAuthError';
 export type { CloudAuthErrorCode } from './cloudAuthError';
 export type {

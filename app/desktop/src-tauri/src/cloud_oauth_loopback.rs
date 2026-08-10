@@ -131,10 +131,17 @@ async fn handle_loopback_connection(
         } else {
             "unknown"
         };
-        eprintln!(
-            "[kordi] OAuth loopback completion received (outcome={outcome}, bytes={}).",
-            body.len()
-        );
+        if let Some(detail) = body.strip_prefix("#kordi_cloud_oauth_error=") {
+            eprintln!(
+                "[kordi] OAuth loopback completion received (outcome={outcome}, bytes={}, detail={detail}).",
+                body.len()
+            );
+        } else {
+            eprintln!(
+                "[kordi] OAuth loopback completion received (outcome={outcome}, bytes={}).",
+                body.len()
+            );
+        }
         let _ = write_response(&mut stream, "200 OK", "text/plain; charset=utf-8", b"OK").await;
         if let Some(tx) = sender.take() {
             let _ = tx.send(Ok(body));

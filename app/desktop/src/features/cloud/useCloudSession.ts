@@ -15,6 +15,7 @@ import {
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
+  parseCloudOAuthHashError,
   type CloudAccount,
   type CloudAuthResult,
   type CloudOAuthProvider,
@@ -384,6 +385,10 @@ export function useCloudSession({
           const result = await authClient.startOAuth(provider, loopback.redirectUrl);
           await openDesktopExternalUrl(result.authUrl);
           const fragment = await waitForDesktopCloudOAuthLoopback(loopback.requestId);
+          const oauthError = parseCloudOAuthHashError(fragment);
+          if (oauthError) {
+            throw new CloudAuthError('unknown', oauthError, 0);
+          }
           const oauthResult = parseCloudOAuthHashResult(fragment);
           if (!oauthResult) {
             throw new CloudAuthError('unknown', 'OAuth sign-in did not return a valid Kordi session.', 0);

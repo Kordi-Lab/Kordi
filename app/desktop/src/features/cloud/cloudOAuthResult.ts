@@ -22,3 +22,10 @@ export function parseCloudOAuthHashResult(hash: string | null | undefined): Clou
   if (!parsed?.account?.accountId || !parsed.session?.token || !parsed.session?.expiresAt) return null;
   return parsed;
 }
+
+export function parseCloudOAuthHashError(hash: string | null | undefined): string | null {
+  const trimmed = hash?.trim() ?? '';
+  if (!trimmed.startsWith('#')) return null;
+  const message = new URLSearchParams(trimmed.slice(1)).get('kordi_cloud_oauth_error')?.trim() ?? '';
+  return message || null;
+}

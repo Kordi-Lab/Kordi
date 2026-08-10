@@ -10,6 +10,7 @@ import {
   cloudWebSocketUrl,
   defaultCloudRequestTimeoutMs,
   parseCloudOAuthHashResult,
+  parseCloudOAuthHashError,
 } from '../src/features/cloud/authClient';
 
 type FetchCall = { url: string; init: RequestInit | undefined };
@@ -654,6 +655,14 @@ test('parseCloudOAuthHashResult decodes auth result fragments', () => {
 
   assert.deepEqual(parseCloudOAuthHashResult(`#kordi_cloud_oauth=${encoded}`), payload);
   assert.equal(parseCloudOAuthHashResult('#not_oauth=1'), null);
+});
+
+test('parseCloudOAuthHashError surfaces the provider-safe callback error', () => {
+  assert.equal(
+    parseCloudOAuthHashError('#kordi_cloud_oauth_error=OAuth%20state%20expired.'),
+    'OAuth state expired.',
+  );
+  assert.equal(parseCloudOAuthHashError('#not_oauth=1'), null);
 });
 
 test('unknown server error codes degrade to "unknown"', async () => {
