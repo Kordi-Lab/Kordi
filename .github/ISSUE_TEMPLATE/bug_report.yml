@@ -22,7 +22,7 @@ body:
     attributes:
       label: Problem
       description: What went wrong? What user flow is affected?
-      placeholder: The desktop composer stays in a running state after...
+      placeholder: The composer stays in a running state after...
     validations:
       required: true
   - type: textarea
@@ -39,10 +39,21 @@ body:
       label: Reproduction steps
       description: Include the shortest known path to reproduce. If not reproducible, describe what was happening before the bug appeared.
       placeholder: |
-        1. Open Kordi desktop
+        1. Open Kordi on iOS or macOS
         2. Select session/project ...
         3. Send prompt ...
         4. Observe ...
+    validations:
+      required: true
+  - type: dropdown
+    id: app_scope
+    attributes:
+      label: App scope
+      description: Which Kordi app is affected by this problem?
+      options:
+        - iOS
+        - macOS
+        - Both iOS and macOS
     validations:
       required: true
   - type: dropdown

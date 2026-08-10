@@ -52,6 +52,17 @@ body:
         - Pros:
         - Cons:
   - type: dropdown
+    id: app_scope
+    attributes:
+      label: App scope
+      description: Which Kordi app does this planning work affect?
+      options:
+        - iOS
+        - macOS
+        - Both iOS and macOS
+    validations:
+      required: true
+  - type: dropdown
     id: area
     attributes:
       label: Area
