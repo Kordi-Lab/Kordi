@@ -6,6 +6,7 @@ mod lease_heartbeat;
 pub mod model_loop;
 pub mod prompt;
 pub mod runtime;
+mod sandbox_backend;
 pub mod sandbox_client;
 pub mod tool_policy;
 pub mod tools;

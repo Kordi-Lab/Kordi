@@ -1,8 +1,8 @@
-use crate::client::{CloudAgentRun, CloudAgentRunClient, RunnerClientError};
-use crate::k8s_sandbox::K8sSandboxBackend;
+use crate::client::{CloudAgentRunClient, RunnerClientError};
+use crate::config::{sandbox_backend_mode_from_env, SandboxBackendMode};
 use crate::lease_heartbeat::run_with_heartbeat;
 use crate::model_loop::{CloudModelProvider, OpenAiCompatibleProvider};
-use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
+use crate::sandbox_backend::sandbox_backend_for_run;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,23 +13,6 @@ pub enum RunnerStepOutcome {
     FailedProviderError { run_id: String },
     FailedMissingSandbox { run_id: String },
     SkippedCancelled { run_id: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SandboxBackendMode {
-    Local,
-    K8s,
-}
-
-pub fn sandbox_backend_mode(value: Option<&str>) -> SandboxBackendMode {
-    match value {
-        Some(value) if value.trim().eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
-        _ => SandboxBackendMode::Local,
-    }
-}
-
-pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
-    sandbox_backend_mode(std::env::var("KORDI_CLOUD_SANDBOX_BACKEND").ok().as_deref())
 }
 
 fn sentence_case_first(text: &str) -> String {
@@ -82,22 +65,6 @@ fn scheduled_reminder_response_text(prompt: &str) -> Option<String> {
     Some(ensure_terminal_punctuation(&sentence_case_first(reminder)))
 }
 
-pub fn sandbox_backend_for_run(
-    run: &CloudAgentRun,
-    local_root: PathBuf,
-    mode: SandboxBackendMode,
-) -> Result<SandboxBackendHandle, &'static str> {
-    match mode {
-        SandboxBackendMode::Local => Ok(std::sync::Arc::new(LocalSandboxBackend::new(local_root))),
-        SandboxBackendMode::K8s => {
-            let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;
-            Ok(std::sync::Arc::new(K8sSandboxBackend::from_env(
-                sandbox_id.to_string(),
-            )))
-        }
-    }
-}
-
 pub async fn process_one_run<C: CloudAgentRunClient + Sync>(
     client: &C,
 ) -> Result<RunnerStepOutcome, RunnerClientError> {
@@ -105,28 +72,16 @@ pub async fn process_one_run<C: CloudAgentRunClient + Sync>(
     let sandbox_root = std::env::var("KORDI_CLOUD_SANDBOX_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::temp_dir().join("kordi-cloud-runner-sandbox"));
-    process_one_run_with_provider(client, &provider, sandbox_root).await
-}
-
-pub async fn process_one_run_with_provider<C, P>(
-    client: &C,
-    provider: &P,
-    sandbox_root: PathBuf,
-) -> Result<RunnerStepOutcome, RunnerClientError>
-where
-    C: CloudAgentRunClient + Sync,
-    P: CloudModelProvider + Sync,
-{
-    process_one_run_with_provider_and_backend(
+    process_one_run_with_provider(
         client,
-        provider,
+        &provider,
         sandbox_root,
         sandbox_backend_mode_from_env(),
     )
     .await
 }
 
-async fn process_one_run_with_provider_and_backend<C, P>(
+pub async fn process_one_run_with_provider<C, P>(
     client: &C,
     provider: &P,
     sandbox_root: PathBuf,
@@ -219,6 +174,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CloudAgentRun;
     use crate::model_loop::{
         CloudModelProvider, ModelLoopError, ModelProviderResponse, OpenAiProviderConfig,
     };
@@ -362,16 +318,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn sandbox_backend_selection_defaults_to_local() {
-        assert_eq!(sandbox_backend_mode(None), SandboxBackendMode::Local);
-        assert_eq!(
-            sandbox_backend_mode(Some("local")),
-            SandboxBackendMode::Local
-        );
-        assert_eq!(sandbox_backend_mode(Some(" k8s ")), SandboxBackendMode::K8s);
-    }
-
     #[tokio::test]
     async fn k8s_backend_requires_sandbox_id() {
         let client = FakeClient::with_run(CloudAgentRun {
@@ -382,7 +328,7 @@ mod tests {
             response: ModelProviderResponse::FinalText("unused".to_string()),
         };
 
-        let outcome = process_one_run_with_provider_and_backend(
+        let outcome = process_one_run_with_provider(
             &client,
             &provider,
             temp_sandbox(),
@@ -435,9 +381,14 @@ mod tests {
             response: ModelProviderResponse::FinalText("wrong model answer".to_string()),
         };
 
-        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
-            .await
-            .unwrap();
+        let outcome = process_one_run_with_provider(
+            &client,
+            &provider,
+            temp_sandbox(),
+            SandboxBackendMode::Local,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             outcome,
@@ -462,9 +413,14 @@ mod tests {
             response: ModelProviderResponse::FinalText("real model answer".to_string()),
         };
 
-        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
-            .await
-            .unwrap();
+        let outcome = process_one_run_with_provider(
+            &client,
+            &provider,
+            temp_sandbox(),
+            SandboxBackendMode::Local,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             outcome,
@@ -491,9 +447,14 @@ mod tests {
             response: ModelProviderResponse::FinalText("unused".to_string()),
         };
 
-        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
-            .await
-            .unwrap();
+        let outcome = process_one_run_with_provider(
+            &client,
+            &provider,
+            temp_sandbox(),
+            SandboxBackendMode::Local,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(
             outcome,
