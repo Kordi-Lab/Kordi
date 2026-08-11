@@ -97,15 +97,13 @@ pub(super) fn apply_on_connection(
                 previous_stream_seq + 1
             ));
         }
-        let mut expected = first;
-        for event in &request.events {
+        for (expected, event) in (first..).zip(&request.events) {
             let sequence = required_i64(event, "stream_seq")?;
             if sequence != expected {
                 return Err(format!(
                     "STREAM_SEQUENCE_GAP: expected {expected}, received {sequence}"
                 ));
             }
-            expected += 1;
         }
     }
 
