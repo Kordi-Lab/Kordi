@@ -31,6 +31,8 @@
     "maintainability:check": "node scripts/check-maintainability-ratchet.mjs",
     "lint:suppressions:check": "node scripts/check-eslint-suppressions-ratchet.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",
+    "emoji:generate": "node scripts/generate-emoji-catalog.mjs",
+    "emoji:check": "node scripts/generate-emoji-catalog.mjs --check",
     "lint:web": "pnpm --dir app/desktop lint",
     "typecheck:web": "pnpm --dir app/desktop typecheck",
     "lint": "pnpm lint:web",

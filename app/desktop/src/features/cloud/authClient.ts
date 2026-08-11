@@ -216,6 +216,26 @@ export type CloudSyncResponse = {
   };
 };
 
+export type CloudCustomEmojiStatus = 'pending' | 'active' | 'rejected' | 'disabled';
+
+export type CloudCustomEmoji = {
+  emojiId: string;
+  scopeType: 'global' | 'workspace';
+  scopeId: string | null;
+  name: string;
+  aliases: string[];
+  assetAttachmentId: string;
+  contentPath: string;
+  animated: boolean;
+  status: CloudCustomEmojiStatus;
+  uploadedBy: string;
+  approvedBy: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
 export type CloudSessionForkSummary = {
   forkSessionId: string;
   parentSessionId: string;
@@ -1129,6 +1149,80 @@ export class CloudAuthClient {
     );
     if (!response) throw new Error('Empty response from cloud server.');
     return response.artifact;
+  }
+
+  async listCustomEmojis(token: string, scopeId?: string, includePending = false): Promise<{ emojis: CloudCustomEmoji[]; canManage: boolean }> {
+    const params = new URLSearchParams();
+    if (scopeId?.trim()) params.set('scopeId', scopeId.trim());
+    if (includePending) params.set('includePending', 'true');
+    const suffix = params.size > 0 ? `?${params.toString()}` : '';
+    const response = await this.send<{ emojis: CloudCustomEmoji[]; canManage?: boolean }>(
+      `/v1/cloud/custom-emojis${suffix}`,
+      { method: 'GET', headers: { authorization: `Bearer ${token}` } },
+      'Could not load custom emoji.',
+    );
+    return { emojis: response?.emojis ?? [], canManage: Boolean(response?.canManage) };
+  }
+
+  async createCustomEmoji(token: string, input: { scopeId: string; name: string; attachmentId: string }): Promise<CloudCustomEmoji> {
+    const response = await this.send<{ emoji: CloudCustomEmoji }>(
+      '/v1/cloud/custom-emojis',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...input, scopeType: 'workspace' }),
+      },
+      'Could not submit custom emoji.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.emoji;
+  }
+
+  async updateCustomEmoji(token: string, emojiId: string, input: { name?: string; status?: CloudCustomEmojiStatus }): Promise<CloudCustomEmoji> {
+    const response = await this.send<{ emoji: CloudCustomEmoji }>(
+      `/v1/cloud/custom-emojis/${encodeURIComponent(emojiId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not update custom emoji.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.emoji;
+  }
+
+  async addCustomEmojiAlias(token: string, emojiId: string, alias: string): Promise<CloudCustomEmoji> {
+    const response = await this.send<{ emoji: CloudCustomEmoji }>(
+      `/v1/cloud/custom-emojis/${encodeURIComponent(emojiId)}/aliases`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ alias }),
+      },
+      'Could not add custom emoji alias.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.emoji;
+  }
+
+  async downloadCustomEmojiContent(token: string, emojiId: string, signal?: AbortSignal): Promise<Blob> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/v1/cloud/custom-emojis/${encodeURIComponent(emojiId)}/content`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+        signal,
+      });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Network request failed.';
+      throw new CloudAuthError('network_error', message, 0);
+    }
+    if (!response.ok) {
+      const body = await readJsonSafe(response);
+      throw buildCloudAuthError(response.status, body, 'Could not download custom emoji.');
+    }
+    return response.blob();
   }
 
   async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> { return this.chatV2.syncEvents(token, cursor, limit); }

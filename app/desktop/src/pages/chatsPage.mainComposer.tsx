@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Send } from 'lucide-react';
+import { useRef } from 'react';
 
 import { Button } from '@/components/ui/button';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
@@ -9,6 +10,8 @@ import {
 } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { ComposerEmojiButton } from '@/features/emoji/EmojiPickerPopover';
+import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -128,6 +131,7 @@ export function MainComposer({
     chatModelOptions,
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
   const useCompactRouteMenu = canConfigureModelRoute
     && shouldUseCompactModelRouteMenu(conversation);
@@ -205,6 +209,7 @@ export function MainComposer({
               onRemove={removeChatComposerAttachment}
             />
             <textarea
+              ref={textareaRef}
               rows={1}
               value={chatComposerText}
               onPointerDownCapture={() => {
@@ -340,6 +345,23 @@ export function MainComposer({
               />
             ) : null}
             <ComposerAttachmentAddMenu inputRef={chatAttachmentInputRef} />
+            <ComposerEmojiButton
+              customEmojiScopeId={conversation.canonicalSessionId ?? conversation.id}
+              captureSelection={() => ({
+                start: textareaRef.current?.selectionStart ?? chatComposerText.length,
+                end: textareaRef.current?.selectionEnd ?? chatComposerText.length,
+              })}
+              onSelect={(unicode, selection) => {
+                const insertion = insertEmojiAtSelection(chatComposerText, unicode, selection);
+                setChatComposerText(insertion.value);
+                window.requestAnimationFrame(() => {
+                  const textarea = textareaRef.current;
+                  if (!textarea) return;
+                  textarea.focus();
+                  textarea.setSelectionRange(insertion.selection.start, insertion.selection.end);
+                });
+              }}
+            />
           </div>
           <div
             className={cn(

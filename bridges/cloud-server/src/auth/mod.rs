@@ -3,9 +3,11 @@
 //! `/v1/cloud/contacts`.
 
 pub mod accounts;
+pub mod custom_emojis;
 mod oauth;
 pub mod password;
 pub mod rate_limit;
+pub mod reactions;
 pub mod routes;
 mod rows;
 pub mod session;

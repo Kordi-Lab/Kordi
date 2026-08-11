@@ -237,6 +237,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "canonical v2 Cloud-agent artifact links",
         sql: include_str!("../../migrations/0050_chat_v2_artifact_links.sql"),
     },
+    EmbeddedMigration {
+        version: 51,
+        description: "normalized message reactions",
+        sql: include_str!("../../migrations/0051_cloud_message_reactions.sql"),
+    },
+    EmbeddedMigration {
+        version: 52,
+        description: "workspace custom emoji",
+        sql: include_str!("../../migrations/0052_cloud_custom_emojis.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

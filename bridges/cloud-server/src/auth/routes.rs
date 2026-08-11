@@ -72,7 +72,7 @@ use support::*;
 use types::ErrorBody;
 
 pub use middleware::cloud_session_middleware;
-pub(crate) use session_forks::cloud_session_participants;
+pub(crate) use session_forks::{cloud_session_admin_ids, cloud_session_participants};
 pub use types::*;
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -182,6 +182,8 @@ pub fn routes_with_config(
             delete(delete_cloud_session),
         )
         .merge(crate::auth::session_activity::routes())
+        .merge(crate::auth::reactions::routes())
+        .merge(crate::auth::custom_emojis::routes())
         .route(
             "/v1/cloud/attachments/initiate",
             post(crate::attachments::routes::initiate),
