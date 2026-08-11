@@ -180,3 +180,59 @@ mod completion_page_preview {
         println!("preview: {}", path.display());
     }
 }
+
+mod loopback_request_tests {
+    use super::super::handle_loopback_connection;
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::sync::oneshot;
+    use tokio::time::timeout;
+
+    #[tokio::test]
+    async fn reads_oauth_fragment_when_headers_and_body_arrive_separately() {
+        let request_id = "cloud_oauth_split_packet";
+        let fragment = "#kordi_cloud_oauth=encoded-session";
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind listener");
+        let address = listener.local_addr().expect("listener address");
+        let (tx, rx) = oneshot::channel();
+        let mut sender = Some(tx);
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept callback");
+            handle_loopback_connection(stream, request_id, &mut sender).await
+        });
+
+        let mut client = TcpStream::connect(address).await.expect("connect callback");
+        let headers = format!(
+            "POST /complete/{request_id} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n",
+            fragment.len()
+        );
+        client
+            .write_all(headers.as_bytes())
+            .await
+            .expect("write headers");
+        client.flush().await.expect("flush headers");
+        tokio::task::yield_now().await;
+        client
+            .write_all(fragment.as_bytes())
+            .await
+            .expect("write fragment");
+        client.flush().await.expect("flush fragment");
+
+        assert_eq!(
+            timeout(Duration::from_secs(2), rx)
+                .await
+                .expect("fragment timeout")
+                .expect("captured fragment")
+                .expect("valid fragment"),
+            fragment
+        );
+        assert!(timeout(Duration::from_secs(2), server)
+            .await
+            .expect("server timeout")
+            .expect("server task"));
+    }
+}
