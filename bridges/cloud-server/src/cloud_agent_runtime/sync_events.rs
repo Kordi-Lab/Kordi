@@ -21,14 +21,11 @@ fn canonical_response_request_id(body: &str) -> Option<Uuid> {
 }
 
 pub(super) struct CloudAgentResponseSyncEvent<'a> {
-    pub account_id: &'a str,
-    pub peer_account_id: &'a str,
     pub message_id: &'a str,
     pub from_account_id: &'a str,
     pub to_account_id: &'a str,
     pub body: &'a str,
     pub session_id: &'a str,
-    pub direction: &'a str,
 }
 
 fn deterministic_message_uuid(event: &CloudAgentResponseSyncEvent<'_>) -> Uuid {
@@ -135,15 +132,6 @@ pub(super) async fn append_cloud_agent_response_sync_event(
     pool: &PgPool,
     event: CloudAgentResponseSyncEvent<'_>,
 ) -> Result<Option<String>, sqlx_core::Error> {
-    // Retain these fields in the call contract until the old agent persistence
-    // rows are removed in a later storage migration.
-    let _legacy_diagnostics = (
-        event.account_id,
-        event.peer_account_id,
-        event.message_id,
-        event.to_account_id,
-        event.direction,
-    );
     ensure_response_conversation(pool, &event).await?;
     let conversation: Option<(Uuid,)> = query_as(
         "SELECT conversation.conversation_id

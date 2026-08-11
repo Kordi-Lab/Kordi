@@ -237,6 +237,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "canonical v2 Cloud-agent artifact links",
         sql: include_str!("../../migrations/0050_chat_v2_artifact_links.sql"),
     },
+    EmbeddedMigration {
+        version: 51,
+        description: "retire chat sync v1 storage and compatibility bridges",
+        sql: include_str!("../../migrations/0051_retire_chat_sync_v1.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

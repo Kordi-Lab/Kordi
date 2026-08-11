@@ -1,7 +1,7 @@
 //! Kordi cloud-native collaboration server.
 //!
 //! Owns cloud accounts, sessions, devices, contacts, and the
-//! Telegram-style message log. Independent from the local-first
+//! canonical chat-sync v2 store. Independent from the local-first
 //! `bridges/cli` server: separate binary, separate database, separate
 //! deployment surface. Local-edition users never run this code.
 
@@ -11,7 +11,6 @@ pub mod chat_sync;
 pub mod cloud_agent_runtime;
 pub mod cloud_agents;
 pub mod events;
-pub mod messages;
 pub mod pg;
 pub mod presence;
 pub mod scheduled_tasks;

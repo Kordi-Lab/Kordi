@@ -19,8 +19,7 @@ pub use claims::{
 pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest};
 #[cfg(test)]
 use delivery::{
-    cloud_group_response_direction, cloud_group_response_recipients, direct_person_peer_account_id,
-    is_scheduled_run_request_id,
+    cloud_group_response_recipients, direct_person_peer_account_id, is_scheduled_run_request_id,
 };
 pub use envelopes::encode_cloud_agent_response_body;
 #[cfg(test)]
@@ -317,14 +316,6 @@ mod tests {
         assert_eq!(recipients.len(), 2);
         assert!(recipients.contains("acct_owner"));
         assert!(recipients.contains("acct_peer"));
-        assert_eq!(
-            super::cloud_group_response_direction("acct_owner", "acct_owner"),
-            "outgoing"
-        );
-        assert_eq!(
-            super::cloud_group_response_direction("acct_owner", "acct_peer"),
-            "incoming"
-        );
     }
 
     #[test]

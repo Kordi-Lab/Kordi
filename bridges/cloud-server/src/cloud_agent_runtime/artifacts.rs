@@ -320,12 +320,11 @@ pub async fn export_run_artifact(
         status: StatusCode::INTERNAL_SERVER_ERROR,
     })?;
 
-    query("INSERT INTO cloud_agent_run_artifacts (artifact_id, run_id, sandbox_id, attachment_id, message_id, canonical_message_id, sandbox_path, name, content_type, size_bytes, sha256_hex, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)")
+    query("INSERT INTO cloud_agent_run_artifacts (artifact_id, run_id, sandbox_id, attachment_id, message_id, sandbox_path, name, content_type, size_bytes, sha256_hex, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)")
         .bind(&artifact_id)
         .bind(&run_id)
         .bind(&sandbox_id)
         .bind(&attachment_id)
-        .bind(&message_id)
         .bind(canonical_message_id)
         .bind(&sandbox_path)
         .bind(&name)

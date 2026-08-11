@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  CLOUD_MESSAGES_LEGACY_CACHE_PREFIX,
   VersionedCloudMessageCache,
   type CloudMessageCacheStore,
 } from '../src/features/cloud/cloudMessageCache';
@@ -139,18 +138,6 @@ class ControlledMigrationCacheStore extends MemoryCacheStore {
   }
 }
 
-function memoryStorage(): Storage {
-  const values = new Map<string, string>();
-  return {
-    get length() { return values.size; },
-    clear: () => values.clear(),
-    getItem: (key) => values.get(key) ?? null,
-    key: (index) => [...values.keys()][index] ?? null,
-    removeItem: (key) => { values.delete(key); },
-    setItem: (key, value) => { values.set(key, String(value)); },
-  };
-}
-
 const message: CloudMessage = {
   messageId: 'msg_1',
   fromAccountId: 'acct_peer',
@@ -173,32 +160,13 @@ const message: CloudMessage = {
   }],
 };
 
-test('peer-scoped cache imports v1 localStorage once, keeps bounded previews, and strips original-file fields', async () => {
-  const store = new MemoryCacheStore();
-  const legacyStorage = memoryStorage();
-  const key = `${CLOUD_MESSAGES_LEGACY_CACHE_PREFIX}acct_me`;
-  legacyStorage.setItem(key, JSON.stringify({ acct_peer: [message] }));
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage, debounceMs: 0 });
-
-  const loaded = await cache.load('acct_me');
-  assert.equal(legacyStorage.getItem(key), null);
-  assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.previewAttachmentId, 'att_preview');
-  assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.previewUrl, 'data:image/webp;base64,legacy-inline-payload');
-  assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.downloadUrl, undefined);
-  assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.localPath, undefined);
-
-  legacyStorage.setItem(key, JSON.stringify({ acct_peer: [{ ...message, body: 'stale legacy' }] }));
-  const loadedAgain = await cache.load('acct_me');
-  assert.equal(loadedAgain.acct_peer?.[0]?.body, 'hello');
-});
-
 test('peer-scoped cache migrates an existing v2 account snapshot without data loss', async () => {
   const store = new MemoryCacheStore();
   store.values.set('acct_me', {
     version: 2,
     messagesByPeer: { acct_peer: [message] },
   });
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
 
   const loaded = await cache.load('acct_me');
 
@@ -212,7 +180,7 @@ test('peer-scoped cache migrates an existing v2 account snapshot without data lo
 
 test('peer-scoped cache debounces and coalesces writes per account', async () => {
   const store = new MemoryCacheStore();
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 5 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 5 });
 
   const first = cache.save('acct_me', { acct_peer: [message] });
   const second = cache.save('acct_me', { acct_peer: [{ ...message, body: 'newest' }] });
@@ -225,7 +193,7 @@ test('peer-scoped cache debounces and coalesces writes per account', async () =>
 
 test('peer-scoped cache writes only the changed peer after the initial snapshot', async () => {
   const store = new MemoryCacheStore();
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const initial = Object.fromEntries(Array.from({ length: 20 }, (_, index) => [
     `acct_peer_${index}`,
     [{
@@ -263,7 +231,7 @@ test('peer-scoped cache writes only the changed peer after the initial snapshot'
 test('peer-scoped cache recovers a failed write into the newest queued snapshot', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledFirstWriteCacheStore('reject');
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const firstPeerMessages = [message];
   const first = cache.save('acct_me', { acct_peer: firstPeerMessages });
   context.mock.timers.runAll();
@@ -285,7 +253,7 @@ test('peer-scoped cache recovers a failed write into the newest queued snapshot'
   await firstFailure;
   await second;
 
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const loaded = await reloaded.load('acct_me');
   assert.equal(loaded.acct_peer?.[0]?.body, 'hello');
   assert.equal(loaded.acct_peer_2?.[0]?.body, 'hello');
@@ -295,7 +263,7 @@ test('peer-scoped cache recovers a failed write into the newest queued snapshot'
 test('peer-scoped cache removal wins when an active write succeeds', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledFirstWriteCacheStore('resolve');
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const first = cache.save('acct_me', { acct_peer: [message] });
   context.mock.timers.runAll();
   await store.firstWriteStarted;
@@ -305,14 +273,14 @@ test('peer-scoped cache removal wins when an active write succeeds', async (cont
   await Promise.all([first, removal]);
   await cache.save('acct_me', {});
 
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   assert.deepEqual(await reloaded.load('acct_me'), {});
 });
 
 test('peer-scoped cache removal suppresses recovery when an active write fails', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledFirstWriteCacheStore('reject');
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const first = cache.save('acct_me', { acct_peer: [message] });
   context.mock.timers.runAll();
   await store.firstWriteStarted;
@@ -326,14 +294,14 @@ test('peer-scoped cache removal suppresses recovery when an active write fails',
   await emptySave;
   assert.equal(store.attempts, 2);
 
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   assert.deepEqual(await reloaded.load('acct_me'), {});
 });
 
 test('peer-scoped cache load discards stale recovery after a rejected save', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledFirstWriteCacheStore('reject');
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const first = cache.save('acct_me', { acct_peer: [message] });
   context.mock.timers.runAll();
   await store.firstWriteStarted;
@@ -345,16 +313,16 @@ test('peer-scoped cache load discards stale recovery after a rejected save', asy
   const emptySave = cache.save('acct_me', {});
   context.mock.timers.runAll();
   await emptySave;
-  assert.equal(store.attempts, 2);
+  assert.equal(store.attempts, 1);
 
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   assert.deepEqual(await reloaded.load('acct_me'), {});
 });
 
 test('peer-scoped cache load preserves a newer failed-save baseline', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledLoadFailureCacheStore();
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const initialSave = cache.save('acct_me', { acct_peer: [message] });
   context.mock.timers.runAll();
   await initialSave;
@@ -374,14 +342,14 @@ test('peer-scoped cache load preserves a newer failed-save baseline', async (con
   context.mock.timers.runAll();
   await restoreLoadedSnapshot;
 
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   assert.equal((await reloaded.load('acct_me')).acct_peer?.[0]?.body, 'hello');
 });
 
 test('peer-scoped cache load cannot replace a newer successful-save baseline', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledLoadFailureCacheStore();
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const initialSave = cache.save('acct_me', { acct_peer: [message] });
   context.mock.timers.runAll();
   await initialSave;
@@ -401,14 +369,14 @@ test('peer-scoped cache load cannot replace a newer successful-save baseline', a
   await redundantSave;
   assert.equal(store.batches.length, 2, 'the stale load must not make an already-durable save look changed');
 
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   assert.equal((await reloaded.load('acct_me')).acct_peer?.[0]?.body, 'newest');
 });
 
 test('peer-scoped cache removal cancels a blocked v3 load baseline', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledLoadFailureCacheStore();
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const initialSave = cache.save('acct_me', { acct_peer: [message] });
   context.mock.timers.runAll();
   await initialSave;
@@ -421,7 +389,7 @@ test('peer-scoped cache removal cancels a blocked v3 load baseline', async (cont
 
   const [loaded] = await Promise.all([loading, removal]);
   assert.deepEqual(loaded, {});
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   assert.deepEqual(await reloaded.load('acct_me'), {});
 });
 
@@ -431,7 +399,7 @@ test('peer-scoped cache removal deletes a blocked v2 migration write', async () 
     version: 2,
     messagesByPeer: { acct_peer: [message] },
   });
-  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const cache = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   const loading = cache.load('acct_me');
   await store.migrationWriteStarted;
 
@@ -441,6 +409,6 @@ test('peer-scoped cache removal deletes a blocked v2 migration write', async () 
 
   const [loaded] = await Promise.all([loading, removal]);
   assert.deepEqual(loaded, {});
-  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const reloaded = new VersionedCloudMessageCache({ store, debounceMs: 0 });
   assert.deepEqual(await reloaded.load('acct_me'), {});
 });

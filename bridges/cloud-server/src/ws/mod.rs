@@ -286,8 +286,7 @@ async fn mark_presence_offline_on_websocket_disconnect(
 
 fn account_event_subjects(account_id: &str) -> Vec<String> {
     vec![
-        // Three-token lifecycle events: contact.added, message.arrived,
-        // message.read, etc.
+        // Three-token account lifecycle events such as contact.added.
         format!("kordi.events.*.*.{account_id}"),
         // Four-token contact-request events: contact.request.created,
         // contact.request.accepted, contact.request.rejected. These did not

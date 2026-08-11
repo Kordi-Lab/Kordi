@@ -14,6 +14,28 @@ fn read(path: impl AsRef<Path>) -> String {
     fs::read_to_string(path).expect("read contract source")
 }
 
+fn read_runtime_sources(path: &Path) -> String {
+    let mut entries = fs::read_dir(path)
+        .expect("read runtime source directory")
+        .map(|entry| entry.expect("read runtime source entry"))
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.file_name());
+    entries
+        .into_iter()
+        .map(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                read_runtime_sources(&path)
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                read(path)
+            } else {
+                String::new()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn durable_event_and_message_schemas_are_valid_json_contracts() {
     let root = repository_root();
@@ -95,15 +117,21 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
     let migration_47 = pool.find("version: 47").expect("migration 47 embedded");
     let migration_48 = pool.find("version: 48").expect("migration 48 embedded");
     let migration_49 = pool.find("version: 49").expect("migration 49 embedded");
+    let migration_50 = pool.find("version: 50").expect("migration 50 embedded");
+    let migration_51 = pool.find("version: 51").expect("migration 51 embedded");
     assert!(
         migration_33 < migration_35
             && migration_35 < migration_47
             && migration_47 < migration_48
             && migration_48 < migration_49
+            && migration_49 < migration_50
+            && migration_50 < migration_51
     );
     assert!(pool.contains("0047_reliable_chat_sync_v2.sql"));
     assert!(pool.contains("0048_backfill_reliable_chat_sync_v2.sql"));
     assert!(pool.contains("0049_relink_legacy_agent_responses.sql"));
+    assert!(pool.contains("0050_chat_v2_artifact_links.sql"));
+    assert!(pool.contains("0051_retire_chat_sync_v1.sql"));
 
     let backfill =
         read(root.join("bridges/cloud-server/migrations/0048_backfill_reliable_chat_sync_v2.sql"));
@@ -133,6 +161,32 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
             "agent-response relink is missing invariant: {invariant}"
         );
     }
+
+    let retirement =
+        read(root.join("bridges/cloud-server/migrations/0051_retire_chat_sync_v1.sql"));
+    let retirement_lowercase = retirement.to_ascii_lowercase();
+    for invariant in [
+        "set request_message_id = mapping.canonical_message_id::text",
+        "set response_message_id = mapping.canonical_message_id::text",
+        "raise exception 'cannot retire chat sync v1",
+        "alter column protocol_version set default 2",
+        "check (protocol_version = 2)",
+        "drop table if exists cloud_chat_legacy_message_map",
+        "drop table if exists cloud_messages",
+        "drop table if exists cloud_sync_events",
+        "drop table if exists cloud_read_cursors",
+        "drop table if exists cloud_session_titles",
+        "drop table if exists server_messages",
+    ] {
+        assert!(
+            retirement_lowercase.contains(invariant),
+            "v1 retirement is missing invariant: {invariant}"
+        );
+    }
+    assert!(!retirement.lines().any(|line| {
+        let line = line.trim_start().to_ascii_lowercase();
+        line.starts_with("drop table") && line.contains("cascade")
+    }));
 }
 
 #[test]
@@ -163,7 +217,7 @@ fn v2_routes_are_exclusive_for_chat_and_fail_closed() {
     assert!(routes.contains("CHAT_SYNC_V2_DISABLED"));
     assert!(server.contains("chat_sync::routes::routes"));
     assert!(server.contains("/v2/chat/realtime"));
-    let legacy_routes = read(root.join("bridges/cloud-server/src/auth/routes.rs"));
+    let runtime_source = read_runtime_sources(&root.join("bridges/cloud-server/src"));
     for retired in [
         "/v1/cloud/messages",
         "/v1/cloud/messages/read",
@@ -172,7 +226,7 @@ fn v2_routes_are_exclusive_for_chat_and_fail_closed() {
         "/v1/cloud/sessions/:source_session_id/title",
     ] {
         assert!(
-            !legacy_routes.contains(retired),
+            !runtime_source.contains(retired),
             "retired chat route is still reachable: {retired}"
         );
     }

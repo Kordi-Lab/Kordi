@@ -181,7 +181,7 @@ Keep network and projection logic outside SwiftUI view bodies so it remains inde
 
 The iPhone production origin is not a product-server development target. If an operator session will affect or restart the product server, follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), work on the corresponding product-server machine, and run the first end-to-end test through `https://coordinar.io`, never `https://kordi.ai`. Network-free preview mode remains the correct path for isolated iPhone UI work.
 
-See [Kordi iOS cloud contract](cloud-mobile-v1.md) for endpoints and projection rules.
+See [Kordi iOS cloud contract](cloud-mobile-v2.md) for endpoints and projection rules.
 
 ## TestFlight
 

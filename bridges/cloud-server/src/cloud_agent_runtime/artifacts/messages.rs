@@ -25,28 +25,18 @@ pub async fn ensure_response_message(
     .fetch_optional(pool)
     .await?
     {
-        if let Some(canonical_message_id) = canonical_response_message_id(pool, &message_id).await? {
-            if canonical_message_id != message_id {
-                query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2 WHERE run_id = $1")
-                    .bind(run_id)
-                    .bind(&canonical_message_id)
-                    .execute(pool)
-                    .await?;
-            }
-            return Ok(canonical_message_id);
+        if canonical_response_message_exists(pool, &message_id).await? {
+            return Ok(message_id);
         }
     }
     let message_id = append_cloud_agent_response_sync_event(
         pool,
         CloudAgentResponseSyncEvent {
-            account_id: requester_account_id,
-            peer_account_id: owner_account_id,
             message_id: run_id,
             from_account_id: owner_account_id,
             to_account_id: requester_account_id,
             body,
             session_id,
-            direction: "incoming",
         },
     )
     .await?
@@ -61,28 +51,19 @@ pub async fn ensure_response_message(
     Ok(message_id)
 }
 
-async fn canonical_response_message_id(
+async fn canonical_response_message_exists(
     pool: &PgPool,
     stored_message_id: &str,
-) -> Result<Option<String>, sqlx_core::Error> {
-    if let Ok(message_id) = Uuid::parse_str(stored_message_id.trim()) {
-        let exists: Option<(Uuid,)> =
-            query_as("SELECT message_id FROM cloud_chat_messages WHERE message_id = $1")
-                .bind(message_id)
-                .fetch_optional(pool)
-                .await?;
-        if exists.is_some() {
-            return Ok(Some(message_id.to_string()));
-        }
-    }
-    let mapped: Option<(Uuid,)> = query_as(
-        "SELECT canonical_message_id FROM cloud_chat_legacy_message_map \
-         WHERE legacy_message_id = $1 ORDER BY recipient_account_id ASC LIMIT 1",
-    )
-    .bind(stored_message_id.trim())
-    .fetch_optional(pool)
-    .await?;
-    Ok(mapped.map(|(message_id,)| message_id.to_string()))
+) -> Result<bool, sqlx_core::Error> {
+    let Ok(message_id) = Uuid::parse_str(stored_message_id.trim()) else {
+        return Ok(false);
+    };
+    let exists: Option<(Uuid,)> =
+        query_as("SELECT message_id FROM cloud_chat_messages WHERE message_id = $1")
+            .bind(message_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(exists.is_some())
 }
 
 pub async fn update_response_message_body(

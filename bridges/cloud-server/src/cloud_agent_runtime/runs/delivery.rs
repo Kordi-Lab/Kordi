@@ -50,17 +50,6 @@ pub(super) fn cloud_group_response_recipients(
         .collect()
 }
 
-pub(super) fn cloud_group_response_direction(
-    owner_account_id: &str,
-    recipient_account_id: &str,
-) -> &'static str {
-    if recipient_account_id == owner_account_id {
-        "outgoing"
-    } else {
-        "incoming"
-    }
-}
-
 pub(super) struct GroupResponse<'a> {
     pub(super) run_id: &'a str,
     pub(super) owner_account_id: &'a str,
@@ -111,17 +100,11 @@ pub(super) async fn ensure_group_response_messages(
     let message_id = append_cloud_agent_response_sync_event(
         pool,
         CloudAgentResponseSyncEvent {
-            account_id: &recipient_account_id,
-            peer_account_id: response.owner_account_id,
             message_id: &response_group_message_id,
             from_account_id: response.owner_account_id,
             to_account_id: &recipient_account_id,
             body: &response_body,
             session_id: response.session_id,
-            direction: cloud_group_response_direction(
-                response.owner_account_id,
-                &recipient_account_id,
-            ),
         },
     )
     .await?;
@@ -150,14 +133,11 @@ pub(super) async fn ensure_scheduled_direct_person_response_message(
     let message_id = append_cloud_agent_response_sync_event(
         pool,
         CloudAgentResponseSyncEvent {
-            account_id: owner_account_id,
-            peer_account_id: &peer_account_id,
             message_id: run_id,
             from_account_id: owner_account_id,
             to_account_id: &peer_account_id,
             body: response_body,
             session_id,
-            direction: "outgoing",
         },
     )
     .await?;
