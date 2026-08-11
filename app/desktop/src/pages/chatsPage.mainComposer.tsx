@@ -346,6 +346,7 @@ export function MainComposer({
             ) : null}
             <ComposerAttachmentAddMenu inputRef={chatAttachmentInputRef} />
             <ComposerEmojiButton
+              customEmojiScopeId={conversation.canonicalSessionId ?? conversation.id}
               captureSelection={() => ({
                 start: textareaRef.current?.selectionStart ?? chatComposerText.length,
                 end: textareaRef.current?.selectionEnd ?? chatComposerText.length,
