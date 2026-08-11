@@ -248,9 +248,8 @@ pub async fn sync_batch(
 
     let mut events = Vec::new();
     let mut encoded_bytes = 0usize;
-    let mut expected = after_stream_seq + 1;
     let mut has_more = rows.len() as i64 > limit;
-    for row in rows.into_iter().take(limit as usize) {
+    for (expected, row) in (after_stream_seq + 1..).zip(rows.into_iter().take(limit as usize)) {
         if row.0 != expected {
             return Err(StoreError::InvariantViolation(
                 "per-user sync stream contains a sequence gap",
@@ -276,7 +275,6 @@ pub async fn sync_batch(
             break;
         }
         encoded_bytes += event_bytes;
-        expected += 1;
         events.push(event);
     }
     let next_stream_seq = events
