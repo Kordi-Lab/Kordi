@@ -25,6 +25,7 @@ import {
 import {
   cloudMessageMetadataOnly,
 } from './cloudMessageCache';
+import { upsertCloudMessage } from './cloudMessageMerge';
 import {
   loadSession,
 } from './session';
@@ -53,16 +54,8 @@ export function useCloudDirectMessaging({
     if (!peerId) return;
     setMessagesByPeer((current) => {
       const previous = current[peerId] ?? [];
-      if (
-        previous.some(
-          (candidate) =>
-            candidate.messageId === metadataMessage.messageId,
-        )
-      ) return current;
-      const next = [...previous, metadataMessage].sort(
-        (left, right) =>
-          left.createdAt.localeCompare(right.createdAt),
-      );
+      const next = upsertCloudMessage(previous, metadataMessage);
+      if (next === previous) return current;
       return { ...current, [peerId]: next };
     });
   }, [account?.accountId, setMessagesByPeer]);
@@ -114,9 +107,11 @@ export function useCloudDirectMessaging({
         sessionId: cloudSessionId,
         attachments: uploadedAttachments,
         clientMessageId: options.clientMessageId,
+        accountId: account?.accountId,
       },
     );
     mergeMessage(message);
+    return message;
   }, [account?.accountId, client, mergeMessage]);
 
   return {

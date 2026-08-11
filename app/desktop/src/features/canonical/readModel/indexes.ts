@@ -37,6 +37,7 @@ export type CanonicalIndexes = {
   latestReadableMessageBySessionId: Map<string, CanonicalSessionMessage>;
   latestActivityMessageBySessionId: Map<string, CanonicalSessionMessage>;
   rawMessageCountBySessionId: Map<string, number>;
+  readableMessageCountBySessionId: Map<string, number>;
   delegatedExchangeCountBySessionId: Map<string, number>;
   taskActivitiesBySessionId: Map<string, SessionTaskActivity[]>;
   contextSnapshotCountBySessionId: Map<string, number>;
@@ -57,6 +58,7 @@ function emptyIndexes(): CanonicalIndexes {
     latestReadableMessageBySessionId: new Map(),
     latestActivityMessageBySessionId: new Map(),
     rawMessageCountBySessionId: new Map(),
+    readableMessageCountBySessionId: new Map(),
     delegatedExchangeCountBySessionId: new Map(),
     taskActivitiesBySessionId: new Map(),
     contextSnapshotCountBySessionId: new Map(),
@@ -995,6 +997,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const rawMessagesBySessionId = new Map<string, CanonicalSessionMessage[]>();
   const latestReadableMessageBySessionId = new Map<string, CanonicalSessionMessage>();
   const latestActivityMessageBySessionId = new Map<string, CanonicalSessionMessage>();
+  const readableMessageCountBySessionId = new Map<string, number>();
   const rawMessageById = new Map<string, CanonicalSessionMessage>();
   for (const message of canonicalState.messages) {
     const sessionMessages = rawMessagesBySessionId.get(message.sessionId);
@@ -1004,6 +1007,10 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       rawMessagesBySessionId.set(message.sessionId, [message]);
     }
     if (canonicalMessageCountsForLastActive(message)) {
+      readableMessageCountBySessionId.set(
+        message.sessionId,
+        (readableMessageCountBySessionId.get(message.sessionId) ?? 0) + 1,
+      );
       const latestReadable = latestReadableMessageBySessionId.get(message.sessionId);
       if (
         !latestReadable
@@ -1082,7 +1089,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       tieBreakAtMs: exchange.createdAtMs,
     });
   }
-
   const canonicalMessagesBySessionId = new Map<string, Message[]>();
   const rawMessageCountBySessionId = new Map<string, number>();
   for (const [sessionId, messages] of rawMessagesBySessionId) {
@@ -1217,7 +1223,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       ]),
     );
   }
-
   for (const [sessionId, processingMessages] of processingDelegationMessagesBySessionId) {
     if (!canonicalMessagesBySessionId.has(sessionId)) {
       canonicalMessagesBySessionId.set(sessionId, sortedCanonicalMessages(processingMessages));
@@ -1230,23 +1235,19 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       rawMessageCountBySessionId.set(sessionId, 0);
     }
   }
-
   const delegatedExchangeCountBySessionId = new Map<string, number>();
   for (const exchange of canonicalState.delegatedExchanges) {
     delegatedExchangeCountBySessionId.set(exchange.sessionId, (delegatedExchangeCountBySessionId.get(exchange.sessionId) ?? 0) + 1);
   }
-
   const contextSnapshotCountBySessionId = new Map<string, number>();
   for (const snapshot of canonicalState.contextSnapshots) {
     contextSnapshotCountBySessionId.set(snapshot.sessionId, (contextSnapshotCountBySessionId.get(snapshot.sessionId) ?? 0) + 1);
   }
-
   const taskActivitiesBySessionId = buildTaskActivitiesBySessionId(
     canonicalState,
     identityById,
     canonicalParticipantsBySessionId,
   );
-
   const presenceSummaryBySessionId = new Map<string, string>();
   for (const [sessionId, participants] of canonicalParticipantsBySessionId) {
     const counts = participants.reduce<Record<string, number>>((acc, participant) => {
@@ -1255,7 +1256,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       acc[status] = (acc[status] ?? 0) + 1;
       return acc;
     }, {});
-
     if (Object.keys(counts).length > 0) {
       presenceSummaryBySessionId.set(
         sessionId,
@@ -1263,7 +1263,6 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       );
     }
   }
-
   return {
     storagePath: canonicalState.storagePath,
     profileHumanIdentityId: canonicalState.profile.humanIdentityId,
@@ -1277,6 +1276,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     latestReadableMessageBySessionId,
     latestActivityMessageBySessionId,
     rawMessageCountBySessionId,
+    readableMessageCountBySessionId,
     delegatedExchangeCountBySessionId,
     taskActivitiesBySessionId,
     contextSnapshotCountBySessionId,

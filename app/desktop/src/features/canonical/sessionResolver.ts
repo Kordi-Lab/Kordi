@@ -3,6 +3,7 @@ import type {
   Conversation,
   DesktopChatProjectGroup,
 } from '@/kordi-app/types';
+import { canonicalMessageCountsAsReadable } from './readModel/messageVisibility';
 
 const LEGACY_CANONICAL_COLLABORATION_SESSION_PREFIX = 'session:bridge:';
 const CANONICAL_CLOUD_DIRECT_PERSON_SESSION_PREFIX = 'session:direct-person:';
@@ -135,6 +136,7 @@ export function buildProjectRoutingGroups(
   );
   const messageCountBySessionId = new Map<string, number>();
   for (const message of canonicalState?.messages ?? []) {
+    if (!canonicalMessageCountsAsReadable(message)) continue;
     messageCountBySessionId.set(message.sessionId, (messageCountBySessionId.get(message.sessionId) ?? 0) + 1);
   }
 

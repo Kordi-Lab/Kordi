@@ -1,87 +1,73 @@
-//! Source-level contracts for cloud-auth persistence and message semantics.
+//! Source-level contracts for the cloud-auth surface that remains beside chat v2.
 //!
-//! Runtime behavior remains covered by `cloud_auth_e2e`; these checks keep
-//! migration registration and the SQL invariants visible without coupling the
-//! runtime suite to one route-module layout.
+//! Durable message, history, read-cursor, title, and sync behavior belongs to
+//! `chat_sync_v2_contract`. These checks prevent the deleted v1 transport from
+//! being reintroduced while retaining security coverage for ancillary routes.
 
-const AUTH_MESSAGE_ROUTES_SOURCE: &str = concat!(
-    include_str!("../src/auth/routes/message_handlers.rs"),
-    include_str!("../src/auth/routes/message_list_handlers.rs"),
-    include_str!("../src/auth/routes/message_policy.rs"),
-    include_str!("../src/auth/routes/message_read_handlers.rs"),
-    include_str!("../src/auth/routes/sync_handlers.rs"),
-    include_str!("../src/auth/routes/types.rs"),
-);
-const AUTH_ROUTER_SOURCE: &str = include_str!("../src/auth/routes.rs");
+use std::path::Path;
 
 #[test]
-fn cloud_message_listing_uses_newest_window_before_oldest_first_display_order() {
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("ORDER BY cm.created_at DESC"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("ORDER BY created_at ASC"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("FROM ("));
-}
-
-#[test]
-fn exact_message_lookup_is_authenticated_bounded_and_account_scoped() {
-    assert!(AUTH_ROUTER_SOURCE.contains("/v1/cloud/messages/lookup"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("MESSAGE_BODY_LOOKUP_MAX_IDS: usize = 500"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("message_id = ANY($1)"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("from_account_id = $2 OR to_account_id = $2"));
-}
-
-#[test]
-fn cloud_message_listing_applies_durable_read_cursors() {
-    let pool_source = include_str!("../src/pg/pool.rs");
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("cloud_read_cursors"));
-    assert!(pool_source.contains("version: 28"));
-    assert!(pool_source.contains("0028_cloud_read_cursors.sql"));
-    assert!(pool_source.contains("version: 29"));
-    assert!(pool_source.contains("0029_backfill_cloud_read_cursors.sql"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("peer_read_cursor"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("session_read_cursor"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("COALESCE(read_at"));
-}
-
-#[test]
-fn cloud_self_addressed_messages_are_read_by_definition() {
-    let messages_source = include_str!("../src/auth/messages.rs");
-    let pool_source = include_str!("../src/pg/pool.rs");
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("let read_at = if is_self_message"));
-    assert!(messages_source.contains("(message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id, client_message_id)"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("WHEN from_account_id = $1 AND to_account_id = $1"));
-    assert!(pool_source.contains("version: 30"));
-    assert!(pool_source.contains("0030_mark_self_cloud_messages_read.sql"));
-    assert!(pool_source.contains("version: 31"));
-    assert!(pool_source.contains("0031_cloud_message_attachment_previews.sql"));
+fn retired_v1_chat_implementation_files_stay_removed() {
+    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let auth_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/auth");
+    for retired in [
+        "messages.rs",
+        "routes/message_handlers.rs",
+        "routes/message_list_handlers.rs",
+        "routes/message_policy.rs",
+        "routes/message_read_handlers.rs",
+        "routes/session_titles.rs",
+        "routes/sync_handlers.rs",
+    ] {
+        assert!(
+            !auth_root.join(retired).exists(),
+            "retired v1 chat source was restored: {retired}"
+        );
+    }
+    for retired in [
+        "bridges/cloud-server/src/messages/mod.rs",
+        "bridges/cloud-server/src/messages/log.rs",
+        "bridges/cloud-server/scripts/dry-run-localhost-kh-cleanup.sql",
+        "docs/cloud-mobile-v1.md",
+        "docs/cloud/cleanup/remove-localhost-kh-bridge-state-2026-05.md",
+    ] {
+        assert!(
+            !repository_root.join(retired).exists(),
+            "retired v1 chat artifact was restored: {retired}"
+        );
+    }
 }
 
 #[test]
 fn cloud_attachment_preview_recovery_only_updates_caller_visible_links() {
     let source = include_str!("../src/attachments/routes.rs");
-    assert!(source.contains("UPDATE cloud_message_attachments cma"));
-    assert!(source.contains("cm.message_id = cma.message_id"));
-    assert!(source.contains("cm.from_account_id = $3 OR cm.to_account_id = $3"));
-    assert!(source.contains("$3 = $4"));
+    assert!(source.contains("cloud_chat_message_attachments attachment"));
+    assert!(source.contains("cloud_chat_conversation_members member"));
+    assert!(source.contains("member.account_id = $2"));
+    assert!(source.contains("member.membership_state = 'active'"));
+    assert!(source.contains("SET preview_url = $1"));
 }
 
 #[test]
-fn cloud_message_idempotency_migration_is_embedded() {
+fn legacy_message_migrations_remain_historical_and_v1_retirement_is_latest() {
     let pool_source = include_str!("../src/pg/pool.rs");
-    let messages_source = include_str!("../src/auth/messages.rs");
-    assert!(pool_source.contains("version: 32"));
-    assert!(pool_source.contains("0032_cloud_message_idempotency.sql"));
-    assert!(AUTH_MESSAGE_ROUTES_SOURCE.contains("client_message_id"));
-    assert!(messages_source.contains("ON CONFLICT"));
-    assert!(messages_source.contains("tx.commit()"));
-}
+    for migration in [28, 29, 30, 31, 32, 47, 48, 49, 50, 51] {
+        assert!(
+            pool_source.contains(&format!("version: {migration}")),
+            "migration {migration} is no longer embedded"
+        );
+    }
+    assert!(pool_source.contains("0047_reliable_chat_sync_v2.sql"));
+    assert!(pool_source.contains("0048_backfill_reliable_chat_sync_v2.sql"));
+    assert!(pool_source.contains("0049_relink_legacy_agent_responses.sql"));
+    assert!(pool_source.contains("0050_chat_v2_artifact_links.sql"));
+    assert!(pool_source.contains("0051_retire_chat_sync_v1.sql"));
 
-#[test]
-fn cloud_message_transaction_preserves_attachment_previews() {
-    let messages_source = include_str!("../src/auth/messages.rs");
-    assert!(messages_source.contains(
-        "(message_id, attachment_id, name, kind, mime_type, size_bytes, position, preview_url)"
-    ));
-    assert!(messages_source
-        .contains("SELECT attachment_id, name, kind, mime_type, size_bytes, preview_url"));
-    assert!(messages_source.contains(".bind(attachment.preview_url.as_deref())"));
+    let library = include_str!("../src/lib.rs");
+    let events = include_str!("../src/events/mod.rs");
+    let artifacts = include_str!("../src/cloud_agent_runtime/artifacts/messages.rs");
+    assert!(!library.contains("pub mod messages;"));
+    assert!(!events.contains("publish_message_arrived"));
+    assert!(!events.contains("publish_message_read"));
+    assert!(!artifacts.contains("cloud_chat_legacy_message_map"));
 }

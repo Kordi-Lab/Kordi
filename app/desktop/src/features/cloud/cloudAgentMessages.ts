@@ -2,6 +2,7 @@ import type { CloudAccount, CloudMessage } from './authClient';
 import { cloudMessageActionAllowsAgentContext } from './cloudAgentTriggerPolicy';
 import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
+import { compareCloudMessages } from './cloudMessageMerge';
 
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
 const CLOUD_AGENT_CANCEL_PREFIX = 'kordi-cloud-agent-cancel:';
@@ -287,10 +288,16 @@ export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   peerAgentName?: string;
 }): CloudAgentNativeContextMessage[] {
   const requestCreatedAtMs = cloudMessageCreatedAtMs(requestMessage);
-  const sorted = [...messages].sort((left, right) => cloudMessageCreatedAtMs(left) - cloudMessageCreatedAtMs(right));
+  const sorted = [...messages].sort(compareCloudMessages);
   return sorted
     .filter((message) => message.messageId !== requestMessage.messageId)
-    .filter((message) => cloudMessageCreatedAtMs(message) <= requestCreatedAtMs)
+    .filter((message) => (
+      message.sessionId === requestMessage.sessionId
+      && message.conversationSequence != null
+      && requestMessage.conversationSequence != null
+        ? message.conversationSequence <= requestMessage.conversationSequence
+        : cloudMessageCreatedAtMs(message) <= requestCreatedAtMs
+    ))
     .filter((message) => cloudMessageActionAllowsAgentContext(cloudDirectMessageAction(message.body)))
     .flatMap((message) => {
       const text = cloudContextMessageText({ ...message, body: cloudDirectMessageDisplayText(message.body) });

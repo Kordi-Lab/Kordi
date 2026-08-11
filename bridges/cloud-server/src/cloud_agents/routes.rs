@@ -83,6 +83,14 @@ fn store_error_response(context: &str, error: CloudAgentStoreError) -> Response 
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }
+        CloudAgentStoreError::Sync(err) => {
+            eprintln!("[cloud_agents] {context} sync publication: {err}");
+            error_response(
+                "server_error",
+                "Could not synchronize Cloud Agent definition.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     }
 }
 

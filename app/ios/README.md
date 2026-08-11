@@ -66,4 +66,4 @@ xcodebuild \
 
 Choose another installed simulator from `xcrun simctl list devices available` when needed.
 
-For project structure, production boundaries, physical-device setup, TestFlight, and troubleshooting, read [Developing Kordi for iPhone](../../docs/ios-development.md). The hosted API contract is recorded in [Kordi iOS cloud contract](../../docs/cloud-mobile-v1.md).
+For project structure, production boundaries, physical-device setup, TestFlight, and troubleshooting, read [Developing Kordi for iPhone](../../docs/ios-development.md). The hosted API contract is recorded in [Kordi iOS cloud contract](../../docs/cloud-mobile-v2.md).

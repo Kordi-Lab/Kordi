@@ -154,7 +154,53 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
              created_at_ms INTEGER NOT NULL,
              updated_at_ms INTEGER NOT NULL,
              expires_at_ms INTEGER
-         );",
+         );
+         CREATE TABLE IF NOT EXISTS chat_sync_v2_state (
+             account_id TEXT PRIMARY KEY,
+             cursor TEXT NOT NULL,
+             last_stream_seq INTEGER NOT NULL CHECK(last_stream_seq >= 0),
+             updated_at_ms INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS chat_sync_v2_conversations (
+             account_id TEXT NOT NULL,
+             conversation_id TEXT NOT NULL,
+             client_session_id TEXT,
+             version INTEGER NOT NULL CHECK(version >= 1),
+             snapshot_json TEXT NOT NULL,
+             updated_at_ms INTEGER NOT NULL,
+             PRIMARY KEY(account_id, conversation_id)
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_sync_v2_conversation_session
+             ON chat_sync_v2_conversations(account_id, client_session_id)
+             WHERE client_session_id IS NOT NULL;
+         CREATE TABLE IF NOT EXISTS chat_sync_v2_messages (
+             account_id TEXT NOT NULL,
+             message_id TEXT NOT NULL,
+             conversation_id TEXT NOT NULL,
+             conversation_sequence INTEGER NOT NULL CHECK(conversation_sequence >= 1),
+             version INTEGER NOT NULL CHECK(version >= 1),
+             snapshot_json TEXT NOT NULL,
+             updated_at_ms INTEGER NOT NULL,
+             PRIMARY KEY(account_id, message_id),
+             UNIQUE(account_id, conversation_id, conversation_sequence)
+         );
+         CREATE INDEX IF NOT EXISTS idx_chat_sync_v2_message_history
+             ON chat_sync_v2_messages(account_id, conversation_id, conversation_sequence DESC);
+         CREATE TABLE IF NOT EXISTS chat_sync_v2_pending_operations (
+             account_id TEXT NOT NULL,
+             operation_id TEXT NOT NULL,
+             operation_kind TEXT NOT NULL CHECK(operation_kind IN ('send_message')),
+             payload_json TEXT NOT NULL,
+             status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'failed')),
+             attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+             next_attempt_at_ms INTEGER NOT NULL DEFAULT 0,
+             last_error TEXT,
+             created_at_ms INTEGER NOT NULL,
+             updated_at_ms INTEGER NOT NULL,
+             PRIMARY KEY(account_id, operation_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_chat_sync_v2_pending_due
+             ON chat_sync_v2_pending_operations(account_id, status, next_attempt_at_ms, created_at_ms);",
     )
     .map_err(|err| err.to_string())?;
     conn.execute(

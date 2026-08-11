@@ -230,20 +230,15 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
             "agentMentionDepth": 1
         }
     }));
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx_core::query::query(
-        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6)",
+    let conversation_id = create_v2_test_conversation(
+        &pool,
+        &source.account_id,
+        &session_id,
+        ConversationKind::Group,
+        vec![target.account_id.clone()],
     )
-    .bind(format!("wire_{request_message_id}"))
-    .bind(&source.account_id)
-    .bind(&target.account_id)
-    .bind(&request_body)
-    .bind(&now)
-    .bind(&session_id)
-    .execute(&pool)
-    .await
-    .unwrap();
+    .await;
+    insert_v2_test_message(&pool, &source.account_id, conversation_id, &request_body).await;
 
     let claim_input = claim_body_with_session(&target, &source, &request_message_id, &session_id);
     let claim = router
@@ -295,12 +290,7 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
         .as_str()
         .unwrap()
         .to_string();
-    let (response_body,): (String,) =
-        sqlx_core::query_as::query_as("SELECT body FROM cloud_messages WHERE message_id = $1")
-            .bind(&response_message_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let response_body = v2_message_body(&pool, &response_message_id).await;
     let response = decode_test_cloud_group_envelope(&response_body);
     assert_eq!(response["message"]["senderAccountId"], target.account_id);
     assert_eq!(response["message"]["senderDisplayName"], "Target's Kordi");
@@ -332,19 +322,7 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
             "agentMentionDepth": 1
         }
     }));
-    sqlx_core::query::query(
-        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6)",
-    )
-    .bind(format!("wire_{invalid_message_id}"))
-    .bind(&source.account_id)
-    .bind(&target.account_id)
-    .bind(&invalid_body)
-    .bind(chrono::Utc::now().to_rfc3339())
-    .bind(&session_id)
-    .execute(&pool)
-    .await
-    .unwrap();
+    insert_v2_test_message(&pool, &source.account_id, conversation_id, &invalid_body).await;
     let invalid_claim = router
         .clone()
         .oneshot(post_json_with_token(

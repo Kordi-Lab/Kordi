@@ -1,7 +1,7 @@
 //! Cloud-server event bus.
 //!
 //! Wraps a JetStream context so the server can publish lifecycle events
-//! (signup, contact-add, message-create) onto the `kordi.events.>` subject
+//! (signup, contacts, profiles, and presence) onto the `kordi.events.>` subject
 //! tree. Other services (sync workers, presence services) will consume
 //! these subjects to react to state changes without polling.
 //!
@@ -260,94 +260,6 @@ pub enum ContactRequestEventKind {
     Created,
     Accepted,
     Rejected,
-}
-
-pub struct MessageArrived<'a> {
-    pub message_id: &'a str,
-    pub from_account_id: &'a str,
-    pub to_account_id: &'a str,
-    pub body: &'a str,
-    pub created_at: &'a str,
-    pub session_id: Option<&'a str>,
-    pub attachments: serde_json::Value,
-}
-
-impl EventBus {
-    /// Fire `kordi.events.message.arrived.<recipient_account_id>` with
-    /// the minimum payload needed for a chat client to render the new
-    /// message without a follow-up HTTP fetch.
-    pub async fn publish_message_arrived(&self, message: MessageArrived<'_>) {
-        if self.inner.is_none() {
-            return;
-        }
-        let payload = MessageArrivedEvent {
-            event_type: "message.arrived",
-            message_id: message.message_id,
-            from_account_id: message.from_account_id,
-            to_account_id: message.to_account_id,
-            body: message.body,
-            created_at: message.created_at,
-            session_id: message.session_id,
-            attachments: message.attachments,
-        };
-        let body = match serde_json::to_vec(&payload) {
-            Ok(value) => Bytes::from(value),
-            Err(err) => {
-                eprintln!("[events] serialize message.arrived: {err}");
-                return;
-            }
-        };
-        let subject = format!("kordi.events.message.arrived.{}", message.to_account_id);
-        self.publish_raw(subject, body).await;
-    }
-
-    /// Fire `kordi.events.message.read.<sender_account_id>` so the sender's
-    /// open WebSocket can refresh and turn delivered checks blue promptly.
-    pub async fn publish_message_read(
-        &self,
-        reader_account_id: &str,
-        sender_account_id: &str,
-        occurred_at: &str,
-    ) {
-        if self.inner.is_none() {
-            return;
-        }
-        let payload = MessageReadEvent {
-            event_type: "message.read",
-            reader_account_id,
-            sender_account_id,
-            occurred_at,
-        };
-        let body = match serde_json::to_vec(&payload) {
-            Ok(value) => Bytes::from(value),
-            Err(err) => {
-                eprintln!("[events] serialize message.read: {err}");
-                return;
-            }
-        };
-        let subject = format!("kordi.events.message.read.{sender_account_id}");
-        self.publish_raw(subject, body).await;
-    }
-}
-
-#[derive(Serialize)]
-struct MessageArrivedEvent<'a> {
-    event_type: &'static str,
-    message_id: &'a str,
-    from_account_id: &'a str,
-    to_account_id: &'a str,
-    body: &'a str,
-    created_at: &'a str,
-    session_id: Option<&'a str>,
-    attachments: serde_json::Value,
-}
-
-#[derive(Serialize)]
-struct MessageReadEvent<'a> {
-    event_type: &'static str,
-    reader_account_id: &'a str,
-    sender_account_id: &'a str,
-    occurred_at: &'a str,
 }
 
 #[derive(Serialize)]

@@ -37,5 +37,30 @@ final class CloudWireCacheTests: XCTestCase {
         XCTAssertEqual(restored?.cursor, "842")
         XCTAssertEqual(restored?.messagesByPeer["acct-peer"], [message])
         XCTAssertEqual(restored?.sessionForksById?[fork.forkSessionId], fork)
+        XCTAssertEqual(restored?.forkLineageVersion, CloudWireSnapshot.currentForkLineageVersion)
+    }
+
+    func testOlderSnapshotWithoutForkLineageVersionStillDecodesForUpgradeReplay() throws {
+        let data = Data(#"{"accountId":"acct-me","cursor":"cursor-old","messagesByPeer":{},"sessionForksById":{},"savedAt":0}"#.utf8)
+
+        let snapshot = try JSONDecoder().decode(CloudWireSnapshot.self, from: data)
+
+        XCTAssertNil(snapshot.forkLineageVersion)
+        XCTAssertNotNil(snapshot.sessionForksById)
+    }
+
+    func testForkLineageUpgradeCannotResumeFromAnOlderCursor() {
+        XCTAssertTrue(CloudSyncRecoveryPolicy.requiresBootstrap(
+            hasHydratedWireSnapshot: true,
+            hasHydratedForkLineage: false
+        ))
+        XCTAssertTrue(CloudSyncRecoveryPolicy.requiresBootstrap(
+            hasHydratedWireSnapshot: false,
+            hasHydratedForkLineage: true
+        ))
+        XCTAssertFalse(CloudSyncRecoveryPolicy.requiresBootstrap(
+            hasHydratedWireSnapshot: true,
+            hasHydratedForkLineage: true
+        ))
     }
 }

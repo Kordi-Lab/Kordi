@@ -1,12 +1,11 @@
-// Cloud-edition auth HTTP client. Talks to the cloud server's /v1/cloud/* routes.
-// Stays a pure TS module: no React, no Tauri imports — easy to test with a fetch stub.
+// Cloud-edition HTTP client. Authentication and ancillary account features
+// remain under /v1/cloud; durable chat transport is exclusively /v2/chat.
+// Stays independent of React. Native outbox helpers are no-ops in web/tests,
+// while the focused V2 client persists every send before network I/O.
 
 // Production sessions never silently fall back to localhost; local tunnels remain
 // available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
-import {
-  normalizeCloudMessageSnapshot,
-  type CloudMessageSnapshotResponse,
-} from './cloudMessageSnapshot';
+import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
@@ -23,10 +22,29 @@ import type {
   CloudGroupInvitationSummary,
   CloudPublicProfile,
 } from './cloudIdentityTypes';
+import { ChatSyncV2Client } from './chatSyncV2Client';
+import type {
+  ChatSyncV2BootstrapResponse,
+  ChatSyncV2Conversation,
+  ChatSyncV2ConversationInput,
+  ChatSyncV2Event,
+  ChatSyncV2Message,
+} from './chatSyncV2Types';
 
 export type { CloudContactSummary } from './cloudContactTypes';
 export { parseCloudOAuthHashResult } from './cloudOAuthResult';
 export { CloudAuthError } from './cloudAuthError';
+export { chatSyncV2SessionTitle, cloudMessageFromChatSyncV2, cloudOperationUuid } from './chatSyncV2Mapping';
+export type {
+  ChatSyncV2BootstrapResponse,
+  ChatSyncV2Conversation,
+  ChatSyncV2ConversationInput,
+  ChatSyncV2Event,
+  ChatSyncV2Member,
+  ChatSyncV2Message,
+  ChatSyncV2Preferences,
+  ChatSyncV2SyncResponse,
+} from './chatSyncV2Types';
 export type { CloudAuthErrorCode } from './cloudAuthError';
 export type {
   CloudAccount,
@@ -111,6 +129,19 @@ export type SendCloudMessageAttachmentInput = {
   previewUrl?: string | null;
 };
 
+export type SendCloudMessageOptions = {
+  sessionId?: string | null;
+  attachments?: SendCloudMessageAttachmentInput[];
+  clientCreatedAt?: string | null;
+  clientMessageId?: string | null;
+  messageKind?: string | null;
+  canonicalHistoryLocalMessageId?: string | null;
+  accountId?: string | null;
+  conversationKind?: ChatSyncV2Conversation['kind'];
+  memberAccountIds?: string[];
+  sharedTitle?: string | null;
+};
+
 export type CloudAttachmentInitiateResult = {
   attachmentId: string;
   objectKey: string;
@@ -150,9 +181,14 @@ export type CloudMessage = {
   direction: CloudMessageDirection;
   sessionId?: string | null;
   attachments?: CloudMessageAttachment[];
+  conversationId?: string | null;
+  conversationSequence?: number | null;
+  clientMessageId?: string | null;
+  messageKind?: string | null;
+  canonicalHistoryLocalMessageId?: string | null;
+  version?: number | null;
 };
 
-export type CloudMessageBodyLookup = Pick<CloudMessage, 'messageId' | 'body'>;
 
 export type CloudSyncEventType = string;
 
@@ -169,6 +205,15 @@ export type CloudSyncResponse = {
   cursor: string;
   hasMore: boolean;
   events: CloudSyncEvent[];
+  v2?: {
+    bootstrap: boolean;
+    protocolVersion: 2;
+    nextCursor: string;
+    lastStreamSeq: number;
+    conversations: ChatSyncV2Conversation[];
+    messages: ChatSyncV2Message[];
+    events: ChatSyncV2Event[];
+  };
 };
 
 export type CloudSessionForkSummary = {
@@ -393,6 +438,13 @@ export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): s
   return url.toString();
 }
 
+export function chatSyncV2WebSocketUrl(ticket: string, baseUrl = cloudApiBaseUrl()): string {
+  const url = new URL('/v2/chat/realtime', baseUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('ticket', ticket);
+  return url.toString();
+}
+
 export type CloudAuthClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
@@ -428,11 +480,19 @@ export class CloudAuthClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
+  private activeAccountId: string | null = null;
+  private readonly chatV2: ChatSyncV2Client;
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
+    this.chatV2 = new ChatSyncV2Client({
+      request: (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
+      getActiveAccountId: () => this.activeAccountId,
+      setActiveAccountId: (value) => { this.activeAccountId = value; },
+      errorStatus: (error) => error instanceof CloudAuthError ? error.status : null,
+    });
   }
 
   private async send<TResponse>(
@@ -473,13 +533,15 @@ export class CloudAuthClient {
     return this.send<TResponse>(path, init, fallbackMessage);
   }
 
+  knownChatV2SessionIds(accountId: string): string[] { return this.chatV2.knownSessionIds(accountId); }
+
   async signup(input: {
     email: string;
     password: string;
     displayName?: string;
     avatarUrl?: string;
   }): Promise<CloudAuthResult> {
-    return this.send<CloudAuthResult>(
+    const result = await this.send<CloudAuthResult>(
       '/v1/cloud/auth/signup',
       {
         method: 'POST',
@@ -488,6 +550,8 @@ export class CloudAuthClient {
       },
       'Could not create account.',
     );
+    this.activeAccountId = result.account.accountId;
+    return result;
   }
 
   async capabilities(): Promise<CloudAuthCapabilities> {
@@ -513,7 +577,7 @@ export class CloudAuthClient {
   }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {
-    return this.send<CloudAuthResult>(
+    const result = await this.send<CloudAuthResult>(
       '/v1/cloud/auth/login',
       {
         method: 'POST',
@@ -522,10 +586,12 @@ export class CloudAuthClient {
       },
       'Could not sign in.',
     );
+    this.activeAccountId = result.account.accountId;
+    return result;
   }
 
   async me(token: string): Promise<CloudAccount> {
-    return this.send<CloudAccount>(
+    const account = await this.send<CloudAccount>(
       '/v1/cloud/auth/me',
       {
         method: 'GET',
@@ -533,6 +599,8 @@ export class CloudAuthClient {
       },
       'Could not load account.',
     );
+    this.activeAccountId = account.accountId;
+    return account;
   }
 
   async startOAuth(provider: CloudOAuthProvider, redirectAfter: string): Promise<CloudOAuthStartResponse> {
@@ -813,28 +881,13 @@ export class CloudAuthClient {
     return response?.run ?? null;
   }
 
-  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[]; clientCreatedAt?: string | null; clientMessageId?: string | null } = {}): Promise<CloudMessage> {
-    const trimmedSessionId = options.sessionId?.trim() ?? '';
-    const attachments = options.attachments ?? [];
-    const response = await this.send<{ message: CloudMessage }>(
-      '/v1/cloud/messages',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          peerAccountId,
-          body,
-          ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}),
-          ...(attachments.length > 0 ? { attachments } : {}),
-          ...(options.clientCreatedAt?.trim() ? { clientCreatedAt: options.clientCreatedAt.trim() } : {}),
-          ...(options.clientMessageId?.trim() ? { clientMessageId: options.clientMessageId.trim() } : {}),
-        }),
-      },
-      'Could not send message.',
-    );
-    if (!response) throw new Error('Empty response from cloud server.');
-    return { ...response.message, attachments: response.message.attachments ?? [] };
+  async ensureChatV2Conversation(token: string, input: ChatSyncV2ConversationInput): Promise<ChatSyncV2Conversation> { return this.chatV2.ensureConversation(token, input); }
+
+  async sendMessage(token: string, peerAccountId: string, body: string, options: SendCloudMessageOptions = {}): Promise<CloudMessage> {
+    return this.chatV2.sendMessage(token, peerAccountId, body, options);
   }
+
+  async drainChatV2Outbox(token: string, accountId: string): Promise<CloudMessage[]> { return this.chatV2.drainOutbox(token, accountId); }
 
   async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {
     return this.send<CloudAttachmentInitiateResult>(
@@ -925,28 +978,11 @@ export class CloudAuthClient {
     return response.blob();
   }
 
-  async markMessagesRead(token: string, peerAccountId: string): Promise<void> {
-    await this.send<void>(
-      '/v1/cloud/messages/read',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ peerAccountId }),
-      },
-      'Could not mark messages read.',
-    );
-  }
+  async markMessagesRead(token: string, peerAccountId: string): Promise<void> { return this.chatV2.markMessagesRead(token, peerAccountId); }
 
-  async markSessionMessagesRead(token: string, sessionId: string): Promise<void> {
-    await this.send<void>(
-      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/read`,
-      {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not mark session messages read.',
-    );
-  }
+  async markSessionMessagesRead(token: string, sessionId: string): Promise<void> { return this.chatV2.markSessionMessagesRead(token, sessionId); }
+
+  async acknowledgeChatV2Delivery(token: string, conversationId: string, sequence: number): Promise<void> { return this.chatV2.acknowledgeDelivery(token, conversationId, sequence); }
 
   async listSessionVisibility(token: string): Promise<CloudSessionVisibility> {
     const response = await this.send<CloudSessionVisibility>(
@@ -990,19 +1026,7 @@ export class CloudAuthClient {
     return response.pin;
   }
 
-  async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> {
-    const response = await this.send<{ sessionTitle: CloudSessionTitle }>(
-      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/title`,
-      {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(input),
-      },
-      'Could not synchronize the session title.',
-    );
-    if (!response?.sessionTitle) throw new Error('Empty response from cloud server.');
-    return response.sessionTitle;
-  }
+  async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> { return this.chatV2.updateTitle(token, sessionId, input); }
 
   async hideCloudSession(token: string, sessionId: string): Promise<void> {
     await this.send<void>(
@@ -1107,48 +1131,20 @@ export class CloudAuthClient {
     return response.artifact;
   }
 
-  async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> {
-    const params = new URLSearchParams({ cursor });
-    if (limit !== undefined) params.set('limit', String(limit));
-    const response = await this.send<CloudSyncResponse>(
-      `/v1/cloud/sync?${params.toString()}`,
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not sync cloud changes.',
-    );
-    return response ?? { cursor, hasMore: false, events: [] };
+  async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> { return this.chatV2.syncEvents(token, cursor, limit); }
+
+  async listMessageSnapshot(token: string, peerAccountId: string, limit?: number, viewerAccountId?: string | null) {
+    return this.chatV2.listMessageSnapshot(token, peerAccountId, limit, viewerAccountId);
   }
 
-  async listMessageSnapshot(token: string, peerAccountId: string, limit?: number) {
-    const params = new URLSearchParams({ peerAccountId });
-    if (limit !== undefined) params.set('limit', String(limit));
-    const response = await this.send<CloudMessageSnapshotResponse>(
-      `/v1/cloud/messages?${params.toString()}`,
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not load messages.',
-    );
-    return normalizeCloudMessageSnapshot(response);
+  async listChatV2ConversationHistoryPage(token: string, conversationId: string, beforeSequence?: number, limit = 200): Promise<{ messages: ChatSyncV2Message[]; nextBeforeSequence: number | null; hasMore: boolean }> {
+    return this.chatV2.listHistoryPage(token, conversationId, beforeSequence, limit);
   }
 
-  async lookupMessageBodies(token: string, messageIds: string[]): Promise<CloudMessageBodyLookup[]> {
-    const normalizedMessageIds = [...new Set(messageIds.map((messageId) => messageId.trim()).filter(Boolean))];
-    if (normalizedMessageIds.length === 0) return [];
-    const response = await this.send<{ messages: CloudMessageBodyLookup[] }>(
-      '/v1/cloud/messages/lookup',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ messageIds: normalizedMessageIds }),
-      },
-      'Could not recover Cloud message metadata.',
-    );
-    return response?.messages ?? [];
-  }
+  async bootstrapChatSyncV2(token: string): Promise<ChatSyncV2BootstrapResponse> { return this.chatV2.bootstrap(token); }
+
+  async issueChatSyncV2RealtimeTicket(token: string): Promise<{ ticket: string; device_id: string; expires_at: string }> { return this.chatV2.issueRealtimeTicket(token); }
+
 }
 
 // Convenience factory for production callers that don't need to inject deps.

@@ -67,6 +67,7 @@ import {
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
 } from './cloudDirectMessages';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
+import { compareCloudMessages } from './cloudMessageMerge';
 import {
   CLOUD_AGENT_RUNTIME,
   CLOUD_PERSON_RUNTIME,
@@ -163,7 +164,7 @@ function cloudSelfAgentTitleFromMessages(
   messages: readonly CloudMessage[],
   groupControlMessageIds?: ReadonlySet<string>,
 ): string | null {
-  for (const message of [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt))) {
+  for (const message of [...messages].sort(compareCloudMessages)) {
     if (isCloudAgentControlMessage(message.body) || cloudMessageIsGroupControl(message, groupControlMessageIds) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
     const title = cleanCloudConversationTitle(message.body.split(/\r?\n/, 1)[0]);
     if (title) return title.length > 80 ? `${title.slice(0, 77).trimEnd()}…` : title;
@@ -202,6 +203,7 @@ export function cloudMessageToCollaborationMessage(
     : null;
   return {
     id: message.messageId,
+    clientMessageId: message.clientMessageId ?? null,
     direction: agentResponse
       ? (isOwn ? COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE : COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE)
       : isOwn
@@ -979,7 +981,6 @@ export function buildCloudDesktopCollaborationState({
       return [...personConversation, ...agentConversation];
     })
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
-
   return {
     activeHostId: CLOUD_HOST_SENTINEL,
     hosts: [host],
@@ -987,7 +988,6 @@ export function buildCloudDesktopCollaborationState({
     localAgentRouting: null,
   };
 }
-
 function formatCloudCollaborationTime(timestampMs: number): string {
   return formatDesktopClockTime(timestampMs);
 }

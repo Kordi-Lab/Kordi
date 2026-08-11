@@ -189,12 +189,12 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     },
     EmbeddedMigration {
         version: 33,
-        description: "cloud session title metadata",
+        description: "cloud session titles",
         sql: include_str!("../../migrations/0033_cloud_session_titles.sql"),
     },
     EmbeddedMigration {
         version: 35,
-        description: "global support agent and durable support tickets",
+        description: "global support",
         sql: include_str!("../../migrations/0035_global_support.sql"),
     },
     EmbeddedMigration {
@@ -204,13 +204,43 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     },
     EmbeddedMigration {
         version: 44,
-        description: "explicit group invitations",
+        description: "group invitations",
         sql: include_str!("../../migrations/0044_group_invitations.sql"),
     },
     EmbeddedMigration {
         version: 45,
-        description: "server ordered cloud messages",
+        description: "cloud message server receive order",
         sql: include_str!("../../migrations/0045_cloud_message_server_received_at.sql"),
+    },
+    EmbeddedMigration {
+        version: 46,
+        description: "cloud agent runtime routes",
+        sql: include_str!("../../migrations/0046_cloud_agent_runtime_routes.sql"),
+    },
+    EmbeddedMigration {
+        version: 47,
+        description: "reliable canonical chat sync v2",
+        sql: include_str!("../../migrations/0047_reliable_chat_sync_v2.sql"),
+    },
+    EmbeddedMigration {
+        version: 48,
+        description: "backfill retained v1 chat into reliable chat sync v2",
+        sql: include_str!("../../migrations/0048_backfill_reliable_chat_sync_v2.sql"),
+    },
+    EmbeddedMigration {
+        version: 49,
+        description: "relink migrated agent responses to canonical v2 requests",
+        sql: include_str!("../../migrations/0049_relink_legacy_agent_responses.sql"),
+    },
+    EmbeddedMigration {
+        version: 50,
+        description: "canonical v2 Cloud-agent artifact links",
+        sql: include_str!("../../migrations/0050_chat_v2_artifact_links.sql"),
+    },
+    EmbeddedMigration {
+        version: 51,
+        description: "retire chat sync v1 storage and compatibility bridges",
+        sql: include_str!("../../migrations/0051_retire_chat_sync_v1.sql"),
     },
 ];
 

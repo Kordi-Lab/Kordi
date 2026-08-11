@@ -90,6 +90,10 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
 
     let ws_router = Router::new()
         .route("/v1/cloud/ws", axum::routing::get(crate::ws::ws_handler))
+        .route(
+            "/v2/chat/realtime",
+            axum::routing::get(crate::chat_sync::realtime::ws_handler),
+        )
         .with_state(state.clone());
 
     Router::new()
@@ -98,6 +102,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
             crate::auth::password::PasswordHasherConfig::production(),
             rate_limiter,
         ))
+        .merge(crate::chat_sync::routes::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
         .merge(crate::scheduled_tasks::routes::routes(state.clone()))
@@ -242,6 +247,7 @@ pub async fn run(
     let state = Arc::new(state);
     crate::support::spawn_ticket_worker(state.clone());
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
+    crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
     let sweeper_state = state.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(crate::presence::presence_sweep_interval());

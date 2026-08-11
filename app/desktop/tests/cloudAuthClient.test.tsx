@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   CloudAuthClient,
   CloudAuthError,
+  chatSyncV2WebSocketUrl,
   cloudApiBaseUrl,
   operatorCloudOAuthProviderFallback,
   cloudRealtimeWebSocketEnabled,
@@ -332,6 +333,13 @@ test('cloud WebSocket URL derives from the cloud API origin', () => {
   );
 });
 
+test('reliable chat WebSocket uses a single-use v2 ticket instead of an access token', () => {
+  assert.equal(
+    chatSyncV2WebSocketUrl('kordi_rt_ticket', 'https://coordinar.io'),
+    'wss://coordinar.io/v2/chat/realtime?ticket=kordi_rt_ticket',
+  );
+});
+
 test('network failures surface as CloudAuthError with code network_error', async () => {
   const fetchImpl: typeof fetch = () => Promise.reject(new TypeError('Failed to fetch'));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
@@ -385,59 +393,6 @@ test('claimCloudAgentRun posts typed claim request and parses status response', 
     createdAt: '2026-05-24T00:00:00Z',
     updatedAt: '2026-05-24T00:00:00Z',
   });
-});
-
-test('sendMessage posts attachment metadata and parses returned attachments', async () => {
-  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(201, {
-    message: {
-      messageId: 'msg_1',
-      fromAccountId: 'acct_me',
-      toAccountId: 'acct_peer',
-      body: 'see file',
-      createdAt: '2026-05-12T00:00:00Z',
-      deliveredAt: null,
-      readAt: null,
-      direction: 'outgoing',
-      attachments: [{
-        attachmentId: 'att_1',
-        name: 'report.pdf',
-        kind: 'file',
-        mimeType: 'application/pdf',
-        sizeBytes: 1000,
-        downloadUrl: 'https://files.test/att_1',
-        previewUrl: null,
-      }],
-    },
-  }));
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
-
-  const sent = await client.sendMessage('kordi_cs_xyz', 'acct_peer', 'see file', {
-    sessionId: 'session-1',
-    clientMessageId: 'msg:canonical:one:acct_peer',
-    attachments: [{
-      attachmentId: 'att_1',
-      name: 'report.pdf',
-      kind: 'file',
-      mimeType: 'application/pdf',
-      sizeBytes: 1000,
-    }],
-  });
-
-  assert.equal(calls[0].url, 'http://srv/v1/cloud/messages');
-  assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
-    peerAccountId: 'acct_peer',
-    body: 'see file',
-    sessionId: 'session-1',
-    clientMessageId: 'msg:canonical:one:acct_peer',
-    attachments: [{
-      attachmentId: 'att_1',
-      name: 'report.pdf',
-      kind: 'file',
-      mimeType: 'application/pdf',
-      sizeBytes: 1000,
-    }],
-  });
-  assert.equal(sent.attachments?.[0]?.downloadUrl, 'https://files.test/att_1');
 });
 
 test('listSessionVisibility loads hidden and deleted cloud session ids', async () => {
@@ -566,34 +521,6 @@ test('downloadAttachmentContent fetches bytes through authenticated cloud API', 
 
   assert.equal(blob.type, 'image/png');
   assert.deepEqual(Array.from(new Uint8Array(await blob.arrayBuffer())), [1, 2, 3]);
-  const headers = calls[0].init?.headers as Record<string, string>;
-  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
-});
-
-test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
-  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
-
-  await client.markMessagesRead('kordi_cs_xyz', 'acct_peer');
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'http://srv/v1/cloud/messages/read');
-  assert.equal(calls[0].init?.method, 'POST');
-  const headers = calls[0].init?.headers as Record<string, string>;
-  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
-  assert.equal(headers['content-type'], 'application/json');
-  assert.deepEqual(JSON.parse(calls[0].init?.body as string), { peerAccountId: 'acct_peer' });
-});
-
-test('markSessionMessagesRead posts session id to cloud session read route', async () => {
-  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
-
-  await client.markSessionMessagesRead('kordi_cs_xyz', 'session:group:one');
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Agroup%3Aone/read');
-  assert.equal(calls[0].init?.method, 'POST');
   const headers = calls[0].init?.headers as Record<string, string>;
   assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
 });

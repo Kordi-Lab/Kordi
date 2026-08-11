@@ -58,12 +58,14 @@ import {
   retryAttachmentItemsFromMessage,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
+import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
 import {
   markOptimisticCanonicalMessageSent,
   sentPreparedCanonicalUserMessage,
 } from './canonicalDelivery';
 import {
   collaborationSendFailureDetail,
+  createCloudCollaborationClientMessageId,
   failedCanonicalGroupMessageRequest,
   shouldAppendOptimisticCollaborationMessage,
 } from './collaborationSendLifecycle';
@@ -984,7 +986,7 @@ export function useChatMessageActions({
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const optimisticMessageId = createCloudCollaborationClientMessageId();
       try {
         shouldAutoFollowChatRef.current = true;
         setDesktopChatError(null);
@@ -999,13 +1001,13 @@ export function useChatMessageActions({
         ));
         clearTargetDraft();
         setChatComposerAttachments([]);
-        await sendCloudCollaborationMessage(
+        const canonicalMessage = await sendCloudCollaborationMessage(
           targetConversation.id,
           text,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
         );
-        setCloudCollaborationState(null);
+        setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(targetConversation.id, optimisticMessageId, canonicalMessage));
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
         setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
@@ -1245,13 +1247,13 @@ export function useChatMessageActions({
                 ...retryDirectHostedAgentTarget,
               })
             : text;
-          await sendCloudCollaborationMessage(
+          const canonicalMessage = await sendCloudCollaborationMessage(
             activeCloudConversationId,
             retryCloudBody,
             retryAttachments,
             { clientMessageId: retryMessageId },
           );
-          setCloudCollaborationState(null);
+          setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, retryMessageId, canonicalMessage));
         } catch (error) {
           const failureDetail = collaborationSendFailureDetail(error, 'Unable to retry message');
           setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(
@@ -1449,7 +1451,7 @@ export function useChatMessageActions({
         return;
       }
       const sentAt = formatDesktopEventTime();
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const optimisticMessageId = createCloudCollaborationClientMessageId();
       const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
       try {
         shouldAutoFollowChatRef.current = true;
@@ -1477,14 +1479,14 @@ export function useChatMessageActions({
               ...(directHostedAgentTarget ?? {}),
             })
           : text;
-        await sendCloudCollaborationMessage(
+        const canonicalMessage = await sendCloudCollaborationMessage(
           activeCloudConversationId,
           cloudBody,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
         );
         if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeCloudConversationId)) {
-          setCloudCollaborationState(null);
+          setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, optimisticMessageId, canonicalMessage));
         }
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
@@ -1867,10 +1869,8 @@ export function useChatMessageActions({
     watchDesktopLiveTurn,
     watchLocalTurnAndFlushQueue,
   ]);
-
   const handleRetryChatMessage = useCallback((message: Message) => (
     handleSendChatMessage(message.text, undefined, [], message)
   ), [handleSendChatMessage]);
-
   return { handleSendChatMessage, handleRetryChatMessage };
 }

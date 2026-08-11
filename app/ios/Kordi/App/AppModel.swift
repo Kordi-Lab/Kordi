@@ -124,10 +124,14 @@ final class AppModel: ObservableObject {
                 lastMessageSyncAt = snapshot.savedAt
                 hasHydratedWireSnapshot = snapshot.cursor != "0"
                 hasHydratedForkLineage = snapshot.sessionForksById != nil
+                    && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
             phase = .signedIn
             await refreshWorkspace()
-            startCloudSync(resetCursor: !hasHydratedWireSnapshot || !hasHydratedForkLineage)
+            startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
+                hasHydratedWireSnapshot: hasHydratedWireSnapshot,
+                hasHydratedForkLineage: hasHydratedForkLineage
+            ))
         } catch {
             try? keychain.deleteToken()
             token = nil
@@ -275,6 +279,7 @@ final class AppModel: ObservableObject {
                 + shared.map(\.ownerAccountId)
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
+            applySyncedSessionTitles(await api.cachedChatV2SessionTitles())
             let groupParticipantIds = Set(history.messagesByPeer.values.flatMap { messages in
                 messages.flatMap { CloudGroupMessageCodec.parse($0.body)?.participants.map(\.accountId) ?? [] }
             })
@@ -311,7 +316,10 @@ final class AppModel: ObservableObject {
     func appDidBecomeActive() async {
         guard phase == .signedIn, !previewMode else { return }
         await refreshWorkspace()
-        startCloudSync(resetCursor: false)
+        startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
+            hasHydratedWireSnapshot: hasHydratedWireSnapshot,
+            hasHydratedForkLineage: hasHydratedForkLineage
+        ))
     }
 
     func updateProfile(displayName: String, avatarUrl: String?) async -> Bool {
@@ -960,26 +968,33 @@ final class AppModel: ObservableObject {
 
     func renameConversation(_ conversation: ConversationSummary, to title: String) async -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanTitle.isEmpty else { return false }
+        guard !cleanTitle.isEmpty, let token, let account else { return false }
         sessionTitleOverrides[conversation.sessionId] = cleanTitle
         UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
         if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
             conversations[index].displayName = cleanTitle
         }
-        guard conversation.kind == .group, let token, let account else { return true }
         do {
-            try await sendGroupSessionTitleUpdate(
-                conversation: conversation,
-                title: cleanTitle,
+            let kind: String = conversation.kind == .group
+                ? "group"
+                : (conversation.peerAccountId == account.accountId ? "ai" : "direct")
+            let members = conversation.kind == .group
+                ? conversation.groupParticipants.map(\.accountId)
+                : [conversation.peerAccountId]
+            let synced = try await api.updateSessionTitle(
                 token: token,
-                account: account
+                sessionId: conversation.sessionId,
+                title: cleanTitle,
+                peerAccountId: conversation.peerAccountId,
+                conversationKind: kind,
+                memberAccountIds: members
             )
-            sessionTitleOverrides.removeValue(forKey: conversation.sessionId)
+            sessionTitleOverrides[conversation.sessionId] = synced.title
             UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
             await rebuildConversationCatalog()
             return true
         } catch {
-            errorMessage = "Renamed on this iPhone, but group title sync failed."
+            errorMessage = "Renamed on this iPhone, but title sync failed. Try again when connected."
             return false
         }
     }
@@ -1519,15 +1534,7 @@ final class AppModel: ObservableObject {
         messageAction: MessageActionMetadata?,
         mentionTarget: ComposerMentionTarget?
     ) async throws -> [CloudMessageDTO] {
-        var participants = conversation.groupParticipants
-        if !participants.contains(where: { $0.accountId == account.accountId }) {
-            participants.append(CloudGroupParticipant(
-                accountId: account.accountId,
-                displayName: account.preferredName,
-                avatarUrl: account.avatarUrl,
-                role: "self"
-            ))
-        }
+        let participants = hydratedGroupParticipants(conversation, account: account)
         let recipients = Set(participants.map(\.accountId).filter { !$0.isEmpty && $0 != account.accountId })
         guard !recipients.isEmpty else {
             throw CloudAPIError(code: "group_has_no_recipients", message: "This group has no other participants.", statusCode: 0)
@@ -1561,74 +1568,44 @@ final class AppModel: ObservableObject {
             )
         )
         let body = try CloudGroupMessageCodec.encode(envelope)
-        return try await withThrowingTaskGroup(of: CloudMessageDTO.self) { group in
-            for recipient in recipients {
-                group.addTask { [api] in
-                    try await api.sendMessage(
-                        token: token,
-                        peerAccountId: recipient,
-                        body: body,
-                        sessionId: conversation.sessionId,
-                        clientMessageId: "\(localMessageId):\(recipient)",
-                        attachments: attachments
-                    )
-                }
-            }
-            var sent: [CloudMessageDTO] = []
-            for try await message in group { sent.append(message) }
-            return sent
-        }
-    }
-
-    private func sendGroupSessionTitleUpdate(
-        conversation: ConversationSummary,
-        title: String,
-        token: String,
-        account: CloudAccount
-    ) async throws {
-        var participants = conversation.groupParticipants
-        if !participants.contains(where: { $0.accountId == account.accountId }) {
-            participants.append(CloudGroupParticipant(
-                accountId: account.accountId,
-                displayName: account.preferredName,
-                avatarUrl: account.avatarUrl,
-                role: "self"
-            ))
-        }
-        guard let actor = participants.first(where: { $0.accountId == account.accountId }) else { return }
-        let envelope = CloudGroupControlEnvelope(
-            kind: "session-title-update",
-            groupId: conversation.sessionId,
-            groupSpaceId: conversation.groupSpaceId ?? conversation.sessionId,
-            groupTitle: title,
-            createdByAccountId: account.accountId,
-            actor: actor,
-            participants: participants,
-            message: nil
+        let sent = try await api.sendMessage(
+            token: token,
+            peerAccountId: recipients.sorted()[0],
+            body: body,
+            sessionId: conversation.sessionId,
+            clientMessageId: localMessageId,
+            attachments: attachments,
+            conversationKind: "group",
+            memberAccountIds: participants.map(\.accountId)
         )
-        let body = try CloudGroupMessageCodec.encode(envelope)
-        let recipients = Set(participants.map(\.accountId)).subtracting([account.accountId])
-        for recipient in recipients {
-            let sent = try await api.sendMessage(
-                token: token,
-                peerAccountId: recipient,
-                body: body,
-                sessionId: conversation.sessionId,
-                clientMessageId: "session-title:\(UUID().uuidString):\(recipient)"
-            )
-            mergeMessages([sent], for: recipient)
-        }
+        return [sent]
     }
 
     private func groupParticipantsIncludingSelf(
         _ conversation: ConversationSummary,
         account: CloudAccount
     ) -> [CloudGroupParticipant] {
+        hydratedGroupParticipants(conversation, account: account)
+    }
+
+    private func hydratedGroupParticipants(
+        _ conversation: ConversationSummary,
+        account: CloudAccount
+    ) -> [CloudGroupParticipant] {
         var byAccountID = Dictionary(uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0) })
+        for contact in contacts {
+            guard let participant = byAccountID[contact.accountId] else { continue }
+            byAccountID[contact.accountId] = CloudGroupParticipant(
+                accountId: participant.accountId,
+                displayName: contact.preferredName,
+                avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
+                role: participant.role
+            )
+        }
         byAccountID[account.accountId] = CloudGroupParticipant(
             accountId: account.accountId,
             displayName: account.preferredName,
-            avatarUrl: account.avatarUrl,
+            avatarUrl: account.avatarUrl?.nonEmpty ?? byAccountID[account.accountId]?.avatarUrl,
             role: byAccountID[account.accountId]?.role.nonEmpty ?? "self"
         )
         return byAccountID.values.sorted { $0.accountId < $1.accountId }
@@ -1655,16 +1632,21 @@ final class AppModel: ObservableObject {
             message: nil
         )
         let body = try CloudGroupMessageCodec.encode(envelope)
-        for recipient in targetAccountIds where !recipient.isEmpty && recipient != account.accountId {
-            let sent = try await api.sendMessage(
-                token: token,
-                peerAccountId: recipient,
-                body: body,
-                sessionId: conversation.sessionId,
-                clientMessageId: "\(kind):\(UUID().uuidString.lowercased()):\(recipient)"
-            )
-            mergeMessages([sent], for: recipient)
-        }
+        guard let recipient = targetAccountIds
+            .filter({ !$0.isEmpty && $0 != account.accountId })
+            .sorted()
+            .first else { return }
+        let sent = try await api.sendMessage(
+            token: token,
+            peerAccountId: recipient,
+            body: body,
+            sessionId: conversation.sessionId,
+            clientMessageId: "\(kind):\(UUID().uuidString.lowercased())",
+            conversationKind: "group",
+            memberAccountIds: participants.map(\.accountId),
+            sharedTitle: groupTitle
+        )
+        mergeMessages([sent], for: recipient)
     }
 
     private func mapMessage(_ message: CloudMessageDTO, conversation: ConversationSummary, ownAccountId: String) -> ChatMessage {
@@ -1770,14 +1752,15 @@ final class AppModel: ObservableObject {
                         let hasDirectoryChanges = pendingEvents.contains {
                             $0.eventType != "message.upsert" && $0.eventType != "message.read"
                         }
-                        if hasDirectoryChanges {
-                            await refreshWorkspace(showSyncActivity: false)
-                        } else {
-                            await rebuildConversationCatalog()
-                        }
+                        if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
+                        // V2 conversation snapshots are independently canonical.
+                        // Always project them even when a best-effort directory
+                        // refresh failed or was already in progress.
+                        await rebuildConversationCatalog()
                         await refreshLoadedConversationProjections()
                         pendingEvents.removeAll(keepingCapacity: true)
                     }
+                    if cloudConnectionState != .connected { cloudConnectionState = .connected }
                     hasHydratedWireSnapshot = true
                     if isForkLineageReplay { hasHydratedForkLineage = true }
                     if messageSyncState != .upToDate { messageSyncState = .upToDate }
@@ -1787,6 +1770,7 @@ final class AppModel: ObservableObject {
                         hasUnpersistedChanges = false
                     }
                 } catch {
+                    if Task.isCancelled { return }
                     // No page has been committed yet. Retry from the last
                     // persisted cursor so a background transition cannot skip
                     // a partially received batch.
@@ -1844,6 +1828,11 @@ final class AppModel: ObservableObject {
 
     private func rebuildConversationCatalog() async {
         guard let account else { return }
+        let canonicalParticipantsBySessionId = await api.cachedChatV2ParticipantsBySessionId()
+        let canonicalForksBySessionId = await api.cachedChatV2SessionForksById()
+        for (sessionId, fork) in canonicalForksBySessionId {
+            sessionForksById[sessionId] = fork
+        }
         let contactSnapshot = contacts
         let ownedAgentSnapshot = ownedCloudAgents
         let sharedAgentSnapshot = sharedCloudAgents
@@ -1858,6 +1847,7 @@ final class AppModel: ObservableObject {
                 ownedAgents: ownedAgentSnapshot,
                 sharedAgents: sharedAgentSnapshot,
                 messagesByPeer: wireSnapshot,
+                canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
                 sessionForksById: forkSnapshot,
                 hiddenSessionIds: hiddenSnapshot,
                 deletedSessionIds: deletedSnapshot
@@ -1933,6 +1923,11 @@ final class AppModel: ObservableObject {
         var readUpdatesByPeer: [String: [String: String]] = [:]
 
         for event in events {
+            if event.eventType == "session.title.updated",
+               let sessionTitle = event.payload?.sessionTitle {
+                applySyncedSessionTitles([sessionTitle])
+                continue
+            }
             if event.eventType == "session-forked",
                let payload = event.payload,
                let forkSessionId = payload.forkSessionId?.nonEmpty,
@@ -2010,6 +2005,22 @@ final class AppModel: ObservableObject {
                 changed = true
             }
             if changed { cloudMessagesByPeer[peer] = messages }
+        }
+    }
+
+    private func applySyncedSessionTitles(_ titles: [CloudSyncedSessionTitle]) {
+        var changed = false
+        for title in titles {
+            if let value = title.title.nonEmpty {
+                guard sessionTitleOverrides[title.sessionId] != value else { continue }
+                sessionTitleOverrides[title.sessionId] = value
+                changed = true
+            } else if sessionTitleOverrides.removeValue(forKey: title.sessionId) != nil {
+                changed = true
+            }
+        }
+        if changed {
+            UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
         }
     }
 
@@ -2142,10 +2153,14 @@ final class AppModel: ObservableObject {
             lastMessageSyncAt = snapshot.savedAt
             hasHydratedWireSnapshot = snapshot.cursor != "0"
             hasHydratedForkLineage = snapshot.sessionForksById != nil
+                && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }
         phase = .signedIn
         await refreshWorkspace()
-        startCloudSync(resetCursor: !hasHydratedWireSnapshot || !hasHydratedForkLineage)
+        startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
+            hasHydratedWireSnapshot: hasHydratedWireSnapshot,
+            hasHydratedForkLineage: hasHydratedForkLineage
+        ))
     }
 
     private func userFacing(_ error: Error, fallback: String) -> String {

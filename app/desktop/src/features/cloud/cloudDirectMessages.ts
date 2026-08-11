@@ -1,4 +1,5 @@
 import type { MessageActionMetadata } from '../../kordi-app/types/message';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 export const CLOUD_DIRECT_MESSAGE_PREFIX = 'kordi-cloud-message:';
 
@@ -11,6 +12,11 @@ export type CloudDirectMessageEnvelope = {
   targetCloudAgentName?: string | null;
   targetCloudAgentOwnerAccountId?: string | null;
   targetCloudAgentOwnerName?: string | null;
+  agentRuntimeRoute?: (DesktopChatMessageRoute & {
+    defaultModel?: string | null;
+    defaultAuthProvider?: string | null;
+    defaultAuthChoice?: string | null;
+  }) | null;
 };
 
 function encodeBase64Url(value: string) {
@@ -70,6 +76,21 @@ export function cloudDirectMessageTargetCloudAgentName(body: string): string | n
 
 export function cloudDirectMessageTargetCloudAgentOwnerAccountId(body: string): string | null {
   return parseCloudDirectMessageEnvelope(body)?.targetCloudAgentOwnerAccountId?.trim() || null;
+}
+
+export function cloudDirectMessageAgentRuntimeRoute(body: string): DesktopChatMessageRoute | null {
+  const route = parseCloudDirectMessageEnvelope(body)?.agentRuntimeRoute;
+  if (!route || typeof route !== 'object') return null;
+  const model = typeof route.defaultModel === 'string' ? route.defaultModel.trim() : typeof route.model === 'string' ? route.model.trim() : '';
+  const authProvider = typeof route.defaultAuthProvider === 'string' ? route.defaultAuthProvider.trim() : typeof route.authProvider === 'string' ? route.authProvider.trim() : '';
+  const authChoice = typeof route.defaultAuthChoice === 'string' ? route.defaultAuthChoice.trim() : typeof route.authChoice === 'string' ? route.authChoice.trim() : '';
+  const thinking = typeof route.thinking === 'string' ? route.thinking.trim() : '';
+  return model || thinking ? {
+    ...(model ? { model } : {}),
+    ...(authProvider ? { authProvider } : {}),
+    ...(authChoice ? { authChoice } : {}),
+    ...(thinking ? { thinking } : {}),
+  } : null;
 }
 
 export function cloudDirectMessageTargetsOwnedHostedCloudAgent(body: string, accountId: string): boolean {

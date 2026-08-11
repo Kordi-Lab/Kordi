@@ -60,7 +60,8 @@ where
     C: CloudAgentRunClient + Sync,
     P: CloudModelProvider + Sync,
 {
-    let auth = OpenAiProviderConfig::from_material(&auth_material)?;
+    let mut auth = OpenAiProviderConfig::from_material(&auth_material)?;
+    auth.apply_runtime_route(&run.runtime_route, &auth_material.provider);
     let tools = prompt::tool_catalog();
     let executor = CloudToolExecutor::new(sandbox.clone());
     let mut messages = vec![

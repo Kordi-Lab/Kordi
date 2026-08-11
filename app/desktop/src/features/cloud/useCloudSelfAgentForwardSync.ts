@@ -4,6 +4,7 @@ import {
   type MutableRefObject,
 } from 'react';
 import type {
+  CanonicalSessionMessage,
   CanonicalSessionState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
@@ -11,7 +12,13 @@ import {
   createSingleFlightState,
   requestSingleFlightRun,
 } from '@/lib/singleFlight';
+import {
+  loadChatSyncV2LocalState,
+} from '@/lib/desktopChatSyncV2';
+import { fetchCanonicalSessionMessages } from '@/lib/desktop';
 import type {
+  ChatSyncV2Conversation,
+  ChatSyncV2Message,
   CloudAccount,
   CloudAuthClient,
   CloudMessage,
@@ -20,23 +27,98 @@ import {
   loadCloudSelfAgentForwardBaseline,
   loadCloudSelfAgentForwardCutoff,
   loadCloudSelfAgentSyncLedger,
+  loadCloudSelfAgentV2RecoverySessionIds,
+  cloudSelfAgentOperationClientMessageId,
+  planCloudSelfAgentSessionReconciliation,
   planCloudSelfAgentSync,
   saveCloudSelfAgentForwardBaseline,
   saveCloudSelfAgentForwardCutoff,
   saveCloudSelfAgentSyncLedger,
+  saveCloudSelfAgentV2RecoverySessionIds,
   seedCloudSelfAgentForwardSyncLedger,
 } from './cloudSelfAgentForwardSync';
 import {
   CLOUD_SELF_AGENT_HEARTBEAT_MS,
+  cloudSelfAgentProcessingLedgerKey,
   publishCloudSelfAgentHeartbeat,
   publishCloudSelfAgentOperations,
 } from './cloudSelfAgentForwardExecution';
 import { loadSession } from './session';
 
+async function loadCanonicalRecoveryMessages(
+  sessionIds: ReadonlySet<string>,
+  shouldContinue: () => boolean,
+) {
+  const pages = await Promise.all([...sessionIds].map(async (sessionId) => {
+    const messages: CanonicalSessionMessage[] = [];
+    let beforeSequenceNum: number | null = null;
+    let pageCount = 0;
+    do {
+      if (!shouldContinue()) return [];
+      const page = await fetchCanonicalSessionMessages(
+        sessionId,
+        beforeSequenceNum,
+        200,
+      );
+      if (!page) return [];
+      messages.push(...page.messages);
+      if (!page.hasOlder || page.oldestSequenceNum === null) break;
+      beforeSequenceNum = page.oldestSequenceNum;
+      pageCount += 1;
+      if (pageCount >= 10_000) {
+        throw new Error('Canonical agent history pagination did not finish.');
+      }
+    } while (true);
+    return messages;
+  }));
+  return pages.flat();
+}
+
+async function loadRemoteRecoveryMessages(
+  client: CloudAuthClient,
+  token: string,
+  conversations: readonly ChatSyncV2Conversation[],
+  sessionIds: ReadonlySet<string>,
+  shouldContinue: () => boolean,
+): Promise<ChatSyncV2Message[]> {
+  const conversationBySessionId = new Map(conversations.map((conversation) => [
+    conversation.legacy_session_id ?? conversation.id,
+    conversation,
+  ]));
+  const pages = await Promise.all([...sessionIds].map(async (sessionId) => {
+    const conversation = conversationBySessionId.get(sessionId);
+    if (!conversation || conversation.latest_message_sequence === 0) {
+      return [];
+    }
+    const messages: ChatSyncV2Message[] = [];
+    let beforeSequence: number | undefined;
+    let pageCount = 0;
+    do {
+      if (!shouldContinue()) return [];
+      const page = await client.listChatV2ConversationHistoryPage(
+        token,
+        conversation.id,
+        beforeSequence,
+        200,
+      );
+      messages.push(...page.messages);
+      if (!page.hasMore || page.nextBeforeSequence === null) break;
+      beforeSequence = page.nextBeforeSequence;
+      pageCount += 1;
+      if (pageCount >= 10_000) {
+        throw new Error('Remote agent history pagination did not finish.');
+      }
+    } while (true);
+    return messages;
+  }));
+  return pages.flat();
+}
+
 export function useCloudSelfAgentForwardSync({
   account,
   canonicalState,
   canonicalStateRef,
+  initialMessagesSettled,
   localTurnsBySessionId = {},
   client,
   cancelledRef,
@@ -48,6 +130,7 @@ export function useCloudSelfAgentForwardSync({
   account: CloudAccount | null;
   canonicalState: CanonicalSessionState | null | undefined;
   canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
+  initialMessagesSettled: boolean;
   localTurnsBySessionId?: Record<string, DesktopChatTurnSnapshot>;
   client: CloudAuthClient;
   cancelledRef: MutableRefObject<boolean>;
@@ -132,67 +215,221 @@ export function useCloudSelfAgentForwardSync({
   ]);
 
   useEffect(() => {
-    if (!account) return;
+    if (!account || !initialMessagesSettled) return;
 
     void requestSingleFlightRun(syncFlightRef.current, async () => {
       try {
         const latestState =
           canonicalStateRef.current ?? canonicalState ?? null;
         if (!latestState) return;
-        const initialLedger = loadCloudSelfAgentSyncLedger(
+        const [session, localV2] = await Promise.all([
+          loadSession(),
+          loadChatSyncV2LocalState(account.accountId),
+        ]);
+        if (!session?.token || cancelledRef.current) return;
+
+        const pendingRecoverySessionIds =
+          loadCloudSelfAgentV2RecoverySessionIds(account.accountId);
+        const reconciliation = planCloudSelfAgentSessionReconciliation(
+          latestState,
+          localV2?.conversations ?? [],
+          { pendingRecoverySessionIds },
+        );
+        for (const plan of reconciliation) {
+          if (plan.recoverHistory) {
+            pendingRecoverySessionIds.add(plan.sessionId);
+          }
+        }
+        // Persist the recovery intent before creating any remote rows. A crash
+        // after conversation creation must resume the historical snapshot
+        // upload instead of mistaking a partially-filled conversation for a
+        // completed migration.
+        saveCloudSelfAgentV2RecoverySessionIds(
+          account.accountId,
+          pendingRecoverySessionIds,
+        );
+        const conversationsToCreate = reconciliation.filter(
+          (plan) => plan.createConversation,
+        );
+        const createdConversations = await Promise.all(
+          conversationsToCreate.map((plan) => (
+            client.ensureChatV2Conversation(session.token, {
+              accountId: account.accountId,
+              peerAccountId: account.accountId,
+              sessionId: plan.sessionId,
+              kind: 'ai',
+              memberAccountIds: [account.accountId],
+              sharedTitle: plan.title,
+            })
+          )),
+        );
+        if (cancelledRef.current) return;
+
+        const recoverySessionIds = new Set(pendingRecoverySessionIds);
+        const [canonicalRecoveryMessages, remoteRecoveryMessages] =
+          await Promise.all([
+            loadCanonicalRecoveryMessages(
+              recoverySessionIds,
+              () => !cancelledRef.current,
+            ),
+            loadRemoteRecoveryMessages(
+              client,
+              session.token,
+              [
+                ...(localV2?.conversations ?? []),
+                ...createdConversations,
+              ],
+              recoverySessionIds,
+              () => !cancelledRef.current,
+            ),
+          ]);
+        if (cancelledRef.current) return;
+        const remoteMessages = [
+          ...(localV2?.messages ?? []),
+          ...remoteRecoveryMessages,
+        ];
+        const remoteMessageIds = new Set(
+          remoteMessages.map((message) => message.id),
+        );
+        const remoteMessageByClientId = new Map(
+          remoteMessages.map((message) => [
+            message.client_message_id,
+            message,
+          ]),
+        );
+        const recoveryState = {
+          ...latestState,
+          messages: [
+            ...latestState.messages.filter((message) => (
+              !recoverySessionIds.has(message.sessionId)
+            )),
+            ...canonicalRecoveryMessages.filter((message) => !(
+              message.sourceTransport === 'cloud-self-agent'
+              && message.sourceEventId
+              && remoteMessageIds.has(message.sourceEventId)
+            )),
+          ],
+        };
+        let ledger = loadCloudSelfAgentSyncLedger(account.accountId);
+        let forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
           account.accountId,
         );
         if (!loadCloudSelfAgentForwardBaseline(account.accountId)) {
           const seeded = seedCloudSelfAgentForwardSyncLedger(
-            latestState,
-            initialLedger,
+            recoveryState,
+            ledger,
           );
           if (seeded.changed) {
             saveCloudSelfAgentSyncLedger(
               account.accountId,
               seeded.ledger,
             );
+            ledger = seeded.ledger;
           }
           saveCloudSelfAgentForwardBaseline(account.accountId);
-          saveCloudSelfAgentForwardCutoff(account.accountId);
-          return;
+          forwardCutoffMs = saveCloudSelfAgentForwardCutoff(
+            account.accountId,
+          );
         }
         // Older app versions stored only a boolean baseline. Establish a
         // timestamp boundary before planning so history that appears later via
         // SQLite pagination is never mistaken for a newly-created live turn.
-        const forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
+        forwardCutoffMs ??= saveCloudSelfAgentForwardCutoff(
           account.accountId,
-        ) ?? saveCloudSelfAgentForwardCutoff(account.accountId);
-        const operations = planCloudSelfAgentSync(
-          latestState,
-          initialLedger,
-          { createdAfterMs: forwardCutoffMs },
         );
-        if (operations.length === 0) return;
-
-        const session = await loadSession();
-        if (!session?.token) return;
-        const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
-        if (cancelledRef.current) return;
-        await publishCloudSelfAgentOperations({
-          accountId: account.accountId,
-          client,
+        const allRecoveryOperations = planCloudSelfAgentSync(
+          recoveryState,
           ledger,
-          mergeMessage,
-          onRequestPublished: (message) => {
-            processedRequestIdsRef.current.add(message.messageId);
+          {
+            createdAfterMs: forwardCutoffMs,
+            recoverSessionIds: recoverySessionIds,
           },
-          operations,
-          saveLedger: (nextLedger) => {
-            saveCloudSelfAgentSyncLedger(account.accountId, nextLedger);
+        );
+        let ledgerChanged = false;
+        ledger = { ...ledger };
+        for (const operation of allRecoveryOperations) {
+          const remote = remoteMessageByClientId.get(
+            cloudSelfAgentOperationClientMessageId(operation),
+          );
+          if (!remote) continue;
+          ledger[operation.localMessageId] = {
+            cloudMessageId: remote.id,
+            syncedAtMs: Date.now(),
+          };
+          ledgerChanged = true;
+        }
+        if (ledgerChanged) {
+          saveCloudSelfAgentSyncLedger(account.accountId, ledger);
+        }
+        const operations = planCloudSelfAgentSync(
+          recoveryState,
+          ledger,
+          {
+            createdAfterMs: forwardCutoffMs,
+            recoverSessionIds: recoverySessionIds,
+            remoteClientMessageIds: new Set(
+              remoteMessageByClientId.keys(),
+            ),
           },
-          shouldContinue: () => !cancelledRef.current,
-          token: session.token,
-        });
-        await syncCloudCollaborationDiff();
+        );
+        if (operations.length > 0) {
+          const executionLedger = { ...ledger };
+          for (const operation of operations) {
+            if (!recoverySessionIds.has(operation.sessionId)) continue;
+            delete executionLedger[operation.localMessageId];
+            if (operation.role === 'user') {
+              delete executionLedger[
+                cloudSelfAgentProcessingLedgerKey(
+                  operation.localMessageId,
+                )
+              ];
+            }
+          }
+          await publishCloudSelfAgentOperations({
+            accountId: account.accountId,
+            client,
+            ledger: executionLedger,
+            mergeMessage,
+            messageKindForOperation: (operation) => (
+              recoverySessionIds.has(operation.sessionId)
+                ? operation.role === 'user'
+                  ? 'canonical-history-user'
+                  : 'canonical-history-agent'
+                : null
+            ),
+            onRequestPublished: (message, operation) => {
+              if (!recoverySessionIds.has(operation.sessionId)) {
+                processedRequestIdsRef.current.add(message.messageId);
+              }
+            },
+            operations,
+            saveLedger: (nextLedger) => {
+              saveCloudSelfAgentSyncLedger(
+                account.accountId,
+                nextLedger,
+              );
+            },
+            shouldContinue: () => !cancelledRef.current,
+            shouldMergeMessage: (operation) => (
+              !recoverySessionIds.has(operation.sessionId)
+            ),
+            shouldPublishProcessing: (operation) => (
+              !recoverySessionIds.has(operation.sessionId)
+            ),
+            token: session.token,
+          });
+        }
+        if (
+          reconciliation.length > 0
+          || operations.length > 0
+        ) await syncCloudCollaborationDiff();
+        saveCloudSelfAgentV2RecoverySessionIds(
+          account.accountId,
+          new Set(),
+        );
       } catch (error) {
         reportWarning(
-          '[cloud-self-agent-sync] failed to sync local history',
+          '[cloud-self-agent-sync] failed to reconcile agent sessions',
           error,
         );
       }
@@ -203,6 +440,7 @@ export function useCloudSelfAgentForwardSync({
     canonicalState,
     canonicalStateRef,
     client,
+    initialMessagesSettled,
     mergeMessage,
     processedRequestIdsRef,
     reportWarning,

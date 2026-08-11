@@ -249,7 +249,9 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
     );
 
     let events: Vec<(String, serde_json::Value)> = sqlx_core::query_as::query_as(
-        "SELECT event_type, payload_json FROM cloud_sync_events WHERE account_id = $1 AND event_type LIKE 'agent.definition.%' ORDER BY event_id ASC",
+        "SELECT event_type, payload FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type LIKE 'agent.definition.%' \
+         ORDER BY stream_seq ASC",
     )
     .bind(&owner_id)
     .fetch_all(&pool)

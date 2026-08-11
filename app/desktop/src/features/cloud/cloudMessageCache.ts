@@ -1,7 +1,6 @@
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 
-export const CLOUD_MESSAGES_LEGACY_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
 export const CLOUD_MESSAGES_INDEXED_DB_NAME = 'kordi-cloud-message-cache-v2';
 const CLOUD_MESSAGES_INDEXED_DB_STORE = 'messagesByAccount';
 const CLOUD_MESSAGE_CACHE_VERSION = 3;
@@ -100,6 +99,12 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     ? record.attachments.map(cloudMessageAttachmentMetadataOnly).filter((item): item is CloudMessageAttachment => Boolean(item))
     : [];
   const sessionId = cleanText(record.sessionId);
+  const conversationId = cleanText(record.conversationId);
+  const clientMessageId = cleanText(record.clientMessageId);
+  const conversationSequence = Number.isSafeInteger(record.conversationSequence)
+    && Number(record.conversationSequence) > 0 ? Number(record.conversationSequence) : null;
+  const version = Number.isSafeInteger(record.version)
+    && Number(record.version) > 0 ? Number(record.version) : null;
   return {
     messageId,
     fromAccountId,
@@ -110,6 +115,10 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     readAt: typeof record.readAt === 'string' ? record.readAt : null,
     direction: fromAccountId === accountId ? 'outgoing' : 'incoming',
     ...(sessionId ? { sessionId } : {}),
+    ...(conversationId ? { conversationId } : {}),
+    ...(clientMessageId ? { clientMessageId } : {}),
+    ...(conversationSequence ? { conversationSequence } : {}),
+    ...(version ? { version } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
@@ -138,10 +147,6 @@ export function normalizeCloudMessagesByPeer(
   return result;
 }
 
-function legacyCacheKey(accountId: string) {
-  return `${CLOUD_MESSAGES_LEGACY_CACHE_PREFIX}${accountId}`;
-}
-
 function manifestCacheKey(accountId: string) {
   return `manifest:${accountId}`;
 }
@@ -158,15 +163,6 @@ function cacheManifest(value: unknown): CloudMessageCacheManifest | null {
     version: CLOUD_MESSAGE_CACHE_VERSION,
     peerIds: [...new Set(record.peerIds.map(cleanText).filter(Boolean))].sort(),
   };
-}
-
-function browserLocalStorage(): Storage | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage ?? null;
-  } catch {
-    return null;
-  }
 }
 
 export class IndexedDbCloudMessageCacheStore implements CloudMessageCacheStore {
@@ -262,7 +258,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
 
   constructor(private readonly options: {
     store: CloudMessageCacheStore | null;
-    legacyStorage?: Storage | null;
     debounceMs?: number;
   }) {}
 
@@ -283,7 +278,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     this.activeLoads.set(normalizedAccountId, activeLoads);
     return loading;
   }
-
   private async loadAccount(normalizedAccountId: string, generation: number) {
     const failedWriteAtStart = this.failedWrites.get(normalizedAccountId);
     const latestValueAtStart = this.latestValues.get(normalizedAccountId);
@@ -324,36 +318,18 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
           );
         }
       } catch {
-        // Fall through to the legacy snapshot when IndexedDB is unavailable.
-      }
-    }
-
-    const legacyStorage = this.options.legacyStorage ?? null;
-    let legacyValue: unknown = {};
-    try {
-      const raw = legacyStorage?.getItem(legacyCacheKey(normalizedAccountId));
-      legacyValue = raw ? JSON.parse(raw) : {};
-    } catch {
-      legacyValue = {};
-    }
-    const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, legacyValue);
-    if (this.options.store) {
-      try {
-        await this.writePeers(normalizedAccountId, messagesByPeer, [], [normalizedAccountId]);
-        legacyStorage?.removeItem(legacyCacheKey(normalizedAccountId));
-      } catch {
-        // Keep the legacy value so a later load can retry migration.
+        // An unavailable local cache is repaired from the canonical V2 sync
+        // stream; browser localStorage is never a message-state fallback.
       }
     }
     return this.establishLoadedBaseline(
       normalizedAccountId,
-      messagesByPeer,
+      {},
       failedWriteAtStart,
       latestValueAtStart,
       generation,
     );
   }
-
   save(accountId: string, value: Record<string, CloudMessage[]>): Promise<void> {
     const normalizedAccountId = accountId.trim();
     if (!normalizedAccountId || !this.options.store) return Promise.resolve();
@@ -409,7 +385,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       });
     });
   }
-
   remove(accountId: string): Promise<void> {
     const normalizedAccountId = accountId.trim();
     if (!normalizedAccountId) return Promise.resolve();
@@ -424,7 +399,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     this.activeRemovals.set(normalizedAccountId, removal);
     return removal;
   }
-
   private async removeAccount(accountId: string) {
     this.accountGenerations.set(accountId, (this.accountGenerations.get(accountId) ?? 0) + 1);
     const activeLoadSettlements: Promise<void>[] = [...(this.activeLoads.get(accountId) ?? [])]
@@ -450,13 +424,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
         ...(manifest?.peerIds ?? []).map((peerId) => peerCacheKey(accountId, peerId)),
       ]);
     }
-    try {
-      this.options.legacyStorage?.removeItem(legacyCacheKey(accountId));
-    } catch {
-      // Best effort cleanup.
-    }
   }
-
   private async flush(accountId: string) {
     const pending = this.pendingWrites.get(accountId);
     if (!pending || !this.options.store) return;
@@ -521,7 +489,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       }
     }
   }
-
   private establishLoadedBaseline(
     accountId: string,
     messagesByPeer: Record<string, CloudMessage[]>,
@@ -539,7 +506,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     }
     return messagesByPeer;
   }
-
   private async writePeers(
     accountId: string,
     changedPeers: Record<string, CloudMessage[]>,
@@ -567,15 +533,12 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     ]);
   }
 }
-
 let defaultCache: CloudMessageCache | null = null;
-
 export function defaultCloudMessageCache(): CloudMessageCache {
   if (defaultCache) return defaultCache;
   const factory = typeof indexedDB === 'undefined' ? null : indexedDB;
   defaultCache = new VersionedCloudMessageCache({
     store: factory ? new IndexedDbCloudMessageCacheStore(factory) : null,
-    legacyStorage: browserLocalStorage(),
   });
   return defaultCache;
 }

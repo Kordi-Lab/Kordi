@@ -92,8 +92,11 @@ export function cloudAgentRuntimeRouteForTargetCloudAgent(
     routesByRuntimeSessionId?: Record<string, DesktopChatMessageRoute> | null;
     runtimeSessionId?: string | null;
     fallbackRoute?: DesktopChatMessageRoute | null;
+    requestRoute?: DesktopChatMessageRoute | null;
   },
 ): DesktopChatMessageRoute | null {
+  const requestRoute = compactCloudAgentRuntimeRoute(input.requestRoute);
+  if (requestRoute) return requestRoute;
   const targetCloudAgentId = cleanText(input.targetCloudAgentId);
   const definitionRoute = targetCloudAgentId
     ? cloudAgentRuntimeRouteFromDefinition(input.cloudAgentDefinitionsById?.[targetCloudAgentId])

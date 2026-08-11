@@ -16,7 +16,6 @@ import {
   cloudUnreadReadyForContext,
   cloudUnreadStatusForContext,
   createAccountScopedSingleFlight,
-  loadCloudMessagesByPeerUntilStable,
   markCloudMessagesReadLocally,
   mergeCloudMessagesByPeerSnapshot,
   shouldRefreshCloudForVisibility,
@@ -60,7 +59,7 @@ const message: CloudMessage = {
   direction: 'incoming',
 };
 
-test('cloud startup snapshots latest messages before catch-up and publishes after final reconciliation', () => {
+test('cloud startup renders the durable v2 cache before catch-up and settles after history backfill', () => {
   const source = cloudMessageSyncSource();
 
   assert.match(source, /if \(!account \|\| !contactsSettled \|\| !cloudUnreadContextKey\) return;/);
@@ -70,11 +69,12 @@ test('cloud startup snapshots latest messages before catch-up and publishes afte
   );
   assert.match(
     source,
-    /request\.mode === 'bootstrap'[\s\S]*refreshMessagesOnce\(generation, false, false\)[\s\S]*syncDiffOnceForGeneration\(generation, false\)[\s\S]*refreshMessagesOnce\(generation, true\)/,
+    /request\.mode === 'bootstrap'[\s\S]*hydrateV2LocalState\(generation\)[\s\S]*syncDiffOnceForGeneration\(generation, request\.mode === 'full'\)[\s\S]*hydrateMissingV2History\(generation\)[\s\S]*markUnreadReadiness\('ready'/,
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
-    /client\.listMessageSnapshot\([\s\S]*session\.token,[\s\S]*peerId,[\s\S]*CLOUD_MESSAGE_SNAPSHOT_LIMIT/,
+    /client\.listMessageSnapshot|refreshMessagesOnce/,
+    'v2 startup must not depend on the one-conversation-per-peer snapshot path',
   );
   assert.match(
     source,
@@ -88,16 +88,13 @@ test('cloud startup snapshots latest messages before catch-up and publishes afte
   );
   assert.match(
     source,
-    /if \(publishMessages\) \{[\s\S]*setMessages/,
-    'the pre-replay latest snapshot must remain staged until catch-up is complete',
-  );
-  assert.match(
-    source,
-    /if \(settleUnreadReadiness\) \{[\s\S]*markUnreadReadiness\([\s\S]*loaded\.complete \? 'ready' : 'error'/,
+    /if \(result\.fallbackRequired\) \{[\s\S]*cursorOverride = '0';[\s\S]*continue;/,
+    'an unusable cursor must recover through v2 bootstrap',
   );
   assert.doesNotMatch(
     source,
-    /syncDiffOnceForGeneration[\s\S]{0,5000}markUnreadReadiness\('ready'/,
+    /fallbackRequired[\s\S]{0,800}listMessageSnapshot/,
+    'v2 cursor recovery must never fall back to peer snapshots',
   );
 });
 
@@ -122,15 +119,15 @@ test('normal Cloud events request diff sync instead of full snapshots', () => {
   );
 });
 
-test('cloud message bootstrap keeps attachments metadata-only', () => {
+test('v2 cache hydration keeps attachments metadata-only', () => {
   const source = cloudMessageSyncSource();
-  const start = source.indexOf('const refreshMessagesOnce');
-  const end = source.indexOf('const syncDiffOnceForGeneration', start);
+  const start = source.indexOf('const hydrateV2LocalState');
+  const end = source.indexOf('const hydrateMissingV2History', start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const bootstrap = source.slice(start, end);
 
-  assert.match(bootstrap, /client\.listMessageSnapshot/);
+  assert.match(bootstrap, /cloudMessageMetadataOnly/);
   assert.doesNotMatch(bootstrap, /resolveCloudMessageAttachments|downloadAttachmentContent/);
 });
 
@@ -292,6 +289,50 @@ test('cloud message refresh snapshots preserve locally merged newer messages', (
   );
 });
 
+test('canonical conversation sequence wins over timestamps when messages are ordered', () => {
+  const sessionId = 'session:direct-person:acct_me:acct_peer';
+  const sequenceTwo: CloudMessage = {
+    ...message,
+    messageId: 'msg_sequence_two',
+    sessionId,
+    conversationSequence: 2,
+    createdAt: '2026-05-11T09:00:00Z',
+  };
+  const sequenceOne: CloudMessage = {
+    ...message,
+    messageId: 'msg_sequence_one',
+    sessionId,
+    conversationSequence: 1,
+    createdAt: '2026-05-11T10:00:00Z',
+  };
+
+  const merged = mergeCloudMessagesByPeerSnapshot(
+    { acct_peer: [sequenceTwo] },
+    { acct_peer: [sequenceOne] },
+  );
+
+  assert.deepEqual(
+    merged.acct_peer?.map((item) => item.messageId),
+    ['msg_sequence_one', 'msg_sequence_two'],
+  );
+});
+
+test('an older entity version cannot replace a newer durable message snapshot', () => {
+  const current: CloudMessage = {
+    ...message,
+    body: 'final durable response',
+    version: 3,
+    conversationSequence: 1,
+  };
+  const merged = mergeCloudMessagesByPeerSnapshot(
+    { acct_peer: [current] },
+    { acct_peer: [{ ...current, body: 'stale partial response', version: 2 }] },
+  );
+
+  assert.equal(merged.acct_peer?.[0]?.body, 'final durable response');
+  assert.equal(merged.acct_peer?.[0]?.version, 3);
+});
+
 test('cloud message snapshot merges cannot clear established read receipts', () => {
   const authoritative: CloudMessage = {
     ...message,
@@ -438,58 +479,4 @@ test('established unread readiness survives same-context errors but not a new co
     status: 'pending',
     contextKey: expandedKey,
   });
-});
-
-test('cloud initial message sync follows group peer discovery until stable', async () => {
-  const makeGroupMessage = (peer: string, discoveredPeer: string): CloudMessage => ({
-    messageId: `msg_${peer}_${discoveredPeer}`,
-    fromAccountId: peer,
-    toAccountId: account.accountId,
-    body: encodeCloudGroupControl({
-      kind: 'group-message',
-      groupId: `group_${peer}_${discoveredPeer}`,
-      sessionId: `session_${peer}_${discoveredPeer}`,
-      createdByAccountId: peer,
-      actor: { accountId: peer, displayName: peer, avatarUrl: null },
-      participants: [
-        { accountId: account.accountId, displayName: 'Me Cloud', avatarUrl: null },
-        { accountId: peer, displayName: peer, avatarUrl: null },
-        { accountId: discoveredPeer, displayName: discoveredPeer, avatarUrl: null },
-      ],
-      message: {
-        id: `group_msg_${peer}_${discoveredPeer}`,
-        senderAccountId: peer,
-        text: `hello ${discoveredPeer}`,
-        createdAt: '2026-05-13T10:00:00Z',
-      },
-    }),
-    createdAt: '2026-05-13T10:00:00Z',
-    deliveredAt: '2026-05-13T10:00:00Z',
-    readAt: null,
-    direction: 'incoming',
-  });
-
-  const messagesByPeer: Record<string, CloudMessage[]> = {
-    acct_peer_1: [makeGroupMessage('acct_peer_1', 'acct_peer_2')],
-    acct_peer_2: [makeGroupMessage('acct_peer_2', 'acct_peer_3')],
-    acct_peer_3: [makeGroupMessage('acct_peer_3', 'acct_peer_4')],
-    acct_peer_4: [makeGroupMessage('acct_peer_4', 'acct_peer_5')],
-    acct_peer_5: [],
-  };
-
-  const result = await loadCloudMessagesByPeerUntilStable({
-    accountId: account.accountId,
-    initialPeerIds: ['acct_peer_1'],
-    existingMessagesByPeer: {},
-    listMessages: async (peerId) => messagesByPeer[peerId] ?? [],
-  });
-
-  assert.equal(result.complete, true);
-  assert.deepEqual(Object.keys(result.messagesByPeer).sort(), [
-    'acct_peer_1',
-    'acct_peer_2',
-    'acct_peer_3',
-    'acct_peer_4',
-    'acct_peer_5',
-  ]);
 });

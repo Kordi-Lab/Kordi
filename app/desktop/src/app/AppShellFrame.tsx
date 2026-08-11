@@ -1,7 +1,11 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { MouseEventHandler, ReactNode } from 'react';
 
-import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
+import {
+  APP_WINDOW_RESIZE_EDGE,
+  nativeWindowResizeDirection,
+  shouldStartNativeWindowDrag,
+} from '@/app/windowDrag';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { cn } from '@/lib/utils';
 
@@ -59,11 +63,27 @@ export function AppShellFrame({
 }: AppShellFrameProps) {
   const instanceLabel = previewInstanceLabel();
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
+    const shellBounds = event.currentTarget.getBoundingClientRect();
+    const resizeDirection = nativeWindowResizeDirection({
+      isNativeShell,
+      button: event.button,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      shellBounds,
+    });
+
+    if (resizeDirection) {
+      event.preventDefault();
+      event.stopPropagation();
+      void getCurrentWindow().startResizeDragging(resizeDirection).catch(() => undefined);
+      return;
+    }
+
     if (!shouldStartNativeWindowDrag({
       isNativeShell,
       button: event.button,
       clientY: event.clientY,
-      shellTop: event.currentTarget.getBoundingClientRect().top,
+      shellTop: shellBounds.top,
       target: event.target,
     })) {
       return;
@@ -79,18 +99,18 @@ export function AppShellFrame({
       className={cn(
         'kordi-app app-page-bg w-full min-w-0 max-w-full text-[13px] text-foreground',
         rootThemeClass,
-        isNativeShell ? 'h-[100dvh] overflow-hidden p-0' : 'min-h-screen p-4 md:p-6',
+        isNativeShell ? 'app-native-viewport overflow-hidden p-0' : 'min-h-screen p-4 md:p-6',
       )}
     >
       <div
         className={cn(
           'app-shell relative flex min-w-0 max-w-full flex-col overflow-hidden',
-          isLayoutResizing ? 'backdrop-blur-none' : 'backdrop-blur-2xl',
+          !isNativeShell && 'backdrop-blur-2xl',
           isNativeShell
             ? 'h-full w-full rounded-none border-0 shadow-none'
             : 'app-shell-preview mx-auto rounded-[26px] border',
-          !isNativeShell && isLayoutResizing && 'app-shell-resizing',
         )}
+        data-layout-resizing={isLayoutResizing ? 'true' : undefined}
         onMouseDownCapture={isNativeShell ? handleNativeWindowDragMouseDown : undefined}
         style={
           isNativeShell
@@ -106,17 +126,25 @@ export function AppShellFrame({
         {isNativeShell ? (
           <>
             <div
-              className="pointer-events-auto absolute left-0 top-0 z-40 h-11"
-              style={{ width: `${LEFT_RAIL_WIDTH}px`, WebkitAppRegion: 'drag' as const }}
+              className="pointer-events-auto absolute z-40"
+              style={{
+                left: `${APP_WINDOW_RESIZE_EDGE}px`,
+                top: `${APP_WINDOW_RESIZE_EDGE}px`,
+                width: `${LEFT_RAIL_WIDTH - APP_WINDOW_RESIZE_EDGE}px`,
+                height: `${44 - APP_WINDOW_RESIZE_EDGE}px`,
+                WebkitAppRegion: 'drag' as const,
+              }}
               data-tauri-drag-region="true"
               aria-hidden="true"
             />
             {leftWorkspaceWidth > LEFT_RAIL_WIDTH ? (
               <div
-                className="pointer-events-auto absolute top-0 z-40 h-11"
+                className="pointer-events-auto absolute z-40"
                 style={{
                   left: `${LEFT_RAIL_WIDTH}px`,
+                  top: `${APP_WINDOW_RESIZE_EDGE}px`,
                   width: `${leftWorkspaceWidth - LEFT_RAIL_WIDTH}px`,
+                  height: `${44 - APP_WINDOW_RESIZE_EDGE}px`,
                   WebkitAppRegion: 'drag' as const,
                 }}
                 data-tauri-drag-region="true"
@@ -127,8 +155,7 @@ export function AppShellFrame({
         ) : null}
         <div
           className={cn(
-            'relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border',
-            isLayoutResizing ? 'transition-none' : 'transition-[grid-template-columns]',
+            'app-shell-layout-grid relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border transition-[grid-template-columns]',
           )}
           style={{
             gridTemplateColumns: `${leftWorkspaceWidth}px minmax(0, 1fr)`,
@@ -156,8 +183,7 @@ export function AppShellFrame({
           >
             <div
               className={cn(
-                'grid h-full min-h-0 min-w-0',
-                isLayoutResizing ? 'transition-none' : 'transition-[grid-template-columns] duration-300',
+                'app-shell-layout-grid grid h-full min-h-0 min-w-0 transition-[grid-template-columns] duration-300',
               )}
               style={{
                 gridTemplateColumns: showRightDetailRail && !isDetailPanelCollapsed ? `minmax(0, 1fr) ${detailRailWidth}px` : 'minmax(0, 1fr)',

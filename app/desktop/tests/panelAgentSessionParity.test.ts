@@ -451,3 +451,31 @@ test('side-panel local-agent sends use the shared local send pipeline instead of
   assert.match(activeSendBlock, /sendLocalAgentChatMessage\(/, 'main chat sends should call the same shared helper');
   assert.doesNotMatch(targetedLocalBranch, /prepareCanonicalUserMessage\(/, 'side-panel local-agent branch should not duplicate canonical optimistic message construction');
 });
+
+test('side-panel local-agent sends materialize an unhydrated runtime transcript before starting the turn', () => {
+  const source = chatMessagesSource();
+  const targetSource = readFileSync(
+    new URL('../src/features/chat/messageActions/localAgentSessionTarget.ts', import.meta.url),
+    'utf8',
+  );
+  const targetedStart = source.indexOf('const sendTargetedChatMessage = useCallback');
+  const activeStart = source.indexOf('return useCallback', targetedStart);
+  const targetedSendBlock = source.slice(targetedStart, activeStart);
+  const sharedSendStart = source.indexOf('const sendLocalAgentChatMessage = useCallback');
+  const sharedSendBlock = source.slice(sharedSendStart, targetedStart);
+  const materializerStart = source.indexOf('const materializeLocalChatTarget = useCallback');
+  const queuedSendStart = source.indexOf('const sendQueuedLocalMessage = useCallback', materializerStart);
+  const materializerBlock = source.slice(materializerStart, queuedSendStart);
+  const materializeIndex = sharedSendBlock.indexOf('await materializeTarget()');
+  const sendIndex = sharedSendBlock.indexOf('await startDesktopChatMessage(');
+
+  assert.match(targetedSendBlock, /materializeTarget: \(\) => materializeLocalChatTarget\(targetConversation\.id\)/, 'an inactive side Agent session should supply its runtime materializer');
+  assert.notEqual(materializeIndex, -1, 'the shared send should await runtime transcript materialization');
+  assert.notEqual(sendIndex, -1, 'the shared send should start the live turn');
+  assert.ok(materializeIndex < sendIndex, 'runtime transcript materialization must finish before the live turn starts');
+  assert.match(sharedSendBlock, /resolvedMaterializedState[\s\S]*appendOptimisticOutboundMessage/, 'the shared send should receive the materialized target state');
+  assert.match(materializerBlock, /await fetchMaterializedLocalChatTarget\(sessionId, desktopChatState\)/, 'the action should use the shared target materializer');
+  assert.match(targetSource, /await fetchDesktopChatState\(sessionId\)/, 'materialization should fetch the complete target runtime transcript');
+  assert.match(targetSource, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/, 'materialization should fail closed if the runtime returns another session');
+  assert.match(materializerBlock, /setDesktopChatState\(materializedState\)/, 'the panel should render from the hydrated runtime state during the turn');
+});

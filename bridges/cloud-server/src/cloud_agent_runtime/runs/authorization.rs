@@ -92,12 +92,19 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
         }
     }
 
-    let row: Option<(String,)> =
-        query_as("SELECT body FROM cloud_messages WHERE message_id = $1 AND session_id = $2")
-            .bind(&input.request_message_id)
-            .bind(&input.session_id)
-            .fetch_optional(pool)
-            .await?;
+    let row: Option<(String,)> = query_as(
+        "SELECT message.content #>> '{blocks,0,text}'
+         FROM cloud_chat_messages message
+         JOIN cloud_chat_conversations conversation
+           ON conversation.conversation_id = message.conversation_id
+         WHERE message.message_id::text = $1
+           AND conversation.legacy_session_id = $2
+           AND message.deleted_at IS NULL",
+    )
+    .bind(&input.request_message_id)
+    .bind(&input.session_id)
+    .fetch_optional(pool)
+    .await?;
     let Some(target) = row.and_then(|(body,)| direct_cloud_agent_target(&body)) else {
         return Ok(None);
     };
@@ -144,6 +151,8 @@ pub async fn validate_shared_cloud_agent_claim(
     .fetch_optional(pool)
     .await?;
     Ok(
-        matches!(row, Some((access_scope, status)) if access_scope == "participant_conversations" && status == "active"),
+        matches!(row, Some((access_scope, status)) if status == "active"
+        && (target.owner_account_id == input.requester_account_id
+            || access_scope == "participant_conversations")),
     )
 }

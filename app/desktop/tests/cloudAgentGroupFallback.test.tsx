@@ -363,6 +363,20 @@ test('cloud group terminal envelopes replace a synced processing slot', () => {
   assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'failed'), false);
   assert.equal(cloudGroupIncomingMessageAlreadyApplied(complete, 'complete'), true);
 
+  const delivered = {
+    ...complete,
+    status: 'delivered',
+    content: null,
+  };
+  const read = {
+    ...complete,
+    status: 'read',
+    content: null,
+  };
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(delivered, 'read'), false);
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(read, 'read'), true);
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(read, 'delivered'), true);
+
   const failedFallback = {
     ...processing,
     contentText: '',

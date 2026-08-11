@@ -5,9 +5,6 @@ use serde::Deserialize;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use crate::cloud_agent_runtime::sync_events::{
-    append_cloud_agent_response_sync_event, CloudAgentResponseSyncEvent,
-};
 use crate::scheduled_tasks::store::{
     mark_scheduled_task_run_completed, mark_scheduled_task_run_failed,
 };
@@ -22,14 +19,7 @@ use super::envelopes::{
 use super::leases::{runner_response_from_row, RunnerRunResponse, RunnerRunRow};
 use super::{RunError, RunResult};
 
-type FailedRunRow = (
-    String,
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-);
+type FailedRunRow = (String, String, String, String, Option<String>);
 
 #[derive(Debug, Deserialize)]
 pub struct CompleteRunRequest {
@@ -138,7 +128,6 @@ pub async fn complete_run(
         return Err(RunError::NotFound);
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
-    let mut direct_response_sync_event: Option<String> = None;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
         if let Some(message_id) = ensure_scheduled_direct_person_response_message(
             pool,
@@ -180,7 +169,6 @@ pub async fn complete_run(
                 &response_body,
             )
             .await?;
-            direct_response_sync_event = Some(message_id.clone());
             message_id
         }
     } else if let Some(message_id) = ensure_group_response_messages(
@@ -193,6 +181,16 @@ pub async fn complete_run(
             response_text: trimmed,
             delivery_state: "complete",
         },
+    )
+    .await?
+    {
+        message_id
+    } else if let Some(message_id) = ensure_scheduled_direct_person_response_message(
+        pool,
+        run_id,
+        &owner_account_id,
+        &session_id,
+        &response_body,
     )
     .await?
     {
@@ -213,26 +211,8 @@ pub async fn complete_run(
             &response_body,
         )
         .await?;
-        direct_response_sync_event = Some(message_id.clone());
         message_id
     };
-    if let Some(message_id) = direct_response_sync_event.as_deref() {
-        append_cloud_agent_response_sync_event(
-            pool,
-            CloudAgentResponseSyncEvent {
-                account_id: &requester_account_id,
-                peer_account_id: &owner_account_id,
-                message_id,
-                from_account_id: &owner_account_id,
-                to_account_id: &requester_account_id,
-                body: &response_body,
-                session_id: &session_id,
-                created_at: &Utc::now().to_rfc3339(),
-                direction: "incoming",
-            },
-        )
-        .await?;
-    }
     let now = Utc::now();
     let now_text = now.to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
@@ -240,7 +220,7 @@ pub async fn complete_run(
          SET status = 'completed', response_message_id = $3, \
              error_code = NULL, error_message = NULL, updated_at = $4, completed_at = $4 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -267,7 +247,7 @@ pub async fn fail_run(
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
     let existing: Option<FailedRunRow> = query_as(
-        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id, target_agent_id \
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
          FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
     )
@@ -275,23 +255,29 @@ pub async fn fail_run(
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    let Some((
-        owner_account_id,
-        requester_account_id,
-        session_id,
-        request_message_id,
-        _message_id,
-        target_agent_id,
-    )) = existing
+    let Some((owner_account_id, requester_account_id, session_id, request_message_id, _message_id)) =
+        existing
     else {
         return Err(RunError::NotFound);
     };
-    let is_support_agent = support_agent_id
-        .is_some_and(|support_agent_id| target_agent_id.as_deref() == Some(support_agent_id));
+    let is_support_agent = if let Some(support_agent_id) = support_agent_id {
+        query_as::<_, (bool,)>(
+            "SELECT EXISTS( \
+               SELECT 1 FROM cloud_agent_definitions \
+               WHERE agent_id = $1 AND owner_account_id = $2 AND is_system_managed = TRUE \
+             )",
+        )
+        .bind(support_agent_id)
+        .bind(&owner_account_id)
+        .fetch_one(pool)
+        .await?
+        .0
+    } else {
+        false
+    };
     let failure_text = cloud_agent_failure_response_text(error_code, is_support_agent);
     let response_body =
         encode_failed_cloud_agent_response_body(&request_message_id, error_code, is_support_agent);
-    let mut direct_response_sync_event: Option<String> = None;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
         if let Some(message_id) = ensure_scheduled_direct_person_response_message(
             pool,
@@ -333,7 +319,6 @@ pub async fn fail_run(
                 &response_body,
             )
             .await?;
-            direct_response_sync_event = Some(message_id.clone());
             message_id
         }
     } else if let Some(message_id) = ensure_group_response_messages(
@@ -346,6 +331,16 @@ pub async fn fail_run(
             response_text: failure_text,
             delivery_state: "failed",
         },
+    )
+    .await?
+    {
+        message_id
+    } else if let Some(message_id) = ensure_scheduled_direct_person_response_message(
+        pool,
+        run_id,
+        &owner_account_id,
+        &session_id,
+        &response_body,
     )
     .await?
     {
@@ -366,33 +361,15 @@ pub async fn fail_run(
             &response_body,
         )
         .await?;
-        direct_response_sync_event = Some(message_id.clone());
         message_id
     };
-    if let Some(message_id) = direct_response_sync_event.as_deref() {
-        append_cloud_agent_response_sync_event(
-            pool,
-            CloudAgentResponseSyncEvent {
-                account_id: &requester_account_id,
-                peer_account_id: &owner_account_id,
-                message_id,
-                from_account_id: &owner_account_id,
-                to_account_id: &requester_account_id,
-                body: &response_body,
-                session_id: &session_id,
-                created_at: &Utc::now().to_rfc3339(),
-                direction: "incoming",
-            },
-        )
-        .await?;
-    }
     let now = Utc::now();
     let now_text = now.to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
     )
     .bind(run_id)
     .bind(runner_id)

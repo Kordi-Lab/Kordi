@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordinar.io/schemas/chat-sync-v2/event-envelope.schema.json",
+  "title": "Kordi durable chat event",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "stream_seq",
+    "event_id",
+    "protocol_version",
+    "type",
+    "critical",
+    "occurred_at",
+    "payload"
+  ],
+  "properties": {
+    "stream_seq": { "type": "integer", "minimum": 1 },
+    "event_id": { "type": "string", "format": "uuid" },
+    "protocol_version": { "const": 2 },
+    "type": {
+      "type": "string",
+      "enum": [
+        "conversation.created",
+        "conversation.updated",
+        "conversation.preferences.updated",
+        "membership.updated",
+        "message.created",
+        "message.updated",
+        "message.deleted",
+        "reaction.updated",
+        "delivery_cursor.updated",
+        "read_cursor.updated",
+        "attachment.updated",
+        "generation.updated",
+        "generation.completed",
+        "generation.failed",
+        "device.revoked"
+      ]
+    },
+    "critical": { "type": "boolean" },
+    "conversation_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "entity_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "entity_version": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object" }
+  }
+}

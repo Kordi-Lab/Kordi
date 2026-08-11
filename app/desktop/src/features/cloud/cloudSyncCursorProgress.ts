@@ -3,10 +3,8 @@ export function cloudSyncCursorRequiresFallback(
   nextCursor: string,
   hasMore: boolean,
 ): boolean {
-  try {
-    if (BigInt(nextCursor) < BigInt(previousCursor)) return true;
-  } catch {
-    return true;
-  }
+  // V2 cursors are opaque, signed, and account-bound. Clients must never
+  // parse or order them; only a non-advancing paginated response is invalid.
+  if (!nextCursor.trim()) return true;
   return hasMore && nextCursor === previousCursor;
 }

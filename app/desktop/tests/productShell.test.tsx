@@ -374,13 +374,13 @@ test('cloud starting screen renders only the quiet watercolor dots', () => {
   assert.doesNotMatch(markup, /Restoring session/);
 });
 
-test('cloud starting timeout still has no visible retry copy', () => {
+test('cloud starting timeout provides an explicit retry action', () => {
   const markup = renderToStaticMarkup(createElement(CloudStartingScreen, { status: 'error', onRetry: () => {} }));
 
   assert.match(markup, /app-cloud-starting-screen-error/);
   assert.equal((markup.match(/<span class="app-cloud-starting-dot/g) ?? []).length, 3);
-  assert.doesNotMatch(markup, /Retry/);
-  assert.doesNotMatch(markup, /button/);
+  assert.match(markup, /Retry sync/);
+  assert.match(markup, /button/);
 });
 
 test('cloud starting dots are flat and non-glowy in CSS', () => {

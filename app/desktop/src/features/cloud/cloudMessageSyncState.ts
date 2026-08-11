@@ -13,7 +13,7 @@ import {
   cloudMessagesEqual,
   mergeCloudMessageMonotonicState,
 } from './cloudDiffSync';
-import { latestCloudReceiptAt } from './cloudMessageMerge';
+import { compareCloudMessages, latestCloudReceiptAt } from './cloudMessageMerge';
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
 
@@ -87,8 +87,7 @@ export function mergeCloudMessagesByPeerSnapshot(
         cloudMessagesEqual(previous, candidate) ? previous : candidate,
       );
     }
-    const messages = [...byMessageId.values()]
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const messages = [...byMessageId.values()].sort(compareCloudMessages);
     if (messages.length > 0) {
       const unchanged = cloudMessageListsEqual(currentMessages, messages);
       merged[peerId] = unchanged ? currentMessages : messages;

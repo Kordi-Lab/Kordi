@@ -15,6 +15,7 @@ const portForwardServicePath = new URL(
 );
 const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh', import.meta.url);
 const cloudServerManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml', import.meta.url);
+const dockerignorePath = new URL('../.dockerignore', import.meta.url);
 
 test('cloud server sync preserves remote Cargo target while deleting stale source files', async () => {
   const script = await readFile(scriptPath, 'utf8');
@@ -31,6 +32,14 @@ test('cloud server sync preserves remote Cargo target while deleting stale sourc
   assert.match(script, /GCLOUD_SSH\+=\(--project/);
   assert.doesNotMatch(script, /gcloud compute scp/);
   assert.doesNotMatch(script, /rm -rf \$\{REMOTE_DIR\}\.old|mv \$\{REMOTE_DIR\} \$\{REMOTE_DIR\}\.old/);
+});
+
+test('cloud server image context includes the prebuilt release binary', async () => {
+  const dockerignore = await readFile(dockerignorePath, 'utf8');
+
+  assert.match(dockerignore, /^!target\/$/m);
+  assert.match(dockerignore, /^!target\/release\/$/m);
+  assert.match(dockerignore, /^!target\/release\/kordi-cloud-server$/m);
 });
 
 test('product host bootstrap is idempotent and leaves the default proxy stopped', async () => {
@@ -87,7 +96,7 @@ test('product origin serves desktop compatibility routes without redirects', asy
   assert.match(caddyfile, /kordi\.ai, www\.kordi\.ai/);
   assert.match(
     caddyfile,
-    /coordinar\.io, www\.coordinar\.io[\s\S]*@legacy_product_routes path \/v1\/cloud\/\* \/health \/updates\/\*/,
+    /coordinar\.io, www\.coordinar\.io[\s\S]*@legacy_product_routes path \/v1\/cloud\/\* \/v2\/chat\/\* \/health \/updates\/\*/,
   );
   assert.ok(
     caddyfile.indexOf('handle @legacy_product_routes')

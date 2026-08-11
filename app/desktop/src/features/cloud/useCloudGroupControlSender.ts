@@ -321,6 +321,8 @@ export function useCloudGroupControlSender({
               attachments: ready.attachments,
               clientCreatedAt: ready.clientCreatedAt,
               clientMessageId,
+              conversationKind: 'group',
+              memberAccountIds: targetAccountIds,
             },
           );
           recordFirstAck(
@@ -371,6 +373,8 @@ export function useCloudGroupControlSender({
             sessionId: input.groupId,
             attachments: uploadedAttachments,
             ...(clientCreatedAt ? { clientCreatedAt } : {}),
+            conversationKind: 'group',
+            memberAccountIds: targetAccountIds,
           },
         );
         recordFirstAck(

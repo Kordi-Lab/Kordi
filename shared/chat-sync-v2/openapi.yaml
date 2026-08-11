@@ -1,0 +1,264 @@
+openapi: 3.1.0
+info:
+  title: Kordi Reliable Chat Sync
+  version: 2.0.0-alpha.1
+  description: Canonical v2-only chat and multi-device synchronization API.
+servers:
+  - url: https://coordinar.io
+security:
+  - bearerAuth: []
+paths:
+  /v2/chat/conversations:
+    post:
+      operationId: createConversation
+      summary: Idempotently create a canonical conversation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '201':
+          description: Conversation created.
+        '200':
+          description: Existing idempotent result.
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v2/chat/conversations/{conversation_id}:
+    patch:
+      operationId: updateSharedConversationTitle
+      summary: Update the shared, versioned conversation title.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSharedTitleRequest'
+      responses:
+        '200': { description: Updated conversation snapshot. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v2/chat/conversations/{conversation_id}/preferences:
+    put:
+      operationId: updatePersonalConversationTitle
+      summary: Update the private title synchronized only to this user's devices.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePersonalTitleRequest'
+      responses:
+        '200': { description: Updated authoritative group membership snapshot. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v2/chat/conversations/{conversation_id}/members:
+    put:
+      operationId: addConversationMembers
+      summary: Idempotently add active members to a group conversation.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddConversationMembersRequest'
+      responses:
+        '200': { description: Updated conversation snapshot. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v2/chat/conversations/{conversation_id}/messages:
+    post:
+      operationId: sendMessage
+      summary: Idempotently create one canonical message.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201': { description: Message committed with durable sync events. }
+        '200': { description: Existing idempotent result. }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      operationId: listMessageHistory
+      summary: List history using conversation sequence keyset pagination.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - in: query
+          name: before_sequence
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200': { description: Descending canonical message page. }
+  /v2/chat/conversations/{conversation_id}/delivered:
+    put:
+      operationId: advanceDeliveryCursor
+      summary: Monotonically acknowledge locally committed delivery.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvanceCursorRequest'
+      responses:
+        '200': { description: Current delivery/read cursors. }
+  /v2/chat/conversations/{conversation_id}/read:
+    put:
+      operationId: advanceReadCursor
+      summary: Monotonically advance read and delivery cursors.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvanceCursorRequest'
+      responses:
+        '200': { description: Current delivery/read cursors. }
+  /v2/chat/sync:
+    get:
+      operationId: incrementalSync
+      summary: Read ordered durable events after an opaque user-bound cursor.
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        '200': { description: Ordered event batch, last stream sequence, and next opaque cursor. }
+        '409':
+          description: Cursor expired and bootstrap is required.
+  /v2/chat/sync/bootstrap:
+    get:
+      operationId: bootstrapSync
+      summary: Capture a consistent snapshot and matching sync cursor.
+      responses:
+        '200': { description: Consistent account chat snapshot. }
+  /v2/chat/realtime/ticket:
+    post:
+      operationId: issueRealtimeTicket
+      summary: Issue a single-use, device-bound WebSocket ticket valid for 30 seconds.
+      responses:
+        '201':
+          description: Plaintext ticket returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeTicketResponse'
+        '403':
+          description: Browser Origin is not allowlisted.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    ConversationId:
+      in: path
+      name: conversation_id
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Conflict:
+      description: Idempotency, version, or cursor conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    CreateConversationRequest:
+      type: object
+      required: [client_operation_id, kind, client_session_id, member_account_ids]
+      properties:
+        client_operation_id: { type: string, format: uuid }
+        kind: { type: string, enum: [direct, group, ai] }
+        shared_title: { type: [string, 'null'], maxLength: 200 }
+        client_session_id:
+          type: string
+          maxLength: 512
+          description: Opaque stable client session identity used to converge devices onto one conversation.
+        member_account_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string }
+    SendMessageRequest:
+      type: object
+      required: [client_message_id, kind, content]
+      properties:
+        client_message_id: { type: string, format: uuid }
+        kind: { type: string, maxLength: 64 }
+        content: { type: object }
+        reply_to_message_id: { type: [string, 'null'], format: uuid }
+        attachment_ids:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items: { type: string }
+    UpdateSharedTitleRequest:
+      type: object
+      required: [client_operation_id, expected_version, shared_title]
+      properties:
+        client_operation_id: { type: string, format: uuid }
+        expected_version: { type: integer, minimum: 1 }
+        shared_title: { type: [string, 'null'], maxLength: 200 }
+    AddConversationMembersRequest:
+      type: object
+      required: [client_operation_id, member_account_ids]
+      properties:
+        client_operation_id: { type: string, format: uuid }
+        member_account_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string }
+        replace:
+          type: boolean
+          default: false
+          description: When true, remove active members omitted from this complete snapshot; the caller is always retained.
+    UpdatePersonalTitleRequest:
+      type: object
+      required: [client_operation_id, expected_preferences_version, personal_title]
+      properties:
+        client_operation_id: { type: string, format: uuid }
+        expected_preferences_version: { type: integer, minimum: 1 }
+        personal_title: { type: [string, 'null'], maxLength: 200 }
+    AdvanceCursorRequest:
+      type: object
+      required: [client_operation_id, sequence]
+      properties:
+        client_operation_id: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 0 }
+    RealtimeTicketResponse:
+      type: object
+      required: [ticket, device_id, expires_at]
+      properties:
+        ticket: { type: string, writeOnly: true }
+        device_id: { type: string }
+        expires_at: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object }

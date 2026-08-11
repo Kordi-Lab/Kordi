@@ -91,15 +91,14 @@ test('cloud group replay does not restart native lookups when callback identitie
   assert.match(dependencyList, /coordinator[\s\S]*contextKey[\s\S]*enabled[\s\S]*messageIndex/);
 });
 
-test('legacy group-title repair stays single-flight and cannot block current group replay', () => {
+test('legacy group-title repair is local-only and cannot reintroduce v1 transport', () => {
   const replaySource = cloudGroupReplaySource();
   const recoverySource = legacyGroupTitleRecoverySource();
 
   assert.doesNotMatch(replaySource, /lookupMessageBodies|listLegacyCloudGroupTitleNoticeIds/);
   assert.match(recoverySource, /recoveryRef\.current\?\.contextKey === contextKey/);
   assert.match(recoverySource, /completedContextKeyRef\.current === contextKey/);
-  assert.match(recoverySource, /CLOUD_MESSAGE_BODY_LOOKUP_MAX_PARALLEL = 4/);
-  assert.match(recoverySource, /setRetryVersion\(\(current\) => current \+ 1\)/);
+  assert.doesNotMatch(recoverySource, /lookupMessageBodies|\/v1\/cloud\/messages|loadSession/);
   assert.match(recoverySource, /canonicalStateRef\.current \?\? current/);
   assert.match(recoverySource, /canonicalStateRef\.current = next/);
 });

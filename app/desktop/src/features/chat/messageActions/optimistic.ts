@@ -183,6 +183,7 @@ export function appendOptimisticCollaborationMessage(
         ...conversation.messages,
         {
           id: optimisticMessageId,
+          clientMessageId: optimisticMessageId,
           direction: COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
           sender: 'Me',
           text,

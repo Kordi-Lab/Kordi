@@ -203,18 +203,22 @@ pub(super) async fn update_cloud_session_pin(
     } else {
         vec![session.account_id.clone()]
     };
-    for account_id in recipients {
-        let _ = append_cloud_sync_event(
-            pool,
-            &account_id,
-            "session.pin.updated",
-            Some(&session_id),
-            message_id.as_deref(),
-            event_payload.clone(),
-            &updated_at,
-        )
-        .await;
-    }
+    let conversation_id = crate::chat_sync::store::conversation_id_for_session(
+        pool,
+        &session.account_id,
+        &session_id,
+    )
+    .await
+    .ok()
+    .flatten();
+    let _ = crate::chat_sync::store::publish_user_sync_events(
+        pool,
+        &recipients,
+        "session.pin.updated",
+        conversation_id,
+        event_payload,
+    )
+    .await;
 
     match cloud_session_pin_summary(pool, &session.account_id, &session_id).await {
         Ok(pin) => Json(CloudSessionPinResponse { pin }).into_response(),

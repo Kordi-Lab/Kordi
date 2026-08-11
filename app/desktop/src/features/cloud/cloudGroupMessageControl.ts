@@ -108,6 +108,10 @@ export async function applyCloudGroupMessageControl({
     ? (message.deliveryState?.trim()
       || (stateOps.isProcessingPlaceholder(message.text) ? 'processing' : 'complete'))
     : null;
+  const humanOutgoingDeliveryState = !senderIsAgent
+    && message.senderAccountId === account.accountId
+    ? (cloudMessage.readAt ? 'read' : 'delivered')
+    : null;
   const ownAgentProcessingId = isOwnAgentResponseRoundTrip
     ? `msg:cloud-agent-processing:${(message.replyToMessageId || message.requestId || '').trim()}:${account.accountId}`
     : null;
@@ -130,7 +134,7 @@ export async function applyCloudGroupMessageControl({
   )) ?? null;
   const messageAlreadyExists = stateOps.incomingAlreadyApplied(
     existingCloudGroupMessage,
-    agentDeliveryState,
+    agentDeliveryState ?? humanOutgoingDeliveryState,
   );
   if (senderIsAgent) {
     const owner = participantByAccount.get(message.senderAccountId);
@@ -262,7 +266,7 @@ export async function applyCloudGroupMessageControl({
       return null;
     }
     const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
-    const agentStatus = senderIsAgent && isPendingAgentDeliveryState(
+    const messageStatus = senderIsAgent && isPendingAgentDeliveryState(
       agentDeliveryState,
     )
       ? agentDeliveryState
@@ -270,7 +274,7 @@ export async function applyCloudGroupMessageControl({
         ? 'failed'
         : senderIsAgent && agentDeliveryState === 'cancelled'
           ? 'cancelled'
-          : message.senderAccountId === account.accountId ? 'sent' : 'received';
+          : humanOutgoingDeliveryState ?? 'received';
     const messageRequest = {
       id: replacementAgentSlot?.id ?? terminalStableAgentNoticeId ?? message.id,
       sessionId: envelope.groupId,
@@ -304,7 +308,7 @@ export async function applyCloudGroupMessageControl({
         : (message.messageAction?.kind === 'quote'
             ? message.messageAction.source.sourceMessageId
             : null),
-      status: agentStatus,
+      status: messageStatus,
       sourceTransport: incomingSourceTransport,
       sourceEventId: incomingSourceEventId,
     };

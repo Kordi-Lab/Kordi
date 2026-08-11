@@ -13,6 +13,14 @@ async fn scheduled_direct_contact_completion_routes_back_to_originating_contact_
         "session:direct-person:{}:{}",
         owner.account_id, peer.account_id
     );
+    create_v2_test_conversation(
+        &pool,
+        &owner.account_id,
+        &session_id,
+        ConversationKind::Direct,
+        vec![peer.account_id.clone()],
+    )
+    .await;
     let run_id =
         insert_leased_scheduled_run(&pool, &owner, &owner, &session_id, "runner-direct").await;
 
@@ -31,29 +39,33 @@ async fn scheduled_direct_contact_completion_routes_back_to_originating_contact_
         .unwrap()
         .to_string();
 
-    let message: (String, String, String, String,) = sqlx_core::query_as::query_as(
-        "SELECT from_account_id, to_account_id, session_id, body FROM cloud_messages WHERE message_id = $1",
+    let message: (String, String, String) = sqlx_core::query_as::query_as(
+        "SELECT message.sender_account_id, conversation.legacy_session_id, \
+                message.content #>> '{blocks,0,text}' \
+         FROM cloud_chat_messages message \
+         JOIN cloud_chat_conversations conversation \
+           ON conversation.conversation_id = message.conversation_id \
+         WHERE message.message_id::text = $1",
     )
     .bind(&response_message_id)
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(message.0, owner.account_id);
-    assert_eq!(message.1, peer.account_id);
-    assert_eq!(message.2, session_id);
-    assert!(message.3.starts_with("kordi-cloud-agent-response:"));
+    assert_eq!(message.1, session_id);
+    assert!(message.2.starts_with("kordi-cloud-agent-response:"));
 
     let event_rows: Vec<(String, String)> = sqlx_core::query_as::query_as(
-        "SELECT account_id, payload_json->'message'->>'direction' AS direction \
-         FROM cloud_sync_events WHERE message_id = $1 ORDER BY account_id",
+        "SELECT account_id, event_type FROM cloud_chat_user_sync_events \
+         WHERE entity_id::text = $1 AND event_type = 'message.created' ORDER BY account_id",
     )
     .bind(&response_message_id)
     .fetch_all(&pool)
     .await
     .unwrap();
     assert_eq!(event_rows.len(), 2);
-    assert!(event_rows.contains(&(owner.account_id.clone(), "outgoing".to_string())));
-    assert!(event_rows.contains(&(peer.account_id.clone(), "incoming".to_string())));
+    assert!(event_rows.contains(&(owner.account_id.clone(), "message.created".to_string())));
+    assert!(event_rows.contains(&(peer.account_id.clone(), "message.created".to_string())));
 }
 
 #[tokio::test]
@@ -64,6 +76,7 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
     let router = test_router(state);
     let owner = signup(&router, "scheduled-group-owner", "Owner").await;
     let peer = signup(&router, "scheduled-group-peer", "Peer").await;
+    accept_contacts(&router, &peer, &owner).await;
     let session_id = format!("session:group:scheduled-{}", uuid::Uuid::new_v4().simple());
     let original_group_body = encode_test_cloud_group_envelope(json!({
         "kind": "group-message",
@@ -96,20 +109,21 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
             "createdAtMs": 1
         }
     }));
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx_core::query::query(
-        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6)",
+    let conversation_id = create_v2_test_conversation(
+        &pool,
+        &peer.account_id,
+        &session_id,
+        ConversationKind::Group,
+        vec![owner.account_id.clone()],
     )
-    .bind("msg_original_group_reminder_request")
-    .bind(&peer.account_id)
-    .bind(&owner.account_id)
-    .bind(&original_group_body)
-    .bind(&now)
-    .bind(&session_id)
-    .execute(&pool)
-    .await
-    .unwrap();
+    .await;
+    insert_v2_test_message(
+        &pool,
+        &peer.account_id,
+        conversation_id,
+        &original_group_body,
+    )
+    .await;
     let run_id =
         insert_leased_scheduled_run(&pool, &owner, &owner, &session_id, "runner-group").await;
 
@@ -128,21 +142,22 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
         .unwrap()
         .to_string();
 
-    let rows: Vec<(String, String, String, String)> = sqlx_core::query_as::query_as(
-        "SELECT message_id, from_account_id, to_account_id, body FROM cloud_messages \
-         WHERE session_id = $1 AND message_id <> 'msg_original_group_reminder_request' ORDER BY to_account_id",
+    let rows: Vec<(String, String, String)> = sqlx_core::query_as::query_as(
+        "SELECT message.message_id::text, message.sender_account_id, \
+                message.content #>> '{blocks,0,text}' \
+         FROM cloud_chat_messages message \
+         WHERE message.conversation_id = $1 AND message.conversation_sequence > 1 \
+         ORDER BY message.conversation_sequence ASC",
     )
-    .bind(&session_id)
+    .bind(conversation_id)
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(rows.len(), 2);
-    assert!(rows.iter().any(|row| row.0 == response_message_id));
-    assert!(rows.iter().all(|row| row.1 == owner.account_id));
-    assert!(rows.iter().any(|row| row.2 == owner.account_id));
-    assert!(rows.iter().any(|row| row.2 == peer.account_id));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].0, response_message_id);
+    assert_eq!(rows[0].1, owner.account_id);
 
-    let envelope = decode_test_cloud_group_envelope(&rows[0].3);
+    let envelope = decode_test_cloud_group_envelope(&rows[0].2);
     assert_eq!(envelope["kind"], "group-message");
     assert_eq!(envelope["groupId"], session_id);
     assert_eq!(envelope["message"]["senderAccountId"], owner.account_id);

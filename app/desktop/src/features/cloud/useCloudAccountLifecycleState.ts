@@ -97,6 +97,11 @@ type CloudAccountCollaborationStore = {
   >;
 };
 
+export function cloudMessagesUseBrowserCache(): boolean {
+  return typeof window === 'undefined'
+    || typeof window.__TAURI_INTERNALS__ === 'undefined';
+}
+
 export function useCloudAccountLifecycleState({
   account,
   messages,
@@ -190,6 +195,7 @@ export function useCloudAccountLifecycleState({
     messagesByPeerRef.current = messagesByPeer;
     if (
       account
+      && cloudMessagesUseBrowserCache()
       && messagesCacheAccountRef.current === account.accountId
       && hydratedCacheAccountRef.current === account.accountId
     ) {
@@ -292,7 +298,7 @@ export function useCloudAccountLifecycleState({
     setLocalAgentTurnsByRequestId({});
 
     let cancelled = false;
-    if (accountId) {
+    if (accountId && cloudMessagesUseBrowserCache()) {
       void messageCache.load(accountId)
         .then((cached) => {
           if (
@@ -314,6 +320,11 @@ export function useCloudAccountLifecycleState({
           hydratedCacheAccountRef.current = accountId;
         })
         .catch(() => {});
+    } else if (accountId) {
+      // Native v2 uses the crash-safe SQLite projection. Remove the old
+      // browser cache so pre-cutover rows cannot shadow durable v2 ordering.
+      hydratedCacheAccountRef.current = accountId;
+      void messageCache.remove(accountId).catch(() => {});
     }
 
     const nextSessionActivity = accountId

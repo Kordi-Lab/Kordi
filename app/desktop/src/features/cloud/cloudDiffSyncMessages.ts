@@ -1,6 +1,7 @@
 import type { CloudMessage, CloudSyncEvent } from './authClient';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import {
+  compareCloudMessages,
   latestCloudReceiptAt,
   mergeCloudMessageMonotonicState,
 } from './cloudMessageMerge';
@@ -230,10 +231,7 @@ export function applyCloudSyncEventsToMessagesByPeer(
   if (changedPeerIds.size === 0) return currentMessagesByPeer;
   const next = { ...currentMessagesByPeer };
   for (const peerId of changedPeerIds) {
-    const messages = [...indexedPeerMessages(peerId).values()].sort((left, right) => (
-      left.createdAt.localeCompare(right.createdAt)
-      || left.messageId.localeCompare(right.messageId)
-    ));
+    const messages = [...indexedPeerMessages(peerId).values()].sort(compareCloudMessages);
     if (messages.length > 0) next[peerId] = messages;
     else delete next[peerId];
   }

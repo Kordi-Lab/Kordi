@@ -2814,6 +2814,7 @@ dependencies = [
  "ed25519-dalek",
  "futures-util",
  "hex",
+ "hmac",
  "http-body-util",
  "lettre",
  "password-hash",

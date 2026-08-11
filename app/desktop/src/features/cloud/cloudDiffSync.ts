@@ -22,7 +22,7 @@ export {
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
 
-export const CLOUD_SYNC_CURSOR_PREFIX = 'kordi.cloud.syncCursor.v1:';
+export const CLOUD_SYNC_CURSOR_PREFIX = 'kordi.cloud.syncCursor.v2:';
 export const CLOUD_SESSION_VISIBILITY_PREFIX = 'kordi.cloud.sessionVisibility.v1:';
 
 export type CloudSessionVisibilityState = {
@@ -60,8 +60,7 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
 
 function normalizeCursor(value: string | null | undefined): string {
   const trimmed = value?.trim() ?? '';
-  if (!/^\d+$/.test(trimmed)) return '0';
-  return trimmed;
+  return trimmed && trimmed.length <= 4096 ? trimmed : '0';
 }
 
 export function loadCloudSyncCursor(accountId: string | null | undefined, storage: Storage | null = browserLocalStorage()): string {
@@ -261,6 +260,15 @@ export function applyCloudSyncEventsToSessionTitles(
   for (const event of events) {
     if (event.eventType !== 'session.title.updated') continue;
     const payload = objectRecord(event.payload);
+    const rawTitle = objectRecord(payload?.sessionTitle);
+    const sessionId = cleanText(rawTitle?.sessionId);
+    if (sessionId && !cleanText(rawTitle?.title)) {
+      if (next[sessionId]) {
+        next = { ...next };
+        delete next[sessionId];
+      }
+      continue;
+    }
     const sessionTitle = normalizeCloudSessionTitle(payload?.sessionTitle);
     if (!sessionTitle) continue;
     next = { ...next, [sessionTitle.sessionId]: sessionTitle };
@@ -306,6 +314,8 @@ export type SyncCloudDiffOnceInput = {
   hiddenSessionIds?: ReadonlySet<string>;
   deletedSessionIds?: ReadonlySet<string>;
   cursorStorage?: Storage | null;
+  loadCursor?: () => Promise<string>;
+  commitResponse?: (response: CloudSyncResponse) => Promise<void>;
   shouldSaveCursor?: () => boolean;
   fetchEvents(cursor: string): Promise<CloudSyncResponse>;
 };
@@ -326,7 +336,9 @@ export type SyncCloudDiffOnceResult = {
 
 export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<SyncCloudDiffOnceResult> {
   const storage = input.cursorStorage ?? browserLocalStorage();
-  const previousCursor = loadCloudSyncCursor(input.accountId, storage);
+  const previousCursor = input.loadCursor
+    ? normalizeCursor(await input.loadCursor())
+    : loadCloudSyncCursor(input.accountId, storage);
   let response: CloudSyncResponse;
   const initialHiddenSessionIds = new Set(input.hiddenSessionIds ?? []);
   const initialDeletedSessionIds = new Set(input.deletedSessionIds ?? []);
@@ -361,7 +373,9 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   const sessionPinsById = applyCloudSyncEventsToSessionPins(input.sessionPinsById ?? {}, events);
   const sessionTitlesById = applyCloudSyncEventsToSessionTitles(input.sessionTitlesById ?? {}, events);
   const cloudAgentsById = applyCloudAgentSyncEvents(input.cloudAgentsById ?? {}, events);
-  if (!input.shouldSaveCursor || input.shouldSaveCursor()) {
+  if (input.commitResponse) {
+    await input.commitResponse(response);
+  } else if (!input.shouldSaveCursor || input.shouldSaveCursor()) {
     saveCloudSyncCursor(input.accountId, nextCursor, storage);
   }
   return { messagesByPeer, sessionActivity, sessionForksById, sessionPinsById, sessionTitlesById, cloudAgentsById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };

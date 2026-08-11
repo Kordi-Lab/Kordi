@@ -30,15 +30,27 @@ tar -C "${REPO_ROOT}" -czf - \
   | "${GCLOUD_SSH[@]}" \
       --command "cd ${REMOTE_DEPLOY} && tar -xzf -"
 
-echo "[runner-deploy] building runner binary on VM"
-"${GCLOUD_SSH[@]}" --command "set -e
-cd ${REMOTE_DEPLOY}
-\$HOME/.cargo/bin/cargo build --release -p kordi-cloud-agent-runner"
-
-echo "[runner-deploy] building OCI image on VM with buildah"
+echo "[runner-deploy] building OCI image on VM with a bookworm builder"
 "${GCLOUD_SSH[@]}" --command "set -e
 cd ${REMOTE_DEPLOY}
 sudo buildah bud --layers -t ${IMAGE} -f bridges/cloud-agent-runner/Dockerfile.runtime ."
+
+echo "[runner-deploy] smoke-testing the image entrypoint"
+"${GCLOUD_SSH[@]}" --command "set -e
+container=\$(sudo buildah from ${IMAGE})
+cleanup() { sudo buildah rm \"\$container\" >/dev/null; }
+trap cleanup EXIT
+set +e
+output=\$(sudo buildah run \"\$container\" -- timeout 5 /usr/local/bin/kordi-cloud-agent-runner 2>&1)
+status=\$?
+set -e
+printf '%s\\n' \"\$output\"
+if printf '%s' \"\$output\" | grep -Eq 'GLIBC_[0-9.]+.*not found|No such file or directory'; then
+  echo '[runner-deploy] entrypoint failed its runtime ABI check' >&2
+  exit 1
+fi
+test \"\$status\" -ne 126
+test \"\$status\" -ne 127"
 
 echo "[runner-deploy] importing into k3s containerd"
 "${GCLOUD_SSH[@]}" --command "set -e
@@ -69,7 +81,7 @@ sleep 10
 replicas=\$(kubectl -n kordi-cloud get deployment kordi-cloud-agent-runner -o jsonpath='{.spec.replicas}')
 available=\$(kubectl -n kordi-cloud get deployment kordi-cloud-agent-runner -o jsonpath='{.status.availableReplicas}')
 idle=\$(kubectl -n kordi-cloud get deployment kordi-cloud-agent-runner -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"KORDI_CLOUD_RUNNER_CANARY_IDLE\")].value}')
-restarts=\$(kubectl -n kordi-cloud get pods -l app.kubernetes.io/name=kordi-cloud-agent-runner -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{\"\\n\"}{end}{end}' | awk '{ total += \$1 } END { print total + 0 }')
+restarts=\$(kubectl -n kordi-cloud get pods -l app.kubernetes.io/name=kordi-cloud-agent-runner -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{\"\n\"}{end}{end}' | awk '{ total += \$1 } END { print total + 0 }')
 test \"\$replicas\" = \"1\"
 test \"\$available\" = \"1\"
 test \"\$idle\" = \"0\"

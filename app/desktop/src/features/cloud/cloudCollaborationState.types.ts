@@ -11,6 +11,7 @@ import type {
 } from '@/kordi-app/types';
 import type {
   CloudAccount,
+  CloudMessage,
   CloudSessionPin,
   UpsertCloudArtifactActivityInput,
   UpsertCloudTaskActivityInput,
@@ -58,7 +59,7 @@ export type UseCloudCollaborationStateResult = {
     text: string,
     attachments?: AttachmentItem[],
     options?: SendCloudCollaborationMessageOptions,
-  ) => Promise<void>;
+  ) => Promise<CloudMessage>;
   sendCloudGroupControl: (input: SendCloudGroupControlInput) => Promise<void>;
   recordCloudSessionFork: (input: {
     sourceSessionId: string;

@@ -8,14 +8,14 @@ Do not put tokens, provider credentials, database credentials, account secrets, 
 
 ## Required preflight before preview or debug
 
-Determine whether the requested settings, code, or test can affect a product server before launching anything. Treat the work as product-server-affecting when the current session will apply hosted server or runner code, routes, auth/runtime behavior, schema or data changes, server configuration, destructive/load/recovery behavior, a deploy, or anything that requires restarting the product server. When the impact is uncertain, stop before connecting to remote infrastructure.
+Determine whether the requested settings, code, or test can affect a product server before launching anything. Treat the work as product-server-affecting when the current session will apply hosted server or runner code, routes, auth/runtime behavior, schema or data changes, server configuration, destructive/load/recovery behavior, a deploy, or anything that requires a product-server restart. When the impact is uncertain, stop and fail closed before connecting to remote infrastructure.
 
 | Classification | Required path |
 | --- | --- |
-| Product-server-affecting operator work | Develop, deploy, restart, inspect, and test on the corresponding product-server machine. The first end-to-end validation must use `https://coordinar.io`, never `https://kordi.ai`. |
+| Product-server-affecting operator work | Develop, deploy, restart, inspect, and test on the corresponding product-server machine through `https://coordinar.io`. The first end-to-end validation must never use `https://kordi.ai`. |
 | Desktop-only remote operator preview | Check the active GitHub account against `deploy/dev/operator-github-allowlist.txt`, then use the approved operator launcher against `https://kordi.ai`. |
 | Isolated contributor work | Use the loopback Docker backend or an explicitly approved non-production staging API. This path cannot substitute for product-server validation. |
-| Unknown impact or missing required access | Fail closed. Do not switch origins, bypass endpoint/account checks, or silently launch a local community/debug-server profile as if it validated the product server. |
+| Unknown impact or missing required access | Fail closed. Never silently fall back to a local community/debug-server profile, switch origins, or bypass endpoint/account checks as if it validated the product server. |
 
 ### Product-server-affecting path
 
@@ -54,6 +54,8 @@ If the account is listed, use the approved wrapper and acknowledgement against `
 KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
   pnpm dev:cloud:operator -- "https://kordi.ai"
 ```
+
+The underlying allowlisted entrypoint is `scripts/dev-cloud-operator.sh https://kordi.ai`; use it only through the documented command above so the acknowledgement and profile arguments remain explicit.
 
 If the account is not listed, fail closed. Do not edit the allowlist, bypass the launcher, or expose production credentials. The isolated contributor workflow remains available for genuinely local work, but it does not count as a remote operator or product-server test.
 

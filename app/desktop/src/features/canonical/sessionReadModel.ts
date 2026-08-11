@@ -544,13 +544,16 @@ export function createCanonicalSessionReadModel(
       const sessionId = conversation.canonicalSessionId ?? conversation.id;
       const session = indexes.sessionById.get(sessionId);
       if (!session) return conversation;
-
       const isSupportContact = isKordiSupportConversation(conversation);
+      const isCanonicalCloudDirectPersonSession = session.kind === 'direct-person'
+        && isCanonicalCloudSessionId(sessionId);
       const isLegacyCollaborationPersonSession = session.kind === 'direct-person' && isLegacyCanonicalCollaborationSessionId(sessionId);
       const isLegacyCollaborationSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
       const hydratedMessages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
+        ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
+        : isCanonicalCloudDirectPersonSession && canonicalMessages.length > 0
         ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
         : (isLegacyCollaborationPersonSession || isLegacyCollaborationSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
@@ -573,7 +576,6 @@ export function createCanonicalSessionReadModel(
       const directLegacyCollaborationTarget = conversation.collaborationTarget ?? syntheticCollaborationTarget(session, rawCanonicalParticipants);
       const collaborationTarget = directLegacyCollaborationTarget ?? legacyCollaborationTargetForSession(session, rawCanonicalParticipants, indexes);
       const inheritedLegacyCollaborationTarget = !directLegacyCollaborationTarget && Boolean(collaborationTarget);
-
       const scopedUnread = cloudUnreadReady
         ? conversation.collaborationUnreadByParentSessionId
           ? conversation.collaborationUnreadByParentSessionId[sessionId] ?? 0
@@ -582,7 +584,6 @@ export function createCanonicalSessionReadModel(
       const canonicalUnread = cloudUnreadReady ? unreadCountForSession(session) : 0;
       const unread = canonicalUnread === 0 && hasSelfReadLatestMessage(sessionId) ? 0 : Math.max(scopedUnread, canonicalUnread);
       const taskActivities = this.taskActivities(sessionId);
-
       // Surface fork lineage stored in canonical metadata so cloned
       // canonical fork sessions render the same Forked-from pill +
       // sidebar nesting as native local forks.
@@ -601,7 +602,6 @@ export function createCanonicalSessionReadModel(
       const canonicalForkedFromMessageId = typeof canonicalForkRecord?.forkedFromMessageId === 'string'
         ? (canonicalForkRecord.forkedFromMessageId as string).trim() || null
         : null;
-
       return {
         ...conversation,
         _updatedAtMs: Math.max(conversation._updatedAtMs ?? 0, sessionActivityAtMs(session)),
@@ -634,7 +634,7 @@ export function createCanonicalSessionReadModel(
           ? participants.length
           : canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
         canonicalMessageCount: summaryBySessionId.get(sessionId)?.messageCount
-          ?? indexes.rawMessageCountBySessionId.get(sessionId)
+          ?? indexes.readableMessageCountBySessionId.get(sessionId)
           ?? 0,
         canonicalDelegatedExchangeCount: taskActivities.length,
         canonicalContextSnapshotCount: summaryBySessionId.get(sessionId)?.contextSnapshotCount
@@ -670,7 +670,6 @@ export function createCanonicalSessionReadModel(
           : session.id;
         groups.set(groupKey, [...(groups.get(groupKey) ?? []), session]);
       }
-
       const hydrated = [...groups.values()]
         .sort((left, right) => {
           const leftSession = left[0];
@@ -679,7 +678,9 @@ export function createCanonicalSessionReadModel(
             - (leftSession ? sessionActivityAtMs(leftSession) : 0);
         })
         .flatMap((sessions) => {
-          const representativeWithMessages = sessions.find((session) => (indexes.rawMessageCountBySessionId.get(session.id) ?? 0) > 0);
+          const representativeWithMessages = sessions.find((session) => (
+            indexes.readableMessageCountBySessionId.get(session.id) ?? 0
+          ) > 0);
           const representativeWithSource = sessions.find((session) => sourceBySessionId.has(session.id));
           const representative = representativeWithMessages ?? representativeWithSource;
           if (representative) {
@@ -704,7 +705,6 @@ export function createCanonicalSessionReadModel(
                 buildSubtitle,
               )];
           }
-
           const fallbackSession = sessions[0];
           const fallbackParticipants = this.participantDetails(fallbackSession.id);
           const fallbackMessages = this.messages(fallbackSession.id);

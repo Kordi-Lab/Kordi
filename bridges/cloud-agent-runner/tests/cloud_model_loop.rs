@@ -129,6 +129,7 @@ fn run() -> CloudAgentRun {
         requester_account_id: "acct_requester".to_string(),
         session_id: "session:direct-person:requester:owner".to_string(),
         sandbox_id: Some("sandbox_test".to_string()),
+        runtime_route: Default::default(),
         provider_auth_available: true,
     }
 }

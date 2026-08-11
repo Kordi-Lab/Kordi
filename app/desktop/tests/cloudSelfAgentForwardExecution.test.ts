@@ -145,3 +145,81 @@ test('self-agent execution heartbeats are idempotent within one time bucket', as
   assert.equal(parseCloudAgentResponse(retry.body)?.deliveryState, 'processing');
   assert.equal(parseCloudAgentResponse(next.body)?.deliveryState, 'processing');
 });
+
+test('historical self-agent recovery does not publish a fake processing state', async () => {
+  const publishedBodies: string[] = [];
+  const publishedKinds: Array<string | null | undefined> = [];
+  const client = {
+    async sendMessage(
+      _token: string,
+      accountId: string,
+      body: string,
+      options: { sessionId?: string | null; clientMessageId?: string | null },
+    ): Promise<CloudMessage> {
+      publishedBodies.push(body);
+      publishedKinds.push((options as { messageKind?: string | null }).messageKind);
+      return {
+        messageId: options.clientMessageId ?? `message-${publishedBodies.length}`,
+        fromAccountId: accountId,
+        toAccountId: accountId,
+        body,
+        sessionId: options.sessionId ?? null,
+        createdAt: new Date().toISOString(),
+        deliveredAt: null,
+        readAt: null,
+      };
+    },
+  };
+  const operations: CloudSelfAgentSyncOperation[] = [
+    {
+      localMessageId: 'historical-request',
+      sessionId: 'session:self-agent:historical',
+      role: 'user',
+      text: 'old question',
+      parentLocalMessageId: null,
+      createdAtMs: 1_000,
+      deliveryState: 'sent',
+    },
+    {
+      localMessageId: 'historical-response',
+      sessionId: 'session:self-agent:historical',
+      role: 'agent',
+      text: 'old answer',
+      parentLocalMessageId: 'historical-request',
+      createdAtMs: 2_000,
+      deliveryState: 'complete',
+    },
+  ];
+
+  await publishCloudSelfAgentOperations({
+    accountId: 'acct_me',
+    client,
+    ledger: {},
+    mergeMessage: () => undefined,
+    operations,
+    saveLedger: () => undefined,
+    messageKindForOperation: (operation) => (
+      operation.role === 'user'
+        ? 'canonical-history-user'
+        : 'canonical-history-agent'
+    ),
+    shouldPublishProcessing: () => false,
+    token: 'token',
+  });
+
+  assert.equal(publishedBodies.length, 2);
+  assert.deepEqual(publishedKinds, [
+    'canonical-history-user',
+    'canonical-history-agent',
+  ]);
+  assert.equal(
+    publishedBodies.some((body) => (
+      parseCloudAgentResponse(body)?.deliveryState === 'processing'
+    )),
+    false,
+  );
+  assert.equal(
+    parseCloudAgentResponse(publishedBodies[1])?.deliveryState,
+    'complete',
+  );
+});

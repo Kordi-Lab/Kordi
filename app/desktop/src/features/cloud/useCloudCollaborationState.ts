@@ -158,6 +158,10 @@ export {
   type CloudGroupAgentCancelRole,
 } from './cloudAgentCancellation';
 export {
+  cloudSelfAgentOperationClientMessageId,
+  planCloudSelfAgentSessionReconciliation,
+  loadCloudSelfAgentV2RecoverySessionIds,
+  saveCloudSelfAgentV2RecoverySessionIds,
   planCloudSelfAgentSync,
   seedCloudSelfAgentForwardSyncLedger,
 } from './cloudSelfAgentForwardSync';
@@ -404,6 +408,7 @@ export function useCloudCollaborationState({
     account,
     canonicalState: canonicalSessionState,
     canonicalStateRef: canonicalSessionStateRef,
+    initialMessagesSettled,
     localTurnsBySessionId,
     client,
     cancelledRef,
@@ -448,6 +453,7 @@ export function useCloudCollaborationState({
 
   useCloudRealtimeMessages({
     account,
+    client,
     mergeMessage,
     syncCloudCollaborationDiff,
     reportWarning: reportCloudAgentExecutionWarning,
@@ -473,7 +479,6 @@ export function useCloudCollaborationState({
 
   useRecoveredCloudGroupReplay({
     account,
-    client,
     humanIdentityId: canonicalSessionState?.profile.humanIdentityId,
     canonicalStateRef: canonicalSessionStateRef,
     setCanonicalState: setCanonicalSessionState,
@@ -569,7 +574,6 @@ export function useCloudCollaborationState({
     account,
     syncCloudCollaborationDiff,
   });
-
   const {
     cloudCollaborationState,
     setCloudCollaborationState,
@@ -596,7 +600,6 @@ export function useCloudCollaborationState({
     messagesByPeer: currentAccountMessagesByPeer,
     readInboundMessageIdsByPeer,
   });
-
   const sendCloudGroupControl = useCloudGroupControlSender({
     account,
     transport: {
@@ -616,7 +619,6 @@ export function useCloudCollaborationState({
     },
     reportWarning: reportCloudAgentExecutionWarning,
   });
-
   const {
     refreshActivity: refreshCloudSessionActivity,
     publishTask: publishCloudTaskActivity,
@@ -650,7 +652,6 @@ export function useCloudCollaborationState({
     },
     syncCollaborationDiff: syncCloudCollaborationDiff,
   });
-
   const cancelCloudAgentRequest = useCloudAgentRequestCancellation({
     account,
     client,
@@ -663,7 +664,6 @@ export function useCloudCollaborationState({
     turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
     setCollaborationOverride: setCloudCollaborationOverride,
   });
-
   return {
     cloudCollaborationState,
     setCloudCollaborationState,

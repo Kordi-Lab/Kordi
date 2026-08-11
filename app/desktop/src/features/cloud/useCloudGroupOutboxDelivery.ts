@@ -175,6 +175,11 @@ export function useCloudGroupOutboxDelivery({
               );
             }
             const ready = await preparedEntry;
+            const memberAccountIds = [...new Set([
+              ...ready.pendingRecipientIds,
+              ...ready.deliveredRecipientIds,
+              ...(ready.exhaustedRecipientIds ?? []),
+            ])];
             const message = await client.sendMessage(
               session.token,
               recipientId,
@@ -184,6 +189,8 @@ export function useCloudGroupOutboxDelivery({
                 attachments: ready.attachments,
                 clientCreatedAt: ready.clientCreatedAt,
                 clientMessageId,
+                conversationKind: 'group',
+                memberAccountIds,
               },
             );
             sentAny = true;

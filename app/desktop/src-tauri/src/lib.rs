@@ -358,14 +358,12 @@ fn run_external_command(command: &mut Command) -> Result<(), String> {
         Err(format!("External open command failed with status {status}"))
     }
 }
-
 #[tauri::command]
 fn desktop_open_external_url(url: String) -> Result<String, String> {
     let trimmed = url.trim();
     if trimmed.is_empty() {
         return Err("URL is required".to_string());
     }
-
     if cfg!(target_os = "macos") {
         run_external_command(Command::new("open").arg(trimmed))?;
     } else if cfg!(target_os = "windows") {
@@ -373,10 +371,8 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
     } else {
         run_external_command(Command::new("xdg-open").arg(trimmed))?;
     }
-
     Ok(trimmed.to_string())
 }
-
 pub fn run() {
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
@@ -432,6 +428,12 @@ pub fn run() {
             canonical_sessions::desktop_canonical_remove_session_participant,
             canonical_sessions::desktop_canonical_set_session_participant_role,
             canonical_sessions::desktop_canonical_mark_session_read,
+            canonical_sessions::chat_sync_v2::desktop_chat_sync_v2_apply,
+            canonical_sessions::chat_sync_v2::desktop_chat_sync_v2_load,
+            canonical_sessions::chat_sync_v2::desktop_chat_sync_v2_outbox_enqueue,
+            canonical_sessions::chat_sync_v2::desktop_chat_sync_v2_outbox_due,
+            canonical_sessions::chat_sync_v2::desktop_chat_sync_v2_outbox_complete,
+            canonical_sessions::chat_sync_v2::desktop_chat_sync_v2_outbox_fail,
             auth::desktop_auth_state,
             auth::desktop_cloud_provider_auth_snapshot_payload,
             auth::desktop_save_api_key,
@@ -530,7 +532,6 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");
-
     app.run(|app_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
             publish_stored_offline_on_exit();
@@ -563,7 +564,6 @@ pub fn run() {
         }
         _ => {}
     });
-
     // macOS application Quit can bypass browser page lifecycle events. Run one
     // final native best-effort publish after Tauri's event loop returns so
     // explicit Quit does not wait for heartbeat timeout.

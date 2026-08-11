@@ -3,9 +3,10 @@ import type {
   CloudMessage,
 } from './authClient';
 import { encodeCloudAgentResponse } from './cloudAgentMessages';
-import type {
-  CloudSelfAgentSyncLedger,
-  CloudSelfAgentSyncOperation,
+import {
+  cloudSelfAgentOperationClientMessageId,
+  type CloudSelfAgentSyncLedger,
+  type CloudSelfAgentSyncOperation,
 } from './cloudSelfAgentForwardSync';
 
 const PROCESSING_LEDGER_PREFIX = 'processing:';
@@ -15,6 +16,9 @@ function stableClientMessageId(
   operation: CloudSelfAgentSyncOperation,
   kind: 'request' | 'processing' | 'response',
 ): string {
+  if (kind !== 'processing') {
+    return cloudSelfAgentOperationClientMessageId(operation);
+  }
   const requestId = operation.parentLocalMessageId
     ?? operation.localMessageId;
   return `self-agent:${operation.sessionId}:${requestId}:${kind}`;
@@ -73,22 +77,38 @@ export async function publishCloudSelfAgentOperations({
   operations,
   saveLedger,
   shouldContinue = () => true,
+  shouldMergeMessage = () => true,
+  messageKindForOperation = () => null,
+  shouldPublishProcessing = () => true,
   token,
 }: {
   accountId: string;
   client: Pick<CloudAuthClient, 'sendMessage'>;
   ledger: CloudSelfAgentSyncLedger;
   mergeMessage: (message: CloudMessage) => void;
-  onRequestPublished?: (message: CloudMessage) => void;
+  onRequestPublished?: (
+    message: CloudMessage,
+    operation: CloudSelfAgentSyncOperation,
+  ) => void;
   operations: readonly CloudSelfAgentSyncOperation[];
   saveLedger: (ledger: CloudSelfAgentSyncLedger) => void;
   shouldContinue?: () => boolean;
+  shouldMergeMessage?: (
+    operation: CloudSelfAgentSyncOperation,
+  ) => boolean;
+  messageKindForOperation?: (
+    operation: CloudSelfAgentSyncOperation,
+  ) => string | null;
+  shouldPublishProcessing?: (
+    operation: CloudSelfAgentSyncOperation,
+  ) => boolean;
   token: string;
 }): Promise<void> {
   for (const operation of operations) {
     if (!shouldContinue()) return;
     if (ledger[operation.localMessageId]) continue;
     if (operation.role === 'user') {
+      const messageKind = messageKindForOperation(operation);
       const request = await client.sendMessage(
         token,
         accountId,
@@ -97,6 +117,10 @@ export async function publishCloudSelfAgentOperations({
           sessionId: operation.sessionId,
           clientCreatedAt: new Date(operation.createdAtMs).toISOString(),
           clientMessageId: stableClientMessageId(operation, 'request'),
+          messageKind,
+          canonicalHistoryLocalMessageId: messageKind
+            ? operation.localMessageId
+            : null,
         },
       );
       ledger[operation.localMessageId] = {
@@ -104,13 +128,16 @@ export async function publishCloudSelfAgentOperations({
         syncedAtMs: Date.now(),
       };
       saveLedger(ledger);
-      mergeMessage(request);
-      onRequestPublished?.(request);
+      if (shouldMergeMessage(operation)) mergeMessage(request);
+      onRequestPublished?.(request, operation);
 
       const processingLedgerKey = cloudSelfAgentProcessingLedgerKey(
         operation.localMessageId,
       );
-      if (!ledger[processingLedgerKey]) {
+      if (
+        shouldPublishProcessing(operation)
+        && !ledger[processingLedgerKey]
+      ) {
         if (!shouldContinue()) return;
         const processing = await client.sendMessage(
           token,
@@ -160,6 +187,10 @@ export async function publishCloudSelfAgentOperations({
         sessionId: operation.sessionId,
         clientCreatedAt: new Date(operation.createdAtMs).toISOString(),
         clientMessageId: stableClientMessageId(operation, 'response'),
+        messageKind: messageKindForOperation(operation),
+        canonicalHistoryLocalMessageId: messageKindForOperation(operation)
+          ? operation.localMessageId
+          : null,
       },
     );
     ledger[operation.localMessageId] = {
@@ -170,6 +201,6 @@ export async function publishCloudSelfAgentOperations({
       delete ledger[cloudSelfAgentProcessingLedgerKey(parentLocalMessageId)];
     }
     saveLedger(ledger);
-    mergeMessage(response);
+    if (shouldMergeMessage(operation)) mergeMessage(response);
   }
 }

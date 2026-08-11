@@ -8,6 +8,7 @@ import {
 
 import type { CloudMessage } from './authClient';
 import { parseCloudGroupControl, type CloudGroupControlEnvelope } from './cloudGroupMessages';
+import { compareCloudMessages } from './cloudMessageMerge';
 
 export type CloudDeliveryReader = {
   accountId: string;
@@ -87,8 +88,7 @@ function mergeDuplicateWire(previous: CloudMessage, incoming: CloudMessage): Clo
 }
 
 function messageSort(left: CloudMessage, right: CloudMessage) {
-  return left.createdAt.localeCompare(right.createdAt)
-    || left.messageId.localeCompare(right.messageId);
+  return compareCloudMessages(left, right);
 }
 
 function revisionForMessages(messages: readonly CloudMessage[]): string {

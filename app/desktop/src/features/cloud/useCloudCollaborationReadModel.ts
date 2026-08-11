@@ -13,6 +13,7 @@ import type {
   CanonicalSessionState,
   Contact,
   DesktopChatTurnSnapshot,
+  DesktopCollaborationConversation,
   DesktopCollaborationState,
 } from '@/kordi-app/types';
 import type {
@@ -97,6 +98,88 @@ export function suppressCloudCollaborationUnreadCounts(
   return changed ? { ...state, conversations } : state;
 }
 
+function isOptimisticCloudMessage(
+  message: DesktopCollaborationConversation['messages'][number],
+): boolean {
+  return message.deliveryState === 'sending'
+    || message.deliveryState === 'failed';
+}
+
+function unresolvedOptimisticMessages(
+  authoritative: DesktopCollaborationConversation | undefined,
+  optimistic: DesktopCollaborationConversation,
+) {
+  const authoritativeMessageIds = new Set(
+    authoritative?.messages.map((message) => message.id) ?? [],
+  );
+  const authoritativeClientMessageIds = new Set(
+    authoritative?.messages.flatMap((message) => (
+      message.clientMessageId ? [message.clientMessageId] : []
+    )) ?? [],
+  );
+  return optimistic.messages.filter((message) => (
+    isOptimisticCloudMessage(message)
+    && !authoritativeMessageIds.has(message.id)
+    && !(
+      message.clientMessageId
+      && authoritativeClientMessageIds.has(message.clientMessageId)
+    )
+  ));
+}
+
+export function mergeCloudCollaborationOptimisticState(
+  authoritative: DesktopCollaborationState | null,
+  optimistic: DesktopCollaborationState | null,
+): DesktopCollaborationState | null {
+  if (!authoritative) return optimistic;
+  if (!optimistic) return authoritative;
+
+  const optimisticByConversationId = new Map(
+    optimistic.conversations.map((conversation) => [conversation.id, conversation]),
+  );
+  const authoritativeConversationIds = new Set(
+    authoritative.conversations.map((conversation) => conversation.id),
+  );
+  let changed = false;
+  const conversations = authoritative.conversations.map((conversation) => {
+    const optimisticConversation = optimisticByConversationId.get(conversation.id);
+    if (!optimisticConversation) return conversation;
+    const pending = unresolvedOptimisticMessages(
+      conversation,
+      optimisticConversation,
+    );
+    if (pending.length === 0) return conversation;
+    changed = true;
+    const latest = pending[pending.length - 1];
+    return {
+      ...conversation,
+      subtitle: optimisticConversation.subtitle,
+      updatedAtMs: latest.timestampMs,
+      updatedAtLabel: latest.timeLabel,
+      awaitingReply: optimisticConversation.awaitingReply,
+      messages: [...conversation.messages, ...pending],
+    };
+  });
+
+  for (const optimisticConversation of optimistic.conversations) {
+    if (authoritativeConversationIds.has(optimisticConversation.id)) continue;
+    const pending = unresolvedOptimisticMessages(
+      undefined,
+      optimisticConversation,
+    );
+    if (pending.length === 0) continue;
+    changed = true;
+    conversations.push({
+      ...optimisticConversation,
+      messages: pending,
+    });
+  }
+
+  if (!changed) return authoritative;
+  conversations.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+  return { ...authoritative, conversations };
+}
+
 export function useCloudCollaborationReadModel({
   account,
   activeConversationId,
@@ -150,7 +233,6 @@ export function useCloudCollaborationReadModel({
       overrideContextKey,
       accountContextKey,
     );
-    if (currentOverride) return currentOverride;
     const canonicalSelfAgentSessions =
       (canonicalState?.sessions ?? []).filter(
         (session) => session.kind === 'self-agent',
@@ -201,7 +283,10 @@ export function useCloudCollaborationReadModel({
       hiddenCloudSessionIds,
       suppressUnscopedSelfAgentConversation,
     });
-    return generated;
+    return mergeCloudCollaborationOptimisticState(
+      generated,
+      currentOverride,
+    );
   }, [
     account,
     accountContextKey,

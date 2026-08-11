@@ -53,6 +53,11 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   );
   assert.match(
     lifecycleSource,
+    /cloudMessagesUseBrowserCache\(\)[\s\S]*messageCache\.load\(accountId\)[\s\S]*messageCache\.remove\(accountId\)/,
+    'native v2 must remove rather than merge the pre-cutover browser cache',
+  );
+  assert.match(
+    lifecycleSource,
     /hydratedCacheAccountRef\.current === account\.accountId/,
   );
   assert.doesNotMatch(

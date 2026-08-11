@@ -97,16 +97,17 @@ test('development docs enforce the product-server impact preflight', () => {
     'docs/self-hosted-debug.md',
     'docs/community-contributor-guide.md',
     'docs/ios-development.md',
-    'docs/cloud-mobile-v1.md',
+    'docs/cloud-mobile-v2.md',
   ];
 
-  assert.match(policy, /anything that requires restarting the product server/);
-  assert.match(policy, /corresponding product-server machine/);
-  assert.match(policy, /first end-to-end validation must use `https:\/\/coordinar\.io`, never `https:\/\/kordi\.ai`/);
+  assert.match(policy, /anything that requires a product-server restart/);
+  assert.match(policy, /corresponding product-server machine through `https:\/\/coordinar\.io`/);
+  assert.match(policy, /first end-to-end validation through `https:\/\/coordinar\.io`/);
   assert.match(policy, /Never route this path through `https:\/\/kordi\.ai`/);
   assert.match(policy, /pnpm dev:cloud:operator -- "https:\/\/kordi\.ai"/);
-  assert.match(policy, /Unknown impact or missing required access[\s\S]*Fail closed/);
-  assert.match(policy, /community\/debug-server profile[\s\S]*not a substitute/);
+  assert.match(policy, /scripts\/dev-cloud-operator\.sh https:\/\/kordi\.ai/);
+  assert.match(policy, /stop and fail closed/i);
+  assert.match(policy, /Never silently fall back .*community\/debug-server profile/);
 
   for (const path of entrypoints) {
     const contents = readText(path);

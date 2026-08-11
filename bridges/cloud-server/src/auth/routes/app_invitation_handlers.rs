@@ -408,7 +408,10 @@ pub(super) async fn app_invitation_landing(
             invitation_landing_html(
                 StatusCode::OK,
                 &format!("{inviter} invited you to Kordi."),
-                "A shared workspace where people and agents work together.",
+                &format!(
+                    "Join @{} in a shared workspace where people and agents work together.",
+                    record.public_account_number
+                ),
                 release_download_url.as_deref(),
             )
         }

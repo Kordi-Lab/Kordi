@@ -20,88 +20,6 @@ pub(super) fn boxed_err(
     Box::new(err(code, message, status))
 }
 
-pub(super) fn normalize_message_attachment_preview_url(
-    value: Option<&str>,
-) -> Result<Option<String>, Box<Response>> {
-    let Some(raw) = value else {
-        return Ok(None);
-    };
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    if trimmed.len() > 360_000 {
-        return Err(boxed_err(
-            "invalid_attachment",
-            "Attachment preview is too large.",
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-    let lower = trimmed.to_ascii_lowercase();
-    let allowed = lower.starts_with("data:image/png;base64,")
-        || lower.starts_with("data:image/jpeg;base64,")
-        || lower.starts_with("data:image/jpg;base64,")
-        || lower.starts_with("data:image/webp;base64,")
-        || lower.starts_with("data:image/gif;base64,");
-    if !allowed {
-        return Err(boxed_err(
-            "invalid_attachment",
-            "Attachment preview must be a data:image base64 URL.",
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-    Ok(Some(trimmed.to_string()))
-}
-
-pub(super) fn normalize_message_attachment(
-    input: &SendMessageAttachmentRequest,
-    attachment_id: &str,
-    db_mime_type: Option<String>,
-    db_size_bytes: Option<i64>,
-    _download_url: Option<String>,
-) -> Result<MessageAttachmentSummary, Box<Response>> {
-    let name = input.name.trim().chars().take(255).collect::<String>();
-    if name.is_empty() {
-        return Err(boxed_err(
-            "invalid_attachment",
-            "Attachment name is required.",
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-    let kind = match input.kind.trim() {
-        "image" => "image".to_string(),
-        "file" => "file".to_string(),
-        _ => {
-            return Err(boxed_err(
-                "invalid_attachment",
-                "Attachment kind must be image or file.",
-                StatusCode::BAD_REQUEST,
-            ));
-        }
-    };
-    let mime_type = input
-        .mime_type
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(255).collect::<String>())
-        .or(db_mime_type);
-    let size_bytes = input
-        .size_bytes
-        .filter(|value| *value >= 0)
-        .or(db_size_bytes);
-    let preview_url = normalize_message_attachment_preview_url(input.preview_url.as_deref())?;
-    Ok(MessageAttachmentSummary {
-        attachment_id: attachment_id.to_string(),
-        name,
-        kind,
-        mime_type,
-        size_bytes,
-        preview_url,
-        download_url: None,
-    })
-}
-
 pub(super) fn limited_response(retry_after: std::time::Duration) -> Response {
     let secs = retry_after.as_secs().max(1);
     let mut response = err(
@@ -168,8 +86,6 @@ pub(super) async fn account_response_row(
             display_name,
             primary_email,
             avatar_url,
-            // Bridges-node lookup belonged to the local-first server; cloud
-            // server doesn't own registered_nodes, so this stays None.
             node_id: None,
             password_set: password_hash.is_some(),
         },
@@ -218,6 +134,52 @@ pub(super) async fn write_audit(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+pub(super) fn normalized_source_session_id(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 256 {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+pub(super) async fn caller_can_access_cloud_session(
+    pool: &PgPool,
+    account_id: &str,
+    session_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    let participants = cloud_session_participants(pool, session_id).await?;
+    Ok(participants
+        .iter()
+        .any(|participant| participant == account_id))
+}
+
+// Session pin/visibility remain ancillary account settings, but their change
+// notifications still travel through the durable v2 per-user stream so a
+// second device converges without consulting the retired v1 mailbox.
+pub(super) async fn publish_chat_v2_event(
+    pool: &PgPool,
+    account_id: &str,
+    event_type: &str,
+    peer_account_id: Option<&str>,
+    _message_id: Option<&str>,
+    payload: serde_json::Value,
+    _occurred_at: &str,
+) -> Result<(), crate::chat_sync::store::StoreError> {
+    let conversation_id = if let Some(session_id) = peer_account_id {
+        crate::chat_sync::store::conversation_id_for_session(pool, account_id, session_id).await?
+    } else {
+        None
+    };
+    crate::chat_sync::store::publish_user_sync_events(
+        pool,
+        &[account_id.to_string()],
+        event_type,
+        conversation_id,
+        payload,
+    )
+    .await
 }
 
 #[cfg(test)]

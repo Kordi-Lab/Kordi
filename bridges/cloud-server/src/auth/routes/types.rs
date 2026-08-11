@@ -345,37 +345,6 @@ pub struct MessagesQuery {
     pub limit: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CloudSyncQuery {
-    /// Last successfully applied sync event id. `0` means from the beginning.
-    pub cursor: Option<i64>,
-    /// Optional cap, default 500, max 1000.
-    pub limit: Option<i64>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CloudSyncEventSummary {
-    #[serde(rename = "eventId")]
-    pub event_id: String,
-    #[serde(rename = "eventType")]
-    pub event_type: String,
-    #[serde(rename = "peerAccountId")]
-    pub peer_account_id: Option<String>,
-    #[serde(rename = "messageId")]
-    pub message_id: Option<String>,
-    pub payload: serde_json::Value,
-    #[serde(rename = "occurredAt")]
-    pub occurred_at: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CloudSyncResponse {
-    pub cursor: String,
-    #[serde(rename = "hasMore")]
-    pub has_more: bool,
-    pub events: Vec<CloudSyncEventSummary>,
-}
-
 #[derive(Debug, Serialize)]
 pub struct CloudSessionVisibilityResponse {
     #[serde(rename = "hiddenSessionIds")]

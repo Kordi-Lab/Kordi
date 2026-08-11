@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { ArrowUp } from 'lucide-react';
 
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
+import { CLOUD_LOGIN_WINDOW_DRAG_STYLE } from '@/app/windowDrag';
 import {
   readAvatarPreference,
   writeAvatarPreference,
@@ -413,8 +414,8 @@ export function CloudLoginPage({
       <div className="app-cloud-login-grain pointer-events-none absolute inset-0" />
 
       <div
-        className="absolute left-0 right-0 top-0 h-12"
-        style={{ WebkitAppRegion: 'drag' as const }}
+        className="absolute"
+        style={CLOUD_LOGIN_WINDOW_DRAG_STYLE}
         data-tauri-drag-region="true"
         aria-hidden="true"
       />
@@ -508,7 +509,6 @@ export function CloudLoginPage({
             Sign up
           </button>
         </div>
-
         <form
           data-cloud-login-mode-form={modeKey}
           className="app-cloud-login-form mt-5 grid gap-3.5"

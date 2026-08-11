@@ -920,6 +920,7 @@ export type DesktopCollaborationHost = {
 
 export type DesktopCollaborationConversationMessage = {
   id: string;
+  clientMessageId?: string | null;
   direction: CollaborationMessageDirection;
   sender?: string | null;
   text: string;
@@ -1156,7 +1157,6 @@ export type DesktopChatAgentProfile = {
   workspaceRoot: string;
   lastActivities: string[];
 };
-
 export type DesktopChatState = {
   cwd: string;
   activeSessionId: string;

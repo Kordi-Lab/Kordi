@@ -1,187 +1,52 @@
 use super::*;
 
-type GroupControlRow = (String, String);
+type V2GroupConversationRow = (uuid::Uuid, String, Option<String>);
+type V2GroupParticipantRow = (String, Option<String>, Option<String>, String);
 
-fn is_authorized_self_leave(
-    previous: &GroupInvitationSnapshot,
-    next: &GroupInvitationSnapshot,
-    control: &StoredGroupControlEnvelope,
-    message_sender_account_id: &str,
-) -> bool {
-    if control.kind != "group-update"
-        || control.member_leaves.len() != 1
-        || control.member_leaves[0].account_id.trim() != message_sender_account_id
-        || next.group_title != previous.group_title
-        || next
-            .participants
-            .iter()
-            .any(|participant| participant.account_id == message_sender_account_id)
-    {
-        return false;
-    }
-    let Some(previous_actor) = previous
-        .participants
-        .iter()
-        .find(|participant| participant.account_id == message_sender_account_id)
-    else {
-        return false;
-    };
-    let Some(actor) = clean_participant(control.actor.clone()) else {
-        return false;
-    };
-    if actor.role != previous_actor.role
-        || next.participants.len() + 1 != previous.participants.len()
-    {
-        return false;
-    }
-    previous
-        .participants
-        .iter()
-        .filter(|participant| participant.account_id != message_sender_account_id)
-        .all(|participant| {
-            next.participants.iter().any(|candidate| {
-                candidate.account_id == participant.account_id && candidate.role == participant.role
-            })
-        })
-}
-
-pub(super) fn authoritative_snapshot_from_rows(
-    rows: Vec<GroupControlRow>,
+pub(super) fn snapshot_from_v2_rows(
+    conversation: V2GroupConversationRow,
+    rows: Vec<V2GroupParticipantRow>,
     group_id: &str,
     group_space_id: &str,
-    group_title: &str,
+    requested_group_title: &str,
 ) -> Option<GroupInvitationSnapshot> {
-    let mut current: Option<GroupInvitationSnapshot> = None;
-    for (message_sender_account_id, body) in rows {
-        let Some(control) = parse_group_control_for_invitation(&body) else {
-            continue;
-        };
-        let Some(next) = invitation_snapshot_from_control(
-            &body,
-            &message_sender_account_id,
-            group_id,
-            group_space_id,
-            group_title,
-        ) else {
-            continue;
-        };
-
-        let Some(previous) = current.as_mut() else {
-            let creator_is_admin = next.participants.iter().any(|participant| {
-                participant.account_id == message_sender_account_id && participant.role == "admin"
-            });
-            if control.kind == "group-invite"
-                && next.created_by_account_id == message_sender_account_id
-                && creator_is_admin
-            {
-                current = Some(next);
-            }
-            continue;
-        };
-
-        if next.created_by_account_id != previous.created_by_account_id {
-            continue;
-        }
-        let sender_is_admin = message_sender_account_id == previous.created_by_account_id
-            || previous.participants.iter().any(|participant| {
-                participant.account_id == message_sender_account_id && participant.role == "admin"
-            });
-        if !sender_is_admin {
-            if is_authorized_self_leave(previous, &next, &control, &message_sender_account_id) {
-                *previous = next;
-            }
-            continue;
-        }
-        let creator_remains = next
-            .participants
-            .iter()
-            .any(|participant| participant.account_id == previous.created_by_account_id);
-        if !creator_remains {
-            continue;
-        }
-        if message_sender_account_id != previous.created_by_account_id {
-            let non_creator_changed_roles = next.participants.iter().any(|participant| {
-                previous
-                    .participants
-                    .iter()
-                    .find(|current| current.account_id == participant.account_id)
-                    .map(|current| current.role != participant.role)
-                    .unwrap_or(participant.role == "admin")
-            }) || previous.participants.iter().any(|participant| {
-                participant.role == "admin"
-                    && participant.account_id != message_sender_account_id
-                    && !next
-                        .participants
-                        .iter()
-                        .any(|candidate| candidate.account_id == participant.account_id)
-            });
-            if non_creator_changed_roles {
-                continue;
-            }
-        }
-
-        match control.kind.as_str() {
-            "group-invite" => {
-                let next_accounts = next
-                    .participants
-                    .iter()
-                    .map(|participant| participant.account_id.as_str())
-                    .collect::<HashSet<_>>();
-                if previous
-                    .participants
-                    .iter()
-                    .all(|participant| next_accounts.contains(participant.account_id.as_str()))
-                {
-                    *previous = next;
-                }
-            }
-            "group-update" => *previous = next,
-            "group-title-update" => previous.group_title = next.group_title,
-            _ => {}
-        }
+    let participants = rows
+        .into_iter()
+        .map(
+            |(account_id, display_name, avatar_url, role)| GroupInvitationParticipant {
+                account_id,
+                display_name: display_name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("Kordi member")
+                    .chars()
+                    .take(80)
+                    .collect(),
+                avatar_url: avatar_url.as_deref().and_then(syncable_cloud_avatar_url),
+                role: if role == "owner" || role == "admin" {
+                    "admin".to_string()
+                } else {
+                    "person".to_string()
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+    if participants.len() < 2 || participants.len() > GROUP_INVITE_MAX_MEMBERS {
+        return None;
     }
-    current
-}
-
-async fn group_control_rows(
-    pool: &PgPool,
-    group_id: &str,
-) -> Result<Vec<GroupControlRow>, sqlx_core::Error> {
-    query_as(
-        "SELECT from_account_id, body FROM cloud_messages \
-         WHERE session_id = $1 AND body LIKE $2 \
-         ORDER BY server_received_at ASC, message_id ASC",
-    )
-    .bind(group_id)
-    .bind(format!("{}%", CLOUD_GROUP_CONTROL_PREFIX))
-    .fetch_all(pool)
-    .await
-}
-
-async fn group_control_rows_in_transaction(
-    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
-    group_id: &str,
-) -> Result<Vec<GroupControlRow>, sqlx_core::Error> {
-    query_as(
-        "SELECT from_account_id, body FROM cloud_messages \
-         WHERE session_id = $1 AND body LIKE $2 \
-         ORDER BY server_received_at ASC, message_id ASC",
-    )
-    .bind(group_id)
-    .bind(format!("{}%", CLOUD_GROUP_CONTROL_PREFIX))
-    .fetch_all(&mut **tx)
-    .await
-}
-
-fn invitation_snapshot_for_inviter(
-    rows: Vec<GroupControlRow>,
-    inviter_account_id: &str,
-    group_id: &str,
-    group_space_id: &str,
-    group_title: &str,
-) -> Option<GroupInvitationSnapshot> {
-    let snapshot = authoritative_snapshot_from_rows(rows, group_id, group_space_id, group_title)?;
-    snapshot_allows_group_invitation(&snapshot, inviter_account_id).then_some(snapshot)
+    let group_title = conversation
+        .2
+        .as_deref()
+        .and_then(clean_group_title)
+        .or_else(|| clean_group_title(requested_group_title))?;
+    Some(GroupInvitationSnapshot {
+        group_id: group_id.to_string(),
+        group_space_id: group_space_id.to_string(),
+        group_title,
+        created_by_account_id: conversation.1,
+        participants,
+    })
 }
 
 pub(super) async fn authorized_group_invitation_snapshot(
@@ -191,10 +56,38 @@ pub(super) async fn authorized_group_invitation_snapshot(
     group_space_id: &str,
     group_title: &str,
 ) -> Result<Option<GroupInvitationSnapshot>, sqlx_core::Error> {
-    let rows = group_control_rows(pool, group_id).await?;
-    Ok(invitation_snapshot_for_inviter(
-        rows,
-        inviter_account_id,
+    let conversation: Option<V2GroupConversationRow> = query_as(
+        "SELECT conversation.conversation_id, conversation.created_by_account_id,
+                conversation.shared_title
+         FROM cloud_chat_conversations conversation
+         JOIN cloud_chat_conversation_members inviter
+           ON inviter.conversation_id = conversation.conversation_id
+         WHERE conversation.legacy_session_id = $1
+           AND conversation.kind = 'group'
+           AND inviter.account_id = $2
+           AND inviter.membership_state = 'active'
+           AND inviter.role IN ('owner', 'admin')",
+    )
+    .bind(group_id)
+    .bind(inviter_account_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(conversation) = conversation else {
+        return Ok(None);
+    };
+    let participants: Vec<V2GroupParticipantRow> = query_as(
+        "SELECT member.account_id, account.display_name, account.avatar_url, member.role
+         FROM cloud_chat_conversation_members member
+         JOIN cloud_accounts account ON account.account_id = member.account_id
+         WHERE member.conversation_id = $1 AND member.membership_state = 'active'
+         ORDER BY member.account_id ASC",
+    )
+    .bind(conversation.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(snapshot_from_v2_rows(
+        conversation,
+        participants,
         group_id,
         group_space_id,
         group_title,
@@ -208,10 +101,39 @@ async fn authorized_group_invitation_snapshot_in_transaction(
     group_space_id: &str,
     group_title: &str,
 ) -> Result<Option<GroupInvitationSnapshot>, sqlx_core::Error> {
-    let rows = group_control_rows_in_transaction(tx, group_id).await?;
-    Ok(invitation_snapshot_for_inviter(
-        rows,
-        inviter_account_id,
+    let conversation: Option<V2GroupConversationRow> = query_as(
+        "SELECT conversation.conversation_id, conversation.created_by_account_id,
+                conversation.shared_title
+         FROM cloud_chat_conversations conversation
+         JOIN cloud_chat_conversation_members inviter
+           ON inviter.conversation_id = conversation.conversation_id
+         WHERE conversation.legacy_session_id = $1
+           AND conversation.kind = 'group'
+           AND inviter.account_id = $2
+           AND inviter.membership_state = 'active'
+           AND inviter.role IN ('owner', 'admin')
+         FOR UPDATE OF conversation",
+    )
+    .bind(group_id)
+    .bind(inviter_account_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(conversation) = conversation else {
+        return Ok(None);
+    };
+    let participants: Vec<V2GroupParticipantRow> = query_as(
+        "SELECT member.account_id, account.display_name, account.avatar_url, member.role
+         FROM cloud_chat_conversation_members member
+         JOIN cloud_accounts account ON account.account_id = member.account_id
+         WHERE member.conversation_id = $1 AND member.membership_state = 'active'
+         ORDER BY member.account_id ASC",
+    )
+    .bind(conversation.0)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(snapshot_from_v2_rows(
+        conversation,
+        participants,
         group_id,
         group_space_id,
         group_title,
@@ -274,32 +196,6 @@ pub(super) async fn lookup_group_invitation(
     .fetch_optional(pool)
     .await?;
 
-    Ok(group_invitation_lookup_from_row(row))
-}
-
-pub(super) async fn lookup_group_invitation_in_transaction(
-    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
-    token: &str,
-) -> Result<GroupInvitationLookup, sqlx_core::Error> {
-    if !token.starts_with(GROUP_INVITE_TOKEN_PREFIX) {
-        return Ok(GroupInvitationLookup::Invalid);
-    }
-    let row: Option<GroupInvitationRow> = query_as(
-        "SELECT invite.invitation_id, invite.inviter_account_id, account.display_name, \
-                account.public_account_number, account.avatar_url, invite.group_snapshot, invite.expires_at \
-         FROM cloud_group_invitations invite \
-         JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id \
-         WHERE invite.token_hash = $1 AND invite.revoked_at IS NULL \
-         FOR UPDATE OF invite",
-    )
-    .bind(hash_group_invite_token(token))
-    .fetch_optional(&mut **tx)
-    .await?;
-
-    Ok(group_invitation_lookup_from_row(row))
-}
-
-fn group_invitation_lookup_from_row(row: Option<GroupInvitationRow>) -> GroupInvitationLookup {
     let Some((
         invitation_id,
         inviter_account_id,
@@ -310,26 +206,28 @@ fn group_invitation_lookup_from_row(row: Option<GroupInvitationRow>) -> GroupInv
         expires_at,
     )) = row
     else {
-        return GroupInvitationLookup::Invalid;
+        return Ok(GroupInvitationLookup::Invalid);
     };
     let is_expired = DateTime::parse_from_rfc3339(&expires_at)
         .map(|value| value.with_timezone(&Utc) <= Utc::now())
         .unwrap_or(true);
     if is_expired {
-        return GroupInvitationLookup::Expired;
+        return Ok(GroupInvitationLookup::Expired);
     }
     let Ok(snapshot) = serde_json::from_value::<GroupInvitationSnapshot>(snapshot) else {
-        return GroupInvitationLookup::Invalid;
+        return Ok(GroupInvitationLookup::Invalid);
     };
-    GroupInvitationLookup::Valid(Box::new(GroupInvitationRecord {
-        invitation_id,
-        inviter_account_id,
-        inviter_display_name,
-        inviter_public_account_number,
-        inviter_avatar_url,
-        snapshot,
-        expires_at,
-    }))
+    Ok(GroupInvitationLookup::Valid(Box::new(
+        GroupInvitationRecord {
+            invitation_id,
+            inviter_account_id,
+            inviter_display_name,
+            inviter_public_account_number,
+            inviter_avatar_url,
+            snapshot,
+            expires_at,
+        },
+    )))
 }
 
 pub(super) fn group_invitation_preview(

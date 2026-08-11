@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordinar.io/schemas/chat-sync-v2/message.schema.json",
+  "title": "Kordi canonical message snapshot",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "id",
+    "client_message_id",
+    "conversation_id",
+    "conversation_sequence",
+    "sender_account_id",
+    "kind",
+    "content",
+    "attachment_ids",
+    "version",
+    "created_at"
+  ],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "client_message_id": { "type": "string", "format": "uuid" },
+    "conversation_id": { "type": "string", "format": "uuid" },
+    "conversation_sequence": { "type": "integer", "minimum": 1 },
+    "sender_account_id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "content": {
+      "type": "object",
+      "required": ["schema", "blocks"],
+      "properties": {
+        "schema": { "type": "integer", "minimum": 1 },
+        "blocks": { "type": "array" }
+      }
+    },
+    "reply_to_message_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "attachment_ids": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "generation_status": { "type": ["string", "null"] },
+    "provider_response_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "edited_at": { "type": ["string", "null"], "format": "date-time" },
+    "deleted_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

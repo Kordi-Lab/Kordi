@@ -218,7 +218,7 @@ async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_f
         ))
         .await
         .unwrap();
-    assert_eq!(signup_response.status(), StatusCode::OK);
+    assert_eq!(signup_response.status(), StatusCode::CREATED);
     let signup_json = read_json(signup_response).await;
     let token = signup_json["session"]["token"]
         .as_str()
@@ -293,13 +293,13 @@ fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
 }
 
 #[test]
-fn cloud_agent_scheduled_responses_are_written_to_cloud_sync_events() {
+fn cloud_agent_scheduled_responses_are_written_to_chat_sync_v2() {
     let sync_source = std::fs::read_to_string("src/cloud_agent_runtime/sync_events.rs")
         .expect("read cloud agent sync event source");
-    assert!(sync_source.contains("INSERT INTO cloud_sync_events"));
-    assert!(sync_source.contains("message.upsert"));
-    assert!(sync_source.contains("\"messageId\""));
-    assert!(sync_source.contains("\"sessionId\""));
+    assert!(sync_source.contains("store::send_message"));
+    assert!(sync_source.contains("cloud_chat_conversations"));
+    assert!(sync_source.contains("retired v1 mailbox"));
+    assert!(!sync_source.contains("INSERT INTO cloud_sync_events"));
 }
 
 #[test]

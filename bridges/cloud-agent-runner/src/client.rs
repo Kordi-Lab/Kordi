@@ -21,8 +21,17 @@ pub struct CloudAgentRun {
     pub session_id: String,
     #[serde(rename = "sandboxId")]
     pub sandbox_id: Option<String>,
+    #[serde(rename = "runtimeRoute", default)]
+    pub runtime_route: AgentRuntimeRoute,
     #[serde(rename = "providerAuthAvailable")]
     pub provider_auth_available: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentRuntimeRoute {
+    #[serde(rename = "defaultModel")]
+    pub default_model: Option<String>,
+    pub thinking: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
