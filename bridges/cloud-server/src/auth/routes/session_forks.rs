@@ -53,7 +53,7 @@ pub(crate) async fn cloud_session_participants(
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
            ON member.conversation_id = conversation.conversation_id
-         WHERE conversation.legacy_session_id = $1
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id::text = $1)
            AND member.membership_state = 'active'
          ORDER BY member.account_id ASC",
     )
@@ -64,6 +64,26 @@ pub(crate) async fn cloud_session_participants(
         .into_iter()
         .map(|(account_id,)| account_id)
         .collect())
+}
+
+pub(crate) async fn cloud_session_admin_ids(
+    pool: &PgPool,
+    session_id: &str,
+) -> Result<Vec<String>, sqlx_core::error::Error> {
+    let admins: Vec<(String,)> = query_as(
+        "SELECT member.account_id
+         FROM cloud_chat_conversations conversation
+         JOIN cloud_chat_conversation_members member
+           ON member.conversation_id = conversation.conversation_id
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id::text = $1)
+           AND member.membership_state = 'active'
+           AND member.role IN ('owner', 'admin')
+         ORDER BY member.account_id ASC",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(admins.into_iter().map(|(account_id,)| account_id).collect())
 }
 
 pub(super) async fn create_cloud_session_fork(

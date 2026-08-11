@@ -37,10 +37,13 @@ export type {
   MessageReadReceiptSummary,
   MessageReplySummary,
   MessageSourceReference,
+  ProviderMediaMessageBlock,
   QueuedDesktopChatMessage,
   SessionArtifact,
   SessionStatusIndicator,
   SourcePreviewLine,
+  StructuredMessageContent,
+  StructuredMessageInlineNode,
 } from './types/message';
 
 export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'settings';

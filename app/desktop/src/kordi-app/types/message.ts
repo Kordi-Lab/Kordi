@@ -127,6 +127,30 @@ export type MessageActionMetadata = {
   source: MessageActionSource;
 };
 
+export type StructuredMessageInlineNode =
+  | { type: 'text'; text: string }
+  | { type: 'custom_emoji'; emojiId: string; fallback: string };
+
+export type ProviderMediaMessageBlock = {
+  type: 'provider_media';
+  provider: 'giphy';
+  providerMediaId: string;
+  mediaKind: 'gif' | 'sticker';
+  title: string;
+  altText: string;
+  width: number;
+  height: number;
+  rating: string;
+};
+
+export type StructuredMessageContent = {
+  schema: 1;
+  blocks: Array<
+    | { type: 'paragraph'; children: StructuredMessageInlineNode[] }
+    | ProviderMediaMessageBlock
+  >;
+};
+
 export type ComposerQuoteState = {
   action: 'quote';
   source: MessageActionSource;
@@ -170,6 +194,7 @@ export type Message = {
   replySummary?: MessageReplySummary;
   readReceiptSummary?: MessageReadReceiptSummary | null;
   messageAction?: MessageActionMetadata | null;
+  structuredContent?: StructuredMessageContent | null;
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;
   edit?: {
