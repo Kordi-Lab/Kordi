@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": 1,
+  "avatarId": "avt_01KORDIEXAMPLE",
+  "agentId": "agt_01KORDIEXAMPLE",
+  "version": 1,
+  "species": "species.cat_tuxedo",
+  "marking": "species.cat_tuxedo.marking.mask",
+  "pose": "pose.front",
+  "expression": "expression.focused",
+  "slots": {
+    "headwear": "headwear.beanie.sage",
+    "top": "top.utility_jacket.sage",
+    "bottom": "bottom.jeans.denim",
+    "onePiece": null,
+    "shoes": "shoes.canvas.ink",
+    "faceAccessory": null,
+    "neckAccessory": null,
+    "bagAccessory": null,
+    "prop": "prop.laptop.ink"
+  },
+  "background": "background.wash.sage",
+  "palette": "palette.sage",
+  "source": "edited",
+  "seed": "62f8d0d4d0c2c1e9",
+  "updatedAt": "2026-08-11T10:00:00Z"
+}
