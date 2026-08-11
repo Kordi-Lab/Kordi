@@ -247,6 +247,7 @@ function CloudEditionRoot({
 
 export function CloudStartingScreen({
   status = 'syncing',
+  onRetry,
 }: {
   status?: 'syncing' | 'error';
   onRetry?: () => void;
@@ -263,6 +264,15 @@ export function CloudStartingScreen({
         <span className="app-cloud-starting-dot app-cloud-starting-dot-2" />
         <span className="app-cloud-starting-dot app-cloud-starting-dot-3" />
       </div>
+      {status === 'error' && onRetry ? (
+        <button
+          type="button"
+          className="app-cloud-starting-retry"
+          onClick={onRetry}
+        >
+          Retry sync
+        </button>
+      ) : null}
     </div>
   );
 }

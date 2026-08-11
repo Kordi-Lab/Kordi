@@ -150,6 +150,8 @@ export async function publishCloudGroupAgentEnvelope({
     runtime.client.sendMessage(token, targetAccountId, body, {
       sessionId,
       clientCreatedAt: new Date(createdAtMs).toISOString(),
+      conversationKind: 'group',
+      memberAccountIds: targetAccountIds,
     })
   )));
   sent.forEach((result) => {

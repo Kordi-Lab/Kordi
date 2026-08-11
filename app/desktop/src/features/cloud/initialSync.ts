@@ -28,11 +28,15 @@ export function cloudInitialSyncStatus({
   nowMs?: number;
 }): CloudInitialSyncStatus {
   if (!isCloudEdition) return 'ready';
-  if (!accountReady || !canonicalSettled || !canonicalReady || !desktopChatSettled) {
-    return nowMs - startedAtMs >= CLOUD_INITIAL_SYNC_TIMEOUT_MS ? 'error' : 'syncing';
-  }
-  if (localBackupReady) return 'ready';
-  if (contactsSettled && messagesSettled) return 'ready';
+  // Authentication and the local database are the only startup prerequisites.
+  // Contacts, durable chat catch-up, and the local agent runtime continue in
+  // the mounted shell; making any of them a global gate turns a recoverable
+  // background timeout into an endless blank splash on a clean device.
+  void contactsSettled;
+  void messagesSettled;
+  void desktopChatSettled;
+  if (accountReady && localBackupReady) return 'ready';
+  if (accountReady && canonicalSettled && canonicalReady) return 'ready';
   return nowMs - startedAtMs >= CLOUD_INITIAL_SYNC_TIMEOUT_MS ? 'error' : 'syncing';
 }
 

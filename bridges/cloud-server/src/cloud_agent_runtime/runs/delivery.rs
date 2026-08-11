@@ -2,8 +2,8 @@
 
 use chrono::Utc;
 use sqlx_core::query::query;
+use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
-use uuid::Uuid;
 
 use crate::cloud_agent_runtime::sync_events::{
     append_cloud_agent_response_sync_event, CloudAgentResponseSyncEvent,
@@ -83,8 +83,16 @@ pub(super) async fn ensure_group_response_messages(
     let Some(request_envelope) = request_envelope else {
         return Ok(None);
     };
-    let response_group_message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
-    let now = Utc::now();
+    let response_group_message_id = response.run_id.to_string();
+    let stable_created_at: Option<(String,)> =
+        query_as("SELECT created_at FROM cloud_agent_fallback_runs WHERE run_id = $1")
+            .bind(response.run_id)
+            .fetch_optional(pool)
+            .await?;
+    let now = stable_created_at
+        .and_then(|(value,)| chrono::DateTime::parse_from_rfc3339(&value).ok())
+        .map(|value| value.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
     let now_string = now.to_rfc3339();
     let now_ms = now.timestamp_millis();
     let response_body = cloud_group_response_body(
@@ -96,46 +104,28 @@ pub(super) async fn ensure_group_response_messages(
         response.delivery_state,
         now_ms,
     );
-    let recipients = cloud_group_response_recipients(&request_envelope);
-    let mut first_message_id = None;
-    for recipient_account_id in recipients {
-        let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
-        if first_message_id.is_none() {
-            first_message_id = Some(message_id.clone());
-        }
-        query(
-            "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-             VALUES ($1, $2, $3, $4, $5, $5, $6) \
-             ON CONFLICT (message_id) DO NOTHING",
-        )
-        .bind(&message_id)
-        .bind(response.owner_account_id)
-        .bind(&recipient_account_id)
-        .bind(&response_body)
-        .bind(&now_string)
-        .bind(response.session_id)
-        .execute(pool)
-        .await?;
-        append_cloud_agent_response_sync_event(
-            pool,
-            CloudAgentResponseSyncEvent {
-                account_id: &recipient_account_id,
-                peer_account_id: response.owner_account_id,
-                message_id: &message_id,
-                from_account_id: response.owner_account_id,
-                to_account_id: &recipient_account_id,
-                body: &response_body,
-                session_id: response.session_id,
-                created_at: &now_string,
-                direction: cloud_group_response_direction(
-                    response.owner_account_id,
-                    &recipient_account_id,
-                ),
-            },
-        )
-        .await?;
-    }
-    if let Some(message_id) = &first_message_id {
+    let recipient_account_id = cloud_group_response_recipients(&request_envelope)
+        .into_iter()
+        .find(|recipient| recipient != response.owner_account_id)
+        .unwrap_or_else(|| response.owner_account_id.to_string());
+    let message_id = append_cloud_agent_response_sync_event(
+        pool,
+        CloudAgentResponseSyncEvent {
+            account_id: &recipient_account_id,
+            peer_account_id: response.owner_account_id,
+            message_id: &response_group_message_id,
+            from_account_id: response.owner_account_id,
+            to_account_id: &recipient_account_id,
+            body: &response_body,
+            session_id: response.session_id,
+            direction: cloud_group_response_direction(
+                response.owner_account_id,
+                &recipient_account_id,
+            ),
+        },
+    )
+    .await?;
+    if let Some(message_id) = &message_id {
         query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
             .bind(response.run_id)
             .bind(message_id)
@@ -143,7 +133,7 @@ pub(super) async fn ensure_group_response_messages(
             .execute(pool)
             .await?;
     }
-    Ok(first_message_id)
+    Ok(message_id)
 }
 
 pub(super) async fn ensure_scheduled_direct_person_response_message(
@@ -156,51 +146,24 @@ pub(super) async fn ensure_scheduled_direct_person_response_message(
     let Some(peer_account_id) = direct_person_peer_account_id(session_id, owner_account_id) else {
         return Ok(None);
     };
-    let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
     let now = Utc::now().to_rfc3339();
-    query(
-        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6) \
-         ON CONFLICT (message_id) DO NOTHING",
-    )
-    .bind(&message_id)
-    .bind(owner_account_id)
-    .bind(&peer_account_id)
-    .bind(response_body)
-    .bind(&now)
-    .bind(session_id)
-    .execute(pool)
-    .await?;
-    append_cloud_agent_response_sync_event(
+    let message_id = append_cloud_agent_response_sync_event(
         pool,
         CloudAgentResponseSyncEvent {
             account_id: owner_account_id,
             peer_account_id: &peer_account_id,
-            message_id: &message_id,
+            message_id: run_id,
             from_account_id: owner_account_id,
             to_account_id: &peer_account_id,
             body: response_body,
             session_id,
-            created_at: &now,
             direction: "outgoing",
         },
     )
     .await?;
-    append_cloud_agent_response_sync_event(
-        pool,
-        CloudAgentResponseSyncEvent {
-            account_id: &peer_account_id,
-            peer_account_id: owner_account_id,
-            message_id: &message_id,
-            from_account_id: owner_account_id,
-            to_account_id: &peer_account_id,
-            body: response_body,
-            session_id,
-            created_at: &now,
-            direction: "incoming",
-        },
-    )
-    .await?;
+    let Some(message_id) = message_id else {
+        return Ok(None);
+    };
     query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
         .bind(run_id)
         .bind(&message_id)

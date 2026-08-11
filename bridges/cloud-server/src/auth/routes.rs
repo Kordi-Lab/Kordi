@@ -5,7 +5,7 @@
 //! `ServerState`. Every handler is straight-line async — no DbRunner
 //! closures, no spawn_blocking — because sqlx is async-native.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
@@ -18,15 +18,10 @@ use axum::{Extension, Json, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use crate::auth::messages::{
-    persist_cloud_message, persist_cloud_message_in_transaction, PersistCloudMessageInput,
-    PersistedMessageAttachment,
-};
 use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
     exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
@@ -38,15 +33,11 @@ use crate::auth::password::{
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
-use crate::auth::rows::{
-    AccountRecordRow, AttachmentOwnerRow, CloudSyncEventRow, ContactListRow, ContactRequestRow,
-    MessageAttachmentRow, MessageRecordRow,
-};
+use crate::auth::rows::{AccountRecordRow, ContactListRow, ContactRequestRow};
 use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
     SESSION_TOKEN_PREFIX,
 };
-use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use crate::server::ServerState;
 
 mod app_invitation_handlers;
@@ -55,20 +46,14 @@ mod contact_handlers;
 mod contact_request_handlers;
 mod group_invitation_handlers;
 mod identity_handlers;
-mod message_handlers;
-mod message_list_handlers;
-mod message_policy;
-mod message_read_handlers;
 mod middleware;
 mod password_handlers;
 mod presence_handlers;
 mod profile_handlers;
 mod session_forks;
 mod session_pins;
-mod session_titles;
 mod session_visibility;
 mod support;
-mod sync_handlers;
 mod types;
 
 use app_invitation_handlers::*;
@@ -77,19 +62,13 @@ use contact_handlers::*;
 use contact_request_handlers::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
-use message_handlers::*;
-use message_list_handlers::*;
-use message_policy::*;
-use message_read_handlers::*;
 use password_handlers::*;
 use presence_handlers::*;
 use profile_handlers::*;
 use session_forks::{create_cloud_session_fork, list_cloud_session_forks};
 use session_pins::*;
-use session_titles::*;
 use session_visibility::*;
 use support::*;
-use sync_handlers::*;
 use types::ErrorBody;
 
 pub use middleware::cloud_session_middleware;
@@ -173,13 +152,6 @@ pub fn routes_with_config(
             "/v1/cloud/contacts/requests/:request_id/reject",
             post(reject_contact_request),
         )
-        .route("/v1/cloud/messages", get(list_messages).post(send_message))
-        .route("/v1/cloud/messages/lookup", post(lookup_message_bodies))
-        .route("/v1/cloud/messages/read", post(mark_messages_read))
-        .route(
-            "/v1/cloud/sessions/:source_session_id/read",
-            post(mark_session_messages_read),
-        )
         .route(
             "/v1/cloud/presence/online",
             post(publish_current_device_online),
@@ -193,7 +165,6 @@ pub fn routes_with_config(
             post(publish_current_device_offline),
         )
         .route("/v1/cloud/presence/contacts", get(list_contact_presence))
-        .route("/v1/cloud/sync", get(sync_cloud_events))
         .route(
             "/v1/cloud/sessions/visibility",
             get(list_cloud_session_visibility),
@@ -205,10 +176,6 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/sessions/:source_session_id/pin",
             get(get_cloud_session_pin).put(update_cloud_session_pin),
-        )
-        .route(
-            "/v1/cloud/sessions/:source_session_id/title",
-            get(get_cloud_session_title).put(update_cloud_session_title),
         )
         .route(
             "/v1/cloud/sessions/:source_session_id",

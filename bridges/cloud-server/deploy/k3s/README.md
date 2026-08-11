@@ -77,7 +77,10 @@ Required production server environment:
 
 ```bash
 KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
-KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io
+KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io,kordi://oauth/callback
+KORDI_CHAT_SYNC_V2_ENABLED=true
+KORDI_CHAT_SYNC_CURSOR_SECRET=<from kordi-chat-sync-v2>
+KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,https://coordinar.io
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 KORDI_OAUTH_GITHUB_CLIENT_ID=...
@@ -143,7 +146,7 @@ kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m \
 
 The production origin is a compatibility contract with released desktop
 clients. Both `kordi.ai` and the legacy `coordinar.io` origin must serve
-`/v1/cloud/*`, `/health`, and `/updates/*` directly. A marketing-site redirect
+`/v1/cloud/*`, `/v2/chat/*`, `/health`, and `/updates/*` directly. A marketing-site redirect
 may handle other legacy paths, but must never match those product routes:
 cross-host redirects break browser CORS preflights and can also disable
 WebSockets and desktop updates.

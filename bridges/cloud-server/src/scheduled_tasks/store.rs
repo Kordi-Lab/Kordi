@@ -411,6 +411,7 @@ async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
             owner_account_id: owner_account_id.to_string(),
             requester_account_id: created_by_account_id.to_string(),
             prompt: prompt.to_string(),
+            runtime_route: None,
             idempotency_key: format!("scheduled:{}", run.run_id),
         },
     )

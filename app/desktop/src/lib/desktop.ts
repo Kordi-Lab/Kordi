@@ -43,6 +43,7 @@ import {
   type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
 
+
 export function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
@@ -826,6 +827,7 @@ export async function markCanonicalSessionRead(request: MarkCanonicalSessionRead
   return invokeDesktop<CanonicalReadCursorDelta | null>('desktop_canonical_mark_session_read', { request });
 }
 
+
 export async function fetchDesktopProjectSettings(projectRoot?: string) {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopProjectSettings>('desktop_project_settings', { projectRoot });
@@ -1044,7 +1046,6 @@ export async function openDesktopAuthPopup(
       maximizable: false,
       focus: true,
     });
-
     return await new Promise<typeof popup>((resolve, reject) => {
       void popup.once('tauri://created', () => resolve(popup));
       void popup.once('tauri://error', (event) => {
@@ -1056,7 +1057,6 @@ export async function openDesktopAuthPopup(
       });
     });
   }
-
   return window.open(
     url,
     `kordi-auth-${provider}-${mode}`,

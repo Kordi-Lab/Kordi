@@ -170,10 +170,14 @@ async fn attachment_access_row(
     if row.1 != session.account_id {
         let allowed: Option<(i32,)> = match query_as(
             "SELECT 1 \
-             FROM cloud_message_attachments cma \
-             JOIN cloud_messages cm ON cm.message_id = cma.message_id \
-             WHERE cma.attachment_id = $1 \
-               AND (cm.from_account_id = $2 OR cm.to_account_id = $2) \
+             FROM cloud_chat_message_attachments attachment \
+             JOIN cloud_chat_messages message \
+               ON message.message_id = attachment.message_id \
+             JOIN cloud_chat_conversation_members member \
+               ON member.conversation_id = message.conversation_id \
+             WHERE attachment.attachment_id = $1 \
+               AND member.account_id = $2 \
+               AND member.membership_state = 'active' \
              LIMIT 1",
         )
         .bind(attachment_id)
@@ -515,9 +519,9 @@ pub async fn download_url(
 
 /// `POST /v1/cloud/attachments/:attachment_id/preview`
 ///
-/// Stores a client-generated compressed preview for old message attachment
-/// links that predate preview metadata. The caller must be the attachment
-/// owner or a sender/recipient of a linked cloud message.
+/// Stores a client-generated compressed preview on the canonical attachment.
+/// The caller must be the attachment owner or an active member of a linked v2
+/// conversation.
 pub async fn update_preview(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -529,31 +533,20 @@ pub async fn update_preview(
         Err(resp) => return *resp,
     };
 
-    let (_, owner_account_id, _, _, _) =
+    let (_, _owner_account_id, _, _, _) =
         match attachment_access_row(&state, &session, &attachment_id).await {
             Ok(row) => row,
             Err(resp) => return resp,
         };
 
     let result = match query(
-        "UPDATE cloud_message_attachments cma \
+        "UPDATE cloud_attachments \
          SET preview_url = $1 \
          WHERE attachment_id = $2 \
-           AND (preview_url IS NULL OR preview_url = '') \
-           AND ( \
-             $3 = $4 \
-             OR EXISTS ( \
-               SELECT 1 \
-               FROM cloud_messages cm \
-               WHERE cm.message_id = cma.message_id \
-                 AND (cm.from_account_id = $3 OR cm.to_account_id = $3) \
-             ) \
-           )",
+           AND (preview_url IS NULL OR preview_url = '')",
     )
     .bind(&preview_url)
     .bind(&attachment_id)
-    .bind(&session.account_id)
-    .bind(&owner_account_id)
     .execute(state.db_pool())
     .await
     {

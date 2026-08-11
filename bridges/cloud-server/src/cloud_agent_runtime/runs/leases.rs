@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use super::{RunError, RunResult};
+use super::{AgentRuntimeRoute, RunError, RunResult};
 
 #[derive(Debug, Deserialize)]
 pub struct RunnerRunRequest {
@@ -59,6 +59,8 @@ pub struct RunnerRunResponse {
     pub session_id: String,
     #[serde(rename = "sandboxId")]
     pub sandbox_id: Option<String>,
+    #[serde(rename = "runtimeRoute")]
+    pub runtime_route: AgentRuntimeRoute,
     #[serde(rename = "providerAuthAvailable")]
     pub provider_auth_available: bool,
     #[serde(rename = "responseMessageId")]
@@ -77,6 +79,7 @@ pub(super) type RunnerRunRow = (
     String,
     String,
     Option<String>,
+    serde_json::Value,
     Option<String>,
     Option<String>,
     Option<String>,
@@ -103,7 +106,7 @@ pub async fn lease_next_run(
              LIMIT 1 \
              FOR UPDATE SKIP LOCKED \
          ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
     )
     .bind(runner_id)
     .bind(&lease_expires_at)
@@ -134,7 +137,7 @@ pub async fn lease_canary_run(
                  AND lease_expires_at <= $3 \
              ) \
          ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
     )
     .bind(runner_id)
     .bind(&lease_expires_at)
@@ -159,7 +162,7 @@ pub async fn mark_run_running(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'running', lease_expires_at = $3, updated_at = $4 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -193,9 +196,10 @@ pub(super) async fn runner_response_from_row(
         requester_account_id: row.4,
         session_id: row.5,
         sandbox_id: row.6,
+        runtime_route: serde_json::from_value(row.7).unwrap_or_default(),
         provider_auth_available: provider_auth_available.is_some(),
-        response_message_id: row.7,
-        error_code: row.8,
-        error_message: row.9,
+        response_message_id: row.8,
+        error_code: row.9,
+        error_message: row.10,
     })
 }

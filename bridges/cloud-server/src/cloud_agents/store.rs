@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
@@ -28,6 +27,7 @@ const SKILL_CONTENT_MAX_LEN: usize = 96_000;
 pub enum CloudAgentStoreError {
     Invalid(String),
     Database(sqlx_core::Error),
+    Sync(crate::chat_sync::store::StoreError),
 }
 
 impl std::fmt::Display for CloudAgentStoreError {
@@ -35,6 +35,7 @@ impl std::fmt::Display for CloudAgentStoreError {
         match self {
             Self::Invalid(message) => write!(f, "{message}"),
             Self::Database(err) => write!(f, "{err}"),
+            Self::Sync(err) => write!(f, "{err}"),
         }
     }
 }
@@ -44,6 +45,12 @@ impl std::error::Error for CloudAgentStoreError {}
 impl From<sqlx_core::Error> for CloudAgentStoreError {
     fn from(value: sqlx_core::Error) -> Self {
         Self::Database(value)
+    }
+}
+
+impl From<crate::chat_sync::store::StoreError> for CloudAgentStoreError {
+    fn from(value: crate::chat_sync::store::StoreError) -> Self {
+        Self::Sync(value)
     }
 }
 
@@ -154,19 +161,16 @@ async fn insert_agent_sync_event(
     event_type: &str,
     agent: &CloudAgentDefinition,
     now: DateTime<Utc>,
-) -> Result<(), sqlx_core::Error> {
-    query(
-        "INSERT INTO cloud_sync_events
-         (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at)
-         VALUES ($1, $2, NULL, NULL, $3, $4)",
+) -> Result<(), crate::chat_sync::store::StoreError> {
+    let _ = now;
+    crate::chat_sync::store::publish_user_sync_events(
+        pool,
+        &[account_id.to_string()],
+        event_type,
+        None,
+        serde_json::json!({ "agent": agent }),
     )
-    .bind(account_id)
-    .bind(event_type)
-    .bind(serde_json::json!({ "agent": agent }))
-    .bind(timestamp(now))
-    .execute(pool)
-    .await?;
-    Ok(())
+    .await
 }
 
 pub async fn create_agent_definition(

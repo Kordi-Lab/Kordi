@@ -97,7 +97,7 @@ pub(super) async fn hide_cloud_session(
         );
     }
 
-    if append_cloud_sync_event(
+    if publish_chat_v2_event(
         pool,
         &session.account_id,
         "session.hidden",
@@ -188,7 +188,7 @@ pub(super) async fn unhide_cloud_session(
         );
     }
 
-    if append_cloud_sync_event(
+    if publish_chat_v2_event(
         pool,
         &session.account_id,
         "session.unhidden",
@@ -266,7 +266,7 @@ pub(super) async fn delete_cloud_session(
         );
     }
 
-    if append_cloud_sync_event(
+    if publish_chat_v2_event(
         pool,
         &session.account_id,
         "session.deleted",

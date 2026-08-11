@@ -7,8 +7,7 @@ use super::*;
 // `POST /v1/cloud/sessions/:source_session_id/forks` with a client-generated
 // `forkSessionId` and an optional `parentMessageId`. The server records the
 // lineage in `cloud_session_forks` and emits a `session-forked` event into
-// `cloud_sync_events` for every distinct participant of the source session
-// (anyone who sent or received any message with `session_id == source`).
+// every participant's durable v2 sync stream.
 // Forker's own messages under the new fork session stay private to them; other
 // participants only learn lineage, not content.
 // ============================================================================
@@ -45,76 +44,26 @@ pub struct ListCloudSessionForksResponse {
     pub forks: Vec<CloudSessionForkSummary>,
 }
 
-#[derive(Debug, Deserialize)]
-struct CloudGroupControlParticipantForAuth {
-    #[serde(rename = "accountId")]
-    account_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CloudGroupControlForAuth {
-    #[serde(rename = "groupId")]
-    group_id: String,
-    #[serde(rename = "groupSpaceId")]
-    group_space_id: Option<String>,
-    #[serde(rename = "createdByAccountId")]
-    created_by_account_id: String,
-    actor: CloudGroupControlParticipantForAuth,
-    participants: Vec<CloudGroupControlParticipantForAuth>,
-}
-
-fn parse_cloud_group_control_for_auth(body: &str) -> Option<CloudGroupControlForAuth> {
-    let encoded = body.strip_prefix(CLOUD_GROUP_CONTROL_PREFIX)?;
-    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
-    serde_json::from_slice::<CloudGroupControlForAuth>(&bytes).ok()
-}
-
 pub(crate) async fn cloud_session_participants(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Vec<String>, sqlx_core::error::Error> {
-    let mut participants: Vec<String> = query_as::<_, (String,)>(
-        "SELECT DISTINCT account_id FROM (\
-            SELECT from_account_id AS account_id FROM cloud_messages WHERE session_id = $1 \
-            UNION \
-            SELECT to_account_id AS account_id FROM cloud_messages WHERE session_id = $1 \
-         ) AS participants",
+    let v2_participants: Vec<(String,)> = query_as(
+        "SELECT member.account_id
+         FROM cloud_chat_conversations conversation
+         JOIN cloud_chat_conversation_members member
+           ON member.conversation_id = conversation.conversation_id
+         WHERE conversation.legacy_session_id = $1
+           AND member.membership_state = 'active'
+         ORDER BY member.account_id ASC",
     )
     .bind(session_id)
     .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|(account_id,)| account_id)
-    .collect();
-
-    let group_rows: Vec<(String, String, String)> = query_as(
-        "SELECT from_account_id, to_account_id, body FROM cloud_messages WHERE body LIKE $1",
-    )
-    .bind(format!("{}%", CLOUD_GROUP_CONTROL_PREFIX))
-    .fetch_all(pool)
     .await?;
-    for (from_account_id, to_account_id, body) in group_rows {
-        let Some(control) = parse_cloud_group_control_for_auth(&body) else {
-            continue;
-        };
-        let group_space_id = control.group_space_id.as_deref().unwrap_or_default().trim();
-        if control.group_id.trim() != session_id && group_space_id != session_id {
-            continue;
-        }
-        participants.push(from_account_id);
-        participants.push(to_account_id);
-        participants.push(control.created_by_account_id);
-        participants.push(control.actor.account_id);
-        participants.extend(
-            control
-                .participants
-                .into_iter()
-                .map(|participant| participant.account_id),
-        );
-    }
-    participants.sort();
-    participants.dedup();
-    Ok(participants)
+    Ok(v2_participants
+        .into_iter()
+        .map(|(account_id,)| account_id)
+        .collect())
 }
 
 pub(super) async fn create_cloud_session_fork(
@@ -214,24 +163,25 @@ pub(super) async fn create_cloud_session_fork(
     )
     .await;
 
-    // Fan out a `session-forked` event to every participant of the source
-    // session, including the forker themselves. Failures on individual
-    // recipients shouldn't roll back the fork — the canonical row is the
-    // source of truth and clients can full-resync via the existing cursor
-    // fallback in cloudDiffSync if they miss the event.
+    // Fan out through the v2 per-user stream in one deterministic recipient
+    // order. The fork row remains canonical if publication fails.
     let payload = serde_json::to_value(&fork).unwrap_or_else(|_| serde_json::json!({}));
-    for participant in &participants {
-        let _ = append_cloud_sync_event(
-            pool,
-            participant,
-            "session-forked",
-            Some(&parent_session_id),
-            None,
-            payload.clone(),
-            &created_at,
-        )
-        .await;
-    }
+    let conversation_id = crate::chat_sync::store::conversation_id_for_session(
+        pool,
+        &session.account_id,
+        &parent_session_id,
+    )
+    .await
+    .ok()
+    .flatten();
+    let _ = crate::chat_sync::store::publish_user_sync_events(
+        pool,
+        &participants,
+        "session-forked",
+        conversation_id,
+        payload,
+    )
+    .await;
 
     (
         StatusCode::CREATED,

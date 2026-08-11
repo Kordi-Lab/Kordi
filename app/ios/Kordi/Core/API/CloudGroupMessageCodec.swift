@@ -48,7 +48,11 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         self.id = id
         self.senderAccountId = senderAccountId
         self.text = text
-        self.createdAtMs = createdAtMs
+        // JSON numbers produced from Date can contain sub-millisecond
+        // fractions. Replicated timestamps cross native SQLite command
+        // boundaries that require Int64 milliseconds, so normalize once when
+        // constructing an outbound group message.
+        self.createdAtMs = createdAtMs.rounded(.towardZero)
         self.senderKind = senderKind
         self.senderDisplayName = senderDisplayName
         self.deliveryState = deliveryState

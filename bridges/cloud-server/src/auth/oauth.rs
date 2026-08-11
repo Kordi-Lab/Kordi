@@ -399,6 +399,26 @@ mod tests {
     }
 
     #[test]
+    fn redirect_allowlist_accepts_only_the_configured_native_callback() {
+        let allowlist = Some("kordi://oauth/callback");
+        assert!(is_allowed_oauth_redirect_with_config(
+            "kordi://oauth/callback",
+            allowlist,
+            "https://kordi.ai",
+        ));
+        assert!(!is_allowed_oauth_redirect_with_config(
+            "kordi://oauth/other",
+            allowlist,
+            "https://kordi.ai",
+        ));
+        assert!(!is_allowed_oauth_redirect_with_config(
+            "evil-kordi://oauth/callback",
+            allowlist,
+            "https://kordi.ai",
+        ));
+    }
+
+    #[test]
     fn github_profile_uses_only_verified_primary_email_for_account_linking() {
         let user = json!({
             "id": 123,

@@ -334,6 +334,7 @@ mod tests {
             requester_account_id: "acct_requester".to_string(),
             session_id: "session:direct-person:a:b".to_string(),
             sandbox_id: Some("cas_test".to_string()),
+            runtime_route: Default::default(),
             provider_auth_available,
         }
     }
@@ -529,7 +530,6 @@ mod tests {
         let client = FakeClient::default();
 
         let outcome = process_one_run(&client).await.unwrap();
-
         assert_eq!(outcome, RunnerStepOutcome::NoRun);
         assert_eq!(client.calls(), vec!["lease"]);
     }

@@ -2,6 +2,14 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '@/kordi-app/types';
+import { isGenericSessionTitle } from '@/features/chat/sessionTitlePolicy';
+import type { ChatSyncV2Conversation } from './authClient';
+import { cloudSelfAgentOperationClientMessageId } from './cloudSelfAgentV2Identity';
+export {
+  cloudSelfAgentOperationClientMessageId,
+  loadCloudSelfAgentV2RecoverySessionIds,
+  saveCloudSelfAgentV2RecoverySessionIds,
+} from './cloudSelfAgentV2Identity';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
 
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX =
@@ -10,6 +18,7 @@ const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX =
   'kordi.cloud.selfAgentForwardBaseline.v1:';
 const CLOUD_SELF_AGENT_FORWARD_CUTOFF_PREFIX =
   'kordi.cloud.selfAgentForwardCutoff.v1:';
+const RECENT_INTERRUPTED_RECOVERY_WINDOW_MS = 24 * 60 * 60_000;
 
 export type CloudSelfAgentSyncLedgerEntry = {
   cloudMessageId: string | null;
@@ -28,6 +37,13 @@ export type CloudSelfAgentSyncOperation = {
   parentLocalMessageId: string | null;
   createdAtMs: number;
   deliveryState: 'sent' | 'complete' | 'failed' | 'cancelled';
+};
+
+export type CloudSelfAgentSessionReconciliation = {
+  sessionId: string;
+  title: string | null;
+  createConversation: boolean;
+  recoverHistory: boolean;
 };
 
 function cleanText(value?: string | null) {
@@ -236,11 +252,102 @@ function localSelfAgentSessionIds(
 
 function shouldSkipSelfAgentForwardSyncMessage(
   message: CanonicalSessionMessage,
+  recoverMissingV2Session = false,
 ): boolean {
   return message.sourceTransport === 'canonical-fork-snapshot'
     || message.sourceTransport === 'cloud-group-fork-snapshot'
-    || message.sourceTransport === 'cloud-self-agent'
-    || message.id.startsWith('msg:cloud:self:');
+    || (!recoverMissingV2Session && (
+      message.sourceTransport === 'cloud-self-agent'
+      || message.id.startsWith('msg:cloud:self:')
+    ));
+}
+
+function chatSyncV2ConversationSessionId(
+  conversation: ChatSyncV2Conversation,
+): string {
+  return cleanText(conversation.legacy_session_id) || conversation.id;
+}
+
+export function planCloudSelfAgentSessionReconciliation(
+  state: CanonicalSessionState,
+  conversations: readonly ChatSyncV2Conversation[],
+  options: {
+    pendingRecoverySessionIds?: ReadonlySet<string>;
+    nowMs?: number;
+  } = {},
+): CloudSelfAgentSessionReconciliation[] {
+  const remoteBySessionId = new Map(
+    conversations
+      .filter((conversation) => conversation.kind === 'ai')
+      .map((conversation) => [
+        chatSyncV2ConversationSessionId(conversation),
+        conversation,
+      ] as const),
+  );
+  const recoverableMessageSessionIds = new Set(
+    state.messages.flatMap((message) => {
+      if (!selfAgentMessageDeliveryState(message)) return [];
+      if (shouldSkipSelfAgentForwardSyncMessage(message, true)) return [];
+      return [message.sessionId];
+    }),
+  );
+  const recoverableMessageCountBySessionId = new Map<string, number>();
+  for (const message of state.messages) {
+    if (!selfAgentMessageDeliveryState(message)) continue;
+    if (shouldSkipSelfAgentForwardSyncMessage(message, true)) continue;
+    recoverableMessageCountBySessionId.set(
+      message.sessionId,
+      (recoverableMessageCountBySessionId.get(message.sessionId) ?? 0)
+        + 1,
+    );
+  }
+  const nowMs = options.nowMs ?? Date.now();
+
+  return state.sessions
+    .filter((session) => (
+      session.kind === 'self-agent'
+      && session.status === 'active'
+      && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)
+    ))
+    .map((session) => {
+      const remote = remoteBySessionId.get(session.id) ?? null;
+      const title = cleanText(session.title);
+      const desiredTitle = title && !isGenericSessionTitle(title)
+        ? title
+        : null;
+      const createConversation = !remote;
+      const remoteCreatedAtMs = remote
+        ? Date.parse(remote.created_at)
+        : Number.NaN;
+      const interruptedRecentRecovery = Boolean(
+        remote
+        && remote.latest_message_sequence > 0
+        && Number.isFinite(remoteCreatedAtMs)
+        && nowMs - remoteCreatedAtMs
+          <= RECENT_INTERRUPTED_RECOVERY_WINDOW_MS
+        && nowMs >= remoteCreatedAtMs
+        && (recoverableMessageCountBySessionId.get(session.id) ?? 0)
+          > remote.latest_message_sequence,
+      );
+      const recoverHistory = recoverableMessageSessionIds.has(session.id)
+        && (
+          !remote
+          || remote.latest_message_sequence === 0
+          || options.pendingRecoverySessionIds?.has(session.id)
+          || interruptedRecentRecovery
+        );
+      return {
+        sessionId: session.id,
+        title: desiredTitle,
+        createConversation,
+        recoverHistory,
+      };
+    })
+    .filter((plan) => (
+      plan.createConversation
+      || plan.recoverHistory
+    ))
+    .sort((left, right) => left.sessionId.localeCompare(right.sessionId));
 }
 
 export function seedCloudSelfAgentForwardSyncLedger(
@@ -278,6 +385,8 @@ export function planCloudSelfAgentSync(
   options: {
     allowLocalBackfill?: boolean;
     createdAfterMs?: number | null;
+    recoverSessionIds?: ReadonlySet<string>;
+    remoteClientMessageIds?: ReadonlySet<string>;
   } = {},
 ): CloudSelfAgentSyncOperation[] {
   if (options.allowLocalBackfill === false) return [];
@@ -288,13 +397,20 @@ export function planCloudSelfAgentSync(
     new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId)) continue;
+    const recoveringMissingV2Session = Boolean(
+      options.recoverSessionIds?.has(message.sessionId),
+    );
     const deliveryState = selfAgentMessageDeliveryState(message);
     if (!deliveryState) continue;
     if (
-      options.createdAfterMs != null
+      !recoveringMissingV2Session
+      && options.createdAfterMs != null
       && message.createdAtMs <= options.createdAfterMs
     ) continue;
-    if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
+    if (shouldSkipSelfAgentForwardSyncMessage(
+      message,
+      recoveringMissingV2Session,
+    )) continue;
     const text = selfAgentMessageText(message, deliveryState);
     if (!text) continue;
     const bucket = messagesBySession.get(message.sessionId) ?? [];
@@ -313,8 +429,11 @@ export function planCloudSelfAgentSync(
     for (const message of sorted) {
       if (message.senderRole === 'user') {
         lastUserMessageId = message.id;
-        if (!ledger[message.id]) {
-          operations.push({
+        if (
+          options.recoverSessionIds?.has(message.sessionId)
+          || !ledger[message.id]
+        ) {
+          const operation: CloudSelfAgentSyncOperation = {
             localMessageId: message.id,
             sessionId,
             role: 'user',
@@ -322,7 +441,10 @@ export function planCloudSelfAgentSync(
             parentLocalMessageId: null,
             createdAtMs: message.createdAtMs,
             deliveryState: 'sent',
-          });
+          };
+          if (!options.remoteClientMessageIds?.has(
+            cloudSelfAgentOperationClientMessageId(operation),
+          )) operations.push(operation);
         }
         continue;
       }
@@ -330,14 +452,17 @@ export function planCloudSelfAgentSync(
         || message.senderRole.includes('agent');
       if (
         !isAgentMessage
-        || ledger[message.id]
+        || (
+          !options.recoverSessionIds?.has(message.sessionId)
+          && ledger[message.id]
+        )
       ) continue;
       const parentLocalMessageId = explicitSelfAgentParentMessageId(message)
         || lastUserMessageId;
       if (!parentLocalMessageId) continue;
       const deliveryState = selfAgentMessageDeliveryState(message);
       if (!deliveryState || deliveryState === 'sent') continue;
-      operations.push({
+      const operation: CloudSelfAgentSyncOperation = {
         localMessageId: message.id,
         sessionId,
         role: 'agent',
@@ -345,7 +470,10 @@ export function planCloudSelfAgentSync(
         parentLocalMessageId,
         createdAtMs: message.createdAtMs,
         deliveryState,
-      });
+      };
+      if (!options.remoteClientMessageIds?.has(
+        cloudSelfAgentOperationClientMessageId(operation),
+      )) operations.push(operation);
     }
   }
 

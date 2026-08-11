@@ -247,6 +247,8 @@ async function publishCloudGroupAgentFailure({
       {
         sessionId: envelope.groupId,
         clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
+        conversationKind: 'group',
+        memberAccountIds: targetAccountIds,
       },
     )),
   );

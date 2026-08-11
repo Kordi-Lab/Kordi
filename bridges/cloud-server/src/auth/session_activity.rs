@@ -151,29 +151,28 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
     (status, Json(body)).into_response()
 }
 
-async fn append_cloud_sync_event(
+async fn publish_chat_v2_event(
     pool: &PgPool,
-    account_id: &str,
+    account_ids: &[String],
+    conversation_account_id: &str,
+    session_id: &str,
     event_type: &str,
-    peer_account_id: Option<&str>,
-    message_id: Option<&str>,
     payload: serde_json::Value,
-    occurred_at: &str,
-) -> Result<(), sqlx_core::error::Error> {
-    query(
-        "INSERT INTO cloud_sync_events \
-         (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+) -> Result<(), crate::chat_sync::store::StoreError> {
+    let conversation_id = crate::chat_sync::store::conversation_id_for_session(
+        pool,
+        conversation_account_id,
+        session_id,
     )
-    .bind(account_id)
-    .bind(event_type)
-    .bind(peer_account_id)
-    .bind(message_id)
-    .bind(payload)
-    .bind(occurred_at)
-    .execute(pool)
     .await?;
-    Ok(())
+    crate::chat_sync::store::publish_user_sync_events(
+        pool,
+        account_ids,
+        event_type,
+        conversation_id,
+        payload,
+    )
+    .await
 }
 
 fn task_activity_sync_payload(task: &CloudTaskActivitySummary) -> serde_json::Value {
@@ -490,19 +489,17 @@ async fn upsert_cloud_task_activity(
             )
         }
     };
-    for recipient in cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids)
-    {
-        let _ = append_cloud_sync_event(
-            pool,
-            &recipient,
-            "task.upsert",
-            None,
-            None,
-            task_activity_sync_payload(&task),
-            &updated_at,
-        )
-        .await;
-    }
+    let recipients =
+        cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
+    let _ = publish_chat_v2_event(
+        pool,
+        &recipients,
+        &session.account_id,
+        &session_id,
+        "task.upsert",
+        task_activity_sync_payload(&task),
+    )
+    .await;
 
     (StatusCode::OK, Json(CloudTaskActivityResponse { task })).into_response()
 }
@@ -602,19 +599,17 @@ async fn upsert_cloud_artifact_activity(
             )
         }
     };
-    for recipient in cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids)
-    {
-        let _ = append_cloud_sync_event(
-            pool,
-            &recipient,
-            "artifact.upsert",
-            None,
-            None,
-            artifact_activity_sync_payload(&artifact),
-            &updated_at,
-        )
-        .await;
-    }
+    let recipients =
+        cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
+    let _ = publish_chat_v2_event(
+        pool,
+        &recipients,
+        &session.account_id,
+        &session_id,
+        "artifact.upsert",
+        artifact_activity_sync_payload(&artifact),
+    )
+    .await;
 
     (
         StatusCode::OK,

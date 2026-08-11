@@ -30,8 +30,11 @@ test('runner image deploy script leaves one active runner online', () => {
   assert.ok(fs.existsSync(deployScriptPath));
   const script = read(deployScriptPath);
   assert.match(script, /KORDI_CLOUD_GCP_PROJECT/);
-  assert.match(script, /cargo build --release -p kordi-cloud-agent-runner/);
   assert.match(script, /buildah bud/);
+  assert.match(script, /smoke-testing the image entrypoint/);
+  assert.match(script, /GLIBC_\[0-9\.\]\+\.\*not found/);
+  assert.match(script, /test \\"\\\$status\\" -ne 126/);
+  assert.match(script, /test \\"\\\$status\\" -ne 127/);
   assert.match(script, /k3s ctr images import/);
   assert.match(script, /cloud-agent-runner-deployment\.yaml/);
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=0/);
@@ -41,11 +44,13 @@ test('runner image deploy script leaves one active runner online', () => {
   assert.match(script, /restartCount/);
 });
 
-test('runner runtime Dockerfile copies runner binary', () => {
+test('runner runtime Dockerfile builds and runs against one glibc baseline', () => {
   assert.ok(fs.existsSync(dockerfilePath));
   const dockerfile = read(dockerfilePath);
-  assert.match(dockerfile, /^FROM ubuntu:24\.04/m);
-  assert.match(dockerfile, /target\/release\/kordi-cloud-agent-runner/);
+  assert.match(dockerfile, /^FROM docker\.io\/library\/rust:[^\s]+-bookworm AS builder/m);
+  assert.match(dockerfile, /RUN cargo build --release -p kordi-cloud-agent-runner/);
+  assert.match(dockerfile, /^FROM docker\.io\/library\/debian:bookworm-slim AS runtime/m);
+  assert.match(dockerfile, /COPY --from=builder \/workspace\/target\/release\/kordi-cloud-agent-runner/);
   assert.match(dockerfile, /ENTRYPOINT \["\/usr\/local\/bin\/kordi-cloud-agent-runner"\]/);
 });
 

@@ -292,7 +292,14 @@ pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
         return Ok(None);
     }
     let rows = query_as::<_, (String, String)>(
-        "SELECT body, created_at FROM cloud_messages WHERE session_id = $1 ORDER BY created_at ASC",
+        "SELECT message.content #>> '{blocks,0,text}', message.created_at::text
+         FROM cloud_chat_conversations conversation
+         JOIN cloud_chat_messages message
+           ON message.conversation_id = conversation.conversation_id
+         WHERE conversation.legacy_session_id = $1
+           AND message.deleted_at IS NULL
+           AND message.content #>> '{blocks,0,text}' IS NOT NULL
+         ORDER BY message.conversation_sequence ASC",
     )
     .bind(session_id)
     .fetch_all(pool)
@@ -313,7 +320,14 @@ pub(super) async fn latest_cloud_group_envelope_for_session(
         return Ok(None);
     }
     let rows = query_as::<_, (String,)>(
-        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at DESC",
+        "SELECT message.content #>> '{blocks,0,text}'
+         FROM cloud_chat_conversations conversation
+         JOIN cloud_chat_messages message
+           ON message.conversation_id = conversation.conversation_id
+         WHERE conversation.legacy_session_id = $1
+           AND message.deleted_at IS NULL
+           AND message.content #>> '{blocks,0,text}' IS NOT NULL
+         ORDER BY message.conversation_sequence DESC",
     )
     .bind(session_id)
     .fetch_all(pool)

@@ -1,59 +1,6 @@
 use super::*;
 
 #[tokio::test]
-async fn self_addressed_messages_are_returned_outgoing_and_read() {
-    let Some(pool) = try_pool().await else {
-        return;
-    };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
-    let router = fast_router(state);
-
-    let signup = router
-        .clone()
-        .oneshot(post(
-            "/v1/cloud/auth/signup",
-            signup_body(&unique_email("self-read"), "correct horse"),
-        ))
-        .await
-        .unwrap();
-    let body = read_json(signup).await;
-    let token = body["session"]["token"].as_str().unwrap().to_string();
-    let account_id = body["account"]["accountId"].as_str().unwrap().to_string();
-
-    let send = router
-        .clone()
-        .oneshot(post_json_with_token(
-            "/v1/cloud/messages",
-            &token,
-            json!({
-                "peerAccountId": account_id,
-                "body": "private self row",
-                "sessionId": "session:self-agent:test"
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(send.status(), StatusCode::CREATED);
-    let sent = read_json(send).await;
-    assert_eq!(sent["message"]["direction"], "outgoing");
-    assert!(sent["message"]["readAt"].as_str().is_some());
-
-    let list = router
-        .clone()
-        .oneshot(get_with_token(
-            &format!("/v1/cloud/messages?peerAccountId={account_id}"),
-            &token,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(list.status(), StatusCode::OK);
-    let listed = read_json(list).await;
-    let message = listed["messages"].as_array().unwrap().last().unwrap();
-    assert_eq!(message["direction"], "outgoing");
-    assert!(message["readAt"].as_str().is_some());
-}
-
-#[tokio::test]
 async fn logout_invalidates_session_token() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("logout");

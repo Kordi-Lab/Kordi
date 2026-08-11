@@ -16,7 +16,7 @@ test('cloud initial sync waits for canonical fetch to settle', () => {
   }), 'syncing');
 });
 
-test('cloud initial sync keeps the startup load page until desktop chat settles', () => {
+test('cloud initial sync does not block the Cloud shell on the local agent runtime', () => {
   assert.equal(cloudInitialSyncStatus({
     isCloudEdition: true,
     accountReady: true,
@@ -28,7 +28,36 @@ test('cloud initial sync keeps the startup load page until desktop chat settles'
     desktopChatSettled: false,
     startedAtMs: 1_000,
     nowMs: 1_500,
-  }), 'syncing');
+  }), 'ready');
+});
+
+test('cloud initial sync renders usable local state while network catch-up continues', () => {
+  assert.equal(cloudInitialSyncStatus({
+    isCloudEdition: true,
+    accountReady: true,
+    canonicalSettled: true,
+    canonicalReady: true,
+    contactsSettled: false,
+    messagesSettled: false,
+    desktopChatSettled: false,
+    startedAtMs: 1_000,
+    nowMs: 1_500,
+  }), 'ready');
+});
+
+test('cloud initial sync can recover from canonical refresh failure using the v2 local backup', () => {
+  assert.equal(cloudInitialSyncStatus({
+    isCloudEdition: true,
+    accountReady: true,
+    canonicalSettled: true,
+    canonicalReady: false,
+    localBackupReady: true,
+    contactsSettled: false,
+    messagesSettled: false,
+    desktopChatSettled: false,
+    startedAtMs: 1_000,
+    nowMs: 1_500,
+  }), 'ready');
 });
 
 test('cloud initial sync opens from local backup while cloud diff sync continues', () => {

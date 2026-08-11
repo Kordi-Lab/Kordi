@@ -48,17 +48,46 @@ export function cloudMessagesEqual(
     && message.readAt === other.readAt
     && message.direction === other.direction
     && (message.sessionId ?? null) === (other.sessionId ?? null)
+    && (message.conversationId ?? null) === (other.conversationId ?? null)
+    && (message.conversationSequence ?? null) === (other.conversationSequence ?? null)
+    && (message.clientMessageId ?? null) === (other.clientMessageId ?? null)
+    && (message.version ?? null) === (other.version ?? null)
     && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
+}
+
+export function compareCloudMessages(left: CloudMessage, right: CloudMessage): number {
+  const sameConversation = Boolean(
+    left.sessionId
+    && right.sessionId
+    && left.sessionId === right.sessionId,
+  );
+  if (sameConversation) {
+    const leftSequence = left.conversationSequence;
+    const rightSequence = right.conversationSequence;
+    const leftIsCanonical = Number.isSafeInteger(leftSequence) && Number(leftSequence) > 0;
+    const rightIsCanonical = Number.isSafeInteger(rightSequence) && Number(rightSequence) > 0;
+    if (leftIsCanonical && rightIsCanonical && leftSequence !== rightSequence) {
+      return Number(leftSequence) - Number(rightSequence);
+    }
+    if (leftIsCanonical !== rightIsCanonical) return leftIsCanonical ? -1 : 1;
+  }
+  return left.createdAt.localeCompare(right.createdAt)
+    || left.messageId.localeCompare(right.messageId);
 }
 
 export function mergeCloudMessageMonotonicState(
   current: CloudMessage,
   incoming: CloudMessage,
 ): CloudMessage {
+  const incomingIsOlder = current.version != null
+    && incoming.version != null
+    && incoming.version < current.version;
   const merged = {
     ...current,
-    ...incoming,
-    attachments: incoming.attachments ?? current.attachments,
+    ...(incomingIsOlder ? {} : incoming),
+    attachments: incomingIsOlder
+      ? current.attachments
+      : incoming.attachments ?? current.attachments,
     deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
     readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
   };
@@ -81,8 +110,5 @@ export function upsertCloudMessage(
 }
 
 function sortCloudMessages(messages: CloudMessage[]): CloudMessage[] {
-  return messages.sort((left, right) => (
-    left.createdAt.localeCompare(right.createdAt)
-    || left.messageId.localeCompare(right.messageId)
-  ));
+  return messages.sort(compareCloudMessages);
 }

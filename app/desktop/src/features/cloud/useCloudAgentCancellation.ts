@@ -291,6 +291,11 @@ export function useCloudAgentRequestCancellation({
             session.token,
             targetAccountId,
             cancelBody,
+            {
+              sessionId: groupId,
+              conversationKind: 'group',
+              memberAccountIds: targetAccountIds,
+            },
           ),
         ),
       );

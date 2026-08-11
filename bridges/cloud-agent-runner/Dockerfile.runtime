@@ -1,4 +1,22 @@
-FROM ubuntu:24.04
+# Build inside the same Debian release used by the runtime image. Building the
+# runner directly on the deployment VM can link it against a newer glibc than
+# bookworm provides, causing a crash loop before the process reaches main().
+FROM docker.io/library/rust:1.97-slim-bookworm AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY agent ./agent
+COPY app ./app
+COPY bridges ./bridges
+COPY shared ./shared
+
+RUN cargo build --release -p kordi-cloud-agent-runner
+
+FROM docker.io/library/debian:bookworm-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -6,6 +24,6 @@ RUN apt-get update \
     && chmod +x /usr/local/bin/kubectl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY target/release/kordi-cloud-agent-runner /usr/local/bin/kordi-cloud-agent-runner
+COPY --from=builder /workspace/target/release/kordi-cloud-agent-runner /usr/local/bin/kordi-cloud-agent-runner
 
 ENTRYPOINT ["/usr/local/bin/kordi-cloud-agent-runner"]

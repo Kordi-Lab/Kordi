@@ -280,10 +280,13 @@ export function planCloudSelfAgentCanonicalSync({
     const derivedStableCanonicalMessageId = responseRequestId
       ? cloudSelfAgentStableResponseId(stableRequestCloudMessageId)
       : cloudSelfAgentCanonicalMessageId(message.messageId);
-    const stableCanonicalMessageId =
+    const stableCanonicalMessageId = cleanText(
+      message.canonicalHistoryLocalMessageId,
+    ) || (
       legacyResponseIdByStableCanonicalId.get(
         derivedStableCanonicalMessageId,
-      ) ?? derivedStableCanonicalMessageId;
+      ) ?? derivedStableCanonicalMessageId
+    );
     const existingMatch = findExistingCanonicalCloudSelfAgentMessage(
       existingCanonicalMessageIndex,
       {

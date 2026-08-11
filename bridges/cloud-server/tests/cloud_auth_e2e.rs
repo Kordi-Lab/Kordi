@@ -18,9 +18,6 @@ use std::time::Duration;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use kordi_cloud_server::auth::messages::{
-    persist_cloud_message, PersistCloudMessageInput, PersistedMessageAttachment,
-};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
 use kordi_cloud_server::auth::routes::routes_with_config;
@@ -120,15 +117,6 @@ fn post_json_with_token(uri: &str, token: &str, body: serde_json::Value) -> Requ
         .unwrap()
 }
 
-fn put_with_token(uri: &str, token: &str) -> Request<Body> {
-    Request::builder()
-        .method("PUT")
-        .uri(uri)
-        .header("authorization", format!("Bearer {token}"))
-        .body(Body::empty())
-        .unwrap()
-}
-
 fn delete_with_token(uri: &str, token: &str) -> Request<Body> {
     Request::builder()
         .method("DELETE")
@@ -150,17 +138,7 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
 mod account_auth;
 #[path = "cloud_auth_e2e/group_invitations.rs"]
 mod group_invitations;
-#[path = "cloud_auth_e2e/message_idempotency.rs"]
-mod message_idempotency;
-#[path = "cloud_auth_e2e/message_lookup.rs"]
-mod message_lookup;
-#[path = "cloud_auth_e2e/messages_and_attachments.rs"]
-mod messages_and_attachments;
 #[path = "cloud_auth_e2e/public_identity.rs"]
 mod public_identity;
-#[path = "cloud_auth_e2e/read_receipts.rs"]
-mod read_receipts;
 #[path = "cloud_auth_e2e/session_and_presence.rs"]
 mod session_and_presence;
-#[path = "cloud_auth_e2e/sync_and_visibility.rs"]
-mod sync_and_visibility;

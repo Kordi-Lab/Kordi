@@ -93,13 +93,8 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
         .as_str()
         .unwrap()
         .to_string();
-    assert!(response_message_id.starts_with("cloudrunmsg_"));
-    let (body,): (String,) =
-        sqlx_core::query_as::query_as("SELECT body FROM cloud_messages WHERE message_id = $1")
-            .bind(&response_message_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    assert!(uuid::Uuid::parse_str(&response_message_id).is_ok());
+    let body = v2_message_body(&pool, &response_message_id).await;
     assert!(body.starts_with("kordi-cloud-agent-response:"));
     let encoded = body.trim_start_matches("kordi-cloud-agent-response:");
     let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
@@ -345,13 +340,8 @@ async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() 
         .as_str()
         .unwrap()
         .to_string();
-    assert!(response_message_id.starts_with("cloudrunmsg_"));
-    let (body,): (String,) =
-        sqlx_core::query_as::query_as("SELECT body FROM cloud_messages WHERE message_id = $1")
-            .bind(&response_message_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    assert!(uuid::Uuid::parse_str(&response_message_id).is_ok());
+    let body = v2_message_body(&pool, &response_message_id).await;
     assert!(body.starts_with("kordi-cloud-agent-response:"));
     let encoded = body.trim_start_matches("kordi-cloud-agent-response:");
     let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD

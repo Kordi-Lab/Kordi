@@ -2,6 +2,32 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cloudGroupAttachmentReferences, cloudGroupAdminAccountIds, cloudGroupControlWithAttachmentReferences, cloudGroupControlMessagesForAccount, cloudGroupOutgoingParticipantSnapshot, cloudGroupParticipantsForCollaborationSession, cloudGroupRelatedControlsForSend, encodeCloudGroupControl, isCloudGroupSessionId, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 
+test('iOS fractional millisecond timestamps normalize before native projection', () => {
+  const payload = {
+    kind: 'group-message',
+    groupId: 'session:group:ios-fractional-time',
+    groupSpaceId: 'session:group:ios-fractional-time',
+    groupTitle: 'Cross-device test',
+    createdByAccountId: 'acct_sender',
+    actor: { accountId: 'acct_sender', displayName: 'Sender', avatarUrl: null, role: 'self' },
+    participants: [
+      { accountId: 'acct_sender', displayName: 'Sender', avatarUrl: null, role: 'self' },
+      { accountId: 'acct_receiver', displayName: 'Receiver', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'ios_fractional_message',
+      senderAccountId: 'acct_sender',
+      senderKind: 'human',
+      text: 'send from iphone test',
+      createdAtMs: 1_786_443_676_216.46,
+      deliveryState: 'complete',
+    },
+  };
+  const body = `kordi-cloud-group:${Buffer.from(JSON.stringify(payload)).toString('base64url')}`;
+
+  assert.equal(parseCloudGroupControl(body)?.message?.createdAtMs, 1_786_443_676_216);
+});
+
 test('group admin snapshots always keep the creator and explicit promoted admins', () => {
   const envelope = parseCloudGroupControl(encodeCloudGroupControl({
     kind: 'group-update',

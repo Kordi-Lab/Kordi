@@ -35,6 +35,8 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>KordiCloudBaseURL</key>
+	<string>$(KORDI_CLOUD_BASE_URL)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Kordi uses the camera when you choose to attach a new photo to a message.</string>
 	<key>UILaunchScreen</key>

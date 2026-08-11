@@ -13,8 +13,8 @@ pub use authorization::{
     validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
 };
 pub use claims::{
-    claim_run, lookup_run_for_request, ClaimRunRequest, CloudAgentRunLookupResponse,
-    CloudAgentRunResponse,
+    claim_run, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
+    CloudAgentRunLookupResponse, CloudAgentRunResponse,
 };
 pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest};
 #[cfg(test)]
@@ -335,6 +335,7 @@ mod tests {
             owner_account_id: "acct_owner".to_string(),
             requester_account_id: "acct_requester".to_string(),
             prompt: "@OwnerKordi hello".to_string(),
+            runtime_route: None,
             idempotency_key: "session:msg:owner".to_string(),
         };
         assert!(valid.is_well_formed());

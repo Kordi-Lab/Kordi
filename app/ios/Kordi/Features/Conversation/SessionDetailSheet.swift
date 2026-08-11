@@ -25,12 +25,16 @@ struct SessionDetailSheet: View {
     @State private var shareItem: SharedFileItem?
     @State private var loadingAttachmentId: String?
 
+    private var currentConversation: ConversationSummary {
+        model.conversations.first { $0.id == conversation.id } ?? conversation
+    }
+
     private var activity: CloudSessionActivity? {
-        model.sessionActivityByID[conversation.sessionId]
+        model.sessionActivityByID[currentConversation.sessionId]
     }
 
     private var attachmentArtifacts: [SessionDetailAttachment] {
-        model.messages(for: conversation)
+        model.messages(for: currentConversation)
             .flatMap { message in
                 message.attachments.map { SessionDetailAttachment(message: message, attachment: $0) }
             }
@@ -57,15 +61,15 @@ struct SessionDetailSheet: View {
                 case .tasks: tasksPage
                 }
             }
-            .navigationTitle(conversation.displayName)
+            .navigationTitle(currentConversation.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
         .task {
-            await model.loadConversation(conversation)
-            await model.loadSessionActivity(conversation)
+            await model.loadConversation(currentConversation)
+            await model.loadSessionActivity(currentConversation)
         }
         .quickLookPreview($previewURL)
         .sheet(item: $shareItem) { item in ActivityShareSheet(items: [item.url]) }
@@ -74,17 +78,17 @@ struct SessionDetailSheet: View {
     private var infoPage: some View {
         List {
             Section("Overview") {
-                LabeledContent("Name", value: conversation.displayName)
+                LabeledContent("Name", value: currentConversation.displayName)
                 LabeledContent("Type", value: kindLabel)
-                LabeledContent("Messages", value: String(model.messages(for: conversation).count))
-                if conversation.kind == .group {
-                    LabeledContent("Participants", value: String(conversation.groupParticipants.count))
+                LabeledContent("Messages", value: String(model.messages(for: currentConversation).count))
+                if currentConversation.kind == .group {
+                    LabeledContent("Participants", value: String(currentConversation.groupParticipants.count))
                 }
             }
 
-            if conversation.kind == .group {
+            if currentConversation.kind == .group {
                 Section("Participants") {
-                    ForEach(conversation.groupParticipants) { participant in
+                    ForEach(currentConversation.groupParticipants) { participant in
                         HStack(spacing: 12) {
                             IdentityAvatar(
                                 name: participant.displayName,
@@ -95,9 +99,7 @@ struct SessionDetailSheet: View {
                             )
                             Text(participant.displayName)
                             Spacer()
-                            if let role = participant.role.nonEmpty {
-                                Text(role.capitalized).foregroundStyle(.secondary)
-                            }
+                            Text(participantRoleLabel(participant)).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -173,7 +175,7 @@ struct SessionDetailSheet: View {
     }
 
     private var kindLabel: String {
-        switch conversation.kind {
+        switch currentConversation.kind {
         case .person: "Contact"
         case .agent: "Agent session"
         case .group: "Group session"
@@ -204,6 +206,14 @@ struct SessionDetailSheet: View {
         case "failed", "blocked": .orange
         default: KordiTheme.signalBlue
         }
+    }
+
+    private func participantRoleLabel(_ participant: CloudGroupParticipant) -> String {
+        if participant.accountId == model.account?.accountId { return "Self" }
+        if let role = participant.role?.lowercased(), ["owner", "admin"].contains(role) {
+            return "Admin"
+        }
+        return "Person"
     }
 }
 

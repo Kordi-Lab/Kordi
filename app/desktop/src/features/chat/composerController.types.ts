@@ -2,6 +2,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
+import type { CloudMessage } from '@/features/cloud/authClient';
 import type {
   SendCloudCollaborationMessageOptions,
   SendCloudGroupControlInput,
@@ -124,7 +125,7 @@ export type ComposerMessageRuntimeContext = {
     text: string,
     attachments?: AttachmentItem[],
     options?: SendCloudCollaborationMessageOptions,
-  ) => Promise<void>;
+  ) => Promise<CloudMessage>;
   sendCloudGroupControl?: (input: SendCloudGroupControlInput) => Promise<void>;
   cancelCloudAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;

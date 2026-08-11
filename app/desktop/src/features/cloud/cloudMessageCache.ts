@@ -100,6 +100,12 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     ? record.attachments.map(cloudMessageAttachmentMetadataOnly).filter((item): item is CloudMessageAttachment => Boolean(item))
     : [];
   const sessionId = cleanText(record.sessionId);
+  const conversationId = cleanText(record.conversationId);
+  const clientMessageId = cleanText(record.clientMessageId);
+  const conversationSequence = Number.isSafeInteger(record.conversationSequence)
+    && Number(record.conversationSequence) > 0 ? Number(record.conversationSequence) : null;
+  const version = Number.isSafeInteger(record.version)
+    && Number(record.version) > 0 ? Number(record.version) : null;
   return {
     messageId,
     fromAccountId,
@@ -110,6 +116,10 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     readAt: typeof record.readAt === 'string' ? record.readAt : null,
     direction: fromAccountId === accountId ? 'outgoing' : 'incoming',
     ...(sessionId ? { sessionId } : {}),
+    ...(conversationId ? { conversationId } : {}),
+    ...(clientMessageId ? { clientMessageId } : {}),
+    ...(conversationSequence ? { conversationSequence } : {}),
+    ...(version ? { version } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
@@ -283,7 +293,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     this.activeLoads.set(normalizedAccountId, activeLoads);
     return loading;
   }
-
   private async loadAccount(normalizedAccountId: string, generation: number) {
     const failedWriteAtStart = this.failedWrites.get(normalizedAccountId);
     const latestValueAtStart = this.latestValues.get(normalizedAccountId);
@@ -327,7 +336,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
         // Fall through to the legacy snapshot when IndexedDB is unavailable.
       }
     }
-
     const legacyStorage = this.options.legacyStorage ?? null;
     let legacyValue: unknown = {};
     try {
@@ -353,7 +361,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       generation,
     );
   }
-
   save(accountId: string, value: Record<string, CloudMessage[]>): Promise<void> {
     const normalizedAccountId = accountId.trim();
     if (!normalizedAccountId || !this.options.store) return Promise.resolve();
@@ -409,7 +416,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       });
     });
   }
-
   remove(accountId: string): Promise<void> {
     const normalizedAccountId = accountId.trim();
     if (!normalizedAccountId) return Promise.resolve();
@@ -424,7 +430,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     this.activeRemovals.set(normalizedAccountId, removal);
     return removal;
   }
-
   private async removeAccount(accountId: string) {
     this.accountGenerations.set(accountId, (this.accountGenerations.get(accountId) ?? 0) + 1);
     const activeLoadSettlements: Promise<void>[] = [...(this.activeLoads.get(accountId) ?? [])]
@@ -456,7 +461,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       // Best effort cleanup.
     }
   }
-
   private async flush(accountId: string) {
     const pending = this.pendingWrites.get(accountId);
     if (!pending || !this.options.store) return;
@@ -521,7 +525,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       }
     }
   }
-
   private establishLoadedBaseline(
     accountId: string,
     messagesByPeer: Record<string, CloudMessage[]>,
@@ -539,7 +542,6 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     }
     return messagesByPeer;
   }
-
   private async writePeers(
     accountId: string,
     changedPeers: Record<string, CloudMessage[]>,
@@ -567,9 +569,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     ]);
   }
 }
-
 let defaultCache: CloudMessageCache | null = null;
-
 export function defaultCloudMessageCache(): CloudMessageCache {
   if (defaultCache) return defaultCache;
   const factory = typeof indexedDB === 'undefined' ? null : indexedDB;

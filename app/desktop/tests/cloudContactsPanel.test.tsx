@@ -9,6 +9,7 @@ import type { CloudAccount } from '../src/features/cloud/authClient';
 test('CloudContactsPanel self card uses the provider image avatar instead of a generated pixel fallback', () => {
   const account: CloudAccount = {
     accountId: 'acct_provider',
+    kordiId: '482731906',
     displayName: 'Provider User',
     primaryEmail: 'provider@example.com',
     avatarUrl: 'https://lh3.googleusercontent.com/a/provider-avatar',

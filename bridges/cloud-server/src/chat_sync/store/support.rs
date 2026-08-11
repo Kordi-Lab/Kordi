@@ -1,0 +1,410 @@
+use super::*;
+
+pub(super) fn fingerprint<T: Serialize>(value: &T) -> Result<String, StoreError> {
+    let encoded = serde_json::to_vec(value)
+        .map_err(|_| StoreError::InvariantViolation("request fingerprint serialization failed"))?;
+    Ok(hex::encode(Sha256::digest(encoded)))
+}
+
+pub(super) fn parse_kind(value: &str) -> Result<ConversationKind, StoreError> {
+    match value {
+        "direct" => Ok(ConversationKind::Direct),
+        "group" => Ok(ConversationKind::Group),
+        "ai" => Ok(ConversationKind::Ai),
+        _ => Err(StoreError::InvariantViolation(
+            "stored conversation kind is invalid",
+        )),
+    }
+}
+
+pub(super) fn member_from_row(row: MemberRow) -> MemberSnapshot {
+    MemberSnapshot {
+        account_id: row.0,
+        display_name: row.1,
+        avatar_url: row.2,
+        role: row.3,
+        membership_state: row.4,
+        version: row.5,
+        last_delivered_sequence: row.6,
+        last_read_sequence: row.7,
+        joined_at: row.8,
+        left_at: row.9,
+    }
+}
+
+pub(super) fn message_from_row(row: MessageRow, attachment_ids: Vec<String>) -> MessageSnapshot {
+    MessageSnapshot {
+        id: row.0,
+        client_message_id: row.1,
+        conversation_id: row.2,
+        conversation_sequence: row.3,
+        sender_account_id: row.4,
+        kind: row.5,
+        content: row.6,
+        reply_to_message_id: row.7,
+        attachment_ids,
+        version: row.8,
+        generation_status: row.9,
+        provider_response_id: row.10,
+        created_at: row.11,
+        edited_at: row.12,
+        deleted_at: row.13,
+    }
+}
+
+pub(super) async fn advisory_operation_lock(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    operation_id: Uuid,
+) -> Result<(), StoreError> {
+    // PostgreSQL text values cannot contain NUL bytes. Length-prefix the
+    // account component so the composite key is still unambiguous.
+    let key = format!("{}:{account_id}{operation_id}", account_id.len());
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(key)
+        .execute(&mut **transaction)
+        .await?;
+    Ok(())
+}
+
+pub(super) async fn advisory_session_lock(
+    transaction: &mut Transaction<'_, Postgres>,
+    client_session_id: &str,
+) -> Result<(), StoreError> {
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("chat-session-v2:{client_session_id}"))
+        .execute(&mut **transaction)
+        .await?;
+    Ok(())
+}
+
+pub(super) async fn member_rows(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+) -> Result<Vec<MemberSnapshot>, StoreError> {
+    let rows: Vec<MemberRow> = query_as(
+        "SELECT member.account_id, account.display_name, account.avatar_url, \
+                member.role, member.membership_state, member.version, \
+                member.last_delivered_sequence, member.last_read_sequence, \
+                member.joined_at, member.left_at \
+         FROM cloud_chat_conversation_members member \
+         JOIN cloud_accounts account ON account.account_id = member.account_id \
+         WHERE member.conversation_id = $1 \
+         ORDER BY member.account_id ASC",
+    )
+    .bind(conversation_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    Ok(rows.into_iter().map(member_from_row).collect())
+}
+
+pub(super) async fn load_conversation(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+    viewer_account_id: &str,
+) -> Result<ConversationSnapshot, StoreError> {
+    let row: Option<ConversationRow> = query_as(
+        "SELECT conversation.conversation_id, conversation.kind, \
+                conversation.shared_title, conversation.version, \
+                conversation.created_by_account_id, conversation.legacy_session_id, \
+                fork.parent_session_id, fork.parent_message_id, \
+                conversation.latest_message_sequence, conversation.created_at, \
+                conversation.updated_at \
+         FROM cloud_chat_conversations conversation \
+         LEFT JOIN cloud_session_forks fork \
+           ON fork.fork_session_id = conversation.legacy_session_id \
+         WHERE conversation.conversation_id = $1",
+    )
+    .bind(conversation_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    let row = row.ok_or(StoreError::NotFound)?;
+    let preferences: Option<(Option<String>, i32)> = query_as(
+        "SELECT personal_title, preferences_version \
+         FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active'",
+    )
+    .bind(conversation_id)
+    .bind(viewer_account_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    let (personal_title, preferences_version) = preferences.ok_or(StoreError::Forbidden)?;
+    Ok(ConversationSnapshot {
+        id: row.0,
+        kind: parse_kind(&row.1)?,
+        shared_title: row.2,
+        version: row.3,
+        created_by_account_id: row.4,
+        legacy_session_id: row.5,
+        forked_from_session_id: row.6,
+        forked_from_message_id: row.7,
+        latest_message_sequence: row.8,
+        created_at: row.9,
+        updated_at: row.10,
+        members: member_rows(transaction, conversation_id).await?,
+        preferences: ConversationPreferencesSnapshot {
+            conversation_id,
+            account_id: viewer_account_id.to_string(),
+            personal_title,
+            version: preferences_version,
+        },
+    })
+}
+
+pub(super) async fn attachment_ids(
+    transaction: &mut Transaction<'_, Postgres>,
+    message_id: Uuid,
+) -> Result<Vec<String>, StoreError> {
+    let rows: Vec<(String,)> = query_as(
+        "SELECT attachment_id FROM cloud_chat_message_attachments \
+         WHERE message_id = $1 ORDER BY position ASC",
+    )
+    .bind(message_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    Ok(rows.into_iter().map(|row| row.0).collect())
+}
+
+pub(super) async fn load_message(
+    transaction: &mut Transaction<'_, Postgres>,
+    message_id: Uuid,
+) -> Result<MessageSnapshot, StoreError> {
+    let row: Option<MessageRow> = query_as(
+        "SELECT message_id, client_message_id, conversation_id, conversation_sequence, \
+                sender_account_id, message_kind, content, reply_to_message_id, version, \
+                generation_status, provider_response_id, created_at, edited_at, deleted_at \
+         FROM cloud_chat_messages WHERE message_id = $1",
+    )
+    .bind(message_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    let row = row.ok_or(StoreError::NotFound)?;
+    let attachments = attachment_ids(transaction, row.0).await?;
+    Ok(message_from_row(row, attachments))
+}
+
+pub(super) async fn active_member_ids(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+) -> Result<Vec<String>, StoreError> {
+    let rows: Vec<(String,)> = query_as(
+        "SELECT account_id FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND membership_state = 'active' \
+         ORDER BY account_id ASC",
+    )
+    .bind(conversation_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    Ok(rows.into_iter().map(|row| row.0).collect())
+}
+
+pub(super) async fn require_active_member(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+    account_id: &str,
+) -> Result<(), StoreError> {
+    let member: Option<(i32,)> = query_as(
+        "SELECT 1 FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active'",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    if member.is_none() {
+        return Err(StoreError::Forbidden);
+    }
+    Ok(())
+}
+
+pub(super) async fn insert_sync_event(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    event_type: &str,
+    conversation_id: Option<Uuid>,
+    entity_id: Option<Uuid>,
+    entity_version: Option<i32>,
+    payload: &Value,
+) -> Result<i64, StoreError> {
+    query(
+        "INSERT INTO cloud_chat_user_sync_heads(account_id, last_seq, min_seq) \
+         VALUES ($1, 0, 0) ON CONFLICT (account_id) DO NOTHING",
+    )
+    .bind(account_id)
+    .execute(&mut **transaction)
+    .await?;
+    let head: (i64,) = query_as(
+        "UPDATE cloud_chat_user_sync_heads \
+         SET last_seq = last_seq + 1 \
+         WHERE account_id = $1 \
+         RETURNING last_seq",
+    )
+    .bind(account_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    query(
+        "INSERT INTO cloud_chat_user_sync_events \
+         (account_id, stream_seq, event_id, protocol_version, event_type, conversation_id, \
+          entity_id, entity_version, critical, payload) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9)",
+    )
+    .bind(account_id)
+    .bind(head.0)
+    .bind(Uuid::now_v7())
+    .bind(PROTOCOL_VERSION)
+    .bind(event_type)
+    .bind(conversation_id)
+    .bind(entity_id)
+    .bind(entity_version)
+    .bind(payload)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(head.0)
+}
+
+pub(super) async fn wake_dispatcher(
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<(), StoreError> {
+    query("SELECT pg_notify('chat_sync_events', 'new-events')")
+        .execute(&mut **transaction)
+        .await?;
+    Ok(())
+}
+
+/// Append a non-timeline domain event to each recipient's durable v2 stream.
+/// Recipients are de-duplicated and sorted before their sync-head rows are
+/// locked, preserving the same deterministic lock order as message fanout.
+async fn append_user_sync_events(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_ids: &[String],
+    event_type: &str,
+    conversation_id: Option<Uuid>,
+    payload: &Value,
+) -> Result<(), StoreError> {
+    let recipients = account_ids
+        .iter()
+        .map(|account_id| account_id.trim())
+        .filter(|account_id| !account_id.is_empty())
+        .map(ToString::to_string)
+        .collect::<BTreeSet<_>>();
+    for recipient in &recipients {
+        insert_sync_event(
+            transaction,
+            recipient,
+            event_type,
+            conversation_id,
+            None,
+            None,
+            payload,
+        )
+        .await?;
+    }
+    if !recipients.is_empty() {
+        wake_dispatcher(transaction).await?;
+    }
+    Ok(())
+}
+
+/// Publish an ancillary domain snapshot through chat sync v2. Callers whose
+/// canonical row is written in the same operation should prefer
+/// `append_user_sync_events` inside their existing transaction.
+pub async fn publish_user_sync_events(
+    pool: &PgPool,
+    account_ids: &[String],
+    event_type: &str,
+    conversation_id: Option<Uuid>,
+    payload: Value,
+) -> Result<(), StoreError> {
+    let mut transaction = pool.begin().await?;
+    append_user_sync_events(
+        &mut transaction,
+        account_ids,
+        event_type,
+        conversation_id,
+        &payload,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+pub(super) async fn existing_operation<T: serde::de::DeserializeOwned>(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    operation_id: Uuid,
+    operation_kind: &str,
+    expected_fingerprint: &str,
+) -> Result<Option<T>, StoreError> {
+    let row: Option<(String, String, Value)> = query_as(
+        "SELECT operation_kind, request_fingerprint, result \
+         FROM cloud_chat_client_operations \
+         WHERE account_id = $1 AND client_operation_id = $2",
+    )
+    .bind(account_id)
+    .bind(operation_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    let Some((stored_kind, stored_fingerprint, result)) = row else {
+        return Ok(None);
+    };
+    if stored_kind != operation_kind || stored_fingerprint != expected_fingerprint {
+        return Err(StoreError::IdempotencyKeyReused);
+    }
+    let decoded = serde_json::from_value(result)
+        .map_err(|_| StoreError::InvariantViolation("stored operation result is invalid"))?;
+    Ok(Some(decoded))
+}
+
+pub(super) async fn record_operation<T: Serialize>(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    operation_id: Uuid,
+    operation_kind: &str,
+    request_fingerprint: &str,
+    result: &T,
+) -> Result<(), StoreError> {
+    let result = serde_json::to_value(result)
+        .map_err(|_| StoreError::InvariantViolation("operation result serialization failed"))?;
+    query(
+        "INSERT INTO cloud_chat_client_operations \
+         (account_id, client_operation_id, operation_kind, request_fingerprint, result) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(account_id)
+    .bind(operation_id)
+    .bind(operation_kind)
+    .bind(request_fingerprint)
+    .bind(result)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+pub(super) fn normalize_title(value: Option<&str>) -> Result<Option<String>, StoreError> {
+    let title = value.map(str::trim).filter(|value| !value.is_empty());
+    if title.is_some_and(|value| value.chars().count() > 200) {
+        return Err(StoreError::InvalidInput("title is too long"));
+    }
+    Ok(title.map(ToString::to_string))
+}
+
+pub(super) fn normalize_client_session_id(
+    value: Option<&str>,
+) -> Result<Option<String>, StoreError> {
+    let session_id = value.map(str::trim).filter(|value| !value.is_empty());
+    if session_id.is_some_and(|value| value.chars().count() > 512) {
+        return Err(StoreError::InvalidInput("client session id is too long"));
+    }
+    Ok(session_id.map(ToString::to_string))
+}
+
+pub(super) fn normalized_members(account_id: &str, values: &[String]) -> Vec<String> {
+    let mut members = values
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect::<BTreeSet<_>>();
+    members.insert(account_id.to_string());
+    members.into_iter().collect()
+}

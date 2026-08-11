@@ -380,6 +380,130 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.avatarUrl, "https://cdn.example/maya-current.png")
     }
 
+    func testGroupParticipantAvatarsAreEnrichedFromCanonicalV2MembersWithoutContacts() throws {
+        let staleParticipants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "owner"),
+            CloudGroupParticipant(accountId: "acct_jiaxin", displayName: "Jiaxin", avatarUrl: nil, role: "member")
+        ]
+        let invite = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-invite",
+            groupId: "session:group:canonical-avatar",
+            groupSpaceId: "session:group:canonical-avatar",
+            groupTitle: "Main",
+            createdByAccountId: "acct_me",
+            actor: staleParticipants[0],
+            participants: staleParticipants,
+            message: nil
+        ))
+        let currentAccount = CloudAccount(
+            accountId: "acct_me",
+            kordiId: "123456789",
+            displayName: "Me",
+            primaryEmail: "me@example.com",
+            avatarUrl: nil,
+            nodeId: nil,
+            passwordSet: true
+        )
+        let canonicalJiaxinAvatar = "data:image/jpeg;base64,/9j/2Q=="
+
+        let catalog = CloudConversationCatalog.build(
+            account: currentAccount,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [
+                "acct_jiaxin": [
+                    wire(
+                        id: "invite",
+                        body: invite,
+                        sessionId: "session:group:canonical-avatar",
+                        createdAt: "2026-08-08T09:00:00Z"
+                    )
+                ]
+            ],
+            canonicalParticipantsBySessionId: [
+                "session:group:canonical-avatar": [
+                    CloudGroupParticipant(
+                        accountId: "acct_me",
+                        displayName: "Me",
+                        avatarUrl: nil,
+                        role: "owner"
+                    ),
+                    CloudGroupParticipant(
+                        accountId: "acct_jiaxin",
+                        displayName: "Jiaxin Pei",
+                        avatarUrl: canonicalJiaxinAvatar,
+                        role: "member"
+                    )
+                ]
+            ]
+        )
+
+        let participants = try XCTUnwrap(catalog.first { $0.kind == .group }?.groupParticipants)
+        XCTAssertEqual(participants.first { $0.accountId == "acct_jiaxin" }?.displayName, "Jiaxin Pei")
+        XCTAssertEqual(participants.first { $0.accountId == "acct_jiaxin" }?.avatarUrl, canonicalJiaxinAvatar)
+    }
+
+    func testLaterSparseGroupSnapshotDoesNotEraseEarlierParticipantProfiles() throws {
+        let richParticipants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: "https://cdn.example/me.png", role: "self"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: "https://cdn.example/maya.png", role: "admin")
+        ]
+        let sparseParticipants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "", avatarUrl: nil, role: "person")
+        ]
+        let invite = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-invite",
+            groupId: "session:group:sparse-profile",
+            groupSpaceId: "session:group:sparse-profile",
+            groupTitle: "Profile-safe group",
+            createdByAccountId: "acct_maya",
+            actor: richParticipants[1],
+            participants: richParticipants,
+            message: nil
+        ))
+        let sparseMessage = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-message",
+            groupId: "session:group:sparse-profile",
+            groupSpaceId: "session:group:sparse-profile",
+            groupTitle: nil,
+            createdByAccountId: "acct_me",
+            actor: sparseParticipants[0],
+            participants: sparseParticipants,
+            message: CloudGroupMessagePayload(
+                id: "group-message-sparse",
+                senderAccountId: "acct_me",
+                text: "hello",
+                createdAtMs: 1_786_180_800_000,
+                senderKind: "human",
+                senderDisplayName: "Shuyang",
+                deliveryState: "complete",
+                replyToMessageId: nil,
+                requestId: nil
+            )
+        ))
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [
+                "acct_maya": [
+                    wire(id: "rich", body: invite, sessionId: "session:group:sparse-profile", createdAt: "2026-08-08T09:00:00Z"),
+                    wire(id: "sparse", body: sparseMessage, sessionId: "session:group:sparse-profile", createdAt: "2026-08-08T10:00:00Z")
+                ]
+            ]
+        )
+
+        let participants = try XCTUnwrap(catalog.first { $0.kind == .group }?.groupParticipants)
+        XCTAssertEqual(participants.first { $0.accountId == "acct_me" }?.avatarUrl, "https://cdn.example/me.png")
+        XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.displayName, "Maya")
+        XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.avatarUrl, "https://cdn.example/maya.png")
+        XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.role, "person")
+    }
+
     func testRejectsMalformedGroupControls() {
         XCTAssertNil(CloudGroupMessageCodec.parse("hello"))
         XCTAssertNil(CloudGroupMessageCodec.parse("kordi-cloud-group:not-base64"))

@@ -224,46 +224,56 @@ pub(super) async fn fallback_prompt_for_claim(
         &input.request_message_id,
     )
     .await?;
-    let request_created_at = if let Some((_, created_at)) = group_request.as_ref() {
-        created_at.clone()
-    } else {
-        let Some((created_at,)) = query_as::<_, (String,)>(
-            "SELECT created_at FROM cloud_messages WHERE message_id = $1 AND session_id = $2",
-        )
-        .bind(&input.request_message_id)
-        .bind(&input.session_id)
-        .fetch_optional(pool)
-        .await?
-        else {
-            return Ok(input.prompt.trim().to_string());
-        };
-        created_at
-    };
-
-    let mut history = query_as::<_, (String, String)>(
-        "SELECT from_account_id, body FROM cloud_messages \
-         WHERE session_id = $1 AND created_at < $2 \
-         ORDER BY created_at DESC LIMIT $3",
+    let mut v2_rows = query_as::<_, (String, String, String)>(
+        "SELECT message.message_id::text, message.sender_account_id,
+                message.content #>> '{blocks,0,text}'
+         FROM cloud_chat_conversations conversation
+         JOIN cloud_chat_messages message
+           ON message.conversation_id = conversation.conversation_id
+         WHERE conversation.legacy_session_id = $1
+           AND message.deleted_at IS NULL
+           AND message.content #>> '{blocks,0,text}' IS NOT NULL
+         ORDER BY message.conversation_sequence DESC LIMIT 256",
     )
     .bind(&input.session_id)
-    .bind(&request_created_at)
-    .bind(MAX_CLOUD_FALLBACK_HISTORY_MESSAGES)
     .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|(from_account_id, body)| CloudFallbackHistoryMessage {
-        from_account_id,
-        body,
-    })
-    .collect::<Vec<_>>();
-    history.reverse();
-
-    let prompt = fallback_prompt_with_history(
-        &input.requester_account_id,
-        &input.owner_account_id,
-        &input.prompt,
-        &history,
-    );
+    .await?;
+    if !v2_rows.is_empty() {
+        v2_rows.reverse();
+        let request_index = v2_rows.iter().position(|(message_id, _, body)| {
+            message_id == &input.request_message_id
+                || parse_cloud_group_envelope(body)
+                    .and_then(|envelope| envelope.message)
+                    .is_some_and(|message| message.id == input.request_message_id)
+        });
+        let history_end = request_index.unwrap_or(v2_rows.len());
+        let history_start =
+            history_end.saturating_sub(MAX_CLOUD_FALLBACK_HISTORY_MESSAGES as usize);
+        let history = v2_rows[history_start..history_end]
+            .iter()
+            .map(|(_, from_account_id, body)| CloudFallbackHistoryMessage {
+                from_account_id: from_account_id.clone(),
+                body: body.clone(),
+            })
+            .collect::<Vec<_>>();
+        let prompt = fallback_prompt_with_history(
+            &input.requester_account_id,
+            &input.owner_account_id,
+            &input.prompt,
+            &history,
+        );
+        let group_mention_instruction = group_request
+            .as_ref()
+            .and_then(|(envelope, _)| mention_instruction(envelope, &input.owner_account_id));
+        let prompt = group_mention_instruction
+            .map(|instruction| format!("{instruction}\n\n{prompt}"))
+            .unwrap_or(prompt);
+        if let Some(prefix) = shared_cloud_agent_prompt_prefix(pool, input).await? {
+            return Ok(format!("{prefix}\n\nConversation request:\n{prompt}"));
+        }
+        return Ok(prompt);
+    }
+    let prompt = input.prompt.trim().to_string();
     let group_mention_instruction = group_request
         .as_ref()
         .and_then(|(envelope, _)| mention_instruction(envelope, &input.owner_account_id));

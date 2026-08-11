@@ -6,7 +6,7 @@ import UIKit
 
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
-    let conversation: ConversationSummary
+    private let initialConversation: ConversationSummary
     @State private var draft = ""
     @State private var isSending = false
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
@@ -30,6 +30,18 @@ struct ConversationView: View {
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
     @State private var forwardedDestination: ConversationSummary?
+
+    init(conversation: ConversationSummary) {
+        initialConversation = conversation
+    }
+
+    /// Navigation can outlive a sync pass. Resolve the current summary by its
+    /// stable id so title, participant names, and avatars update while the
+    /// conversation is already open instead of requiring a back/reopen cycle.
+    private var conversation: ConversationSummary {
+        model.conversations.first(where: { $0.id == initialConversation.id })
+            ?? initialConversation
+    }
 
     private var messages: [ChatMessage] { model.messages(for: conversation) }
     private let bottomAnchorID = "conversation-bottom"

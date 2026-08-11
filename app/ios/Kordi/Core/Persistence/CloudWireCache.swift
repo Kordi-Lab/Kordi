@@ -1,11 +1,23 @@
 import Foundation
 
 struct CloudWireSnapshot: Codable {
+    static let currentForkLineageVersion = 1
+
     let accountId: String
     let cursor: String
     let messagesByPeer: [String: [CloudMessageDTO]]
     let sessionForksById: [String: CloudSessionForkSummary]?
+    let forkLineageVersion: Int?
     let savedAt: Date
+}
+
+enum CloudSyncRecoveryPolicy {
+    static func requiresBootstrap(
+        hasHydratedWireSnapshot: Bool,
+        hasHydratedForkLineage: Bool
+    ) -> Bool {
+        !hasHydratedWireSnapshot || !hasHydratedForkLineage
+    }
 }
 
 /// Persists the canonical Cloud projection away from the main actor so an app
@@ -49,6 +61,7 @@ actor CloudWireCache {
                 cursor: cursor,
                 messagesByPeer: messagesByPeer,
                 sessionForksById: sessionForksById,
+                forkLineageVersion: CloudWireSnapshot.currentForkLineageVersion,
                 savedAt: Date()
             )
             try encoder.encode(snapshot).write(to: url, options: .atomic)

@@ -61,7 +61,8 @@ async fn runner_explicit_artifact_export_creates_object_backed_chat_attachment()
     assert_eq!(body["artifact"]["sandboxPath"], "report.md");
 
     let linked: (i64,) = sqlx_core::query_as::query_as(
-        "SELECT COUNT(*)::BIGINT FROM cloud_message_attachments WHERE message_id = $1 AND attachment_id = $2",
+        "SELECT COUNT(*)::BIGINT FROM cloud_chat_message_attachments \
+         WHERE message_id::text = $1 AND attachment_id = $2",
     )
     .bind(&message_id)
     .bind(&attachment_id)
@@ -229,13 +230,14 @@ async fn export_before_completion_uses_stable_response_message_that_completion_u
         message_id
     );
 
-    let message: (String,) =
-        sqlx_core::query_as::query_as("SELECT body FROM cloud_messages WHERE message_id = $1")
-            .bind(&message_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(message.0, "Here is the exported report.");
+    let body = v2_message_body(&pool, &message_id).await;
+    assert!(body.starts_with("kordi-cloud-agent-response:"));
+    let encoded = body.trim_start_matches("kordi-cloud-agent-response:");
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(encoded)
+        .unwrap();
+    let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+    assert_eq!(envelope["text"], "Here is the exported report.");
 }
 
 #[tokio::test]

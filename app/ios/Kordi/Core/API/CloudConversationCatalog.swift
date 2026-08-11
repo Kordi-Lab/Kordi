@@ -7,6 +7,7 @@ enum CloudConversationCatalog {
         ownedAgents: [CloudAgent],
         sharedAgents: [CloudAgent],
         messagesByPeer: [String: [CloudMessageDTO]],
+        canonicalParticipantsBySessionId: [String: [CloudGroupParticipant]] = [:],
         sessionForksById: [String: CloudSessionForkSummary] = [:],
         hiddenSessionIds: Set<String> = [],
         deletedSessionIds: Set<String> = [],
@@ -42,6 +43,7 @@ enum CloudConversationCatalog {
         let groups = groupConversations(
             account: account,
             contactsById: contactsById,
+            canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
             controls: groupRows
         )
         let groupSessionIds = Set(groups.map(\.sessionId))
@@ -121,6 +123,7 @@ enum CloudConversationCatalog {
     private static func groupConversations(
         account: CloudAccount,
         contactsById: [String: CloudContact],
+        canonicalParticipantsBySessionId: [String: [CloudGroupParticipant]],
         controls: [(CloudMessageDTO, CloudGroupControlEnvelope)]
     ) -> [ConversationSummary] {
         let grouped = Dictionary(grouping: controls, by: { $0.1.groupId })
@@ -130,7 +133,10 @@ enum CloudConversationCatalog {
             let sorted = rows.sorted { rowDate($0) < rowDate($1) }
             guard !sorted.isEmpty else { return nil }
             let participants = enrichedParticipants(
-                latestParticipants(in: sorted.map(\.1)),
+                mergedParticipants(
+                    legacy: latestParticipants(in: sorted.map(\.1)),
+                    canonical: canonicalParticipantsBySessionId[groupId] ?? []
+                ),
                 account: account,
                 contactsById: contactsById
             )
@@ -358,9 +364,15 @@ enum CloudConversationCatalog {
 
     private static func latestParticipants(in controls: [CloudGroupControlEnvelope]) -> [CloudGroupParticipant] {
         var byId: [String: CloudGroupParticipant] = [:]
-        for participant in controls.last(where: { !$0.participants.isEmpty })?.participants ?? [] {
+        for participant in controls.flatMap(\.participants) {
             guard let accountId = participant.accountId.nonEmpty else { continue }
-            byId[accountId] = participant
+            let previous = byId[accountId]
+            byId[accountId] = CloudGroupParticipant(
+                accountId: accountId,
+                displayName: participant.displayName.nonEmpty ?? previous?.displayName ?? "Kordi user",
+                avatarUrl: participant.avatarUrl?.nonEmpty ?? previous?.avatarUrl,
+                role: participant.role?.nonEmpty ?? previous?.role
+            )
         }
         return byId.values.sorted { $0.accountId < $1.accountId }
     }
@@ -387,6 +399,23 @@ enum CloudConversationCatalog {
                 role: participant.role
             )
         }
+    }
+
+    private static func mergedParticipants(
+        legacy: [CloudGroupParticipant],
+        canonical: [CloudGroupParticipant]
+    ) -> [CloudGroupParticipant] {
+        var byAccountId = Dictionary(uniqueKeysWithValues: legacy.map { ($0.accountId, $0) })
+        for participant in canonical {
+            let previous = byAccountId[participant.accountId]
+            byAccountId[participant.accountId] = CloudGroupParticipant(
+                accountId: participant.accountId,
+                displayName: participant.displayName.nonEmpty ?? previous?.displayName ?? "Kordi user",
+                avatarUrl: participant.avatarUrl?.nonEmpty ?? previous?.avatarUrl,
+                role: participant.role?.nonEmpty ?? previous?.role
+            )
+        }
+        return byAccountId.values.sorted { $0.accountId < $1.accountId }
     }
 
     private static func deduplicatedGroupMessages(

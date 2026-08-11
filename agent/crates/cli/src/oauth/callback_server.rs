@@ -86,7 +86,13 @@ async fn handle_connection(
     let parts: Vec<&str> = request_line.split_whitespace().collect();
 
     if parts.len() < 2 || parts[0] != "GET" {
-        send_response(&mut stream, 400, "Bad Request", "Expected GET request").await;
+        send_response(
+            &mut stream,
+            400,
+            "Bad request.",
+            "This sign-in callback is not valid. Return to Kordi and try signing in again.",
+        )
+        .await;
         anyhow::bail!("OAuth callback did not use GET");
     }
 
@@ -97,8 +103,8 @@ async fn handle_connection(
         send_response(
             &mut stream,
             404,
-            "Not Found",
-            "This sign-in callback is not valid. Try again from the app.",
+            "Not found.",
+            "This sign-in callback is not valid. Return to Kordi and try signing in again.",
         )
         .await;
         anyhow::bail!("Unexpected OAuth callback path");
@@ -131,19 +137,19 @@ async fn handle_connection(
         )
         .to_string();
         let friendly_body = if error.is_empty() {
-            "The provider did not return a valid code. Try again from the app."
+            "The provider did not return a valid code. Return to Kordi and try signing in again."
         } else {
-            "The provider stopped the sign-in flow. Try again from the app."
+            "The provider stopped the sign-in flow. Return to Kordi and try signing in again."
         };
-        send_response(&mut stream, 400, "Couldn’t sign in", friendly_body).await;
+        send_response(&mut stream, 400, "Couldn’t sign in.", friendly_body).await;
         anyhow::bail!("OAuth callback error: {safe_message}");
     }
 
     send_response(
         &mut stream,
         200,
-        "Signed in",
-        "Your account is connected. You can close this window and return to the app.",
+        "Signed in.",
+        "Your account is connected. You can close this window and return to Kordi.",
     )
     .await;
 
@@ -200,72 +206,119 @@ fn render_auth_response_page(title: &str, body: &str) -> String {
     let title = html_escape(title);
     let body = html_escape(body);
     format!(
-        r#"<!DOCTYPE html>
+        r#"<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
   <link rel="icon" type="image/svg+xml" href="{favicon}" />
-  <title>{title}</title>
+  <title>Kordi sign-in</title>
   <style>
-    :root {{ color-scheme: dark light; }}
+    :root {{
+      color-scheme: light dark;
+      --paper: #faf9f7;
+      --ink: #1a1714;
+      --ink-muted: #655e56;
+      --footer-ink: #81786f;
+      --rule: rgba(26, 23, 20, .09);
+    }}
     * {{ box-sizing: border-box; }}
+    html, body {{ min-height: 100%; margin: 0; }}
     body {{
-      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: geometricPrecision;
+    }}
+    .page {{
       min-height: 100vh;
       display: grid;
-      place-items: center;
-      padding: 24px;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-      background:
-        radial-gradient(circle at 50% -18%, color-mix(in oklab, #f5f7fb 16%, transparent), transparent 34rem),
-        linear-gradient(180deg, #222427 0%, #111316 62%, #0c0d0f 100%);
-      color: #f7f8fb;
+      grid-template-rows: auto 1fr auto;
     }}
-    main {{
-      width: min(100%, 470px);
-      border: 1px solid color-mix(in oklab, white 13%, transparent);
-      border-radius: 30px;
-      background: linear-gradient(180deg, rgba(35, 37, 41, .88), rgba(18, 19, 22, .96));
-      box-shadow: 0 28px 88px rgba(0, 0, 0, .32), inset 0 1px 0 rgba(255, 255, 255, .035);
-      padding: 36px 32px;
+    .wrap {{ width: min(calc(100% - 4.25rem), 520px); margin-inline: auto; }}
+    header {{ min-height: 68px; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }}
+    header .wrap {{ width: min(calc(100% - 4.25rem), 1312px); }}
+    .brand {{
+      width: fit-content;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      font-size: 24px;
+      line-height: 1;
     }}
+    .brand svg {{ width: 30px; height: 30px; flex: 0 0 auto; }}
+    main {{ display: flex; align-items: center; padding-block: 3.5rem 4.5rem; }}
+    .copy {{ width: 100%; }}
     h1 {{
-      margin: 0 0 12px;
-      font-size: clamp(34px, 8vw, 46px);
-      line-height: .96;
-      letter-spacing: -.055em;
-      color: #ffffff;
+      max-width: 11ch;
+      margin: 0;
+      color: var(--ink);
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      font-size: clamp(48px, 8vw, 72px);
+      font-weight: 400;
+      line-height: .98;
+      letter-spacing: -.035em;
+      text-wrap: balance;
     }}
     p {{
-      margin: 0;
-      max-width: 34ch;
-      color: #c4cbd6;
+      max-width: 43ch;
+      margin: 18px 0 0;
+      color: var(--ink-muted);
       font-size: 15px;
-      line-height: 1.62;
+      line-height: 1.65;
+      text-wrap: balance;
     }}
-    @media (prefers-color-scheme: light) {{
-      body {{
-        background:
-          radial-gradient(circle at 50% -18%, rgba(120, 133, 155, .18), transparent 34rem),
-          linear-gradient(180deg, #f6f7f9, #eceff3);
-        color: #15181d;
+    footer {{
+      padding: 16px 34px 18px;
+      border-top: 1px solid var(--rule);
+      color: var(--footer-ink);
+      font-size: 11px;
+      text-align: center;
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --paper: #191814;
+        --ink: #f2efe9;
+        --ink-muted: #b8b0a7;
+        --footer-ink: #938b82;
+        --rule: rgba(242, 239, 233, .09);
       }}
-      main {{
-        border-color: rgba(31, 41, 55, .10);
-        background: rgba(255, 255, 255, .94);
-        box-shadow: 0 24px 72px rgba(31, 41, 55, .13), inset 0 1px 0 rgba(255, 255, 255, .8);
-      }}
-      h1 {{ color: #15181d; }}
-      p {{ color: #5b6472; }}
+    }}
+    @media (max-width: 520px) {{
+      .wrap, header .wrap {{ width: calc(100% - 3.5rem); }}
+      main {{ align-items: flex-start; padding-block: 5.5rem 3.5rem; }}
+      h1 {{ font-size: clamp(48px, 16vw, 62px); }}
     }}
   </style>
 </head>
 <body>
-  <main>
-    <h1>{title}</h1>
-    <p>{body}</p>
-  </main>
+  <div class="page">
+    <header>
+      <div class="wrap">
+        <div class="brand" aria-label="Kordi">
+          <svg viewBox="0 0 36 36" aria-hidden="true">
+            <circle cx="18" cy="10" r="9" fill="currentColor" opacity=".62"></circle>
+            <circle cx="11" cy="22" r="9" fill="currentColor" opacity=".82"></circle>
+            <circle cx="25" cy="22" r="9" fill="currentColor"></circle>
+          </svg>
+          <span>kordi</span>
+        </div>
+      </div>
+    </header>
+    <main class="wrap" role="status" aria-live="polite">
+      <section class="copy">
+        <h1>{title}</h1>
+        <p>{body}</p>
+      </section>
+    </main>
+    <footer>&copy; Kordi 2026</footer>
+  </div>
 </body>
 </html>"#,
         favicon = KORDI_FAVICON_DATA_URL,
@@ -298,34 +351,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn auth_success_page_is_compact_and_has_no_brand_label_box() {
+    fn auth_success_page_matches_the_latest_kordi_completion_surface() {
         let html = render_auth_response_page(
-            "Signed in",
-            "Your account is connected. You can close this window and return to the app.",
+            "Signed in.",
+            "Your account is connected. You can close this window and return to Kordi.",
         );
 
-        assert!(html.contains("Signed in"));
-        assert!(html.contains("return to the app"));
+        assert!(html.contains("Signed in."));
+        assert!(html.contains("return to Kordi"));
         assert!(html.contains("rel=\"icon\" type=\"image/svg+xml\""));
         assert!(html.contains(KORDI_FAVICON_DATA_URL));
+        assert!(html.contains("class=\"brand\""));
+        assert!(html.contains("<footer>&copy; Kordi 2026</footer>"));
+        assert!(html.contains("prefers-color-scheme: dark"));
         assert!(!html.contains("Close window"));
         assert!(!html.contains("<button"));
-        assert!(!html.contains("Kordi Authentication"));
-        assert!(!html.contains("KORDI AUTHENTICATION"));
-        assert!(!html.contains("text-transform:uppercase"));
-        assert!(!html.contains("Authentication Successful"));
+        assert!(!html.contains("border-radius: 30px"));
+        assert!(!html.contains("box-shadow"));
     }
 
     #[test]
     fn auth_error_page_uses_clear_retry_copy_without_internal_details() {
         let html = render_auth_response_page(
-            "Couldn’t sign in",
-            "The provider did not return a valid code. Try again from the app.",
+            "Couldn’t sign in.",
+            "The provider did not return a valid code. Return to Kordi and try signing in again.",
         );
 
-        assert!(html.contains("Couldn’t sign in"));
-        assert!(html.contains("Try again from the app"));
-        assert!(!html.contains("Kordi Authentication"));
+        assert!(html.contains("Couldn’t sign in."));
+        assert!(html.contains("Return to Kordi and try signing in again"));
+        assert!(html.contains("role=\"status\" aria-live=\"polite\""));
         assert!(!html.contains("Missing 'code' parameter"));
         assert!(!html.contains("OAuth callback"));
     }

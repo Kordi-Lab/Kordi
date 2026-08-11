@@ -7,13 +7,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   CloudAuthClient,
-  cloudRealtimeWebSocketEnabled,
-  cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
 import { cloudMessageAttachmentToMessageAttachment, uploadCloudFiles } from './cloudAttachments';
+import { compareCloudMessages } from './cloudMessageMerge';
 import { loadSession } from './session';
 
 const POLL_FALLBACK_MS = 20_000;
@@ -58,10 +57,7 @@ export function mergeCloudConversationSnapshot(
         }
       : message);
   }
-  return [...byMessageId.values()].sort((left, right) => (
-    left.createdAt.localeCompare(right.createdAt)
-    || left.messageId.localeCompare(right.messageId)
-  ));
+  return [...byMessageId.values()].sort(compareCloudMessages);
 }
 
 export function useCloudConversation(
@@ -111,6 +107,8 @@ export function useCloudConversation(
       const { messages: list } = await client.listMessageSnapshot(
         session.token,
         peerAccountId,
+        undefined,
+        account.accountId,
       );
       const resolvedList = list.map((message) => ({
         ...message,
@@ -141,61 +139,6 @@ export function useCloudConversation(
     };
   }, [account, peerAccountId, fetchMessages]);
 
-  // WebSocket subscription for live push of kordi.events.message.arrived.<self>.
-  // Filter to messages whose other party is the active peer.
-  useEffect(() => {
-    if (!account || !peerAccountId || !cloudRealtimeWebSocketEnabled()) return;
-    let ws: WebSocket | null = null;
-    let cancelled = false;
-
-    const open = async () => {
-      const session = await loadSession();
-      if (!session?.token || cancelled) return;
-      ws = new WebSocket(cloudWebSocketUrl(session.token));
-      ws.onmessage = (event) => {
-        try {
-          const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
-          const subject: string | undefined = frame?.subject;
-          if (!subject?.startsWith('kordi.events.message.arrived.')) return;
-          const payload = frame?.payload;
-          if (!payload || typeof payload !== 'object') return;
-          const from = payload.from_account_id as string | undefined;
-          const to = payload.to_account_id as string | undefined;
-          if (!from || !to) return;
-          // Only messages in *this* conversation
-          if (from !== peerAccountId && to !== peerAccountId) return;
-          const direction = to === account.accountId ? 'incoming' : 'outgoing';
-          const attachments = Array.isArray(payload.attachments)
-            ? payload.attachments.map(cloudMessageAttachmentToMessageAttachment)
-            : [];
-          mergeMessage({
-            messageId: payload.message_id,
-            fromAccountId: from,
-            toAccountId: to,
-            body: payload.body,
-            createdAt: payload.created_at,
-            deliveredAt: null,
-            readAt: null,
-            direction,
-            attachments,
-            sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
-          });
-        } catch (err) {
-          console.warn('[cloud-ws] frame parse failed', err);
-        }
-      };
-      ws.onerror = (event) => {
-        console.warn('[cloud-ws] error', event);
-      };
-    };
-    void open();
-
-    return () => {
-      cancelled = true;
-      ws?.close();
-    };
-  }, [account, peerAccountId, mergeMessage]);
-
   const send = useCallback(
     async (body: string, attachments: File[] = []) => {
       const trimmed = body.trim();
@@ -218,7 +161,10 @@ export function useCloudConversation(
           mimeType: attachment.mimeType,
           sizeBytes: attachment.sizeBytes,
         }));
-        const msg = await client.sendMessage(session.token, peerAccountId, trimmed, { attachments: sendAttachments });
+        const msg = await client.sendMessage(session.token, peerAccountId, trimmed, {
+          attachments: sendAttachments,
+          accountId: account.accountId,
+        });
         const attachmentsById = new Map(uploadedAttachments.map((attachment) => [attachment.attachmentId, attachment]));
         mergeMessage({
           ...msg,

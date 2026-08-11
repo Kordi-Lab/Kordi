@@ -4,7 +4,7 @@ import type {
   SetStateAction,
 } from 'react';
 import type { CanonicalSessionState } from '@/kordi-app/types';
-import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
+import type { CloudAccount, CloudMessage } from './authClient';
 import type { CloudGroupControlEnvelope } from './cloudGroupMessages';
 import type {
   CloudMessageIndex,
@@ -17,7 +17,6 @@ import { useLegacyCloudGroupTitleNoticeRecovery } from './useLegacyCloudGroupTit
 
 export function useRecoveredCloudGroupReplay({
   account,
-  client,
   humanIdentityId,
   canonicalStateRef,
   setCanonicalState,
@@ -30,7 +29,6 @@ export function useRecoveredCloudGroupReplay({
   reportWarning,
 }: {
   account: CloudAccount | null;
-  client: CloudAuthClient;
   humanIdentityId?: string | null;
   canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
   setCanonicalState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
@@ -66,7 +64,6 @@ export function useRecoveredCloudGroupReplay({
   useLegacyCloudGroupTitleNoticeRecovery({
     enabled: replayEnabled,
     contextKey,
-    client,
     canonicalStateRef,
     setCanonicalState,
     messageIndex,

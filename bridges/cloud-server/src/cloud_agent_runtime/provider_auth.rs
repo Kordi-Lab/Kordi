@@ -291,25 +291,42 @@ pub async fn provider_auth_for_run(
     run_id: &str,
     runner_id: &str,
 ) -> Result<ProviderAuthForRunResult, sqlx_core::Error> {
-    let run: Option<(String,)> = query_as(
-        "SELECT owner_account_id FROM cloud_agent_fallback_runs \
+    let run: Option<(String, Value)> = query_as(
+        "SELECT owner_account_id, runtime_route_json FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
     )
     .bind(run_id)
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    let Some((owner_account_id,)) = run else {
+    let Some((owner_account_id, runtime_route)) = run else {
         return Ok(ProviderAuthForRunResult::RunNotFound);
     };
+
+    let routed_provider = runtime_route
+        .get("defaultAuthProvider")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase);
+    let routed_auth_choice = runtime_route
+        .get("defaultAuthChoice")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
 
     let row: Option<(String, String, String, Vec<u8>)> = query_as(
         "SELECT snapshot_id, provider, auth_choice, encrypted_payload \
          FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL \
+           AND ($2::TEXT IS NULL OR provider = $2) \
+           AND ($3::TEXT IS NULL OR auth_choice = $3) \
          ORDER BY created_at DESC LIMIT 1",
     )
     .bind(&owner_account_id)
+    .bind(routed_provider.as_deref())
+    .bind(routed_auth_choice.as_deref())
     .fetch_optional(pool)
     .await?;
     let Some((snapshot_id, provider, auth_choice, encrypted_payload)) = row else {

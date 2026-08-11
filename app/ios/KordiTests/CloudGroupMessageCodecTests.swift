@@ -2,6 +2,39 @@ import XCTest
 @testable import Kordi
 
 final class CloudGroupMessageCodecTests: XCTestCase {
+    func testOutboundMessageNormalizesFractionalMilliseconds() throws {
+        let participant = CloudGroupParticipant(
+            accountId: "acct_me",
+            displayName: "Shuyang",
+            avatarUrl: nil,
+            role: "self"
+        )
+        let envelope = CloudGroupControlEnvelope(
+            kind: "group-message",
+            groupId: "session:group:timestamp",
+            groupSpaceId: "session:group:timestamp",
+            groupTitle: "Cross-device test",
+            createdByAccountId: "acct_me",
+            actor: participant,
+            participants: [participant],
+            message: CloudGroupMessagePayload(
+                id: "ios_fractional_message",
+                senderAccountId: "acct_me",
+                text: "send from iphone test",
+                createdAtMs: 1_786_443_676_216.46,
+                senderKind: "human",
+                senderDisplayName: "Shuyang",
+                deliveryState: "complete",
+                replyToMessageId: nil,
+                requestId: nil
+            )
+        )
+
+        let decoded = try XCTUnwrap(CloudGroupMessageCodec.parse(CloudGroupMessageCodec.encode(envelope)))
+
+        XCTAssertEqual(decoded.message?.createdAtMs, 1_786_443_676_216)
+    }
+
     func testGroupMessageRoundTripsAttachmentsReplyAndMentionTarget() throws {
         var runtimeRoute = CloudModelRouting.empty
         runtimeRoute.defaultModel = "openai-codex/gpt-5.6-sol"

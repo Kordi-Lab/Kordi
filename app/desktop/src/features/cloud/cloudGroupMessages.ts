@@ -11,6 +11,8 @@ import type {
 
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import { integerMilliseconds, runtimeRoute } from './cloudGroupDecoding';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
@@ -91,6 +93,7 @@ export type CloudGroupControlEnvelope = {
     targetCloudAgentOwnerAccountId?: string | null;
     targetCloudAgentOwnerName?: string | null;
     agentMentionDepth?: number | null;
+    agentRuntimeRoute?: DesktopChatMessageRoute | null;
   } | null;
 };
 type CloudGroupAttachmentReferenceInput = Pick<
@@ -211,9 +214,7 @@ function cloudGroupMemberJoins(value: unknown): CloudGroupMemberJoin[] {
     const eventId = cleanText(typeof record.eventId === 'string' ? record.eventId : null);
     const accountId = cleanText(typeof record.accountId === 'string' ? record.accountId : null);
     const displayName = cleanText(typeof record.displayName === 'string' ? record.displayName : null);
-    const createdAtMs = typeof record.createdAtMs === 'number' && Number.isFinite(record.createdAtMs)
-      ? record.createdAtMs
-      : null;
+    const createdAtMs = integerMilliseconds(record.createdAtMs);
     if (!CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN.test(eventId)
       || !isCloudAccountId(accountId)
       || createdAtMs === null
@@ -237,9 +238,7 @@ function cloudGroupMemberLeaves(value: unknown): CloudGroupMemberLeave[] {
     const record = objectRecord(candidate);
     const eventId = cleanText(typeof record.eventId === 'string' ? record.eventId : null);
     const accountId = cleanText(typeof record.accountId === 'string' ? record.accountId : null);
-    const createdAtMs = typeof record.createdAtMs === 'number' && Number.isFinite(record.createdAtMs)
-      ? record.createdAtMs
-      : null;
+    const createdAtMs = integerMilliseconds(record.createdAtMs);
     if (!CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN.test(eventId)
       || !isCloudAccountId(accountId)
       || createdAtMs === null
@@ -259,9 +258,7 @@ export function cloudGroupForkPayloadFromSessionMetadata(
   const parentSessionId = cleanText(typeof forkRecord.forkedFromSessionId === 'string' ? forkRecord.forkedFromSessionId : null);
   if (!forkSessionIdValue || !parentSessionId) return null;
   const parentMessageId = cleanText(typeof forkRecord.forkedFromMessageId === 'string' ? forkRecord.forkedFromMessageId : null);
-  const createdAtMs = typeof forkRecord.createdAtMs === 'number' && Number.isFinite(forkRecord.createdAtMs)
-    ? forkRecord.createdAtMs
-    : null;
+  const createdAtMs = integerMilliseconds(forkRecord.createdAtMs);
   return {
     forkSessionId: forkSessionIdValue,
     parentSessionId,
@@ -329,7 +326,7 @@ function cloudMessageActionFromRecord(value: unknown): MessageActionMetadata | n
       senderLabel,
       textPreview: cleanText(typeof source.textPreview === 'string' ? source.textPreview : null),
       attachmentCount,
-      createdAtMs: typeof source.createdAtMs === 'number' && Number.isFinite(source.createdAtMs) ? source.createdAtMs : null,
+      createdAtMs: integerMilliseconds(source.createdAtMs),
       timeLabel: cleanText(typeof source.timeLabel === 'string' ? source.timeLabel : null) || null,
     },
   };
@@ -629,6 +626,10 @@ export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): strin
     actor: cloudGroupNormalizeParticipant(input.actor),
     participants: uniqueByAccount(input.participants),
     sessionTitle,
+    message: input.message ? {
+      ...input.message,
+      createdAtMs: integerMilliseconds(input.message.createdAtMs, Date.now())!,
+    } : input.message,
     ...(input.sessionTitleSyncOnly ? { sessionTitleSyncOnly: true } : {}),
     ...(memberJoins.length > 0 ? { memberJoins } : {}),
     ...(memberLeaves.length > 0 ? { memberLeaves } : {}),
@@ -655,9 +656,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       const candidate = parsed.message;
       if (!candidate || typeof candidate !== 'object') return null;
       if (typeof candidate.id !== 'string' || typeof candidate.senderAccountId !== 'string' || typeof candidate.text !== 'string') return null;
-      const createdAtMs = typeof candidate.createdAtMs === 'number' && Number.isFinite(candidate.createdAtMs)
-        ? candidate.createdAtMs
-        : Date.now();
+      const createdAtMs = integerMilliseconds(candidate.createdAtMs, Date.now())!;
       message = {
         id: candidate.id,
         senderAccountId: candidate.senderAccountId,
@@ -676,6 +675,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         targetCloudAgentOwnerAccountId: cleanText(typeof candidate.targetCloudAgentOwnerAccountId === 'string' ? candidate.targetCloudAgentOwnerAccountId : null) || null,
         targetCloudAgentOwnerName: cleanText(typeof candidate.targetCloudAgentOwnerName === 'string' ? candidate.targetCloudAgentOwnerName : null) || null,
         agentMentionDepth: typeof candidate.agentMentionDepth === 'number' && Number.isInteger(candidate.agentMentionDepth) && candidate.agentMentionDepth >= 0 ? candidate.agentMentionDepth : null,
+        agentRuntimeRoute: runtimeRoute((candidate as { agentRuntimeRoute?: unknown }).agentRuntimeRoute),
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);
@@ -683,7 +683,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       forkSessionId: cleanText(typeof forkRecord.forkSessionId === 'string' ? forkRecord.forkSessionId : null),
       parentSessionId: cleanText(typeof forkRecord.parentSessionId === 'string' ? forkRecord.parentSessionId : null),
       parentMessageId: cleanText(typeof forkRecord.parentMessageId === 'string' ? forkRecord.parentMessageId : null) || null,
-      createdAtMs: typeof forkRecord.createdAtMs === 'number' && Number.isFinite(forkRecord.createdAtMs) ? forkRecord.createdAtMs : null,
+      createdAtMs: integerMilliseconds(forkRecord.createdAtMs),
     } : null;
     const memberJoins = kind === 'group-invite'
       ? cloudGroupMemberJoins((parsed as { memberJoins?: unknown }).memberJoins)

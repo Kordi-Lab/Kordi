@@ -11,19 +11,17 @@ import type {
   CloudAuthClient,
   CloudMessage,
   CloudSessionForkSummary,
+  ChatSyncV2Message,
 } from './authClient';
+import { chatSyncV2SessionTitle, cloudMessageFromChatSyncV2 } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
-import {
-  cloudMessageMetadataOnly,
-} from './cloudMessageCache';
+import { cloudMessageMetadataOnly } from './cloudMessageCache';
+import { compareCloudMessages } from './cloudMessageMerge';
 import {
   cloudSessionForksByIdEqual,
   cloudMessagesByPeerEqual,
   cloudUnreadReadinessContextKey,
-  loadCloudMessagesByPeerUntilStable,
-  mergeCloudPeerReadCursors,
   mergeCloudMessagesByPeerSnapshot,
-  reconcileCloudPeerReadCursors,
   transitionCloudUnreadReadiness,
   type CloudUnreadReadinessSnapshot,
   type CloudUnreadReadinessStatus,
@@ -39,13 +37,16 @@ import {
 } from './cloudSessionActivity';
 import { CloudSyncCoordinator } from './cloudSyncCoordinator';
 import { loadSession } from './session';
+import {
+  applyChatSyncV2LocalBatch,
+  loadChatSyncV2LocalState,
+} from '@/lib/desktopChatSyncV2';
 
 // Realtime messages normally arrive through the Cloud WebSocket. This interval
 // is only a repair path for a missed frame or a temporarily disconnected
 // socket, so polling it several times per second adds load without improving
 // the normal delivery path.
 export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
-const CLOUD_MESSAGE_SNAPSHOT_LIMIT = 500;
 const CLOUD_SYNC_EVENT_PAGE_LIMIT = 1_000;
 
 type PendingCloudSyncRequest = {
@@ -102,7 +103,6 @@ function setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boole
 
 export function useCloudMessageSync({
   account,
-  bootstrapPeerIds,
   bootstrapPeerKey,
   cloudUnreadContextKey,
   contactsSettled,
@@ -116,7 +116,6 @@ export function useCloudMessageSync({
   const {
     stateRef: messagesRef,
     setState: setMessages,
-    peerReadAtByPeerRef,
   } = stores.messages;
   const { stateRef: activityRef, setState: setActivity } = stores.activity;
   const { stateRef: forksRef, setState: setForks } = stores.forks;
@@ -131,13 +130,8 @@ export function useCloudMessageSync({
     stateRef: deletedSessionIdsRef,
     setState: setDeletedSessionIds,
   } = stores.deletedSessionIds;
-  const bootstrapPeerIdsRef = useRef<string[]>(bootstrapPeerIds);
   const pendingRequestRef = useRef<PendingCloudSyncRequest | null>(null);
   const startupSnapshotContextRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    bootstrapPeerIdsRef.current = bootstrapPeerIds;
-  }, [bootstrapPeerIds]);
 
   useEffect(() => {
     pendingRequestRef.current = null;
@@ -159,109 +153,18 @@ export function useCloudMessageSync({
     ));
   }, [account?.accountId, coordinator, setUnreadReadiness]);
 
-  const refreshMessagesOnce = useCallback(async (
-    generation: number,
-    settleUnreadReadiness: boolean = true,
-    publishMessages: boolean = true,
-  ) => {
-    if (!coordinator.isCurrentGeneration(generation)) return;
-    const retainedPeerIds = Object.keys(messagesRef.current);
-    const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
-    if (!account || initialPeerIds.length === 0) {
-      if (!coordinator.isCurrentGeneration(generation)) return;
-      messagesRef.current = {};
-      if (publishMessages) {
-        setMessages((current) => (
-          Object.keys(current).length === 0 ? current : {}
-        ));
-      }
-      if (settleUnreadReadiness) {
-        markUnreadReadiness('ready', generation, bootstrapPeerKey);
-      }
-      return;
-    }
-    const session = await loadSession();
-    if (!coordinator.isCurrentGeneration(generation)) return;
-    if (!session?.token) {
-      if (settleUnreadReadiness) {
-        markUnreadReadiness('error', generation, bootstrapPeerKey);
-      }
-      return;
-    }
-
-    const fetchedPeerReadAtByPeer: Record<string, string | null> = {};
-    const loaded = await loadCloudMessagesByPeerUntilStable({
-      accountId: account.accountId,
-      initialPeerIds,
-      existingMessagesByPeer: messagesRef.current,
-      listMessages: async (peerId) => {
-        const snapshot = await client.listMessageSnapshot(
-          session.token,
-          peerId,
-          CLOUD_MESSAGE_SNAPSHOT_LIMIT,
-        );
-        fetchedPeerReadAtByPeer[peerId] = snapshot.peerReadAt;
-        return snapshot.messages.map(cloudMessageMetadataOnly);
-      },
-    });
-
-    if (cancelledRef.current || !coordinator.isCurrentGeneration(generation)) return;
-    peerReadAtByPeerRef.current = mergeCloudPeerReadCursors(
-      peerReadAtByPeerRef.current,
-      fetchedPeerReadAtByPeer,
-    );
-    const reconcileReadState = (
-      current: Record<string, CloudMessage[]>,
-    ) => reconcileCloudPeerReadCursors(
-      current,
-      account.accountId,
-      peerReadAtByPeerRef.current,
-    );
-    messagesRef.current = mergeCloudMessagesByPeerSnapshot(
-      reconcileReadState(messagesRef.current),
-      loaded.messagesByPeer,
-    );
-    if (publishMessages) {
-      setMessages((current) => {
-        const merged = mergeCloudMessagesByPeerSnapshot(
-          reconcileReadState(current),
-          loaded.messagesByPeer,
-        );
-        return cloudMessagesByPeerEqual(current, merged) ? current : merged;
-      });
-    }
-    if (settleUnreadReadiness) {
-      markUnreadReadiness(
-        loaded.complete ? 'ready' : 'error',
-        generation,
-        bootstrapPeerKey,
-      );
-    }
-  }, [
-    account,
-    bootstrapPeerKey,
-    cancelledRef,
-    client,
-    coordinator,
-    markUnreadReadiness,
-    messagesRef,
-    peerReadAtByPeerRef,
-    setMessages,
-  ]);
-
   const syncDiffOnceForGeneration = useCallback(async (
     generation: number,
-    settleInitialMessages: boolean,
+    forceBootstrap = false,
   ) => {
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const session = await loadSession();
     if (!coordinator.isCurrentGeneration(generation)) return;
     if (!session?.token) {
-      if (settleInitialMessages) {
-        markUnreadReadiness('error', generation, bootstrapPeerKey);
-      }
-      return;
+      throw new Error('Cloud session is unavailable for reliable chat sync.');
     }
+    await client.drainChatV2Outbox(session.token, account.accountId);
+    if (!coordinator.isCurrentGeneration(generation)) return;
     let messagesByPeer = messagesRef.current;
     let sessionActivity = activityRef.current;
     let sessionForksById = forksRef.current;
@@ -270,7 +173,8 @@ export function useCloudMessageSync({
     let cloudAgentsById = agentsRef.current;
     let hiddenSessionIds = hiddenSessionIdsRef.current;
     let deletedSessionIds = deletedSessionIdsRef.current;
-    let fallbackRequired = false;
+    let cursorOverride = forceBootstrap ? '0' : null;
+    let bootstrapRecoveryAttempted = forceBootstrap;
     // A bootstrap cursor can be many pages behind the server (especially on a
     // fresh install). Keep the accumulated state private until the cursor is
     // exhausted so the sidebar never publishes a succession of partial
@@ -287,6 +191,38 @@ export function useCloudMessageSync({
         hiddenSessionIds,
         deletedSessionIds,
         shouldSaveCursor: () => coordinator.isCurrentGeneration(generation),
+        loadCursor: async () => {
+          if (cursorOverride) {
+            const value = cursorOverride;
+            cursorOverride = null;
+            return value;
+          }
+          const local = await loadChatSyncV2LocalState(account.accountId);
+          return local?.cursor ?? '0';
+        },
+        commitResponse: async (response) => {
+          if (!response.v2) {
+            throw new Error('Reliable chat sync returned a legacy response.');
+          }
+          const local = await applyChatSyncV2LocalBatch({
+            accountId: account.accountId,
+            bootstrap: response.v2.bootstrap,
+            cursor: response.v2.nextCursor,
+            lastStreamSeq: response.v2.lastStreamSeq,
+            conversations: response.v2.conversations,
+            messages: response.v2.messages,
+            events: response.v2.events,
+          });
+          if (local) {
+            await Promise.allSettled(local.conversations.map((conversation) => (
+              client.acknowledgeChatV2Delivery(
+                session.token,
+                conversation.id,
+                conversation.latest_message_sequence,
+              )
+            )));
+          }
+        },
         fetchEvents: (cursor) => client.syncCloudEvents(
           session.token,
           cursor,
@@ -295,8 +231,12 @@ export function useCloudMessageSync({
       });
       if (!coordinator.isCurrentGeneration(generation)) return;
       if (result.fallbackRequired) {
-        fallbackRequired = true;
-        break;
+        if (bootstrapRecoveryAttempted) {
+          throw new Error('Reliable chat sync and bootstrap both failed.');
+        }
+        bootstrapRecoveryAttempted = true;
+        cursorOverride = '0';
+        continue;
       }
       messagesByPeer = result.messagesByPeer;
       sessionActivity = result.sessionActivity;
@@ -309,13 +249,6 @@ export function useCloudMessageSync({
       if (!result.hasMore) break;
     }
     if (cancelledRef.current || !coordinator.isCurrentGeneration(generation)) return;
-    if (fallbackRequired) {
-      await Promise.all([
-        refreshMessagesOnce(generation, settleInitialMessages),
-        refreshCloudAgents(generation),
-      ]);
-      return;
-    }
     messagesRef.current = mergeCloudMessagesByPeerSnapshot(
       messagesRef.current,
       messagesByPeer,
@@ -348,18 +281,14 @@ export function useCloudMessageSync({
     account,
     activityRef,
     agentsRef,
-    bootstrapPeerKey,
     cancelledRef,
     client,
     coordinator,
     deletedSessionIdsRef,
     forksRef,
     hiddenSessionIdsRef,
-    markUnreadReadiness,
     messagesRef,
     pinsRef,
-    refreshCloudAgents,
-    refreshMessagesOnce,
     setActivity,
     setAgents,
     setDeletedSessionIds,
@@ -371,22 +300,118 @@ export function useCloudMessageSync({
     titlesRef,
   ]);
 
+  const hydrateV2LocalState = useCallback(async (generation: number) => {
+    if (!account || !coordinator.isCurrentGeneration(generation)) return;
+    const local = await loadChatSyncV2LocalState(account.accountId);
+    if (!local || !coordinator.isCurrentGeneration(generation)) return;
+    const conversationById = new Map(
+      local.conversations.map((conversation) => [conversation.id, conversation]),
+    );
+    const hydratedMessages: Record<string, CloudMessage[]> = {};
+    for (const snapshot of local.messages) {
+      const conversation = conversationById.get(snapshot.conversation_id);
+      if (!conversation) continue;
+      const message = cloudMessageFromChatSyncV2(snapshot, conversation, account.accountId);
+      const peerId = message.fromAccountId === account.accountId
+        ? message.toAccountId
+        : message.fromAccountId;
+      if (!peerId) continue;
+      (hydratedMessages[peerId] ??= []).push(cloudMessageMetadataOnly(message));
+    }
+    for (const messages of Object.values(hydratedMessages)) {
+      messages.sort(compareCloudMessages);
+    }
+    messagesRef.current = mergeCloudMessagesByPeerSnapshot(
+      messagesRef.current,
+      hydratedMessages,
+    );
+    setMessages((current) => mergeCloudMessagesByPeerSnapshot(current, hydratedMessages));
+    const hydratedTitles = local.conversations.reduce<CloudSessionTitlesById>((titles, conversation) => {
+      const sessionId = conversation.legacy_session_id ?? conversation.id;
+      const title = chatSyncV2SessionTitle(conversation);
+      if (!title) return titles;
+      titles[sessionId] = {
+        sessionId,
+        title,
+        titleSource: conversation.preferences.personal_title ? 'manual' as const : 'external' as const,
+        titleRevision: conversation.version,
+        titlePolicyVersion: 1,
+        titleGeneratedFromMessageId: null,
+        updatedAtMs: Date.parse(conversation.updated_at) || Date.now(),
+        updatedByAccountId: conversation.created_by_account_id,
+        updatedAt: conversation.updated_at,
+      };
+      return titles;
+    }, {});
+    setTitles((current) => ({ ...current, ...hydratedTitles }));
+  }, [account, coordinator, messagesRef, setMessages, setTitles]);
+  const hydrateMissingV2History = useCallback(async (generation: number) => {
+    if (!account || !coordinator.isCurrentGeneration(generation)) return;
+    const session = await loadSession();
+    if (!session?.token || !coordinator.isCurrentGeneration(generation)) return;
+    const local = await loadChatSyncV2LocalState(account.accountId);
+    if (!local || !coordinator.isCurrentGeneration(generation)) return;
+    const messagesByConversation = new Map<string, ChatSyncV2Message[]>();
+    for (const message of local.messages) {
+      const values = messagesByConversation.get(message.conversation_id) ?? [];
+      values.push(message);
+      messagesByConversation.set(message.conversation_id, values);
+    }
+    for (const conversation of local.conversations) {
+      if (!coordinator.isCurrentGeneration(generation)) return;
+      if (conversation.latest_message_sequence <= 0) continue;
+      const stored = messagesByConversation.get(conversation.id) ?? [];
+      const storedSequences = [...new Set(stored
+        .map((message) => message.conversation_sequence)
+        .filter((sequence) => Number.isSafeInteger(sequence) && sequence > 0))]
+        .sort((left, right) => left - right);
+      const hasLatest = storedSequences[storedSequences.length - 1]
+        === conversation.latest_message_sequence;
+      const hasContiguousSuffix = hasLatest && storedSequences.every((sequence, index) => (
+        index === 0 || sequence === storedSequences[index - 1] + 1
+      ));
+      const earliestSequence = storedSequences[0];
+      if (hasContiguousSuffix && earliestSequence === 1) continue;
+      // A clean bootstrap contains a contiguous suffix ending at the current
+      // head, so page from its first item. If the local projection itself has
+      // a middle gap, re-read the whole conversation instead of trusting the
+      // presence of sequence one.
+      let beforeSequence = hasContiguousSuffix ? earliestSequence : undefined;
+      while (true) {
+        const page = await client.listChatV2ConversationHistoryPage(
+          session.token,
+          conversation.id,
+          beforeSequence,
+        );
+        if (!coordinator.isCurrentGeneration(generation)) return;
+        await applyChatSyncV2LocalBatch({
+          accountId: account.accountId,
+          bootstrap: false,
+          messages: page.messages,
+        });
+        if (!page.hasMore) break;
+        const next = page.nextBeforeSequence;
+        if (!next || (beforeSequence !== undefined && next >= beforeSequence)) {
+          throw new Error('Reliable chat history did not advance its sequence cursor.');
+        }
+        beforeSequence = next;
+      }
+    }
+    await hydrateV2LocalState(generation);
+  }, [account, client, coordinator, hydrateV2LocalState]);
   const runCoordinatedSync = useCallback(async (generation: number) => {
     const request = pendingRequestRef.current;
     pendingRequestRef.current = null;
     if (!request) return;
     try {
       if (request.mode === 'bootstrap') {
-        // Establish the newest server state before replaying historical events,
-        // then publish unread state only after the final authoritative snapshot.
-        await refreshMessagesOnce(generation, false, false);
-        await syncDiffOnceForGeneration(generation, false);
-        await refreshMessagesOnce(generation, true);
-      } else if (request.mode === 'full') {
-        await refreshMessagesOnce(generation);
-      } else {
-        await syncDiffOnceForGeneration(generation, request.settleInitialMessages);
+        // Render the crash-safe local v2 projection first. Catch-up and history
+        // backfill then operate exclusively on the durable v2 cursor stream.
+        await hydrateV2LocalState(generation);
       }
+      await syncDiffOnceForGeneration(generation, request.mode === 'full');
+      await hydrateMissingV2History(generation);
+      markUnreadReadiness('ready', generation, bootstrapPeerKey);
     } catch (error) {
       if (request.mode !== 'diff' || request.settleInitialMessages) {
         markUnreadReadiness('error', generation, bootstrapPeerKey);
@@ -395,11 +420,11 @@ export function useCloudMessageSync({
     }
   }, [
     bootstrapPeerKey,
+    hydrateMissingV2History,
+    hydrateV2LocalState,
     markUnreadReadiness,
-    refreshMessagesOnce,
     syncDiffOnceForGeneration,
   ]);
-
   const requestSync = useCallback((request: PendingCloudSyncRequest) => {
     const pending = pendingRequestRef.current;
     const mode = pending?.mode === 'bootstrap' || request.mode === 'bootstrap'
@@ -423,24 +448,20 @@ export function useCloudMessageSync({
     }
     return coordinator.request(runCoordinatedSync);
   }, [bootstrapPeerKey, coordinator, markUnreadReadiness, runCoordinatedSync]);
-
   const refreshCloudMessages = useCallback(() => requestSync({
     mode: 'full',
     settleInitialMessages: true,
   }), [requestSync]);
-
   const bootstrapCloudMessages = useCallback(() => requestSync({
     mode: 'bootstrap',
     settleInitialMessages: true,
   }), [requestSync]);
-
   const syncCloudCollaborationDiff = useCallback((
     options: { settleInitialMessages?: boolean } = {},
   ) => requestSync({
     mode: 'diff',
     settleInitialMessages: options.settleInitialMessages ?? true,
   }), [requestSync]);
-
   useEffect(() => {
     if (!account || !contactsSettled || !cloudUnreadContextKey) return;
     if (startupSnapshotContextRef.current !== cloudUnreadContextKey) {
@@ -469,7 +490,6 @@ export function useCloudMessageSync({
     refreshCloudAgents,
     syncCloudCollaborationDiff,
   ]);
-
   return {
     refreshCloudMessages,
     syncCloudCollaborationDiff,

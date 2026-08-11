@@ -143,6 +143,13 @@ export function cloudGroupIncomingMessageAlreadyApplied(
       : null,
   ).toLowerCase();
   const existingStatus = existingMessage.status.trim().toLowerCase();
+  if (incomingState === 'read') {
+    return existingStatus === 'read' || existingDeliveryState === 'read';
+  }
+  if (incomingState === 'delivered') {
+    return ['delivered', 'read'].includes(existingStatus)
+      || ['delivered', 'read'].includes(existingDeliveryState);
+  }
   const existingIsFailedFallback = (
     existingStatus === 'failed'
     || existingDeliveryState === 'failed'

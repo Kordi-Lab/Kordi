@@ -488,6 +488,234 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     }
 }
 
+// MARK: - Reliable chat sync v2 wire snapshots
+
+struct CloudChatV2Member: Codable, Hashable {
+    let accountId: String
+    let displayName: String?
+    let avatarUrl: String?
+    let role: String
+    let membershipState: String
+    let version: Int
+    let lastDeliveredSequence: Int64
+    let lastReadSequence: Int64
+    let joinedAt: String
+    let leftAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case accountId = "account_id"
+        case displayName = "display_name"
+        case avatarUrl = "avatar_url"
+        case role
+        case membershipState = "membership_state"
+        case version
+        case lastDeliveredSequence = "last_delivered_sequence"
+        case lastReadSequence = "last_read_sequence"
+        case joinedAt = "joined_at"
+        case leftAt = "left_at"
+    }
+}
+
+struct CloudChatV2Preferences: Codable, Hashable {
+    let conversationId: String
+    let accountId: String
+    let personalTitle: String?
+    let version: Int
+
+    enum CodingKeys: String, CodingKey {
+        case conversationId = "conversation_id"
+        case accountId = "account_id"
+        case personalTitle = "personal_title"
+        case version
+    }
+}
+
+struct CloudChatV2Conversation: Codable, Hashable {
+    let id: String
+    let kind: String
+    let sharedTitle: String?
+    let version: Int
+    let createdByAccountId: String
+    let legacySessionId: String?
+    let forkedFromSessionId: String?
+    let forkedFromMessageId: String?
+    let latestMessageSequence: Int64
+    let createdAt: String
+    let updatedAt: String
+    let members: [CloudChatV2Member]
+    let preferences: CloudChatV2Preferences
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, version, members, preferences
+        case sharedTitle = "shared_title"
+        case createdByAccountId = "created_by_account_id"
+        case legacySessionId = "legacy_session_id"
+        case forkedFromSessionId = "forked_from_session_id"
+        case forkedFromMessageId = "forked_from_message_id"
+        case latestMessageSequence = "latest_message_sequence"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct CloudChatV2TextBlock: Codable, Hashable {
+    let type: String
+    let text: String
+}
+
+struct CloudChatV2Content: Codable, Hashable {
+    let schema: Int
+    let blocks: [CloudChatV2TextBlock]
+    let legacyAttachments: [CloudMessageAttachment]
+
+    init(body: String, attachments: [CloudMessageAttachment]) {
+        schema = 1
+        blocks = [CloudChatV2TextBlock(type: "text", text: body)]
+        legacyAttachments = attachments
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schema, blocks
+        case legacyAttachments = "legacy_attachments"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try container.decode(Int.self, forKey: .schema)
+        blocks = try container.decode([CloudChatV2TextBlock].self, forKey: .blocks)
+        legacyAttachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .legacyAttachments) ?? []
+    }
+
+    var body: String { blocks.map(\.text).joined() }
+}
+
+struct CloudChatV2Message: Codable, Hashable {
+    let id: String
+    let clientMessageId: String
+    let conversationId: String
+    let conversationSequence: Int64
+    let senderAccountId: String
+    let kind: String
+    let content: CloudChatV2Content
+    let replyToMessageId: String?
+    let attachmentIds: [String]
+    let version: Int
+    let generationStatus: String?
+    let providerResponseId: String?
+    let createdAt: String
+    let editedAt: String?
+    let deletedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, content, version
+        case clientMessageId = "client_message_id"
+        case conversationId = "conversation_id"
+        case conversationSequence = "conversation_sequence"
+        case senderAccountId = "sender_account_id"
+        case replyToMessageId = "reply_to_message_id"
+        case attachmentIds = "attachment_ids"
+        case generationStatus = "generation_status"
+        case providerResponseId = "provider_response_id"
+        case createdAt = "created_at"
+        case editedAt = "edited_at"
+        case deletedAt = "deleted_at"
+    }
+}
+
+struct CloudChatV2Cursor: Codable, Hashable {
+    let conversationId: String
+    let accountId: String
+    let lastDeliveredSequence: Int64
+    let lastReadSequence: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case conversationId = "conversation_id"
+        case accountId = "account_id"
+        case lastDeliveredSequence = "last_delivered_sequence"
+        case lastReadSequence = "last_read_sequence"
+    }
+}
+
+struct CloudChatV2EventPayload: Codable, Hashable {
+    let conversation: CloudChatV2Conversation?
+    let message: CloudChatV2Message?
+    let preferences: CloudChatV2Preferences?
+    let cursor: CloudChatV2Cursor?
+    let sessionId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case conversation, message, preferences, cursor
+        case sessionId = "sessionId"
+    }
+}
+
+struct CloudChatV2Event: Codable, Hashable {
+    let streamSequence: Int64
+    let eventId: String
+    let protocolVersion: Int
+    let eventType: String
+    let critical: Bool
+    let conversationId: String?
+    let entityId: String?
+    let entityVersion: Int?
+    let occurredAt: String
+    let payload: CloudChatV2EventPayload
+
+    enum CodingKeys: String, CodingKey {
+        case streamSequence = "stream_seq"
+        case eventId = "event_id"
+        case protocolVersion = "protocol_version"
+        case eventType = "type"
+        case critical
+        case conversationId = "conversation_id"
+        case entityId = "entity_id"
+        case entityVersion = "entity_version"
+        case occurredAt = "occurred_at"
+        case payload
+    }
+}
+
+struct CloudChatV2SyncResponse: Codable, Hashable {
+    let protocolVersion: Int
+    let events: [CloudChatV2Event]
+    let nextCursor: String
+    let lastStreamSequence: Int64
+    let hasMore: Bool
+    let serverTime: String
+
+    enum CodingKeys: String, CodingKey {
+        case protocolVersion = "protocol_version"
+        case events
+        case nextCursor = "next_cursor"
+        case lastStreamSequence = "last_stream_seq"
+        case hasMore = "has_more"
+        case serverTime = "server_time"
+    }
+}
+
+struct CloudChatV2BootstrapResponse: Codable, Hashable {
+    let protocolVersion: Int
+    let conversations: [CloudChatV2Conversation]
+    let latestMessages: [CloudChatV2Message]
+    let nextCursor: String
+    let lastStreamSequence: Int64
+    let serverTime: String
+
+    enum CodingKeys: String, CodingKey {
+        case protocolVersion = "protocol_version"
+        case conversations
+        case latestMessages = "latest_messages"
+        case nextCursor = "next_cursor"
+        case lastStreamSequence = "last_stream_seq"
+        case serverTime = "server_time"
+    }
+}
+
+struct CloudSyncedSessionTitle: Codable, Hashable {
+    let sessionId: String
+    let title: String
+}
+
 struct CloudAgentRun: Codable, Hashable {
     let runId: String
     let status: String
@@ -534,6 +762,7 @@ struct CloudSyncEventPayload: Codable, Hashable {
     let parentMessageId: String?
     let createdByAccountId: String?
     let createdAt: String?
+    let sessionTitle: CloudSyncedSessionTitle?
 }
 
 extension Optional where Wrapped == String {

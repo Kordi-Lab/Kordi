@@ -15,6 +15,10 @@ use axum::response::IntoResponse;
 use base64::Engine as _;
 use kordi_cloud_server::attachments::S3Config;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
+use kordi_cloud_server::chat_sync::models::{
+    ConversationKind, CreateConversationRequest, SendMessageRequest,
+};
+use kordi_cloud_server::chat_sync::store as chat_store;
 use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
 use kordi_cloud_server::server::{router_with_rate_limiter, ServerState};
@@ -269,7 +273,8 @@ async fn count_cloud_agent_runs_for_key(
 
 async fn cancel_other_queued_runs(pool: &sqlx_postgres::PgPool, run_id: &str) {
     sqlx_core::query::query(
-        "UPDATE cloud_agent_fallback_runs SET status = 'cancelled', updated_at = $2 WHERE run_id <> $1 AND status = 'queued'",
+        "UPDATE cloud_agent_fallback_runs SET status = 'cancelled', updated_at = $2 \
+         WHERE run_id <> $1 AND status IN ('queued', 'leased', 'running')",
     )
     .bind(run_id)
     .bind(chrono::Utc::now().to_rfc3339())
@@ -422,6 +427,10 @@ async fn lease_claimed_run_for_export(
     assert_eq!(read_json(lease).await["run"]["runId"], run_id);
     run_id
 }
+
+#[path = "cloud_agent_runtime_e2e/v2_chat.rs"]
+mod v2_chat;
+use v2_chat::*;
 
 #[path = "cloud_agent_runtime_e2e/artifacts.rs"]
 mod artifacts;

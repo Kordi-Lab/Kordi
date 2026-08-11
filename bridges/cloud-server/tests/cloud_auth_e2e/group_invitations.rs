@@ -1,73 +1,4 @@
 use super::*;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-
-const GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
-
-fn group_control_body(group_id: &str, admin_account_id: &str, member_account_id: &str) -> String {
-    let envelope = json!({
-        "kind": "group-invite",
-        "groupId": group_id,
-        "groupSpaceId": group_id,
-        "groupTitle": "Product Team",
-        "createdByAccountId": admin_account_id,
-        "actor": {
-            "accountId": admin_account_id,
-            "displayName": "Admin",
-            "avatarUrl": null,
-            "role": "admin"
-        },
-        "participants": [
-            {
-                "accountId": admin_account_id,
-                "displayName": "Admin",
-                "avatarUrl": null,
-                "role": "admin"
-            },
-            {
-                "accountId": member_account_id,
-                "displayName": "Member",
-                "avatarUrl": null,
-                "role": "person"
-            }
-        ],
-        "memberJoins": [],
-        "message": null
-    });
-    format!(
-        "{GROUP_CONTROL_PREFIX}{}",
-        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&envelope).unwrap())
-    )
-}
-
-fn forged_admin_control_body(
-    group_id: &str,
-    creator_account_id: &str,
-    member_account_id: &str,
-) -> String {
-    let envelope = json!({
-        "kind": "group-update",
-        "groupId": group_id,
-        "groupSpaceId": group_id,
-        "groupTitle": "Product Team",
-        "createdByAccountId": creator_account_id,
-        "actor": {
-            "accountId": member_account_id,
-            "displayName": "Member",
-            "avatarUrl": null,
-            "role": "admin"
-        },
-        "participants": [
-            { "accountId": creator_account_id, "displayName": "Admin", "avatarUrl": null, "role": "admin" },
-            { "accountId": member_account_id, "displayName": "Member", "avatarUrl": null, "role": "admin" }
-        ],
-        "memberLeaves": [],
-        "message": null
-    });
-    format!(
-        "{GROUP_CONTROL_PREFIX}{}",
-        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&envelope).unwrap())
-    )
-}
 
 fn get(uri: &str) -> Request<Body> {
     Request::builder()
@@ -78,7 +9,7 @@ fn get(uri: &str) -> Request<Body> {
 }
 
 #[tokio::test]
-async fn group_invitation_requires_explicit_acceptance_and_never_creates_contacts() {
+async fn group_invitation_updates_v2_membership_and_never_creates_contacts() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);
@@ -88,42 +19,36 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     let (second_token, second_id) = signup_account(&router, "group-invite-second").await;
     let (third_token, third_id) = signup_account(&router, "group-invite-third").await;
     let group_id = format!("session:group:{}", uuid::Uuid::new_v4().simple());
+
     let now = chrono::Utc::now().to_rfc3339();
-    let seed_body = group_control_body(&group_id, &admin_id, &member_id);
-    persist_cloud_message(
+    for (owner, peer) in [(&admin_id, &member_id), (&member_id, &admin_id)] {
+        sqlx_core::query::query(
+            "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at)
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        )
+        .bind(owner)
+        .bind(peer)
+        .bind(&now)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let conversation = kordi_cloud_server::chat_sync::store::create_conversation(
         &pool,
-        PersistCloudMessageInput {
-            message_id: &format!("msg_{}", uuid::Uuid::new_v4().simple()),
-            from_account_id: &admin_id,
-            to_account_id: &member_id,
-            client_message_id: Some(&format!("group-seed:{}", uuid::Uuid::new_v4().simple())),
-            body: &seed_body,
-            session_id: Some(&group_id),
-            created_at: &now,
-            delivered_at: &now,
-            read_at: None,
-            attachments: &[],
+        &admin_id,
+        kordi_cloud_server::chat_sync::models::CreateConversationRequest {
+            client_operation_id: uuid::Uuid::now_v7(),
+            kind: kordi_cloud_server::chat_sync::models::ConversationKind::Group,
+            shared_title: Some("Product Team".to_string()),
+            client_session_id: group_id.clone(),
+            member_account_ids: vec![member_id.clone()],
         },
     )
     .await
-    .unwrap();
+    .unwrap()
+    .value;
 
-    let forged = router
-        .clone()
-        .oneshot(post_json_with_token(
-            "/v1/cloud/messages",
-            &member_token,
-            json!({
-                "peerAccountId": member_id,
-                "body": forged_admin_control_body(&group_id, &admin_id, &member_id),
-                "sessionId": group_id,
-                "clientMessageId": format!("forged-group-admin:{}", uuid::Uuid::new_v4().simple())
-            }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(forged.status(), StatusCode::CREATED);
-    let forged_create = router
+    let member_create = router
         .clone()
         .oneshot(post_json_with_token(
             "/v1/cloud/invitations/groups",
@@ -136,7 +61,7 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
         ))
         .await
         .unwrap();
-    assert_eq!(forged_create.status(), StatusCode::FORBIDDEN);
+    assert_eq!(member_create.status(), StatusCode::FORBIDDEN);
 
     let create = router
         .clone()
@@ -156,19 +81,8 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     assert_eq!(create_status, StatusCode::OK, "got body {create_body}");
     let invitation_id = create_body["invitationId"].as_str().unwrap();
     let invite_url = create_body["inviteUrl"].as_str().unwrap();
-    let token = invite_url.rsplit('/').next().unwrap().to_string();
+    let token = invite_url.rsplit('/').next().unwrap();
     assert!(token.starts_with("kordi_gi_"));
-
-    let active = router
-        .clone()
-        .oneshot(get_with_token(
-            &format!("/v1/cloud/invitations/groups/active/{group_id}"),
-            &admin_token,
-        ))
-        .await
-        .unwrap();
-    let active_body = read_json(active).await;
-    assert_eq!(active_body["invitations"][0]["invitationId"], invitation_id);
 
     let stored_token_hash: (String,) = sqlx_core::query_as::query_as(
         "SELECT token_hash FROM cloud_group_invitations WHERE invitation_id = $1",
@@ -177,10 +91,7 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_ne!(
-        stored_token_hash.0, token,
-        "the bearer token must never be stored raw"
-    );
+    assert_ne!(stored_token_hash.0, token);
 
     let preview = router
         .clone()
@@ -194,15 +105,6 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     assert_eq!(preview_status, StatusCode::OK, "got body {preview_body}");
     assert_eq!(preview_body["group"]["name"], "Product Team");
     assert_eq!(preview_body["group"]["memberCount"], 2);
-
-    let contacts_before: (i64,) = sqlx_core::query_as::query_as(
-        "SELECT COUNT(*) FROM cloud_contacts WHERE account_id = $1 OR peer_account_id = $1",
-    )
-    .bind(&recipient_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(contacts_before.0, 0);
 
     let accept = router
         .clone()
@@ -230,19 +132,26 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
         "joining a group must not create contacts"
     );
 
-    let joined_message: (String,) = sqlx_core::query_as::query_as(
-        "SELECT body FROM cloud_messages \
-         WHERE from_account_id = $1 AND to_account_id = $2 AND session_id = $3 \
-           AND client_message_id LIKE 'group-invitation:%' \
-         ORDER BY created_at DESC LIMIT 1",
+    let membership: (String, String) = sqlx_core::query_as::query_as(
+        "SELECT role, membership_state FROM cloud_chat_conversation_members
+         WHERE conversation_id = $1 AND account_id = $2",
     )
-    .bind(&admin_id)
+    .bind(conversation.id)
     .bind(&recipient_id)
-    .bind(&group_id)
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert!(joined_message.0.starts_with(GROUP_CONTROL_PREFIX));
+    assert_eq!(membership, ("member".to_string(), "active".to_string()));
+    let membership_event_count: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_chat_user_sync_events
+         WHERE account_id = $1 AND conversation_id = $2 AND event_type = 'membership.updated'",
+    )
+    .bind(&recipient_id)
+    .bind(conversation.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(membership_event_count.0, 1);
 
     let duplicate = router
         .clone()
@@ -252,8 +161,7 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
         ))
         .await
         .unwrap();
-    let duplicate_body = read_json(duplicate).await;
-    assert_eq!(duplicate_body["status"], "already_joined");
+    assert_eq!(read_json(duplicate).await["status"], "already_joined");
 
     let self_accept = router
         .clone()
@@ -277,66 +185,17 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
     assert_eq!(second_join.unwrap().status(), StatusCode::OK);
     assert_eq!(third_join.unwrap().status(), StatusCode::OK);
 
-    let latest_control: (String,) = sqlx_core::query_as::query_as(
-        "SELECT body FROM cloud_messages WHERE session_id = $1 AND body LIKE $2 \
-         ORDER BY created_at DESC, message_id DESC LIMIT 1",
+    let joined_ids: Vec<(String,)> = sqlx_core::query_as::query_as(
+        "SELECT account_id FROM cloud_chat_conversation_members
+         WHERE conversation_id = $1 AND membership_state = 'active' ORDER BY account_id",
     )
-    .bind(&group_id)
-    .bind(format!("{GROUP_CONTROL_PREFIX}%"))
-    .fetch_one(&pool)
+    .bind(conversation.id)
+    .fetch_all(&pool)
     .await
     .unwrap();
-    let encoded = latest_control.0.strip_prefix(GROUP_CONTROL_PREFIX).unwrap();
-    let value: serde_json::Value =
-        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(encoded).unwrap()).unwrap();
-    let participant_ids = value["participants"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|participant| participant["accountId"].as_str())
-        .collect::<Vec<_>>();
-    assert!(participant_ids.contains(&second_id.as_str()));
-    assert!(participant_ids.contains(&third_id.as_str()));
-
-    let mut blocker = pool.begin().await.unwrap();
-    sqlx_core::query::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-        .bind(&group_id)
-        .execute(&mut *blocker)
-        .await
-        .unwrap();
-    let pending_accept = tokio::spawn({
-        let router = router.clone();
-        let token = token.clone();
-        let member_token = member_token.clone();
-        async move {
-            router
-                .oneshot(post_with_token(
-                    &format!("/v1/cloud/invitations/groups/accept/{token}"),
-                    &member_token,
-                ))
-                .await
-                .unwrap()
-        }
-    });
-    let mut accept_is_waiting = false;
-    for _ in 0..100 {
-        let waiting: (bool,) = sqlx_core::query_as::query_as(
-            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity \
-             WHERE wait_event = 'advisory' AND query LIKE '%pg_advisory_xact_lock(hashtextextended%')",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        if waiting.0 {
-            accept_is_waiting = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    assert!(
-        accept_is_waiting,
-        "acceptance did not reach the group lock before revocation"
-    );
+    let joined_ids = joined_ids.into_iter().map(|row| row.0).collect::<Vec<_>>();
+    assert!(joined_ids.contains(&second_id));
+    assert!(joined_ids.contains(&third_id));
 
     let revoke = router
         .clone()
@@ -347,24 +206,8 @@ async fn group_invitation_requires_explicit_acceptance_and_never_creates_contact
         .await
         .unwrap();
     assert_eq!(revoke.status(), StatusCode::NO_CONTENT);
-    blocker.commit().await.unwrap();
-
-    let raced_accept = pending_accept.await.unwrap();
-    assert_eq!(raced_accept.status(), StatusCode::NOT_FOUND);
-
-    let active_after_revoke = router
-        .clone()
-        .oneshot(get_with_token(
-            &format!("/v1/cloud/invitations/groups/active/{group_id}"),
-            &admin_token,
-        ))
-        .await
-        .unwrap();
-    let active_after_revoke = read_json(active_after_revoke).await;
-    assert_eq!(active_after_revoke["invitations"], json!([]));
 
     let revoked_preview = router
-        .clone()
         .oneshot(get(&format!(
             "/v1/cloud/invitations/groups/resolve/{token}"
         )))

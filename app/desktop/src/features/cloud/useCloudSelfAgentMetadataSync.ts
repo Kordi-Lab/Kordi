@@ -142,9 +142,12 @@ export function useCloudSelfAgentMetadataSync({
     if (!account || !canonicalState || !initialMessagesSettled) return;
     const titleUploads = titleUploadsRef.current;
     const cloudBackedSessionIds = new Set(
-      (messagesByPeer[account.accountId] ?? [])
-        .map((message) => cleanText(message.sessionId))
-        .filter(Boolean),
+      [
+        ...(messagesByPeer[account.accountId] ?? [])
+          .map((message) => cleanText(message.sessionId))
+          .filter(Boolean),
+        ...client.knownChatV2SessionIds(account.accountId),
+      ],
     );
     if (cloudBackedSessionIds.size === 0) return;
 
