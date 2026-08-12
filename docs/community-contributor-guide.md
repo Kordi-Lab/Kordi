@@ -9,7 +9,7 @@ You do not need access to Kordi's production infrastructure to contribute. The s
 1. Read the project overview in the [README](../README.md).
 2. Search the [open issues](https://github.com/Kordi-AI/Kordi/issues) for related work or an existing bug report.
 3. Comment on the issue before starting a large change so scope and expected behavior are clear.
-4. Follow the [isolated local development guide](self-hosted-debug.md) to run Kordi without production access.
+4. Select the safe path in [Development environment isolation](development-environments.md), then follow the [isolated local development guide](self-hosted-debug.md) to run Kordi without production access.
 5. Open a focused pull request and link it to the issue.
 
 Small, complete improvements are easier to review and merge than broad rewrites. A first contribution can be a documentation correction, regression test, focused bug fix, accessibility improvement, or a clearer error message.
@@ -39,7 +39,10 @@ pnpm debug:cloud:smoke
 Launch the native desktop against the loopback API:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Development launches reject a missing, invalid, or production API origin. Do not remove or bypass this guard to make a test pass.
@@ -53,7 +56,7 @@ pnpm dev:cloud:multi -- --reset --users user1,user2
 
 Use dummy accounts and developer-owned provider credentials. Do not reuse production service identities or credentials supplied by another person.
 
-The complete setup, architecture, logs, proxy troubleshooting, and cleanup instructions are in [Local development with an isolated Kordi backend](self-hosted-debug.md).
+The complete setup, architecture, logs, proxy troubleshooting, and cleanup instructions are in [Local development with an isolated Kordi backend](self-hosted-debug.md). Approved remote development uses the same loopback client commands through the private tunnel described in [Development environment isolation](development-environments.md); contributors must never invent or publish private host details.
 
 ## Work from an issue
 
@@ -201,6 +204,7 @@ Keep questions public when they contain no sensitive information so future contr
 ## Related guides
 
 - [Contributing workflow](../CONTRIBUTING.md)
+- [Development environment isolation](development-environments.md)
 - [Local development with an isolated backend](self-hosted-debug.md)
 - [Development command map](development.md)
 - [Architecture](architecture.md)

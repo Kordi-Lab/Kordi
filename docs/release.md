@@ -2,6 +2,8 @@
 
 This document describes how the Kordi monorepo is expected to package and release its different layers.
 
+Before any product deploy, restart, hosted validation, or release publication, select the authorized target through [Development environment isolation](development-environments.md) and the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Obtain real product infrastructure values privately and keep them out of commits and shared logs.
+
 ## Product surfaces
 
 ### Desktop app
@@ -120,14 +122,14 @@ The production secret names are:
 Create a secret from a protected temporary file without putting its value on the command line:
 
 ```bash
-gcloud secrets create SECRET_NAME --project "hai-gcp-representation" --replication-policy automatic
-gcloud secrets versions add SECRET_NAME --project "hai-gcp-representation" --data-file /protected/path/to/value
+gcloud secrets create SECRET_NAME --project "<PRODUCT_GCP_PROJECT>" --replication-policy automatic
+gcloud secrets versions add SECRET_NAME --project "<PRODUCT_GCP_PROJECT>" --data-file /protected/path/to/value
 ```
 
 Retrieve release material only inside a temporary release environment with shell history disabled. Remove temporary files and the temporary keychain after the signed build. Never print secret values:
 
 ```bash
-gcloud secrets versions access latest --secret SECRET_NAME --project "hai-gcp-representation" --out-file /protected/temporary/path
+gcloud secrets versions access latest --secret SECRET_NAME --project "<PRODUCT_GCP_PROJECT>" --out-file /protected/temporary/path
 ```
 
 The source-only prerequisite gate is suitable for CI and does not claim that an artifact is publishable:
@@ -145,9 +147,9 @@ Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Cli
 Provision or reconcile these identities from a trusted operator machine:
 
 ```bash
-export KORDI_CLOUD_SSH_TARGET=kordi-product-app-01
-export KORDI_CLOUD_SSH_ZONE=us-central1-b
-export KORDI_CLOUD_GCP_PROJECT=hai-gcp-representation
+export KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>"
+export KORDI_CLOUD_SSH_ZONE="<PRODUCT_GCP_ZONE>"
+export KORDI_CLOUD_GCP_PROJECT="<PRODUCT_GCP_PROJECT>"
 bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
 ```
 
@@ -213,11 +215,11 @@ TAURI_SECRET_DIR="$(mktemp -d /tmp/kordi-tauri-preview.XXXXXX)"
 chmod 700 "$TAURI_SECRET_DIR"
 gcloud secrets versions access latest \
   --secret kordi-tauri-updater-private-key \
-  --project hai-gcp-representation \
+  --project "<PRODUCT_GCP_PROJECT>" \
   --out-file "$TAURI_SECRET_DIR/private-key" --quiet
 gcloud secrets versions access latest \
   --secret kordi-tauri-updater-private-key-password \
-  --project hai-gcp-representation \
+  --project "<PRODUCT_GCP_PROJECT>" \
   --out-file "$TAURI_SECRET_DIR/password" --quiet
 export TAURI_SIGNING_PRIVATE_KEY="$(<"$TAURI_SECRET_DIR/private-key")"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(<"$TAURI_SECRET_DIR/password")"
@@ -303,8 +305,8 @@ For publication, expose MinIO only through a temporary loopback tunnel. On the p
 kubectl -n kordi-cloud port-forward service/minio 9900:9000 --address 127.0.0.1
 
 # Operator terminal
-gcloud compute ssh --zone "us-central1-a" "kordi-product" \
-  --project "hai-gcp-representation" -- -N -L 9900:127.0.0.1:9900
+gcloud compute ssh --zone "<PRODUCT_GCP_ZONE>" "<PRODUCT_GCE_INSTANCE>" \
+  --project "<PRODUCT_GCP_PROJECT>" -- -N -L 9900:127.0.0.1:9900
 ```
 
 Load publisher credentials from protected temporary files without printing them, then publish acceptance first. This extends the existing cleanup trap rather than replacing it. The script uploads immutable objects conditionally, verifies their unauthenticated product-domain GET and HEAD routes, writes the channel pointer last, and rolls the pointer back if post-promotion verification fails:
@@ -314,11 +316,11 @@ PUBLISHER_SECRET_DIR="$(mktemp -d /tmp/kordi-release-publisher.XXXXXX)"
 chmod 700 "$PUBLISHER_SECRET_DIR"
 gcloud secrets versions access latest \
   --secret kordi-release-publisher-access-key \
-  --project hai-gcp-representation \
+  --project "<PRODUCT_GCP_PROJECT>" \
   --out-file "$PUBLISHER_SECRET_DIR/access" --quiet
 gcloud secrets versions access latest \
   --secret kordi-release-publisher-secret-key \
-  --project hai-gcp-representation \
+  --project "<PRODUCT_GCP_PROJECT>" \
   --out-file "$PUBLISHER_SECRET_DIR/secret" --quiet
 export KORDI_RELEASE_PUBLISHER_ACCESS_KEY="$(<"$PUBLISHER_SECRET_DIR/access")"
 export KORDI_RELEASE_PUBLISHER_SECRET_KEY="$(<"$PUBLISHER_SECRET_DIR/secret")"
@@ -455,7 +457,7 @@ git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main
 Before updating the hosted backend, inspect the current production state through the product VM without printing secrets:
 
 ```bash
-gcloud compute ssh --zone "us-central1-a" "kordi-product" --project "hai-gcp-representation"
+gcloud compute ssh --zone "<PRODUCT_GCP_ZONE>" "<PRODUCT_GCE_INSTANCE>" --project "<PRODUCT_GCP_PROJECT>"
 ```
 
 Preserve production data and deploy in place from a clean worktree at `RELEASE_COMMIT`:

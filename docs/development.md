@@ -2,7 +2,7 @@
 
 This document keeps the top-level development commands for the Kordi monorepo in one place.
 
-New contributors should begin with [`self-hosted-debug.md`](self-hosted-debug.md). It covers the complete isolated backend and desktop workflow, multi-account testing, production access boundaries, troubleshooting, and cleanup.
+New contributors should begin with [Development environment isolation](development-environments.md), then use [`self-hosted-debug.md`](self-hosted-debug.md) for the complete isolated backend and desktop workflow, multi-account testing, production access boundaries, troubleshooting, and cleanup.
 
 Run commands from:
 
@@ -22,7 +22,7 @@ Before any preview or debug session, decide whether the current work is isolated
 
 - **Product-server-affecting operator work:** if the session will apply hosted server/runner code, routes, schema/data, server configuration, destructive/recovery behavior, a deploy, or anything requiring a product-server restart, develop and test on the corresponding product-server machine. The first end-to-end validation must use `https://coordinar.io`, never `https://kordi.ai` or a local community/debug-server profile.
 - **Desktop-only remote operator preview:** check the active GitHub account against `deploy/dev/operator-github-allowlist.txt`, then use `KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 pnpm dev:cloud:operator -- "https://kordi.ai"`.
-- **Isolated contributor work:** use the loopback Docker backend or an explicitly approved non-production staging origin. It cannot substitute for product-server validation.
+- **Isolated contributor work:** use the loopback Docker backend or an approved remote development backend reached through an IAP-style SSH tunnel. Both use an explicit loopback origin and an isolated named desktop profile. They cannot substitute for product-server validation.
 - **Unknown impact or missing required access:** stop and fail closed; do not change origins or bypass checks.
 
 See [Required preflight before preview or debug](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) for the canonical policy and full decision tree.
@@ -33,10 +33,13 @@ See [Required preflight before preview or debug](hosted-cloud-developer-guide.md
 
 ```bash
 pnpm debug:cloud:up
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-`pnpm dev` launches Kordi Desktop. Development launches fail closed unless you explicitly select a non-production API origin. The recommended default is the isolated Docker backend described in [`self-hosted-debug.md`](self-hosted-debug.md).
+The named profile launches Kordi Desktop with a separate native account store and no production updater endpoint. Development launches fail closed unless you explicitly select a non-production API origin. The recommended default is the isolated Docker backend described in [`self-hosted-debug.md`](self-hosted-debug.md).
 
 Production API:
 
@@ -47,7 +50,10 @@ https://kordi.ai
 For development/QA, prefer the self-hosted server or an operator-provided public test API base. Always set the API base explicitly:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
+VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile approved-staging --title "Kordi Staging" --port 1422
 ```
 
 The development launcher rejects the production origin. Do not bypass that safeguard for destructive, load, or throwaway multi-account testing.

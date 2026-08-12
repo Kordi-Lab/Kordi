@@ -14,6 +14,8 @@ const portForwardServicePath = new URL(
   import.meta.url,
 );
 const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh', import.meta.url);
+const runnerDeployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh', import.meta.url);
+const releaseCredentialsScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const cloudServerManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml', import.meta.url);
 const dockerignorePath = new URL('../.dockerignore', import.meta.url);
 
@@ -28,10 +30,26 @@ test('cloud server sync preserves remote Cargo target while deleting stale sourc
   assert.match(script, /RSYNC_REMOTE=/);
   assert.match(script, /--rsh="\$\{RSYNC_RSH\}"/);
   assert.match(script, /"\$\{RSYNC_REMOTE\}:\$\{REMOTE_DIR\}\/"/);
-  assert.match(script, /KORDI_CLOUD_GCP_PROJECT/);
-  assert.match(script, /GCLOUD_SSH\+=\(--project/);
+  assert.match(script, /KORDI_CLOUD_GCP_PROJECT:\?Set KORDI_CLOUD_GCP_PROJECT/);
+  assert.match(script, /--project "\$\{SSH_PROJECT\}"/);
   assert.doesNotMatch(script, /gcloud compute scp/);
   assert.doesNotMatch(script, /rm -rf \$\{REMOTE_DIR\}\.old|mv \$\{REMOTE_DIR\} \$\{REMOTE_DIR\}\.old/);
+});
+
+test('all remote deployment helpers require an explicit GCP project', async () => {
+  const scripts = await Promise.all([
+    scriptPath,
+    bootstrapScriptPath,
+    deployScriptPath,
+    runnerDeployScriptPath,
+    releaseCredentialsScriptPath,
+  ].map((path) => readFile(path, 'utf8')));
+
+  for (const script of scripts) {
+    assert.match(script, /KORDI_CLOUD_GCP_PROJECT:\?Set KORDI_CLOUD_GCP_PROJECT/);
+    assert.doesNotMatch(script, /KORDI_CLOUD_GCP_PROJECT:-/);
+    assert.match(script, /--project/);
+  }
 });
 
 test('cloud server image context includes the prebuilt release binary', async () => {
@@ -74,6 +92,9 @@ test('cloud server manifest targets the hosted product public base', async () =>
     manifest,
     /KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST[\s\S]*https:\/\/kordi\.ai,https:\/\/coordinar\.io/,
   );
+  for (const port of [1420, 1422, 1482, 1484, 1486]) {
+    assert.match(manifest, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
+  }
   assert.doesNotMatch(manifest, /https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io/);
 });
 

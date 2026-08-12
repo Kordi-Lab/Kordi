@@ -2,6 +2,8 @@
 
 This guide covers the native SwiftUI app in `app/ios`. The app targets iOS 17 and later, mirrors Kordi's macOS conversation semantics, and uses the hosted Kordi service for account and message continuity.
 
+Before any backend-connected development or operator validation, select the correct path in [Development environment isolation](development-environments.md). Network-free previews remain the preferred path for isolated interface work.
+
 ## Product boundary
 
 Kordi for iPhone is a client, not an agent runtime:

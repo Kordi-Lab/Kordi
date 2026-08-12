@@ -10,16 +10,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET to the operator-provided gcloud SSH target}"
 SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE to the operator-provided gcloud zone}"
-SSH_PROJECT="${KORDI_CLOUD_GCP_PROJECT:-}"
+SSH_PROJECT="${KORDI_CLOUD_GCP_PROJECT:?Set KORDI_CLOUD_GCP_PROJECT to the operator-provided GCP project}"
 REMOTE_DEPLOY="${KORDI_CLOUD_REMOTE_DIR:-\$HOME/kordi-cloud-server-deploy}"
 IMAGE_TAG="${KORDI_CLOUD_RUNNER_IMAGE_TAG:-runner-dev-$(date +%Y%m%d-%H%M%S)}"
 IMAGE="docker.io/library/kordi-cloud-agent-runner:${IMAGE_TAG}"
 
-GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}")
-if [ -n "${SSH_PROJECT}" ]; then
-    GCLOUD_SSH+=(--project "${SSH_PROJECT}")
-fi
+GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "${SSH_PROJECT}")
 
+echo "[runner-deploy] target: ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_ZONE})"
 echo "[runner-deploy] image tag: ${IMAGE_TAG}"
 echo "[runner-deploy] image ref: ${IMAGE}"
 

@@ -15,13 +15,30 @@ function read(path) {
 test('self-hosted debug stack is loopback-only and production-independent', () => {
   const compose = read('deploy/dev/compose.yaml');
 
-  for (const service of ['postgres', 'redis', 'nats', 'minio', 'minio-init', 'cloud-server']) {
+  for (const service of [
+    'postgres',
+    'redis',
+    'nats',
+    'minio',
+    'minio-init',
+    'cloud-server',
+    'cloud-agent-runner',
+  ]) {
     assert.match(compose, new RegExp(`^  ${service}:`, 'm'));
   }
   assert.match(compose, /127\.0\.0\.1:\$\{KORDI_DEBUG_API_PORT:-17081\}:17081/);
   assert.match(compose, /127\.0\.0\.1:\$\{KORDI_DEBUG_MINIO_PORT:-19000\}:9000/);
-  assert.doesNotMatch(compose, /coordinar\.io|hai-gcp-representation|kordi-product/i);
+  assert.doesNotMatch(compose, /coordinar\.io|https:\/\/kordi\.ai|KORDI_CLOUD_SSH_TARGET|KORDI_CLOUD_GCP_PROJECT/i);
   assert.doesNotMatch(compose, /^\s*-\s*"?(?:5432|6379|4222):/m);
+  assert.match(compose, /KORDI_OAUTH_GITHUB_CLIENT_ID: \$\{KORDI_OAUTH_GITHUB_CLIENT_ID:-\}/);
+  assert.match(compose, /KORDI_OAUTH_GOOGLE_CLIENT_ID: \$\{KORDI_OAUTH_GOOGLE_CLIENT_ID:-\}/);
+  assert.doesNotMatch(compose, /KORDI_CHAT_SYNC_V2_ENABLED|CHAT_SYNC_V2_DISABLED/);
+  assert.match(compose, /KORDI_CLOUD_API_BASE: http:\/\/cloud-server:17081/);
+  for (const port of [1420, 1422, 1482, 1484, 1486]) {
+    assert.match(compose, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
+  }
+  assert.match(compose, /KORDI_CLOUD_SANDBOX_BACKEND: local/);
+  assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
 });
 
 test('debug environment template contains placeholders instead of usable credentials', () => {
@@ -30,7 +47,10 @@ test('debug environment template contains placeholders instead of usable credent
   assert.match(template, /POSTGRES_PASSWORD=<generated-by-debug-helper>/);
   assert.match(template, /MINIO_ROOT_PASSWORD=<generated-by-debug-helper>/);
   assert.match(template, /KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY=<generated-by-debug-helper>/);
-  assert.doesNotMatch(template, /coordinar\.io|hai-gcp-representation|kordi-product/i);
+  assert.match(template, /KORDI_CHAT_SYNC_CURSOR_SECRET=<generated-by-debug-helper>/);
+  assert.match(template, /KORDI_OAUTH_GITHUB_CLIENT_ID=\n/);
+  assert.match(template, /KORDI_OAUTH_GOOGLE_CLIENT_ID=\n/);
+  assert.doesNotMatch(template, /coordinar\.io|https:\/\/kordi\.ai|KORDI_CLOUD_SSH_TARGET|KORDI_CLOUD_GCP_PROJECT/i);
 });
 
 test('debug setup removes a temporary credential file when generation is interrupted', () => {
@@ -44,6 +64,47 @@ test('debug setup removes a temporary credential file when generation is interru
   assert.match(dockerignore, /deploy\/dev\/\.env\.\?\?\?\?\?\?/);
 });
 
+test('debug setup upgrades old env files and rejects parent-shell credential overrides', () => {
+  const helper = read('scripts/dev-cloud-up.sh');
+
+  assert.match(helper, /grep -q '\^KORDI_CHAT_SYNC_CURSOR_SECRET='/);
+  assert.match(helper, /Added an isolated chat-sync secret/);
+  assert.match(helper, /unset POSTGRES_PASSWORD REDIS_PASSWORD/);
+  assert.match(helper, /unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN/);
+  assert.match(helper, /unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET/);
+  assert.match(helper, /unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET/);
+  assert.doesNotMatch(helper, /pnpm dev"/);
+});
+
+test('debug smoke reports OAuth readiness and a copyable isolated desktop command', () => {
+  const smoke = read('scripts/dev-cloud-smoke.sh');
+
+  assert.match(smoke, /\$\{provider\} OAuth: configured/);
+  assert.match(smoke, /tr '\[:upper:\]' '\[:lower:\]'/);
+  assert.match(smoke, /pnpm debug:cloud:oauth -- \$\{provider_command\}/);
+  assert.match(smoke, /VITE_KORDI_CLOUD_API_BASE=\$\{health_url%\/health\}/);
+  assert.match(smoke, /--profile dev-isolated/);
+});
+
+test('OAuth helper hides secrets and only restarts isolated app services', () => {
+  const helper = read('scripts/dev-cloud-oauth-configure.sh');
+  const packageJson = read('package.json');
+  const guide = read('docs/self-hosted-debug.md');
+
+  assert.match(helper, /\[\[ ! -t 0 \|\| ! -t 1 \]\]/);
+  assert.match(helper, /read -rs client_secret/);
+  assert.match(helper, /--from-stdin/);
+  assert.match(helper, /Credential input contains an unexpected entry/);
+  assert.match(helper, /mktemp "\$repo_root\/deploy\/dev\/\.env\.XXXXXX"/);
+  assert.match(helper, /chmod 600 "\$temp_env"\n+mv "\$temp_env" "\$env_file"/);
+  assert.match(helper, /unset client_id client_secret/);
+  assert.match(helper, /--no-deps cloud-server cloud-agent-runner/);
+  assert.doesNotMatch(helper, /coordinar\.io|kordi\.ai|kordi-product/i);
+  assert.match(packageJson, /"debug:cloud:oauth": "bash scripts\/dev-cloud-oauth-configure\.sh"/);
+  assert.match(guide, /pnpm debug:cloud:oauth -- github/);
+  assert.match(guide, /hidden terminal prompt/);
+});
+
 test('self-hosted guide uses the safe helper and explicit loopback API origin', () => {
   const guide = read('docs/self-hosted-debug.md');
 
@@ -55,6 +116,8 @@ test('self-hosted guide uses the safe helper and explicit loopback API origin', 
   assert.match(guide, /pnpm dev:cloud:multi -- --reset --users user1,user2/);
   assert.match(guide, /pnpm debug:cloud:reset -- --yes/);
   assert.match(guide, /pnpm check:ci/);
+  assert.match(guide, /development-environments\.md#remote-isolated-backend-through-iap/);
+  assert.match(guide, /pnpm check:english/);
   assert.doesNotMatch(guide, /127\.0\.0\.1:7890/);
 });
 
@@ -129,6 +192,14 @@ test('isolated desktop profiles initialize native Cloud account storage', () => 
       generated.stdout,
       new RegExp(`"identifier": "io\\.kordi\\.cloud\\.${profile}"`),
     );
+    const generatedConfig = JSON.parse(readFileSync(generatedConfigPath, 'utf8'));
+    assert.equal(generatedConfig.bundle.createUpdaterArtifacts, false);
+    assert.deepEqual(generatedConfig.plugins?.updater?.endpoints, []);
+    assert.doesNotMatch(
+      JSON.stringify(generatedConfig),
+      /https:\/\/(?:kordi\.ai|coordinar\.io)/i,
+      'isolated dev profiles must not retain a production updater endpoint',
+    );
 
     const rejected = spawnSync(
       process.execPath,
@@ -145,7 +216,24 @@ test('isolated desktop profiles initialize native Cloud account storage', () => 
       { cwd: repoRoot, env, encoding: 'utf8' },
     );
     assert.notEqual(rejected.status, 0);
-    assert.match(rejected.stderr, /must use io\.kordi\.cloud/i);
+    assert.match(rejected.stderr, /must use a unique io\.kordi\.cloud/i);
+
+    const productionIdentifier = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--dry-run',
+        '--profile',
+        profile,
+        '--port',
+        port,
+        '--identifier',
+        'io.kordi.cloud',
+      ],
+      { cwd: repoRoot, env, encoding: 'utf8' },
+    );
+    assert.notEqual(productionIdentifier.status, 0);
+    assert.match(productionIdentifier.stderr, /unique io\.kordi\.cloud/i);
   } finally {
     rmSync(generatedConfigPath, { force: true });
   }
@@ -184,6 +272,14 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
     });
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, /is not allowlisted/i);
+
+    const unapprovedOrigin = spawnSync('bash', [scriptPath, 'https://staging.example.test'], {
+      cwd: repoRoot,
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+      encoding: 'utf8',
+    });
+    assert.notEqual(unapprovedOrigin.status, 0);
+    assert.match(unapprovedOrigin.stderr, /accepts only https:\/\/kordi\.ai or https:\/\/coordinar\.io/i);
 
     const allowed = spawnSync('bash', [scriptPath, 'https://kordi.ai'], {
       cwd: repoRoot,

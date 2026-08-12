@@ -30,7 +30,7 @@ Production API:
 https://kordi.ai
 ```
 
-Development/QA should use `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted compatible server.
+Development/QA should follow [Development environment isolation](development-environments.md) and use the loopback Docker backend, an approved IAP-tunneled development backend, `<PUBLIC_TEST_CLOUD_API_BASE>`, or a self-hosted compatible server as selected by that preflight.
 
 Environment choice is mandatory before a preview or debug session. Product-server-affecting operator work must be developed and first tested on the corresponding product-server machine through `https://coordinar.io`, never `https://kordi.ai`; desktop-only remote operator previews use the allowlisted `https://kordi.ai` launcher. Isolated contributor environments remain separate and cannot substitute for product-server validation. See the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug).
 

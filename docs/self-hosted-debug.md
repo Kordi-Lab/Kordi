@@ -1,6 +1,6 @@
 # Local development with an isolated Kordi backend
 
-This is the recommended setup for contributors working on the desktop app, account and messaging flows, backend routes, database migrations, attachments, unread state, or multi-account synchronization.
+This is the recommended setup for contributors working on the desktop app, account and messaging flows, backend routes, database migrations, attachments, unread state, or multi-account synchronization. Select the local or approved remote path in [Development environment isolation](development-environments.md) before starting.
 
 The environment runs the current checkout of the Kordi server with Postgres, Redis, NATS JetStream, and MinIO on the developer's machine. It never copies production data, credentials, snapshots, or configuration.
 
@@ -30,8 +30,9 @@ These launch safeguards prevent accidental production traffic. They are not a se
 | NATS JetStream | Local event delivery | Docker network only |
 | MinIO | Attachments and object-storage testing | `127.0.0.1:19000` |
 | MinIO console | Local object-store inspection | `127.0.0.1:19001` |
+| Cloud agent runner | Scheduled and hosted-agent work | Docker network only |
 
-The Docker environment does not include a remote cloud-agent runner. Desktop-managed agents still run through the local desktop runtime. Runner and sandbox changes require their own development setup.
+The runner uses a local sandbox volume and talks only to the isolated Cloud API. It does not use the hosted runner, production data, or a Kubernetes cluster.
 
 ## Prerequisites
 
@@ -86,12 +87,21 @@ Expected result:
 [kordi-debug] Healthy isolated Cloud API: http://127.0.0.1:17081/health
 ```
 
+## Optional remote development host
+
+An approved remote development host may run this same Docker stack when it satisfies the isolation policy. Keep its application API bound to its own loopback interface and reach it only through the private tunnel documented in [Remote isolated backend through IAP](development-environments.md#remote-isolated-backend-through-iap).
+
+From the desktop machine, use the placeholder command in that guide to forward remote `127.0.0.1:17081` to local `127.0.0.1:17081`. Do not put the real project, zone, instance, IP address, user, or repository path into a commit or shared log. After the tunnel is established, every desktop, OAuth, smoke-test, and profile command below stays the same because the client still uses the explicit loopback origin.
+
 ## Start one desktop instance
 
-Launch the native desktop against the local API:
+Launch a named development profile against the local API. This gives the window a separate native account store and disables production updater endpoints:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Create a test account through the normal sign-up screen. The account, sessions, messages, and attachments remain inside the local Docker volumes.
@@ -132,7 +142,10 @@ app/desktop/.multi-instance-logs/
 Keep the backend running and restart the desktop after changing branches or native code:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 For frontend-only iteration, `pnpm dev:web` is faster, but it does not validate native Tauri commands, keychain storage, OAuth loopback behavior, sidecars, system proxy handling, or the updater.
@@ -257,7 +270,10 @@ Resolve the unhealthy dependency first, then rerun `pnpm debug:cloud:up`.
 This is expected when the variable is missing, invalid, or points at production. Use the explicit loopback origin:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Do not patch around the guard. If a shared non-production environment is required, use an operator-approved staging origin with independent data and credentials.
@@ -266,7 +282,35 @@ Do not patch around the guard. If a shared non-production environment is require
 
 Password sign-up and login work without third-party OAuth configuration. The desktop reads the server's authentication capabilities, so Google and GitHub buttons appear gray and cannot be clicked when their OAuth credentials are absent. Use email and password for normal local account testing.
 
-Google or GitHub login requires developer-owned OAuth applications configured with loopback callbacks. The server never returns missing environment-variable names or OAuth secrets to the login screen.
+Google or GitHub login requires separate developer-owned OAuth applications. Never copy the production client ID or secret. Configure these exact loopback callbacks:
+
+```text
+http://127.0.0.1:17081/v1/cloud/auth/oauth/github/callback
+http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
+```
+
+Enter each provider's matching values with the interactive helper. It hides the
+secret while typing, atomically updates the ignored `deploy/dev/.env`, and only
+recreates the development Cloud API and runner:
+
+```bash
+pnpm debug:cloud:oauth -- github
+pnpm debug:cloud:oauth -- google
+```
+
+The helper writes these keys without printing their values:
+
+```text
+KORDI_OAUTH_GITHUB_CLIENT_ID=...
+KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
+KORDI_OAUTH_GOOGLE_CLIENT_ID=...
+KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
+```
+
+Never paste an OAuth client secret into an issue, pull request, chat, or shell
+command. Enter it only at the helper's hidden terminal prompt.
+
+The server never returns missing environment-variable names or OAuth secrets to the login screen.
 
 ## Validation before opening a PR
 
@@ -274,6 +318,12 @@ Run the focused local-stack contracts:
 
 ```bash
 node --test scripts/local-debug-stack.test.mjs
+```
+
+Stage the intended files and reject non-English committed content or commit messages:
+
+```bash
+pnpm check:english
 ```
 
 Run the complete repository checks when the change is ready:
@@ -316,6 +366,7 @@ The allowlisted operator launcher described in [`hosted-cloud-developer-guide.md
 
 ## Related guides
 
+- [`development-environments.md`](development-environments.md): environment selection, remote IAP tunnel, OAuth, and commit safeguards
 - [`community-contributor-guide.md`](community-contributor-guide.md): community contribution paths and review expectations
 - [`development.md`](development.md): monorepo command map
 - [`run-cloud-desktop.md`](run-cloud-desktop.md): desktop launch reference

@@ -26,7 +26,7 @@ Options:
   --host <host>            Dev server host. Default: 127.0.0.1
   --profile <name>         Profile label used for app title + Cloud identifier suffix.
   --title <name>           Custom window/app title.
-  --identifier <value>     Full Cloud app identifier override (io.kordi.cloud[.*]).
+  --identifier <value>     Full isolated Cloud identifier override (io.kordi.cloud.*).
   --dry-run                Print the generated Tauri config and exit.
   --help                   Show this help.
 `);
@@ -89,7 +89,7 @@ function sanitizeIdentifierPart(value) {
 }
 
 function isCloudIdentifier(value) {
-  return value === 'io.kordi.cloud' || value.startsWith('io.kordi.cloud.');
+  return value.startsWith('io.kordi.cloud.') && value.length > 'io.kordi.cloud.'.length;
 }
 
 function ensureTauriCli() {
@@ -124,8 +124,8 @@ const title = options.title || `Kordi (${options.profile})`;
 const identifier = options.identifier || `io.kordi.cloud.${profileKey}`;
 if (!isCloudIdentifier(identifier)) {
   console.error(
-    '[kordi] Isolated profiles must use io.kordi.cloud or an io.kordi.cloud.* identifier '
-    + 'so native Cloud account storage is initialized.',
+    '[kordi] Isolated profiles must use a unique io.kordi.cloud.* identifier '
+    + 'so they cannot reuse the production app data directory.',
   );
   console.error(`[kordi] Received identifier: ${identifier}`);
   process.exit(1);
@@ -142,6 +142,10 @@ const nextConfig = {
   ...baseConfig,
   productName: title,
   identifier,
+  bundle: {
+    ...baseConfig.bundle,
+    createUpdaterArtifacts: false,
+  },
   build: {
     ...baseConfig.build,
     beforeDevCommand,
@@ -154,6 +158,13 @@ const nextConfig = {
         ? { ...window, title }
         : window
     )),
+  },
+  plugins: {
+    ...baseConfig.plugins,
+    updater: {
+      ...baseConfig.plugins?.updater,
+      endpoints: [],
+    },
   },
 };
 

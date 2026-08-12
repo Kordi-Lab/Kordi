@@ -31,6 +31,11 @@ if [[ ! -f "$env_file" ]]; then
     printf 'MINIO_ROOT_PASSWORD=%s\n' "$(openssl rand -hex 24)"
     printf 'KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)"
     printf 'KORDI_CLOUD_RUNNER_TOKEN=%s\n' "$(openssl rand -hex 32)"
+    printf 'KORDI_CHAT_SYNC_CURSOR_SECRET=%s\n' "$(openssl rand -hex 32)"
+    printf 'KORDI_OAUTH_GITHUB_CLIENT_ID=\n'
+    printf 'KORDI_OAUTH_GITHUB_CLIENT_SECRET=\n'
+    printf 'KORDI_OAUTH_GOOGLE_CLIENT_ID=\n'
+    printf 'KORDI_OAUTH_GOOGLE_CLIENT_SECRET=\n'
   } >"$temp_env"
   chmod 600 "$temp_env"
   mv "$temp_env" "$env_file"
@@ -43,11 +48,22 @@ if grep -q '<generated-by-debug-helper>' "$env_file"; then
   exit 1
 fi
 
+if ! grep -q '^KORDI_CHAT_SYNC_CURSOR_SECRET=' "$env_file"; then
+  umask 077
+  printf 'KORDI_CHAT_SYNC_CURSOR_SECRET=%s\n' "$(openssl rand -hex 32)" >>"$env_file"
+  chmod 600 "$env_file"
+  echo "[kordi-debug] Added an isolated chat-sync secret to the existing deploy/dev/.env"
+fi
+
+# Compose gives the parent shell precedence over --env-file. Clear every
+# server-side credential that this stack interpolates so a maintainer's
+# production environment cannot silently override the isolated dev file.
+unset POSTGRES_PASSWORD REDIS_PASSWORD
+unset MINIO_ROOT_USER MINIO_ROOT_PASSWORD
+unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN
+unset KORDI_CHAT_SYNC_CURSOR_SECRET
+unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET
+unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET
+
 docker compose --env-file "$env_file" -f "$compose_file" up --build --detach
 bash "$repo_root/scripts/dev-cloud-smoke.sh"
-
-api_port="${KORDI_DEBUG_API_PORT:-$(sed -n 's/^KORDI_DEBUG_API_PORT=//p' "$env_file" | tail -1)}"
-api_port="${api_port:-17081}"
-echo
-echo "[kordi-debug] Start the desktop against this isolated backend:"
-echo "VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:${api_port} pnpm dev"

@@ -13,6 +13,7 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 remote_host="${KORDI_CLOUD_REAL_CANARY_SSH_HOST:?Set KORDI_CLOUD_REAL_CANARY_SSH_HOST to the operator-provided gcloud SSH target}"
 remote_zone="${KORDI_CLOUD_REAL_CANARY_SSH_ZONE:?Set KORDI_CLOUD_REAL_CANARY_SSH_ZONE to the operator-provided gcloud zone}"
+gcp_project="${KORDI_CLOUD_GCP_PROJECT:?Set KORDI_CLOUD_GCP_PROJECT to the operator-provided GCP project}"
 namespace="${KORDI_CLOUD_SANDBOX_NAMESPACE:-kordi-cloud}"
 remote_server_port="${KORDI_CLOUD_SERVER_REMOTE_PORT:-0}"
 suffix="${KORDI_CLOUD_REAL_PROVIDER_CANARY_ID:-$(date +%s)}"
@@ -322,6 +323,8 @@ echo "[real-provider-canary] ok"
 REMOTE
 
 remote_script_path="/tmp/kordi-real-provider-canary-${suffix}.sh"
-echo "[real-provider-canary] running remote scoped canary on ${remote_host}"
-gcloud compute scp "$remote_script_file" "$remote_host:${remote_script_path}" --zone "$remote_zone" >/dev/null
-gcloud compute ssh "$remote_host" --zone "$remote_zone" --command "chmod 700 ${remote_script_path}; bash ${remote_script_path}; status=\$?; rm -f ${remote_script_path}; exit \$status"
+echo "[real-provider-canary] running remote scoped canary on ${remote_host} (project ${gcp_project}, zone ${remote_zone})"
+gcloud compute scp "$remote_script_file" "$remote_host:${remote_script_path}" \
+  --zone "$remote_zone" --project "$gcp_project" >/dev/null
+gcloud compute ssh "$remote_host" --zone "$remote_zone" --project "$gcp_project" \
+  --command "chmod 700 ${remote_script_path}; bash ${remote_script_path}; status=\$?; rm -f ${remote_script_path}; exit \$status"

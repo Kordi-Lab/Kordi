@@ -1,0 +1,114 @@
+# Development environment isolation
+
+Use this document before starting any Kordi preview, debug session, backend process, or OAuth test. The environment must be selected before a client is launched.
+
+## Decision matrix
+
+| Work | Required environment | Client origin |
+| --- | --- | --- |
+| Ordinary contributor or isolated feature work | Local Docker backend | `http://127.0.0.1:17081` |
+| Approved isolated work on a remote development host | Private development host reached through an IAP-style SSH tunnel | `http://127.0.0.1:17081` through the tunnel |
+| Desktop-only production operator preview | Allowlisted operator launcher | `https://kordi.ai` |
+| Work that can affect or restart a product server | Corresponding product-server machine | First end-to-end validation through `https://coordinar.io` |
+
+If the impact, authorization, or environment identity is uncertain, stop and fail closed. An isolated environment cannot substitute for required product-server validation.
+
+## Isolation invariants
+
+- Start work from the latest `origin/main`.
+- Never copy production credentials, account sessions, databases, object storage, or user data into a development environment.
+- Use separate developer-owned GitHub and Google OAuth applications. Never reuse production OAuth clients.
+- Keep PostgreSQL, Redis, NATS, MinIO, and sandbox services private. Every deliberately host-published development port, including the application API, must bind to loopback.
+- A remote development host must accept administrative access through an approved private access path such as IAP, must not carry a product service account, and must not have network access to product services.
+- Each isolated desktop window must use `VITE_KORDI_DEV_PROFILE=community`, a unique `io.kordi.cloud.*` profile, and no production updater endpoint.
+- Keep real project names, instance names, IP addresses, account names, and credentials out of commits, issues, pull requests, screenshots, and shared logs.
+
+## Local isolated backend
+
+Run the complete isolated stack from the repository root:
+
+```bash
+pnpm debug:cloud:up
+pnpm debug:cloud:smoke
+```
+
+Launch a named desktop profile against the loopback API:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
+```
+
+See [Local development with an isolated Kordi backend](self-hosted-debug.md) for OAuth, multi-user, log, validation, and reset commands.
+
+## Remote isolated backend through IAP
+
+The approved remote development host runs the same isolated Docker stack. Its API remains bound to its own loopback interface. Use private values supplied by the operator and do not commit them:
+
+```bash
+gcloud compute ssh "<DEV_GCE_INSTANCE>" \
+  --project "<DEV_GCP_PROJECT>" \
+  --zone "<DEV_GCP_ZONE>" \
+  --tunnel-through-iap -- \
+  -N -L 127.0.0.1:17081:127.0.0.1:17081
+```
+
+Keep that tunnel open, then validate and launch the same named profile from a second terminal:
+
+```bash
+curl --fail --silent --show-error http://127.0.0.1:17081/health
+
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
+```
+
+The tunnel is transport only. It does not authorize product access, and the remote host must continue to satisfy every isolation invariant above.
+
+## Development OAuth applications
+
+Create separate developer-owned OAuth applications with these exact callback URLs:
+
+```text
+http://127.0.0.1:17081/v1/cloud/auth/oauth/github/callback
+http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
+```
+
+The GitHub OAuth application callback URL must contain the complete path. In Google Auth Platform, add `http://127.0.0.1:17081` as an authorized JavaScript origin and add the complete Google callback URL as an authorized redirect URI.
+
+Store credentials only through the hidden-input helper on the machine running the backend:
+
+```bash
+pnpm debug:cloud:oauth -- github
+pnpm debug:cloud:oauth -- google
+```
+
+The helper writes the ignored `deploy/dev/.env` file with mode `0600` and restarts only the isolated API and runner services. Do not paste secrets into shell history, documentation, issues, or pull requests.
+
+## Product paths
+
+For a desktop-only production operator preview, first verify that the active GitHub account is listed in `deploy/dev/operator-github-allowlist.txt`, then use the approved launcher and acknowledgement:
+
+```bash
+KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
+pnpm dev:cloud:operator -- "https://kordi.ai"
+```
+
+Work that changes hosted server or runner code, routes, authentication, schema or data, server configuration, destructive or recovery behavior, deployment state, or anything requiring a product-server restart must use the corresponding product-server machine. Follow the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) and use `https://coordinar.io` for the first end-to-end validation.
+
+Product deployment helpers fail closed unless `KORDI_CLOUD_GCP_PROJECT`, `KORDI_CLOUD_SSH_ZONE`, and `KORDI_CLOUD_SSH_TARGET` are all set explicitly. Never rely on the active gcloud project for a deploy.
+
+## Before committing or pushing
+
+Stage the intended files, then run:
+
+```bash
+pnpm check:english
+git diff --check --cached
+pnpm test:scripts
+```
+
+`pnpm check:english` rejects Han characters in changed files and branch commit messages relative to `origin/main`. Set `KORDI_ENGLISH_BASE=<ref>` only when the pull request intentionally targets a different base.

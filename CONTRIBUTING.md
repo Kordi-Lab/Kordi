@@ -24,14 +24,17 @@ Ordinary contributor work should use the isolated backend rather than production
 ```bash
 pnpm debug:cloud:up
 pnpm debug:cloud:smoke
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Development launches fail closed when the API origin is missing, invalid, or points at production. Do not bypass this guard for destructive, load, migration, or throwaway multi-account tests.
 
 The local stack generates its own credentials and stores all test accounts and product data in local Docker volumes. Contributors do not need production SSH, Kubernetes, database, object-store, signing, release, or secret-manager access for normal feature work.
 
-Follow [Local development with an isolated Kordi backend](docs/self-hosted-debug.md) for prerequisites, multi-user testing, logs, proxy troubleshooting, validation, and cleanup.
+Use [Development environment isolation](docs/development-environments.md) to select the correct local, tunneled development, or product path. Follow [Local development with an isolated Kordi backend](docs/self-hosted-debug.md) for prerequisites, multi-user testing, logs, proxy troubleshooting, validation, and cleanup.
 
 An isolated contributor run does not count as product-server validation. Approved operator work that will affect or restart the product server must follow the [required environment preflight](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), run on the corresponding product-server machine, and use `https://coordinar.io` for the first end-to-end test—never `https://kordi.ai`.
 
@@ -69,6 +72,7 @@ git config core.hooksPath .githooks
 Runs fast checks before a commit is created:
 
 ```bash
+pnpm check:english
 cargo fmt --all -- --check
 git diff --check --cached
 pnpm --dir app/desktop typecheck
@@ -158,6 +162,7 @@ Before requesting review, make sure:
 - [ ] Light and dark modes were checked for UI changes.
 - [ ] Window resizing / split-view was checked for layout changes.
 - [ ] New behavior has tests or a clear manual validation note.
+- [ ] `pnpm check:english` passes and all committed content and commit messages are in English.
 - [ ] No debug logs, secrets, or generated files were committed.
 - [ ] Development and destructive tests used an isolated or explicitly approved non-production backend.
 

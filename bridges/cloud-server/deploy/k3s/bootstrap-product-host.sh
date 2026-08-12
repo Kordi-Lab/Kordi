@@ -9,12 +9,11 @@ set -euo pipefail
 
 SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET}"
 SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE}"
-SSH_PROJECT="${KORDI_CLOUD_GCP_PROJECT:-}"
+SSH_PROJECT="${KORDI_CLOUD_GCP_PROJECT:?Set KORDI_CLOUD_GCP_PROJECT}"
 
-GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}")
-if [ -n "${SSH_PROJECT}" ]; then
-	GCLOUD_SSH+=(--project "${SSH_PROJECT}")
-fi
+GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "${SSH_PROJECT}")
+
+echo "[bootstrap] target: ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_ZONE})"
 
 read -r -d '' REMOTE_SCRIPT <<'REMOTE' || true
 set -euo pipefail

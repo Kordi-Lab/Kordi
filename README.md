@@ -72,7 +72,10 @@ git clone https://github.com/Kordi-AI/Kordi.git
 cd Kordi
 pnpm install --frozen-lockfile
 pnpm debug:cloud:up
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Kordi opens in account login mode against an isolated Docker backend on your machine. Development launches require an explicit non-production API origin and reject the production origin.
@@ -81,10 +84,13 @@ Kordi opens in account login mode against an isolated Docker backend on your mac
 > Do not run destructive, load, or throwaway multi-account tests against production. The local Docker environment is the default contributor workflow. When an approved shared staging environment is required, set its API origin explicitly:
 >
 > ```bash
-> VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
+> VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
+> VITE_KORDI_DEV_PROFILE=community \
+> pnpm dev:desktop:profile -- \
+>   --profile approved-staging --title "Kordi Staging" --port 1422
 > ```
 
-Core-maintainer operator work has an additional mandatory preflight. If the requested settings, code, or test will affect or require restarting the product server, develop and test on the corresponding product-server machine and run the first end-to-end validation through `https://coordinar.io`—never `https://kordi.ai`. Desktop-only remote previews continue to use the allowlisted `https://kordi.ai` operator launcher. See [Required preflight before preview or debug](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug).
+Core-maintainer operator work has an additional mandatory preflight. If the requested settings, code, or test will affect or require restarting the product server, develop and test on the corresponding product-server machine and run the first end-to-end validation through `https://coordinar.io`—never `https://kordi.ai`. Desktop-only remote previews continue to use the allowlisted `https://kordi.ai` operator launcher. Start with [Development environment isolation](docs/development-environments.md), then use [Required preflight before preview or debug](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) for product paths.
 
 For prerequisites, multi-user testing, logs, troubleshooting, and cleanup, follow the [local development guide](docs/self-hosted-debug.md).
 
@@ -122,7 +128,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | --- | --- |
 | Start the isolated backend | `pnpm debug:cloud:up` |
 | Check the isolated backend | `pnpm debug:cloud:smoke` |
-| Start Kordi Desktop | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev` |
+| Start Kordi Desktop | Use the named-profile command in [Development environment isolation](docs/development-environments.md#local-isolated-backend) |
 | Test Kordi for iPhone | `xcodebuild -project app/ios/Kordi.xcodeproj -scheme Kordi -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test` |
 | Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev:cloud:multi -- --reset --users user1,user2` |
 | Build the desktop package | `pnpm build:desktop` |
@@ -136,6 +142,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | Guide | What it covers |
 | --- | --- |
 | [Community contributor guide](docs/community-contributor-guide.md) | Contribution areas, issues, safe setup, testing, bug reports, and review expectations |
+| [Development environment isolation](docs/development-environments.md) | Local, IAP-tunneled development, production preview, OAuth, and fail-closed environment selection |
 | [Local development](docs/self-hosted-debug.md) | Isolated Docker backend, desktop launch, multi-user testing, safety, and cleanup |
 | [Run Kordi Desktop](docs/run-cloud-desktop.md) | Local startup, API selection, multi-user testing, and troubleshooting |
 | [Develop Kordi for iPhone](docs/ios-development.md) | Xcode setup, previews, tests, physical devices, architecture, and TestFlight |

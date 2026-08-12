@@ -6,7 +6,7 @@ The native iPhone client is a thin client of the canonical hosted service. Relea
 https://kordi.ai
 ```
 
-That release origin does not authorize product-server development or validation. Operator work that will affect or restart the product server must follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), run on the corresponding product-server machine, and use `https://coordinar.io` for the first end-to-end test, never `https://kordi.ai`.
+That release origin does not authorize product-server development or validation. Select the path in [Development environment isolation](development-environments.md) before any backend-connected test. Operator work that will affect or restart the product server must follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), run on the corresponding product-server machine, and use `https://coordinar.io` for the first end-to-end test, never `https://kordi.ai`.
 
 The iPhone does not run an LLM. Agent execution is restricted to the owner's connected macOS runtime or the hosted Cloud fallback runner. The phone writes requests, shows execution state, and reads synchronized results.
 

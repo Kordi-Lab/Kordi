@@ -8,8 +8,12 @@ fi
 
 command -v cargo >/dev/null || { echo "cargo is required for pre-commit checks." >&2; exit 1; }
 command -v pnpm >/dev/null || { echo "pnpm is required for pre-commit checks." >&2; exit 1; }
+command -v rg >/dev/null || { echo "rg is required for pre-commit checks." >&2; exit 1; }
 
 echo "Running Kordi pre-commit checks..."
+
+echo "• English-only branch content"
+pnpm check:english
 
 echo "• Rust format"
 cargo fmt --all -- --check

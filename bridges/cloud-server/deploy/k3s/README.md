@@ -16,6 +16,8 @@ Development/QA should use an operator-provided public test Cloud API base or a s
 
 Do not commit provider tokens, auth tokens, database credentials, account secrets, or private operator host details.
 
+Before using this deploy path, select and authorize the target through [Development environment isolation](../../../../docs/development-environments.md) and the [hosted environment preflight](../../../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Obtain the real product project, zone, and instance values privately; never commit them.
+
 ## Why this exists alongside `bridges/cloud-server/deploy/`
 
 Two deploy paths live side-by-side:
@@ -36,17 +38,19 @@ export KORDI_CLOUD_GCP_PROJECT="<operator-gcp-project>"
 export KORDI_CLOUD_REMOTE_DIR="$HOME/kordi-cloud-server-deploy"
 ```
 
+The helpers reject an omitted project instead of inheriting the active gcloud project. Review the target summary printed before any remote operation.
+
 ## Install k3s on an operator-provided host
 
 ```bash
-KORDI_CLOUD_SSH_TARGET="kordi-product-app-01" \
-KORDI_CLOUD_SSH_ZONE="us-central1-b" \
-KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation" \
+KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>" \
+KORDI_CLOUD_SSH_ZONE="<PRODUCT_GCP_ZONE>" \
+KORDI_CLOUD_GCP_PROJECT="<PRODUCT_GCP_PROJECT>" \
   bash bridges/cloud-server/deploy/k3s/bootstrap-product-host.sh
 
-KORDI_CLOUD_SSH_TARGET="kordi-product-app-01" \
-KORDI_CLOUD_SSH_ZONE="us-central1-b" \
-KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation" \
+KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>" \
+KORDI_CLOUD_SSH_ZONE="<PRODUCT_GCP_ZONE>" \
+KORDI_CLOUD_GCP_PROJECT="<PRODUCT_GCP_PROJECT>" \
   bash bridges/cloud-server/deploy/k3s/configure-product-firewall.sh
 
 bash bridges/cloud-server/deploy/sync-and-build.sh
@@ -79,7 +83,7 @@ Required production server environment:
 KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
 KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io,kordi://oauth/callback
 KORDI_CHAT_SYNC_CURSOR_SECRET=<from kordi-chat-sync>
-KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420
+KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420,http://127.0.0.1:1422,http://127.0.0.1:1482,http://127.0.0.1:1484,http://127.0.0.1:1486
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 KORDI_OAUTH_GITHUB_CLIENT_ID=...
@@ -264,9 +268,9 @@ Desktop release objects live in the private MinIO bucket `kordi-releases`. The C
 After MinIO is running, provision or reconcile the scoped identities from a trusted operator machine:
 
 ```bash
-export KORDI_CLOUD_SSH_TARGET="kordi-product-app-01"
-export KORDI_CLOUD_SSH_ZONE="us-central1-b"
-export KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation"
+export KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>"
+export KORDI_CLOUD_SSH_ZONE="<PRODUCT_GCP_ZONE>"
+export KORDI_CLOUD_GCP_PROJECT="<PRODUCT_GCP_PROJECT>"
 bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
 ```
 

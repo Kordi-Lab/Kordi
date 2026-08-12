@@ -18,10 +18,11 @@ The product backend is the hosted API. Production builds use:
 https://kordi.ai
 ```
 
-Before any preview or debug session, use the [required environment preflight](../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug):
+Before any preview or debug session, use [Development environment isolation](../../docs/development-environments.md) and the [required environment preflight](../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug):
 
 - Product-server-affecting work, including behavior requiring a server restart, must be developed and tested on the corresponding product-server machine through `https://coordinar.io`, never through `https://kordi.ai` or a local community/debug-server profile.
 - Desktop-only Kordi previews must pass the GitHub allowlist check and use `scripts/dev-cloud-operator.sh https://kordi.ai` with `KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1`.
+- Isolated local or approved remote development uses a loopback API origin, `VITE_KORDI_DEV_PROFILE=community`, and a named `io.kordi.cloud.*` profile with production updater endpoints disabled.
 - Unknown impact or missing access fails closed; do not switch environments or bypass checks.
 
 `<PUBLIC_TEST_CLOUD_API_BASE>` remains available only for an explicitly authorized compatibility or self-hosted run. It is not a fallback for either required path.
@@ -37,7 +38,16 @@ pnpm install
 
 ### Start desktop
 
-For a desktop-only Kordi preview, run from the repository root:
+For an isolated local or IAP-tunneled development backend, run from the repository root:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
+```
+
+For a desktop-only production operator preview, run:
 
 ```bash
 KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
@@ -47,7 +57,10 @@ KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
 `pnpm dev` is a lower-level command that inherits the packaged `https://coordinar.io` default. Do not use it until the environment preflight selects that path. To target an explicitly authorized compatibility or self-hosted API, set the hosted API base explicitly:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
+VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile approved-staging --title "Kordi Staging" --port 1422
 ```
 
 ### Launch multiple isolated users
@@ -105,6 +118,7 @@ pnpm --dir app/desktop exec tsx --test tests/productShell.test.tsx tests/cloudSu
 ## Related docs
 
 - [../../README.md](../../README.md)
+- [../../docs/development-environments.md](../../docs/development-environments.md)
 - [../../docs/development.md](../../docs/development.md)
 - [../../docs/run-cloud-desktop.md](../../docs/run-cloud-desktop.md)
 - [../../docs/architecture.md](../../docs/architecture.md)
