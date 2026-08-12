@@ -58,9 +58,11 @@ test('desktop unit command discovers both TypeScript test suffixes without racin
 
 test('public docs use neutral product wording and safe host guidance', () => {
   const publicDocs = [
+    'AGENTS.md',
     'README.md',
     'CONTRIBUTING.md',
     'app/desktop/README.md',
+    'docs/development-environments.md',
     'docs/development.md',
     'docs/community-contributor-guide.md',
     'docs/run-cloud-desktop.md',
@@ -74,7 +76,9 @@ test('public docs use neutral product wording and safe host guidance', () => {
   assert.match(publicDocs, /Hosted\/dev runs must set `VITE_KORDI_CLOUD_API_BASE`/);
   assert.match(publicDocs, /Development launches fail closed/);
   assert.doesNotMatch(publicDocs, /https:\/\/kordi\.cloud/);
-  assert.doesNotMatch(publicDocs, /sslip\.io|gcloud compute ssh|[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+/i);
+  assert.doesNotMatch(publicDocs, /sslip\.io|[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+/i);
+  assert.doesNotMatch(publicDocs, /gcloud compute ssh (?!"<DEV_GCE_INSTANCE>")/i);
+  assert.doesNotMatch(publicDocs, /--project\s+(?!"<DEV_GCP_PROJECT>")["']?[a-z][a-z0-9-]{4,}/i);
   assert.doesNotMatch(publicDocs, /(?:^|[^\d.])(?!(?:127|0|10|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.)\d{1,3}(?:\.\d{1,3}){3}(?:$|[^\d.])/);
   assert.doesNotMatch(publicDocs, /local app stack/i);
   assert.doesNotMatch(publicDocs, /app-facing local orchestration/i);
@@ -85,6 +89,7 @@ test('public docs use neutral product wording and safe host guidance', () => {
 test('development docs enforce the product-server impact preflight', () => {
   const policy = readText('docs/hosted-cloud-developer-guide.md');
   const entrypoints = [
+    'AGENTS.md',
     'README.md',
     'CONTRIBUTING.md',
     'app/desktop/README.md',
@@ -116,5 +121,49 @@ test('development docs enforce the product-server impact preflight', () => {
       /hosted-cloud-developer-guide\.md#required-preflight-before-preview-or-debug/,
       `${path} must link to the canonical environment preflight`,
     );
+    assert.match(
+      contents,
+      /development-environments\.md/,
+      `${path} must link to the canonical environment isolation guide`,
+    );
   }
+});
+
+test('development environment guide documents isolated remote access without private targets', () => {
+  const guide = readText('docs/development-environments.md');
+  const repositoryAgents = readText('AGENTS.md');
+  const packageScripts = readJson('package.json').scripts;
+  const englishCheck = readText('scripts/check-english-only-diff.sh');
+  const preCommit = readText('.githooks/pre-commit');
+
+  assert.match(guide, /gcloud compute ssh "<DEV_GCE_INSTANCE>"/);
+  assert.match(guide, /--project "<DEV_GCP_PROJECT>"/);
+  assert.match(guide, /--zone "<DEV_GCP_ZONE>"/);
+  assert.match(guide, /--tunnel-through-iap/);
+  assert.match(guide, /127\.0\.0\.1:17081:127\.0\.0\.1:17081/);
+  assert.match(guide, /VITE_KORDI_DEV_PROFILE=community/);
+  assert.match(guide, /io\.kordi\.cloud\.\*/);
+  assert.match(guide, /oauth\/github\/callback/);
+  assert.match(guide, /oauth\/google\/callback/);
+  assert.match(repositoryAgents, /pnpm check:english/);
+  assert.equal(packageScripts['check:english'], 'bash scripts/check-english-only-diff.sh');
+  assert.match(englishCheck, /\[\\p\{Han\}\]/);
+  assert.match(preCommit, /pnpm check:english/);
+});
+
+test('operator documentation uses private product placeholders', () => {
+  const operatorDocs = [
+    'docs/release.md',
+    'docs/self-hosted-ci.md',
+    'bridges/cloud-server/deploy/README.md',
+    'bridges/cloud-server/deploy/k3s/README.md',
+  ].map((path) => `${path}\n${readText(path)}`).join('\n\n');
+
+  assert.match(operatorDocs, /<PRODUCT_GCP_PROJECT>/);
+  assert.match(operatorDocs, /<PRODUCT_GCP_ZONE>/);
+  assert.match(operatorDocs, /<PRODUCT_GCE_INSTANCE>/);
+  assert.match(operatorDocs, /development-environments\.md/);
+  assert.doesNotMatch(operatorDocs, /KORDI_CLOUD_SSH_TARGET=["']?[a-z0-9]/i);
+  assert.doesNotMatch(operatorDocs, /KORDI_CLOUD_SSH_ZONE=["']?[a-z0-9]/i);
+  assert.doesNotMatch(operatorDocs, /KORDI_CLOUD_GCP_PROJECT=["']?[a-z0-9]/i);
 });

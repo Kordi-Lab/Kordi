@@ -7,7 +7,8 @@ runs the same frontend, visual, Rust, hygiene, and pull-request metadata checks.
 ## Security boundary
 
 - Install the runner only on a dedicated development Mac, never on a production
-  server such as `kordi-product` or `kordi-product-app-01`.
+  server. Follow [Development environment isolation](development-environments.md)
+  before using any shared development or product infrastructure.
 - The runner uses the hidden, non-admin `kordi-ci` account and its private
   `kordi-ci` group. Its home is mode `700` and its login shell is disabled. Do
   not add that account to `admin` or `staff`, grant it Full Disk Access, or sign

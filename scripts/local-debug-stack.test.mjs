@@ -28,11 +28,11 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
   }
   assert.match(compose, /127\.0\.0\.1:\$\{KORDI_DEBUG_API_PORT:-17081\}:17081/);
   assert.match(compose, /127\.0\.0\.1:\$\{KORDI_DEBUG_MINIO_PORT:-19000\}:9000/);
-  assert.doesNotMatch(compose, /coordinar\.io|hai-gcp-representation|kordi-product/i);
+  assert.doesNotMatch(compose, /coordinar\.io|https:\/\/kordi\.ai|KORDI_CLOUD_SSH_TARGET|KORDI_CLOUD_GCP_PROJECT/i);
   assert.doesNotMatch(compose, /^\s*-\s*"?(?:5432|6379|4222):/m);
   assert.match(compose, /KORDI_OAUTH_GITHUB_CLIENT_ID: \$\{KORDI_OAUTH_GITHUB_CLIENT_ID:-\}/);
   assert.match(compose, /KORDI_OAUTH_GOOGLE_CLIENT_ID: \$\{KORDI_OAUTH_GOOGLE_CLIENT_ID:-\}/);
-  assert.match(compose, /KORDI_CHAT_SYNC_V2_ENABLED: "true"/);
+  assert.doesNotMatch(compose, /KORDI_CHAT_SYNC_V2_ENABLED|CHAT_SYNC_V2_DISABLED/);
   assert.match(compose, /KORDI_CLOUD_API_BASE: http:\/\/cloud-server:17081/);
   assert.match(compose, /KORDI_CLOUD_SANDBOX_BACKEND: local/);
   assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
@@ -47,7 +47,7 @@ test('debug environment template contains placeholders instead of usable credent
   assert.match(template, /KORDI_CHAT_SYNC_CURSOR_SECRET=<generated-by-debug-helper>/);
   assert.match(template, /KORDI_OAUTH_GITHUB_CLIENT_ID=\n/);
   assert.match(template, /KORDI_OAUTH_GOOGLE_CLIENT_ID=\n/);
-  assert.doesNotMatch(template, /coordinar\.io|hai-gcp-representation|kordi-product/i);
+  assert.doesNotMatch(template, /coordinar\.io|https:\/\/kordi\.ai|KORDI_CLOUD_SSH_TARGET|KORDI_CLOUD_GCP_PROJECT/i);
 });
 
 test('debug setup removes a temporary credential file when generation is interrupted', () => {
@@ -102,6 +102,8 @@ test('self-hosted guide uses the safe helper and explicit loopback API origin', 
   assert.match(guide, /pnpm dev:cloud:multi -- --reset --users user1,user2/);
   assert.match(guide, /pnpm debug:cloud:reset -- --yes/);
   assert.match(guide, /pnpm check:ci/);
+  assert.match(guide, /development-environments\.md#remote-isolated-backend-through-iap/);
+  assert.match(guide, /pnpm check:english/);
   assert.doesNotMatch(guide, /127\.0\.0\.1:7890/);
 });
 

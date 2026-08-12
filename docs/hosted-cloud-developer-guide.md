@@ -1,6 +1,6 @@
 # Kordi Hosted Developer Guide
 
-This guide explains how developers should choose an environment, test, and deploy against a hosted environment. It is the canonical policy for Kordi preview and debug sessions that may use remote hosted infrastructure.
+This guide explains how developers should choose an environment, test, and deploy against a hosted environment. It is the canonical policy for Kordi preview and debug sessions that may use remote hosted infrastructure. Read [Development environment isolation](development-environments.md) first for the complete local, remote development, and product decision matrix.
 
 Production API is `https://kordi.ai`, but that does not make it the correct target for every operator session. Apply the preflight below before launching a preview, debug session, tunnel, deploy, or server restart.
 
@@ -14,7 +14,8 @@ Determine whether the requested settings, code, or test can affect a product ser
 | --- | --- |
 | Product-server-affecting operator work | Develop, deploy, restart, inspect, and test on the corresponding product-server machine through `https://coordinar.io`. The first end-to-end validation must never use `https://kordi.ai`. |
 | Desktop-only remote operator preview | Check the active GitHub account against `deploy/dev/operator-github-allowlist.txt`, then use the approved operator launcher against `https://kordi.ai`. |
-| Isolated contributor work | Use the loopback Docker backend or an explicitly approved non-production staging API. This path cannot substitute for product-server validation. |
+| Isolated local development | Use the loopback Docker backend, an explicit loopback origin, and an isolated named desktop profile. This path cannot substitute for product-server validation. |
+| Approved isolated remote development | Reach the private development host through an IAP-style SSH tunnel, keep its API bound to loopback, and use the same isolated named profile. This path cannot substitute for product-server validation. |
 | Unknown impact or missing required access | Fail closed. Never silently fall back to a local community/debug-server profile, switch origins, or bypass endpoint/account checks as if it validated the product server. |
 
 ### Product-server-affecting path
@@ -192,7 +193,9 @@ Use this for single-account testing after exporting `VITE_KORDI_CLOUD_API_BASE`:
 
 ```bash
 pnpm install
-pnpm dev
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile approved-staging --title "Kordi Staging" --port 1422
 ```
 
 If the Tauri launcher reports missing sidecar binaries, run:

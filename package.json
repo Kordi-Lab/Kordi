@@ -47,6 +47,7 @@
     "check:rust:deps": "node scripts/check-desktop-dependency-surface.mjs",
     "check:rust:test": "pnpm check:rust:deps && pnpm check:rust:test:core && pnpm check:rust:test:desktop",
     "check:hygiene": "bash scripts/check-hygiene.sh",
+    "check:english": "bash scripts/check-english-only-diff.sh",
     "check:ci": "pnpm check:frontend && pnpm check:rust:fmt && pnpm check:rust:clippy && pnpm check:rust:test && pnpm test:scripts && pnpm maintainability:check && pnpm lint:suppressions:check && pnpm check:hygiene",
     "hooks:install": "bash scripts/setup-git-hooks.sh",
     "check": "pnpm lint && pnpm typecheck:web && pnpm check:rust",

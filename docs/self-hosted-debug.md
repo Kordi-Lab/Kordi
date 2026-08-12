@@ -1,6 +1,6 @@
 # Local development with an isolated Kordi backend
 
-This is the recommended setup for contributors working on the desktop app, account and messaging flows, backend routes, database migrations, attachments, unread state, or multi-account synchronization.
+This is the recommended setup for contributors working on the desktop app, account and messaging flows, backend routes, database migrations, attachments, unread state, or multi-account synchronization. Select the local or approved remote path in [Development environment isolation](development-environments.md) before starting.
 
 The environment runs the current checkout of the Kordi server with Postgres, Redis, NATS JetStream, and MinIO on the developer's machine. It never copies production data, credentials, snapshots, or configuration.
 
@@ -87,22 +87,21 @@ Expected result:
 [kordi-debug] Healthy isolated Cloud API: http://127.0.0.1:17081/health
 ```
 
+## Optional remote development host
+
+An approved remote development host may run this same Docker stack when it satisfies the isolation policy. Keep its application API bound to its own loopback interface and reach it only through the private tunnel documented in [Remote isolated backend through IAP](development-environments.md#remote-isolated-backend-through-iap).
+
+From the desktop machine, use the placeholder command in that guide to forward remote `127.0.0.1:17081` to local `127.0.0.1:17081`. Do not put the real project, zone, instance, IP address, user, or repository path into a commit or shared log. After the tunnel is established, every desktop, OAuth, smoke-test, and profile command below stays the same because the client still uses the explicit loopback origin.
+
 ## Start one desktop instance
 
-Launch the native desktop against the local API:
-
-```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
-```
-
-For a fully separate native account store, launch a named development profile.
-Generated development profiles also disable production updater endpoints:
+Launch a named development profile against the local API. This gives the window a separate native account store and disables production updater endpoints:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
 VITE_KORDI_DEV_PROFILE=community \
-pnpm --dir app/desktop tauri:dev:profile -- \
-  --profile dev-isolated --title "Kordi Dev" --port 1420
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Create a test account through the normal sign-up screen. The account, sessions, messages, and attachments remain inside the local Docker volumes.
@@ -143,7 +142,10 @@ app/desktop/.multi-instance-logs/
 Keep the backend running and restart the desktop after changing branches or native code:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 For frontend-only iteration, `pnpm dev:web` is faster, but it does not validate native Tauri commands, keychain storage, OAuth loopback behavior, sidecars, system proxy handling, or the updater.
@@ -268,7 +270,10 @@ Resolve the unhealthy dependency first, then rerun `pnpm debug:cloud:up`.
 This is expected when the variable is missing, invalid, or points at production. Use the explicit loopback origin:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Do not patch around the guard. If a shared non-production environment is required, use an operator-approved staging origin with independent data and credentials.
@@ -315,6 +320,12 @@ Run the focused local-stack contracts:
 node --test scripts/local-debug-stack.test.mjs
 ```
 
+Stage the intended files and reject non-English committed content or commit messages:
+
+```bash
+pnpm check:english
+```
+
 Run the complete repository checks when the change is ready:
 
 ```bash
@@ -355,6 +366,7 @@ The allowlisted operator launcher described in [`hosted-cloud-developer-guide.md
 
 ## Related guides
 
+- [`development-environments.md`](development-environments.md): environment selection, remote IAP tunnel, OAuth, and commit safeguards
 - [`community-contributor-guide.md`](community-contributor-guide.md): community contribution paths and review expectations
 - [`development.md`](development.md): monorepo command map
 - [`run-cloud-desktop.md`](run-cloud-desktop.md): desktop launch reference

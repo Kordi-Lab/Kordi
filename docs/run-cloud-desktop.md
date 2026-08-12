@@ -8,7 +8,7 @@ Production API:
 https://kordi.ai
 ```
 
-For development, use the isolated backend from the current checkout. For approved shared QA, use an operator-provided public test API base:
+For development, select the environment in [Development environment isolation](development-environments.md), then use the isolated backend from the current checkout or an approved remote development backend through its loopback tunnel. For approved shared QA, use an operator-provided public test API base:
 
 ```text
 <PUBLIC_TEST_CLOUD_API_BASE>
@@ -22,7 +22,7 @@ Before launching a preview or debug session, follow the [canonical environment p
 
 - If the current operator session can affect or require restarting the product server, develop and test on the corresponding product-server machine. Run the first end-to-end validation through `https://coordinar.io`, never `https://kordi.ai` or a local community/debug-server profile.
 - If the remote operator preview is desktop-only, check the active GitHub account against `deploy/dev/operator-github-allowlist.txt` and use the approved `https://kordi.ai` launcher.
-- Isolated loopback or explicitly approved staging work remains valid for non-product development, but it does not substitute for product-server validation.
+- Isolated local or IAP-tunneled development uses the loopback origin, `VITE_KORDI_DEV_PROFILE=community`, and a named `io.kordi.cloud.*` desktop profile. It does not substitute for product-server validation.
 - If impact is uncertain or required access is missing, stop and fail closed.
 
 ## Prerequisites
@@ -48,16 +48,22 @@ pnpm debug:cloud:up
 pnpm debug:cloud:smoke
 ```
 
-Launch the desktop with the explicit local API origin:
+Launch the desktop with the explicit loopback origin and an isolated named profile:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
 Development launches fail closed when the API origin is missing, invalid, or points at production. To use an approved public staging or self-hosted API, set that origin explicitly:
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
+VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm dev:desktop:profile -- \
+  --profile approved-staging --title "Kordi Staging" --port 1422
 ```
 
 What to expect:
@@ -112,6 +118,7 @@ Never use a tunnel/local backend as product-server validation. Use tunnel/local 
 
 ## Related docs
 
+- [Development environment isolation](development-environments.md)
 - [Local development with an isolated backend](self-hosted-debug.md)
 - [Kordi architecture and backend notes](cloud-edition.md)
 - [Hosted developer guide](hosted-cloud-developer-guide.md)

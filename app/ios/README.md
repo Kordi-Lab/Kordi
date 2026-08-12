@@ -2,6 +2,8 @@
 
 Kordi for iPhone is the native SwiftUI companion to Kordi Desktop. It targets iOS 17 and later and connects to the canonical hosted service at `https://kordi.ai`.
 
+Before any backend-connected development or operator validation, select the correct path in [Development environment isolation](../../docs/development-environments.md). Network-free previews remain the preferred path for isolated interface work.
+
 The phone is a collaboration client, not an agent runtime. Agent requests execute through an available Kordi macOS runtime or Kordi Cloud; no model runs on the iPhone.
 
 ## Current capabilities
