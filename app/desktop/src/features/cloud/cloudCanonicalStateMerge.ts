@@ -15,7 +15,142 @@ export type CloudSelfAgentCanonicalSyncBatch = {
   identity: CanonicalIdentity;
   sessions: OpenCanonicalSessionFastResult[];
   messages: CanonicalSessionMessage[];
+  reconciledMessageMirrors: Array<{
+    preferredMessageId: string;
+    duplicateMessageId: string;
+  }>;
 };
+
+const MESSAGE_REFERENCE_KEYS = new Set([
+  'replyToMessageId',
+  'requestId',
+  'requestMessageId',
+  'sourceMessageId',
+  'sessionTitleGeneratedFromMessageId',
+  'forkedFromMessageId',
+]);
+const MESSAGE_REFERENCE_ARRAY_KEYS = new Set([
+  'forkedFromMessageAliases',
+]);
+
+function replaceMessageReference(
+  value: unknown,
+  duplicateMessageId: string,
+  preferredMessageId: string,
+  key = '',
+): unknown {
+  if (typeof value === 'string') {
+    return MESSAGE_REFERENCE_KEYS.has(key) && value === duplicateMessageId
+      ? preferredMessageId
+      : value;
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const replaced = value.map((entry) => {
+      const next = MESSAGE_REFERENCE_ARRAY_KEYS.has(key)
+        && entry === duplicateMessageId
+        ? preferredMessageId
+        : replaceMessageReference(
+            entry,
+            duplicateMessageId,
+            preferredMessageId,
+          );
+      if (next !== entry) changed = true;
+      return next;
+    });
+    return changed ? replaced : value;
+  }
+  if (!value || typeof value !== 'object') return value;
+  let changed = false;
+  const replaced = Object.fromEntries(Object.entries(value).map(([entryKey, entry]) => {
+    const next = replaceMessageReference(
+      entry,
+      duplicateMessageId,
+      preferredMessageId,
+      entryKey,
+    );
+    if (next !== entry) changed = true;
+    return [entryKey, next];
+  }));
+  return changed ? replaced : value;
+}
+
+function reconcileMessageMirrorInLocalState(
+  current: CanonicalSessionState,
+  preferredMessageId: string,
+  duplicateMessageId: string,
+): CanonicalSessionState {
+  const now = Date.now();
+  return {
+    ...current,
+    sessions: current.sessions.map((session) => {
+      const metadata = replaceMessageReference(
+        session.metadata,
+        duplicateMessageId,
+        preferredMessageId,
+      );
+      return metadata === session.metadata
+        ? session
+        : { ...session, metadata };
+    }),
+    participants: current.participants.map((participant) => (
+      participant.lastReadMessageId === duplicateMessageId
+        ? { ...participant, lastReadMessageId: preferredMessageId }
+        : participant
+    )),
+    messages: current.messages.flatMap((message) => {
+      if (message.id === duplicateMessageId) return [];
+      const parentMessageId = message.parentMessageId === duplicateMessageId
+        ? preferredMessageId
+        : message.parentMessageId;
+      const content = replaceMessageReference(
+        message.content,
+        duplicateMessageId,
+        preferredMessageId,
+      );
+      if (
+        parentMessageId === message.parentMessageId
+        && content === message.content
+      ) return [message];
+      return [{
+        ...message,
+        parentMessageId,
+        content,
+        ...(content === message.content ? {} : { contentHash: null }),
+      }];
+    }),
+    delegatedExchanges: current.delegatedExchanges.map((exchange) => {
+      const triggerMessageId = exchange.triggerMessageId === duplicateMessageId
+        ? preferredMessageId
+        : exchange.triggerMessageId;
+      const requestMessageId = exchange.requestMessageId === duplicateMessageId
+        ? preferredMessageId
+        : exchange.requestMessageId;
+      const responseMessageId = exchange.responseMessageId === duplicateMessageId
+        ? preferredMessageId
+        : exchange.responseMessageId;
+      return triggerMessageId === exchange.triggerMessageId
+        && requestMessageId === exchange.requestMessageId
+        && responseMessageId === exchange.responseMessageId
+        ? exchange
+        : {
+            ...exchange,
+            triggerMessageId,
+            requestMessageId,
+            responseMessageId,
+          };
+    }),
+    contextSnapshots: current.contextSnapshots.map((snapshot) => (
+      snapshot.uptoMessageId === duplicateMessageId
+        ? {
+            ...snapshot,
+            uptoMessageId: preferredMessageId,
+            invalidatedAtMs: snapshot.invalidatedAtMs ?? now,
+          }
+        : snapshot
+    )),
+  };
+}
 
 export function upsertCanonicalIdentityIntoLocalState(
   current: CanonicalSessionState | null,
@@ -93,6 +228,14 @@ export function mergeCloudSelfAgentCanonicalSyncBatch(
   }
   for (const message of batch.messages) {
     next = mergeCanonicalMessageRow(next, message);
+  }
+  for (const reconciliation of batch.reconciledMessageMirrors) {
+    if (!next) break;
+    next = reconcileMessageMirrorInLocalState(
+      next,
+      reconciliation.preferredMessageId,
+      reconciliation.duplicateMessageId,
+    );
   }
   return next;
 }

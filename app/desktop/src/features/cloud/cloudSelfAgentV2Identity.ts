@@ -3,12 +3,28 @@ import type { CloudSelfAgentSyncOperation } from './cloudSelfAgentForwardSync';
 
 const RECOVERY_KEY_PREFIX = 'kordi.cloud.selfAgentV2Recovery.v1:';
 
+export function cloudSelfAgentRequestClientMessageId(
+  sessionId: string,
+  localMessageId: string,
+): string {
+  return cloudOperationUuid(
+    `self-agent:${sessionId}:${localMessageId}:request`,
+  );
+}
+
 export function cloudSelfAgentOperationClientMessageId(
   operation: CloudSelfAgentSyncOperation,
 ): string {
   const requestId = operation.parentLocalMessageId ?? operation.localMessageId;
-  const kind = operation.role === 'user' ? 'request' : 'response';
-  return cloudOperationUuid(`self-agent:${operation.sessionId}:${requestId}:${kind}`);
+  if (operation.role === 'user') {
+    return cloudSelfAgentRequestClientMessageId(
+      operation.sessionId,
+      requestId,
+    );
+  }
+  return cloudOperationUuid(
+    `self-agent:${operation.sessionId}:${requestId}:response`,
+  );
 }
 
 function recoveryKey(accountId: string): string {

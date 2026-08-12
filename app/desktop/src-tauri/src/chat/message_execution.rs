@@ -269,7 +269,14 @@ async fn finish_turn(
             state.succeeded = false;
             state.error = None;
         }),
-        Err(error) => fail_chat_request(snapshot, error),
+        Err(error) => {
+            // Provider failures can still persist a terminal assistant entry.
+            // Sync that entry before completing the live turn so Cloud receives
+            // the failed response immediately instead of leaving a processing
+            // placeholder until fallback timeout.
+            sync_completed_session(cwd, session_id, session_handle, is_agent_builder_session).await;
+            fail_chat_request(snapshot, error);
+        }
     }
 }
 

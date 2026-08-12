@@ -59,6 +59,7 @@ fn seed_identity_with_source(
 
 mod desktop_sync;
 mod desktop_sync_blank_sessions;
+mod desktop_sync_failure;
 mod direct_message_sync;
 mod group_authority;
 mod group_titles;

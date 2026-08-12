@@ -124,6 +124,7 @@ export function useCloudSelfAgentCanonicalSync({
     if (
       plan.sessionRequests.length === 0
       && plan.messageRequests.length === 0
+      && plan.mirrorReconciliations.length === 0
     ) return;
     const signature = cloudSelfAgentCanonicalSyncPlanSignature(plan);
     if (inFlightRef.current) return;

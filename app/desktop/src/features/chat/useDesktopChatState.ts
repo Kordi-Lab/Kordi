@@ -391,22 +391,15 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
       return;
     }
 
-    if (!appendSessionSourceMessage(turn.sessionId, completedMessage)) return;
+    const appendedToSessionCache = appendSessionSourceMessage(turn.sessionId, completedMessage);
 
-    if (isBackgroundSession) {
+    if (isBackgroundSession && appendedToSessionCache) {
       incrementUnreadForSession(turn.sessionId);
       notifyBackgroundSessionCompletion(turn);
-    } else {
+    } else if (!isBackgroundSession) {
       clearUnreadForSession(turn.sessionId);
     }
 
-    // The visible conversation can temporarily differ from
-    // desktopChatState.activeSession while selection/refresh work settles. In
-    // that foreground-but-inactive state, the active transcript update above
-    // cannot append the completed row, and treating it as foreground used to
-    // skip the cache update too. Commit the completed response/error into any
-    // hydrated cache before removing the live row so one source always owns the
-    // visible replacement.
     removeLiveTurnSnapshot(turn.sessionId, turn.id);
   }, [appendSessionSourceMessage, clearUnreadForSession, incrementUnreadForSession, removeLiveTurnSnapshot]);
 

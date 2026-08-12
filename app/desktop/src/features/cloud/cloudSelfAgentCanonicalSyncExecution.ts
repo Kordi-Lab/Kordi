@@ -3,6 +3,7 @@ import {
   upsertCanonicalIdentityFast,
   upsertCanonicalMessageFast,
 } from '@/lib/desktop';
+import { reconcileCanonicalMessageMirror } from '@/lib/desktopCanonicalMirror';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
@@ -24,12 +25,17 @@ export type CloudSelfAgentCanonicalPersistence = {
   upsertMessage: (
     request: AppendCanonicalMessageRequest,
   ) => Promise<CanonicalSessionMessage>;
+  reconcileMessageMirror: (
+    preferredMessageId: string,
+    duplicateMessageId: string,
+  ) => Promise<boolean>;
 };
 
 const desktopPersistence: CloudSelfAgentCanonicalPersistence = {
   upsertIdentity: upsertCanonicalIdentityFast,
   openSession: openOrCreateCanonicalSessionFast,
   upsertMessage: upsertCanonicalMessageFast,
+  reconcileMessageMirror: reconcileCanonicalMessageMirror,
 };
 
 export function cloudSelfAgentCanonicalSyncPlanSignature(
@@ -39,6 +45,7 @@ export function cloudSelfAgentCanonicalSyncPlanSignature(
     plan.agentIdentityRequest,
     plan.sessionRequests,
     plan.messageRequests,
+    plan.mirrorReconciliations,
   ]);
 }
 
@@ -66,5 +73,21 @@ export async function persistCloudSelfAgentCanonicalSyncPlan(
     if (!shouldContinue()) return null;
     messages.push(await persistence.upsertMessage(request));
   }
-  return { identity, sessions, messages };
+  const reconciledMessageMirrors: CloudSelfAgentCanonicalSyncPlan['mirrorReconciliations'] = [];
+  for (const reconciliation of plan.mirrorReconciliations) {
+    if (!shouldContinue()) return null;
+    const reconciled = await persistence.reconcileMessageMirror(
+      reconciliation.preferredMessageId,
+      reconciliation.duplicateMessageId,
+    );
+    if (reconciled) {
+      reconciledMessageMirrors.push(reconciliation);
+    }
+  }
+  return {
+    identity,
+    sessions,
+    messages,
+    reconciledMessageMirrors,
+  };
 }

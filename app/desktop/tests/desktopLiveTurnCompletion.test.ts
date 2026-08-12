@@ -25,6 +25,11 @@ test('completed live turn installs the keyed transcript reply before removing th
     'the completed assistant message should reach a hydrated inactive-session cache before the live row is removed',
   );
   assert.doesNotMatch(body, /setTimeout[\s\S]*removeLiveTurnSnapshot/);
+  assert.doesNotMatch(
+    body,
+    /if \(!appendSessionSourceMessage\([^)]*\)\) return/,
+    'a missing inactive-session cache must not leave a terminal live row stuck in Processing',
+  );
   assert.match(body, /buildCompletedDesktopAssistantMessage\(turn, finishedAtMs\)/);
   assert.match(source, /desktopTurnRenderAliases\.register\(nextTurn\)[\s\S]*refreshCompletedDesktopTurnTranscript\(nextTurn\)/);
 });
