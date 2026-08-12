@@ -8,6 +8,12 @@ final class AvatarIdentityTests: XCTestCase {
         XCTAssertTrue(KordiSupportIdentity.matches(name: nil, seed: "acct_kordi_support"))
         XCTAssertTrue(KordiSupportIdentity.matches(name: nil, seed: "cloud_agent_kordi_support"))
         XCTAssertFalse(KordiSupportIdentity.matches(name: "Zimu", seed: "acct_zimu"))
+        XCTAssertTrue(KordiSupportIdentity.isSystemAgentSession(
+            "session:direct-system-agent:acct_me:cloud_agent_kordi_support"
+        ))
+        XCTAssertFalse(KordiSupportIdentity.isSystemAgentSession(
+            "session:direct-agent:acct_me:cloud_agent_kordi_support"
+        ))
     }
 
     func testAcceptsRealCloudImageSourcesWithoutConvertingThemToInitials() async throws {
