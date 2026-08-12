@@ -9,7 +9,7 @@ Use this document before starting any Kordi preview, debug session, backend proc
 | Ordinary contributor or isolated feature work | Local Docker backend | `http://127.0.0.1:17081` |
 | Approved isolated work on a remote development host | Private development host reached through an IAP-style SSH tunnel | `http://127.0.0.1:17081` through the tunnel |
 | Desktop-only production operator preview | Allowlisted operator launcher | `https://kordi.ai` |
-| Work that can affect or restart a product server | Corresponding product-server machine | First end-to-end validation through `https://coordinar.io` |
+| Work that can affect or restart a product server | Corresponding product-server machine | Validate through canonical production origin `https://kordi.ai` |
 
 If the impact, authorization, or environment identity is uncertain, stop and fail closed. An isolated environment cannot substitute for required product-server validation.
 
@@ -97,7 +97,7 @@ KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
 pnpm dev:cloud:operator -- "https://kordi.ai"
 ```
 
-Work that changes hosted server or runner code, routes, authentication, schema or data, server configuration, destructive or recovery behavior, deployment state, or anything requiring a product-server restart must use the corresponding product-server machine. Follow the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) and use `https://coordinar.io` for the first end-to-end validation.
+Work that changes hosted server or runner code, routes, authentication, schema or data, server configuration, destructive or recovery behavior, deployment state, or anything requiring a product-server restart must use the corresponding product-server machine. Follow the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) and validate the deployed product through `https://kordi.ai`.
 
 Product deployment helpers fail closed unless `KORDI_CLOUD_GCP_PROJECT`, `KORDI_CLOUD_SSH_ZONE`, and `KORDI_CLOUD_SSH_TARGET` are all set explicitly. Never rely on the active gcloud project for a deploy.
 
