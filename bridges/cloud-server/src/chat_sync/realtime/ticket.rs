@@ -161,15 +161,29 @@ mod tests {
     #[test]
     fn browser_origins_are_exactly_allowlisted_and_bound() {
         let allowed = vec![
-            "https://coordinar.io".to_string(),
-            "http://localhost:1420".to_string(),
+            "https://kordi.ai".to_string(),
+            "tauri://localhost".to_string(),
+            "http://tauri.localhost".to_string(),
+            "http://127.0.0.1:1420".to_string(),
         ];
         assert_eq!(
-            bind_origin(Some("https://coordinar.io"), &allowed).unwrap(),
-            Some("https://coordinar.io".to_string())
+            bind_origin(Some("https://kordi.ai"), &allowed).unwrap(),
+            Some("https://kordi.ai".to_string())
+        );
+        assert_eq!(
+            bind_origin(Some("tauri://localhost"), &allowed).unwrap(),
+            Some("tauri://localhost".to_string())
+        );
+        assert_eq!(
+            bind_origin(Some("http://tauri.localhost"), &allowed).unwrap(),
+            Some("http://tauri.localhost".to_string())
+        );
+        assert_eq!(
+            bind_origin(Some("http://127.0.0.1:1420"), &allowed).unwrap(),
+            Some("http://127.0.0.1:1420".to_string())
         );
         assert!(matches!(
-            bind_origin(Some("https://coordinar.io.evil.example"), &allowed),
+            bind_origin(Some("https://kordi.ai.evil.example"), &allowed),
             Err(TicketError::OriginNotAllowed)
         ));
         assert!(matches!(

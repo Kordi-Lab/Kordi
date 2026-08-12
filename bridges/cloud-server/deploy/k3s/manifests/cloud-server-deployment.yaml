@@ -163,7 +163,7 @@ spec:
                   name: kordi-chat-sync-v2
                   key: KORDI_CHAT_SYNC_CURSOR_SECRET
             - name: KORDI_CHAT_REALTIME_ALLOWED_ORIGINS
-              value: "https://kordi.ai,https://coordinar.io"
+              value: "https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420"
             - name: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

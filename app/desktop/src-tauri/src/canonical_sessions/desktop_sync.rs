@@ -1,6 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::core::hash_hex;
+use super::desktop_runtime_status;
 use super::message_reconcile;
 use super::models::{AppendCanonicalMessageRequest, OpenCanonicalSessionRequest};
 use super::sanitization::sanitize_shared_agent_response_text_with_conn;
@@ -75,9 +76,7 @@ fn content_with_desktop_runtime(
         object.remove("deliveryState");
         object.remove("error");
     }
-    if message.cancelled {
-        content["deliveryState"] = serde_json::Value::String("cancelled".to_string());
-    }
+    desktop_runtime_status::apply_terminal_content(&mut content, message);
 
     if let Some(thinking_text) = message.thinking_text.as_deref() {
         if !thinking_text.trim().is_empty() {
@@ -202,11 +201,7 @@ pub(super) fn enrich_similar_bridge_agent_message_with_desktop_runtime(
         &message_id,
         content_text,
         content_json.as_deref(),
-        if message.cancelled {
-            "cancelled"
-        } else {
-            "complete"
-        },
+        desktop_runtime_status::status(message),
         message,
     )?;
     Ok(true)
@@ -247,11 +242,7 @@ pub(super) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime
         &message_id,
         content_text,
         content_json.as_deref(),
-        if message.cancelled {
-            "cancelled"
-        } else {
-            "complete"
-        },
+        desktop_runtime_status::status(message),
         message,
     )?;
     Ok(true)
@@ -406,11 +397,7 @@ pub(crate) fn sync_desktop_chat_message(
         delegated_exchange_id: None,
         status: Some(
             if is_agent {
-                if message.cancelled {
-                    "cancelled"
-                } else {
-                    "complete"
-                }
+                desktop_runtime_status::status(message)
             } else {
                 "sent"
             }

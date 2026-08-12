@@ -10,12 +10,14 @@ mod canonical_fork;
 pub(crate) mod chat_sync_v2;
 mod commands;
 mod core;
+mod desktop_runtime_status;
 mod desktop_sync;
 mod group_participants;
 mod identity_context;
 mod identity_helpers;
 mod identity_migration;
 mod message_lookup;
+mod message_mirror_command;
 mod message_reconcile;
 mod message_visibility;
 mod models;
@@ -78,6 +80,7 @@ use self::identity_migration::{
 pub(crate) use self::message_lookup::{
     canonical_message_exists, similar_agent_message_exists, similar_agent_message_text,
 };
+pub use self::message_mirror_command::desktop_canonical_reconcile_message_mirror;
 pub(crate) use self::message_visibility::latest_readable_session_message_id;
 pub(crate) use self::persistence::{
     append_message_in_db, create_delegated_exchange_in_db, select_delegated_exchange,

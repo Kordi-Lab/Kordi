@@ -2,6 +2,7 @@ mod auth;
 mod canonical_sessions;
 mod chat;
 mod cloud_account_paths;
+use canonical_sessions::desktop_canonical_reconcile_message_mirror;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
@@ -48,8 +49,7 @@ fn configure_cloud_app_data_dir(app: &tauri::App, is_cloud_edition: bool) {
     let Ok(app_data_dir) = app.path().app_data_dir() else {
         return;
     };
-    // ~/.korde. The Cloud bundle uses a separate identifier, so Tauri's app
-    // data dir is isolated from the local build and from retired collaboration state.
+    // The Cloud bundle identifier gives ~/.korde isolated storage.
     unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
 }
 
@@ -415,6 +415,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_append_message,
             canonical_sessions::desktop_canonical_upsert_message,
             canonical_sessions::desktop_canonical_upsert_message_fast,
+            desktop_canonical_reconcile_message_mirror,
             canonical_sessions::desktop_canonical_list_legacy_cloud_group_title_notice_ids,
             canonical_sessions::desktop_canonical_classify_legacy_cloud_group_title_notices,
             canonical_sessions::desktop_canonical_update_message_delivery,
@@ -564,8 +565,6 @@ pub fn run() {
         }
         _ => {}
     });
-    // macOS application Quit can bypass browser page lifecycle events. Run one
-    // final native best-effort publish after Tauri's event loop returns so
-    // explicit Quit does not wait for heartbeat timeout.
+    // macOS Quit can bypass browser lifecycle, so publish once after Tauri exits.
     publish_stored_offline_on_exit();
 }

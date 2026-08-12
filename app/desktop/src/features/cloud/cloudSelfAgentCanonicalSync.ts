@@ -11,29 +11,24 @@ import type {
   CloudSessionForkSummary,
   CloudSessionTitle,
 } from './authClient';
-import {
-  parseCloudAgentCancel,
-  parseCloudAgentResponse,
-} from './cloudAgentMessages';
-import {
-  cloudDirectMessageAction,
-  cloudDirectMessageDisplayText,
-} from './cloudDirectMessages';
-import {
-  parseCloudGroupControl,
-  type CloudGroupReadCursor,
-} from './cloudGroupMessages';
+import { parseCloudAgentCancel, parseCloudAgentResponse } from './cloudAgentMessages';
+import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
+import { parseCloudGroupControl, type CloudGroupReadCursor } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { createCloudSelfAgentSessionPlanner } from './cloudSelfAgentSessionPlan';
 import {
   cloudSelfAgentStableResponseId,
   cloudSelfAgentResponseWouldDowngrade,
   createCloudSelfAgentCanonicalMessageIndex,
-  findExistingCanonicalCloudSelfAgentMessage,
   legacyCloudSelfAgentResponseIds,
   shouldReplacePlannedCloudSelfAgentResponse,
   type CloudSelfAgentResponseDeliveryState,
 } from './cloudSelfAgentResponseLifecycle';
+import {
+  indexLocalSelfAgentMessagesByClientMessageId,
+  resolveCloudSelfAgentMirror,
+  type CloudSelfAgentMirrorReconciliation,
+} from './cloudSelfAgentMirrorPlan';
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
@@ -178,6 +173,7 @@ export type CloudSelfAgentCanonicalSyncPlan = {
   agentIdentityRequest: UpsertCanonicalIdentityRequest;
   sessionRequests: OpenCanonicalSessionRequest[];
   messageRequests: AppendCanonicalMessageRequest[];
+  mirrorReconciliations: CloudSelfAgentMirrorReconciliation[];
 };
 
 export function planCloudSelfAgentCanonicalSync({
@@ -234,8 +230,11 @@ export function planCloudSelfAgentCanonicalSync({
   const plannedCanonicalMessageIdByDuplicateKey =
     new Map<string, string>();
   const plannedMessageIndexByCanonicalId = new Map<string, number>();
+  const mirrorReconciliations: CloudSelfAgentCanonicalSyncPlan['mirrorReconciliations'] = [];
   const existingCanonicalMessageIndex =
     createCloudSelfAgentCanonicalMessageIndex(state.messages);
+  const localUserMessageByClientMessageId =
+    indexLocalSelfAgentMessagesByClientMessageId(state.messages);
   const legacyResponseIdByStableCanonicalId =
     legacyCloudSelfAgentResponseIds({
       canonicalMessages: state.messages,
@@ -287,17 +286,17 @@ export function planCloudSelfAgentCanonicalSync({
         derivedStableCanonicalMessageId,
       ) ?? derivedStableCanonicalMessageId
     );
-    const existingMatch = findExistingCanonicalCloudSelfAgentMessage(
+    const { existingMatch, reconciliation } = resolveCloudSelfAgentMirror({
+      message,
+      sessionId,
+      role,
+      text,
+      createdAtMs,
+      stableCanonicalMessageId,
       existingCanonicalMessageIndex,
-      {
-        sessionId,
-        role,
-        text,
-        createdAtMs,
-        cloudMessageId: message.messageId,
-        canonicalMessageId: stableCanonicalMessageId,
-      },
-    );
+      localUserMessageByClientMessageId,
+    });
+    if (reconciliation) mirrorReconciliations.push(reconciliation);
     if (existingMatch && !responseRequestId) {
       userTextByCloudMessageId.set(message.messageId, text);
       requestLocalMessageIdByCloudMessageId.set(
@@ -490,5 +489,6 @@ export function planCloudSelfAgentCanonicalSync({
     },
     sessionRequests: sessionPlanner.requests,
     messageRequests,
+    mirrorReconciliations,
   };
 }
