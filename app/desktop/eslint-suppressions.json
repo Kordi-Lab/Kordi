@@ -271,7 +271,7 @@
   },
   "src/features/cloud/cloudMessageCache.ts": {
     "@typescript-eslint/no-redundant-type-constituents": {
-      "count": 5
+      "count": 1
     },
     "prefer-const": {
       "count": 2

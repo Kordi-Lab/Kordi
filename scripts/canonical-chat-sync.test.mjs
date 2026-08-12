@@ -78,16 +78,16 @@ test("canonical chat source and contract names are unversioned", async () => {
 });
 
 test("remaining versioned chat names are migration inputs, not live choices", async () => {
-  const [desktopSchema, desktopCache, selfAgentIdentity, selfAgentForwardSync, deploy] = await readFiles([
+  const [desktopSchema, desktopCacheMigration, selfAgentIdentity, selfAgentForwardSync, deploy] = await readFiles([
     "app/desktop/src-tauri/src/canonical_sessions/schema.rs",
-    "app/desktop/src/features/cloud/cloudMessageCache.ts",
+    "app/desktop/src/features/cloud/indexedDbCloudMessageCacheStore.ts",
     "app/desktop/src/features/cloud/cloudSelfAgentIdentity.ts",
     "app/desktop/src/features/cloud/cloudSelfAgentForwardSync.ts",
     "bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh",
   ]);
   const compatibility = [
     desktopSchema,
-    desktopCache,
+    desktopCacheMigration,
     selfAgentIdentity,
     selfAgentForwardSync,
     deploy,
@@ -95,8 +95,8 @@ test("remaining versioned chat names are migration inputs, not live choices", as
 
   assert.match(desktopSchema, /migrate_versioned_chat_tables/);
   assert.match(desktopSchema, /DROP TABLE \{previous\}/);
-  assert.match(desktopCache, /migratePreviousDatabase/);
-  assert.match(desktopCache, /deleteDatabase\(PREVIOUS_CLOUD_MESSAGES_INDEXED_DB_NAME\)/);
+  assert.match(desktopCacheMigration, /migratePreviousDatabase/);
+  assert.match(desktopCacheMigration, /deleteDatabase\(PREVIOUS_CLOUD_MESSAGES_INDEXED_DB_NAME\)/);
   assert.match(selfAgentIdentity, /removeItem\(`\$\{PREVIOUS_RECOVERY_KEY_PREFIX\}/);
   assert.match(selfAgentForwardSync, /removeItem\(\s*`\$\{PREVIOUS_CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX\}/);
   assert.match(deploy, /get secret kordi-chat-sync-v2/);

@@ -298,7 +298,8 @@ fn cloud_agent_scheduled_responses_are_written_to_chat_sync() {
         .expect("read cloud agent sync event source");
     assert!(sync_source.contains("store::send_message"));
     assert!(sync_source.contains("cloud_chat_conversations"));
-    assert!(sync_source.contains("retired v1 mailbox"));
+    assert!(sync_source.contains("Canonical message state is written only once"));
+    assert!(!sync_source.contains("retired v1"));
     assert!(!sync_source.contains("INSERT INTO cloud_sync_events"));
 }
 
