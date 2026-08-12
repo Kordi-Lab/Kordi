@@ -30,8 +30,9 @@ These launch safeguards prevent accidental production traffic. They are not a se
 | NATS JetStream | Local event delivery | Docker network only |
 | MinIO | Attachments and object-storage testing | `127.0.0.1:19000` |
 | MinIO console | Local object-store inspection | `127.0.0.1:19001` |
+| Cloud agent runner | Scheduled and hosted-agent work | Docker network only |
 
-The Docker environment does not include a remote cloud-agent runner. Desktop-managed agents still run through the local desktop runtime. Runner and sandbox changes require their own development setup.
+The runner uses a local sandbox volume and talks only to the isolated Cloud API. It does not use the hosted runner, production data, or a Kubernetes cluster.
 
 ## Prerequisites
 
@@ -266,7 +267,23 @@ Do not patch around the guard. If a shared non-production environment is require
 
 Password sign-up and login work without third-party OAuth configuration. The desktop reads the server's authentication capabilities, so Google and GitHub buttons appear gray and cannot be clicked when their OAuth credentials are absent. Use email and password for normal local account testing.
 
-Google or GitHub login requires developer-owned OAuth applications configured with loopback callbacks. The server never returns missing environment-variable names or OAuth secrets to the login screen.
+Google or GitHub login requires separate developer-owned OAuth applications. Never copy the production client ID or secret. Configure these exact loopback callbacks:
+
+```text
+http://127.0.0.1:17081/v1/cloud/auth/oauth/github/callback
+http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
+```
+
+Add the matching values to the ignored `deploy/dev/.env` file, then rerun `pnpm debug:cloud:up`:
+
+```text
+KORDI_OAUTH_GITHUB_CLIENT_ID=...
+KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
+KORDI_OAUTH_GOOGLE_CLIENT_ID=...
+KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
+```
+
+The server never returns missing environment-variable names or OAuth secrets to the login screen.
 
 ## Validation before opening a PR
 

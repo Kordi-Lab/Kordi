@@ -15,13 +15,27 @@ function read(path) {
 test('self-hosted debug stack is loopback-only and production-independent', () => {
   const compose = read('deploy/dev/compose.yaml');
 
-  for (const service of ['postgres', 'redis', 'nats', 'minio', 'minio-init', 'cloud-server']) {
+  for (const service of [
+    'postgres',
+    'redis',
+    'nats',
+    'minio',
+    'minio-init',
+    'cloud-server',
+    'cloud-agent-runner',
+  ]) {
     assert.match(compose, new RegExp(`^  ${service}:`, 'm'));
   }
   assert.match(compose, /127\.0\.0\.1:\$\{KORDI_DEBUG_API_PORT:-17081\}:17081/);
   assert.match(compose, /127\.0\.0\.1:\$\{KORDI_DEBUG_MINIO_PORT:-19000\}:9000/);
   assert.doesNotMatch(compose, /coordinar\.io|hai-gcp-representation|kordi-product/i);
   assert.doesNotMatch(compose, /^\s*-\s*"?(?:5432|6379|4222):/m);
+  assert.match(compose, /KORDI_OAUTH_GITHUB_CLIENT_ID: \$\{KORDI_OAUTH_GITHUB_CLIENT_ID:-\}/);
+  assert.match(compose, /KORDI_OAUTH_GOOGLE_CLIENT_ID: \$\{KORDI_OAUTH_GOOGLE_CLIENT_ID:-\}/);
+  assert.match(compose, /KORDI_CHAT_SYNC_V2_ENABLED: "true"/);
+  assert.match(compose, /KORDI_CLOUD_API_BASE: http:\/\/cloud-server:17081/);
+  assert.match(compose, /KORDI_CLOUD_SANDBOX_BACKEND: local/);
+  assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
 });
 
 test('debug environment template contains placeholders instead of usable credentials', () => {
@@ -30,6 +44,9 @@ test('debug environment template contains placeholders instead of usable credent
   assert.match(template, /POSTGRES_PASSWORD=<generated-by-debug-helper>/);
   assert.match(template, /MINIO_ROOT_PASSWORD=<generated-by-debug-helper>/);
   assert.match(template, /KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY=<generated-by-debug-helper>/);
+  assert.match(template, /KORDI_CHAT_SYNC_CURSOR_SECRET=<generated-by-debug-helper>/);
+  assert.match(template, /KORDI_OAUTH_GITHUB_CLIENT_ID=\n/);
+  assert.match(template, /KORDI_OAUTH_GOOGLE_CLIENT_ID=\n/);
   assert.doesNotMatch(template, /coordinar\.io|hai-gcp-representation|kordi-product/i);
 });
 
@@ -42,6 +59,17 @@ test('debug setup removes a temporary credential file when generation is interru
   assert.match(helper, /mv "\$temp_env" "\$env_file"\n\s*trap - EXIT/);
   assert.match(gitignore, /deploy\/dev\/\.env\.\?\?\?\?\?\?/);
   assert.match(dockerignore, /deploy\/dev\/\.env\.\?\?\?\?\?\?/);
+});
+
+test('debug setup upgrades old env files and rejects parent-shell credential overrides', () => {
+  const helper = read('scripts/dev-cloud-up.sh');
+
+  assert.match(helper, /grep -q '\^KORDI_CHAT_SYNC_CURSOR_SECRET='/);
+  assert.match(helper, /Added an isolated chat-sync secret/);
+  assert.match(helper, /unset POSTGRES_PASSWORD REDIS_PASSWORD/);
+  assert.match(helper, /unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN/);
+  assert.match(helper, /unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET/);
+  assert.match(helper, /unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET/);
 });
 
 test('self-hosted guide uses the safe helper and explicit loopback API origin', () => {

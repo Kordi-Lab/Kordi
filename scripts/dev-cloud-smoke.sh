@@ -13,7 +13,7 @@ fi
 api_port="${KORDI_DEBUG_API_PORT:-$(sed -n 's/^KORDI_DEBUG_API_PORT=//p' "$env_file" | tail -1)}"
 api_port="${api_port:-17081}"
 
-for service in postgres redis nats minio cloud-server; do
+for service in postgres redis nats minio cloud-server cloud-agent-runner; do
   container_id="$(docker compose --env-file "$env_file" -f "$compose_file" ps -q "$service")"
   if [[ -z "$container_id" ]] || [[ "$(docker inspect -f '{{.State.Running}}' "$container_id")" != "true" ]]; then
     echo "[kordi-debug] Service is not running: $service" >&2

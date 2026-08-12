@@ -115,6 +115,14 @@ services:
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY: ${KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY:?Set KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY in deploy/dev/.env}
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID: local-debug:v1
       KORDI_CLOUD_RUNNER_TOKEN: ${KORDI_CLOUD_RUNNER_TOKEN:?Set KORDI_CLOUD_RUNNER_TOKEN in deploy/dev/.env}
+      KORDI_OAUTH_GITHUB_CLIENT_ID: ${KORDI_OAUTH_GITHUB_CLIENT_ID:-}
+      KORDI_OAUTH_GITHUB_CLIENT_SECRET: ${KORDI_OAUTH_GITHUB_CLIENT_SECRET:-}
+      KORDI_OAUTH_GOOGLE_CLIENT_ID: ${KORDI_OAUTH_GOOGLE_CLIENT_ID:-}
+      KORDI_OAUTH_GOOGLE_CLIENT_SECRET: ${KORDI_OAUTH_GOOGLE_CLIENT_SECRET:-}
+      KORDI_CHAT_SYNC_V2_ENABLED: "true"
+      KORDI_CHAT_SYNC_CURSOR_SECRET: ${KORDI_CHAT_SYNC_CURSOR_SECRET:?Set KORDI_CHAT_SYNC_CURSOR_SECRET in deploy/dev/.env}
+      KORDI_CHAT_REALTIME_ALLOWED_ORIGINS: "tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420"
+      KORDI_SUPPORT_ENABLED: "false"
     command: ["serve", "--port", "17081"]
     depends_on:
       postgres:
@@ -129,8 +137,28 @@ services:
       - "127.0.0.1:${KORDI_DEBUG_API_PORT:-17081}:17081"
     restart: unless-stopped
 
+  cloud-agent-runner:
+    build:
+      context: ../..
+      dockerfile: bridges/cloud-agent-runner/Dockerfile.runtime
+    environment:
+      KORDI_CLOUD_API_BASE: http://cloud-server:17081
+      KORDI_CLOUD_RUNNER_ID: kordi-debug-runner
+      KORDI_CLOUD_RUNNER_TOKEN: ${KORDI_CLOUD_RUNNER_TOKEN:?Set KORDI_CLOUD_RUNNER_TOKEN in deploy/dev/.env}
+      KORDI_CLOUD_RUNNER_POLL_MS: "2000"
+      KORDI_CLOUD_RUNNER_CANARY_IDLE: "0"
+      KORDI_CLOUD_SANDBOX_BACKEND: local
+      KORDI_CLOUD_SANDBOX_ROOT: /var/lib/kordi-runner-sandbox
+    depends_on:
+      cloud-server:
+        condition: service_started
+    volumes:
+      - runner-sandbox:/var/lib/kordi-runner-sandbox
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:
   nats-data:
   minio-data:
+  runner-sandbox:
