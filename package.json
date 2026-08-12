@@ -55,6 +55,7 @@
     "dev:cloud:multi": "pnpm --dir app/desktop tauri:dev:multi:cloud",
     "build:cloud": "pnpm --dir app/desktop tauri:build:cloud",
     "debug:cloud:up": "bash scripts/dev-cloud-up.sh",
+    "debug:cloud:oauth": "bash scripts/dev-cloud-oauth-configure.sh",
     "debug:cloud:smoke": "bash scripts/dev-cloud-smoke.sh",
     "debug:cloud:reset": "bash scripts/dev-cloud-reset.sh"
   },

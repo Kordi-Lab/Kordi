@@ -72,6 +72,23 @@ test('debug setup upgrades old env files and rejects parent-shell credential ove
   assert.match(helper, /unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET/);
 });
 
+test('OAuth helper hides secrets and only restarts isolated app services', () => {
+  const helper = read('scripts/dev-cloud-oauth-configure.sh');
+  const packageJson = read('package.json');
+  const guide = read('docs/self-hosted-debug.md');
+
+  assert.match(helper, /\[\[ ! -t 0 \|\| ! -t 1 \]\]/);
+  assert.match(helper, /read -rs client_secret/);
+  assert.match(helper, /mktemp "\$repo_root\/deploy\/dev\/\.env\.XXXXXX"/);
+  assert.match(helper, /chmod 600 "\$temp_env"\n+mv "\$temp_env" "\$env_file"/);
+  assert.match(helper, /unset client_id client_secret/);
+  assert.match(helper, /--no-deps cloud-server cloud-agent-runner/);
+  assert.doesNotMatch(helper, /coordinar\.io|kordi\.ai|kordi-product/i);
+  assert.match(packageJson, /"debug:cloud:oauth": "bash scripts\/dev-cloud-oauth-configure\.sh"/);
+  assert.match(guide, /pnpm debug:cloud:oauth -- github/);
+  assert.match(guide, /hidden terminal prompt/);
+});
+
 test('self-hosted guide uses the safe helper and explicit loopback API origin', () => {
   const guide = read('docs/self-hosted-debug.md');
 

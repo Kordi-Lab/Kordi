@@ -274,7 +274,16 @@ http://127.0.0.1:17081/v1/cloud/auth/oauth/github/callback
 http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
 ```
 
-Add the matching values to the ignored `deploy/dev/.env` file, then rerun `pnpm debug:cloud:up`:
+Enter each provider's matching values with the interactive helper. It hides the
+secret while typing, atomically updates the ignored `deploy/dev/.env`, and only
+recreates the development Cloud API and runner:
+
+```bash
+pnpm debug:cloud:oauth -- github
+pnpm debug:cloud:oauth -- google
+```
+
+The helper writes these keys without printing their values:
 
 ```text
 KORDI_OAUTH_GITHUB_CLIENT_ID=...
@@ -282,6 +291,9 @@ KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 ```
+
+Never paste an OAuth client secret into an issue, pull request, chat, or shell
+command. Enter it only at the helper's hidden terminal prompt.
 
 The server never returns missing environment-variable names or OAuth secrets to the login screen.
 
