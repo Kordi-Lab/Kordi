@@ -45,7 +45,7 @@ test('effect cleanup cancels React publication without releasing successful uplo
   assert.doesNotMatch(cleanup, /delete|releaseCloudSessionTitleUpload/);
 });
 
-test('title sync includes empty V2 agent sessions instead of depending on message rows', () => {
+test('title sync includes empty canonical agent sessions instead of depending on message rows', () => {
   const source = readFileSync(
     new URL(
       '../src/features/cloud/useCloudSelfAgentMetadataSync.ts',
@@ -54,5 +54,5 @@ test('title sync includes empty V2 agent sessions instead of depending on messag
     'utf8',
   );
 
-  assert.match(source, /client\.knownChatV2SessionIds\(account\.accountId\)/);
+  assert.match(source, /client\.knownChatSessionIds\(account\.accountId\)/);
 });

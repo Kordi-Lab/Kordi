@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   CloudAuthClient,
-  chatSyncV2SessionTitle,
-  cloudMessageFromChatSyncV2,
-  type ChatSyncV2Conversation,
-  type ChatSyncV2Message,
+  chatSyncSessionTitle,
+  cloudMessageFromChatSync,
+  type ChatSyncConversation,
+  type ChatSyncMessage,
 } from '../src/features/cloud/authClient';
 import { applyCloudSyncEventsToSessionTitles } from '../src/features/cloud/cloudDiffSync';
 import { cloudSyncCursorRequiresFallback } from '../src/features/cloud/cloudSyncCursorProgress';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
-const conversation: ChatSyncV2Conversation = {
+const conversation: ChatSyncConversation = {
   id: '019cb111-8ecc-7181-8266-8986d950169b',
   kind: 'direct',
   shared_title: 'Synced title',
@@ -27,14 +27,14 @@ const conversation: ChatSyncV2Conversation = {
   ],
   preferences: { conversation_id: '019cb111-8ecc-7181-8266-8986d950169b', account_id: 'acct_b', personal_title: null, version: 1 },
 };
-const message: ChatSyncV2Message = {
+const message: ChatSyncMessage = {
   id: '019cb2c9-0a77-7d84-b81b-97042279ad3d',
   client_message_id: '019cb2c8-d133-7e52-b797-ad871be09d66',
   conversation_id: conversation.id,
   conversation_sequence: 8,
   sender_account_id: 'acct_a',
   kind: 'text',
-  content: { schema: 1, blocks: [{ type: 'text', text: 'hello v2' }] },
+  content: { schema: 1, blocks: [{ type: 'text', text: 'hello' }] },
   reply_to_message_id: null,
   attachment_ids: [],
   version: 1,
@@ -44,7 +44,7 @@ const message: ChatSyncV2Message = {
   edited_at: null,
   deleted_at: null,
 };
-test('bootstrap uses v2 and returns a durable local-apply batch', async () => {
+test('bootstrap returns a durable canonical local-apply batch', async () => {
   const calls: string[] = [];
   const client = new CloudAuthClient({
     baseUrl: 'http://srv',
@@ -63,16 +63,16 @@ test('bootstrap uses v2 and returns a durable local-apply batch', async () => {
   const result = await client.syncCloudEvents('token', '0', 500);
   assert.deepEqual(calls, ['http://srv/v2/chat/sync/bootstrap']);
   assert.equal(result.cursor, 'opaque.signed.cursor');
-  assert.equal(result.v2?.bootstrap, true);
-  assert.equal(result.v2?.lastStreamSeq, 44);
+  assert.equal(result.chat?.bootstrap, true);
+  assert.equal(result.chat?.lastStreamSeq, 44);
   assert.equal(result.events.find((event) => event.eventType === 'message.upsert')?.messageId, message.id);
   assert.deepEqual(
-    client.knownChatV2SessionIds('acct_b'),
+    client.knownChatSessionIds('acct_b'),
     ['session:direct-person:acct_a:acct_b'],
   );
-  assert.deepEqual(client.knownChatV2SessionIds('acct_a'), []);
+  assert.deepEqual(client.knownChatSessionIds('acct_a'), []);
 });
-test('incremental sync preserves opaque cursor and v2 stream sequence', async () => {
+test('incremental sync preserves its opaque cursor and stream sequence', async () => {
   const calls: string[] = [];
   const client = new CloudAuthClient({
     baseUrl: 'http://srv',
@@ -101,11 +101,11 @@ test('incremental sync preserves opaque cursor and v2 stream sequence', async ()
   });
   const result = await client.syncCloudEvents('token', 'opaque.current.cursor', 500);
   assert.equal(calls[0], 'http://srv/v2/chat/sync?cursor=opaque.current.cursor&limit=500');
-  assert.equal(result.v2?.bootstrap, false);
-  assert.equal(result.v2?.lastStreamSeq, 45);
+  assert.equal(result.chat?.bootstrap, false);
+  assert.equal(result.chat?.lastStreamSeq, 45);
   assert.equal(result.events[0].eventType, 'message.upsert');
 });
-test('v2 ancillary snapshots reach the existing local projections without a v1 mailbox', async () => {
+test('ancillary snapshots reach the existing local projections through canonical sync', async () => {
   const client = new CloudAuthClient({
     baseUrl: 'http://srv',
     fetchImpl: async () => new Response(JSON.stringify({
@@ -135,7 +135,7 @@ test('v2 ancillary snapshots reach the existing local projections without a v1 m
   const result = await client.syncCloudEvents('token', 'opaque.current.cursor', 500);
   assert.equal(result.events[0]?.eventType, 'session.pin.updated');
   assert.equal(result.events[0]?.payload.sessionId, conversation.legacy_session_id);
-  assert.equal(result.v2?.events[0]?.type, 'session.pin.updated');
+  assert.equal(result.chat?.events[0]?.type, 'session.pin.updated');
 });
 
 test('history backfill uses conversation sequences and preserves canonical snapshots', async () => {
@@ -153,7 +153,7 @@ test('history backfill uses conversation sequences and preserves canonical snaps
     },
   });
 
-  const result = await client.listChatV2ConversationHistoryPage('token', conversation.id, 8, 500);
+  const result = await client.listChatConversationHistoryPage('token', conversation.id, 8, 500);
 
   assert.equal(
     calls[0],
@@ -163,9 +163,9 @@ test('history backfill uses conversation sequences and preserves canonical snaps
   assert.equal(result.hasMore, false);
 });
 
-test('v2 snapshots derive delivery and read state from monotonic member cursors', () => {
-  const mapped = cloudMessageFromChatSyncV2(message, conversation, 'acct_b');
-  assert.equal(mapped.body, 'hello v2');
+test('canonical snapshots derive delivery and read state from monotonic member cursors', () => {
+  const mapped = cloudMessageFromChatSync(message, conversation, 'acct_b');
+  assert.equal(mapped.body, 'hello');
   assert.equal(mapped.conversationSequence, 8);
   assert.equal(mapped.deliveredAt, message.created_at);
   assert.equal(mapped.readAt, message.created_at);
@@ -229,7 +229,7 @@ test('canonical history snapshots preserve original time and message kind', asyn
 
 test('canonical history snapshot reuses the source-device local message id', () => {
   const originalCreatedAt = '2026-07-01T02:03:04.000Z';
-  const restored = cloudMessageFromChatSyncV2({
+  const restored = cloudMessageFromChatSync({
     ...message,
     id: '019cb2c9-0a77-7d84-b81b-97042279ad39',
     kind: 'canonical-history-user',
@@ -294,8 +294,8 @@ test('canonical history snapshot reuses the source-device local message id', () 
   assert.deepEqual(plan.messageRequests, []);
 });
 
-test('v2 group snapshots become read after any recipient reads without waiting for every member', () => {
-  const groupConversation: ChatSyncV2Conversation = {
+test('canonical group snapshots become read after any recipient reads without waiting for every member', () => {
+  const groupConversation: ChatSyncConversation = {
     ...conversation,
     kind: 'group',
     members: [
@@ -314,19 +314,19 @@ test('v2 group snapshots become read after any recipient reads without waiting f
     ],
     preferences: { ...conversation.preferences, account_id: 'acct_a' },
   };
-  const mapped = cloudMessageFromChatSyncV2(message, groupConversation, 'acct_a');
+  const mapped = cloudMessageFromChatSync(message, groupConversation, 'acct_a');
 
   assert.equal(mapped.readAt, message.created_at);
 });
 
 test('group bootstrap does not replace the envelope title with a generated member title', async () => {
-  const groupConversation: ChatSyncV2Conversation = {
+  const groupConversation: ChatSyncConversation = {
     ...conversation,
     kind: 'group',
     shared_title: 'Generated member fallback',
     legacy_session_id: 'session:group:title-safe',
   };
-  assert.equal(chatSyncV2SessionTitle(groupConversation), '');
+  assert.equal(chatSyncSessionTitle(groupConversation), '');
 
   const client = new CloudAuthClient({
     baseUrl: 'http://srv',
@@ -360,8 +360,8 @@ test('group bootstrap does not replace the envelope title with a generated membe
   assert.equal(cleared[sessionId], undefined);
 });
 
-test('v2 bootstrap snapshots reconstruct every historical My Kordi session', () => {
-  const aiConversation = (id: string, sessionId: string): ChatSyncV2Conversation => ({
+test('chat bootstrap snapshots reconstruct every historical My Kordi session', () => {
+  const aiConversation = (id: string, sessionId: string): ChatSyncConversation => ({
     ...conversation,
     id,
     kind: 'ai',
@@ -378,14 +378,14 @@ test('v2 bootstrap snapshots reconstruct every historical My Kordi session', () 
     '019cb111-8ecc-7181-8266-8986d9501602',
     'session:my-kordi:second',
   );
-  const firstMessage: ChatSyncV2Message = {
+  const firstMessage: ChatSyncMessage = {
     ...message,
     id: '019cb2c9-0a77-7d84-b81b-97042279ad31',
     conversation_id: firstConversation.id,
     sender_account_id: 'acct_b',
     content: { schema: 1, blocks: [{ type: 'text', text: 'First restored chat' }] },
   };
-  const secondMessage: ChatSyncV2Message = {
+  const secondMessage: ChatSyncMessage = {
     ...message,
     id: '019cb2c9-0a77-7d84-b81b-97042279ad32',
     conversation_id: secondConversation.id,
@@ -393,8 +393,8 @@ test('v2 bootstrap snapshots reconstruct every historical My Kordi session', () 
     content: { schema: 1, blocks: [{ type: 'text', text: 'Second restored chat' }] },
   };
   const restored = [
-    cloudMessageFromChatSyncV2(firstMessage, firstConversation, 'acct_b'),
-    cloudMessageFromChatSyncV2(secondMessage, secondConversation, 'acct_b'),
+    cloudMessageFromChatSync(firstMessage, firstConversation, 'acct_b'),
+    cloudMessageFromChatSync(secondMessage, secondConversation, 'acct_b'),
   ];
   const state = {
     profile: { humanIdentityId: 'human:acct_b' },
@@ -436,7 +436,7 @@ test('opaque cursors are never parsed or ordered by the client', () => {
   assert.equal(cloudSyncCursorRequiresFallback('previous', '', false), true);
 });
 
-test('group control envelopes replace v2 membership and remove omitted recipients', async () => {
+test('group control envelopes replace canonical membership and remove omitted recipients', async () => {
   const removedMember = {
     account_id: 'acct_removed', role: 'member', membership_state: 'active', version: 1,
     last_delivered_sequence: 0, last_read_sequence: 0,

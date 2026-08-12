@@ -6,7 +6,7 @@ import type {
 import {
   findExistingCanonicalCloudSelfAgentMessage,
 } from './cloudSelfAgentResponseLifecycle';
-import { cloudSelfAgentRequestClientMessageId } from './cloudSelfAgentV2Identity';
+import { cloudSelfAgentRequestClientMessageId } from './cloudSelfAgentIdentity';
 
 export type CloudSelfAgentMirrorReconciliation = {
   preferredMessageId: string;

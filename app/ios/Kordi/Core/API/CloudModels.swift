@@ -488,9 +488,9 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     }
 }
 
-// MARK: - Reliable chat sync v2 wire snapshots
+// MARK: - Canonical chat wire snapshots
 
-struct CloudChatV2Member: Codable, Hashable {
+struct CloudChatMember: Codable, Hashable {
     let accountId: String
     let displayName: String?
     let avatarUrl: String?
@@ -516,7 +516,7 @@ struct CloudChatV2Member: Codable, Hashable {
     }
 }
 
-struct CloudChatV2Preferences: Codable, Hashable {
+struct CloudChatPreferences: Codable, Hashable {
     let conversationId: String
     let accountId: String
     let personalTitle: String?
@@ -530,7 +530,7 @@ struct CloudChatV2Preferences: Codable, Hashable {
     }
 }
 
-struct CloudChatV2Conversation: Codable, Hashable {
+struct CloudChatConversation: Codable, Hashable {
     let id: String
     let kind: String
     let sharedTitle: String?
@@ -542,8 +542,8 @@ struct CloudChatV2Conversation: Codable, Hashable {
     let latestMessageSequence: Int64
     let createdAt: String
     let updatedAt: String
-    let members: [CloudChatV2Member]
-    let preferences: CloudChatV2Preferences
+    let members: [CloudChatMember]
+    let preferences: CloudChatPreferences
 
     enum CodingKeys: String, CodingKey {
         case id, kind, version, members, preferences
@@ -558,19 +558,19 @@ struct CloudChatV2Conversation: Codable, Hashable {
     }
 }
 
-struct CloudChatV2TextBlock: Codable, Hashable {
+struct CloudChatTextBlock: Codable, Hashable {
     let type: String
     let text: String
 }
 
-struct CloudChatV2Content: Codable, Hashable {
+struct CloudChatContent: Codable, Hashable {
     let schema: Int
-    let blocks: [CloudChatV2TextBlock]
+    let blocks: [CloudChatTextBlock]
     let legacyAttachments: [CloudMessageAttachment]
 
     init(body: String, attachments: [CloudMessageAttachment]) {
         schema = 1
-        blocks = [CloudChatV2TextBlock(type: "text", text: body)]
+        blocks = [CloudChatTextBlock(type: "text", text: body)]
         legacyAttachments = attachments
     }
 
@@ -582,21 +582,21 @@ struct CloudChatV2Content: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schema = try container.decode(Int.self, forKey: .schema)
-        blocks = try container.decode([CloudChatV2TextBlock].self, forKey: .blocks)
+        blocks = try container.decode([CloudChatTextBlock].self, forKey: .blocks)
         legacyAttachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .legacyAttachments) ?? []
     }
 
     var body: String { blocks.map(\.text).joined() }
 }
 
-struct CloudChatV2Message: Codable, Hashable {
+struct CloudChatMessage: Codable, Hashable {
     let id: String
     let clientMessageId: String
     let conversationId: String
     let conversationSequence: Int64
     let senderAccountId: String
     let kind: String
-    let content: CloudChatV2Content
+    let content: CloudChatContent
     let replyToMessageId: String?
     let attachmentIds: [String]
     let version: Int
@@ -622,7 +622,7 @@ struct CloudChatV2Message: Codable, Hashable {
     }
 }
 
-struct CloudChatV2Cursor: Codable, Hashable {
+struct CloudChatCursor: Codable, Hashable {
     let conversationId: String
     let accountId: String
     let lastDeliveredSequence: Int64
@@ -636,11 +636,11 @@ struct CloudChatV2Cursor: Codable, Hashable {
     }
 }
 
-struct CloudChatV2EventPayload: Codable, Hashable {
-    let conversation: CloudChatV2Conversation?
-    let message: CloudChatV2Message?
-    let preferences: CloudChatV2Preferences?
-    let cursor: CloudChatV2Cursor?
+struct CloudChatEventPayload: Codable, Hashable {
+    let conversation: CloudChatConversation?
+    let message: CloudChatMessage?
+    let preferences: CloudChatPreferences?
+    let cursor: CloudChatCursor?
     let sessionId: String?
 
     enum CodingKeys: String, CodingKey {
@@ -649,7 +649,7 @@ struct CloudChatV2EventPayload: Codable, Hashable {
     }
 }
 
-struct CloudChatV2Event: Codable, Hashable {
+struct CloudChatEvent: Codable, Hashable {
     let streamSequence: Int64
     let eventId: String
     let protocolVersion: Int
@@ -659,7 +659,7 @@ struct CloudChatV2Event: Codable, Hashable {
     let entityId: String?
     let entityVersion: Int?
     let occurredAt: String
-    let payload: CloudChatV2EventPayload
+    let payload: CloudChatEventPayload
 
     enum CodingKeys: String, CodingKey {
         case streamSequence = "stream_seq"
@@ -675,9 +675,9 @@ struct CloudChatV2Event: Codable, Hashable {
     }
 }
 
-struct CloudChatV2SyncResponse: Codable, Hashable {
+struct CloudChatSyncResponse: Codable, Hashable {
     let protocolVersion: Int
-    let events: [CloudChatV2Event]
+    let events: [CloudChatEvent]
     let nextCursor: String
     let lastStreamSequence: Int64
     let hasMore: Bool
@@ -693,10 +693,10 @@ struct CloudChatV2SyncResponse: Codable, Hashable {
     }
 }
 
-struct CloudChatV2BootstrapResponse: Codable, Hashable {
+struct CloudChatBootstrapResponse: Codable, Hashable {
     let protocolVersion: Int
-    let conversations: [CloudChatV2Conversation]
-    let latestMessages: [CloudChatV2Message]
+    let conversations: [CloudChatConversation]
+    let latestMessages: [CloudChatMessage]
     let nextCursor: String
     let lastStreamSequence: Int64
     let serverTime: String

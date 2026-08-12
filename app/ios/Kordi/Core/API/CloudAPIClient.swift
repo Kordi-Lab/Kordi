@@ -27,11 +27,11 @@ actor CloudAPIClient {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var activeAccountId: String?
-    private var chatV2ConversationsById: [String: CloudChatV2Conversation] = [:]
-    private var chatV2ConversationsBySessionId: [String: CloudChatV2Conversation] = [:]
-    private var chatV2MessagesById: [String: CloudChatV2Message] = [:]
-    private var chatV2BootstrapTask: Task<CloudChatV2BootstrapResponse, Error>?
-    private var lastChatV2Bootstrap: CloudChatV2BootstrapResponse?
+    private var chatConversationsById: [String: CloudChatConversation] = [:]
+    private var chatConversationsBySessionId: [String: CloudChatConversation] = [:]
+    private var chatMessagesById: [String: CloudChatMessage] = [:]
+    private var chatBootstrapTask: Task<CloudChatBootstrapResponse, Error>?
+    private var lastChatBootstrap: CloudChatBootstrapResponse?
 
     init(baseURL: URL = configuredBaseURL, session: URLSession = .shared) {
         precondition(baseURL.scheme == "https", "Kordi Cloud requires HTTPS")
@@ -117,25 +117,25 @@ actor CloudAPIClient {
     func logout(token: String) async throws {
         defer {
             activeAccountId = nil
-            resetChatV2Cache()
+            resetChatCache()
         }
         try await sendWithoutResponse(path: "/v1/cloud/auth/logout", method: "POST", token: token, fallback: "Could not sign out.")
     }
 
     private func activateAccount(_ accountId: String) {
         if activeAccountId != accountId {
-            resetChatV2Cache()
+            resetChatCache()
         }
         activeAccountId = accountId
     }
 
-    private func resetChatV2Cache() {
-        chatV2ConversationsById = [:]
-        chatV2ConversationsBySessionId = [:]
-        chatV2MessagesById = [:]
-        lastChatV2Bootstrap = nil
-        chatV2BootstrapTask?.cancel()
-        chatV2BootstrapTask = nil
+    private func resetChatCache() {
+        chatConversationsById = [:]
+        chatConversationsBySessionId = [:]
+        chatMessagesById = [:]
+        lastChatBootstrap = nil
+        chatBootstrapTask?.cancel()
+        chatBootstrapTask = nil
     }
 
     func listContacts(token: String) async throws -> [CloudContact] {
@@ -148,9 +148,9 @@ actor CloudAPIClient {
         return response.contacts
     }
 
-    func cachedChatV2ParticipantsBySessionId() -> [String: [CloudGroupParticipant]] {
+    func cachedChatParticipantsBySessionId() -> [String: [CloudGroupParticipant]] {
         var result: [String: [CloudGroupParticipant]] = [:]
-        for conversation in chatV2ConversationsById.values where conversation.kind == "group" {
+        for conversation in chatConversationsById.values where conversation.kind == "group" {
             let participants = conversation.members
                 .filter { $0.membershipState == "active" }
                 .map { member in
@@ -169,9 +169,9 @@ actor CloudAPIClient {
         return result
     }
 
-    func cachedChatV2SessionForksById() -> [String: CloudSessionForkSummary] {
+    func cachedChatSessionForksById() -> [String: CloudSessionForkSummary] {
         var result: [String: CloudSessionForkSummary] = [:]
-        for conversation in chatV2ConversationsById.values {
+        for conversation in chatConversationsById.values {
             guard let forkSessionId = conversation.legacySessionId?.nonEmpty,
                   let parentSessionId = conversation.forkedFromSessionId?.nonEmpty else { continue }
             result[forkSessionId] = CloudSessionForkSummary(
@@ -291,8 +291,8 @@ actor CloudAPIClient {
 
     func listMessages(token: String, peerAccountId: String, limit: Int = 200) async throws -> [CloudMessageDTO] {
         let accountId = try requireActiveAccountId()
-        _ = try await bootstrapChatV2(token: token)
-        let conversations = chatV2ConversationsById.values.filter { conversation in
+        _ = try await bootstrapChat(token: token)
+        let conversations = chatConversationsById.values.filter { conversation in
             let activeMembers = Set(conversation.members.filter { $0.membershipState == "active" }.map(\.accountId))
             return activeMembers.contains(accountId) && activeMembers.contains(peerAccountId)
         }
@@ -306,14 +306,14 @@ actor CloudAPIClient {
                 if let beforeSequence {
                     query.append(URLQueryItem(name: "before_sequence", value: String(beforeSequence)))
                 }
-                let response: ChatV2HistoryResponse = try await send(
+                let response: ChatHistoryResponse = try await send(
                     path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages",
                     method: "GET",
                     token: token,
                     query: query,
                     fallback: "Could not load reliable message history."
                 )
-                response.messages.forEach { chatV2MessagesById[$0.id] = $0 }
+                response.messages.forEach { chatMessagesById[$0.id] = $0 }
                 result.append(contentsOf: response.messages.map {
                     legacyMessage(from: $0, conversation: conversation, viewerAccountId: accountId)
                 })
@@ -329,8 +329,8 @@ actor CloudAPIClient {
             }
     }
 
-    func cachedChatV2SessionTitles() -> [CloudSyncedSessionTitle] {
-        chatV2ConversationsById.values.map { conversation in
+    func cachedChatSessionTitles() -> [CloudSyncedSessionTitle] {
+        chatConversationsById.values.map { conversation in
             let title = conversation.preferences.personalTitle
                 ?? (conversation.kind == "group" ? nil : conversation.sharedTitle)
                 ?? ""
@@ -483,27 +483,27 @@ actor CloudAPIClient {
         let members = memberAccountIds
             ?? groupEnvelope?.participants.map(\.accountId)
             ?? [peerAccountId]
-        var conversation = try await ensureChatV2Conversation(
+        var conversation = try await ensureChatConversation(
             token: token,
             sessionId: sessionId,
             kind: kind,
             memberAccountIds: members,
             sharedTitle: sharedTitle
         )
-        let response: ChatV2MessageResponse = try await send(
+        let response: ChatMessageResponse = try await send(
             path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages",
             method: "POST",
             token: token,
-            body: ChatV2SendMessageRequest(
+            body: ChatSendMessageRequest(
                 clientMessageId: operationUUID(clientMessageId),
                 kind: "text",
-                content: CloudChatV2Content(body: body, attachments: attachments),
+                content: CloudChatContent(body: body, attachments: attachments),
                 replyToMessageId: nil,
                 attachmentIds: attachments.map(\.attachmentId)
             ),
             fallback: "Could not send the message."
         )
-        chatV2MessagesById[response.message.id] = response.message
+        chatMessagesById[response.message.id] = response.message
         conversation = conversation.withLatestMessageSequence(response.message.conversationSequence)
         remember(conversation)
         return legacyMessage(from: response.message, conversation: conversation, viewerAccountId: accountId)
@@ -578,21 +578,21 @@ actor CloudAPIClient {
     func markMessagesRead(token: String, peerAccountId: String) async throws {
         let accountId = try requireActiveAccountId()
         let sessionId = directSessionId(accountId: accountId, peerAccountId: peerAccountId)
-        let conversation = try await ensureChatV2Conversation(
+        let conversation = try await ensureChatConversation(
             token: token,
             sessionId: sessionId,
             kind: accountId == peerAccountId ? "ai" : "direct",
             memberAccountIds: [peerAccountId]
         )
-        try await advanceChatV2Cursor(token: token, conversation: conversation, kind: "read")
+        try await advanceChatCursor(token: token, conversation: conversation, kind: "read")
     }
 
     func markSessionMessagesRead(token: String, sessionId: String) async throws {
-        _ = try await bootstrapChatV2(token: token)
-        guard let conversation = chatV2ConversationsBySessionId[sessionId] else {
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId] else {
             throw CloudAPIError(code: "chat_conversation_missing", message: "Reliable chat conversation is unavailable.", statusCode: 404)
         }
-        try await advanceChatV2Cursor(token: token, conversation: conversation, kind: "read")
+        try await advanceChatCursor(token: token, conversation: conversation, kind: "read")
     }
 
     func claimAgentRun(
@@ -640,7 +640,7 @@ actor CloudAPIClient {
         memberAccountIds: [String]
     ) async throws -> CloudSyncedSessionTitle {
         let desiredTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        var conversation = try await ensureChatV2Conversation(
+        var conversation = try await ensureChatConversation(
             token: token,
             sessionId: sessionId,
             kind: conversationKind,
@@ -648,11 +648,11 @@ actor CloudAPIClient {
         )
         for attempt in 0..<2 {
             do {
-                let response: ChatV2PreferencesResponse = try await send(
+                let response: ChatPreferencesResponse = try await send(
                     path: "/v2/chat/conversations/\(escapedPath(conversation.id))/preferences",
                     method: "PUT",
                     token: token,
-                    body: ChatV2UpdatePersonalTitleRequest(
+                    body: ChatUpdatePersonalTitleRequest(
                         clientOperationId: operationUUID(
                             "title:\(conversation.id):\(conversation.preferences.version):\(desiredTitle)"
                         ),
@@ -668,8 +668,8 @@ actor CloudAPIClient {
                     title: response.preferences.personalTitle ?? conversation.sharedTitle ?? "New session"
                 )
             } catch let error as CloudAPIError where error.statusCode == 409 && attempt == 0 {
-                _ = try await bootstrapChatV2(token: token, force: true)
-                guard let refreshed = chatV2ConversationsBySessionId[sessionId] else { throw error }
+                _ = try await bootstrapChat(token: token, force: true)
+                guard let refreshed = chatConversationsBySessionId[sessionId] else { throw error }
                 conversation = refreshed
                 if conversation.preferences.personalTitle == desiredTitle.nonEmpty {
                     return CloudSyncedSessionTitle(sessionId: sessionId, title: desiredTitle)
@@ -686,11 +686,11 @@ actor CloudAPIClient {
         return accountId
     }
 
-    private func bootstrapChatV2(token: String, force: Bool = false) async throws -> CloudChatV2BootstrapResponse {
-        if !force, let cached = lastChatV2Bootstrap { return cached }
-        if let task = chatV2BootstrapTask { return try await task.value }
+    private func bootstrapChat(token: String, force: Bool = false) async throws -> CloudChatBootstrapResponse {
+        if !force, let cached = lastChatBootstrap { return cached }
+        if let task = chatBootstrapTask { return try await task.value }
         let task = Task { [self] in
-            let response: CloudChatV2BootstrapResponse = try await send(
+            let response: CloudChatBootstrapResponse = try await send(
                 path: "/v2/chat/sync/bootstrap",
                 method: "GET",
                 token: token,
@@ -701,39 +701,39 @@ actor CloudAPIClient {
             }
             return response
         }
-        chatV2BootstrapTask = task
+        chatBootstrapTask = task
         do {
             let response = try await task.value
-            chatV2BootstrapTask = nil
-            lastChatV2Bootstrap = response
+            chatBootstrapTask = nil
+            lastChatBootstrap = response
             response.conversations.forEach(remember)
-            response.latestMessages.forEach { chatV2MessagesById[$0.id] = $0 }
+            response.latestMessages.forEach { chatMessagesById[$0.id] = $0 }
             return response
         } catch {
-            chatV2BootstrapTask = nil
+            chatBootstrapTask = nil
             throw error
         }
     }
 
-    private func ensureChatV2Conversation(
+    private func ensureChatConversation(
         token: String,
         sessionId: String,
         kind: String,
         memberAccountIds: [String],
         sharedTitle: String? = nil
-    ) async throws -> CloudChatV2Conversation {
+    ) async throws -> CloudChatConversation {
         let accountId = try requireActiveAccountId()
-        _ = try await bootstrapChatV2(token: token)
+        _ = try await bootstrapChat(token: token)
         let desiredMembers = Set(memberAccountIds.compactMap(\.nonEmpty)).union([accountId])
-        if var cached = chatV2ConversationsBySessionId[sessionId] {
+        if var cached = chatConversationsBySessionId[sessionId] {
             if cached.kind == "group" {
                 let activeMembers = Set(cached.members.filter { $0.membershipState == "active" }.map(\.accountId))
                 if activeMembers != desiredMembers {
-                    let response: ChatV2ConversationResponse = try await send(
+                    let response: ChatConversationResponse = try await send(
                         path: "/v2/chat/conversations/\(escapedPath(cached.id))/members",
                         method: "PUT",
                         token: token,
-                        body: ChatV2UpdateMembersRequest(
+                        body: ChatUpdateMembersRequest(
                             clientOperationId: operationUUID(
                                 "members:\(cached.id):\(desiredMembers.sorted().joined(separator: ":"))"
                             ),
@@ -748,11 +748,11 @@ actor CloudAPIClient {
             }
             return cached
         }
-        let response: ChatV2ConversationResponse = try await send(
+        let response: ChatConversationResponse = try await send(
             path: "/v2/chat/conversations",
             method: "POST",
             token: token,
-            body: ChatV2CreateConversationRequest(
+            body: ChatCreateConversationRequest(
                 clientOperationId: operationUUID(
                     "conversation:\(kind):\(sessionId):\(desiredMembers.sorted().joined(separator: ":"))"
                 ),
@@ -767,17 +767,17 @@ actor CloudAPIClient {
         return response.conversation
     }
 
-    private func advanceChatV2Cursor(
+    private func advanceChatCursor(
         token: String,
-        conversation: CloudChatV2Conversation,
+        conversation: CloudChatConversation,
         kind: String
     ) async throws {
         guard conversation.latestMessageSequence > 0 else { return }
-        let response: ChatV2CursorResponse = try await send(
+        let response: ChatCursorResponse = try await send(
             path: "/v2/chat/conversations/\(escapedPath(conversation.id))/\(kind)",
             method: "PUT",
             token: token,
-            body: ChatV2AdvanceCursorRequest(
+            body: ChatAdvanceCursorRequest(
                 clientOperationId: operationUUID(
                     "cursor:\(kind):\(conversation.id):\(conversation.latestMessageSequence)"
                 ),
@@ -788,17 +788,17 @@ actor CloudAPIClient {
         remember(conversation.withCursor(response.cursor))
     }
 
-    private func remember(_ conversation: CloudChatV2Conversation) {
+    private func remember(_ conversation: CloudChatConversation) {
         activateAccount(conversation.preferences.accountId)
-        chatV2ConversationsById[conversation.id] = conversation
+        chatConversationsById[conversation.id] = conversation
         if let sessionId = conversation.legacySessionId?.nonEmpty {
-            chatV2ConversationsBySessionId[sessionId] = conversation
+            chatConversationsBySessionId[sessionId] = conversation
         }
     }
 
     private func legacyMessage(
-        from message: CloudChatV2Message,
-        conversation: CloudChatV2Conversation,
+        from message: CloudChatMessage,
+        conversation: CloudChatConversation,
         viewerAccountId: String
     ) -> CloudMessageDTO {
         let outgoing = message.senderAccountId == viewerAccountId
@@ -834,7 +834,7 @@ actor CloudAPIClient {
         )
     }
 
-    private func bootstrapEvents(_ bootstrap: CloudChatV2BootstrapResponse) -> [CloudSyncEvent] {
+    private func bootstrapEvents(_ bootstrap: CloudChatBootstrapResponse) -> [CloudSyncEvent] {
         let conversationsById = Dictionary(uniqueKeysWithValues: bootstrap.conversations.map { ($0.id, $0) })
         let titleEvents = bootstrap.conversations.map { titleEvent(
             id: "bootstrap:conversation:\($0.id):\($0.version)",
@@ -853,9 +853,9 @@ actor CloudAPIClient {
         return titleEvents + messageEvents
     }
 
-    private func legacyEvents(from event: CloudChatV2Event) throws -> [CloudSyncEvent] {
+    private func projectedEvents(from event: CloudChatEvent) throws -> [CloudSyncEvent] {
         var conversation = event.payload.conversation
-            ?? event.conversationId.flatMap { chatV2ConversationsById[$0] }
+            ?? event.conversationId.flatMap { chatConversationsById[$0] }
         if let conversation { remember(conversation) }
         let messageTypes: Set<String> = [
             "message.created", "message.updated", "message.deleted",
@@ -864,7 +864,7 @@ actor CloudAPIClient {
         if messageTypes.contains(event.eventType),
            let message = event.payload.message,
            let conversation {
-            chatV2MessagesById[message.id] = message
+            chatMessagesById[message.id] = message
             return [messageEvent(id: event.eventId, message: message, conversation: conversation, occurredAt: event.occurredAt)]
         }
         if ["conversation.created", "conversation.updated", "membership.updated"].contains(event.eventType),
@@ -884,7 +884,7 @@ actor CloudAPIClient {
             let updated = current.withCursor(cursor)
             remember(updated)
             conversation = updated
-            return chatV2MessagesById.values
+            return chatMessagesById.values
                 .filter { $0.conversationId == updated.id }
                 .map {
                     messageEvent(
@@ -897,8 +897,8 @@ actor CloudAPIClient {
         }
         if event.eventType == "membership.removed", let conversationId = event.conversationId {
             let sessionId = conversation?.legacySessionId ?? conversationId
-            chatV2ConversationsById.removeValue(forKey: conversationId)
-            chatV2ConversationsBySessionId.removeValue(forKey: sessionId)
+            chatConversationsById.removeValue(forKey: conversationId)
+            chatConversationsBySessionId.removeValue(forKey: sessionId)
             return [CloudSyncEvent(
                 eventId: event.eventId,
                 eventType: "session.deleted",
@@ -926,8 +926,8 @@ actor CloudAPIClient {
 
     private func messageEvent(
         id: String,
-        message: CloudChatV2Message,
-        conversation: CloudChatV2Conversation,
+        message: CloudChatMessage,
+        conversation: CloudChatConversation,
         occurredAt: String
     ) -> CloudSyncEvent {
         let viewer = conversation.preferences.accountId
@@ -949,7 +949,7 @@ actor CloudAPIClient {
 
     private func titleEvent(
         id: String,
-        conversation: CloudChatV2Conversation,
+        conversation: CloudChatConversation,
         occurredAt: String
     ) -> CloudSyncEvent {
         let title = conversation.preferences.personalTitle
@@ -993,14 +993,14 @@ actor CloudAPIClient {
 
     func sync(token: String, cursor: String) async throws -> CloudSyncResponse {
         if cursor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || cursor == "0" {
-            let bootstrap = try await bootstrapChatV2(token: token, force: true)
+            let bootstrap = try await bootstrapChat(token: token, force: true)
             return CloudSyncResponse(
                 cursor: bootstrap.nextCursor,
                 hasMore: false,
                 events: bootstrapEvents(bootstrap)
             )
         }
-        let response: CloudChatV2SyncResponse
+        let response: CloudChatSyncResponse
         do {
             response = try await send(
                 path: "/v2/chat/sync",
@@ -1010,7 +1010,7 @@ actor CloudAPIClient {
                 fallback: "Could not sync reliable chat changes."
             )
         } catch let error as CloudAPIError where error.code == "SYNC_CURSOR_EXPIRED" {
-            resetChatV2Cache()
+            resetChatCache()
             return try await sync(token: token, cursor: "0")
         }
         guard response.protocolVersion == 2 else {
@@ -1018,7 +1018,7 @@ actor CloudAPIClient {
         }
         var events: [CloudSyncEvent] = []
         for event in response.events {
-            events.append(contentsOf: try legacyEvents(from: event))
+            events.append(contentsOf: try projectedEvents(from: event))
         }
         return CloudSyncResponse(cursor: response.nextCursor, hasMore: response.hasMore, events: events)
     }
@@ -1224,13 +1224,13 @@ private struct ServerError: Decodable {
     }
 }
 
-private struct ChatV2ConversationResponse: Decodable { let conversation: CloudChatV2Conversation }
-private struct ChatV2MessageResponse: Decodable { let message: CloudChatV2Message }
-private struct ChatV2PreferencesResponse: Decodable { let preferences: CloudChatV2Preferences }
-private struct ChatV2CursorResponse: Decodable { let cursor: CloudChatV2Cursor }
+private struct ChatConversationResponse: Decodable { let conversation: CloudChatConversation }
+private struct ChatMessageResponse: Decodable { let message: CloudChatMessage }
+private struct ChatPreferencesResponse: Decodable { let preferences: CloudChatPreferences }
+private struct ChatCursorResponse: Decodable { let cursor: CloudChatCursor }
 
-private struct ChatV2HistoryResponse: Decodable {
-    let messages: [CloudChatV2Message]
+private struct ChatHistoryResponse: Decodable {
+    let messages: [CloudChatMessage]
     let nextBeforeSequence: Int64?
     let hasMore: Bool
 
@@ -1241,7 +1241,7 @@ private struct ChatV2HistoryResponse: Decodable {
     }
 }
 
-private struct ChatV2CreateConversationRequest: Encodable {
+private struct ChatCreateConversationRequest: Encodable {
     let clientOperationId: String
     let kind: String
     let sharedTitle: String?
@@ -1257,7 +1257,7 @@ private struct ChatV2CreateConversationRequest: Encodable {
     }
 }
 
-private struct ChatV2UpdateMembersRequest: Encodable {
+private struct ChatUpdateMembersRequest: Encodable {
     let clientOperationId: String
     let memberAccountIds: [String]
     let replace: Bool
@@ -1269,10 +1269,10 @@ private struct ChatV2UpdateMembersRequest: Encodable {
     }
 }
 
-private struct ChatV2SendMessageRequest: Encodable {
+private struct ChatSendMessageRequest: Encodable {
     let clientMessageId: String
     let kind: String
-    let content: CloudChatV2Content
+    let content: CloudChatContent
     let replyToMessageId: String?
     let attachmentIds: [String]
 
@@ -1284,7 +1284,7 @@ private struct ChatV2SendMessageRequest: Encodable {
     }
 }
 
-private struct ChatV2AdvanceCursorRequest: Encodable {
+private struct ChatAdvanceCursorRequest: Encodable {
     let clientOperationId: String
     let sequence: Int64
 
@@ -1294,7 +1294,7 @@ private struct ChatV2AdvanceCursorRequest: Encodable {
     }
 }
 
-private struct ChatV2UpdatePersonalTitleRequest: Encodable {
+private struct ChatUpdatePersonalTitleRequest: Encodable {
     let clientOperationId: String
     let expectedPreferencesVersion: Int
     let personalTitle: String?
@@ -1326,7 +1326,7 @@ private struct ClaimAgentRunRequest: Encodable {
     let idempotencyKey: String
 }
 
-private extension CloudChatV2Conversation {
+private extension CloudChatConversation {
     func withLatestMessageSequence(_ sequence: Int64) -> Self {
         Self(
             id: id,
@@ -1345,7 +1345,7 @@ private extension CloudChatV2Conversation {
         )
     }
 
-    func withPreferences(_ value: CloudChatV2Preferences) -> Self {
+    func withPreferences(_ value: CloudChatPreferences) -> Self {
         Self(
             id: id,
             kind: kind,
@@ -1363,7 +1363,7 @@ private extension CloudChatV2Conversation {
         )
     }
 
-    func withCursor(_ cursor: CloudChatV2Cursor) -> Self {
+    func withCursor(_ cursor: CloudChatCursor) -> Self {
         Self(
             id: id,
             kind: kind,
@@ -1378,7 +1378,7 @@ private extension CloudChatV2Conversation {
             updatedAt: updatedAt,
             members: members.map { member in
                 guard member.accountId == cursor.accountId else { return member }
-                return CloudChatV2Member(
+                return CloudChatMember(
                     accountId: member.accountId,
                     displayName: member.displayName,
                     avatarUrl: member.avatarUrl,

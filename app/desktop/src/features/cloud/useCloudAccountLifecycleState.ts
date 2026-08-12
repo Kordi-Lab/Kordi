@@ -321,8 +321,8 @@ export function useCloudAccountLifecycleState({
         })
         .catch(() => {});
     } else if (accountId) {
-      // Native v2 uses the crash-safe SQLite projection. Remove the old
-      // browser cache so pre-cutover rows cannot shadow durable v2 ordering.
+      // Native chat uses the crash-safe SQLite projection. Remove the obsolete
+      // browser cache so stale rows cannot shadow durable server ordering.
       hydratedCacheAccountRef.current = accountId;
       void messageCache.remove(accountId).catch(() => {});
     }

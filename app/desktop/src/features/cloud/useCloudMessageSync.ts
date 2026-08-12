@@ -11,9 +11,9 @@ import type {
   CloudAuthClient,
   CloudMessage,
   CloudSessionForkSummary,
-  ChatSyncV2Message,
+  ChatSyncMessage,
 } from './authClient';
-import { chatSyncV2SessionTitle, cloudMessageFromChatSyncV2 } from './authClient';
+import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { compareCloudMessages } from './cloudMessageMerge';
@@ -38,9 +38,9 @@ import {
 import { CloudSyncCoordinator } from './cloudSyncCoordinator';
 import { loadSession } from './session';
 import {
-  applyChatSyncV2LocalBatch,
-  loadChatSyncV2LocalState,
-} from '@/lib/desktopChatSyncV2';
+  applyChatSyncLocalBatch,
+  loadChatSyncLocalState,
+} from '@/lib/desktopChatSync';
 
 // Realtime messages normally arrive through the Cloud WebSocket. This interval
 // is only a repair path for a missed frame or a temporarily disconnected
@@ -163,7 +163,7 @@ export function useCloudMessageSync({
     if (!session?.token) {
       throw new Error('Cloud session is unavailable for reliable chat sync.');
     }
-    await client.drainChatV2Outbox(session.token, account.accountId);
+    await client.drainChatOutbox(session.token, account.accountId);
     if (!coordinator.isCurrentGeneration(generation)) return;
     let messagesByPeer = messagesRef.current;
     let sessionActivity = activityRef.current;
@@ -197,25 +197,25 @@ export function useCloudMessageSync({
             cursorOverride = null;
             return value;
           }
-          const local = await loadChatSyncV2LocalState(account.accountId);
+          const local = await loadChatSyncLocalState(account.accountId);
           return local?.cursor ?? '0';
         },
         commitResponse: async (response) => {
-          if (!response.v2) {
+          if (!response.chat) {
             throw new Error('Reliable chat sync returned a legacy response.');
           }
-          const local = await applyChatSyncV2LocalBatch({
+          const local = await applyChatSyncLocalBatch({
             accountId: account.accountId,
-            bootstrap: response.v2.bootstrap,
-            cursor: response.v2.nextCursor,
-            lastStreamSeq: response.v2.lastStreamSeq,
-            conversations: response.v2.conversations,
-            messages: response.v2.messages,
-            events: response.v2.events,
+            bootstrap: response.chat.bootstrap,
+            cursor: response.chat.nextCursor,
+            lastStreamSeq: response.chat.lastStreamSeq,
+            conversations: response.chat.conversations,
+            messages: response.chat.messages,
+            events: response.chat.events,
           });
           if (local) {
             await Promise.allSettled(local.conversations.map((conversation) => (
-              client.acknowledgeChatV2Delivery(
+              client.acknowledgeChatDelivery(
                 session.token,
                 conversation.id,
                 conversation.latest_message_sequence,
@@ -300,9 +300,9 @@ export function useCloudMessageSync({
     titlesRef,
   ]);
 
-  const hydrateV2LocalState = useCallback(async (generation: number) => {
+  const hydrateChatLocalState = useCallback(async (generation: number) => {
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
-    const local = await loadChatSyncV2LocalState(account.accountId);
+    const local = await loadChatSyncLocalState(account.accountId);
     if (!local || !coordinator.isCurrentGeneration(generation)) return;
     const conversationById = new Map(
       local.conversations.map((conversation) => [conversation.id, conversation]),
@@ -311,7 +311,7 @@ export function useCloudMessageSync({
     for (const snapshot of local.messages) {
       const conversation = conversationById.get(snapshot.conversation_id);
       if (!conversation) continue;
-      const message = cloudMessageFromChatSyncV2(snapshot, conversation, account.accountId);
+      const message = cloudMessageFromChatSync(snapshot, conversation, account.accountId);
       const peerId = message.fromAccountId === account.accountId
         ? message.toAccountId
         : message.fromAccountId;
@@ -328,7 +328,7 @@ export function useCloudMessageSync({
     setMessages((current) => mergeCloudMessagesByPeerSnapshot(current, hydratedMessages));
     const hydratedTitles = local.conversations.reduce<CloudSessionTitlesById>((titles, conversation) => {
       const sessionId = conversation.legacy_session_id ?? conversation.id;
-      const title = chatSyncV2SessionTitle(conversation);
+      const title = chatSyncSessionTitle(conversation);
       if (!title) return titles;
       titles[sessionId] = {
         sessionId,
@@ -345,13 +345,13 @@ export function useCloudMessageSync({
     }, {});
     setTitles((current) => ({ ...current, ...hydratedTitles }));
   }, [account, coordinator, messagesRef, setMessages, setTitles]);
-  const hydrateMissingV2History = useCallback(async (generation: number) => {
+  const hydrateMissingChatHistory = useCallback(async (generation: number) => {
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const session = await loadSession();
     if (!session?.token || !coordinator.isCurrentGeneration(generation)) return;
-    const local = await loadChatSyncV2LocalState(account.accountId);
+    const local = await loadChatSyncLocalState(account.accountId);
     if (!local || !coordinator.isCurrentGeneration(generation)) return;
-    const messagesByConversation = new Map<string, ChatSyncV2Message[]>();
+    const messagesByConversation = new Map<string, ChatSyncMessage[]>();
     for (const message of local.messages) {
       const values = messagesByConversation.get(message.conversation_id) ?? [];
       values.push(message);
@@ -378,13 +378,13 @@ export function useCloudMessageSync({
       // presence of sequence one.
       let beforeSequence = hasContiguousSuffix ? earliestSequence : undefined;
       while (true) {
-        const page = await client.listChatV2ConversationHistoryPage(
+        const page = await client.listChatConversationHistoryPage(
           session.token,
           conversation.id,
           beforeSequence,
         );
         if (!coordinator.isCurrentGeneration(generation)) return;
-        await applyChatSyncV2LocalBatch({
+        await applyChatSyncLocalBatch({
           accountId: account.accountId,
           bootstrap: false,
           messages: page.messages,
@@ -397,20 +397,20 @@ export function useCloudMessageSync({
         beforeSequence = next;
       }
     }
-    await hydrateV2LocalState(generation);
-  }, [account, client, coordinator, hydrateV2LocalState]);
+    await hydrateChatLocalState(generation);
+  }, [account, client, coordinator, hydrateChatLocalState]);
   const runCoordinatedSync = useCallback(async (generation: number) => {
     const request = pendingRequestRef.current;
     pendingRequestRef.current = null;
     if (!request) return;
     try {
       if (request.mode === 'bootstrap') {
-        // Render the crash-safe local v2 projection first. Catch-up and history
-        // backfill then operate exclusively on the durable v2 cursor stream.
-        await hydrateV2LocalState(generation);
+        // Render the crash-safe local projection first. Catch-up and history
+        // backfill then operate exclusively on the durable cursor stream.
+        await hydrateChatLocalState(generation);
       }
       await syncDiffOnceForGeneration(generation, request.mode === 'full');
-      await hydrateMissingV2History(generation);
+      await hydrateMissingChatHistory(generation);
       markUnreadReadiness('ready', generation, bootstrapPeerKey);
     } catch (error) {
       if (request.mode !== 'diff' || request.settleInitialMessages) {
@@ -420,8 +420,8 @@ export function useCloudMessageSync({
     }
   }, [
     bootstrapPeerKey,
-    hydrateMissingV2History,
-    hydrateV2LocalState,
+    hydrateMissingChatHistory,
+    hydrateChatLocalState,
     markUnreadReadiness,
     syncDiffOnceForGeneration,
   ]);

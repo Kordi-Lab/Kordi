@@ -22,7 +22,8 @@ export {
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
 
-export const CLOUD_SYNC_CURSOR_PREFIX = 'kordi.cloud.syncCursor.v2:';
+export const CLOUD_SYNC_CURSOR_PREFIX = 'kordi.cloud.syncCursor.chat:';
+const PREVIOUS_CLOUD_SYNC_CURSOR_PREFIX = 'kordi.cloud.syncCursor.v2:';
 export const CLOUD_SESSION_VISIBILITY_PREFIX = 'kordi.cloud.sessionVisibility.v1:';
 
 export type CloudSessionVisibilityState = {
@@ -67,7 +68,16 @@ export function loadCloudSyncCursor(accountId: string | null | undefined, storag
   const trimmedAccountId = accountId?.trim() ?? '';
   if (!trimmedAccountId || !storage) return '0';
   try {
-    return normalizeCursor(storage.getItem(cloudSyncCursorStorageKey(trimmedAccountId)));
+    const currentKey = cloudSyncCursorStorageKey(trimmedAccountId);
+    const current = storage.getItem(currentKey);
+    if (current !== null) return normalizeCursor(current);
+    const previousKey = `${PREVIOUS_CLOUD_SYNC_CURSOR_PREFIX}${trimmedAccountId}`;
+    const previous = storage.getItem(previousKey);
+    if (previous !== null) {
+      storage.setItem(currentKey, previous);
+      storage.removeItem(previousKey);
+    }
+    return normalizeCursor(previous);
   } catch {
     return '0';
   }
@@ -79,6 +89,7 @@ export function saveCloudSyncCursor(accountId: string | null | undefined, cursor
   if (!trimmedAccountId || !storage) return;
   try {
     storage.setItem(cloudSyncCursorStorageKey(trimmedAccountId), normalizedCursor);
+    storage.removeItem(`${PREVIOUS_CLOUD_SYNC_CURSOR_PREFIX}${trimmedAccountId}`);
   } catch {
     // Best effort. A failed cursor write only causes a future duplicate sync;
     // event application is idempotent by message id.

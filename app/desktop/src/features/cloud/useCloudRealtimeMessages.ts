@@ -3,7 +3,7 @@ import {
   useRef,
 } from 'react';
 import {
-  chatSyncV2WebSocketUrl,
+  chatSyncWebSocketUrl,
   cloudRealtimeWebSocketEnabled,
   type CloudAccount,
   type CloudAuthClient,
@@ -18,7 +18,7 @@ import type {
 import {
   loadSession,
 } from './session';
-import { loadChatSyncV2LocalState } from '@/lib/desktopChatSyncV2';
+import { loadChatSyncLocalState } from '@/lib/desktopChatSync';
 
 type SyncCloudCollaborationDiff =
   CloudMessageSyncController['syncCloudCollaborationDiff'];
@@ -143,14 +143,14 @@ export function useCloudRealtimeMessages({
         const session = await loadSession();
         if (!session?.token || cancelled) return;
         await syncCloudCollaborationDiffRef.current();
-        const local = await loadChatSyncV2LocalState(accountIdAtOpen);
+        const local = await loadChatSyncLocalState(accountIdAtOpen);
         if (!local?.cursor || cancelled) {
           throw new Error('Reliable chat cursor is unavailable after bootstrap.');
         }
         lastAppliedSeq = local.lastStreamSeq;
-        const realtime = await client.issueChatSyncV2RealtimeTicket(session.token);
+        const realtime = await client.issueChatSyncRealtimeTicket(session.token);
         if (cancelled) return;
-        const socket = new WebSocket(chatSyncV2WebSocketUrl(realtime.ticket));
+        const socket = new WebSocket(chatSyncWebSocketUrl(realtime.ticket));
         ws = socket;
         socket.onopen = () => {
           reconnectAttempt = 0;
@@ -191,7 +191,7 @@ export function useCloudRealtimeMessages({
             if (frame.type !== 'event' || typeof frame.stream_seq !== 'number') return;
             void syncCloudCollaborationDiffRef.current()
               .then(async () => {
-                const applied = await loadChatSyncV2LocalState(accountIdAtOpen);
+                const applied = await loadChatSyncLocalState(accountIdAtOpen);
                 if (applied) lastAppliedSeq = applied.lastStreamSeq;
               })
               .catch(() => socket.close());

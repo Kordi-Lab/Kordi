@@ -9,7 +9,7 @@ fn get(uri: &str) -> Request<Body> {
 }
 
 #[tokio::test]
-async fn group_invitation_updates_v2_membership_and_never_creates_contacts() {
+async fn group_invitation_updates_canonical_membership_and_never_creates_contacts() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);

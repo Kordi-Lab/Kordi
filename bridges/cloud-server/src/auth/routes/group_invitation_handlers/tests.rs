@@ -18,9 +18,9 @@ fn group_invite_tokens_are_opaque_and_hash_stably() {
 }
 
 #[test]
-fn v2_membership_snapshot_is_canonical_for_invitation_preview() {
+fn membership_snapshot_is_canonical_for_invitation_preview() {
     let conversation_id = uuid::Uuid::now_v7();
-    let snapshot = snapshot_from_v2_rows(
+    let snapshot = snapshot_from_rows(
         (
             conversation_id,
             "acct_owner".to_string(),
@@ -44,7 +44,7 @@ fn v2_membership_snapshot_is_canonical_for_invitation_preview() {
         "session:group:team",
         "Stale client title",
     )
-    .expect("v2 group snapshot");
+    .expect("group snapshot");
 
     assert_eq!(snapshot.group_title, "Canonical title");
     assert_eq!(snapshot.created_by_account_id, "acct_owner");
@@ -56,7 +56,7 @@ fn v2_membership_snapshot_is_canonical_for_invitation_preview() {
 
 #[test]
 fn invitation_snapshot_requires_a_real_group_membership_set() {
-    let snapshot = snapshot_from_v2_rows(
+    let snapshot = snapshot_from_rows(
         (
             uuid::Uuid::now_v7(),
             "acct_owner".to_string(),
@@ -76,7 +76,7 @@ fn invitation_snapshot_requires_a_real_group_membership_set() {
 }
 
 #[test]
-fn invitation_capacity_uses_the_v2_member_snapshot() {
+fn invitation_capacity_uses_the_canonical_member_snapshot() {
     let snapshot = GroupInvitationSnapshot {
         group_id: "session:group:full".to_string(),
         group_space_id: "session:group:full".to_string(),

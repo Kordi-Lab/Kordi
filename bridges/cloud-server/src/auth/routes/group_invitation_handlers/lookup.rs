@@ -1,11 +1,11 @@
 use super::*;
 
-type V2GroupConversationRow = (uuid::Uuid, String, Option<String>);
-type V2GroupParticipantRow = (String, Option<String>, Option<String>, String);
+type GroupConversationRow = (uuid::Uuid, String, Option<String>);
+type GroupParticipantRow = (String, Option<String>, Option<String>, String);
 
-pub(super) fn snapshot_from_v2_rows(
-    conversation: V2GroupConversationRow,
-    rows: Vec<V2GroupParticipantRow>,
+pub(super) fn snapshot_from_rows(
+    conversation: GroupConversationRow,
+    rows: Vec<GroupParticipantRow>,
     group_id: &str,
     group_space_id: &str,
     requested_group_title: &str,
@@ -56,7 +56,7 @@ pub(super) async fn authorized_group_invitation_snapshot(
     group_space_id: &str,
     group_title: &str,
 ) -> Result<Option<GroupInvitationSnapshot>, sqlx_core::Error> {
-    let conversation: Option<V2GroupConversationRow> = query_as(
+    let conversation: Option<GroupConversationRow> = query_as(
         "SELECT conversation.conversation_id, conversation.created_by_account_id,
                 conversation.shared_title
          FROM cloud_chat_conversations conversation
@@ -75,7 +75,7 @@ pub(super) async fn authorized_group_invitation_snapshot(
     let Some(conversation) = conversation else {
         return Ok(None);
     };
-    let participants: Vec<V2GroupParticipantRow> = query_as(
+    let participants: Vec<GroupParticipantRow> = query_as(
         "SELECT member.account_id, account.display_name, account.avatar_url, member.role
          FROM cloud_chat_conversation_members member
          JOIN cloud_accounts account ON account.account_id = member.account_id
@@ -85,7 +85,7 @@ pub(super) async fn authorized_group_invitation_snapshot(
     .bind(conversation.0)
     .fetch_all(pool)
     .await?;
-    Ok(snapshot_from_v2_rows(
+    Ok(snapshot_from_rows(
         conversation,
         participants,
         group_id,
@@ -101,7 +101,7 @@ async fn authorized_group_invitation_snapshot_in_transaction(
     group_space_id: &str,
     group_title: &str,
 ) -> Result<Option<GroupInvitationSnapshot>, sqlx_core::Error> {
-    let conversation: Option<V2GroupConversationRow> = query_as(
+    let conversation: Option<GroupConversationRow> = query_as(
         "SELECT conversation.conversation_id, conversation.created_by_account_id,
                 conversation.shared_title
          FROM cloud_chat_conversations conversation
@@ -121,7 +121,7 @@ async fn authorized_group_invitation_snapshot_in_transaction(
     let Some(conversation) = conversation else {
         return Ok(None);
     };
-    let participants: Vec<V2GroupParticipantRow> = query_as(
+    let participants: Vec<GroupParticipantRow> = query_as(
         "SELECT member.account_id, account.display_name, account.avatar_url, member.role
          FROM cloud_chat_conversation_members member
          JOIN cloud_accounts account ON account.account_id = member.account_id
@@ -131,7 +131,7 @@ async fn authorized_group_invitation_snapshot_in_transaction(
     .bind(conversation.0)
     .fetch_all(&mut **tx)
     .await?;
-    Ok(snapshot_from_v2_rows(
+    Ok(snapshot_from_rows(
         conversation,
         participants,
         group_id,

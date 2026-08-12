@@ -1,4 +1,4 @@
-# Kordi reliable chat sync v2
+# Kordi reliable chat sync
 
 This directory is the transport-neutral contract for canonical Kordi chat.
 The server implementation lives in `bridges/cloud-server/src/chat_sync`.
@@ -15,8 +15,7 @@ Protocol rules:
 - Shared conversation titles and private per-user titles are versioned durable
   state. They do not consume timeline sequence positions.
 - Fork lineage is part of the durable conversation snapshot. Bootstrap and
-  replay therefore reconstruct the same session tree without a legacy sync
-  event.
+  replay therefore reconstruct the same session tree from canonical state.
 - Group membership snapshots are authoritative. Removed accounts receive a
   durable tombstone and receive no later message events for that conversation.
 - A conversation snapshot contains public member state, including the current
@@ -28,9 +27,9 @@ Protocol rules:
 - Unknown critical events stop sync. Unknown non-critical events may be
   ignored while advancing the cursor.
 
-The `/v2/chat` surface is the exclusive product chat transport and remains fail-closed unless
-`KORDI_CHAT_SYNC_V2_ENABLED` is explicitly enabled and
-`KORDI_CHAT_SYNC_CURSOR_SECRET` contains at least 32 bytes.
+The `/v2/chat` surface is the canonical product chat transport.
+`KORDI_CHAT_SYNC_CURSOR_SECRET` must contain at least 32 bytes so sync cursors
+remain signed and bound to the authenticated account.
 
 Realtime clients exchange the bearer session for a single-use ticket at
 `POST /v2/chat/realtime/ticket`, then connect to
@@ -47,11 +46,3 @@ cursor representing that event. A client commits the entity update, sequence,
 and cursor in the same local transaction. WebSocket delivery reads the durable
 PostgreSQL stream and periodically polls it, so notifications are only latency
 hints and never a recovery dependency.
-
-Migration `0048_backfill_reliable_chat_sync_v2.sql` performs the one-time v1
-history cutover. It collapses historical per-recipient group fanout into one
-canonical timeline item, preserves attachment and read state, records every
-legacy-to-canonical message mapping, and advances the affected users' sync
-retention floor. A device holding a cursor from before the backfill therefore
-receives `SYNC_CURSOR_EXPIRED` and performs a consistent v2 bootstrap instead
-of silently keeping an incomplete local projection.

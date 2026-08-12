@@ -186,34 +186,34 @@ test('canonical materialization hydrates the runtime Cloud direct conversation w
   );
 });
 
-test('v2 runtime messages remain visible when the legacy canonical snapshot is behind', () => {
+test('canonical runtime messages remain visible when the legacy canonical snapshot is behind', () => {
   const readModel = createCanonicalSessionReadModel(
     canonicalState({ materializeDirectSession: true }) as never,
   );
-  const runtimeWithNewV2Message = {
+  const runtimeWithNewChatMessage = {
     ...runtimeDirectConversation,
-    subtitle: 'Newest v2 message',
+    subtitle: 'Newest chat message',
     messages: [
       ...runtimeDirectConversation.messages,
       {
-        id: 'v2:message:2',
+        id: 'chat:message:2',
         role: 'user',
         sender: 'Me',
         senderType: 'human',
-        text: 'Newest v2 message',
+        text: 'Newest chat message',
         time: '10:01',
       },
     ],
   };
 
   const [conversation] = readModel?.buildChatConversations(
-    [runtimeWithNewV2Message as never],
+    [runtimeWithNewChatMessage as never],
     (messages, fallback) => messages.at(-1)?.text ?? fallback ?? '',
   ) ?? [];
 
   assert.deepEqual(
     conversation?.messages.map((message) => message.text),
-    ['Cloud hello', 'Newest v2 message'],
+    ['Cloud hello', 'Newest chat message'],
   );
-  assert.equal(conversation?.subtitle, 'Newest v2 message');
+  assert.equal(conversation?.subtitle, 'Newest chat message');
 });

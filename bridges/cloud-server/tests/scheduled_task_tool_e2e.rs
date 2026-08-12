@@ -293,7 +293,7 @@ fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
 }
 
 #[test]
-fn cloud_agent_scheduled_responses_are_written_to_chat_sync_v2() {
+fn cloud_agent_scheduled_responses_are_written_to_chat_sync() {
     let sync_source = std::fs::read_to_string("src/cloud_agent_runtime/sync_events.rs")
         .expect("read cloud agent sync event source");
     assert!(sync_source.contains("store::send_message"));

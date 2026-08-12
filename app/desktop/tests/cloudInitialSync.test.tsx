@@ -45,7 +45,7 @@ test('cloud initial sync renders usable local state while network catch-up conti
   }), 'ready');
 });
 
-test('cloud initial sync can recover from canonical refresh failure using the v2 local backup', () => {
+test('cloud initial sync can recover from canonical refresh failure using the local chat backup', () => {
   assert.equal(cloudInitialSyncStatus({
     isCloudEdition: true,
     accountReady: true,

@@ -3,10 +3,10 @@ use super::*;
 pub(super) fn load_state(
     conn: &Connection,
     account_id: &str,
-) -> Result<ChatSyncV2LocalState, String> {
+) -> Result<ChatSyncLocalState, String> {
     let state: Option<(String, i64)> = conn
         .query_row(
-            "SELECT cursor, last_stream_seq FROM chat_sync_v2_state WHERE account_id = ?1",
+            "SELECT cursor, last_stream_seq FROM chat_sync_state WHERE account_id = ?1",
             [account_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -14,7 +14,7 @@ pub(super) fn load_state(
         .map_err(|error| error.to_string())?;
     let mut conversation_statement = conn
         .prepare(
-            "SELECT snapshot_json FROM chat_sync_v2_conversations
+            "SELECT snapshot_json FROM chat_sync_conversations
              WHERE account_id = ?1 ORDER BY conversation_id ASC",
         )
         .map_err(|error| error.to_string())?;
@@ -29,7 +29,7 @@ pub(super) fn load_state(
         .collect::<Result<Vec<Value>, String>>()?;
     let mut message_statement = conn
         .prepare(
-            "SELECT snapshot_json FROM chat_sync_v2_messages
+            "SELECT snapshot_json FROM chat_sync_messages
              WHERE account_id = ?1
              ORDER BY conversation_id ASC, conversation_sequence ASC",
         )
@@ -43,7 +43,7 @@ pub(super) fn load_state(
             })
         })
         .collect::<Result<Vec<Value>, String>>()?;
-    Ok(ChatSyncV2LocalState {
+    Ok(ChatSyncLocalState {
         account_id: account_id.to_string(),
         cursor: state.as_ref().map(|value| value.0.clone()),
         last_stream_seq: state.map(|value| value.1).unwrap_or(0),
@@ -52,25 +52,25 @@ pub(super) fn load_state(
     })
 }
 
-pub(super) fn apply(request: ChatSyncV2ApplyRequest) -> Result<ChatSyncV2LocalState, String> {
+pub(super) fn apply(request: ChatSyncApplyRequest) -> Result<ChatSyncLocalState, String> {
     let mut conn = open_db()?;
     apply_on_connection(&mut conn, request)
 }
 
 pub(super) fn apply_on_connection(
     conn: &mut Connection,
-    request: ChatSyncV2ApplyRequest,
-) -> Result<ChatSyncV2LocalState, String> {
+    request: ChatSyncApplyRequest,
+) -> Result<ChatSyncLocalState, String> {
     let account_id = request.account_id.trim();
     if account_id.is_empty() {
-        return Err("Chat sync v2 account id is required".to_string());
+        return Err("Chat sync account id is required".to_string());
     }
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| error.to_string())?;
     let previous_stream_seq: i64 = tx
         .query_row(
-            "SELECT last_stream_seq FROM chat_sync_v2_state WHERE account_id = ?1",
+            "SELECT last_stream_seq FROM chat_sync_state WHERE account_id = ?1",
             [account_id],
             |row| row.get(0),
         )
@@ -80,12 +80,12 @@ pub(super) fn apply_on_connection(
 
     if request.bootstrap {
         tx.execute(
-            "DELETE FROM chat_sync_v2_messages WHERE account_id = ?1",
+            "DELETE FROM chat_sync_messages WHERE account_id = ?1",
             [account_id],
         )
         .map_err(|error| error.to_string())?;
         tx.execute(
-            "DELETE FROM chat_sync_v2_conversations WHERE account_id = ?1",
+            "DELETE FROM chat_sync_conversations WHERE account_id = ?1",
             [account_id],
         )
         .map_err(|error| error.to_string())?;
@@ -124,10 +124,10 @@ pub(super) fn apply_on_connection(
         .filter(|value| !value.is_empty())
     {
         let stream_seq = request.last_stream_seq.ok_or_else(|| {
-            "Chat sync v2 cursor and stream sequence must commit together".to_string()
+            "Chat sync cursor and stream sequence must commit together".to_string()
         })?;
         if stream_seq < 0 {
-            return Err("Chat sync v2 stream sequence is invalid".to_string());
+            return Err("Chat sync stream sequence is invalid".to_string());
         }
         if !request.bootstrap && !request.events.is_empty() {
             let applied = required_i64(
@@ -135,13 +135,11 @@ pub(super) fn apply_on_connection(
                 "stream_seq",
             )?;
             if stream_seq != applied {
-                return Err(
-                    "Chat sync v2 cursor does not match the applied event batch".to_string()
-                );
+                return Err("Chat sync cursor does not match the applied event batch".to_string());
             }
         }
         tx.execute(
-            "INSERT INTO chat_sync_v2_state(account_id, cursor, last_stream_seq, updated_at_ms)
+            "INSERT INTO chat_sync_state(account_id, cursor, last_stream_seq, updated_at_ms)
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(account_id) DO UPDATE SET
                  cursor = excluded.cursor,

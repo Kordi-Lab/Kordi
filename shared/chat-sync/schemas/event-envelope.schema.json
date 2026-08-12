@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://coordinar.io/schemas/chat-sync-v2/event-envelope.schema.json",
+  "$id": "https://kordi.ai/schemas/chat-sync/event-envelope.schema.json",
   "title": "Kordi durable chat event",
   "type": "object",
   "additionalProperties": true,

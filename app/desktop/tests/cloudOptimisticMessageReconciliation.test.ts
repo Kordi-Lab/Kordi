@@ -58,7 +58,7 @@ function authoritativeState(messages: CloudMessage[]) {
   });
 }
 
-test('Cloud client message IDs are UUIDs suitable for v2 idempotency', () => {
+test('Cloud client message IDs are UUIDs suitable for chat idempotency', () => {
   assert.match(
     createCloudCollaborationClientMessageId(),
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -89,7 +89,7 @@ test('optimistic Cloud messages overlay durable state without replacing it', () 
   );
 });
 
-test('the canonical v2 snapshot replaces its matching optimistic message', () => {
+test('the canonical snapshot replaces its matching optimistic message', () => {
   const optimisticId = '44444444-4444-4444-8444-444444444444';
   const initial = authoritativeState([
     outgoingMessage('message_1', 'first', '11111111-1111-4111-8111-111111111111', 1),
@@ -113,7 +113,7 @@ test('the canonical v2 snapshot replaces its matching optimistic message', () =>
   assert.equal(merged?.conversations[0].messages[1].deliveryState, 'delivered');
 });
 
-test('failed optimistic messages remain retryable until v2 confirms the operation', () => {
+test('failed optimistic messages remain retryable until canonical sync confirms the operation', () => {
   const optimisticId = '55555555-5555-4555-8555-555555555555';
   const initial = authoritativeState([
     outgoingMessage('message_1', 'first', '11111111-1111-4111-8111-111111111111', 1),

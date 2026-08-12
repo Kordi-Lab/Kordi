@@ -30,22 +30,15 @@ mod http;
 use http::*;
 #[derive(Clone)]
 struct ChatSyncRuntime {
-    enabled: bool,
     cursor_codec: Option<CursorCodec>,
 }
 
 impl ChatSyncRuntime {
     fn from_env() -> Self {
-        let enabled = std::env::var("KORDI_CHAT_SYNC_V2_ENABLED")
-            .ok()
-            .is_some_and(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES"));
         let cursor_codec = std::env::var("KORDI_CHAT_SYNC_CURSOR_SECRET")
             .ok()
             .and_then(|secret| CursorCodec::new(secret).ok());
-        Self {
-            enabled,
-            cursor_codec,
-        }
+        Self { cursor_codec }
     }
 }
 
@@ -93,13 +86,9 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
 
 async fn create_conversation(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Json(request): Json<CreateConversationRequest>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     match store::create_conversation(state.db_pool(), &session.account_id, request).await {
         Ok(outcome) => (
             if outcome.inserted {
@@ -118,14 +107,10 @@ async fn create_conversation(
 
 async fn send_message(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<SendMessageRequest>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     if let Err(error) = validate_message_request(&request) {
         return error.into_response();
     }
@@ -154,14 +139,10 @@ async fn send_message(
 
 async fn update_shared_title(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<UpdateConversationTitleRequest>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     match store::update_shared_title(
         state.db_pool(),
         &session.account_id,
@@ -177,14 +158,10 @@ async fn update_shared_title(
 
 async fn update_personal_title(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<UpdatePersonalTitleRequest>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     match store::update_personal_title(
         state.db_pool(),
         &session.account_id,
@@ -200,14 +177,10 @@ async fn update_personal_title(
 
 async fn add_conversation_members(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<AddConversationMembersRequest>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     match store::add_conversation_members(
         state.db_pool(),
         &session.account_id,
@@ -223,14 +196,10 @@ async fn add_conversation_members(
 
 async fn history(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
     Query(request): Query<HistoryQuery>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     match store::history(
         state.db_pool(),
         &session.account_id,
@@ -247,14 +216,10 @@ async fn history(
 
 async fn advance_delivery_cursor(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<AdvanceConversationCursorRequest>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     match store::advance_delivery_cursor(
         state.db_pool(),
         &session.account_id,
@@ -270,14 +235,10 @@ async fn advance_delivery_cursor(
 
 async fn advance_read_cursor(
     State(state): State<Arc<ServerState>>,
-    Extension(runtime): Extension<Arc<ChatSyncRuntime>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<AdvanceConversationCursorRequest>,
 ) -> Response {
-    if let Err(error) = require_enabled(&runtime) {
-        return runtime_requirement_error(error);
-    }
     match store::advance_read_cursor(
         state.db_pool(),
         &session.account_id,
@@ -395,7 +356,7 @@ async fn issue_realtime_ticket(
             None,
         ),
         Err(realtime::TicketError::Database(error)) => {
-            eprintln!("[chat-sync-v2] issue realtime ticket: {error}");
+            eprintln!("[chat-sync] issue realtime ticket: {error}");
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "SERVER_ERROR",
@@ -418,19 +379,15 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        validate_message_request, ChatSyncRuntime, MAX_ATTACHMENTS_PER_MESSAGE,
-        MAX_MESSAGE_CONTENT_BYTES,
+        require_cursor_codec, validate_message_request, ChatSyncRuntime,
+        MAX_ATTACHMENTS_PER_MESSAGE, MAX_MESSAGE_CONTENT_BYTES,
     };
     use crate::chat_sync::models::SendMessageRequest;
 
     #[test]
-    fn v2_is_fail_closed_without_explicit_enablement() {
-        let runtime = ChatSyncRuntime {
-            enabled: false,
-            cursor_codec: None,
-        };
-        assert!(!runtime.enabled);
-        assert!(runtime.cursor_codec.is_none());
+    fn signed_cursor_configuration_is_required() {
+        let runtime = ChatSyncRuntime { cursor_codec: None };
+        assert!(require_cursor_codec(&runtime).is_err());
     }
 
     #[test]

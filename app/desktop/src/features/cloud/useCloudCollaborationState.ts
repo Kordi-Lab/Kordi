@@ -160,8 +160,8 @@ export {
 export {
   cloudSelfAgentOperationClientMessageId,
   planCloudSelfAgentSessionReconciliation,
-  loadCloudSelfAgentV2RecoverySessionIds,
-  saveCloudSelfAgentV2RecoverySessionIds,
+  loadCloudSelfAgentRecoverySessionIds,
+  saveCloudSelfAgentRecoverySessionIds,
   planCloudSelfAgentSync,
   seedCloudSelfAgentForwardSyncLedger,
 } from './cloudSelfAgentForwardSync';

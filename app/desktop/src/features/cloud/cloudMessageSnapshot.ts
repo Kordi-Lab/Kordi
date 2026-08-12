@@ -1,22 +1,22 @@
 import type {
-  ChatSyncV2Conversation,
-  ChatSyncV2Message,
+  ChatSyncConversation,
+  ChatSyncMessage,
   CloudMessage,
 } from './authClient';
 
 export type CloudMessageSnapshot = {
   messages: CloudMessage[];
   peerReadAt: string | null;
-  v2?: {
-    conversation: ChatSyncV2Conversation;
-    messages: ChatSyncV2Message[];
+  chat?: {
+    conversation: ChatSyncConversation;
+    messages: ChatSyncMessage[];
   };
 };
 
 export type CloudMessageSnapshotResponse = {
   messages?: CloudMessage[];
   peerReadAt?: string | null;
-  v2?: CloudMessageSnapshot['v2'];
+  chat?: CloudMessageSnapshot['chat'];
 };
 
 export function normalizeCloudMessageSnapshot(
@@ -30,6 +30,6 @@ export function normalizeCloudMessageSnapshot(
     peerReadAt: typeof response?.peerReadAt === 'string'
       ? response.peerReadAt
       : null,
-    ...(response?.v2 ? { v2: response.v2 } : {}),
+    ...(response?.chat ? { chat: response.chat } : {}),
   };
 }

@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: Kordi Reliable Chat Sync
-  version: 2.0.0-alpha.1
-  description: Canonical v2-only chat and multi-device synchronization API.
+  version: 2.0.0
+  description: Canonical chat and multi-device synchronization API.
 servers:
-  - url: https://coordinar.io
+  - url: https://kordi.ai
 security:
   - bearerAuth: []
 paths:

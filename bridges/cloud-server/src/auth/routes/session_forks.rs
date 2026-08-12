@@ -7,7 +7,7 @@ use super::*;
 // `POST /v1/cloud/sessions/:source_session_id/forks` with a client-generated
 // `forkSessionId` and an optional `parentMessageId`. The server records the
 // lineage in `cloud_session_forks` and emits a `session-forked` event into
-// every participant's durable v2 sync stream.
+// every participant's durable sync stream.
 // Forker's own messages under the new fork session stay private to them; other
 // participants only learn lineage, not content.
 // ============================================================================
@@ -48,7 +48,7 @@ pub(crate) async fn cloud_session_participants(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Vec<String>, sqlx_core::error::Error> {
-    let v2_participants: Vec<(String,)> = query_as(
+    let participants: Vec<(String,)> = query_as(
         "SELECT member.account_id
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
@@ -60,7 +60,7 @@ pub(crate) async fn cloud_session_participants(
     .bind(session_id)
     .fetch_all(pool)
     .await?;
-    Ok(v2_participants
+    Ok(participants
         .into_iter()
         .map(|(account_id,)| account_id)
         .collect())
@@ -163,7 +163,7 @@ pub(super) async fn create_cloud_session_fork(
     )
     .await;
 
-    // Fan out through the v2 per-user stream in one deterministic recipient
+    // Fan out through the per-user stream in one deterministic recipient
     // order. The fork row remains canonical if publication fails.
     let payload = serde_json::to_value(&fork).unwrap_or_else(|_| serde_json::json!({}));
     let conversation_id = crate::chat_sync::store::conversation_id_for_session(

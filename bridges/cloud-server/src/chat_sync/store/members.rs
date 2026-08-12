@@ -182,7 +182,7 @@ pub async fn add_conversation_members(
 /// Atomically activates a member accepted through a verified group invitation.
 ///
 /// The invitation handler owns the surrounding transaction so its acceptance
-/// row and the v2 membership/event fanout commit or roll back together. This
+/// row and the canonical membership/event fanout commit or roll back together. This
 /// intentionally bypasses the normal contact requirement: possession of a
 /// valid invitation is the authorization grant.
 pub async fn accept_invited_conversation_member(

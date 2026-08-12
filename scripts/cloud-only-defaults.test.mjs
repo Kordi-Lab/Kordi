@@ -97,7 +97,7 @@ test('development docs enforce the product-server impact preflight', () => {
     'docs/self-hosted-debug.md',
     'docs/community-contributor-guide.md',
     'docs/ios-development.md',
-    'docs/cloud-mobile-v2.md',
+    'docs/cloud-mobile.md',
   ];
 
   assert.match(policy, /anything that requires a product-server restart/);

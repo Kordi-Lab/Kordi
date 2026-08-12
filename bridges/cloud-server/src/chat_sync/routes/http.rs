@@ -17,18 +17,11 @@ pub(super) fn error_response(
 }
 
 pub(super) enum RuntimeRequirementError {
-    Disabled,
     CursorUnavailable,
 }
 
 pub(super) fn runtime_requirement_error(error: RuntimeRequirementError) -> Response {
     match error {
-        RuntimeRequirementError::Disabled => error_response(
-            StatusCode::NOT_FOUND,
-            "CHAT_SYNC_V2_DISABLED",
-            "Reliable chat sync is not enabled for this server.",
-            None,
-        ),
         RuntimeRequirementError::CursorUnavailable => error_response(
             StatusCode::SERVICE_UNAVAILABLE,
             "CHAT_SYNC_CURSOR_UNAVAILABLE",
@@ -38,18 +31,9 @@ pub(super) fn runtime_requirement_error(error: RuntimeRequirementError) -> Respo
     }
 }
 
-pub(super) fn require_enabled(runtime: &ChatSyncRuntime) -> Result<(), RuntimeRequirementError> {
-    if runtime.enabled {
-        Ok(())
-    } else {
-        Err(RuntimeRequirementError::Disabled)
-    }
-}
-
 pub(super) fn require_cursor_codec(
     runtime: &ChatSyncRuntime,
 ) -> Result<CursorCodec, RuntimeRequirementError> {
-    require_enabled(runtime)?;
     runtime
         .cursor_codec
         .clone()
@@ -104,7 +88,7 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
             None,
         ),
         StoreError::Database(error) => {
-            eprintln!("[chat-sync-v2] {context}: {error}");
+            eprintln!("[chat-sync] {context}: {error}");
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "SERVER_ERROR",
@@ -113,7 +97,7 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
             )
         }
         StoreError::InvariantViolation(message) => {
-            eprintln!("[chat-sync-v2] {context}: invariant violation: {message}");
+            eprintln!("[chat-sync] {context}: invariant violation: {message}");
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "CHAT_SYNC_INVARIANT_VIOLATION",

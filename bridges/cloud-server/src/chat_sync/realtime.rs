@@ -1,4 +1,4 @@
-//! Durable realtime transport for chat protocol v2.
+//! Durable realtime transport for the canonical chat protocol.
 //!
 //! The socket never owns canonical state. It authenticates with a single-use
 //! ticket, catches up from the PostgreSQL sync stream, and keeps polling that
@@ -40,12 +40,6 @@ const MAX_CLIENT_FRAME_BYTES: usize = 64 * 1024;
 const MAX_SERVER_FRAME_BYTES: usize = 512 * 1024;
 const MAX_UNACKNOWLEDGED_EVENTS: i64 = 1_000;
 
-fn v2_enabled() -> bool {
-    std::env::var("KORDI_CHAT_SYNC_V2_ENABLED")
-        .ok()
-        .is_some_and(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
-}
-
 fn cursor_codec() -> Option<CursorCodec> {
     std::env::var("KORDI_CHAT_SYNC_CURSOR_SECRET")
         .ok()
@@ -63,9 +57,6 @@ pub async fn ws_handler(
     Query(query): Query<RealtimeQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if !v2_enabled() {
-        return StatusCode::NOT_FOUND.into_response();
-    }
     let Some(codec) = cursor_codec() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
@@ -74,7 +65,7 @@ pub async fn ws_handler(
         Err(TicketError::InvalidTicket) => return StatusCode::UNAUTHORIZED.into_response(),
         Err(TicketError::OriginNotAllowed) => return StatusCode::FORBIDDEN.into_response(),
         Err(TicketError::Database(error)) => {
-            eprintln!("[chat-realtime-v2] consume ticket: {error}");
+            eprintln!("[chat-realtime] consume ticket: {error}");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
@@ -222,7 +213,7 @@ async fn send_available_events(
             Err(StoreError::CursorAhead) => return Err("INVALID_SYNC_CURSOR"),
             Err(StoreError::InvariantViolation(_)) => return Err("STREAM_SEQUENCE_GAP"),
             Err(StoreError::Database(error)) => {
-                eprintln!("[chat-realtime-v2] read durable events: {error}");
+                eprintln!("[chat-realtime] read durable events: {error}");
                 return Err("SERVER_ERROR");
             }
             Err(_) => return Err("SERVER_ERROR"),
@@ -349,7 +340,7 @@ async fn run_socket(
                         &ticket.device_id,
                         applied,
                     ).await {
-                        eprintln!("[chat-realtime-v2] persist device ack: {error}");
+                        eprintln!("[chat-realtime] persist device ack: {error}");
                     }
                     if send_json(&mut sender, &HeartbeatAckFrame {
                         frame_type: "heartbeat_ack",

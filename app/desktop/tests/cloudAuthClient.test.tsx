@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import {
   CloudAuthClient,
   CloudAuthError,
-  chatSyncV2WebSocketUrl,
+  chatSyncWebSocketUrl,
   cloudApiBaseUrl,
   operatorCloudOAuthProviderFallback,
   cloudRealtimeWebSocketEnabled,
@@ -333,9 +333,9 @@ test('cloud WebSocket URL derives from the cloud API origin', () => {
   );
 });
 
-test('reliable chat WebSocket uses a single-use v2 ticket instead of an access token', () => {
+test('reliable chat WebSocket uses a single-use chat ticket instead of an access token', () => {
   assert.equal(
-    chatSyncV2WebSocketUrl('kordi_rt_ticket', 'https://coordinar.io'),
+    chatSyncWebSocketUrl('kordi_rt_ticket', 'https://coordinar.io'),
     'wss://coordinar.io/v2/chat/realtime?ticket=kordi_rt_ticket',
   );
 });

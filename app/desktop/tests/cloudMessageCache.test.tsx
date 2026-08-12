@@ -160,7 +160,7 @@ const message: CloudMessage = {
   }],
 };
 
-test('peer-scoped cache migrates an existing v2 account snapshot without data loss', async () => {
+test('peer-scoped cache migrates an older account snapshot without data loss', async () => {
   const store = new MemoryCacheStore();
   store.values.set('acct_me', {
     version: 2,
@@ -393,7 +393,7 @@ test('peer-scoped cache removal cancels a blocked v3 load baseline', async (cont
   assert.deepEqual(await reloaded.load('acct_me'), {});
 });
 
-test('peer-scoped cache removal deletes a blocked v2 migration write', async () => {
+test('peer-scoped cache removal deletes a blocked migration write', async () => {
   const store = new ControlledMigrationCacheStore();
   store.values.set('acct_me', {
     version: 2,

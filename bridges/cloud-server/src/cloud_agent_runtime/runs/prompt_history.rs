@@ -224,7 +224,7 @@ pub(super) async fn fallback_prompt_for_claim(
         &input.request_message_id,
     )
     .await?;
-    let mut v2_rows = query_as::<_, (String, String, String)>(
+    let mut chat_rows = query_as::<_, (String, String, String)>(
         "SELECT message.message_id::text, message.sender_account_id,
                 message.content #>> '{blocks,0,text}'
          FROM cloud_chat_conversations conversation
@@ -238,18 +238,18 @@ pub(super) async fn fallback_prompt_for_claim(
     .bind(&input.session_id)
     .fetch_all(pool)
     .await?;
-    if !v2_rows.is_empty() {
-        v2_rows.reverse();
-        let request_index = v2_rows.iter().position(|(message_id, _, body)| {
+    if !chat_rows.is_empty() {
+        chat_rows.reverse();
+        let request_index = chat_rows.iter().position(|(message_id, _, body)| {
             message_id == &input.request_message_id
                 || parse_cloud_group_envelope(body)
                     .and_then(|envelope| envelope.message)
                     .is_some_and(|message| message.id == input.request_message_id)
         });
-        let history_end = request_index.unwrap_or(v2_rows.len());
+        let history_end = request_index.unwrap_or(chat_rows.len());
         let history_start =
             history_end.saturating_sub(MAX_CLOUD_FALLBACK_HISTORY_MESSAGES as usize);
-        let history = v2_rows[history_start..history_end]
+        let history = chat_rows[history_start..history_end]
             .iter()
             .map(|(_, from_account_id, body)| CloudFallbackHistoryMessage {
                 from_account_id: from_account_id.clone(),

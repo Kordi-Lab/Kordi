@@ -1,7 +1,8 @@
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 
-export const CLOUD_MESSAGES_INDEXED_DB_NAME = 'kordi-cloud-message-cache-v2';
+export const CLOUD_MESSAGES_INDEXED_DB_NAME = 'kordi-cloud-message-cache';
+const PREVIOUS_CLOUD_MESSAGES_INDEXED_DB_NAME = 'kordi-cloud-message-cache-v2';
 const CLOUD_MESSAGES_INDEXED_DB_STORE = 'messagesByAccount';
 const CLOUD_MESSAGE_CACHE_VERSION = 3;
 const CLOUD_MESSAGE_CACHE_SNAPSHOT_VERSION = 2;
@@ -180,10 +181,70 @@ export class IndexedDbCloudMessageCacheStore implements CloudMessageCacheStore {
           database.createObjectStore(CLOUD_MESSAGES_INDEXED_DB_STORE);
         }
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        void this.migratePreviousDatabase(request.result).then(
+          () => resolve(request.result),
+          reject,
+        );
+      };
       request.onerror = () => reject(request.error ?? new Error('Unable to open Cloud message cache.'));
     });
     return this.database;
+  }
+
+  private async migratePreviousDatabase(current: IDBDatabase): Promise<void> {
+    const currentCount = await new Promise<number>((resolve, reject) => {
+      const transaction = current.transaction(CLOUD_MESSAGES_INDEXED_DB_STORE, 'readonly');
+      const request = transaction.objectStore(CLOUD_MESSAGES_INDEXED_DB_STORE).count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error('Unable to inspect Cloud message cache.'));
+    });
+    if (currentCount > 0) return;
+
+    const previous = await new Promise<{ database: IDBDatabase; created: boolean }>((resolve, reject) => {
+      let created = false;
+      const request = this.factory.open(PREVIOUS_CLOUD_MESSAGES_INDEXED_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        created = true;
+        if (!request.result.objectStoreNames.contains(CLOUD_MESSAGES_INDEXED_DB_STORE)) {
+          request.result.createObjectStore(CLOUD_MESSAGES_INDEXED_DB_STORE);
+        }
+      };
+      request.onsuccess = () => resolve({ database: request.result, created });
+      request.onerror = () => reject(request.error ?? new Error('Unable to open previous Cloud message cache.'));
+    });
+    if (previous.created) {
+      previous.database.close();
+      this.factory.deleteDatabase(PREVIOUS_CLOUD_MESSAGES_INDEXED_DB_NAME);
+      return;
+    }
+
+    const entries = await new Promise<Array<[IDBValidKey, unknown]>>((resolve, reject) => {
+      const values: Array<[IDBValidKey, unknown]> = [];
+      const transaction = previous.database.transaction(CLOUD_MESSAGES_INDEXED_DB_STORE, 'readonly');
+      const request = transaction.objectStore(CLOUD_MESSAGES_INDEXED_DB_STORE).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        values.push([cursor.key, cursor.value]);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error ?? new Error('Unable to read previous Cloud message cache.'));
+      transaction.oncomplete = () => resolve(values);
+      transaction.onabort = () => reject(transaction.error ?? new Error('Previous Cloud message cache migration aborted.'));
+    });
+    if (entries.length > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = current.transaction(CLOUD_MESSAGES_INDEXED_DB_STORE, 'readwrite');
+        const store = transaction.objectStore(CLOUD_MESSAGES_INDEXED_DB_STORE);
+        for (const [key, value] of entries) store.put(value, key);
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(transaction.error ?? new Error('Cloud message cache migration aborted.'));
+        transaction.onerror = () => reject(transaction.error ?? new Error('Cloud message cache migration failed.'));
+      });
+    }
+    previous.database.close();
+    this.factory.deleteDatabase(PREVIOUS_CLOUD_MESSAGES_INDEXED_DB_NAME);
   }
 
   private async request<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>) {
@@ -318,7 +379,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
           );
         }
       } catch {
-        // An unavailable local cache is repaired from the canonical V2 sync
+        // An unavailable local cache is repaired from the canonical chat sync
         // stream; browser localStorage is never a message-state fallback.
       }
     }

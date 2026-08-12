@@ -146,7 +146,7 @@ export function useCloudSelfAgentMetadataSync({
         ...(messagesByPeer[account.accountId] ?? [])
           .map((message) => cleanText(message.sessionId))
           .filter(Boolean),
-        ...client.knownChatV2SessionIds(account.accountId),
+        ...client.knownChatSessionIds(account.accountId),
       ],
     );
     if (cloudBackedSessionIds.size === 0) return;

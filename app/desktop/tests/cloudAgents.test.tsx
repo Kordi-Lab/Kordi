@@ -183,7 +183,7 @@ test('CloudAgentsClient lists creates updates and archives cloud agents with bea
       return new Response(JSON.stringify({ agent: rawAgent }), { status: 201 });
     }
     if (String(url).endsWith('/v1/cloud/agents/cloud_agent_abc') && init.method === 'PUT') {
-      return new Response(JSON.stringify({ agent: { ...rawAgent, name: 'Docs Helper v2' } }), { status: 200 });
+      return new Response(JSON.stringify({ agent: { ...rawAgent, name: 'Docs Helper updated' } }), { status: 200 });
     }
     if (String(url).includes('/v1/cloud/agents/shared') && init.method === 'GET') {
       return new Response(JSON.stringify({ agents: [sharedRawAgent] }), { status: 200 });
@@ -197,7 +197,7 @@ test('CloudAgentsClient lists creates updates and archives cloud agents with bea
   const client = new CloudAgentsClient({ baseUrl: 'https://cloud.example', fetchImpl });
   assert.equal((await client.listCloudAgents('token')).length, 1);
   assert.equal((await client.createCloudAgent('token', rawAgent)).agentId, 'cloud_agent_abc');
-  assert.equal((await client.updateCloudAgent('token', 'cloud_agent_abc', { name: 'Docs Helper v2' })).name, 'Docs Helper v2');
+  assert.equal((await client.updateCloudAgent('token', 'cloud_agent_abc', { name: 'Docs Helper updated' })).name, 'Docs Helper updated');
   assert.equal((await client.archiveCloudAgent('token', 'cloud_agent_abc')).status, 'archived');
   assert.equal((await client.listSharedCloudAgents('token', ['acct_owner']))[0]?.agentId, 'cloud_agent_shared');
 

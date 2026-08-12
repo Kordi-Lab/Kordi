@@ -1,28 +1,28 @@
 import type {
-  ChatSyncV2BootstrapResponse,
-  ChatSyncV2Conversation,
-  ChatSyncV2ConversationInput,
-  ChatSyncV2Message,
-} from './chatSyncV2Types';
+  ChatSyncBootstrapResponse,
+  ChatSyncConversation,
+  ChatSyncConversationInput,
+  ChatSyncMessage,
+} from './chatSyncTypes';
 
-export type ChatSyncV2Request = <TResponse>(
+export type ChatSyncRequest = <TResponse>(
   path: string,
   init: RequestInit,
   fallbackMessage: string,
 ) => Promise<TResponse>;
 
-export class ChatSyncV2State {
-  readonly conversationBySessionId = new Map<string, ChatSyncV2Conversation>();
-  readonly conversationById = new Map<string, ChatSyncV2Conversation>();
-  readonly messageById = new Map<string, ChatSyncV2Message>();
-  bootstrap!: (token: string) => Promise<ChatSyncV2BootstrapResponse>;
+export class ChatSyncState {
+  readonly conversationBySessionId = new Map<string, ChatSyncConversation>();
+  readonly conversationById = new Map<string, ChatSyncConversation>();
+  readonly messageById = new Map<string, ChatSyncMessage>();
+  bootstrap!: (token: string) => Promise<ChatSyncBootstrapResponse>;
   ensureConversation!: (
     token: string,
-    input: ChatSyncV2ConversationInput,
-  ) => Promise<ChatSyncV2Conversation>;
+    input: ChatSyncConversationInput,
+  ) => Promise<ChatSyncConversation>;
 
   constructor(
-    readonly send: ChatSyncV2Request,
+    readonly send: ChatSyncRequest,
     private readonly getAccountId: () => string | null,
     private readonly setAccountId: (value: string) => void,
     readonly errorStatus: (error: unknown) => number | null,
@@ -36,7 +36,7 @@ export class ChatSyncV2State {
     if (value) this.setAccountId(value);
   }
 
-  rememberConversation(conversation: ChatSyncV2Conversation): void {
+  rememberConversation(conversation: ChatSyncConversation): void {
     this.conversationById.set(conversation.id, conversation);
     const sessionId = conversation.legacy_session_id?.trim();
     if (sessionId) this.conversationBySessionId.set(sessionId, conversation);
@@ -44,7 +44,7 @@ export class ChatSyncV2State {
     if (viewerAccountId) this.setAccountId(viewerAccountId);
   }
 
-  rememberBootstrap(response: ChatSyncV2BootstrapResponse): void {
+  rememberBootstrap(response: ChatSyncBootstrapResponse): void {
     response.conversations.forEach((conversation) => this.rememberConversation(conversation));
     response.latest_messages.forEach((message) => this.messageById.set(message.id, message));
   }

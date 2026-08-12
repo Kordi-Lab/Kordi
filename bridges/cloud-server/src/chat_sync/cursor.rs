@@ -7,6 +7,8 @@ use crate::chat_sync::PROTOCOL_VERSION;
 
 type HmacSha256 = Hmac<Sha256>;
 
+// The prefix is part of the opaque wire cursor and remains stable with
+// protocol_version 2. It is not an implementation selector.
 const CURSOR_PREFIX: &str = "v2";
 const MINIMUM_SECRET_BYTES: usize = 32;
 

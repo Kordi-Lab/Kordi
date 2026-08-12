@@ -7,7 +7,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 mod canonical_fork;
-pub(crate) mod chat_sync_v2;
+pub(crate) mod chat_sync;
 mod commands;
 mod core;
 mod desktop_runtime_status;
@@ -98,7 +98,7 @@ pub(crate) use self::session_observation::{
 use self::title_policy::reconcile_session_title_metadata;
 
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub(crate) fn open_db() -> Result<Connection, String> {
     let path = canonical_sessions_db_path();
