@@ -23,6 +23,12 @@ async function readTree(relativeDirectory, extensions) {
   return chunks.join("\n");
 }
 
+async function readFiles(relativePaths) {
+  return Promise.all(relativePaths.map((relativePath) => (
+    readFile(new URL(`../${relativePath}`, import.meta.url), "utf8")
+  )));
+}
+
 test("canonical chat has no runtime rollout switch or retired chat route", async () => {
   const [server, deployment, desktop, desktopNative, ios, contract] = await Promise.all([
     readTree("bridges/cloud-server/src", [".rs"]),
@@ -69,4 +75,43 @@ test("canonical chat source and contract names are unversioned", async () => {
   assert.match(messageSchema, /https:\/\/kordi\.ai\/schemas\/chat-sync\/message\.schema\.json/);
   assert.match(eventSchema, /https:\/\/kordi\.ai\/schemas\/chat-sync\/event-envelope\.schema\.json/);
   assert.doesNotMatch(`${messageSchema}\n${eventSchema}`, /chat-sync-v2/);
+});
+
+test("remaining versioned chat names are migration inputs, not live choices", async () => {
+  const [desktopSchema, desktopCache, selfAgentIdentity, selfAgentForwardSync, deploy] = await readFiles([
+    "app/desktop/src-tauri/src/canonical_sessions/schema.rs",
+    "app/desktop/src/features/cloud/cloudMessageCache.ts",
+    "app/desktop/src/features/cloud/cloudSelfAgentIdentity.ts",
+    "app/desktop/src/features/cloud/cloudSelfAgentForwardSync.ts",
+    "bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh",
+  ]);
+  const compatibility = [
+    desktopSchema,
+    desktopCache,
+    selfAgentIdentity,
+    selfAgentForwardSync,
+    deploy,
+  ].join("\n");
+
+  assert.match(desktopSchema, /migrate_versioned_chat_tables/);
+  assert.match(desktopSchema, /DROP TABLE \{previous\}/);
+  assert.match(desktopCache, /migratePreviousDatabase/);
+  assert.match(desktopCache, /deleteDatabase\(PREVIOUS_CLOUD_MESSAGES_INDEXED_DB_NAME\)/);
+  assert.match(selfAgentIdentity, /removeItem\(`\$\{PREVIOUS_RECOVERY_KEY_PREFIX\}/);
+  assert.match(selfAgentForwardSync, /removeItem\(\s*`\$\{PREVIOUS_CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX\}/);
+  assert.match(deploy, /get secret kordi-chat-sync-v2/);
+  assert.match(deploy, /create secret generic kordi-chat-sync/);
+
+  assert.doesNotMatch(compatibility, /enabled.*v2|v2.*enabled/i);
+});
+
+test("historical plans direct readers to the canonical chat contract", async () => {
+  const notice = await readFile(
+    new URL("../docs/superpowers/README.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(notice, /not the current product architecture/);
+  assert.match(notice, /\.\.\/cloud-mobile\.md/);
+  assert.match(notice, /\.\.\/\.\.\/shared\/chat-sync\/README\.md/);
+  assert.match(notice, /Do not restore a historical route or storage model/);
 });
