@@ -148,6 +148,8 @@ test('development environment guide documents isolated remote access without pri
   assert.match(repositoryAgents, /pnpm check:english/);
   assert.equal(packageScripts['check:english'], 'bash scripts/check-english-only-diff.sh');
   assert.match(englishCheck, /\[\\p\{Han\}\]/);
+  assert.match(englishCheck, /git diff --no-index --numstat -- \/dev\/null/);
+  assert.match(englishCheck, /\^-\[\[:space:\]\]\+\-\[\[:space:\]\]\+/);
   assert.match(preCommit, /pnpm check:english/);
 });
 

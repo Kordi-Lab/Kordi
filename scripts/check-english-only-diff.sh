@@ -15,7 +15,13 @@ failed=0
 
 check_file() {
   local path="$1"
+  local numstat
   [[ -f "$path" ]] || return 0
+
+  numstat="$(git diff --no-index --numstat -- /dev/null "$path" 2>/dev/null || true)"
+  if printf '%s\n' "$numstat" | rg -q '^-[[:space:]]+-[[:space:]]+'; then
+    return 0
+  fi
 
   if rg -n --color=never '[\p{Han}]' -- "$path"; then
     echo "English-only check failed: Han characters found in $path." >&2
