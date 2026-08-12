@@ -95,6 +95,16 @@ Launch the native desktop against the local API:
 VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
 ```
 
+For a fully separate native account store, launch a named development profile.
+Generated development profiles also disable production updater endpoints:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+VITE_KORDI_DEV_PROFILE=community \
+pnpm --dir app/desktop tauri:dev:profile -- \
+  --profile dev-isolated --title "Kordi Dev" --port 1420
+```
+
 Create a test account through the normal sign-up screen. The account, sessions, messages, and attachments remain inside the local Docker volumes.
 
 Use dummy account data for development. Provider API keys or subscription sessions entered into the desktop remain developer-owned credentials; do not use production service identities or credentials supplied by another person.

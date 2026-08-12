@@ -142,6 +142,10 @@ const nextConfig = {
   ...baseConfig,
   productName: title,
   identifier,
+  bundle: {
+    ...baseConfig.bundle,
+    createUpdaterArtifacts: false,
+  },
   build: {
     ...baseConfig.build,
     beforeDevCommand,
@@ -154,6 +158,13 @@ const nextConfig = {
         ? { ...window, title }
         : window
     )),
+  },
+  plugins: {
+    ...baseConfig.plugins,
+    updater: {
+      ...baseConfig.plugins?.updater,
+      endpoints: [],
+    },
   },
 };
 

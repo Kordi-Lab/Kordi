@@ -176,6 +176,14 @@ test('isolated desktop profiles initialize native Cloud account storage', () => 
       generated.stdout,
       new RegExp(`"identifier": "io\\.kordi\\.cloud\\.${profile}"`),
     );
+    const generatedConfig = JSON.parse(readFileSync(generatedConfigPath, 'utf8'));
+    assert.equal(generatedConfig.bundle.createUpdaterArtifacts, false);
+    assert.deepEqual(generatedConfig.plugins?.updater?.endpoints, []);
+    assert.doesNotMatch(
+      JSON.stringify(generatedConfig),
+      /https:\/\/(?:kordi\.ai|coordinar\.io)/i,
+      'isolated dev profiles must not retain a production updater endpoint',
+    );
 
     const rejected = spawnSync(
       process.execPath,
