@@ -9,8 +9,25 @@ struct CloudAPIError: LocalizedError, Equatable {
     var errorDescription: String? { message }
 }
 
+enum CloudTransportErrorPolicy {
+    static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError
+            || (error as? URLError)?.code == .cancelled
+            || ((error as NSError).domain == NSURLErrorDomain
+                && (error as NSError).code == NSURLErrorCancelled)
+    }
+}
+
 actor CloudAPIClient {
     static let productionBaseURL = URL(string: "https://kordi.ai")!
+
+    static let productionSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 90
+        return URLSession(configuration: configuration)
+    }()
 
     static var configuredBaseURL: URL {
         guard let configured = Bundle.main.object(forInfoDictionaryKey: "KordiCloudBaseURL") as? String,
@@ -33,7 +50,7 @@ actor CloudAPIClient {
     private var chatV2BootstrapTask: Task<CloudChatV2BootstrapResponse, Error>?
     private var lastChatV2Bootstrap: CloudChatV2BootstrapResponse?
 
-    init(baseURL: URL = configuredBaseURL, session: URLSession = .shared) {
+    init(baseURL: URL = configuredBaseURL, session: URLSession = productionSession) {
         precondition(baseURL.scheme == "https", "Kordi Cloud requires HTTPS")
         self.baseURL = baseURL
         self.session = session
@@ -185,6 +202,29 @@ actor CloudAPIClient {
         return result
     }
 
+    func cachedChatV2Conversations() -> [CloudChatV2Conversation] {
+        Array(chatV2ConversationsById.values)
+    }
+
+    /// Makes the canonical conversation directory available to the app model
+    /// together with the newest item from every session.  The directory is
+    /// authoritative even when the legacy peer-history projection is empty.
+    func bootstrapChatV2LatestMessages(token: String) async throws -> [CloudMessageDTO] {
+        let accountId = try requireActiveAccountId()
+        let bootstrap = try await bootstrapChatV2(token: token)
+        let conversationsById = Dictionary(
+            uniqueKeysWithValues: bootstrap.conversations.map { ($0.id, $0) }
+        )
+        return bootstrap.latestMessages.compactMap { message in
+            guard let conversation = conversationsById[message.conversationId] else { return nil }
+            return legacyMessage(
+                from: message,
+                conversation: conversation,
+                viewerAccountId: accountId
+            )
+        }
+    }
+
     func listContactRequests(token: String) async throws -> [CloudContactRequest] {
         let response: ContactRequestsResponse = try await send(
             path: "/v1/cloud/contacts/requests",
@@ -292,36 +332,70 @@ actor CloudAPIClient {
     func listMessages(token: String, peerAccountId: String, limit: Int = 200) async throws -> [CloudMessageDTO] {
         let accountId = try requireActiveAccountId()
         _ = try await bootstrapChatV2(token: token)
-        let conversations = chatV2ConversationsById.values.filter { conversation in
-            let activeMembers = Set(conversation.members.filter { $0.membershipState == "active" }.map(\.accountId))
-            return activeMembers.contains(accountId) && activeMembers.contains(peerAccountId)
+        let sessionId = directSessionId(accountId: accountId, peerAccountId: peerAccountId)
+        guard let conversation = chatV2ConversationsBySessionId[sessionId] else { return [] }
+        return try await loadMessages(
+            token: token,
+            conversation: conversation,
+            viewerAccountId: accountId,
+            limit: limit
+        )
+    }
+
+    func listConversationMessages(
+        token: String,
+        sessionId: String
+    ) async throws -> [CloudMessageDTO] {
+        let accountId = try requireActiveAccountId()
+        _ = try await bootstrapChatV2(token: token)
+        guard let conversation = chatV2ConversationsBySessionId[sessionId]
+            ?? chatV2ConversationsById[sessionId] else {
+            throw CloudAPIError(
+                code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.",
+                statusCode: 404
+            )
         }
+        return try await loadMessages(
+            token: token,
+            conversation: conversation,
+            viewerAccountId: accountId,
+            limit: nil
+        )
+    }
+
+    private func loadMessages(
+        token: String,
+        conversation: CloudChatV2Conversation,
+        viewerAccountId: String,
+        limit: Int?
+    ) async throws -> [CloudMessageDTO] {
         var result: [CloudMessageDTO] = []
-        for conversation in conversations {
-            var beforeSequence: Int64?
-            var remaining = min(max(limit, 1), 500)
-            repeat {
-                let pageLimit = min(remaining, 200)
-                var query = [URLQueryItem(name: "limit", value: String(pageLimit))]
-                if let beforeSequence {
-                    query.append(URLQueryItem(name: "before_sequence", value: String(beforeSequence)))
-                }
-                let response: ChatV2HistoryResponse = try await send(
-                    path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages",
-                    method: "GET",
-                    token: token,
-                    query: query,
-                    fallback: "Could not load reliable message history."
-                )
-                response.messages.forEach { chatV2MessagesById[$0.id] = $0 }
-                result.append(contentsOf: response.messages.map {
-                    legacyMessage(from: $0, conversation: conversation, viewerAccountId: accountId)
-                })
-                remaining -= response.messages.count
-                beforeSequence = response.nextBeforeSequence
-                if !response.hasMore || remaining <= 0 { break }
-            } while beforeSequence != nil
-        }
+        var beforeSequence: Int64?
+        var remaining = limit.map { max($0, 1) }
+        repeat {
+            let pageLimit = min(remaining ?? 200, 200)
+            var query = [URLQueryItem(name: "limit", value: String(pageLimit))]
+            if let beforeSequence {
+                query.append(URLQueryItem(name: "before_sequence", value: String(beforeSequence)))
+            }
+            let response: ChatV2HistoryResponse = try await send(
+                path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages",
+                method: "GET",
+                token: token,
+                query: query,
+                fallback: "Could not load reliable message history."
+            )
+            response.messages.forEach { chatV2MessagesById[$0.id] = $0 }
+            result.append(contentsOf: response.messages.map {
+                legacyMessage(from: $0, conversation: conversation, viewerAccountId: viewerAccountId)
+            })
+            if let currentRemaining = remaining {
+                remaining = currentRemaining - response.messages.count
+            }
+            beforeSequence = response.nextBeforeSequence
+            if !response.hasMore || response.messages.isEmpty || (remaining ?? 1) <= 0 { break }
+        } while beforeSequence != nil
         return Dictionary(grouping: result, by: \.messageId)
             .compactMap { $0.value.max { left, right in left.createdAt < right.createdAt } }
             .sorted { left, right in
@@ -791,6 +865,7 @@ actor CloudAPIClient {
     private func remember(_ conversation: CloudChatV2Conversation) {
         activateAccount(conversation.preferences.accountId)
         chatV2ConversationsById[conversation.id] = conversation
+        chatV2ConversationsBySessionId[conversation.id] = conversation
         if let sessionId = conversation.legacySessionId?.nonEmpty {
             chatV2ConversationsBySessionId[sessionId] = conversation
         }
@@ -1095,6 +1170,9 @@ actor CloudAPIClient {
         } catch let error as CloudAPIError {
             throw error
         } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) {
+                throw CancellationError()
+            }
             throw CloudAPIError(code: "network_error", message: "Could not reach Kordi Cloud. Check your connection and try again.", statusCode: 0)
         }
     }

@@ -2,6 +2,18 @@ import XCTest
 @testable import Kordi
 
 final class CloudModelDecodingTests: XCTestCase {
+    func testCancelledSessionLoadIsNotClassifiedAsACloudConnectionFailure() {
+        XCTAssertTrue(CloudTransportErrorPolicy.isCancellation(CancellationError()))
+        XCTAssertTrue(CloudTransportErrorPolicy.isCancellation(URLError(.cancelled)))
+        XCTAssertFalse(CloudTransportErrorPolicy.isCancellation(URLError(.timedOut)))
+    }
+
+    func testProductionClientUsesKordiProductOriginAndWaitsForConnectivity() {
+        XCTAssertEqual(CloudAPIClient.productionBaseURL.absoluteString, "https://kordi.ai")
+        XCTAssertTrue(CloudAPIClient.productionSession.configuration.waitsForConnectivity)
+        XCTAssertEqual(CloudAPIClient.productionSession.configuration.timeoutIntervalForRequest, 30)
+    }
+
     func testCloudSessionVisibilityDecodesMacHiddenAndDeletedSessions() throws {
         let payload = Data(#"{"hiddenSessionIds":["session:hidden"],"deletedSessionIds":["session:deleted"]}"#.utf8)
         let visibility = try JSONDecoder().decode(CloudSessionVisibility.self, from: payload)

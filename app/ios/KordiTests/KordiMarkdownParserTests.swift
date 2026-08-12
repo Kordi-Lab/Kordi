@@ -176,6 +176,15 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testPullToRefreshStartsOnceOnlyAfterCrossingTheThreshold() {
+        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 24, isRefreshing: false))
+        XCTAssertTrue(ChatPullToRefreshBehavior.shouldStart(
+            distance: ChatPullToRefreshBehavior.triggerDistance,
+            isRefreshing: false
+        ))
+        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 120, isRefreshing: true))
+    }
+
     func testChatSearchNormalizesWhitespaceAndMatchesContactIdentity() {
         let conversation = searchConversation(
             displayName: "C UFishAI",
@@ -222,6 +231,138 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "maya"))
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "budget"))
         XCTAssertFalse(ChatHomeSearch.matches(space, query: "roadmap"))
+    }
+
+    func testPullDistanceUsesNativeScrollGeometryInsets() {
+        XCTAssertEqual(
+            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -59, contentInsetTop: 59),
+            0
+        )
+        XCTAssertEqual(
+            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -93, contentInsetTop: 59),
+            34
+        )
+    }
+
+    func testConversationDoesNotAnimateItsInitialLatestMessagePosition() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: false,
+            isAtBottom: false,
+            previousLatestMessageID: nil,
+            currentLatestMessageID: "message-12"
+        ))
+    }
+
+    func testConversationDoesNotJumpWhenANewMessageArrivesAfterScrollingUp() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: false,
+            previousLatestMessageID: "message-12",
+            currentLatestMessageID: "message-13"
+        ))
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: false,
+            messageCount: 13
+        ))
+    }
+
+    func testConversationKeepsFollowingNewMessagesWhileAtLatest() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: true,
+            previousLatestMessageID: "message-12",
+            currentLatestMessageID: "message-13"
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: true,
+            messageCount: 13
+        ))
+    }
+
+    func testConversationDoesNotScrollWhenRemoteSyncOnlyRefreshesExistingMessages() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: true,
+            previousLatestMessageID: "message-13",
+            currentLatestMessageID: "message-13"
+        ))
+    }
+
+    func testConversationShowsLatestButtonWhenInitialScrollHasNotCompleted() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: false,
+            messageCount: 13
+        ))
+    }
+
+    func testConversationDetectsLatestPositionFromVisibleScrollGeometry() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.isAtLatest(
+            visibleMaxY: 700,
+            contentHeight: 1_400,
+            containerHeight: 600
+        ))
+        XCTAssertTrue(ConversationTimelineScrollBehavior.isAtLatest(
+            visibleMaxY: 1_392,
+            contentHeight: 1_400,
+            containerHeight: 600
+        ))
+    }
+
+    func testConversationRestoresPositionForAQuickReturnWithoutNewMessages() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+
+        XCTAssertEqual(
+            memory.resumedMessageID(
+                for: "account:session",
+                latestMessageID: "message-9",
+                availableMessageIDs: ["message-4", "message-9"],
+                now: leftAt.addingTimeInterval(119)
+            ),
+            "message-4"
+        )
+    }
+
+    func testConversationStartsAtLatestAfterTwoMinutes() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+
+        XCTAssertNil(memory.resumedMessageID(
+            for: "account:session",
+            latestMessageID: "message-9",
+            availableMessageIDs: ["message-4", "message-9"],
+            now: leftAt.addingTimeInterval(120)
+        ))
+    }
+
+    func testConversationStartsAtLatestWhenANewMessageArrived() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+
+        XCTAssertNil(memory.resumedMessageID(
+            for: "account:session",
+            latestMessageID: "message-10",
+            availableMessageIDs: ["message-4", "message-9", "message-10"],
+            now: leftAt.addingTimeInterval(30)
+        ))
     }
 
     func testPullProgressIsClampedToTheRefreshThreshold() {

@@ -206,6 +206,44 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(rows.map(\.conversation.sessionId), [root.sessionId])
     }
 
+    func testTimelinePromotesAnOrphanedAgentForkAndKeepsItsChildren() {
+        let missingRootId = "session:self-agent:missing-root"
+        let firstFork = replacingForkParent(
+            conversation(
+                id: "first-orphaned-fork",
+                peerAccountId: "acct_me",
+                agentId: "agent_research",
+                agentName: "Research Agent",
+                title: "Available continuation",
+                preview: "First retained reply",
+                date: Date(timeIntervalSince1970: 30)
+            ),
+            parentSessionId: missingRootId
+        )
+        let secondFork = replacingForkParent(
+            conversation(
+                id: "second-orphaned-fork",
+                peerAccountId: "acct_me",
+                agentId: "agent_research",
+                agentName: "Research Agent",
+                title: "Nested continuation",
+                preview: "Second retained reply",
+                date: Date(timeIntervalSince1970: 40)
+            ),
+            parentSessionId: firstFork.sessionId
+        )
+
+        let rows = AgentSessionTimelineCatalog.build(
+            conversations: [secondFork, firstFork]
+        )
+
+        XCTAssertEqual(
+            rows.map(\.conversation.sessionId),
+            [firstFork.sessionId, secondFork.sessionId]
+        )
+        XCTAssertEqual(rows.map(\.depth), [0, 1])
+    }
+
     private func conversation(
         id: String,
         peerAccountId: String,
