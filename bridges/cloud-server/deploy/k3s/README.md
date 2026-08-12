@@ -38,6 +38,8 @@ export KORDI_CLOUD_GCP_PROJECT="<operator-gcp-project>"
 export KORDI_CLOUD_REMOTE_DIR="$HOME/kordi-cloud-server-deploy"
 ```
 
+The helpers reject an omitted project instead of inheriting the active gcloud project. Review the target summary printed before any remote operation.
+
 ## Install k3s on an operator-provided host
 
 ```bash
@@ -81,7 +83,7 @@ Required production server environment:
 KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
 KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io,kordi://oauth/callback
 KORDI_CHAT_SYNC_CURSOR_SECRET=<from kordi-chat-sync>
-KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420
+KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420,http://127.0.0.1:1422,http://127.0.0.1:1482,http://127.0.0.1:1484,http://127.0.0.1:1486
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 KORDI_OAUTH_GITHUB_CLIENT_ID=...

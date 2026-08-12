@@ -16,6 +16,7 @@
 //   KORDI_CLOUD_USE_LOCAL_TUNNEL=1
 //   KORDI_CLOUD_SSH_TARGET=<operator-host>
 //   KORDI_CLOUD_SSH_ZONE=<operator-zone>
+//   KORDI_CLOUD_GCP_PROJECT=<operator-project>
 //   KORDI_CLOUD_VM_PORT=17088
 //   KORDI_CLOUD_LOCAL_PORT=17081
 
@@ -30,6 +31,7 @@ const appDir = dirname(__dirname);
 
 const SSH_TARGET = process.env.KORDI_CLOUD_SSH_TARGET;
 const SSH_ZONE = process.env.KORDI_CLOUD_SSH_ZONE;
+const SSH_PROJECT = process.env.KORDI_CLOUD_GCP_PROJECT;
 const VM_PORT = process.env.KORDI_CLOUD_VM_PORT ?? '17088';
 const LOCAL_PORT = process.env.KORDI_CLOUD_LOCAL_PORT ?? '17081';
 const localTunnelEnabled = process.env.KORDI_CLOUD_USE_LOCAL_TUNNEL === '1';
@@ -46,8 +48,8 @@ function tunnelHealthy() {
 }
 
 function ensureTunnel() {
-    if (!SSH_TARGET || !SSH_ZONE) {
-        console.error('[kordi] KORDI_CLOUD_SSH_TARGET and KORDI_CLOUD_SSH_ZONE are required when KORDI_CLOUD_USE_LOCAL_TUNNEL=1.');
+    if (!SSH_TARGET || !SSH_ZONE || !SSH_PROJECT) {
+        console.error('[kordi] KORDI_CLOUD_SSH_TARGET, KORDI_CLOUD_SSH_ZONE, and KORDI_CLOUD_GCP_PROJECT are required when KORDI_CLOUD_USE_LOCAL_TUNNEL=1.');
         process.exit(1);
     }
 
@@ -63,6 +65,7 @@ function ensureTunnel() {
     const args = [
         'compute', 'ssh', SSH_TARGET,
         '--zone', SSH_ZONE,
+        '--project', SSH_PROJECT,
         '--ssh-flag=-T',
         '--ssh-flag=-o ExitOnForwardFailure=yes',
         '--ssh-flag=-o ServerAliveInterval=15',
@@ -71,7 +74,7 @@ function ensureTunnel() {
         '--command',
         `kubectl -n kordi-cloud port-forward --address 127.0.0.1 svc/kordi-cloud-server ${VM_PORT}:17081`,
     ];
-    console.log(`[kordi] Opening cloud tunnel: gcloud compute ssh ${SSH_TARGET} (log -> ${logFile})`);
+    console.log(`[kordi] Opening cloud tunnel to ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_ZONE}; log -> ${logFile})`);
     const child = spawn(cmd, args, {
         detached: true,
         stdio: ['ignore', out, out],

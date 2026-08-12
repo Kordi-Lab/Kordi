@@ -138,7 +138,7 @@ Do not add community contributors to this allowlist to work around the normal pr
 
 This error is a local native-launch configuration failure, not evidence of account-data loss or a hosted-backend outage. Tauri resolves the application data directory during native startup. An isolated preview that uses an `io.kordi.desktop.*` identifier is treated as a non-Cloud bundle, so Cloud account storage is not initialized before the renderer asks for it.
 
-Always launch an operator preview through the approved wrapper. Isolated profile identifiers must be `io.kordi.cloud` or begin with `io.kordi.cloud.`. The profile launcher now chooses that namespace by default and rejects desktop-style overrides:
+Always launch an operator preview through the approved wrapper. A named isolated profile identifier must begin with `io.kordi.cloud.` and must never equal the production identifier `io.kordi.cloud`. The profile launcher chooses a unique suffix by default and rejects identifiers that could reuse the production app data directory:
 
 ```bash
 KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
@@ -160,6 +160,7 @@ Set the operator-provided values in your shell. Use placeholders in docs and bug
 export KORDI_CLOUD_USE_LOCAL_TUNNEL=1
 export KORDI_CLOUD_SSH_TARGET="<OPERATOR_SSH_TARGET>"
 export KORDI_CLOUD_SSH_ZONE="<OPERATOR_SSH_ZONE>"
+export KORDI_CLOUD_GCP_PROJECT="<OPERATOR_GCP_PROJECT>"
 export KORDI_CLOUD_LOCAL_PORT="<LOCAL_TUNNEL_PORT>"
 export KORDI_CLOUD_VM_PORT="<REMOTE_FORWARD_PORT>"
 ```

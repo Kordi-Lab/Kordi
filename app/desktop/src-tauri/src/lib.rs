@@ -87,6 +87,7 @@ fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bool {
 }
 
 const DEFAULT_CLOUD_API_BASE_URL: &str = "https://kordi.ai";
+const LEGACY_PRODUCTION_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
 const PRODUCTION_CLOUD_API_HOSTNAMES: [&str; 2] = ["kordi.ai", "coordinar.io"];
 
 fn is_production_cloud_api_url(url: &reqwest::Url) -> bool {
@@ -161,14 +162,31 @@ fn resolve_cloud_api_base_url(
     let origin = normalize_cloud_api_base_url(configured)?;
     let parsed_origin = reqwest::Url::parse(&origin)
         .map_err(|_| "Cloud API base URL must be a valid absolute HTTP(S) URL".to_string())?;
-    if debug_build
-        && is_production_cloud_api_url(&parsed_origin)
-        && !operator_production_debug_is_allowed(dev_profile, production_debug_ack)
-    {
-        return Err(
-            "Production Cloud API is blocked in development for community profiles. Use the allowlisted operator launcher for approved production debugging."
-                .to_string(),
-        );
+    if debug_build {
+        let operator_profile = dev_profile
+            .map(str::trim)
+            .is_some_and(|value| value.eq_ignore_ascii_case("operator"));
+        if operator_profile {
+            if !operator_production_debug_is_allowed(dev_profile, production_debug_ack) {
+                return Err(
+                    "Production Cloud API is blocked in development until the operator acknowledgement is set."
+                        .to_string(),
+                );
+            }
+            if origin != DEFAULT_CLOUD_API_BASE_URL
+                && origin != LEGACY_PRODUCTION_CLOUD_API_BASE_URL
+            {
+                return Err(
+                    "Operator development may use only the approved https://kordi.ai or https://coordinar.io product origin."
+                        .to_string(),
+                );
+            }
+        } else if is_production_cloud_api_url(&parsed_origin) {
+            return Err(
+                "Production Cloud API is blocked in development for community profiles. Use the allowlisted operator launcher for approved production debugging."
+                    .to_string(),
+            );
+        }
     }
     Ok(origin)
 }
@@ -192,6 +210,7 @@ mod window_lifecycle_tests {
     use super::{
         is_cloud_edition_context, resolve_cloud_api_base_url, should_hide_window_instead_of_close,
         should_show_main_window_on_reopen, DEFAULT_CLOUD_API_BASE_URL,
+        LEGACY_PRODUCTION_CLOUD_API_BASE_URL,
     };
     use crate::cloud_presence::{offline_url, should_publish_offline_on_exit};
 
@@ -285,6 +304,26 @@ mod window_lifecycle_tests {
             .unwrap(),
             DEFAULT_CLOUD_API_BASE_URL,
         );
+        assert_eq!(
+            resolve_cloud_api_base_url(
+                Some(LEGACY_PRODUCTION_CLOUD_API_BASE_URL),
+                None,
+                true,
+                Some("operator"),
+                Some("1"),
+            )
+            .unwrap(),
+            LEGACY_PRODUCTION_CLOUD_API_BASE_URL,
+        );
+        assert!(resolve_cloud_api_base_url(
+            Some("https://staging.example.test"),
+            None,
+            true,
+            Some("operator"),
+            Some("1"),
+        )
+        .unwrap_err()
+        .contains("approved"));
     }
 
     #[test]

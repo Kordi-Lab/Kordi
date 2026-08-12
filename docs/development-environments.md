@@ -18,7 +18,7 @@ If the impact, authorization, or environment identity is uncertain, stop and fai
 - Start work from the latest `origin/main`.
 - Never copy production credentials, account sessions, databases, object storage, or user data into a development environment.
 - Use separate developer-owned GitHub and Google OAuth applications. Never reuse production OAuth clients.
-- Keep PostgreSQL, Redis, NATS, MinIO, and sandbox services private. The application API must bind to loopback.
+- Keep PostgreSQL, Redis, NATS, MinIO, and sandbox services private. Every deliberately host-published development port, including the application API, must bind to loopback.
 - A remote development host must accept administrative access through an approved private access path such as IAP, must not carry a product service account, and must not have network access to product services.
 - Each isolated desktop window must use `VITE_KORDI_DEV_PROFILE=community`, a unique `io.kordi.cloud.*` profile, and no production updater endpoint.
 - Keep real project names, instance names, IP addresses, account names, and credentials out of commits, issues, pull requests, screenshots, and shared logs.
@@ -98,6 +98,8 @@ pnpm dev:cloud:operator -- "https://kordi.ai"
 ```
 
 Work that changes hosted server or runner code, routes, authentication, schema or data, server configuration, destructive or recovery behavior, deployment state, or anything requiring a product-server restart must use the corresponding product-server machine. Follow the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) and use `https://coordinar.io` for the first end-to-end validation.
+
+Product deployment helpers fail closed unless `KORDI_CLOUD_GCP_PROJECT`, `KORDI_CLOUD_SSH_ZONE`, and `KORDI_CLOUD_SSH_TARGET` are all set explicitly. Never rely on the active gcloud project for a deploy.
 
 ## Before committing or pushing
 

@@ -25,8 +25,11 @@ Set these locally before running helper scripts:
 ```bash
 export KORDI_CLOUD_SSH_TARGET="<operator-gcloud-ssh-target>"
 export KORDI_CLOUD_SSH_ZONE="<operator-gcloud-zone>"
+export KORDI_CLOUD_GCP_PROJECT="<operator-gcp-project>"
 export KORDI_CLOUD_REMOTE_DIR="$HOME/kordi-cloud-server-deploy"
 ```
+
+The helpers reject an omitted project instead of inheriting the active gcloud project.
 
 ## Sync and build
 

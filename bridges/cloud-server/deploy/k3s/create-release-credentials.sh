@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 POLICY_DIR="${REPO_ROOT}/bridges/cloud-server/deploy/k3s/policies"
 SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET}"
 SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE}"
-GCP_PROJECT="${KORDI_CLOUD_GCP_PROJECT:-hai-gcp-representation}"
+GCP_PROJECT="${KORDI_CLOUD_GCP_PROJECT:?Set KORDI_CLOUD_GCP_PROJECT}"
 NAMESPACE="kordi-cloud"
 BOOTSTRAP_JOB="kordi-release-identity-bootstrap"
 BOOTSTRAP_SECRET="kordi-release-publisher-bootstrap"
@@ -18,6 +18,8 @@ BOOTSTRAP_STARTED=0
 
 umask 077
 source "${SCRIPT_DIR}/release-credential-utils.sh"
+
+echo "[release-credentials] target: ${SSH_TARGET} (project ${GCP_PROJECT}, zone ${SSH_ZONE})"
 
 remote() {
   gcloud compute ssh "${SSH_TARGET}" \

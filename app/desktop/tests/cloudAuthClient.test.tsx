@@ -286,6 +286,24 @@ test('operator development requires both the operator profile and production ack
     }),
     'https://kordi.ai',
   );
+  assert.equal(
+    cloudApiBaseUrl({
+      ...baseEnv,
+      VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
+      VITE_KORDI_DEV_PROFILE: 'operator',
+      VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
+    }),
+    'https://coordinar.io',
+  );
+  assert.throws(
+    () => cloudApiBaseUrl({
+      ...baseEnv,
+      VITE_KORDI_CLOUD_API_BASE: 'https://staging.example.test',
+      VITE_KORDI_DEV_PROFILE: 'operator',
+      VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
+    }),
+    /approved .* product origin/i,
+  );
 });
 
 test('acknowledged production operator previews retain OAuth when capability discovery is unavailable', () => {

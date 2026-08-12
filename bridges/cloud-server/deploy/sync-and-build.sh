@@ -10,10 +10,12 @@
 # Usage:
 #   bridges/cloud-server/deploy/sync-and-build.sh
 #
-# Optional env:
+# Required env:
 #   KORDI_CLOUD_SSH_TARGET   required operator-provided gcloud SSH target
 #   KORDI_CLOUD_SSH_ZONE     required operator-provided gcloud zone
-#   KORDI_CLOUD_GCP_PROJECT  optional explicit GCP project
+#   KORDI_CLOUD_GCP_PROJECT  required operator-provided GCP project
+#
+# Optional env:
 #   KORDI_CLOUD_REMOTE_DIR   default: ~/kordi-cloud-server-deploy
 
 set -euo pipefail
@@ -21,15 +23,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET to the operator-provided gcloud SSH target}"
 SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE to the operator-provided gcloud zone}"
-SSH_PROJECT="${KORDI_CLOUD_GCP_PROJECT:-}"
+SSH_PROJECT="${KORDI_CLOUD_GCP_PROJECT:?Set KORDI_CLOUD_GCP_PROJECT to the operator-provided GCP project}"
 REMOTE_DIR="${KORDI_CLOUD_REMOTE_DIR:-\$HOME/kordi-cloud-server-deploy}"
-GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}")
-if [ -n "${SSH_PROJECT}" ]; then
-	GCLOUD_SSH+=(--project "${SSH_PROJECT}")
-fi
+GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "${SSH_PROJECT}")
 
 echo "[deploy] repo root:    ${REPO_ROOT}"
-echo "[deploy] ssh target:   ${SSH_TARGET} (zone ${SSH_ZONE})"
+echo "[deploy] ssh target:   ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_ZONE})"
 echo "[deploy] remote dir:   ${REMOTE_DIR}"
 
 # gcloud's compute-ssh wraps an rsync helper; we use it so the SSH key

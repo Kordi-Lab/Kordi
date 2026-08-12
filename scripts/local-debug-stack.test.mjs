@@ -34,6 +34,9 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
   assert.match(compose, /KORDI_OAUTH_GOOGLE_CLIENT_ID: \$\{KORDI_OAUTH_GOOGLE_CLIENT_ID:-\}/);
   assert.doesNotMatch(compose, /KORDI_CHAT_SYNC_V2_ENABLED|CHAT_SYNC_V2_DISABLED/);
   assert.match(compose, /KORDI_CLOUD_API_BASE: http:\/\/cloud-server:17081/);
+  for (const port of [1420, 1422, 1482, 1484, 1486]) {
+    assert.match(compose, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
+  }
   assert.match(compose, /KORDI_CLOUD_SANDBOX_BACKEND: local/);
   assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
 });
@@ -70,8 +73,17 @@ test('debug setup upgrades old env files and rejects parent-shell credential ove
   assert.match(helper, /unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN/);
   assert.match(helper, /unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET/);
   assert.match(helper, /unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET/);
-  assert.match(helper, /VITE_KORDI_DEV_PROFILE=community pnpm dev:desktop:profile/);
   assert.doesNotMatch(helper, /pnpm dev"/);
+});
+
+test('debug smoke reports OAuth readiness and a copyable isolated desktop command', () => {
+  const smoke = read('scripts/dev-cloud-smoke.sh');
+
+  assert.match(smoke, /\$\{provider\} OAuth: configured/);
+  assert.match(smoke, /tr '\[:upper:\]' '\[:lower:\]'/);
+  assert.match(smoke, /pnpm debug:cloud:oauth -- \$\{provider_command\}/);
+  assert.match(smoke, /VITE_KORDI_CLOUD_API_BASE=\$\{health_url%\/health\}/);
+  assert.match(smoke, /--profile dev-isolated/);
 });
 
 test('OAuth helper hides secrets and only restarts isolated app services', () => {
@@ -204,7 +216,24 @@ test('isolated desktop profiles initialize native Cloud account storage', () => 
       { cwd: repoRoot, env, encoding: 'utf8' },
     );
     assert.notEqual(rejected.status, 0);
-    assert.match(rejected.stderr, /must use io\.kordi\.cloud/i);
+    assert.match(rejected.stderr, /must use a unique io\.kordi\.cloud/i);
+
+    const productionIdentifier = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--dry-run',
+        '--profile',
+        profile,
+        '--port',
+        port,
+        '--identifier',
+        'io.kordi.cloud',
+      ],
+      { cwd: repoRoot, env, encoding: 'utf8' },
+    );
+    assert.notEqual(productionIdentifier.status, 0);
+    assert.match(productionIdentifier.stderr, /unique io\.kordi\.cloud/i);
   } finally {
     rmSync(generatedConfigPath, { force: true });
   }
@@ -243,6 +272,14 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
     });
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, /is not allowlisted/i);
+
+    const unapprovedOrigin = spawnSync('bash', [scriptPath, 'https://staging.example.test'], {
+      cwd: repoRoot,
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+      encoding: 'utf8',
+    });
+    assert.notEqual(unapprovedOrigin.status, 0);
+    assert.match(unapprovedOrigin.stderr, /accepts only https:\/\/kordi\.ai or https:\/\/coordinar\.io/i);
 
     const allowed = spawnSync('bash', [scriptPath, 'https://kordi.ai'], {
       cwd: repoRoot,

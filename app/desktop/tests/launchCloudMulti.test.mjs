@@ -21,7 +21,9 @@ test('cloud multi launcher does not reintroduce product edition env switching', 
 test('cloud multi launcher requires operator-provided tunnel details with keepalives', () => {
   assert.match(source, /const SSH_TARGET = process\.env\.KORDI_CLOUD_SSH_TARGET;/);
   assert.match(source, /const SSH_ZONE = process\.env\.KORDI_CLOUD_SSH_ZONE;/);
-  assert.match(source, /KORDI_CLOUD_SSH_TARGET and KORDI_CLOUD_SSH_ZONE are required/);
+  assert.match(source, /const SSH_PROJECT = process\.env\.KORDI_CLOUD_GCP_PROJECT;/);
+  assert.match(source, /KORDI_CLOUD_SSH_TARGET, KORDI_CLOUD_SSH_ZONE, and KORDI_CLOUD_GCP_PROJECT are required/);
+  assert.match(source, /'--project', SSH_PROJECT/);
   assert.match(source, /KORDI_CLOUD_VM_PORT \?\? '17088'/);
   assert.match(source, /ExitOnForwardFailure=yes/);
   assert.match(source, /ServerAliveInterval=15/);

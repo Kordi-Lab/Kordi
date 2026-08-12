@@ -67,9 +67,3 @@ unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET
 
 docker compose --env-file "$env_file" -f "$compose_file" up --build --detach
 bash "$repo_root/scripts/dev-cloud-smoke.sh"
-
-api_port="${KORDI_DEBUG_API_PORT:-$(sed -n 's/^KORDI_DEBUG_API_PORT=//p' "$env_file" | tail -1)}"
-api_port="${api_port:-17081}"
-echo
-echo "[kordi-debug] Start an isolated desktop profile against this backend:"
-echo "VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:${api_port} VITE_KORDI_DEV_PROFILE=community pnpm dev:desktop:profile -- --profile dev-isolated --title \"Kordi Dev\" --port 1422"

@@ -58,7 +58,12 @@ export type {
 } from './cloudIdentityTypes';
 
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
+const LEGACY_PRODUCTION_CLOUD_API_BASE_URL = 'https://coordinar.io';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
+const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([
+  DEFAULT_CLOUD_API_BASE_URL,
+  LEGACY_PRODUCTION_CLOUD_API_BASE_URL,
+]);
 
 export type CloudSession = {
   token: string;
@@ -409,7 +414,22 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
       throw new Error('VITE_KORDI_CLOUD_API_BASE is required for development.');
     }
     const cleaned = cleanBaseUrl(configured);
-    if (isProductionCloudOrigin(cleaned) && !operatorProductionDebugIsEnabled(activeEnv)) {
+    const operatorProfile = activeEnv.VITE_KORDI_DEV_PROFILE?.trim().toLowerCase() === 'operator';
+    if (operatorProfile) {
+      if (!operatorProductionDebugIsEnabled(activeEnv)) {
+        throw new Error(
+          'Production Cloud API is blocked in development until the operator acknowledgement is set.',
+        );
+      }
+      if (!APPROVED_OPERATOR_CLOUD_API_ORIGINS.has(cleaned)) {
+        throw new Error(
+          'Operator development may use only the approved https://kordi.ai or '
+          + 'https://coordinar.io product origin.',
+        );
+      }
+      return cleaned;
+    }
+    if (isProductionCloudOrigin(cleaned)) {
       throw new Error(
         'Production Cloud API is blocked in development for community profiles. '
         + 'Use the allowlisted operator launcher for approved production debugging.',

@@ -23,6 +23,16 @@ if [[ -z "$api_base" ]]; then
   exit 1
 fi
 
+api_base="${api_base%/}"
+case "$api_base" in
+  https://kordi.ai|https://coordinar.io)
+    ;;
+  *)
+    echo "[kordi-operator] The operator launcher accepts only https://kordi.ai or https://coordinar.io." >&2
+    exit 1
+    ;;
+esac
+
 if ! command -v gh >/dev/null 2>&1; then
   echo "[kordi-operator] GitHub CLI is required to verify the local operator account." >&2
   exit 1

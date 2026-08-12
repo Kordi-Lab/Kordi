@@ -88,6 +88,8 @@ test('real-provider canary script uses local auth and restores safe state', () =
   assert.ok(fs.existsSync(realProviderCanaryScriptPath));
   const script = read(realProviderCanaryScriptPath);
   assert.match(script, /CONFIRM_KORDI_RUNNER_REAL_PROVIDER_CANARY/);
+  assert.match(script, /KORDI_CLOUD_GCP_PROJECT:\?Set KORDI_CLOUD_GCP_PROJECT/);
+  assert.match(script, /--project "\$gcp_project"/);
   assert.match(script, /cloud-provider-auth-snapshot-payload/);
   assert.match(script, /agent-provider-auth\/snapshots/);
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_RUN_ID/);

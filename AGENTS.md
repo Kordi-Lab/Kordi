@@ -15,4 +15,4 @@ Before starting a desktop preview or debug session, follow [Development environm
 - Work that can affect or restart a product server must run on the corresponding product-server machine. Its first end-to-end validation uses `https://coordinar.io`, never `https://kordi.ai` or an isolated local profile.
 - If impact, authorization, or environment identity is uncertain, fail closed. Do not change environments or bypass a guard to continue.
 
-Never copy production credentials or production data into an isolated development environment. Keep database, cache, event bus, and object-store ports private; expose only the loopback application port required by the client.
+Never copy production credentials or production data into an isolated development environment. Never publish database, cache, event bus, object-store, or sandbox ports publicly; bind every deliberately host-published development port to loopback. Product deployment helpers must receive an explicit project, zone, and instance instead of inheriting a gcloud default.
