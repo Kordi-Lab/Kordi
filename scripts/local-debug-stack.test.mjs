@@ -79,6 +79,8 @@ test('OAuth helper hides secrets and only restarts isolated app services', () =>
 
   assert.match(helper, /\[\[ ! -t 0 \|\| ! -t 1 \]\]/);
   assert.match(helper, /read -rs client_secret/);
+  assert.match(helper, /--from-stdin/);
+  assert.match(helper, /Credential input contains an unexpected entry/);
   assert.match(helper, /mktemp "\$repo_root\/deploy\/dev\/\.env\.XXXXXX"/);
   assert.match(helper, /chmod 600 "\$temp_env"\n+mv "\$temp_env" "\$env_file"/);
   assert.match(helper, /unset client_id client_secret/);

@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose_file="$repo_root/deploy/dev/compose.yaml"
 env_file="$repo_root/deploy/dev/.env"
 provider="${1:-}"
+input_mode="${2:-interactive}"
 
 case "$provider" in
   github)
@@ -18,7 +19,7 @@ case "$provider" in
     client_secret_key="KORDI_OAUTH_GOOGLE_CLIENT_SECRET"
     ;;
   *)
-    echo "Usage: bash scripts/dev-cloud-oauth-configure.sh <github|google>" >&2
+    echo "Usage: bash scripts/dev-cloud-oauth-configure.sh <github|google> [--from-stdin]" >&2
     exit 2
     ;;
 esac
@@ -28,21 +29,61 @@ if [[ ! -f "$env_file" ]]; then
   exit 1
 fi
 
-if [[ ! -t 0 || ! -t 1 ]]; then
-  echo "[kordi-debug] OAuth credentials must be entered in an interactive terminal." >&2
-  exit 1
-fi
-
 if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   echo "[kordi-debug] Docker is not available." >&2
   exit 1
 fi
 
-printf '%s Client ID: ' "$provider_label"
-IFS= read -r client_id
-printf '%s Client Secret (input hidden): ' "$provider_label"
-IFS= read -rs client_secret
-printf '\n'
+client_id=""
+client_secret=""
+
+case "$input_mode" in
+  interactive)
+    if [[ ! -t 0 || ! -t 1 ]]; then
+      echo "[kordi-debug] OAuth credentials must be entered in an interactive terminal." >&2
+      exit 1
+    fi
+    printf '%s Client ID: ' "$provider_label"
+    IFS= read -r client_id
+    printf '%s Client Secret (input hidden): ' "$provider_label"
+    IFS= read -rs client_secret
+    printf '\n'
+    ;;
+  --from-stdin)
+    found_input_client_id=0
+    found_input_client_secret=0
+    while IFS= read -r input_line || [[ -n "$input_line" ]]; do
+      case "$input_line" in
+        ""|"#"*)
+          ;;
+        "$client_id_key="*)
+          if [[ "$found_input_client_id" -ne 0 ]]; then
+            echo "[kordi-debug] Duplicate Client ID entry." >&2
+            exit 1
+          fi
+          client_id="${input_line#*=}"
+          found_input_client_id=1
+          ;;
+        "$client_secret_key="*)
+          if [[ "$found_input_client_secret" -ne 0 ]]; then
+            echo "[kordi-debug] Duplicate Client Secret entry." >&2
+            exit 1
+          fi
+          client_secret="${input_line#*=}"
+          found_input_client_secret=1
+          ;;
+        *)
+          echo "[kordi-debug] Credential input contains an unexpected entry." >&2
+          exit 1
+          ;;
+      esac
+    done
+    ;;
+  *)
+    echo "Usage: bash scripts/dev-cloud-oauth-configure.sh <github|google> [--from-stdin]" >&2
+    exit 2
+    ;;
+esac
 
 temp_env=""
 cleanup() {
