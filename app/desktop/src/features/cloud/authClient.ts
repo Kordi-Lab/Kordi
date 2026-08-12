@@ -1,7 +1,7 @@
 // Cloud-edition HTTP client. Authentication and ancillary account features
 // remain under /v1/cloud; durable chat transport is exclusively /v2/chat.
 // Stays independent of React. Native outbox helpers are no-ops in web/tests,
-// while the focused V2 client persists every send before network I/O.
+// while the focused chat client persists every send before network I/O.
 
 // Production sessions never silently fall back to localhost; local tunnels remain
 // available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
@@ -22,29 +22,29 @@ import type {
   CloudGroupInvitationSummary,
   CloudPublicProfile,
 } from './cloudIdentityTypes';
-import { ChatSyncV2Client } from './chatSyncV2Client';
+import { ChatSyncClient } from './chatSyncClient';
 import type {
-  ChatSyncV2BootstrapResponse,
-  ChatSyncV2Conversation,
-  ChatSyncV2ConversationInput,
-  ChatSyncV2Event,
-  ChatSyncV2Message,
-} from './chatSyncV2Types';
+  ChatSyncBootstrapResponse,
+  ChatSyncConversation,
+  ChatSyncConversationInput,
+  ChatSyncEvent,
+  ChatSyncMessage,
+} from './chatSyncTypes';
 
 export type { CloudContactSummary } from './cloudContactTypes';
 export { parseCloudOAuthHashResult } from './cloudOAuthResult';
 export { CloudAuthError } from './cloudAuthError';
-export { chatSyncV2SessionTitle, cloudMessageFromChatSyncV2, cloudOperationUuid } from './chatSyncV2Mapping';
+export { chatSyncSessionTitle, cloudMessageFromChatSync, cloudOperationUuid } from './chatSyncMapping';
 export type {
-  ChatSyncV2BootstrapResponse,
-  ChatSyncV2Conversation,
-  ChatSyncV2ConversationInput,
-  ChatSyncV2Event,
-  ChatSyncV2Member,
-  ChatSyncV2Message,
-  ChatSyncV2Preferences,
-  ChatSyncV2SyncResponse,
-} from './chatSyncV2Types';
+  ChatSyncBootstrapResponse,
+  ChatSyncConversation,
+  ChatSyncConversationInput,
+  ChatSyncEvent,
+  ChatSyncMember,
+  ChatSyncMessage,
+  ChatSyncPreferences,
+  ChatSyncSyncResponse,
+} from './chatSyncTypes';
 export type { CloudAuthErrorCode } from './cloudAuthError';
 export type {
   CloudAccount,
@@ -137,7 +137,7 @@ export type SendCloudMessageOptions = {
   messageKind?: string | null;
   canonicalHistoryLocalMessageId?: string | null;
   accountId?: string | null;
-  conversationKind?: ChatSyncV2Conversation['kind'];
+  conversationKind?: ChatSyncConversation['kind'];
   memberAccountIds?: string[];
   sharedTitle?: string | null;
 };
@@ -205,14 +205,14 @@ export type CloudSyncResponse = {
   cursor: string;
   hasMore: boolean;
   events: CloudSyncEvent[];
-  v2?: {
+  chat?: {
     bootstrap: boolean;
     protocolVersion: 2;
     nextCursor: string;
     lastStreamSeq: number;
-    conversations: ChatSyncV2Conversation[];
-    messages: ChatSyncV2Message[];
-    events: ChatSyncV2Event[];
+    conversations: ChatSyncConversation[];
+    messages: ChatSyncMessage[];
+    events: ChatSyncEvent[];
   };
 };
 
@@ -438,7 +438,7 @@ export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): s
   return url.toString();
 }
 
-export function chatSyncV2WebSocketUrl(ticket: string, baseUrl = cloudApiBaseUrl()): string {
+export function chatSyncWebSocketUrl(ticket: string, baseUrl = cloudApiBaseUrl()): string {
   const url = new URL('/v2/chat/realtime', baseUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   url.searchParams.set('ticket', ticket);
@@ -481,13 +481,13 @@ export class CloudAuthClient {
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
   private activeAccountId: string | null = null;
-  private readonly chatV2: ChatSyncV2Client;
+  private readonly chat: ChatSyncClient;
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
-    this.chatV2 = new ChatSyncV2Client({
+    this.chat = new ChatSyncClient({
       request: (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
       getActiveAccountId: () => this.activeAccountId,
       setActiveAccountId: (value) => { this.activeAccountId = value; },
@@ -533,7 +533,7 @@ export class CloudAuthClient {
     return this.send<TResponse>(path, init, fallbackMessage);
   }
 
-  knownChatV2SessionIds(accountId: string): string[] { return this.chatV2.knownSessionIds(accountId); }
+  knownChatSessionIds(accountId: string): string[] { return this.chat.knownSessionIds(accountId); }
 
   async signup(input: {
     email: string;
@@ -881,13 +881,13 @@ export class CloudAuthClient {
     return response?.run ?? null;
   }
 
-  async ensureChatV2Conversation(token: string, input: ChatSyncV2ConversationInput): Promise<ChatSyncV2Conversation> { return this.chatV2.ensureConversation(token, input); }
+  async ensureChatConversation(token: string, input: ChatSyncConversationInput): Promise<ChatSyncConversation> { return this.chat.ensureConversation(token, input); }
 
   async sendMessage(token: string, peerAccountId: string, body: string, options: SendCloudMessageOptions = {}): Promise<CloudMessage> {
-    return this.chatV2.sendMessage(token, peerAccountId, body, options);
+    return this.chat.sendMessage(token, peerAccountId, body, options);
   }
 
-  async drainChatV2Outbox(token: string, accountId: string): Promise<CloudMessage[]> { return this.chatV2.drainOutbox(token, accountId); }
+  async drainChatOutbox(token: string, accountId: string): Promise<CloudMessage[]> { return this.chat.drainOutbox(token, accountId); }
 
   async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {
     return this.send<CloudAttachmentInitiateResult>(
@@ -978,11 +978,11 @@ export class CloudAuthClient {
     return response.blob();
   }
 
-  async markMessagesRead(token: string, peerAccountId: string): Promise<void> { return this.chatV2.markMessagesRead(token, peerAccountId); }
+  async markMessagesRead(token: string, peerAccountId: string): Promise<void> { return this.chat.markMessagesRead(token, peerAccountId); }
 
-  async markSessionMessagesRead(token: string, sessionId: string): Promise<void> { return this.chatV2.markSessionMessagesRead(token, sessionId); }
+  async markSessionMessagesRead(token: string, sessionId: string): Promise<void> { return this.chat.markSessionMessagesRead(token, sessionId); }
 
-  async acknowledgeChatV2Delivery(token: string, conversationId: string, sequence: number): Promise<void> { return this.chatV2.acknowledgeDelivery(token, conversationId, sequence); }
+  async acknowledgeChatDelivery(token: string, conversationId: string, sequence: number): Promise<void> { return this.chat.acknowledgeDelivery(token, conversationId, sequence); }
 
   async listSessionVisibility(token: string): Promise<CloudSessionVisibility> {
     const response = await this.send<CloudSessionVisibility>(
@@ -1026,7 +1026,7 @@ export class CloudAuthClient {
     return response.pin;
   }
 
-  async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> { return this.chatV2.updateTitle(token, sessionId, input); }
+  async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> { return this.chat.updateTitle(token, sessionId, input); }
 
   async hideCloudSession(token: string, sessionId: string): Promise<void> {
     await this.send<void>(
@@ -1131,19 +1131,19 @@ export class CloudAuthClient {
     return response.artifact;
   }
 
-  async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> { return this.chatV2.syncEvents(token, cursor, limit); }
+  async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> { return this.chat.syncEvents(token, cursor, limit); }
 
   async listMessageSnapshot(token: string, peerAccountId: string, limit?: number, viewerAccountId?: string | null) {
-    return this.chatV2.listMessageSnapshot(token, peerAccountId, limit, viewerAccountId);
+    return this.chat.listMessageSnapshot(token, peerAccountId, limit, viewerAccountId);
   }
 
-  async listChatV2ConversationHistoryPage(token: string, conversationId: string, beforeSequence?: number, limit = 200): Promise<{ messages: ChatSyncV2Message[]; nextBeforeSequence: number | null; hasMore: boolean }> {
-    return this.chatV2.listHistoryPage(token, conversationId, beforeSequence, limit);
+  async listChatConversationHistoryPage(token: string, conversationId: string, beforeSequence?: number, limit = 200): Promise<{ messages: ChatSyncMessage[]; nextBeforeSequence: number | null; hasMore: boolean }> {
+    return this.chat.listHistoryPage(token, conversationId, beforeSequence, limit);
   }
 
-  async bootstrapChatSyncV2(token: string): Promise<ChatSyncV2BootstrapResponse> { return this.chatV2.bootstrap(token); }
+  async bootstrapChatSync(token: string): Promise<ChatSyncBootstrapResponse> { return this.chat.bootstrap(token); }
 
-  async issueChatSyncV2RealtimeTicket(token: string): Promise<{ ticket: string; device_id: string; expires_at: string }> { return this.chatV2.issueRealtimeTicket(token); }
+  async issueChatSyncRealtimeTicket(token: string): Promise<{ ticket: string; device_id: string; expires_at: string }> { return this.chat.issueRealtimeTicket(token); }
 
 }
 

@@ -380,7 +380,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.avatarUrl, "https://cdn.example/maya-current.png")
     }
 
-    func testGroupParticipantAvatarsAreEnrichedFromCanonicalV2MembersWithoutContacts() throws {
+    func testGroupParticipantAvatarsAreEnrichedFromCanonicalMembersWithoutContacts() throws {
         let staleParticipants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "owner"),
             CloudGroupParticipant(accountId: "acct_jiaxin", displayName: "Jiaxin", avatarUrl: nil, role: "member")

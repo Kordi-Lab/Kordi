@@ -12,7 +12,7 @@ The iPhone does not run an LLM. Agent execution is restricted to the owner's con
 
 ## Authentication, contacts, agents, and ancillary state
 
-Authentication, identity, contacts, attachments, invitations, presence, agent operations, session activity, forks, and pins retain their `/v1/cloud/...` resource APIs. That version is the resource API version and is not the retired chat-sync protocol.
+Authentication, identity, contacts, attachments, invitations, presence, agent operations, session activity, forks, and pins use independently versioned `/v1/cloud/...` resource APIs. These paths do not carry canonical chat state.
 
 The opaque session token is stored in iOS Keychain with `AfterFirstUnlockThisDeviceOnly` accessibility. It is not written to message caches or logs. OAuth accepts only the declared `kordi://oauth/callback` scheme, host, and path before decoding the Cloud result.
 
@@ -23,9 +23,9 @@ The iOS projection mirrors the macOS product model:
 - Kordi Support is one direct Contact conversation and is never projected as an Agent session.
 - Hidden and deleted sessions are removed from the mobile catalog.
 
-## Canonical chat v2
+## Canonical chat
 
-All conversation, message, delivery, read, title, membership, and recovery state uses chat-sync protocol v2 exclusively:
+All conversation, message, delivery, read, title, membership, and recovery state uses the canonical `/v2/chat` protocol:
 
 ```http
 GET  /v2/chat/conversations
@@ -51,7 +51,7 @@ The iPhone currently uses ordered HTTP cursor recovery while foregrounded instea
 
 ## Attachments and agent execution
 
-Attachment upload and download stay on the authenticated resource API, while attachment relationships are stored on canonical v2 messages. Agent requests claim execution through the Cloud agent-run APIs. Owner-online claims execute on the connected macOS runtime; otherwise the hosted fallback runner can execute. Every result is persisted as a canonical v2 assistant message before it is considered delivered.
+Attachment upload and download stay on the authenticated resource API, while attachment relationships are stored on canonical chat messages. Agent requests claim execution through the Cloud agent-run APIs. Owner-online claims execute on the connected macOS runtime; otherwise the hosted fallback runner can execute. Every result is persisted as a canonical assistant message before it is considered delivered.
 
 Provider-auth payloads are encrypted by the server and scoped to the authenticated account. The iOS UI clears credential input after submission and never persists raw provider credentials in its local message database. Never include credentials in logs, previews, screenshots, issues, or test fixtures.
 

@@ -1,5 +1,5 @@
 import type { CloudMessage, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './authClient';
-import type { ChatSyncV2Conversation, ChatSyncV2Message } from './chatSyncV2Types';
+import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
 
 function decodeBase64UrlJson<T>(value: string): T | null {
   try {
@@ -52,7 +52,7 @@ export function cloudOperationUuid(value?: string | null): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function v2TextContent(
+export function chatTextContent(
   body: string,
   attachments: SendCloudMessageAttachmentInput[],
   canonicalHistory?: {
@@ -104,7 +104,7 @@ function canonicalHistoryMetadata(content: unknown): {
     : null;
 }
 
-function textFromV2Content(content: unknown): string {
+function textFromChatContent(content: unknown): string {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return '';
   const blocks = (content as { blocks?: unknown }).blocks;
   if (!Array.isArray(blocks)) return '';
@@ -118,7 +118,7 @@ function textFromV2Content(content: unknown): string {
     .join('');
 }
 
-function attachmentsFromV2Content(content: unknown): CloudMessageAttachment[] {
+function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
   const attachments = (content as { legacy_attachments?: unknown }).legacy_attachments;
   if (!Array.isArray(attachments)) return [];
@@ -144,11 +144,11 @@ export function directSessionId(accountId: string, peerAccountId: string): strin
   return `session:direct-person:${[accountId.trim(), peerAccountId.trim()].sort().join(':')}`;
 }
 
-export function inferV2ConversationKind(
+export function inferConversationKind(
   accountId: string,
   peerAccountId: string,
   sessionId: string,
-): ChatSyncV2Conversation['kind'] {
+): ChatSyncConversation['kind'] {
   if (accountId === peerAccountId) return 'ai';
   if (sessionId.startsWith('session:group:') || sessionId.startsWith('group:')) return 'group';
   return 'direct';
@@ -168,8 +168,8 @@ export function groupMemberAccountIdsFromEnvelope(body: string): string[] | null
   )))];
 }
 
-export function v2ConversationPeer(
-  conversation: ChatSyncV2Conversation,
+export function conversationPeer(
+  conversation: ChatSyncConversation,
   viewerAccountId: string,
   senderAccountId: string,
 ): string {
@@ -179,12 +179,12 @@ export function v2ConversationPeer(
     ?.account_id ?? viewerAccountId;
 }
 
-export function cloudMessageFromChatSyncV2(
-  message: ChatSyncV2Message,
-  conversation: ChatSyncV2Conversation,
+export function cloudMessageFromChatSync(
+  message: ChatSyncMessage,
+  conversation: ChatSyncConversation,
   viewerAccountId = conversation.preferences.account_id,
 ): CloudMessage {
-  const peerAccountId = v2ConversationPeer(conversation, viewerAccountId, message.sender_account_id);
+  const peerAccountId = conversationPeer(conversation, viewerAccountId, message.sender_account_id);
   const outgoing = message.sender_account_id === viewerAccountId;
   const otherMembers = conversation.members.filter((member) => member.account_id !== viewerAccountId);
   const delivered = outgoing
@@ -207,13 +207,13 @@ export function cloudMessageFromChatSyncV2(
     messageId: message.id,
     fromAccountId: message.sender_account_id,
     toAccountId: outgoing ? peerAccountId : viewerAccountId,
-    body: textFromV2Content(message.content),
+    body: textFromChatContent(message.content),
     createdAt,
     deliveredAt: delivered ? createdAt : null,
     readAt: read ? createdAt : null,
     direction: outgoing ? 'outgoing' : 'incoming',
     sessionId: conversation.legacy_session_id ?? conversation.id,
-    attachments: attachmentsFromV2Content(message.content),
+    attachments: attachmentsFromChatContent(message.content),
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
     clientMessageId: message.client_message_id,
@@ -224,7 +224,7 @@ export function cloudMessageFromChatSyncV2(
   };
 }
 
-export function chatSyncV2SessionTitle(conversation: ChatSyncV2Conversation): string {
+export function chatSyncSessionTitle(conversation: ChatSyncConversation): string {
   const personalTitle = conversation.preferences.personal_title?.trim() ?? '';
   if (personalTitle) return personalTitle;
   if (conversation.kind === 'group') return '';

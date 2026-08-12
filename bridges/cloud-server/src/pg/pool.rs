@@ -219,27 +219,27 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     },
     EmbeddedMigration {
         version: 47,
-        description: "reliable canonical chat sync v2",
+        description: "create reliable canonical chat sync",
         sql: include_str!("../../migrations/0047_reliable_chat_sync_v2.sql"),
     },
     EmbeddedMigration {
         version: 48,
-        description: "backfill retained v1 chat into reliable chat sync v2",
+        description: "backfill retained chat into canonical chat sync",
         sql: include_str!("../../migrations/0048_backfill_reliable_chat_sync_v2.sql"),
     },
     EmbeddedMigration {
         version: 49,
-        description: "relink migrated agent responses to canonical v2 requests",
+        description: "relink migrated agent responses to canonical requests",
         sql: include_str!("../../migrations/0049_relink_legacy_agent_responses.sql"),
     },
     EmbeddedMigration {
         version: 50,
-        description: "canonical v2 Cloud-agent artifact links",
+        description: "canonical Cloud-agent artifact links",
         sql: include_str!("../../migrations/0050_chat_v2_artifact_links.sql"),
     },
     EmbeddedMigration {
         version: 51,
-        description: "retire chat sync v1 storage and compatibility bridges",
+        description: "retire superseded chat storage and compatibility bridges",
         sql: include_str!("../../migrations/0051_retire_chat_sync_v1.sql"),
     },
 ];

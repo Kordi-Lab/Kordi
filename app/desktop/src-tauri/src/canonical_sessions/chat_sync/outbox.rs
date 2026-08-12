@@ -3,23 +3,23 @@ use super::*;
 pub(super) fn clean_outbox_key(value: &str, label: &str) -> Result<String, String> {
     let value = value.trim();
     if value.is_empty() || value.len() > 256 {
-        return Err(format!("Chat sync v2 {label} is invalid"));
+        return Err(format!("Chat sync {label} is invalid"));
     }
     Ok(value.to_string())
 }
 
-pub(super) fn enqueue_outbox(request: ChatSyncV2OutboxEnqueueRequest) -> Result<(), String> {
+pub(super) fn enqueue_outbox(request: ChatSyncOutboxEnqueueRequest) -> Result<(), String> {
     let account_id = clean_outbox_key(&request.account_id, "account id")?;
     let operation_id = clean_outbox_key(&request.operation_id, "operation id")?;
     let payload_json =
         serde_json::to_string(&request.payload).map_err(|error| error.to_string())?;
     if payload_json.len() > 2 * 1024 * 1024 {
-        return Err("Chat sync v2 pending operation is too large".to_string());
+        return Err("Chat sync pending operation is too large".to_string());
     }
     let conn = open_db()?;
     let existing: Option<String> = conn
         .query_row(
-            "SELECT payload_json FROM chat_sync_v2_pending_operations
+            "SELECT payload_json FROM chat_sync_pending_operations
              WHERE account_id = ?1 AND operation_id = ?2",
             params![account_id, operation_id],
             |row| row.get(0),
@@ -34,7 +34,7 @@ pub(super) fn enqueue_outbox(request: ChatSyncV2OutboxEnqueueRequest) -> Result<
     }
     let now = now_ms();
     conn.execute(
-        "INSERT INTO chat_sync_v2_pending_operations
+        "INSERT INTO chat_sync_pending_operations
          (account_id, operation_id, operation_kind, payload_json, status,
           attempt_count, next_attempt_at_ms, created_at_ms, updated_at_ms)
          VALUES (?1, ?2, 'send_message', ?3, 'pending', 0, 0, ?4, ?4)",
@@ -44,13 +44,13 @@ pub(super) fn enqueue_outbox(request: ChatSyncV2OutboxEnqueueRequest) -> Result<
     Ok(())
 }
 
-pub(super) fn list_due_outbox(account_id: &str) -> Result<Vec<ChatSyncV2PendingOperation>, String> {
+pub(super) fn list_due_outbox(account_id: &str) -> Result<Vec<ChatSyncPendingOperation>, String> {
     let account_id = clean_outbox_key(account_id, "account id")?;
     let conn = open_db()?;
     let mut statement = conn
         .prepare(
             "SELECT operation_id, payload_json, attempt_count, next_attempt_at_ms, last_error
-             FROM chat_sync_v2_pending_operations
+             FROM chat_sync_pending_operations
              WHERE account_id = ?1 AND status = 'pending' AND next_attempt_at_ms <= ?2
              ORDER BY created_at_ms ASC LIMIT 100",
         )
@@ -65,7 +65,7 @@ pub(super) fn list_due_outbox(account_id: &str) -> Result<Vec<ChatSyncV2PendingO
                     Box::new(error),
                 )
             })?;
-            Ok(ChatSyncV2PendingOperation {
+            Ok(ChatSyncPendingOperation {
                 account_id: account_id.clone(),
                 operation_id: row.get(0)?,
                 payload,
@@ -80,13 +80,13 @@ pub(super) fn list_due_outbox(account_id: &str) -> Result<Vec<ChatSyncV2PendingO
     Ok(rows)
 }
 
-pub(super) fn record_outbox_failure(request: ChatSyncV2OutboxFailureRequest) -> Result<(), String> {
+pub(super) fn record_outbox_failure(request: ChatSyncOutboxFailureRequest) -> Result<(), String> {
     let account_id = clean_outbox_key(&request.account_id, "account id")?;
     let operation_id = clean_outbox_key(&request.operation_id, "operation id")?;
     let conn = open_db()?;
     let attempts: i64 = conn
         .query_row(
-            "SELECT attempt_count FROM chat_sync_v2_pending_operations
+            "SELECT attempt_count FROM chat_sync_pending_operations
              WHERE account_id = ?1 AND operation_id = ?2",
             params![account_id, operation_id],
             |row| row.get(0),
@@ -99,7 +99,7 @@ pub(super) fn record_outbox_failure(request: ChatSyncV2OutboxFailureRequest) -> 
         .copied()
         .unwrap_or(60_000);
     conn.execute(
-        "UPDATE chat_sync_v2_pending_operations
+        "UPDATE chat_sync_pending_operations
          SET status = ?1, attempt_count = attempt_count + 1,
              next_attempt_at_ms = ?2, last_error = ?3, updated_at_ms = ?4
          WHERE account_id = ?5 AND operation_id = ?6",

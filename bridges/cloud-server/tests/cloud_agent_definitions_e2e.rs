@@ -221,7 +221,7 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
             &format!("/v1/cloud/agents/{agent_id}"),
             Some(&owner_token),
             Body::from(
-                json!({ "name": "Docs Helper v2", "accessScope": "participant_conversations" })
+                json!({ "name": "Docs Helper updated", "accessScope": "participant_conversations" })
                     .to_string(),
             ),
         ))
@@ -229,7 +229,7 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
         .unwrap();
     assert_eq!(owner_update.status(), StatusCode::OK);
     let updated = read_json(owner_update).await;
-    assert_eq!(updated["agent"]["name"], "Docs Helper v2");
+    assert_eq!(updated["agent"]["name"], "Docs Helper updated");
     assert_eq!(updated["agent"]["accessScope"], "participant_conversations");
 
     let owner_archive = router

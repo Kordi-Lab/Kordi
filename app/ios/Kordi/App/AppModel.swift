@@ -279,7 +279,7 @@ final class AppModel: ObservableObject {
                 + shared.map(\.ownerAccountId)
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
-            applySyncedSessionTitles(await api.cachedChatV2SessionTitles())
+            applySyncedSessionTitles(await api.cachedChatSessionTitles())
             let groupParticipantIds = Set(history.messagesByPeer.values.flatMap { messages in
                 messages.flatMap { CloudGroupMessageCodec.parse($0.body)?.participants.map(\.accountId) ?? [] }
             })
@@ -1753,7 +1753,7 @@ final class AppModel: ObservableObject {
                             $0.eventType != "message.upsert" && $0.eventType != "message.read"
                         }
                         if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
-                        // V2 conversation snapshots are independently canonical.
+                        // Conversation snapshots are independently canonical.
                         // Always project them even when a best-effort directory
                         // refresh failed or was already in progress.
                         await rebuildConversationCatalog()
@@ -1828,8 +1828,8 @@ final class AppModel: ObservableObject {
 
     private func rebuildConversationCatalog() async {
         guard let account else { return }
-        let canonicalParticipantsBySessionId = await api.cachedChatV2ParticipantsBySessionId()
-        let canonicalForksBySessionId = await api.cachedChatV2SessionForksById()
+        let canonicalParticipantsBySessionId = await api.cachedChatParticipantsBySessionId()
+        let canonicalForksBySessionId = await api.cachedChatSessionForksById()
         for (sessionId, fork) in canonicalForksBySessionId {
             sessionForksById[sessionId] = fork
         }

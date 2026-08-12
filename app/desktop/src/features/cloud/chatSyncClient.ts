@@ -1,33 +1,33 @@
 import type { CloudMessage, CloudSessionTitle, CloudSyncResponse, SendCloudMessageOptions, UpdateCloudSessionTitleInput } from './authClient';
-import { ChatSyncV2ConversationClient } from './chatSyncV2ConversationClient';
-import { ChatSyncV2State, type ChatSyncV2Request } from './chatSyncV2State';
-import { ChatSyncV2SyncClient } from './chatSyncV2SyncClient';
-import type { ChatSyncV2BootstrapResponse, ChatSyncV2Conversation, ChatSyncV2ConversationInput, ChatSyncV2Message } from './chatSyncV2Types';
+import { ChatSyncConversationClient } from './chatSyncConversationClient';
+import { ChatSyncState, type ChatSyncRequest } from './chatSyncState';
+import { ChatSyncSyncClient } from './chatSyncSyncClient';
+import type { ChatSyncBootstrapResponse, ChatSyncConversation, ChatSyncConversationInput, ChatSyncMessage } from './chatSyncTypes';
 
-export type ChatSyncV2ClientOptions = {
-  request: ChatSyncV2Request;
+export type ChatSyncClientOptions = {
+  request: ChatSyncRequest;
   getActiveAccountId: () => string | null;
   setActiveAccountId: (value: string) => void;
   errorStatus: (error: unknown) => number | null;
 };
 
-export class ChatSyncV2Client {
-  private readonly state: ChatSyncV2State;
-  private readonly conversations: ChatSyncV2ConversationClient;
-  private readonly sync: ChatSyncV2SyncClient;
+export class ChatSyncClient {
+  private readonly state: ChatSyncState;
+  private readonly conversations: ChatSyncConversationClient;
+  private readonly sync: ChatSyncSyncClient;
 
-  constructor(options: ChatSyncV2ClientOptions) {
-    this.state = new ChatSyncV2State(
+  constructor(options: ChatSyncClientOptions) {
+    this.state = new ChatSyncState(
       options.request,
       options.getActiveAccountId,
       options.setActiveAccountId,
       options.errorStatus,
     );
-    this.conversations = new ChatSyncV2ConversationClient(this.state);
-    this.sync = new ChatSyncV2SyncClient(this.state);
-    this.state.bootstrap = (token) => this.sync.bootstrapChatSyncV2(token);
+    this.conversations = new ChatSyncConversationClient(this.state);
+    this.sync = new ChatSyncSyncClient(this.state);
+    this.state.bootstrap = (token) => this.sync.bootstrapChatSync(token);
     this.state.ensureConversation = (token, input) => (
-      this.conversations.ensureChatV2Conversation(token, input)
+      this.conversations.ensureChatConversation(token, input)
     );
   }
 
@@ -35,8 +35,8 @@ export class ChatSyncV2Client {
     return this.state.knownSessionIds(accountId);
   }
 
-  ensureConversation(token: string, input: ChatSyncV2ConversationInput): Promise<ChatSyncV2Conversation> {
-    return this.conversations.ensureChatV2Conversation(token, input);
+  ensureConversation(token: string, input: ChatSyncConversationInput): Promise<ChatSyncConversation> {
+    return this.conversations.ensureChatConversation(token, input);
   }
 
   sendMessage(token: string, peerAccountId: string, body: string, options: SendCloudMessageOptions): Promise<CloudMessage> {
@@ -44,7 +44,7 @@ export class ChatSyncV2Client {
   }
 
   drainOutbox(token: string, accountId: string): Promise<CloudMessage[]> {
-    return this.conversations.drainChatV2Outbox(token, accountId);
+    return this.conversations.drainChatOutbox(token, accountId);
   }
 
   markMessagesRead(token: string, peerAccountId: string): Promise<void> {
@@ -56,7 +56,7 @@ export class ChatSyncV2Client {
   }
 
   acknowledgeDelivery(token: string, conversationId: string, sequence: number): Promise<void> {
-    return this.conversations.acknowledgeChatV2Delivery(token, conversationId, sequence);
+    return this.conversations.acknowledgeChatDelivery(token, conversationId, sequence);
   }
 
   updateTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> {
@@ -71,15 +71,15 @@ export class ChatSyncV2Client {
     return this.sync.listMessageSnapshot(token, peerAccountId, limit, viewerAccountId);
   }
 
-  listHistoryPage(token: string, conversationId: string, beforeSequence?: number, limit = 200): Promise<{ messages: ChatSyncV2Message[]; nextBeforeSequence: number | null; hasMore: boolean }> {
-    return this.sync.listChatV2ConversationHistoryPage(token, conversationId, beforeSequence, limit);
+  listHistoryPage(token: string, conversationId: string, beforeSequence?: number, limit = 200): Promise<{ messages: ChatSyncMessage[]; nextBeforeSequence: number | null; hasMore: boolean }> {
+    return this.sync.listChatConversationHistoryPage(token, conversationId, beforeSequence, limit);
   }
 
-  bootstrap(token: string): Promise<ChatSyncV2BootstrapResponse> {
-    return this.sync.bootstrapChatSyncV2(token);
+  bootstrap(token: string): Promise<ChatSyncBootstrapResponse> {
+    return this.sync.bootstrapChatSync(token);
   }
 
   issueRealtimeTicket(token: string): Promise<{ ticket: string; device_id: string; expires_at: string }> {
-    return this.sync.issueChatSyncV2RealtimeTicket(token);
+    return this.sync.issueChatSyncRealtimeTicket(token);
   }
 }

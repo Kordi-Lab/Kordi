@@ -13,7 +13,7 @@ async fn scheduled_direct_contact_completion_routes_back_to_originating_contact_
         "session:direct-person:{}:{}",
         owner.account_id, peer.account_id
     );
-    create_v2_test_conversation(
+    create_test_conversation(
         &pool,
         &owner.account_id,
         &session_id,
@@ -109,7 +109,7 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
             "createdAtMs": 1
         }
     }));
-    let conversation_id = create_v2_test_conversation(
+    let conversation_id = create_test_conversation(
         &pool,
         &peer.account_id,
         &session_id,
@@ -117,7 +117,7 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
         vec![owner.account_id.clone()],
     )
     .await;
-    insert_v2_test_message(
+    insert_test_message(
         &pool,
         &peer.account_id,
         conversation_id,

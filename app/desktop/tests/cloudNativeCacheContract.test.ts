@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { cloudMessagesUseBrowserCache } from '../src/features/cloud/useCloudAccountLifecycleState';
 
-test('native v2 bypasses the legacy browser cache while web retains IndexedDB', () => {
+test('native chat bypasses the legacy browser cache while web retains IndexedDB', () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
   try {
     Object.defineProperty(globalThis, 'window', {

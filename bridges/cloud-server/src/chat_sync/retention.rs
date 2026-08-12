@@ -64,7 +64,7 @@ pub fn spawn_retention_worker(pool: PgPool) {
             interval.tick().await;
             let cutoff = Utc::now() - chrono::Duration::days(retention_days());
             if let Err(error) = sweep_expired_events(&pool, cutoff).await {
-                eprintln!("[chat-sync-v2] retention sweep: {error}");
+                eprintln!("[chat-sync] retention sweep: {error}");
             }
         }
     });

@@ -1,7 +1,8 @@
 import { cloudOperationUuid } from './authClient';
 import type { CloudSelfAgentSyncOperation } from './cloudSelfAgentForwardSync';
 
-const RECOVERY_KEY_PREFIX = 'kordi.cloud.selfAgentV2Recovery.v1:';
+const RECOVERY_KEY_PREFIX = 'kordi.cloud.selfAgentRecovery:';
+const PREVIOUS_RECOVERY_KEY_PREFIX = 'kordi.cloud.selfAgentV2Recovery.v1:';
 
 export function cloudSelfAgentRequestClientMessageId(
   sessionId: string,
@@ -31,10 +32,17 @@ function recoveryKey(accountId: string): string {
   return `${RECOVERY_KEY_PREFIX}${accountId}`;
 }
 
-export function loadCloudSelfAgentV2RecoverySessionIds(accountId: string): Set<string> {
+export function loadCloudSelfAgentRecoverySessionIds(accountId: string): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
-    const raw = window.localStorage.getItem(recoveryKey(accountId));
+    const key = recoveryKey(accountId);
+    const previousKey = `${PREVIOUS_RECOVERY_KEY_PREFIX}${accountId}`;
+    const raw = window.localStorage.getItem(key)
+      ?? window.localStorage.getItem(previousKey);
+    if (raw && window.localStorage.getItem(key) === null) {
+      window.localStorage.setItem(key, raw);
+      window.localStorage.removeItem(previousKey);
+    }
     const parsed = raw ? JSON.parse(raw) as unknown : null;
     if (!Array.isArray(parsed)) return new Set();
     return new Set(parsed.flatMap((value) => typeof value === 'string' && value.trim()
@@ -45,7 +53,7 @@ export function loadCloudSelfAgentV2RecoverySessionIds(accountId: string): Set<s
   }
 }
 
-export function saveCloudSelfAgentV2RecoverySessionIds(
+export function saveCloudSelfAgentRecoverySessionIds(
   accountId: string,
   sessionIds: ReadonlySet<string>,
 ): void {
@@ -54,9 +62,11 @@ export function saveCloudSelfAgentV2RecoverySessionIds(
     const key = recoveryKey(accountId);
     if (sessionIds.size === 0) {
       window.localStorage.removeItem(key);
+      window.localStorage.removeItem(`${PREVIOUS_RECOVERY_KEY_PREFIX}${accountId}`);
       return;
     }
     window.localStorage.setItem(key, JSON.stringify([...sessionIds].sort()));
+    window.localStorage.removeItem(`${PREVIOUS_RECOVERY_KEY_PREFIX}${accountId}`);
   } catch {
     // Best effort. Stable operation IDs still make a retry safe.
   }

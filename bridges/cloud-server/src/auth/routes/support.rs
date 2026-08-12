@@ -156,9 +156,9 @@ pub(super) async fn caller_can_access_cloud_session(
 }
 
 // Session pin/visibility remain ancillary account settings, but their change
-// notifications still travel through the durable v2 per-user stream so a
-// second device converges without consulting the retired v1 mailbox.
-pub(super) async fn publish_chat_v2_event(
+// notifications still travel through the durable per-user stream so a
+// second device converges without consulting superseded mailbox storage.
+pub(super) async fn publish_chat_event(
     pool: &PgPool,
     account_id: &str,
     event_type: &str,

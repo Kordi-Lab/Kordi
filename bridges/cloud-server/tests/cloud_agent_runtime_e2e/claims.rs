@@ -230,7 +230,7 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
             "agentMentionDepth": 1
         }
     }));
-    let conversation_id = create_v2_test_conversation(
+    let conversation_id = create_test_conversation(
         &pool,
         &source.account_id,
         &session_id,
@@ -238,7 +238,7 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
         vec![target.account_id.clone()],
     )
     .await;
-    insert_v2_test_message(&pool, &source.account_id, conversation_id, &request_body).await;
+    insert_test_message(&pool, &source.account_id, conversation_id, &request_body).await;
 
     let claim_input = claim_body_with_session(&target, &source, &request_message_id, &session_id);
     let claim = router
@@ -290,7 +290,7 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
         .as_str()
         .unwrap()
         .to_string();
-    let response_body = v2_message_body(&pool, &response_message_id).await;
+    let response_body = message_body(&pool, &response_message_id).await;
     let response = decode_test_cloud_group_envelope(&response_body);
     assert_eq!(response["message"]["senderAccountId"], target.account_id);
     assert_eq!(response["message"]["senderDisplayName"], "Target's Kordi");
@@ -322,7 +322,7 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
             "agentMentionDepth": 1
         }
     }));
-    insert_v2_test_message(&pool, &source.account_id, conversation_id, &invalid_body).await;
+    insert_test_message(&pool, &source.account_id, conversation_id, &invalid_body).await;
     let invalid_claim = router
         .clone()
         .oneshot(post_json_with_token(

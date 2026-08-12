@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { ChatSyncV2Conversation, CloudAccount } from '../src/features/cloud/authClient';
+import type { ChatSyncConversation, CloudAccount } from '../src/features/cloud/authClient';
 import { cloudSelfAgentOperationClientMessageId, planCloudSelfAgentSessionReconciliation, planCloudSelfAgentSync, seedCloudSelfAgentForwardSyncLedger } from '../src/features/cloud/useCloudCollaborationState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -21,7 +21,7 @@ function aiConversation(
     personalTitle?: string | null;
     sharedTitle?: string | null;
   } = {},
-): ChatSyncV2Conversation {
+): ChatSyncConversation {
   const id = `conversation:${sessionId}`;
   return {
     id,
@@ -51,7 +51,7 @@ function aiConversation(
     },
   };
 }
-test('agent-session reconciliation creates absent sessions and repairs empty V2 histories', () => {
+test('agent-session reconciliation creates absent sessions and repairs empty canonical histories', () => {
   const state = {
     sessions: [
       { id: 'session:agent:missing', kind: 'self-agent', title: 'Recovered research', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 10 },
@@ -126,7 +126,7 @@ test('agent-session reconciliation resumes an interrupted recent history repair'
   );
 });
 
-test('missing V2 agent-session recovery overrides legacy cutoffs and cloud-source skips safely', () => {
+test('missing canonical agent-session recovery overrides legacy cutoffs and cloud-source skips safely', () => {
   const sessionId = 'session:agent:legacy-cloud-only';
   const state = {
     sessions: [

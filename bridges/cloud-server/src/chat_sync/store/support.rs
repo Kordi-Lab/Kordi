@@ -71,8 +71,14 @@ pub(super) async fn advisory_session_lock(
     transaction: &mut Transaction<'_, Postgres>,
     client_session_id: &str,
 ) -> Result<(), StoreError> {
+    // Acquire the previously shipped namespace first so a rolling deployment
+    // remains serialized with an older server process.
     query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(format!("chat-session-v2:{client_session_id}"))
+        .execute(&mut **transaction)
+        .await?;
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("chat-session:{client_session_id}"))
         .execute(&mut **transaction)
         .await?;
     Ok(())
@@ -271,7 +277,7 @@ pub(super) async fn wake_dispatcher(
     Ok(())
 }
 
-/// Append a non-timeline domain event to each recipient's durable v2 stream.
+/// Append a non-timeline domain event to each recipient's durable sync stream.
 /// Recipients are de-duplicated and sorted before their sync-head rows are
 /// locked, preserving the same deterministic lock order as message fanout.
 async fn append_user_sync_events(
@@ -305,7 +311,7 @@ async fn append_user_sync_events(
     Ok(())
 }
 
-/// Publish an ancillary domain snapshot through chat sync v2. Callers whose
+/// Publish an ancillary domain snapshot through canonical chat sync. Callers whose
 /// canonical row is written in the same operation should prefer
 /// `append_user_sync_events` inside their existing transaction.
 pub async fn publish_user_sync_events(

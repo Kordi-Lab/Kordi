@@ -59,7 +59,7 @@ const message: CloudMessage = {
   direction: 'incoming',
 };
 
-test('cloud startup renders the durable v2 cache before catch-up and settles after history backfill', () => {
+test('cloud startup renders the durable chat cache before catch-up and settles after history backfill', () => {
   const source = cloudMessageSyncSource();
 
   assert.match(source, /if \(!account \|\| !contactsSettled \|\| !cloudUnreadContextKey\) return;/);
@@ -69,12 +69,12 @@ test('cloud startup renders the durable v2 cache before catch-up and settles aft
   );
   assert.match(
     source,
-    /request\.mode === 'bootstrap'[\s\S]*hydrateV2LocalState\(generation\)[\s\S]*syncDiffOnceForGeneration\(generation, request\.mode === 'full'\)[\s\S]*hydrateMissingV2History\(generation\)[\s\S]*markUnreadReadiness\('ready'/,
+    /request\.mode === 'bootstrap'[\s\S]*hydrateChatLocalState\(generation\)[\s\S]*syncDiffOnceForGeneration\(generation, request\.mode === 'full'\)[\s\S]*hydrateMissingChatHistory\(generation\)[\s\S]*markUnreadReadiness\('ready'/,
   );
   assert.doesNotMatch(
     source,
     /client\.listMessageSnapshot|refreshMessagesOnce/,
-    'v2 startup must not depend on the one-conversation-per-peer snapshot path',
+    'chat startup must not depend on the one-conversation-per-peer snapshot path',
   );
   assert.match(
     source,
@@ -89,12 +89,12 @@ test('cloud startup renders the durable v2 cache before catch-up and settles aft
   assert.match(
     source,
     /if \(result\.fallbackRequired\) \{[\s\S]*cursorOverride = '0';[\s\S]*continue;/,
-    'an unusable cursor must recover through v2 bootstrap',
+    'an unusable cursor must recover through chat bootstrap',
   );
   assert.doesNotMatch(
     source,
     /fallbackRequired[\s\S]{0,800}listMessageSnapshot/,
-    'v2 cursor recovery must never fall back to peer snapshots',
+    'chat cursor recovery must never fall back to peer snapshots',
   );
 });
 
@@ -119,10 +119,10 @@ test('normal Cloud events request diff sync instead of full snapshots', () => {
   );
 });
 
-test('v2 cache hydration keeps attachments metadata-only', () => {
+test('chat cache hydration keeps attachments metadata-only', () => {
   const source = cloudMessageSyncSource();
-  const start = source.indexOf('const hydrateV2LocalState');
-  const end = source.indexOf('const hydrateMissingV2History', start);
+  const start = source.indexOf('const hydrateChatLocalState');
+  const end = source.indexOf('const hydrateMissingChatHistory', start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const bootstrap = source.slice(start, end);

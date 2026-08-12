@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://coordinar.io/schemas/chat-sync-v2/message.schema.json",
+  "$id": "https://kordi.ai/schemas/chat-sync/message.schema.json",
   "title": "Kordi canonical message snapshot",
   "type": "object",
   "additionalProperties": true,

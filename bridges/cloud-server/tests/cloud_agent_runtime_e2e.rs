@@ -428,9 +428,9 @@ async fn lease_claimed_run_for_export(
     run_id
 }
 
-#[path = "cloud_agent_runtime_e2e/v2_chat.rs"]
-mod v2_chat;
-use v2_chat::*;
+#[path = "cloud_agent_runtime_e2e/chat.rs"]
+mod chat;
+use chat::*;
 
 #[path = "cloud_agent_runtime_e2e/artifacts.rs"]
 mod artifacts;

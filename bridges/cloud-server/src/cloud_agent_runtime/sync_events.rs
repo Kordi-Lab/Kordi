@@ -125,9 +125,8 @@ async fn ensure_response_conversation(
     Ok(())
 }
 
-/// Publish hosted-agent terminal output into the same durable v2 stream used
-/// by human messages. The retired v1 mailbox is intentionally not written:
-/// clients cannot consume that stream after the v2 cutover.
+/// Publish hosted-agent terminal output into the same durable stream used by
+/// human messages. Canonical message state is written only once.
 pub(super) async fn append_cloud_agent_response_sync_event(
     pool: &PgPool,
     event: CloudAgentResponseSyncEvent<'_>,
@@ -147,8 +146,8 @@ pub(super) async fn append_cloud_agent_response_sync_event(
     .fetch_optional(pool)
     .await?;
     let Some((conversation_id,)) = conversation else {
-        // A run created before the v2 conversation existed has no safe
-        // canonical destination. Do not resurrect the retired v1 stream.
+        // A run created before its canonical conversation existed has no safe
+        // destination.
         return Ok(None);
     };
     let reply_to_message_id = if let Some(request_id) = canonical_response_request_id(event.body) {

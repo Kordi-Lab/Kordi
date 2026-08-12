@@ -23,7 +23,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-function v2Conversation(overrides: Record<string, unknown> = {}) {
+function chatConversation(overrides: Record<string, unknown> = {}) {
   return {
     id: '019cb111-8ecc-7181-8266-8986d950169b',
     kind: 'direct',
@@ -43,10 +43,10 @@ function v2Conversation(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('sendMessage uses v2 conversation identity and canonical idempotent message writes', async () => {
+test('sendMessage uses canonical conversation identity and canonical idempotent message writes', async () => {
   const { calls, fetchImpl } = recordingFetch((call) => {
     if (call.url.endsWith('/v2/chat/conversations')) {
-      return jsonResponse(201, { conversation: v2Conversation() });
+      return jsonResponse(201, { conversation: chatConversation() });
     }
     return jsonResponse(201, {
       message: {
@@ -104,13 +104,13 @@ test('sendMessage uses v2 conversation identity and canonical idempotent message
   assert.equal(sent.attachments?.[0]?.attachmentId, 'att_1');
 });
 
-test('markMessagesRead advances the monotonic v2 conversation cursor', async () => {
+test('markMessagesRead advances the monotonic canonical conversation cursor', async () => {
   const { calls, fetchImpl } = recordingFetch((call) => {
     if (call.url.endsWith('/v1/cloud/auth/me')) {
       return jsonResponse(200, { accountId: 'acct_me', displayName: 'Me', primaryEmail: null, avatarUrl: null, passwordSet: true });
     }
     if (call.url.endsWith('/v2/chat/conversations')) {
-      return jsonResponse(200, { conversation: v2Conversation({ latest_message_sequence: 7 }) });
+      return jsonResponse(200, { conversation: chatConversation({ latest_message_sequence: 7 }) });
     }
     return jsonResponse(200, { cursor: { conversation_id: '019cb111-8ecc-7181-8266-8986d950169b', account_id: 'acct_me', last_delivered_sequence: 7, last_read_sequence: 7 } });
   });
@@ -128,8 +128,8 @@ test('markMessagesRead advances the monotonic v2 conversation cursor', async () 
   assert.equal(JSON.parse(calls[2].init?.body as string).sequence, 7);
 });
 
-test('markSessionMessagesRead resolves a session from v2 bootstrap and advances read state', async () => {
-  const group = v2Conversation({
+test('markSessionMessagesRead resolves a session from chat bootstrap and advances read state', async () => {
+  const group = chatConversation({
     id: '019cb111-8ecc-7181-8266-8986d9501700',
     kind: 'group',
     legacy_session_id: 'session:group:one',
@@ -150,8 +150,8 @@ test('markSessionMessagesRead resolves a session from v2 bootstrap and advances 
   assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
 });
 
-test('session title edits use per-user v2 preferences so every device converges', async () => {
-  const initial = v2Conversation();
+test('session title edits use per-user canonical preferences so every device converges', async () => {
+  const initial = chatConversation();
   const { calls, fetchImpl } = recordingFetch((call) => call.url.endsWith('/sync/bootstrap')
     ? jsonResponse(200, {
         protocol_version: 2,
@@ -191,8 +191,8 @@ test('session title edits use per-user v2 preferences so every device converges'
 });
 
 test('session title edits recover from a concurrent-device preference version', async () => {
-  const initial = v2Conversation();
-  const refreshed = v2Conversation({
+  const initial = chatConversation();
+  const refreshed = chatConversation({
     preferences: { ...initial.preferences, personal_title: 'Other device title', version: 2 },
   });
   let bootstrapCount = 0;

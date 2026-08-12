@@ -520,7 +520,7 @@ pub async fn download_url(
 /// `POST /v1/cloud/attachments/:attachment_id/preview`
 ///
 /// Stores a client-generated compressed preview on the canonical attachment.
-/// The caller must be the attachment owner or an active member of a linked v2
+/// The caller must be the attachment owner or an active member of a linked
 /// conversation.
 pub async fn update_preview(
     State(state): State<Arc<ServerState>>,

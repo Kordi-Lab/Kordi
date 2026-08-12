@@ -1,28 +1,28 @@
 import type { CloudMessage, CloudSessionTitle, SendCloudMessageOptions, UpdateCloudSessionTitleInput } from './authClient';
 import {
-  cloudMessageFromChatSyncV2,
+  cloudMessageFromChatSync,
   cloudOperationUuid,
   directSessionId,
   groupMemberAccountIdsFromEnvelope,
-  inferV2ConversationKind,
-  v2TextContent,
-} from './chatSyncV2Mapping';
-import { ChatSyncV2State } from './chatSyncV2State';
-import type { ChatSyncV2Conversation, ChatSyncV2Message, ChatSyncV2Preferences } from './chatSyncV2Types';
-import { completeChatSyncV2Outbox, dueChatSyncV2Outbox, enqueueChatSyncV2Outbox, failChatSyncV2Outbox } from '@/lib/desktopChatSyncV2';
+  inferConversationKind,
+  chatTextContent,
+} from './chatSyncMapping';
+import { ChatSyncState } from './chatSyncState';
+import type { ChatSyncConversation, ChatSyncMessage, ChatSyncPreferences } from './chatSyncTypes';
+import { completeChatSyncOutbox, dueChatSyncOutbox, enqueueChatSyncOutbox, failChatSyncOutbox } from '@/lib/desktopChatSync';
 
-export class ChatSyncV2ConversationClient {
-  constructor(private readonly state: ChatSyncV2State) {}
+export class ChatSyncConversationClient {
+  constructor(private readonly state: ChatSyncState) {}
 
-  async ensureChatV2Conversation(token: string, input: {
+  async ensureChatConversation(token: string, input: {
     peerAccountId: string;
     sessionId?: string | null;
-    kind?: ChatSyncV2Conversation['kind'];
+    kind?: ChatSyncConversation['kind'];
     memberAccountIds?: string[];
     sharedTitle?: string | null;
     accountId?: string | null;
     replaceMembers?: boolean;
-  }): Promise<ChatSyncV2Conversation> {
+  }): Promise<ChatSyncConversation> {
     const accountId = input.accountId?.trim() || this.state.activeAccountId?.trim() || '';
     const peerAccountId = input.peerAccountId.trim();
     const fallbackSessionId = accountId && peerAccountId
@@ -32,7 +32,7 @@ export class ChatSyncV2ConversationClient {
     if (!sessionId) {
       throw new Error('A stable session id is required for reliable chat delivery.');
     }
-    const kind = input.kind ?? inferV2ConversationKind(accountId, peerAccountId, sessionId);
+    const kind = input.kind ?? inferConversationKind(accountId, peerAccountId, sessionId);
     const memberAccountIds = [...new Set(
       (input.memberAccountIds ?? [peerAccountId]).map((value) => value.trim()).filter(Boolean),
     )];
@@ -47,7 +47,7 @@ export class ChatSyncV2ConversationClient {
         ? [...activeMembers].filter((member) => member !== accountId && !memberAccountIds.includes(member))
         : [];
       if (missing.length === 0 && removed.length === 0) return cached;
-      const updated = await this.state.send<{ conversation: ChatSyncV2Conversation }>(
+      const updated = await this.state.send<{ conversation: ChatSyncConversation }>(
         `/v2/chat/conversations/${encodeURIComponent(cached.id)}/members`,
         {
           method: 'PUT',
@@ -66,14 +66,14 @@ export class ChatSyncV2ConversationClient {
       this.state.rememberConversation(updated.conversation);
       return updated.conversation;
     }
-    const response = await this.state.send<{ conversation: ChatSyncV2Conversation }>(
+    const response = await this.state.send<{ conversation: ChatSyncConversation }>(
       '/v2/chat/conversations',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({
           client_operation_id: cloudOperationUuid([
-            'conversation:v2',
+            'conversation:chat',
             sessionId,
             kind,
             [...memberAccountIds].sort().join(','),
@@ -137,7 +137,7 @@ export class ChatSyncV2ConversationClient {
         ?? peerAccountId.trim()
       : peerAccountId.trim();
     if (accountId) {
-      await enqueueChatSyncV2Outbox(accountId, clientMessageId, {
+      await enqueueChatSyncOutbox(accountId, clientMessageId, {
         peerAccountId: durablePeerAccountId,
         body,
         options: durableOptions,
@@ -153,7 +153,7 @@ export class ChatSyncV2ConversationClient {
         accountId,
         replaceMembers: envelopeMemberAccountIds !== null,
       });
-      const response = await this.state.send<{ message: ChatSyncV2Message }>(
+      const response = await this.state.send<{ message: ChatSyncMessage }>(
         `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/messages`,
         {
           method: 'POST',
@@ -161,7 +161,7 @@ export class ChatSyncV2ConversationClient {
           body: JSON.stringify({
             client_message_id: clientMessageId,
             kind: messageKind,
-            content: v2TextContent(
+            content: chatTextContent(
               body,
               attachments,
               canonicalHistory,
@@ -183,8 +183,8 @@ export class ChatSyncV2ConversationClient {
         ),
       };
       this.state.rememberConversation(advancedConversation);
-      if (accountId) await completeChatSyncV2Outbox(accountId, clientMessageId);
-      return cloudMessageFromChatSyncV2(
+      if (accountId) await completeChatSyncOutbox(accountId, clientMessageId);
+      return cloudMessageFromChatSync(
         response.message,
         advancedConversation,
         accountId || conversation.preferences.account_id,
@@ -197,7 +197,7 @@ export class ChatSyncV2ConversationClient {
           || status === 401
           || status === 429
           || status >= 500;
-        await failChatSyncV2Outbox(
+        await failChatSyncOutbox(
           accountId,
           clientMessageId,
           error instanceof Error ? error.message : 'Reliable chat send failed.',
@@ -208,14 +208,14 @@ export class ChatSyncV2ConversationClient {
     }
   }
 
-  async drainChatV2Outbox(token: string, accountId: string): Promise<CloudMessage[]> {
+  async drainChatOutbox(token: string, accountId: string): Promise<CloudMessage[]> {
     this.state.activeAccountId = accountId.trim() || this.state.activeAccountId;
-    const pending = await dueChatSyncV2Outbox(accountId);
+    const pending = await dueChatSyncOutbox(accountId);
     const delivered: CloudMessage[] = [];
     for (const operation of pending) {
       const payload = operation.payload;
       if (!payload?.peerAccountId || typeof payload.body !== 'string') {
-        await failChatSyncV2Outbox(
+        await failChatSyncOutbox(
           accountId,
           operation.operationId,
           'Stored reliable chat operation is invalid.',
@@ -250,7 +250,7 @@ export class ChatSyncV2ConversationClient {
       sessionId: directSessionId(accountId, peerAccountId),
       kind: accountId === peerAccountId ? 'ai' : 'direct',
     });
-    await this.advanceChatV2Cursor(token, conversation, 'read');
+    await this.advanceChatCursor(token, conversation, 'read');
   }
 
   async markSessionMessagesRead(token: string, sessionId: string): Promise<void> {
@@ -260,12 +260,12 @@ export class ChatSyncV2ConversationClient {
       conversation = this.state.conversationBySessionId.get(sessionId.trim());
     }
     if (!conversation) throw new Error('Reliable chat conversation is unavailable.');
-    await this.advanceChatV2Cursor(token, conversation, 'read');
+    await this.advanceChatCursor(token, conversation, 'read');
   }
 
-  private async advanceChatV2Cursor(
+  private async advanceChatCursor(
     token: string,
-    conversation: ChatSyncV2Conversation,
+    conversation: ChatSyncConversation,
     kind: 'delivered' | 'read',
     sequence = conversation.latest_message_sequence,
   ): Promise<void> {
@@ -284,14 +284,14 @@ export class ChatSyncV2ConversationClient {
     );
   }
 
-  async acknowledgeChatV2Delivery(
+  async acknowledgeChatDelivery(
     token: string,
     conversationId: string,
     sequence: number,
   ): Promise<void> {
     const conversation = this.state.conversationById.get(conversationId);
     if (!conversation || sequence <= 0) return;
-    await this.advanceChatV2Cursor(token, conversation, 'delivered', sequence);
+    await this.advanceChatCursor(token, conversation, 'delivered', sequence);
   }
 
   async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> {
@@ -303,8 +303,8 @@ export class ChatSyncV2ConversationClient {
     if (!conversation) throw new Error('Reliable chat conversation is unavailable.');
     const desiredTitle = input.title.trim() || null;
     const resultFrom = (
-      target: ChatSyncV2Conversation,
-      preferences: ChatSyncV2Preferences,
+      target: ChatSyncConversation,
+      preferences: ChatSyncPreferences,
     ): CloudSessionTitle => ({
       sessionId,
       title: preferences.personal_title ?? target.shared_title ?? input.title,
@@ -318,7 +318,7 @@ export class ChatSyncV2ConversationClient {
     });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const response = await this.state.send<{ preferences: ChatSyncV2Preferences }>(
+        const response = await this.state.send<{ preferences: ChatSyncPreferences }>(
           `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/preferences`,
           {
             method: 'PUT',

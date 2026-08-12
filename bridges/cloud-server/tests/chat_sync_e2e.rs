@@ -20,7 +20,7 @@ async fn try_pool() -> Option<PgPool> {
     match init_pool(&url).await {
         Ok(pool) => Some(pool),
         Err(error) => {
-            eprintln!("[chat_sync_v2_e2e] init_pool failed, skipping: {error}");
+            eprintln!("[chat_sync_e2e] init_pool failed, skipping: {error}");
             None
         }
     }
@@ -103,7 +103,7 @@ async fn authoritative_group_membership_removal_stops_future_delivery() {
     );
 }
 async fn account(pool: &PgPool, label: &str) -> String {
-    let account_id = format!("chat-v2-{label}-{}", Uuid::new_v4().simple());
+    let account_id = format!("chat-{label}-{}", Uuid::new_v4().simple());
     let now = chrono::Utc::now().to_rfc3339();
     query(
         "INSERT INTO cloud_accounts(account_id, display_name, avatar_url, created_at, updated_at) \
@@ -147,7 +147,7 @@ async fn sync_head(pool: &PgPool, account_id: &str) -> (i64, i64) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
     let Some(pool) = try_pool().await else {
-        eprintln!("DATABASE_URL not set — skipping chat sync v2 e2e test");
+        eprintln!("DATABASE_URL not set — skipping chat sync e2e test");
         return;
     };
     let owner = account(&pool, "owner").await;

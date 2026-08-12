@@ -1,22 +1,22 @@
 import type { CloudSyncEvent, CloudSyncResponse } from './authClient';
 import { normalizeCloudMessageSnapshot } from './cloudMessageSnapshot';
-import { chatSyncV2SessionTitle, cloudMessageFromChatSyncV2, directSessionId, v2ConversationPeer } from './chatSyncV2Mapping';
-import { ChatSyncV2State } from './chatSyncV2State';
-import type { ChatSyncV2BootstrapResponse, ChatSyncV2Conversation, ChatSyncV2Event, ChatSyncV2Message, ChatSyncV2Preferences, ChatSyncV2SyncResponse } from './chatSyncV2Types';
+import { chatSyncSessionTitle, cloudMessageFromChatSync, directSessionId, conversationPeer } from './chatSyncMapping';
+import { ChatSyncState } from './chatSyncState';
+import type { ChatSyncBootstrapResponse, ChatSyncConversation, ChatSyncEvent, ChatSyncMessage, ChatSyncPreferences, ChatSyncSyncResponse } from './chatSyncTypes';
 
-export class ChatSyncV2SyncClient {
-  constructor(private readonly state: ChatSyncV2State) {}
+export class ChatSyncSyncClient {
+  constructor(private readonly state: ChatSyncState) {}
 
   async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> {
     const normalizedCursor = cursor.trim();
     if (!normalizedCursor || normalizedCursor === '0') {
       const bootstrap = await this.state.bootstrap(token);
-      const events = this.chatV2BootstrapEvents(bootstrap);
+      const events = this.chatBootstrapEvents(bootstrap);
       return {
         cursor: bootstrap.next_cursor,
         hasMore: false,
         events,
-        v2: {
+        chat: {
           bootstrap: true,
           protocolVersion: 2,
           nextCursor: bootstrap.next_cursor,
@@ -29,9 +29,9 @@ export class ChatSyncV2SyncClient {
     }
     const params = new URLSearchParams({ cursor: normalizedCursor });
     if (limit !== undefined) params.set('limit', String(limit));
-    let response: ChatSyncV2SyncResponse;
+    let response: ChatSyncSyncResponse;
     try {
-      response = await this.state.send<ChatSyncV2SyncResponse>(
+      response = await this.state.send<ChatSyncSyncResponse>(
         `/v2/chat/sync?${params.toString()}`,
         {
           method: 'GET',
@@ -45,18 +45,18 @@ export class ChatSyncV2SyncClient {
       }
       throw error;
     }
-    const events = response.events.flatMap((event) => this.cloudEventsFromChatV2Event(event));
+    const events = response.events.flatMap((event) => this.cloudEventsFromChatEvent(event));
     const conversations = response.events.flatMap((event) => {
       const conversation = event.payload.conversation;
       return conversation && typeof conversation === 'object' && !Array.isArray(conversation)
-        ? [conversation as ChatSyncV2Conversation]
+        ? [conversation as ChatSyncConversation]
         : [];
     });
     conversations.forEach((conversation) => this.state.rememberConversation(conversation));
     const messages = response.events.flatMap((event) => {
       const message = event.payload.message;
       return message && typeof message === 'object' && !Array.isArray(message)
-        ? [message as ChatSyncV2Message]
+        ? [message as ChatSyncMessage]
         : [];
     });
     messages.forEach((message) => this.state.messageById.set(message.id, message));
@@ -64,7 +64,7 @@ export class ChatSyncV2SyncClient {
       cursor: response.next_cursor,
       hasMore: response.has_more,
       events,
-      v2: {
+      chat: {
         bootstrap: false,
         protocolVersion: 2,
         nextCursor: response.next_cursor,
@@ -95,7 +95,7 @@ export class ChatSyncV2SyncClient {
     if (limit !== undefined) params.set('limit', String(Math.min(limit, 200)));
     const suffix = params.size > 0 ? `?${params.toString()}` : '';
     const response = await this.state.send<{
-      messages: ChatSyncV2Message[];
+      messages: ChatSyncMessage[];
       next_before_sequence: number | null;
       has_more: boolean;
     }>(
@@ -107,7 +107,7 @@ export class ChatSyncV2SyncClient {
       'Could not load reliable message history.',
     );
     const messages = response.messages
-      .map((message) => cloudMessageFromChatSyncV2(message, conversation, accountId))
+      .map((message) => cloudMessageFromChatSync(message, conversation, accountId))
       .sort((left, right) => (
         Number(left.conversationSequence ?? 0) - Number(right.conversationSequence ?? 0)
         || left.messageId.localeCompare(right.messageId)
@@ -115,17 +115,17 @@ export class ChatSyncV2SyncClient {
     return normalizeCloudMessageSnapshot({
       messages,
       peerReadAt: null,
-      v2: { conversation, messages: response.messages },
+      chat: { conversation, messages: response.messages },
     });
   }
 
-  async listChatV2ConversationHistoryPage(
+  async listChatConversationHistoryPage(
     token: string,
     conversationId: string,
     beforeSequence?: number,
     limit = 200,
   ): Promise<{
-    messages: ChatSyncV2Message[];
+    messages: ChatSyncMessage[];
     nextBeforeSequence: number | null;
     hasMore: boolean;
   }> {
@@ -137,7 +137,7 @@ export class ChatSyncV2SyncClient {
       params.set('before_sequence', String(beforeSequence));
     }
     const response = await this.state.send<{
-      messages: ChatSyncV2Message[];
+      messages: ChatSyncMessage[];
       next_before_sequence: number | null;
       has_more: boolean;
     }>(
@@ -156,8 +156,8 @@ export class ChatSyncV2SyncClient {
     };
   }
 
-  async bootstrapChatSyncV2(token: string): Promise<ChatSyncV2BootstrapResponse> {
-    const response = await this.state.send<ChatSyncV2BootstrapResponse>(
+  async bootstrapChatSync(token: string): Promise<ChatSyncBootstrapResponse> {
+    const response = await this.state.send<ChatSyncBootstrapResponse>(
       '/v2/chat/sync/bootstrap',
       { method: 'GET', headers: { authorization: `Bearer ${token}` } },
       'Could not bootstrap reliable chat state.',
@@ -169,7 +169,7 @@ export class ChatSyncV2SyncClient {
     return response;
   }
 
-  async issueChatSyncV2RealtimeTicket(token: string): Promise<{
+  async issueChatSyncRealtimeTicket(token: string): Promise<{
     ticket: string;
     device_id: string;
     expires_at: string;
@@ -181,7 +181,7 @@ export class ChatSyncV2SyncClient {
     );
   }
 
-  private chatV2BootstrapEvents(bootstrap: ChatSyncV2BootstrapResponse): CloudSyncEvent[] {
+  private chatBootstrapEvents(bootstrap: ChatSyncBootstrapResponse): CloudSyncEvent[] {
     const conversationsById = new Map(bootstrap.conversations.map((value) => [value.id, value]));
     const conversationEvents = bootstrap.conversations.map((conversation) => ({
       eventId: `bootstrap:conversation:${conversation.id}:${conversation.version}`,
@@ -191,7 +191,7 @@ export class ChatSyncV2SyncClient {
       payload: {
         sessionTitle: {
           sessionId: conversation.legacy_session_id ?? conversation.id,
-          title: chatSyncV2SessionTitle(conversation),
+          title: chatSyncSessionTitle(conversation),
           titleSource: conversation.preferences.personal_title ? 'manual' : 'external',
           titleRevision: conversation.version,
           titlePolicyVersion: 1,
@@ -209,23 +209,23 @@ export class ChatSyncV2SyncClient {
       return [{
         eventId: `bootstrap:message:${message.id}:${message.version}`,
         eventType: 'message.upsert',
-        peerAccountId: v2ConversationPeer(
+        peerAccountId: conversationPeer(
           conversation,
           conversation.preferences.account_id,
           message.sender_account_id,
         ),
         messageId: message.id,
-        payload: { message: cloudMessageFromChatSyncV2(message, conversation) },
+        payload: { message: cloudMessageFromChatSync(message, conversation) },
         occurredAt: message.created_at,
       } satisfies CloudSyncEvent];
     });
     return [...conversationEvents, ...messageEvents];
   }
 
-  private cloudEventsFromChatV2Event(event: ChatSyncV2Event): CloudSyncEvent[] {
+  private cloudEventsFromChatEvent(event: ChatSyncEvent): CloudSyncEvent[] {
     const conversationValue = event.payload.conversation;
     const conversation = conversationValue && typeof conversationValue === 'object' && !Array.isArray(conversationValue)
-      ? conversationValue as ChatSyncV2Conversation
+      ? conversationValue as ChatSyncConversation
       : event.conversation_id
         ? this.state.conversationById.get(event.conversation_id) ?? null
         : null;
@@ -245,17 +245,17 @@ export class ChatSyncV2SyncClient {
     ].includes(event.type) && conversation) {
       const messageValue = event.payload.message;
       if (!messageValue || typeof messageValue !== 'object' || Array.isArray(messageValue)) return [];
-      const message = messageValue as ChatSyncV2Message;
+      const message = messageValue as ChatSyncMessage;
       return [{
         ...base,
         eventType: 'message.upsert',
-        peerAccountId: v2ConversationPeer(
+        peerAccountId: conversationPeer(
           conversation,
           conversation.preferences.account_id,
           message.sender_account_id,
         ),
         messageId: message.id,
-        payload: { message: cloudMessageFromChatSyncV2(message, conversation) },
+        payload: { message: cloudMessageFromChatSync(message, conversation) },
       }];
     }
     if ((event.type === 'conversation.created'
@@ -267,7 +267,7 @@ export class ChatSyncV2SyncClient {
         payload: {
           sessionTitle: {
             sessionId: conversation.legacy_session_id ?? conversation.id,
-            title: chatSyncV2SessionTitle(conversation),
+            title: chatSyncSessionTitle(conversation),
             titleSource: conversation.preferences.personal_title ? 'manual' : 'external',
             titleRevision: conversation.version,
             titlePolicyVersion: 1,
@@ -312,7 +312,7 @@ export class ChatSyncV2SyncClient {
     if (event.type === 'conversation.preferences.updated' && conversation) {
       const preferences = event.payload.preferences;
       if (preferences && typeof preferences === 'object' && !Array.isArray(preferences)) {
-        const updated = { ...conversation, preferences: preferences as ChatSyncV2Preferences };
+        const updated = { ...conversation, preferences: preferences as ChatSyncPreferences };
         this.state.rememberConversation(updated);
         return [{
           ...base,
@@ -320,7 +320,7 @@ export class ChatSyncV2SyncClient {
           payload: {
             sessionTitle: {
               sessionId: updated.legacy_session_id ?? updated.id,
-              title: chatSyncV2SessionTitle(updated),
+              title: chatSyncSessionTitle(updated),
               titleSource: updated.preferences.personal_title ? 'manual' : 'external',
               titleRevision: updated.preferences.version,
               titlePolicyVersion: 1,
@@ -358,13 +358,13 @@ export class ChatSyncV2SyncClient {
             ...base,
             eventId: `${event.event_id}:${message.id}`,
             eventType: 'message.upsert',
-            peerAccountId: v2ConversationPeer(
+            peerAccountId: conversationPeer(
               updated,
               updated.preferences.account_id,
               message.sender_account_id,
             ),
             messageId: message.id,
-            payload: { message: cloudMessageFromChatSyncV2(message, updated) },
+            payload: { message: cloudMessageFromChatSync(message, updated) },
           }));
       }
     }

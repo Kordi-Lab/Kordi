@@ -1,8 +1,7 @@
 //! Reliable multi-device chat protocol.
 //!
-//! Version 2 is the exclusive product chat transport. Historical v1 tables
-//! remain only as migration input; no v1 message or sync routes are mounted.
-//! Canonical state fans out through a durable, contiguous per-user stream.
+//! This is the canonical product chat transport. Canonical state fans out
+//! through a durable, contiguous per-user stream.
 
 pub mod cursor;
 pub mod models;

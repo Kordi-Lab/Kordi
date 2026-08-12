@@ -78,8 +78,7 @@ Required production server environment:
 ```bash
 KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
 KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io,kordi://oauth/callback
-KORDI_CHAT_SYNC_V2_ENABLED=true
-KORDI_CHAT_SYNC_CURSOR_SECRET=<from kordi-chat-sync-v2>
+KORDI_CHAT_SYNC_CURSOR_SECRET=<from kordi-chat-sync>
 KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...

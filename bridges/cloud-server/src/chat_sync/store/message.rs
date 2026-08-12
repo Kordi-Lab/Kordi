@@ -151,7 +151,7 @@ pub async fn send_message(
 /// Replace a trusted server-authored message snapshot without allocating a
 /// second timeline position. This is used for durable AI generation snapshots
 /// and artifact links; every replacement increments the entity version and is
-/// fanned out through the same per-user v2 stream as ordinary messages.
+/// fanned out through the same per-user stream as ordinary messages.
 pub async fn replace_message_snapshot(
     pool: &PgPool,
     sender_account_id: &str,

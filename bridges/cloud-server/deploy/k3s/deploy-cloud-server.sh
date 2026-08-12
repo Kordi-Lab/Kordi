@@ -105,6 +105,13 @@ kubectl -n kordi-cloud logs pod/release-store-check
 kubectl -n kordi-cloud delete pod/release-store-check --wait=true >/dev/null"
 
 echo "[deploy] applying manifest with image=${IMAGE}"
+"${GCLOUD_SSH[@]}" --command "set -e
+if ! kubectl -n kordi-cloud get secret kordi-chat-sync >/dev/null 2>&1; then
+    CURSOR_SECRET=\$(kubectl -n kordi-cloud get secret kordi-chat-sync-v2 -o jsonpath='{.data.KORDI_CHAT_SYNC_CURSOR_SECRET}' 2>/dev/null || true)
+    if [ -n \"\$CURSOR_SECRET\" ]; then
+        printf '%s' \"\$CURSOR_SECRET\" | base64 --decode | kubectl -n kordi-cloud create secret generic kordi-chat-sync --from-file=KORDI_CHAT_SYNC_CURSOR_SECRET=/dev/stdin >/dev/null
+    fi
+fi"
 "${GCLOUD_SSH[@]}" --command "cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests && \
     sed 's|image: kordi-cloud-server:dev|image: ${IMAGE}|' cloud-server-deployment.yaml | kubectl apply -f -"
 

@@ -13,12 +13,12 @@ import {
   requestSingleFlightRun,
 } from '@/lib/singleFlight';
 import {
-  loadChatSyncV2LocalState,
-} from '@/lib/desktopChatSyncV2';
+  loadChatSyncLocalState,
+} from '@/lib/desktopChatSync';
 import { fetchCanonicalSessionMessages } from '@/lib/desktop';
 import type {
-  ChatSyncV2Conversation,
-  ChatSyncV2Message,
+  ChatSyncConversation,
+  ChatSyncMessage,
   CloudAccount,
   CloudAuthClient,
   CloudMessage,
@@ -27,14 +27,14 @@ import {
   loadCloudSelfAgentForwardBaseline,
   loadCloudSelfAgentForwardCutoff,
   loadCloudSelfAgentSyncLedger,
-  loadCloudSelfAgentV2RecoverySessionIds,
+  loadCloudSelfAgentRecoverySessionIds,
   cloudSelfAgentOperationClientMessageId,
   planCloudSelfAgentSessionReconciliation,
   planCloudSelfAgentSync,
   saveCloudSelfAgentForwardBaseline,
   saveCloudSelfAgentForwardCutoff,
   saveCloudSelfAgentSyncLedger,
-  saveCloudSelfAgentV2RecoverySessionIds,
+  saveCloudSelfAgentRecoverySessionIds,
   seedCloudSelfAgentForwardSyncLedger,
 } from './cloudSelfAgentForwardSync';
 import {
@@ -77,10 +77,10 @@ async function loadCanonicalRecoveryMessages(
 async function loadRemoteRecoveryMessages(
   client: CloudAuthClient,
   token: string,
-  conversations: readonly ChatSyncV2Conversation[],
+  conversations: readonly ChatSyncConversation[],
   sessionIds: ReadonlySet<string>,
   shouldContinue: () => boolean,
-): Promise<ChatSyncV2Message[]> {
+): Promise<ChatSyncMessage[]> {
   const conversationBySessionId = new Map(conversations.map((conversation) => [
     conversation.legacy_session_id ?? conversation.id,
     conversation,
@@ -90,12 +90,12 @@ async function loadRemoteRecoveryMessages(
     if (!conversation || conversation.latest_message_sequence === 0) {
       return [];
     }
-    const messages: ChatSyncV2Message[] = [];
+    const messages: ChatSyncMessage[] = [];
     let beforeSequence: number | undefined;
     let pageCount = 0;
     do {
       if (!shouldContinue()) return [];
-      const page = await client.listChatV2ConversationHistoryPage(
+      const page = await client.listChatConversationHistoryPage(
         token,
         conversation.id,
         beforeSequence,
@@ -222,17 +222,17 @@ export function useCloudSelfAgentForwardSync({
         const latestState =
           canonicalStateRef.current ?? canonicalState ?? null;
         if (!latestState) return;
-        const [session, localV2] = await Promise.all([
+        const [session, localChat] = await Promise.all([
           loadSession(),
-          loadChatSyncV2LocalState(account.accountId),
+          loadChatSyncLocalState(account.accountId),
         ]);
         if (!session?.token || cancelledRef.current) return;
 
         const pendingRecoverySessionIds =
-          loadCloudSelfAgentV2RecoverySessionIds(account.accountId);
+          loadCloudSelfAgentRecoverySessionIds(account.accountId);
         const reconciliation = planCloudSelfAgentSessionReconciliation(
           latestState,
-          localV2?.conversations ?? [],
+          localChat?.conversations ?? [],
           { pendingRecoverySessionIds },
         );
         for (const plan of reconciliation) {
@@ -244,7 +244,7 @@ export function useCloudSelfAgentForwardSync({
         // after conversation creation must resume the historical snapshot
         // upload instead of mistaking a partially-filled conversation for a
         // completed migration.
-        saveCloudSelfAgentV2RecoverySessionIds(
+        saveCloudSelfAgentRecoverySessionIds(
           account.accountId,
           pendingRecoverySessionIds,
         );
@@ -253,7 +253,7 @@ export function useCloudSelfAgentForwardSync({
         );
         const createdConversations = await Promise.all(
           conversationsToCreate.map((plan) => (
-            client.ensureChatV2Conversation(session.token, {
+            client.ensureChatConversation(session.token, {
               accountId: account.accountId,
               peerAccountId: account.accountId,
               sessionId: plan.sessionId,
@@ -276,7 +276,7 @@ export function useCloudSelfAgentForwardSync({
               client,
               session.token,
               [
-                ...(localV2?.conversations ?? []),
+                ...(localChat?.conversations ?? []),
                 ...createdConversations,
               ],
               recoverySessionIds,
@@ -285,7 +285,7 @@ export function useCloudSelfAgentForwardSync({
           ]);
         if (cancelledRef.current) return;
         const remoteMessages = [
-          ...(localV2?.messages ?? []),
+          ...(localChat?.messages ?? []),
           ...remoteRecoveryMessages,
         ];
         const remoteMessageIds = new Set(
@@ -423,7 +423,7 @@ export function useCloudSelfAgentForwardSync({
           reconciliation.length > 0
           || operations.length > 0
         ) await syncCloudCollaborationDiff();
-        saveCloudSelfAgentV2RecoverySessionIds(
+        saveCloudSelfAgentRecoverySessionIds(
           account.accountId,
           new Set(),
         );

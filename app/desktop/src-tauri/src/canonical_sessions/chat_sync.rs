@@ -1,4 +1,4 @@
-//! Atomic local projection for reliable chat protocol v2.
+//! Atomic local projection for the canonical reliable chat protocol.
 //!
 //! The renderer never stores a cursor separately from the rows it represents.
 //! Bootstrap replacement and every incremental event batch commit the opaque
@@ -13,7 +13,7 @@ use super::{now_ms, open_db};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSyncV2ApplyRequest {
+pub struct ChatSyncApplyRequest {
     pub account_id: String,
     pub bootstrap: bool,
     pub cursor: Option<String>,
@@ -28,7 +28,7 @@ pub struct ChatSyncV2ApplyRequest {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSyncV2LocalState {
+pub struct ChatSyncLocalState {
     pub account_id: String,
     pub cursor: Option<String>,
     pub last_stream_seq: i64,
@@ -38,7 +38,7 @@ pub struct ChatSyncV2LocalState {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSyncV2OutboxEnqueueRequest {
+pub struct ChatSyncOutboxEnqueueRequest {
     pub account_id: String,
     pub operation_id: String,
     pub payload: Value,
@@ -46,7 +46,7 @@ pub struct ChatSyncV2OutboxEnqueueRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSyncV2OutboxFailureRequest {
+pub struct ChatSyncOutboxFailureRequest {
     pub account_id: String,
     pub operation_id: String,
     pub error: String,
@@ -55,7 +55,7 @@ pub struct ChatSyncV2OutboxFailureRequest {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSyncV2PendingOperation {
+pub struct ChatSyncPendingOperation {
     pub account_id: String,
     pub operation_id: String,
     pub payload: Value,
@@ -72,20 +72,20 @@ use apply::*;
 use outbox::*;
 use projection::*;
 #[tauri::command]
-pub async fn desktop_chat_sync_v2_apply(
-    request: ChatSyncV2ApplyRequest,
-) -> Result<ChatSyncV2LocalState, String> {
+pub async fn desktop_chat_sync_apply(
+    request: ChatSyncApplyRequest,
+) -> Result<ChatSyncLocalState, String> {
     tauri::async_runtime::spawn_blocking(move || apply(request))
         .await
         .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn desktop_chat_sync_v2_load(account_id: String) -> Result<ChatSyncV2LocalState, String> {
+pub async fn desktop_chat_sync_load(account_id: String) -> Result<ChatSyncLocalState, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let account_id = account_id.trim().to_string();
         if account_id.is_empty() {
-            return Err("Chat sync v2 account id is required".to_string());
+            return Err("Chat sync account id is required".to_string());
         }
         let conn = open_db()?;
         load_state(&conn, &account_id)
@@ -95,8 +95,8 @@ pub async fn desktop_chat_sync_v2_load(account_id: String) -> Result<ChatSyncV2L
 }
 
 #[tauri::command]
-pub async fn desktop_chat_sync_v2_outbox_enqueue(
-    request: ChatSyncV2OutboxEnqueueRequest,
+pub async fn desktop_chat_sync_outbox_enqueue(
+    request: ChatSyncOutboxEnqueueRequest,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || enqueue_outbox(request))
         .await
@@ -104,16 +104,16 @@ pub async fn desktop_chat_sync_v2_outbox_enqueue(
 }
 
 #[tauri::command]
-pub async fn desktop_chat_sync_v2_outbox_due(
+pub async fn desktop_chat_sync_outbox_due(
     account_id: String,
-) -> Result<Vec<ChatSyncV2PendingOperation>, String> {
+) -> Result<Vec<ChatSyncPendingOperation>, String> {
     tauri::async_runtime::spawn_blocking(move || list_due_outbox(&account_id))
         .await
         .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn desktop_chat_sync_v2_outbox_complete(
+pub async fn desktop_chat_sync_outbox_complete(
     account_id: String,
     operation_id: String,
 ) -> Result<(), String> {
@@ -122,7 +122,7 @@ pub async fn desktop_chat_sync_v2_outbox_complete(
         let operation_id = clean_outbox_key(&operation_id, "operation id")?;
         let conn = open_db()?;
         conn.execute(
-            "DELETE FROM chat_sync_v2_pending_operations
+            "DELETE FROM chat_sync_pending_operations
              WHERE account_id = ?1 AND operation_id = ?2",
             params![account_id, operation_id],
         )
@@ -134,8 +134,8 @@ pub async fn desktop_chat_sync_v2_outbox_complete(
 }
 
 #[tauri::command]
-pub async fn desktop_chat_sync_v2_outbox_fail(
-    request: ChatSyncV2OutboxFailureRequest,
+pub async fn desktop_chat_sync_outbox_fail(
+    request: ChatSyncOutboxFailureRequest,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || record_outbox_failure(request))
         .await
@@ -146,21 +146,21 @@ pub async fn desktop_chat_sync_v2_outbox_fail(
 mod tests {
     use serde_json::json;
 
-    use super::{apply_event, apply_on_connection, ChatSyncV2ApplyRequest};
+    use super::{apply_event, apply_on_connection, ChatSyncApplyRequest};
 
     fn test_connection() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE chat_sync_v2_state (
+            "CREATE TABLE chat_sync_state (
                 account_id TEXT PRIMARY KEY, cursor TEXT NOT NULL,
                 last_stream_seq INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL
              );
-             CREATE TABLE chat_sync_v2_conversations (
+             CREATE TABLE chat_sync_conversations (
                 account_id TEXT, conversation_id TEXT, client_session_id TEXT,
                 version INTEGER, snapshot_json TEXT, updated_at_ms INTEGER,
                 PRIMARY KEY(account_id, conversation_id)
              );
-             CREATE TABLE chat_sync_v2_messages (
+             CREATE TABLE chat_sync_messages (
                 account_id TEXT, message_id TEXT, conversation_id TEXT,
                 conversation_sequence INTEGER, version INTEGER,
                 snapshot_json TEXT, updated_at_ms INTEGER,
@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn v2_ancillary_events_are_accepted_by_the_atomic_cursor_applier() {
+    fn ancillary_events_are_accepted_by_the_atomic_cursor_applier() {
         let mut conn = test_connection();
         let event_types = [
             "agent.definition.upserted",
@@ -221,7 +221,7 @@ mod tests {
             .collect();
         let state = apply_on_connection(
             &mut conn,
-            ChatSyncV2ApplyRequest {
+            ChatSyncApplyRequest {
                 account_id: "acct_test".to_string(),
                 bootstrap: false,
                 cursor: Some("cursor-10".to_string()),
@@ -246,7 +246,7 @@ mod tests {
         });
         apply_on_connection(
             &mut conn,
-            ChatSyncV2ApplyRequest {
+            ChatSyncApplyRequest {
                 account_id: "acct_test".to_string(),
                 bootstrap: true,
                 cursor: Some("cursor-0".to_string()),
@@ -265,7 +265,7 @@ mod tests {
         });
         let error = apply_on_connection(
             &mut conn,
-            ChatSyncV2ApplyRequest {
+            ChatSyncApplyRequest {
                 account_id: "acct_test".to_string(),
                 bootstrap: false,
                 cursor: Some("cursor-2".to_string()),
@@ -293,13 +293,13 @@ mod tests {
         .unwrap_err();
         assert!(error.contains("CLIENT_UPDATE_REQUIRED"));
         let cursor: (String, i64) = conn.query_row(
-            "SELECT cursor, last_stream_seq FROM chat_sync_v2_state WHERE account_id = 'acct_test'",
+            "SELECT cursor, last_stream_seq FROM chat_sync_state WHERE account_id = 'acct_test'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         ).unwrap();
         assert_eq!(cursor, ("cursor-0".to_string(), 0));
         let message_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM chat_sync_v2_messages", [], |row| {
+            .query_row("SELECT COUNT(*) FROM chat_sync_messages", [], |row| {
                 row.get(0)
             })
             .unwrap();

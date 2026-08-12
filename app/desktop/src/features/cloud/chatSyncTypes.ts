@@ -1,4 +1,4 @@
-export type ChatSyncV2Member = {
+export type ChatSyncMember = {
   account_id: string;
   display_name?: string | null;
   avatar_url?: string | null;
@@ -11,14 +11,14 @@ export type ChatSyncV2Member = {
   left_at: string | null;
 };
 
-export type ChatSyncV2Preferences = {
+export type ChatSyncPreferences = {
   conversation_id: string;
   account_id: string;
   personal_title: string | null;
   version: number;
 };
 
-export type ChatSyncV2Conversation = {
+export type ChatSyncConversation = {
   id: string;
   kind: 'direct' | 'group' | 'ai';
   shared_title: string | null;
@@ -30,11 +30,11 @@ export type ChatSyncV2Conversation = {
   latest_message_sequence: number;
   created_at: string;
   updated_at: string;
-  members: ChatSyncV2Member[];
-  preferences: ChatSyncV2Preferences;
+  members: ChatSyncMember[];
+  preferences: ChatSyncPreferences;
 };
 
-export type ChatSyncV2Message = {
+export type ChatSyncMessage = {
   id: string;
   client_message_id: string;
   conversation_id: string;
@@ -52,7 +52,7 @@ export type ChatSyncV2Message = {
   deleted_at: string | null;
 };
 
-export type ChatSyncV2Event = {
+export type ChatSyncEvent = {
   stream_seq: number;
   event_id: string;
   protocol_version: 2;
@@ -65,28 +65,28 @@ export type ChatSyncV2Event = {
   payload: Record<string, unknown>;
 };
 
-export type ChatSyncV2SyncResponse = {
+export type ChatSyncSyncResponse = {
   protocol_version: 2;
-  events: ChatSyncV2Event[];
+  events: ChatSyncEvent[];
   next_cursor: string;
   last_stream_seq: number;
   has_more: boolean;
   server_time: string;
 };
 
-export type ChatSyncV2BootstrapResponse = {
+export type ChatSyncBootstrapResponse = {
   protocol_version: 2;
-  conversations: ChatSyncV2Conversation[];
-  latest_messages: ChatSyncV2Message[];
+  conversations: ChatSyncConversation[];
+  latest_messages: ChatSyncMessage[];
   next_cursor: string;
   last_stream_seq: number;
   server_time: string;
 };
 
-export type ChatSyncV2ConversationInput = {
+export type ChatSyncConversationInput = {
   peerAccountId: string;
   sessionId?: string | null;
-  kind?: ChatSyncV2Conversation['kind'];
+  kind?: ChatSyncConversation['kind'];
   memberAccountIds?: string[];
   sharedTitle?: string | null;
   accountId?: string | null;

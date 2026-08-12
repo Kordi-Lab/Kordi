@@ -151,7 +151,7 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
     (status, Json(body)).into_response()
 }
 
-async fn publish_chat_v2_event(
+async fn publish_chat_event(
     pool: &PgPool,
     account_ids: &[String],
     conversation_account_id: &str,
@@ -491,7 +491,7 @@ async fn upsert_cloud_task_activity(
     };
     let recipients =
         cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
-    let _ = publish_chat_v2_event(
+    let _ = publish_chat_event(
         pool,
         &recipients,
         &session.account_id,
@@ -601,7 +601,7 @@ async fn upsert_cloud_artifact_activity(
     };
     let recipients =
         cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
-    let _ = publish_chat_v2_event(
+    let _ = publish_chat_event(
         pool,
         &recipients,
         &session.account_id,

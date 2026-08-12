@@ -1,4 +1,4 @@
-# Chat sync v2 error registry
+# Chat sync error registry
 
 | Code | Status | Client behavior |
 |---|---:|---|
@@ -8,7 +8,6 @@
 | `CHAT_FORBIDDEN` | 403 | Permanent failure unless membership changes. |
 | `REALTIME_ORIGIN_NOT_ALLOWED` | 403 | Do not connect from this browser origin; correct the server allowlist. |
 | `CHAT_ENTITY_NOT_FOUND` | 404 | Remove inaccessible cached state after sync confirms it. |
-| `CHAT_SYNC_V2_DISABLED` | 404 | Stop chat transport and surface an upgrade/configuration error; never fall back to v1. |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Permanent programming error; never replace the original result. |
 | `VERSION_CONFLICT` | 409 | Replace local state with the included current snapshot and let the user retry. |
 | `SYNC_CURSOR_EXPIRED` | 409 | Discard incremental state as required and run bootstrap. |

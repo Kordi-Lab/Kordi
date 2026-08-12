@@ -1,7 +1,7 @@
 //! Kordi cloud-native collaboration server.
 //!
 //! Owns cloud accounts, sessions, devices, contacts, and the
-//! canonical chat-sync v2 store. Independent from the local-first
+//! canonical chat-sync store. Independent from the local-first
 //! `bridges/cli` server: separate binary, separate database, separate
 //! deployment surface. Local-edition users never run this code.
 

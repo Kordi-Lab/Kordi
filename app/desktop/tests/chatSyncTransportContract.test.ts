@@ -31,6 +31,6 @@ test('desktop chat transport contains no retired v1 message or sync endpoints', 
     '/v2/chat/sync/bootstrap',
     '/v2/chat/realtime/ticket',
   ]) {
-    assert.equal(source.includes(required), true, `v2 endpoint missing: ${required}`);
+    assert.equal(source.includes(required), true, `chat endpoint missing: ${required}`);
   }
 });

@@ -86,7 +86,7 @@ function cloudEcho({
   };
 }
 
-test('delayed V2 echoes reconcile to the local row by client message id', () => {
+test('delayed canonical echoes reconcile to the local row by client message id', () => {
   const sessionId = 'local-self-session-delayed';
   const localMessageId = 'msg:ui:delayed-send';
   const echo = cloudEcho({

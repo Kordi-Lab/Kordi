@@ -3,16 +3,18 @@ import type {
   CanonicalSessionState,
 } from '@/kordi-app/types';
 import { isGenericSessionTitle } from '@/features/chat/sessionTitlePolicy';
-import type { ChatSyncV2Conversation } from './authClient';
-import { cloudSelfAgentOperationClientMessageId } from './cloudSelfAgentV2Identity';
+import type { ChatSyncConversation } from './authClient';
+import { cloudSelfAgentOperationClientMessageId } from './cloudSelfAgentIdentity';
 export {
   cloudSelfAgentOperationClientMessageId,
-  loadCloudSelfAgentV2RecoverySessionIds,
-  saveCloudSelfAgentV2RecoverySessionIds,
-} from './cloudSelfAgentV2Identity';
+  loadCloudSelfAgentRecoverySessionIds,
+  saveCloudSelfAgentRecoverySessionIds,
+} from './cloudSelfAgentIdentity';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
 
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX =
+  'kordi.cloud.selfAgentSync.chat:';
+const PREVIOUS_CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX =
   'kordi.cloud.selfAgentSync.v2:';
 const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX =
   'kordi.cloud.selfAgentForwardBaseline.v1:';
@@ -117,9 +119,14 @@ export function loadCloudSelfAgentSyncLedger(
 ): CloudSelfAgentSyncLedger {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = window.localStorage.getItem(
-      selfAgentSyncLedgerKey(accountId),
-    );
+    const key = selfAgentSyncLedgerKey(accountId);
+    const previousKey = `${PREVIOUS_CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`;
+    const raw = window.localStorage.getItem(key)
+      ?? window.localStorage.getItem(previousKey);
+    if (raw && window.localStorage.getItem(key) === null) {
+      window.localStorage.setItem(key, raw);
+      window.localStorage.removeItem(previousKey);
+    }
     const parsed = raw ? JSON.parse(raw) as unknown : null;
     if (
       !parsed
@@ -169,6 +176,9 @@ export function saveCloudSelfAgentSyncLedger(
     window.localStorage.setItem(
       selfAgentSyncLedgerKey(accountId),
       JSON.stringify(ledger),
+    );
+    window.localStorage.removeItem(
+      `${PREVIOUS_CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`,
     );
   } catch {
     // Best effort. A failed ledger write may cause a future duplicate sync,
@@ -252,25 +262,25 @@ function localSelfAgentSessionIds(
 
 function shouldSkipSelfAgentForwardSyncMessage(
   message: CanonicalSessionMessage,
-  recoverMissingV2Session = false,
+  recoverMissingChatSession = false,
 ): boolean {
   return message.sourceTransport === 'canonical-fork-snapshot'
     || message.sourceTransport === 'cloud-group-fork-snapshot'
-    || (!recoverMissingV2Session && (
+    || (!recoverMissingChatSession && (
       message.sourceTransport === 'cloud-self-agent'
       || message.id.startsWith('msg:cloud:self:')
     ));
 }
 
-function chatSyncV2ConversationSessionId(
-  conversation: ChatSyncV2Conversation,
+function chatSyncConversationSessionId(
+  conversation: ChatSyncConversation,
 ): string {
   return cleanText(conversation.legacy_session_id) || conversation.id;
 }
 
 export function planCloudSelfAgentSessionReconciliation(
   state: CanonicalSessionState,
-  conversations: readonly ChatSyncV2Conversation[],
+  conversations: readonly ChatSyncConversation[],
   options: {
     pendingRecoverySessionIds?: ReadonlySet<string>;
     nowMs?: number;
@@ -280,7 +290,7 @@ export function planCloudSelfAgentSessionReconciliation(
     conversations
       .filter((conversation) => conversation.kind === 'ai')
       .map((conversation) => [
-        chatSyncV2ConversationSessionId(conversation),
+        chatSyncConversationSessionId(conversation),
         conversation,
       ] as const),
   );
@@ -397,19 +407,19 @@ export function planCloudSelfAgentSync(
     new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId)) continue;
-    const recoveringMissingV2Session = Boolean(
+    const recoveringMissingChatSession = Boolean(
       options.recoverSessionIds?.has(message.sessionId),
     );
     const deliveryState = selfAgentMessageDeliveryState(message);
     if (!deliveryState) continue;
     if (
-      !recoveringMissingV2Session
+      !recoveringMissingChatSession
       && options.createdAfterMs != null
       && message.createdAtMs <= options.createdAfterMs
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(
       message,
-      recoveringMissingV2Session,
+      recoveringMissingChatSession,
     )) continue;
     const text = selfAgentMessageText(message, deliveryState);
     if (!text) continue;

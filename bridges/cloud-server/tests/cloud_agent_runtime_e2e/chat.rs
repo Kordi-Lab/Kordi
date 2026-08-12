@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) async fn create_v2_test_conversation(
+pub(super) async fn create_test_conversation(
     pool: &sqlx_postgres::PgPool,
     creator_account_id: &str,
     session_id: &str,
@@ -19,12 +19,12 @@ pub(super) async fn create_v2_test_conversation(
         },
     )
     .await
-    .expect("create v2 test conversation")
+    .expect("create test conversation")
     .value
     .id
 }
 
-pub(super) async fn insert_v2_test_message(
+pub(super) async fn insert_test_message(
     pool: &sqlx_postgres::PgPool,
     sender_account_id: &str,
     conversation_id: uuid::Uuid,
@@ -46,13 +46,13 @@ pub(super) async fn insert_v2_test_message(
         },
     )
     .await
-    .expect("insert v2 test message")
+    .expect("insert test message")
     .value
     .id
     .to_string()
 }
 
-pub(super) async fn v2_message_body(pool: &sqlx_postgres::PgPool, message_id: &str) -> String {
+pub(super) async fn message_body(pool: &sqlx_postgres::PgPool, message_id: &str) -> String {
     let (body,): (String,) = sqlx_core::query_as::query_as(
         "SELECT content #>> '{blocks,0,text}' FROM cloud_chat_messages \
          WHERE message_id::text = $1",
@@ -60,6 +60,6 @@ pub(super) async fn v2_message_body(pool: &sqlx_postgres::PgPool, message_id: &s
     .bind(message_id)
     .fetch_one(pool)
     .await
-    .expect("load v2 message body");
+    .expect("load message body");
     body
 }

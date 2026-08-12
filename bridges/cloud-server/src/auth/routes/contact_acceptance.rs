@@ -86,7 +86,8 @@ pub(super) async fn finalize_request_acceptance(
     .await;
 
     // Contact lifecycle remains transient. Chat messages are created only
-    // through /v2/chat so acceptance cannot leak an unreachable v1 row.
+    // through the canonical chat API, so acceptance cannot leak an
+    // unreachable row from superseded storage.
     {
         let events = state.events().clone();
         let request_id = request_id.to_string();

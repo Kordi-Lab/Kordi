@@ -1,13 +1,13 @@
-//! Source-level contracts for the cloud-auth surface that remains beside chat v2.
+//! Source-level contracts for the ancillary cloud-auth surface.
 //!
 //! Durable message, history, read-cursor, title, and sync behavior belongs to
-//! `chat_sync_v2_contract`. These checks prevent the deleted v1 transport from
+//! `chat_sync_contract`. These checks prevent the retired chat transport from
 //! being reintroduced while retaining security coverage for ancillary routes.
 
 use std::path::Path;
 
 #[test]
-fn retired_v1_chat_implementation_files_stay_removed() {
+fn retired_chat_implementation_files_stay_removed() {
     let repository_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let auth_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/auth");
     for retired in [
@@ -21,7 +21,7 @@ fn retired_v1_chat_implementation_files_stay_removed() {
     ] {
         assert!(
             !auth_root.join(retired).exists(),
-            "retired v1 chat source was restored: {retired}"
+            "retired chat source was restored: {retired}"
         );
     }
     for retired in [
@@ -33,7 +33,7 @@ fn retired_v1_chat_implementation_files_stay_removed() {
     ] {
         assert!(
             !repository_root.join(retired).exists(),
-            "retired v1 chat artifact was restored: {retired}"
+            "retired chat artifact was restored: {retired}"
         );
     }
 }
@@ -49,7 +49,7 @@ fn cloud_attachment_preview_recovery_only_updates_caller_visible_links() {
 }
 
 #[test]
-fn legacy_message_migrations_remain_historical_and_v1_retirement_is_latest() {
+fn message_migrations_remain_historical_and_retirement_is_latest() {
     let pool_source = include_str!("../src/pg/pool.rs");
     for migration in [28, 29, 30, 31, 32, 47, 48, 49, 50, 51] {
         assert!(

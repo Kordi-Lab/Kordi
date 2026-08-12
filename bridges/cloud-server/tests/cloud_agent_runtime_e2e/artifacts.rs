@@ -230,7 +230,7 @@ async fn export_before_completion_uses_stable_response_message_that_completion_u
         message_id
     );
 
-    let body = v2_message_body(&pool, &message_id).await;
+    let body = message_body(&pool, &message_id).await;
     assert!(body.starts_with("kordi-cloud-agent-response:"));
     let encoded = body.trim_start_matches("kordi-cloud-agent-response:");
     let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD

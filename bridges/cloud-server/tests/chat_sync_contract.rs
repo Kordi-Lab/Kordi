@@ -40,11 +40,11 @@ fn read_runtime_sources(path: &Path) -> String {
 fn durable_event_and_message_schemas_are_valid_json_contracts() {
     let root = repository_root();
     let event: Value = serde_json::from_str(&read(
-        root.join("shared/chat-sync-v2/schemas/event-envelope.schema.json"),
+        root.join("shared/chat-sync/schemas/event-envelope.schema.json"),
     ))
     .expect("event schema is valid JSON");
     let message: Value = serde_json::from_str(&read(
-        root.join("shared/chat-sync-v2/schemas/message.schema.json"),
+        root.join("shared/chat-sync/schemas/message.schema.json"),
     ))
     .expect("message schema is valid JSON");
 
@@ -190,7 +190,7 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
 }
 
 #[test]
-fn v2_routes_are_exclusive_for_chat_and_fail_closed() {
+fn canonical_routes_are_exclusive_for_chat_and_require_signed_cursors() {
     let root = repository_root();
     let routes = format!(
         "{}\n{}",
@@ -212,9 +212,9 @@ fn v2_routes_are_exclusive_for_chat_and_fail_closed() {
     ] {
         assert!(routes.contains(route), "missing route {route}");
     }
-    assert!(routes.contains("KORDI_CHAT_SYNC_V2_ENABLED"));
     assert!(routes.contains("KORDI_CHAT_SYNC_CURSOR_SECRET"));
-    assert!(routes.contains("CHAT_SYNC_V2_DISABLED"));
+    assert!(!routes.contains("KORDI_CHAT_SYNC_V2_ENABLED"));
+    assert!(!routes.contains("CHAT_SYNC_V2_DISABLED"));
     assert!(server.contains("chat_sync::routes::routes"));
     assert!(server.contains("/v2/chat/realtime"));
     let runtime_source = read_runtime_sources(&root.join("bridges/cloud-server/src"));
