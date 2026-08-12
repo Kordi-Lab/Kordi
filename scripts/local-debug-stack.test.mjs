@@ -70,6 +70,8 @@ test('debug setup upgrades old env files and rejects parent-shell credential ove
   assert.match(helper, /unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN/);
   assert.match(helper, /unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET/);
   assert.match(helper, /unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET/);
+  assert.match(helper, /VITE_KORDI_DEV_PROFILE=community pnpm dev:desktop:profile/);
+  assert.doesNotMatch(helper, /pnpm dev"/);
 });
 
 test('OAuth helper hides secrets and only restarts isolated app services', () => {
