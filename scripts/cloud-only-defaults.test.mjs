@@ -106,9 +106,9 @@ test('development docs enforce the product-server impact preflight', () => {
   ];
 
   assert.match(policy, /anything that requires a product-server restart/);
-  assert.match(policy, /corresponding product-server machine through `https:\/\/coordinar\.io`/);
-  assert.match(policy, /first end-to-end validation through `https:\/\/coordinar\.io`/);
-  assert.match(policy, /Never route this path through `https:\/\/kordi\.ai`/);
+  assert.match(policy, /corresponding product-server machine/);
+  assert.match(policy, /validate through canonical production origin `https:\/\/kordi\.ai`/i);
+  assert.match(policy, /Do not route this path through a public test API/);
   assert.match(policy, /pnpm dev:cloud:operator -- "https:\/\/kordi\.ai"/);
   assert.match(policy, /scripts\/dev-cloud-operator\.sh https:\/\/kordi\.ai/);
   assert.match(policy, /stop and fail closed/i);

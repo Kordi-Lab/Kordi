@@ -16,7 +16,7 @@ For development/QA, use:
 
 or host your own compatible hosted server.
 
-Before any preview or remote operator work, select the path in [Development environment isolation](development-environments.md) and follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Hosted-server changes or behavior requiring a product-server restart must be developed and tested on the corresponding product-server machine, with the first end-to-end validation through `https://coordinar.io`, never `https://kordi.ai` or a local community/debug server. Isolated development does not substitute for this product-server validation.
+Before any preview or remote operator work, select the path in [Development environment isolation](development-environments.md) and follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Hosted-server changes or behavior requiring a product-server restart must be developed and tested on the corresponding product-server machine, then validated through `https://kordi.ai`, never through a local community/debug server. Isolated development does not substitute for this product-server validation.
 
 ## Status
 

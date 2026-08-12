@@ -5,6 +5,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 allowlist_file="$repo_root/deploy/dev/operator-github-allowlist.txt"
 api_base="${KORDI_OPERATOR_CLOUD_API_BASE:-}"
 
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
 if [[ -n "${1:-}" && "${1:-}" != --* ]]; then
   api_base="$1"
   shift
@@ -25,10 +28,10 @@ fi
 
 api_base="${api_base%/}"
 case "$api_base" in
-  https://kordi.ai|https://coordinar.io)
+  https://kordi.ai)
     ;;
   *)
-    echo "[kordi-operator] The operator launcher accepts only https://kordi.ai or https://coordinar.io." >&2
+    echo "[kordi-operator] The operator launcher accepts only https://kordi.ai." >&2
     exit 1
     ;;
 esac

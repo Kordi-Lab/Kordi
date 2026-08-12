@@ -20,7 +20,7 @@ Do not use the production server for destructive, load, or throwaway multi-accou
 
 Before launching a preview or debug session, follow the [canonical environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug):
 
-- If the current operator session can affect or require restarting the product server, develop and test on the corresponding product-server machine. Run the first end-to-end validation through `https://coordinar.io`, never `https://kordi.ai` or a local community/debug-server profile.
+- If the current operator session can affect or require restarting the product server, develop and test on the corresponding product-server machine. Validate the deployed product through `https://kordi.ai`, never through a local community/debug-server profile.
 - If the remote operator preview is desktop-only, check the active GitHub account against `deploy/dev/operator-github-allowlist.txt` and use the approved `https://kordi.ai` launcher.
 - Isolated local or IAP-tunneled development uses the loopback origin, `VITE_KORDI_DEV_PROFILE=community`, and a named `io.kordi.cloud.*` desktop profile. It does not substitute for product-server validation.
 - If impact is uncertain or required access is missing, stop and fail closed.
@@ -111,7 +111,7 @@ Never use a tunnel/local backend as product-server validation. Use tunnel/local 
   ```
 
 - For operator tunnel debugging, verify the local tunnel endpoint and each desktop log's `VITE_KORDI_CLOUD_API_BASE` before changing code. Do not switch to production as a workaround unless an operator explicitly asks.
-- For product-server-affecting work, verify `https://coordinar.io/health` before the change and after every restart/deploy, then confirm the desktop logs show `https://coordinar.io` for the first end-to-end test.
+- For product-server-affecting work, verify `https://kordi.ai/health` before the change and after every restart/deploy, then confirm the allowlisted desktop logs show `https://kordi.ai` for the end-to-end test.
 - If Tauri fails before the app opens, run `pnpm install` again and confirm the Rust toolchain is installed.
 - If multi-instance ports are already in use, stop old instances or choose a smaller user set.
 - Do not use `--reset` unless you intentionally want to delete that local test user's desktop state.

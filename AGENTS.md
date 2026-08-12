@@ -12,7 +12,7 @@ Before starting a desktop preview or debug session, follow [Development environm
 
 - Isolated development uses the loopback Docker backend or an explicitly approved remote development backend reached through an IAP-style SSH tunnel. Use an explicit loopback API origin, `VITE_KORDI_DEV_PROFILE=community`, and a named `io.kordi.cloud.*` desktop profile. Production updater endpoints must remain disabled.
 - Desktop-only production operator previews require an active GitHub account listed in `deploy/dev/operator-github-allowlist.txt`, the approved `scripts/dev-cloud-operator.sh` launcher, its acknowledgement, and `https://kordi.ai`.
-- Work that can affect or restart a product server must run on the corresponding product-server machine. Its first end-to-end validation uses `https://coordinar.io`, never `https://kordi.ai` or an isolated local profile.
+- Work that can affect or restart a product server must run on the corresponding product-server machine. Validate the deployed product through the canonical production origin `https://kordi.ai`, never through an isolated local profile.
 - If impact, authorization, or environment identity is uncertain, fail closed. Do not change environments or bypass a guard to continue.
 
 Never copy production credentials or production data into an isolated development environment. Never publish database, cache, event bus, object-store, or sandbox ports publicly; bind every deliberately host-published development port to loopback. Product deployment helpers must receive an explicit project, zone, and instance instead of inheriting a gcloud default.

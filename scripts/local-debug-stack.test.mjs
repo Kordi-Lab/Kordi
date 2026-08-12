@@ -279,7 +279,15 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
       encoding: 'utf8',
     });
     assert.notEqual(unapprovedOrigin.status, 0);
-    assert.match(unapprovedOrigin.stderr, /accepts only https:\/\/kordi\.ai or https:\/\/coordinar\.io/i);
+    assert.match(unapprovedOrigin.stderr, /accepts only https:\/\/kordi\.ai/i);
+
+    const legacyOrigin = spawnSync('bash', [scriptPath, 'https://coordinar.io'], {
+      cwd: repoRoot,
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+      encoding: 'utf8',
+    });
+    assert.notEqual(legacyOrigin.status, 0);
+    assert.match(legacyOrigin.stderr, /accepts only https:\/\/kordi\.ai/i);
 
     const allowed = spawnSync('bash', [scriptPath, 'https://kordi.ai'], {
       cwd: repoRoot,
@@ -287,6 +295,21 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
       encoding: 'utf8',
     });
     assert.equal(allowed.status, 0, allowed.stderr);
+    assert.equal(
+      readFileSync(capturePath, 'utf8').trim(),
+      'https://kordi.ai|operator|1|||||',
+    );
+
+    const allowedWithSeparator = spawnSync(
+      'bash',
+      [scriptPath, '--', 'https://kordi.ai', '--port', '1492'],
+      {
+        cwd: repoRoot,
+        env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+        encoding: 'utf8',
+      },
+    );
+    assert.equal(allowedWithSeparator.status, 0, allowedWithSeparator.stderr);
     assert.equal(
       readFileSync(capturePath, 'utf8').trim(),
       'https://kordi.ai|operator|1|||||',
