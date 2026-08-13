@@ -272,7 +272,7 @@ test('contact request row formats transport timestamps for people', () => {
   }));
 
   assert.match(markup, new RegExp(formatDesktopContactRequestTimeLabel(request.time)));
-  assert.doesNotMatch(markup, /2026-08-13T10:22:12/);
+  assert.doesNotMatch(markup, />2026-08-13T10:22:12/);
 });
 
 test('renders bridge agent stop control beside pending processing text', () => {

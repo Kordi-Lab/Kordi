@@ -1,6 +1,6 @@
 import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 
-import type { Contact } from './types';
+import type { Contact, ContactRequest } from './types';
 
 function normalizedContactText(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase();
@@ -33,4 +33,10 @@ export function contactCanBeRemoved(contact: Contact): boolean {
       && !contact.locked
       && !contact.systemContact,
   );
+}
+
+export function sentInviteDisplayName(request: ContactRequest) {
+  const avatarName = request.avatarName?.trim();
+  if (avatarName) return avatarName;
+  return request.title.replace(/^Request sent to\s+/i, '').trim() || request.title;
 }

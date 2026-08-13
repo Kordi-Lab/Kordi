@@ -3,3 +3,4 @@ export type { CompactComposerModelMenuSaveInput, ComposerAuthOption, ComposerMen
 export { MarkdownCodeBlock, MarkdownContent, MermaidDiagram } from './components/markdown';
 export { SettingsValueControl } from './components/settings';
 export { ContactRequestRow, ContactRow, LiveChatTurnCard, LiveChatTurnMessage, MessageBubble, StatusPill, TypeBadge } from './components/transcript';
+export { ContactRequestTime } from './components/transcriptMessageTime';

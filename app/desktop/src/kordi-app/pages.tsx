@@ -3,11 +3,10 @@ import { ChevronDown, ChevronRight, LoaderCircle, Plus, Search, Trash2, UserPlus
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
-import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { ContactRequestRow, ContactRow } from './components';
+import { ContactRequestRow, ContactRequestTime, ContactRow } from './components';
 import { IdentityAvatar } from './components/IdentityAvatar';
-import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus } from './contactPresentation';
+import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus, sentInviteDisplayName } from './contactPresentation';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
@@ -37,12 +36,6 @@ type ContactsPageProps = {
   onMessageContact?: (contact: Contact) => void;
   onRemoveContact?: (contact: Contact) => Promise<void> | void;
 };
-
-function sentInviteDisplayName(request: ContactRequest) {
-  const avatarName = request.avatarName?.trim();
-  if (avatarName) return avatarName;
-  return request.title.replace(/^Request sent to\s+/i, '').trim() || request.title;
-}
 
 export function ContactsPage({
   filteredGroupedContacts,
@@ -314,7 +307,7 @@ export function ContactsPage({
                                 <div className="flex items-center gap-1.5 truncate text-[11.5px] leading-4 text-slate-400">
                                   <span>Awaiting approval</span>
                                   <span aria-hidden="true">·</span>
-                                  <span>{formatDesktopContactRequestTimeLabel(request.time)}</span>
+                                  <ContactRequestTime value={request.time} />
                                 </div>
                               </div>
                             </div>

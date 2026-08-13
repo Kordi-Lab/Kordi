@@ -160,7 +160,7 @@ test('sent invite rows use real account avatars in a compact row', () => {
   assert.match(source, /app-contacts-sent-invite-item w-full px-3 py-2\.5 text-white/);
   assert.match(source, /className="h-9 w-9 border border-white\/10"/);
   assert.match(source, /Awaiting approval/);
-  assert.match(source, /formatDesktopContactRequestTimeLabel\(request\.time\)/);
+  assert.match(source, /<ContactRequestTime value=\{request\.time\} \/>/);
   assert.doesNotMatch(sentInvitesBlock, /\{request\.detail\}/);
   assert.doesNotMatch(sentInvitesBlock, /Waiting for approval/);
   assert.doesNotMatch(sentInvitesBlock, /border-amber|bg-amber|text-amber/);
