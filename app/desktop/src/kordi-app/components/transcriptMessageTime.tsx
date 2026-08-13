@@ -1,3 +1,4 @@
+import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 import type { Message } from '../types';
@@ -20,6 +21,16 @@ export function MessageHoverTime({ msg, side }: { msg: Message; side: 'own' | 'p
       title={time}
     >
       {time}
+    </time>
+  );
+}
+
+export function ContactRequestTime({ value }: { value: string }) {
+  const timestampMs = Date.parse(value);
+  const dateTime = Number.isFinite(timestampMs) ? new Date(timestampMs).toISOString() : undefined;
+  return (
+    <time className="shrink-0 text-[11px] text-slate-400" dateTime={dateTime}>
+      {formatDesktopContactRequestTimeLabel(value)}
     </time>
   );
 }

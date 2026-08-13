@@ -3,7 +3,11 @@ import { test } from 'node:test';
 
 import type { CanonicalSessionMessage } from '../src/kordi-app/types';
 import { sessionChatActivityAtMs } from '../src/features/canonical/readModel/conversationMapping';
-import { formatDesktopLastActiveLabel, formatDesktopTranscriptTimeLabel } from '../src/lib/time';
+import {
+  formatDesktopContactRequestTimeLabel,
+  formatDesktopLastActiveLabel,
+  formatDesktopTranscriptTimeLabel,
+} from '../src/lib/time';
 
 test('formatDesktopTranscriptTimeLabel uses compact messaging labels in the viewer timezone', () => {
   const now = new Date('2026-08-08T14:00:00.000Z');
@@ -67,6 +71,20 @@ test('formatDesktopLastActiveLabel decides whether to show the year in the viewe
     formatDesktopLastActiveLabel(new Date('2025-12-30T23:30:00.000Z'), { now, timeZone: 'America/Los_Angeles' }),
     '30/12',
   );
+});
+
+test('formatDesktopContactRequestTimeLabel replaces transport timestamps with compact local labels', () => {
+  const now = new Date('2026-08-13T12:00:00.000Z');
+
+  assert.equal(
+    formatDesktopContactRequestTimeLabel('2026-08-13T10:08:22.868166964+00:00', { now, timeZone: 'UTC', locales: 'en-US' }),
+    '10:08',
+  );
+  assert.equal(
+    formatDesktopContactRequestTimeLabel('2026-08-12T10:08:22.868166964+00:00', { now, timeZone: 'UTC', locales: 'en-US' }),
+    'Yesterday 10:08',
+  );
+  assert.equal(formatDesktopContactRequestTimeLabel('now'), 'now');
 });
 
 test('sessionChatActivityAtMs ignores fork snapshot/import rows for last active', () => {

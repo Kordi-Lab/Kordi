@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
-import { ContactRequestRow, ContactRow } from './components';
+import { ContactRequestRow, ContactRequestTime, ContactRow } from './components';
 import { IdentityAvatar } from './components/IdentityAvatar';
-import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus } from './contactPresentation';
+import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus, sentInviteDisplayName } from './contactPresentation';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
@@ -177,7 +177,7 @@ export function ContactsPage({
   const pendingRequestCount = incomingContactRequests.length;
   const sentInviteCount = outgoingContactRequests.length;
   const requestInboxSummary = `Review ${pendingRequestCount} pending ${pendingRequestCount === 1 ? 'request' : 'requests'}.`;
-  const sentInvitesSummary = `Waiting on ${sentInviteCount} ${sentInviteCount === 1 ? 'person' : 'people'} to approve.`;
+  const sentInvitesSummary = `${sentInviteCount} awaiting approval`;
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
   const activeContactDetailBody = contactDetailBodyText(activeContact);
   const activeContactPresenceStatus = contactPresenceStatus(activeContact);
@@ -286,33 +286,28 @@ export function ContactsPage({
                         ) : (
                           <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
                         )}
-                        <div className="min-w-0">
-                          <div className="text-[12px] font-medium leading-5 text-white">Sent invites</div>
-                          <div className="truncate text-[11px] leading-4 text-slate-400">{sentInvitesSummary}</div>
-                        </div>
+                        <div className="truncate text-[12px] font-medium leading-5 text-white">Sent invites</div>
                       </div>
-                      <div className="app-badge-attention shrink-0 px-2 py-0.5 text-[10px] font-medium">{sentInviteCount}</div>
+                      <div className="shrink-0 text-[11px] leading-4 text-slate-400">{sentInvitesSummary}</div>
                     </button>
                     {isSentInvitesOpen && (
                       <div className="grid gap-1">
                         {outgoingContactRequests.map((request) => (
-                          <div key={request.id} className="app-contacts-sent-invite-item w-full px-3 py-2 text-white">
+                          <div key={request.id} className="app-contacts-sent-invite-item w-full px-3 py-2.5 text-white">
                             <div className="flex items-center gap-3">
                               <IdentityAvatar
                                 kind="human"
                                 seed={request.avatarSeed ?? request.targetNodeId ?? request.id}
-                                name={request.avatarName ?? request.title}
+                                name={sentInviteDisplayName(request)}
                                 imageUrl={request.profileImageUrl}
                                 className="h-9 w-9 border border-white/10"
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="truncate text-[13px] font-medium leading-5">{request.title}</div>
-                                <div className="truncate text-[11.5px] leading-4 text-slate-300">{request.detail}</div>
-                              </div>
-                              <div className="ml-auto flex shrink-0 flex-col items-end gap-1 text-right">
-                                <div className="max-w-[220px] truncate text-[10.5px] leading-4 text-slate-400">{request.time}</div>
-                                <div className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10.5px] font-medium leading-4 text-amber-100">
-                                  Waiting for approval
+                                <div className="truncate text-[13px] font-medium leading-5">{sentInviteDisplayName(request)}</div>
+                                <div className="flex items-center gap-1.5 truncate text-[11.5px] leading-4 text-slate-400">
+                                  <span>Awaiting approval</span>
+                                  <span aria-hidden="true">·</span>
+                                  <ContactRequestTime value={request.time} />
                                 </div>
                               </div>
                             </div>

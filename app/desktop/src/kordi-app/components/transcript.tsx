@@ -38,7 +38,7 @@ import { messageSnapshotKey } from './transcriptMessageSnapshot';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
-import { MessageHoverTime } from './transcriptMessageTime';
+import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
@@ -1519,7 +1519,7 @@ export function ContactRequestRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div className="truncate text-sm font-medium">{request.title}</div>
-            <div className="shrink-0 text-[11px] text-slate-400">{request.time}</div>
+            <ContactRequestTime value={request.time} />
           </div>
           <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
           <div className="mt-3 flex flex-wrap gap-2">
