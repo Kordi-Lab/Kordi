@@ -11,7 +11,13 @@ struct ConversationView: View {
     @State private var isSending = false
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
     @State private var isLoadingEarlier = false
-    @State private var isAtBottom = true
+    @State private var isAtBottom = false
+    @State private var hasPositionedInitialTimeline = false
+    @State private var initialViewport = ConversationInitialViewport.latest
+    @State private var hasPreparedInitialViewport = false
+    @State private var hasRevealedInitialViewport = false
+    @State private var trackedMessageID: String?
+    @State private var immediateBottomRequest = 0
     @State private var attachments: [PendingAttachment] = []
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
@@ -77,120 +83,174 @@ struct ConversationView: View {
                     )
                 }
 
-                GeometryReader { viewport in
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            if timeline.isEmpty {
-                                EmptyConversation(conversation: conversation)
-                                    .padding(.top, 70)
-                            } else {
-                                if visibleStartIndex > 0 {
-                                    EarlierMessagesLoader(remainingCount: visibleStartIndex)
-                                        .id("earlier:\(visibleTimeline.first?.id ?? conversation.id)")
-                                        .onAppear {
-                                            loadEarlierMessages(
-                                                preserving: visibleTimeline.first?.id,
-                                                totalCount: timeline.count,
-                                                proxy: proxy
-                                            )
-                                        }
-                                }
-
-                                ForEach(Array(visibleTimeline.enumerated()), id: \.element.id) { offset, message in
-                                    let index = visibleStartIndex + offset
-                                    let presentation = timelinePresentation[index - presentationStartIndex]
-                                    let avatar = avatarIdentity(for: message)
-                                    let readers = readReceiptParticipants(for: message)
-
-                                    VStack(spacing: 0) {
-                                        if presentation.showsTimestamp {
-                                            ConversationTimestampDivider(date: message.createdAt)
-                                        }
-
-                                        MessageBubble(
-                                            message: message,
-                                            showAuthor: message.author == .agent,
-                                            showAvatar: presentation.showsAvatar,
-                                            replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
-                                            isHighlighted: highlightedMessageID == message.id,
-                                            isPinned: pinnedMessage?.id == message.id,
-                                            selectionMode: !selectedMessageIDs.isEmpty,
-                                            isSelected: selectedMessageIDs.contains(message.id),
-                                            allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
-                                            showsAvatarSlot: message.author != .agent,
-                                            authorAvatarName: avatar.name,
-                                            authorAvatarSource: avatar.source,
-                                            authorAvatarSeed: avatar.seed,
-                                            readByNames: readers.map(\.displayName),
-                                            onRetry: { Task { await model.retry(message, in: conversation) } },
-                                            onReply: {
-                                                guard conversation.kind.supportsQuotedReplies else { return }
-                                                replySource = message.actionSource(sessionId: conversation.sessionId)
-                                            },
-                                            onPin: {
-                                                if pinnedMessage?.id == message.id {
-                                                    Task { _ = await model.unpin(message, in: conversation) }
-                                                } else {
-                                                    pinTarget = message
+                if hasPreparedInitialViewport {
+                    GeometryReader { viewport in
+                        ZStack(alignment: .bottomTrailing) {
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    if timeline.isEmpty {
+                                        EmptyConversation(conversation: conversation)
+                                            .padding(.top, 70)
+                                    } else {
+                                        if visibleStartIndex > 0 {
+                                            EarlierMessagesLoader(remainingCount: visibleStartIndex)
+                                                .id("earlier:\(visibleTimeline.first?.id ?? conversation.id)")
+                                                .onAppear {
+                                                    guard hasPositionedInitialTimeline else { return }
+                                                    loadEarlierMessages(
+                                                        preserving: visibleTimeline.first?.id,
+                                                        totalCount: timeline.count,
+                                                        proxy: proxy
+                                                    )
                                                 }
-                                            },
-                                            onForward: {
-                                                forwardRequest = MessageForwardRequest(
-                                                    sourceConversation: conversation,
-                                                    messages: [message]
-                                                )
-                                            },
-                                            onDetails: { detailsMessage = message },
-                                            onSelect: { toggleSelection(message.id) },
-                                            onNavigateToReply: { messageId in
-                                                navigateToMessage(messageId, in: timeline, proxy: proxy)
-                                            },
-                                            onOpenAttachment: { attachment in
-                                                prepare(attachment, forSharing: false)
-                                            },
-                                            onShareAttachment: { attachment in
-                                                prepare(attachment, forSharing: true)
-                                            }
-                                        )
-                                        .equatable()
-                                        .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
-                                        .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
-                                    }
-                                    .id(message.id)
-                                }
+                                        }
 
+                                        ForEach(Array(visibleTimeline.enumerated()), id: \.element.id) { offset, message in
+                                            let index = visibleStartIndex + offset
+                                            let presentation = timelinePresentation[index - presentationStartIndex]
+                                            let avatar = avatarIdentity(for: message)
+                                            let readers = readReceiptParticipants(for: message)
+
+                                            VStack(spacing: 0) {
+                                                if presentation.showsTimestamp {
+                                                    ConversationTimestampDivider(date: message.createdAt)
+                                                }
+
+                                                MessageBubble(
+                                                    message: message,
+                                                    showAuthor: message.author == .agent,
+                                                    showAvatar: presentation.showsAvatar,
+                                                    replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
+                                                    isHighlighted: highlightedMessageID == message.id,
+                                                    isPinned: pinnedMessage?.id == message.id,
+                                                    selectionMode: !selectedMessageIDs.isEmpty,
+                                                    isSelected: selectedMessageIDs.contains(message.id),
+                                                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                                                    showsAvatarSlot: message.author != .agent,
+                                                    authorAvatarName: avatar.name,
+                                                    authorAvatarSource: avatar.source,
+                                                    authorAvatarSeed: avatar.seed,
+                                                    readByNames: readers.map(\.displayName),
+                                                    onRetry: { Task { await model.retry(message, in: conversation) } },
+                                                    onReply: {
+                                                        guard conversation.kind.supportsQuotedReplies else { return }
+                                                        replySource = message.actionSource(sessionId: conversation.sessionId)
+                                                    },
+                                                    onPin: {
+                                                        if pinnedMessage?.id == message.id {
+                                                            Task { _ = await model.unpin(message, in: conversation) }
+                                                        } else {
+                                                            pinTarget = message
+                                                        }
+                                                    },
+                                                    onForward: {
+                                                        forwardRequest = MessageForwardRequest(
+                                                            sourceConversation: conversation,
+                                                            messages: [message]
+                                                        )
+                                                    },
+                                                    onDetails: { detailsMessage = message },
+                                                    onSelect: { toggleSelection(message.id) },
+                                                    onNavigateToReply: { messageId in
+                                                        navigateToMessage(messageId, in: timeline, proxy: proxy)
+                                                    },
+                                                    onOpenAttachment: { attachment in
+                                                        prepare(attachment, forSharing: false)
+                                                    },
+                                                    onShareAttachment: { attachment in
+                                                        prepare(attachment, forSharing: true)
+                                                    }
+                                                )
+                                                .equatable()
+                                                .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
+                                                .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                                            }
+                                            .id(message.id)
+                                        }
+                                    }
+
+                                    Color.clear
+                                        .frame(height: 1)
+                                        .id(bottomAnchorID)
+                                        .background(
+                                            ConversationScrollCommandBridge(
+                                                scrollToBottomRequest: immediateBottomRequest
+                                            )
+                                        )
+                                        .onAppear {
+                                            guard hasRevealedInitialViewport else { return }
+                                            isAtBottom = true
+                                        }
+                                        .onDisappear {
+                                            guard hasRevealedInitialViewport else { return }
+                                            isAtBottom = false
+                                        }
+                                }
+                                .scrollTargetLayout()
+                                .frame(
+                                    minHeight: max(
+                                        0,
+                                        viewport.size.height - timelineVerticalInset * 2
+                                    ),
+                                    alignment: timeline.isEmpty ? .top : .bottom
+                                )
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, timelineVerticalInset)
+                            }
+                            .defaultScrollAnchor(.bottom)
+                            .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
+                            .modifier(
+                                ConversationBottomTrackingModifier(
+                                    isAtBottom: $isAtBottom,
+                                    hasPositionedInitialTimeline: $hasPositionedInitialTimeline,
+                                    isEnabled: hasRevealedInitialViewport,
+                                    hasMessages: !timeline.isEmpty
+                                )
+                            )
+                            .background(Color(uiColor: .systemGroupedBackground))
+                            .scrollDismissesKeyboard(.interactively)
+
+                            if ConversationTimelineScrollBehavior.shouldShowLatestButton(
+                                isAtBottom: isAtBottom,
+                                messageCount: timeline.count
+                            ) {
+                                LatestMessageButton {
+                                    scrollToBottom(animated: true)
+                                }
+                                .padding(.trailing, 18)
+                                .padding(.bottom, 16)
+                                .transition(.scale(scale: 0.82).combined(with: .opacity))
                             }
                         }
-                        .frame(
-                            minHeight: max(0, viewport.size.height - timelineVerticalInset * 2),
-                            alignment: .top
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, timelineVerticalInset)
-                        .overlay(alignment: .bottom) {
-                            Color.clear
-                                .frame(height: 1)
-                                .id(bottomAnchorID)
-                                .onAppear { isAtBottom = true }
-                                .onDisappear { isAtBottom = false }
-                        }
+                        .animation(.snappy(duration: 0.2), value: isAtBottom)
+                        .opacity(hasRevealedInitialViewport ? 1 : 0)
+                        .allowsHitTesting(hasRevealedInitialViewport)
+                        .accessibilityHidden(!hasRevealedInitialViewport)
                     }
-                    .background(Color(uiColor: .systemGroupedBackground))
-                    .scrollDismissesKeyboard(.interactively)
+                } else {
+                    Color(uiColor: .systemGroupedBackground)
                 }
-            }
-            .onAppear {
-                scrollToBottom(proxy)
             }
             .onChange(of: timeline.count) { oldCount, newCount in
-                guard newCount > oldCount else { return }
-                visibleMessageLimit = min(
-                    newCount,
-                    visibleMessageLimit + (newCount - oldCount)
+                visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
+                    currentLimit: visibleMessageLimit,
+                    oldCount: oldCount,
+                    newCount: newCount,
+                    isInitialViewportRevealed: hasRevealedInitialViewport
                 )
-                if isAtBottom || oldCount == 0 {
-                    scrollToBottom(proxy)
+            }
+            .onChange(of: timeline.last?.id) { previousLatestMessageID, currentLatestMessageID in
+                if ConversationTimelineScrollBehavior.shouldFollowLatest(
+                    hasPositionedInitialTimeline: hasPositionedInitialTimeline,
+                    isAtBottom: isAtBottom,
+                    previousLatestMessageID: previousLatestMessageID,
+                    currentLatestMessageID: currentLatestMessageID
+                ) {
+                    scrollToBottom(animated: true)
                 }
+            }
+            .task(id: conversation.id) {
+                await loadAndRevealInitialConversation(using: proxy)
             }
         }
         .navigationTitle(conversation.displayName)
@@ -198,7 +258,7 @@ struct ConversationView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 conversationHeader
-                .accessibilityElement(children: .combine)
+                    .accessibilityElement(children: .combine)
             }
             if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -244,8 +304,8 @@ struct ConversationView: View {
                 )
             }
         }
-        .task {
-            await model.loadConversation(conversation)
+        .onDisappear {
+            rememberViewport(in: messages)
         }
         .onAppear {
             if !conversation.kind.supportsQuotedReplies {
@@ -423,11 +483,127 @@ struct ConversationView: View {
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        Task { @MainActor in
-            await Task.yield()
-            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+    private func scrollToBottom(animated: Bool = false) {
+        initialViewport = .latest
+        hasPositionedInitialTimeline = true
+        if animated {
+            immediateBottomRequest &+= 1
+            withAnimation(.smooth(duration: 0.42)) {
+                trackedMessageID = bottomAnchorID
+            }
+        } else {
+            trackedMessageID = bottomAnchorID
         }
+    }
+
+    @MainActor
+    private func positionAndRevealInitialViewport(using proxy: ScrollViewProxy) async {
+        guard hasPreparedInitialViewport, !hasRevealedInitialViewport else { return }
+        await Task.yield()
+        await Task.yield()
+
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            switch initialViewport {
+            case .latest:
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+            case let .resumed(messageID):
+                proxy.scrollTo(messageID, anchor: .center)
+            }
+        }
+
+        await Task.yield()
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        withTransaction(transaction) {
+            hasPositionedInitialTimeline = true
+            hasRevealedInitialViewport = true
+        }
+        model.markConversationPresentationSettled(conversation)
+    }
+
+    @MainActor
+    private func loadAndRevealInitialConversation(using proxy: ScrollViewProxy) async {
+        model.markConversationOpened(conversation)
+        model.hydrateCachedMessages(for: conversation)
+        prepareInitialViewport(in: messages)
+        let latestMessageIDAtEntry = messages.last?.id
+        let viewportAtEntry = initialViewport
+
+        if model.canRevealConversationImmediately(conversation) {
+            await positionAndRevealInitialViewport(using: proxy)
+        }
+
+        await model.loadConversation(conversation)
+        guard !Task.isCancelled else { return }
+        if !hasRevealedInitialViewport,
+           case .resumed = viewportAtEntry,
+           messages.last?.id != latestMessageIDAtEntry {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                initialViewport = .latest
+                trackedMessageID = bottomAnchorID
+                isAtBottom = true
+                hasPositionedInitialTimeline = false
+            }
+        }
+        await positionAndRevealInitialViewport(using: proxy)
+    }
+
+    private func prepareInitialViewport(in timeline: [ChatMessage], now: Date = Date()) {
+        guard !hasPreparedInitialViewport else { return }
+        let latestMessageID = timeline.last?.id
+        let availableMessageIDs = Set(timeline.map(\.id))
+        let resumedMessageID = model.conversationViewportMemory.resumedMessageID(
+            for: viewportMemoryKey,
+            latestMessageID: latestMessageID,
+            availableMessageIDs: availableMessageIDs,
+            now: now
+        )
+
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            if let resumedMessageID,
+               let resumeIndex = timeline.firstIndex(where: { $0.id == resumedMessageID }) {
+                let contextStartIndex = max(timeline.startIndex, resumeIndex - 12)
+                visibleMessageLimit = max(
+                    ConversationTimelineWindow.initialLimit,
+                    timeline.count - contextStartIndex
+                )
+                trackedMessageID = resumedMessageID
+                isAtBottom = false
+                hasPositionedInitialTimeline = false
+                initialViewport = .resumed(messageID: resumedMessageID)
+            } else {
+                trackedMessageID = bottomAnchorID
+                isAtBottom = true
+                hasPositionedInitialTimeline = false
+                initialViewport = .latest
+            }
+            hasPreparedInitialViewport = true
+        }
+    }
+
+    private func rememberViewport(in timeline: [ChatMessage], now: Date = Date()) {
+        guard hasPreparedInitialViewport, hasRevealedInitialViewport else { return }
+        let visibleMessageID = isAtBottom
+            ? nil
+            : trackedMessageID.flatMap { candidate in
+                timeline.contains(where: { $0.id == candidate }) ? candidate : nil
+            }
+        model.conversationViewportMemory.remember(
+            key: viewportMemoryKey,
+            messageID: visibleMessageID,
+            latestMessageID: timeline.last?.id,
+            at: now
+        )
+    }
+
+    private var viewportMemoryKey: String {
+        "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id)"
     }
 
     private func avatarIdentity(for message: ChatMessage) -> ConversationAvatarIdentity {
@@ -623,6 +799,104 @@ struct ConversationView: View {
     }
 }
 
+enum ConversationInitialViewport: Equatable {
+    case latest
+    case resumed(messageID: String)
+
+    var scrollAnchor: UnitPoint {
+        switch self {
+        case .latest:
+            .bottom
+        case .resumed:
+            .center
+        }
+    }
+}
+
+struct ConversationViewportSnapshot: Equatable {
+    let messageID: String
+    let latestMessageID: String?
+    let leftAt: Date
+}
+
+final class ConversationViewportMemory {
+    static let defaultQuickReturnInterval: TimeInterval = 2 * 60
+
+    private let quickReturnInterval: TimeInterval
+    private var snapshotsByKey: [String: ConversationViewportSnapshot] = [:]
+
+    init(quickReturnInterval: TimeInterval = defaultQuickReturnInterval) {
+        self.quickReturnInterval = quickReturnInterval
+    }
+
+    func remember(
+        key: String,
+        messageID: String?,
+        latestMessageID: String?,
+        at date: Date
+    ) {
+        guard let messageID else {
+            snapshotsByKey[key] = nil
+            return
+        }
+        snapshotsByKey[key] = ConversationViewportSnapshot(
+            messageID: messageID,
+            latestMessageID: latestMessageID,
+            leftAt: date
+        )
+    }
+
+    func resumedMessageID(
+        for key: String,
+        latestMessageID: String?,
+        availableMessageIDs: Set<String>,
+        now: Date
+    ) -> String? {
+        guard let snapshot = snapshotsByKey[key] else { return nil }
+        let elapsed = now.timeIntervalSince(snapshot.leftAt)
+        guard elapsed >= 0,
+              elapsed < quickReturnInterval,
+              snapshot.latestMessageID == latestMessageID,
+              availableMessageIDs.contains(snapshot.messageID) else {
+            snapshotsByKey[key] = nil
+            return nil
+        }
+        return snapshot.messageID
+    }
+}
+
+enum ConversationTimelineScrollBehavior {
+    static func shouldFollowLatest(
+        hasPositionedInitialTimeline: Bool,
+        isAtBottom: Bool,
+        previousLatestMessageID: String?,
+        currentLatestMessageID: String?
+    ) -> Bool {
+        guard hasPositionedInitialTimeline,
+              isAtBottom,
+              let previousLatestMessageID,
+              let currentLatestMessageID else { return false }
+        return previousLatestMessageID != currentLatestMessageID
+    }
+
+    static func shouldShowLatestButton(
+        isAtBottom: Bool,
+        messageCount: Int
+    ) -> Bool {
+        !isAtBottom && messageCount > 0
+    }
+
+    static func isAtLatest(
+        visibleMaxY: CGFloat,
+        contentHeight: CGFloat,
+        containerHeight: CGFloat,
+        tolerance: CGFloat = 12
+    ) -> Bool {
+        contentHeight <= containerHeight
+            || visibleMaxY >= contentHeight - tolerance
+    }
+}
+
 enum ConversationTimelineWindow {
     static let initialLimit = 64
     static let pageSize = 64
@@ -630,6 +904,16 @@ enum ConversationTimelineWindow {
     static func visibleMessages(in messages: [ChatMessage], limit: Int) -> [ChatMessage] {
         guard limit > 0, messages.count > limit else { return messages }
         return Array(messages.suffix(limit))
+    }
+
+    static func limitAfterAppending(
+        currentLimit: Int,
+        oldCount: Int,
+        newCount: Int,
+        isInitialViewportRevealed: Bool
+    ) -> Int {
+        guard isInitialViewportRevealed, newCount > oldCount else { return currentLimit }
+        return min(newCount, currentLimit + (newCount - oldCount))
     }
 }
 
@@ -774,6 +1058,119 @@ private struct EarlierMessagesLoader: View {
         }
         .frame(maxWidth: .infinity, minHeight: 44)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct LatestMessageButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 22, weight: .semibold))
+                .frame(width: 52, height: 52)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .background(.regularMaterial, in: Circle())
+        .overlay {
+            Circle()
+                .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
+        .accessibilityLabel("Go to latest message")
+        .accessibilityHint("Moves to the bottom of the conversation")
+    }
+}
+
+/// SwiftUI's identity-based scroll command can be deferred while UIScrollView
+/// is decelerating. The button must win immediately, so this bridge cancels the
+/// active momentum and starts one interruptible animation to the true bottom.
+private struct ConversationScrollCommandBridge: UIViewRepresentable {
+    let scrollToBottomRequest: Int
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        guard scrollToBottomRequest > 0,
+              context.coordinator.lastHandledRequest != scrollToBottomRequest else { return }
+        context.coordinator.lastHandledRequest = scrollToBottomRequest
+
+        DispatchQueue.main.async { [weak view] in
+            guard let view,
+                  let scrollView = enclosingScrollView(from: view) else { return }
+            scrollView.layer.removeAllAnimations()
+            scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+            if scrollView.panGestureRecognizer.state != .possible {
+                scrollView.panGestureRecognizer.isEnabled = false
+                scrollView.panGestureRecognizer.isEnabled = true
+            }
+            let targetY = max(
+                -scrollView.adjustedContentInset.top,
+                scrollView.contentSize.height
+                    - scrollView.bounds.height
+                    + scrollView.adjustedContentInset.bottom
+            )
+            UIView.animate(
+                withDuration: 0.42,
+                delay: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]
+            ) {
+                scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: targetY)
+            }
+        }
+    }
+
+    private func enclosingScrollView(from view: UIView) -> UIScrollView? {
+        var candidate = view.superview
+        while let current = candidate {
+            if let scrollView = current as? UIScrollView { return scrollView }
+            candidate = current.superview
+        }
+        return nil
+    }
+
+    final class Coordinator {
+        var lastHandledRequest = 0
+    }
+}
+
+private struct ConversationBottomTrackingModifier: ViewModifier {
+    @Binding var isAtBottom: Bool
+    @Binding var hasPositionedInitialTimeline: Bool
+    let isEnabled: Bool
+    let hasMessages: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    ConversationTimelineScrollBehavior.isAtLatest(
+                        visibleMaxY: geometry.visibleRect.maxY,
+                        contentHeight: geometry.contentSize.height,
+                        containerHeight: geometry.containerSize.height
+                    )
+                } action: { _, reachedLatest in
+                    guard isEnabled else { return }
+                    isAtBottom = reachedLatest
+                    if reachedLatest, hasMessages {
+                        hasPositionedInitialTimeline = true
+                    }
+                }
+        } else {
+            content
+        }
     }
 }
 

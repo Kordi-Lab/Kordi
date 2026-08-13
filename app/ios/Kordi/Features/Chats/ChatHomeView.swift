@@ -20,6 +20,7 @@ struct ChatHomeView: View {
     @State private var renameDraft = ""
     @State private var deleteTarget: ConversationSummary?
     @State private var groupManagementPresentation: GroupManagementPresentation?
+    @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     private let onOpenConversation: ((ConversationSummary) -> Void)?
 
     init(
@@ -117,6 +118,16 @@ struct ChatHomeView: View {
             ConversationView(conversation: selected)
         }
         .toolbar {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .principal) {
+                    MessageSyncStatusView(pullState: pullRefreshState)
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .principal) {
+                    MessageSyncStatusView(pullState: pullRefreshState)
+                }
+            }
             if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .topBarLeading) {
                     accountButton
@@ -239,25 +250,24 @@ struct ChatHomeView: View {
     }
 
     private var contactPage: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if contactItems.isEmpty {
-                    ContentUnavailableView(
-                        searchQuery.isEmpty ? "No contact conversations yet" : "No chats found",
-                        systemImage: searchQuery.isEmpty ? "person.2" : "magnifyingglass",
-                        description: Text(searchQuery.isEmpty ? "Start a chat with a contact to see it here." : "Try another name, Kordi ID, or message.")
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 360)
-                } else {
-                    ForEach(contactItems) { item in
-                        contactItemRow(item)
-                    }
+        ChatPullToRefreshScrollView(
+            coordinateSpaceName: "contact-chat-refresh",
+            visualState: $pullRefreshState,
+            onRefresh: { await model.refreshWorkspace() }
+        ) {
+            if contactItems.isEmpty {
+                ContentUnavailableView(
+                    searchQuery.isEmpty ? "No contact conversations yet" : "No chats found",
+                    systemImage: searchQuery.isEmpty ? "person.2" : "magnifyingglass",
+                    description: Text(searchQuery.isEmpty ? "Start a chat with a contact to see it here." : "Try another name, Kordi ID, or message.")
+                )
+                .frame(maxWidth: .infinity, minHeight: 360)
+            } else {
+                ForEach(contactItems) { item in
+                    contactItemRow(item)
                 }
             }
         }
-        .scrollBounceBehavior(.always)
-        .scrollDismissesKeyboard(.interactively)
-        .refreshable { await model.refreshWorkspace() }
         .accessibilityLabel("Contact chats")
     }
 
@@ -311,25 +321,24 @@ struct ChatHomeView: View {
     }
 
     private var agentPage: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if agentSessions.isEmpty {
-                    ContentUnavailableView(
-                        searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
-                        systemImage: searchQuery.isEmpty ? "sparkles" : "magnifyingglass",
-                        description: Text(searchQuery.isEmpty ? "Use + to start a session with an available agent." : "Try another agent, session, owner, or message.")
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 360)
-                } else {
-                    ForEach(agentSessions) { item in
-                        agentSessionActionRow(item)
-                    }
+        ChatPullToRefreshScrollView(
+            coordinateSpaceName: "agent-chat-refresh",
+            visualState: $pullRefreshState,
+            onRefresh: { await model.refreshWorkspace() }
+        ) {
+            if agentSessions.isEmpty {
+                ContentUnavailableView(
+                    searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
+                    systemImage: searchQuery.isEmpty ? "sparkles" : "magnifyingglass",
+                    description: Text(searchQuery.isEmpty ? "Use + to start a session with an available agent." : "Try another agent, session, owner, or message.")
+                )
+                .frame(maxWidth: .infinity, minHeight: 360)
+            } else {
+                ForEach(agentSessions) { item in
+                    agentSessionActionRow(item)
                 }
             }
         }
-        .scrollBounceBehavior(.always)
-        .scrollDismissesKeyboard(.interactively)
-        .refreshable { await model.refreshWorkspace() }
         .accessibilityLabel("Agent chats")
     }
 
@@ -459,6 +468,8 @@ struct ChatHomeView: View {
     }
 
     private func openConversation(_ conversation: ConversationSummary) {
+        model.markConversationOpened(conversation)
+        model.prepareConversationForPresentation(conversation)
         if let onOpenConversation {
             onOpenConversation(conversation)
         } else {
@@ -505,6 +516,135 @@ enum ChatHomeSearch {
         return space.sessions.contains {
             matches($0, query: query)
         }
+    }
+}
+
+enum ChatPullToRefreshBehavior {
+    static let triggerDistance: CGFloat = 68
+
+    static func pullDistance(contentOffsetY: CGFloat, contentInsetTop: CGFloat) -> CGFloat {
+        max(0, -(contentOffsetY + contentInsetTop))
+    }
+
+    static func shouldStart(distance: CGFloat, isRefreshing: Bool) -> Bool {
+        !isRefreshing && distance >= triggerDistance
+    }
+}
+
+private struct ChatPullToRefreshScrollView<Content: View>: View {
+    let coordinateSpaceName: String
+    let onRefresh: () async -> Void
+    let content: Content
+    @Binding var visualState: ChatPullRefreshVisualState
+    @State private var pullDistance: CGFloat = 0
+    @State private var isRefreshing = false
+
+    init(
+        coordinateSpaceName: String,
+        visualState: Binding<ChatPullRefreshVisualState>,
+        onRefresh: @escaping () async -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.coordinateSpaceName = coordinateSpaceName
+        _visualState = visualState
+        self.onRefresh = onRefresh
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if #available(iOS 18.0, *) {
+            scrollView(includeLegacyOffsetProbe: false)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    ChatPullToRefreshBehavior.pullDistance(
+                        contentOffsetY: geometry.contentOffset.y,
+                        contentInsetTop: geometry.contentInsets.top
+                    )
+                } action: { _, distance in
+                    updatePullDistance(distance)
+                }
+                .onScrollPhaseChange { oldPhase, newPhase in
+                    if newPhase == .interacting { return }
+                    guard oldPhase == .interacting, newPhase != .interacting else { return }
+                    finishPullGesture()
+                }
+        } else {
+            scrollView(includeLegacyOffsetProbe: true)
+                .coordinateSpace(.named(coordinateSpaceName))
+                .onPreferenceChange(ChatPullOffsetPreferenceKey.self) { offset in
+                    updatePullDistance(max(0, offset))
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 8).onEnded { _ in
+                        finishPullGesture()
+                    }
+                )
+        }
+    }
+
+    private func scrollView(includeLegacyOffsetProbe: Bool) -> some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                if includeLegacyOffsetProbe {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ChatPullOffsetPreferenceKey.self,
+                            value: proxy.frame(in: .named(coordinateSpaceName)).minY
+                        )
+                    }
+                    .frame(height: 0)
+                }
+
+                LazyVStack(spacing: 0) {
+                    content
+                }
+            }
+        }
+        .scrollBounceBehavior(.always)
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func updatePullDistance(_ distance: CGFloat) {
+        guard !isRefreshing else { return }
+        pullDistance = distance
+        if distance > 0.5 {
+            visualState = .pulling(progress: KordiSyncMarkGeometry.pullProgress(
+                for: distance,
+                triggerDistance: ChatPullToRefreshBehavior.triggerDistance
+            ))
+        } else if visualState != .idle {
+            visualState = .idle
+        }
+    }
+
+    private func finishPullGesture() {
+        guard ChatPullToRefreshBehavior.shouldStart(
+            distance: pullDistance,
+            isRefreshing: isRefreshing
+        ) else { return }
+        beginRefresh()
+    }
+
+    private func beginRefresh() {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        pullDistance = 0
+        visualState = .refreshing
+        Task {
+            await onRefresh()
+            withAnimation(.smooth(duration: 0.24)) {
+                isRefreshing = false
+                visualState = .idle
+            }
+        }
+    }
+}
+
+private struct ChatPullOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

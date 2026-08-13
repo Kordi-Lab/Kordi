@@ -21,6 +21,13 @@ enum MessageSyncState: Equatable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
+
+    private struct ConversationPresentationSnapshot: Equatable {
+        let latestMessageID: String?
+        let lastActivityAt: Date
+    }
+
     @Published private(set) var phase: AppPhase = .launching
     @Published private(set) var account: CloudAccount?
     @Published private(set) var contacts: [CloudContact] = []
@@ -44,6 +51,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var cloudConnectionState: CloudConnectionState = .connecting
     @Published private(set) var messageSyncState: MessageSyncState = .syncing
     @Published private(set) var lastMessageSyncAt: Date?
+    @Published private(set) var loadingConversationIDs = Set<String>()
     @Published var errorMessage: String?
 
     private let api: CloudAPIClient
@@ -53,6 +61,7 @@ final class AppModel: ObservableObject {
     private let wireCache: CloudWireCache
     private let sessionRuntimeRouteStore: SessionRuntimeRouteStore
     private let attachmentFileStore = AttachmentFileStore()
+    let conversationViewportMemory = ConversationViewportMemory()
     private var token: String?
     private var currentDeviceId: String?
     private var deviceOperationIds: [String: String] = [:]
@@ -60,6 +69,7 @@ final class AppModel: ObservableObject {
     private var cloudSyncCursor = "0"
     private var hasHydratedWireSnapshot = false
     private var hasHydratedForkLineage = false
+    private var fullyHydratedCanonicalGroupSessionIds = Set<String>()
     private var cloudMessagesByPeer: [String: [CloudMessageDTO]] = [:]
     private var cloudMessageIndicesByPeer: [String: [String: Int]] = [:]
     private var sessionForksById: [String: CloudSessionForkSummary] = [:]
@@ -72,6 +82,8 @@ final class AppModel: ObservableObject {
     private var pendingReplyByMessageId: [String: MessageActionSource] = [:]
     private var pendingMessageActionByMessageId: [String: MessageActionMetadata] = [:]
     private var pendingMentionByMessageId: [String: ComposerMentionTarget] = [:]
+    private var conversationLoadCounts: [String: Int] = [:]
+    private var settledConversationPresentations: [String: ConversationPresentationSnapshot] = [:]
     private var sessionTitleOverrides: [String: String] = UserDefaults.standard.dictionary(forKey: "kordi.session-title-overrides") as? [String: String] ?? [:]
     private let previewMode: Bool
 
@@ -123,6 +135,7 @@ final class AppModel: ObservableObject {
             token = savedToken
             account = restoredAccount
             conversations = cache?.loadConversations() ?? []
+            conversations.forEach(hydrateCachedMessages)
             if let snapshot = await wireCache.load(accountId: restoredAccount.accountId) {
                 cloudMessagesByPeer = snapshot.messagesByPeer
                 sessionForksById = snapshot.sessionForksById ?? [:]
@@ -133,13 +146,15 @@ final class AppModel: ObservableObject {
                 hasHydratedForkLineage = snapshot.sessionForksById != nil
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
+            conversations.forEach(prepareConversationForPresentation)
             phase = .signedIn
-            await refreshWorkspace()
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
                 hasHydratedWireSnapshot: hasHydratedWireSnapshot,
                 hasHydratedForkLineage: hasHydratedForkLineage
             ))
+            await refreshWorkspace()
         } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             try? keychain.deleteToken()
             token = nil
             currentDeviceId = nil
@@ -221,6 +236,7 @@ final class AppModel: ObservableObject {
         cloudSyncCursor = "0"
         hasHydratedWireSnapshot = false
         hasHydratedForkLineage = false
+        fullyHydratedCanonicalGroupSessionIds = []
         cloudConnectionState = .connecting
         messageSyncState = .syncing
         token = nil
@@ -247,6 +263,9 @@ final class AppModel: ObservableObject {
         deletedCloudSessionIds = []
         agentRunState = [:]
         agentExecutionLocation = [:]
+        loadingConversationIDs = []
+        conversationLoadCounts = [:]
+        settledConversationPresentations = [:]
         pendingAgentRequestIds = [:]
         pendingAttachmentDraftsByMessageId = [:]
         pendingReplyByMessageId = [:]
@@ -271,8 +290,10 @@ final class AppModel: ObservableObject {
             async let fetchedVisibility = api.listSessionVisibility(token: token)
             async let fetchedAuth = try? api.currentProviderAuthSnapshot(token: token)
             async let fetchedDevices = try? api.listDevices(token: token)
-            let (contactList, requests, owned, visibility, authSnapshot, deviceList) = try await (
-                fetchedContacts, fetchedRequests, ownedAgents, fetchedVisibility, fetchedAuth, fetchedDevices
+            async let canonicalLatestMessages = api.bootstrapChatLatestMessages(token: token)
+            let (contactList, requests, owned, visibility, authSnapshot, deviceList, latestCanonical) = try await (
+                fetchedContacts, fetchedRequests, ownedAgents, fetchedVisibility, fetchedAuth,
+                fetchedDevices, canonicalLatestMessages
             )
             var shared = try await api.listSharedAgents(
                 token: token,
@@ -293,6 +314,7 @@ final class AppModel: ObservableObject {
             sharedCloudAgents = shared
             hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
             deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
+            for message in latestCanonical { mergeCloudMessage(message, peerHint: nil) }
             let peerAccountIds = Set(
                 [account.accountId]
                 + contactList.map(\.accountId)
@@ -301,7 +323,14 @@ final class AppModel: ObservableObject {
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
             applySyncedSessionTitles(await api.cachedChatSessionTitles())
-            let groupParticipantIds = Set(history.messagesByPeer.values.flatMap { messages in
+            let canonicalGroupSessionIds = await api.cachedChatConversations()
+                .filter { $0.kind == "group" && $0.latestMessageSequence > 0 }
+                .compactMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
+            let groupHistoryComplete = await loadCanonicalGroupHistories(
+                token: token,
+                sessionIds: canonicalGroupSessionIds
+            )
+            let groupParticipantIds = Set(cloudMessagesByPeer.values.flatMap { messages in
                 messages.flatMap { CloudGroupMessageCodec.parse($0.body)?.participants.map(\.accountId) ?? [] }
             })
             let alreadyLoadedOwners = Set(shared.map(\.ownerAccountId))
@@ -322,12 +351,16 @@ final class AppModel: ObservableObject {
             await rebuildConversationCatalog()
             cloudConnectionState = .connected
             messageSyncState = history.complete
+                && groupHistoryComplete
                 ? (hasHydratedWireSnapshot ? .upToDate : .syncing)
                 : .offline
-            if history.complete && hasHydratedWireSnapshot { lastMessageSyncAt = Date() }
+            if history.complete && groupHistoryComplete && hasHydratedWireSnapshot {
+                lastMessageSyncAt = Date()
+            }
             await persistCloudSnapshot(accountId: account.accountId)
             errorMessage = nil
         } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             recordCloudConnectionFailure(error)
             messageSyncState = .offline
             errorMessage = userFacing(error, fallback: "Could not refresh conversations.")
@@ -630,16 +663,115 @@ final class AppModel: ObservableObject {
         cloudSyncTask = nil
     }
 
-    func loadConversation(_ conversation: ConversationSummary) async {
-        guard let token, let account else { return }
-        if messagesByConversation[conversation.id] == nil {
-            let cached = cache?.loadMessages(conversationId: conversation.id) ?? []
-            if !cached.isEmpty { messagesByConversation[conversation.id] = cached }
+    func hydrateCachedMessages(for conversation: ConversationSummary) {
+        guard messagesByConversation[conversation.id] == nil else { return }
+        let cached = cache?.loadMessages(conversationId: conversation.id) ?? []
+        if !cached.isEmpty {
+            messagesByConversation[conversation.id] = cached
         }
+    }
+
+    func prepareConversationForPresentation(_ conversation: ConversationSummary) {
+        hydrateCachedMessages(for: conversation)
+        let projected = projectedMessages(
+            for: conversation,
+            wireSnapshot: cloudMessagesByPeer,
+            account: account
+        )
+        guard !projected.isEmpty else { return }
+        let existing = messagesByConversation[conversation.id, default: []]
+        var byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        projected.forEach { byID[$0.id] = $0 }
+        let merged = byID.values.sorted {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }
+        guard merged != existing else { return }
+        messagesByConversation[conversation.id] = merged
+        cache?.saveMessages(merged, conversationId: conversation.id)
+    }
+
+    /// Opening a session is itself a read action. Update the local catalog
+    /// before any network work so list and parent-space badges react at once;
+    /// `loadConversation` still persists the receipt to Cloud afterward.
+    func markConversationOpened(_ conversation: ConversationSummary) {
+        guard let index = conversations.firstIndex(where: { $0.id == conversation.id }),
+              conversations[index].unreadCount != 0 else { return }
+        conversations[index].unreadCount = 0
+        cache?.saveConversations(conversations)
+    }
+
+    func canRevealConversationImmediately(_ conversation: ConversationSummary) -> Bool {
+        guard let messages = messagesByConversation[conversation.id], !messages.isEmpty else {
+            return false
+        }
+        let presentationSnapshot = ConversationPresentationSnapshot(
+            latestMessageID: messages.last?.id,
+            lastActivityAt: conversation.lastActivityAt
+        )
+        let localTimelineCoversCatalogRevision = messages.last.map {
+            $0.createdAt >= conversation.lastActivityAt
+        } ?? false
+        return localTimelineCoversCatalogRevision
+            || settledConversationPresentations[conversation.id] == presentationSnapshot
+    }
+
+    func markConversationPresentationSettled(_ conversation: ConversationSummary) {
+        settledConversationPresentations[conversation.id] = ConversationPresentationSnapshot(
+            latestMessageID: messagesByConversation[conversation.id]?.last?.id,
+            lastActivityAt: conversation.lastActivityAt
+        )
+    }
+
+    private func projectedMessages(
+        for conversation: ConversationSummary,
+        wireSnapshot: [String: [CloudMessageDTO]],
+        account: CloudAccount?
+    ) -> [ChatMessage] {
+        guard let account else { return [] }
+        if conversation.kind == .group {
+            let wireMessages = wireSnapshot.values.flatMap { $0 }.filter { wire in
+                CloudGroupMessageCodec.parse(wire.body)?.groupId == conversation.sessionId
+            }
+            return Self.mapGroupMessages(
+                wireMessages,
+                conversation: conversation,
+                ownAccountId: account.accountId
+            )
+        }
+        let wireMessages = Self.directWireMessages(for: conversation, in: wireSnapshot)
+        return CloudDirectMessageProjector.project(
+            wireMessages,
+            conversation: conversation,
+            ownAccountId: account.accountId
+        )
+    }
+
+    func loadConversation(_ conversation: ConversationSummary) async {
+        markConversationOpened(conversation)
+        beginConversationLoad(conversation.id)
+        defer { endConversationLoad(conversation.id) }
+        prepareConversationForPresentation(conversation)
+
+        if previewMode {
+            guard ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") else {
+                return
+            }
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+            return
+        }
+
+        guard let token, let account else { return }
         async let fetchedPin = try? api.sessionPin(token: token, sessionId: conversation.sessionId)
         do {
-            let fetchedWireMessages = try await loadWireMessages(for: conversation, token: token, ownAccountId: account.accountId)
-            let readScope: CloudReadScope = conversation.kind == .person
+            let fetchedWireMessages = try await loadWireMessages(for: conversation, token: token)
+            try Task.checkCancellation()
+            let supportUsesCanonicalSession = conversation.representsKordiSupport
+                && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
+            let readScope: CloudReadScope = conversation.kind == .person && !supportUsesCanonicalSession
                 ? .peer(conversation.peerAccountId)
                 : .session(conversation.sessionId)
             let readAt = ISO8601DateFormatter().string(from: Date())
@@ -687,7 +819,7 @@ final class AppModel: ObservableObject {
                 completeAgentRequest(conversationId: conversation.id)
             }
             do {
-                if conversation.kind == .person {
+                if conversation.kind == .person && !supportUsesCanonicalSession {
                     try await api.markMessagesRead(token: token, peerAccountId: conversation.peerAccountId)
                 } else {
                     try await api.markSessionMessagesRead(token: token, sessionId: conversation.sessionId)
@@ -697,16 +829,19 @@ final class AppModel: ObservableObject {
                 recordCloudConnectionFailure(error)
             }
             await rebuildConversationCatalog()
-            setUnreadCount(0, conversationId: conversation.id)
+            markConversationOpened(conversation)
             if let pin = await fetchedPin {
                 sessionPinsByID[conversation.sessionId] = pin
             }
+            if errorMessage == Self.cloudUnavailableMessage {
+                errorMessage = nil
+            }
         } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             if let pin = await fetchedPin {
                 sessionPinsByID[conversation.sessionId] = pin
             }
             recordCloudConnectionFailure(error)
-            errorMessage = userFacing(error, fallback: "Could not load this conversation.")
         }
     }
 
@@ -715,7 +850,19 @@ final class AppModel: ObservableObject {
     /// behavior locally first so badges react immediately, then persist the
     /// same session-scoped receipts to Cloud.
     func markGroupSpaceRead(_ space: GroupSpaceSummary) async {
-        guard let token, let account else { return }
+        let conversationIds = Set(space.sessions.map(\.id))
+        var changedUnreadState = false
+        for index in conversations.indices
+        where conversationIds.contains(conversations[index].id)
+            && conversations[index].unreadCount != 0 {
+            conversations[index].unreadCount = 0
+            changedUnreadState = true
+        }
+        if changedUnreadState {
+            cache?.saveConversations(conversations)
+        }
+
+        guard !previewMode, let token, let account else { return }
         let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
         guard !sessionIds.isEmpty else { return }
 
@@ -835,13 +982,19 @@ final class AppModel: ObservableObject {
             }
             let wireBody: String
             let routedAgent = mentionTarget?.kind == .agent ? mentionTarget : nil
-            if conversation.kind == .agent || routedAgent != nil || messageAction != nil {
+            let routesToSupportAgent = conversation.representsKordiSupport
+                && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
+            if conversation.kind == .agent || routedAgent != nil || messageAction != nil || routesToSupportAgent {
                 wireBody = try CloudMessageCodec.encodeDirect(
                     text: text,
-                    agentId: routedAgent?.agentId ?? (conversation.kind == .agent ? conversation.agentId : nil),
-                    agentName: routedAgent?.displayName ?? (conversation.kind == .agent ? conversation.agentDisplayName ?? conversation.displayName : nil),
-                    ownerAccountId: routedAgent?.accountId ?? (conversation.kind == .agent ? conversation.peerAccountId : nil),
-                    ownerName: routedAgent?.ownerName ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil),
+                    agentId: routedAgent?.agentId
+                        ?? (routesToSupportAgent ? KordiSupportIdentity.agentId : conversation.agentId),
+                    agentName: routedAgent?.displayName
+                        ?? (routesToSupportAgent ? KordiSupportIdentity.displayName : conversation.agentDisplayName),
+                    ownerAccountId: routedAgent?.accountId
+                        ?? ((conversation.kind == .agent || routesToSupportAgent) ? conversation.peerAccountId : nil),
+                    ownerName: routedAgent?.ownerName
+                        ?? ((conversation.kind == .agent || routesToSupportAgent) ? conversation.ownerDisplayName : nil),
                     agentRuntimeRoute: requestedRuntimeRoute(for: conversation),
                     messageAction: messageAction
                 )
@@ -861,7 +1014,7 @@ final class AppModel: ObservableObject {
             cloudConnectionState = .connected
             clearPendingSendMetadata(localId)
 
-            if conversation.kind == .agent || routedAgent != nil {
+            if conversation.kind == .agent || routedAgent != nil || routesToSupportAgent {
                 await startAgentRun(
                     conversation: conversation,
                     requestMessageId: sent.messageId,
@@ -1653,30 +1806,76 @@ final class AppModel: ObservableObject {
 
     private func loadWireMessages(
         for conversation: ConversationSummary,
-        token: String,
-        ownAccountId: String
+        token: String
     ) async throws -> [CloudMessageDTO] {
-        if conversation.kind != .group {
-            let fetched = try await api.listMessages(token: token, peerAccountId: conversation.peerAccountId, limit: 500)
-            mergeMessages(fetched, for: conversation.peerAccountId)
-            return cloudMessagesByPeer[conversation.peerAccountId, default: []]
+        let fetched = try await api.listConversationMessages(
+            token: token,
+            sessionId: conversation.sessionId
+        )
+        for message in fetched { mergeCloudMessage(message, peerHint: nil) }
+        if conversation.kind == .group {
+            fullyHydratedCanonicalGroupSessionIds.insert(conversation.sessionId)
         }
-        let peers = Set(conversation.remotePeerAccountIds.filter { $0 != ownAccountId })
-        try await withThrowingTaskGroup(of: (String, [CloudMessageDTO]).self) { group in
-            for peer in peers {
-                group.addTask { [api] in
-                    (peer, try await api.listMessages(token: token, peerAccountId: peer, limit: 500))
+        return fetched
+    }
+
+    private struct CanonicalConversationHistoryPage {
+        let sessionId: String
+        let messages: [CloudMessageDTO]?
+    }
+
+    /// Group timelines contain durable membership/title controls beside real
+    /// messages.  Loading every canonical page lets iOS count and present the
+    /// same semantic session history as macOS instead of treating controls as
+    /// user messages or stopping after an arbitrary raw-message limit.
+    private func loadCanonicalGroupHistories(
+        token: String,
+        sessionIds: [String]
+    ) async -> Bool {
+        let uniqueSessionIds = Array(
+            Set(sessionIds.filter { !$0.isEmpty })
+                .subtracting(fullyHydratedCanonicalGroupSessionIds)
+        ).sorted()
+        guard !uniqueSessionIds.isEmpty else { return true }
+        var complete = true
+        let batchSize = 4
+        for start in stride(from: 0, to: uniqueSessionIds.count, by: batchSize) {
+            if Task.isCancelled { return false }
+            let end = min(start + batchSize, uniqueSessionIds.count)
+            let batch = uniqueSessionIds[start..<end]
+            let pages = await withTaskGroup(of: CanonicalConversationHistoryPage.self) { group in
+                for sessionId in batch {
+                    group.addTask { [api] in
+                        do {
+                            return CanonicalConversationHistoryPage(
+                                sessionId: sessionId,
+                                messages: try await api.listConversationMessages(
+                                    token: token,
+                                    sessionId: sessionId
+                                )
+                            )
+                        } catch {
+                            return CanonicalConversationHistoryPage(
+                                sessionId: sessionId,
+                                messages: nil
+                            )
+                        }
+                    }
                 }
+                var result: [CanonicalConversationHistoryPage] = []
+                for await page in group { result.append(page) }
+                return result
             }
-            for try await (peer, batch) in group { mergeMessages(batch, for: peer) }
+            for page in pages {
+                guard let messages = page.messages else {
+                    complete = false
+                    continue
+                }
+                for message in messages { mergeCloudMessage(message, peerHint: nil) }
+                fullyHydratedCanonicalGroupSessionIds.insert(page.sessionId)
+            }
         }
-        let wireSnapshot = cloudMessagesByPeer
-        return await Task.detached(priority: .userInitiated) {
-            wireSnapshot.values.flatMap { $0 }.filter { wire in
-                guard let envelope = CloudGroupMessageCodec.parse(wire.body) else { return false }
-                return envelope.groupId == conversation.sessionId
-            }
-        }.value
+        return complete
     }
 
     private func sendGroupMessage(
@@ -1894,7 +2093,12 @@ final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 do {
                     let response = try await api.sync(token: token, cursor: nextCursor)
-                    if cloudConnectionState != .connected { cloudConnectionState = .connected }
+                    if cloudConnectionState != .connected {
+                        cloudConnectionState = .connected
+                        if errorMessage == Self.cloudUnavailableMessage {
+                            errorMessage = nil
+                        }
+                    }
                     if !response.events.isEmpty {
                         hasUnpersistedChanges = true
                         pendingEvents.append(contentsOf: response.events)
@@ -1916,7 +2120,6 @@ final class AppModel: ObservableObject {
                         await refreshLoadedConversationProjections()
                         pendingEvents.removeAll(keepingCapacity: true)
                     }
-                    if cloudConnectionState != .connected { cloudConnectionState = .connected }
                     hasHydratedWireSnapshot = true
                     if isForkLineageReplay { hasHydratedForkLineage = true }
                     if messageSyncState != .upToDate { messageSyncState = .upToDate }
@@ -1966,13 +2169,7 @@ final class AppModel: ObservableObject {
                         ownAccountId: account.accountId
                     )
                 } else {
-                    let wireMessages = wireSnapshot[conversation.peerAccountId, default: []]
-                        .filter { message in
-                            guard let sessionId = message.sessionId?.nonEmpty else {
-                                return conversation.kind == .person
-                            }
-                            return sessionId == conversation.sessionId
-                        }
+                    let wireMessages = Self.directWireMessages(for: conversation, in: wireSnapshot)
                     projected = CloudDirectMessageProjector.project(
                         wireMessages,
                         conversation: conversation,
@@ -1989,8 +2186,30 @@ final class AppModel: ObservableObject {
         }
     }
 
+    nonisolated private static func directWireMessages(
+        for conversation: ConversationSummary,
+        in snapshot: [String: [CloudMessageDTO]]
+    ) -> [CloudMessageDTO] {
+        let candidates = conversation.representsKordiSupport
+            && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
+            ? snapshot.values.flatMap { $0 }
+            : snapshot[conversation.peerAccountId, default: []]
+        var byID: [String: CloudMessageDTO] = [:]
+        for message in candidates {
+            guard let sessionId = message.sessionId?.nonEmpty else {
+                if conversation.kind == .person { byID[message.messageId] = message }
+                continue
+            }
+            if sessionId == conversation.sessionId { byID[message.messageId] = message }
+        }
+        return byID.values.sorted {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.messageId < $1.messageId)
+        }
+    }
+
     private func rebuildConversationCatalog() async {
         guard let account else { return }
+        let canonicalConversations = await api.cachedChatConversations()
         let canonicalParticipantsBySessionId = await api.cachedChatParticipantsBySessionId()
         let canonicalForksBySessionId = await api.cachedChatSessionForksById()
         for (sessionId, fork) in canonicalForksBySessionId {
@@ -2010,6 +2229,7 @@ final class AppModel: ObservableObject {
                 ownedAgents: ownedAgentSnapshot,
                 sharedAgents: sharedAgentSnapshot,
                 messagesByPeer: wireSnapshot,
+                canonicalConversations: canonicalConversations,
                 canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
                 sessionForksById: forkSnapshot,
                 hiddenSessionIds: hiddenSnapshot,
@@ -2023,9 +2243,11 @@ final class AppModel: ObservableObject {
             copy.displayName = override
             return copy
         }
-        guard titled != conversations else { return }
-        conversations = titled
-        cache?.saveConversations(titled)
+        titled.forEach(prepareConversationForPresentation)
+        if titled != conversations {
+            conversations = titled
+            cache?.saveConversations(titled)
+        }
     }
 
     private func mergeMessageHistories(_ histories: [String: [CloudMessageDTO]]) {
@@ -2229,6 +2451,21 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func beginConversationLoad(_ conversationID: String) {
+        conversationLoadCounts[conversationID, default: 0] += 1
+        loadingConversationIDs.insert(conversationID)
+    }
+
+    private func endConversationLoad(_ conversationID: String) {
+        let remainingCount = max(0, conversationLoadCounts[conversationID, default: 1] - 1)
+        if remainingCount == 0 {
+            conversationLoadCounts[conversationID] = nil
+            loadingConversationIDs.remove(conversationID)
+        } else {
+            conversationLoadCounts[conversationID] = remainingCount
+        }
+    }
+
     private func updateConversationPreview(_ conversationId: String, text: String, date: Date) {
         if let index = conversations.firstIndex(where: { $0.id == conversationId }) {
             conversations[index].lastMessage = text
@@ -2379,11 +2616,11 @@ final class AppModel: ObservableObject {
                 && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }
         phase = .signedIn
-        await refreshWorkspace()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage
         ))
+        await refreshWorkspace()
     }
 
     private func userFacing(_ error: Error, fallback: String) -> String {

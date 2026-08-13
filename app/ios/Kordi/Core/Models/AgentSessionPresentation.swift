@@ -110,7 +110,16 @@ enum AgentSessionTimelineCatalog {
             if visibleBySessionId[parent] != nil { return false }
             // macOS keeps a fork of a canonical contact/group session with
             // that source in Contact instead of leaking it into Agent.
-            return !parent.hasPrefix("session:")
+            if parent.hasPrefix("session:direct-person:")
+                || parent.hasPrefix("session:group:")
+                || parent.hasPrefix("group:") {
+                return false
+            }
+            // A retained fork can outlive an agent root that was never
+            // uploaded or was removed before the v2 cutover. Promote the
+            // oldest available agent fork to a visible root so the entire
+            // remaining chain does not disappear from iOS.
+            return true
         }
         .sorted(by: sessionSort)
 

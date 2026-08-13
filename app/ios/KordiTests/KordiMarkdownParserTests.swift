@@ -117,6 +117,134 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(visible.last?.id, "message-340")
     }
 
+    func testPreviewConversationKindsExerciseWindowedScrolling() throws {
+        let fixture = PreviewData.make(now: Date(timeIntervalSince1970: 1_000_000))
+        let expectedLatestMessageIDs = [
+            "person:acct_maya": "m6",
+            "group:mobile": "gm3",
+            "agent:my-kordi": "m2"
+        ]
+
+        for (conversationID, expectedLatestMessageID) in expectedLatestMessageIDs {
+            let messages = try XCTUnwrap(fixture.messagesByConversation[conversationID])
+            XCTAssertGreaterThan(messages.count, ConversationTimelineWindow.initialLimit)
+            XCTAssertEqual(Set(messages.map(\.id)).count, messages.count)
+            XCTAssertEqual(messages.last?.id, expectedLatestMessageID)
+        }
+    }
+
+    func testInitialWindowStaysBoundedWhenRemoteHistoryArrives() {
+        let limitBeforeReveal = ConversationTimelineWindow.limitAfterAppending(
+            currentLimit: ConversationTimelineWindow.initialLimit,
+            oldCount: 5,
+            newCount: 341,
+            isInitialViewportRevealed: false
+        )
+        let limitAfterReveal = ConversationTimelineWindow.limitAfterAppending(
+            currentLimit: ConversationTimelineWindow.initialLimit,
+            oldCount: 341,
+            newCount: 342,
+            isInitialViewportRevealed: true
+        )
+
+        XCTAssertEqual(limitBeforeReveal, ConversationTimelineWindow.initialLimit)
+        XCTAssertEqual(limitAfterReveal, ConversationTimelineWindow.initialLimit + 1)
+    }
+
+    @MainActor
+    func testOpeningEveryPreviewSessionKindClearsUnreadImmediately() throws {
+        let model = AppModel(previewMode: true)
+        let conversationIDs = ["person:acct_maya", "group:mobile", "agent:my-kordi"]
+
+        for conversationID in conversationIDs {
+            let conversation = try XCTUnwrap(
+                model.conversations.first(where: { $0.id == conversationID })
+            )
+            XCTAssertGreaterThan(conversation.unreadCount, 0)
+            model.markConversationOpened(conversation)
+            XCTAssertEqual(
+                model.conversations.first(where: { $0.id == conversationID })?.unreadCount,
+                0
+            )
+        }
+    }
+
+    @MainActor
+    func testExpandingPreviewGroupClearsUnreadWithoutCloud() async throws {
+        let model = AppModel(previewMode: true)
+        let space = try XCTUnwrap(
+            GroupSpaceCatalog.build(
+                conversations: model.conversations,
+                ownAccountId: try XCTUnwrap(model.account?.accountId)
+            ).first
+        )
+
+        XCTAssertGreaterThan(space.unreadCount, 0)
+        await model.markGroupSpaceRead(space)
+
+        let sessionIDs = Set(space.sessions.map(\.id))
+        XCTAssertTrue(
+            model.conversations
+                .filter { sessionIDs.contains($0.id) }
+                .allSatisfy { $0.unreadCount == 0 }
+        )
+        XCTAssertNil(model.errorMessage)
+    }
+
+    @MainActor
+    func testCurrentOrPreviouslySettledConversationCanRevealBeforeReload() throws {
+        let model = AppModel(previewMode: true)
+        for conversationID in ["person:acct_maya", "group:mobile", "agent:my-kordi"] {
+            let currentConversation = try XCTUnwrap(
+                model.conversations.first(where: { $0.id == conversationID })
+            )
+            XCTAssertTrue(model.canRevealConversationImmediately(currentConversation))
+        }
+
+        let conversation = try XCTUnwrap(
+            model.conversations.first(where: { $0.id == "person:acct_maya" })
+        )
+        let latestMessage = try XCTUnwrap(model.messages(for: conversation).last)
+
+        XCTAssertTrue(model.canRevealConversationImmediately(conversation))
+
+        var pendingConversation = conversation
+        pendingConversation.lastActivityAt = latestMessage.createdAt.addingTimeInterval(1)
+        XCTAssertFalse(model.canRevealConversationImmediately(pendingConversation))
+
+        model.markConversationPresentationSettled(pendingConversation)
+        XCTAssertTrue(model.canRevealConversationImmediately(pendingConversation))
+
+        var updatedConversation = pendingConversation
+        updatedConversation.lastActivityAt = pendingConversation.lastActivityAt.addingTimeInterval(1)
+        XCTAssertFalse(model.canRevealConversationImmediately(updatedConversation))
+    }
+
+    @MainActor
+    func testPreviewLoadPreservesNestedGroupMessages() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(
+            model.conversations.first(where: { $0.id == "group:mobile-release" })
+        )
+        let messagesBeforeLoad = model.messages(for: conversation)
+
+        await model.loadConversation(conversation)
+
+        XCTAssertFalse(messagesBeforeLoad.isEmpty)
+        XCTAssertEqual(model.messages(for: conversation), messagesBeforeLoad)
+    }
+
+    func testConversationLoadingKeepsTheSyncMarkMoving() {
+        let motion = MessageSyncStatusBehavior.motion(
+            pullState: .idle,
+            messageSyncState: .upToDate,
+            isLoadingMessages: true
+        )
+
+        XCTAssertEqual(motion, .syncing)
+        XCTAssertTrue(motion.runsContinuously)
+    }
+
     func testTimelinePresentationShowsAvatarOnlyOnTheLastAdjacentHumanMessage() {
         let start = Date(timeIntervalSince1970: 1_000)
         let messages = [
@@ -176,6 +304,15 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testPullToRefreshStartsOnceOnlyAfterCrossingTheThreshold() {
+        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 24, isRefreshing: false))
+        XCTAssertTrue(ChatPullToRefreshBehavior.shouldStart(
+            distance: ChatPullToRefreshBehavior.triggerDistance,
+            isRefreshing: false
+        ))
+        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 120, isRefreshing: true))
+    }
+
     func testChatSearchNormalizesWhitespaceAndMatchesContactIdentity() {
         let conversation = searchConversation(
             displayName: "Research Agent",
@@ -222,6 +359,138 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "maya"))
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "budget"))
         XCTAssertFalse(ChatHomeSearch.matches(space, query: "roadmap"))
+    }
+
+    func testPullDistanceUsesNativeScrollGeometryInsets() {
+        XCTAssertEqual(
+            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -59, contentInsetTop: 59),
+            0
+        )
+        XCTAssertEqual(
+            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -93, contentInsetTop: 59),
+            34
+        )
+    }
+
+    func testConversationDoesNotAnimateItsInitialLatestMessagePosition() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: false,
+            isAtBottom: false,
+            previousLatestMessageID: nil,
+            currentLatestMessageID: "message-12"
+        ))
+    }
+
+    func testConversationDoesNotJumpWhenANewMessageArrivesAfterScrollingUp() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: false,
+            previousLatestMessageID: "message-12",
+            currentLatestMessageID: "message-13"
+        ))
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: false,
+            messageCount: 13
+        ))
+    }
+
+    func testConversationKeepsFollowingNewMessagesWhileAtLatest() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: true,
+            previousLatestMessageID: "message-12",
+            currentLatestMessageID: "message-13"
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: true,
+            messageCount: 13
+        ))
+    }
+
+    func testConversationDoesNotScrollWhenRemoteSyncOnlyRefreshesExistingMessages() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: true,
+            previousLatestMessageID: "message-13",
+            currentLatestMessageID: "message-13"
+        ))
+    }
+
+    func testConversationShowsLatestButtonWhenInitialScrollHasNotCompleted() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: false,
+            messageCount: 13
+        ))
+    }
+
+    func testConversationDetectsLatestPositionFromVisibleScrollGeometry() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.isAtLatest(
+            visibleMaxY: 700,
+            contentHeight: 1_400,
+            containerHeight: 600
+        ))
+        XCTAssertTrue(ConversationTimelineScrollBehavior.isAtLatest(
+            visibleMaxY: 1_392,
+            contentHeight: 1_400,
+            containerHeight: 600
+        ))
+    }
+
+    func testConversationRestoresPositionForAQuickReturnWithoutNewMessages() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+
+        XCTAssertEqual(
+            memory.resumedMessageID(
+                for: "account:session",
+                latestMessageID: "message-9",
+                availableMessageIDs: ["message-4", "message-9"],
+                now: leftAt.addingTimeInterval(119)
+            ),
+            "message-4"
+        )
+    }
+
+    func testConversationStartsAtLatestAfterTwoMinutes() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+
+        XCTAssertNil(memory.resumedMessageID(
+            for: "account:session",
+            latestMessageID: "message-9",
+            availableMessageIDs: ["message-4", "message-9"],
+            now: leftAt.addingTimeInterval(120)
+        ))
+    }
+
+    func testConversationStartsAtLatestWhenANewMessageArrived() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+
+        XCTAssertNil(memory.resumedMessageID(
+            for: "account:session",
+            latestMessageID: "message-10",
+            availableMessageIDs: ["message-4", "message-9", "message-10"],
+            now: leftAt.addingTimeInterval(30)
+        ))
     }
 
     func testPullProgressIsClampedToTheRefreshThreshold() {
@@ -319,7 +588,7 @@ final class KordiMarkdownParserTests: XCTestCase {
 
     func testAvatarFallbackMatchesTheDesktopInitialsRule() {
         XCTAssertEqual(CloudAvatarFallback.initials(for: "Kordi Support"), "KO")
-        XCTAssertEqual(CloudAvatarFallback.initials(for: "陈 小明"), "陈小")
+        XCTAssertEqual(CloudAvatarFallback.initials(for: "Chen Xiaoming"), "CH")
         XCTAssertEqual(CloudAvatarFallback.initials(for: " -- "), "KO")
         XCTAssertEqual(
             CloudAvatarFallback.paletteIndex(for: "Kordi Support"),
