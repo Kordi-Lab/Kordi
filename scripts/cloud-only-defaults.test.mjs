@@ -37,7 +37,10 @@ test('desktop package commands expose only Cloud product entrypoints', () => {
 
   assert.equal(scripts['tauri:dev'], 'pnpm tauri:dev:cloud');
   assert.equal(scripts['tauri:build'], 'pnpm tauri:build:cloud');
-  assert.match(scripts['tauri:dev:cloud'], /tauri dev --config src-tauri\/tauri\.cloud\.conf\.json/);
+  assert.match(scripts['tauri:dev:cloud'], /run-with-debug-artifact-maintenance\.sh/);
+  assert.match(scripts['tauri:dev:cloud:raw'], /tauri dev --config src-tauri\/tauri\.cloud\.conf\.json/);
+  assert.match(scripts['tauri:dev:profile'], /run-with-debug-artifact-maintenance\.sh/);
+  assert.match(scripts['tauri:dev:multi:cloud'], /run-with-debug-artifact-maintenance\.sh/);
   assert.match(scripts['tauri:build:cloud'], /tauri build --config src-tauri\/tauri\.cloud\.conf\.json/);
   assert.match(
     scripts['tauri:build:cloud:dmg'],
