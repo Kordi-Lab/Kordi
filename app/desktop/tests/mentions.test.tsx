@@ -858,10 +858,10 @@ test('local agent labels include sanitized aliases', () => {
 
 test('mentionsLocalAgent does not treat the local human display name as an agent mention', () => {
   const collaborationState = bridgeStateWithPeers([]);
-  collaborationState.hosts[0].displayName = 'Shuyheretest';
-  collaborationState.hosts[0].ownerName = 'Shuyheretest';
+  collaborationState.hosts[0].displayName = 'MayaTest';
+  collaborationState.hosts[0].ownerName = 'MayaTest';
   collaborationState.hosts[0].agents[0].label = 'Kordi';
 
-  assert.equal(mentionsLocalAgent('@Shuyheretest hi', null, collaborationState), false);
-  assert.equal(mentionsLocalAgent('@ShuyheretestsKordi hi', null, collaborationState), true);
+  assert.equal(mentionsLocalAgent('@MayaTest hi', null, collaborationState), false);
+  assert.equal(mentionsLocalAgent('@MayaTestsKordi hi', null, collaborationState), true);
 });

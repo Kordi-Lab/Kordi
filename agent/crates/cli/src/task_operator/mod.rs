@@ -743,7 +743,7 @@ mod tests {
                 task_title: "Finish Kordi Issue 317".to_string(),
                 summary: Some("Implement fork flow".to_string()),
                 status: None,
-                involved_participants: vec!["Shuyang".to_string(), "Kordi".to_string()],
+                involved_participants: vec!["Alex".to_string(), "Kordi".to_string()],
             },
         ))
         .await

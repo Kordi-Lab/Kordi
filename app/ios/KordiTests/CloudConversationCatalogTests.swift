@@ -8,14 +8,14 @@ final class CloudConversationCatalogTests: XCTestCase {
             agentId: "agent_research",
             agentName: "Research Agent",
             ownerAccountId: "acct_me",
-            ownerName: "Shuyang"
+            ownerName: "Alex"
         )
         let requestTwo = try CloudMessageCodec.encodeDirect(
             text: "Review the mobile design",
             agentId: "agent_research",
             agentName: "Research Agent",
             ownerAccountId: "acct_me",
-            ownerName: "Shuyang"
+            ownerName: "Alex"
         )
         let catalog = CloudConversationCatalog.build(
             account: account,
@@ -42,14 +42,14 @@ final class CloudConversationCatalogTests: XCTestCase {
             agentId: "agent_research",
             agentName: "Research Agent",
             ownerAccountId: "acct_me",
-            ownerName: "Shuyang"
+            ownerName: "Alex"
         )
         let forkBody = try CloudMessageCodec.encodeDirect(
             text: "Try another approach",
             agentId: "agent_research",
             agentName: "Research Agent",
             ownerAccountId: "acct_me",
-            ownerName: "Shuyang"
+            ownerName: "Alex"
         )
         let fork = CloudSessionForkSummary(
             forkSessionId: "session:fork:alternative",
@@ -176,7 +176,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testRebuildsOneGroupSessionFromFanoutCopies() throws {
         let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let invite = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
@@ -235,7 +235,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testGroupUnreadIgnoresNonIncomingFanoutCopies() throws {
         let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let message = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
@@ -282,7 +282,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testGroupSessionWithoutAnExplicitTitleUsesItsFirstMessageLikeMac() throws {
         let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let message = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
@@ -346,8 +346,8 @@ final class CloudConversationCatalogTests: XCTestCase {
         let currentAccount = CloudAccount(
             accountId: "acct_me",
             kordiId: "123456789",
-            displayName: "Shuyang",
-            primaryEmail: "shu@example.com",
+            displayName: "Alex",
+            primaryEmail: "taylor@example.com",
             avatarUrl: "data:image/png;base64,bWU=",
             nodeId: nil,
             passwordSet: true
@@ -374,7 +374,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         )
 
         let participants = try XCTUnwrap(catalog.first { $0.kind == .group }?.groupParticipants)
-        XCTAssertEqual(participants.first { $0.accountId == "acct_me" }?.displayName, "Shuyang")
+        XCTAssertEqual(participants.first { $0.accountId == "acct_me" }?.displayName, "Alex")
         XCTAssertEqual(participants.first { $0.accountId == "acct_me" }?.avatarUrl, "data:image/png;base64,bWU=")
         XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.displayName, "Maya Chen")
         XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.avatarUrl, "https://cdn.example/maya-current.png")
@@ -383,7 +383,7 @@ final class CloudConversationCatalogTests: XCTestCase {
     func testGroupParticipantAvatarsAreEnrichedFromCanonicalMembersWithoutContacts() throws {
         let staleParticipants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "owner"),
-            CloudGroupParticipant(accountId: "acct_jiaxin", displayName: "Jiaxin", avatarUrl: nil, role: "member")
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "member")
         ]
         let invite = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
             kind: "group-invite",
@@ -404,7 +404,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             nodeId: nil,
             passwordSet: true
         )
-        let canonicalJiaxinAvatar = "data:image/jpeg;base64,/9j/2Q=="
+        let canonicalMayaAvatar = "data:image/jpeg;base64,/9j/2Q=="
 
         let catalog = CloudConversationCatalog.build(
             account: currentAccount,
@@ -412,7 +412,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             ownedAgents: [],
             sharedAgents: [],
             messagesByPeer: [
-                "acct_jiaxin": [
+                "acct_maya": [
                     wire(
                         id: "invite",
                         body: invite,
@@ -430,9 +430,9 @@ final class CloudConversationCatalogTests: XCTestCase {
                         role: "owner"
                     ),
                     CloudGroupParticipant(
-                        accountId: "acct_jiaxin",
-                        displayName: "Jiaxin Pei",
-                        avatarUrl: canonicalJiaxinAvatar,
+                        accountId: "acct_maya",
+                        displayName: "Maya Chen",
+                        avatarUrl: canonicalMayaAvatar,
                         role: "member"
                     )
                 ]
@@ -440,13 +440,13 @@ final class CloudConversationCatalogTests: XCTestCase {
         )
 
         let participants = try XCTUnwrap(catalog.first { $0.kind == .group }?.groupParticipants)
-        XCTAssertEqual(participants.first { $0.accountId == "acct_jiaxin" }?.displayName, "Jiaxin Pei")
-        XCTAssertEqual(participants.first { $0.accountId == "acct_jiaxin" }?.avatarUrl, canonicalJiaxinAvatar)
+        XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.displayName, "Maya Chen")
+        XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.avatarUrl, canonicalMayaAvatar)
     }
 
     func testLaterSparseGroupSnapshotDoesNotEraseEarlierParticipantProfiles() throws {
         let richParticipants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: "https://cdn.example/me.png", role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: "https://cdn.example/me.png", role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: "https://cdn.example/maya.png", role: "admin")
         ]
         let sparseParticipants = [
@@ -477,7 +477,7 @@ final class CloudConversationCatalogTests: XCTestCase {
                 text: "hello",
                 createdAtMs: 1_786_180_800_000,
                 senderKind: "human",
-                senderDisplayName: "Shuyang",
+                senderDisplayName: "Alex",
                 deliveryState: "complete",
                 replyToMessageId: nil,
                 requestId: nil
@@ -511,7 +511,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testGroupSpaceCatalogExpandsOneGroupIntoMultipleSessions() {
         let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let root = groupConversation(
@@ -541,7 +541,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testGroupSpaceCatalogKeepsMembershipChangesInOneCanonicalSpace() {
         let original = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let expanded = original + [
@@ -572,7 +572,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testGroupSpaceCatalogDoesNotMergeDistinctGroupsWithTheSameMembers() {
         let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let first = groupConversation(
@@ -599,7 +599,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testGroupSpaceCatalogHidesForksAndControlOnlyPlaceholders() {
         let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let root = groupConversation(
@@ -652,7 +652,7 @@ final class CloudConversationCatalogTests: XCTestCase {
 
     func testHistoricalForkLineageResolvesBackToTheRootGroupSpace() throws {
         let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
         ]
         let rootId = "session:group:root"
@@ -727,8 +727,8 @@ final class CloudConversationCatalogTests: XCTestCase {
         CloudAccount(
             accountId: "acct_me",
             kordiId: "123456789",
-            displayName: "Shuyang",
-            primaryEmail: "shu@example.com",
+            displayName: "Alex",
+            primaryEmail: "taylor@example.com",
             avatarUrl: nil,
             nodeId: nil,
             passwordSet: true
@@ -756,7 +756,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             role: "Researcher",
             description: nil,
             updatedAt: "2026-08-08T00:00:00Z",
-            ownerDisplayName: "Shuyang"
+            ownerDisplayName: "Alex"
         )
     }
 

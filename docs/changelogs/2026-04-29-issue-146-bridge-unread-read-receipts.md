@@ -66,5 +66,5 @@ Base: `origin/main` at `6dd1917`
 - Verified unread badges appear on the correct parent session.
 - Verified unread clears immediately when the receiver opens or focuses the relevant session.
 - Verified sender-side delivery status progresses through sent, delivered, and read.
-- Verified full mention labels such as `@Shenzhe's Kordi` render as one pill when the message is an explicit mention.
+- Verified full mention labels such as `@Ethan's Kordi` render as one pill when the message is an explicit mention.
 - Verified implicit direct person-session messages render as typed without auto-added mention text.

@@ -26,8 +26,8 @@ A group can be created only after selecting at least two contacts. Including the
 
 The default group display name is derived from selected people:
 
-- 2 selected people: `Shuyhere, Shuyhere2` (creator + 2 selected people = 3 humans total)
-- More than 2 selected people: `Shuyhere, Shuyhere2 +N more`
+- 2 selected people: `Maya, Maya2` (creator + 2 selected people = 3 humans total)
+- More than 2 selected people: `Maya, Maya2 +N more`
 
 The user can override the group display name before creating the group, or rename it later from details. The transcript/session row title remains derived from the first few message tokens, not from the contact name or group display name.
 
@@ -68,7 +68,7 @@ For groups under 50 people, adding a person contact directly makes them an activ
 
 ### Child session row prefix
 
-Inside a drilled participant-space view, child sessions render with a `#` prefix before the session title, e.g. `# Hi shu`.
+Inside a drilled participant-space view, child sessions render with a `#` prefix before the session title, e.g. `# Hi taylor`.
 
 When a contact or group row is expanded, unread/status lights move to the child session rows. The parent row remains a structural header and should not duplicate the blue running light from the active child session.
 

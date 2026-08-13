@@ -193,7 +193,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
       targetCloudAgentId: 'cloud_agent_project',
       targetCloudAgentName: 'Project Driver',
       targetCloudAgentOwnerAccountId: 'acct_owner',
-      targetCloudAgentOwnerName: 'Shuyang',
+      targetCloudAgentOwnerName: 'Alex',
       agentMentionDepth: 1,
     },
   });
@@ -211,7 +211,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.targetCloudAgentId, 'cloud_agent_project');
   assert.equal(parsed?.message?.targetCloudAgentName, 'Project Driver');
   assert.equal(parsed?.message?.targetCloudAgentOwnerAccountId, 'acct_owner');
-  assert.equal(parsed?.message?.targetCloudAgentOwnerName, 'Shuyang');
+  assert.equal(parsed?.message?.targetCloudAgentOwnerName, 'Alex');
   assert.equal(parsed?.message?.agentMentionDepth, 1);
 });
 

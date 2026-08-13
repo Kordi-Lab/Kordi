@@ -246,7 +246,7 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   const chatConversations = [conversation({
     id: 'session:group-selected',
     canonicalSessionId: 'session:group-selected',
-    name: 'Hi shu',
+    name: 'Hi taylor',
     participants: ['Me', 'Alice', 'Bob'],
     canonicalParticipants: [
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
@@ -268,7 +268,7 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   assert.match(markup, /aria-label="Open group management"/);
   assert.ok(markup.indexOf('aria-label="Open group management"') < markup.indexOf('aria-label="Create session in Alice, Bob"'));
   assert.match(markup, /data-participant-space-row-actions="true"/);
-  assert.match(markup, /# Hi shu/);
+  assert.match(markup, /# Hi taylor/);
   assert.match(sessionRowMarkup, /data-session-id-label="Group chat"/);
   assert.doesNotMatch(sessionRowMarkup, /app-participant-space-session-id/);
   assert.doesNotMatch(sessionRowMarkup, />Group chat<\//);

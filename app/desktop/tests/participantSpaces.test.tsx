@@ -157,26 +157,26 @@ test('buildParticipantSpaces infers a local owned-agent session as part of the s
 test('buildParticipantSpaces keeps one human plus agents in a human-centered space', () => {
   const spaces = buildParticipantSpaces([
     conversation({
-      id: 'session:shu-agent',
-      canonicalSessionId: 'session:shu-agent',
+      id: 'session:taylor-agent',
+      canonicalSessionId: 'session:taylor-agent',
       type: 'person',
-      name: 'Agent-assisted chat with shu',
-      subtitle: "shuhere2's Kordi joined via mention",
-      participants: ['Me', 'shu', "shuhere2's Kordi"],
+      name: 'Agent-assisted chat with taylor',
+      subtitle: "taylor2's Kordi joined via mention",
+      participants: ['Me', 'taylor', "taylor2's Kordi"],
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:shu', name: 'shu', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shu' },
-        { id: 'agent:shuhere2-kordi', name: "shuhere2's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', ownerName: 'shuhere2', avatarKey: 'agent-shu' },
+        { id: 'human:taylor', name: 'taylor', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'taylor' },
+        { id: 'agent:taylor2-kordi', name: "taylor2's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', ownerName: 'taylor2', avatarKey: 'agent-taylor' },
       ],
     }),
   ]);
 
   assert.equal(spaces.length, 1);
-  assert.equal(spaces[0]?.id, 'direct-human:human:shu');
+  assert.equal(spaces[0]?.id, 'direct-human:human:taylor');
   assert.equal(spaces[0]?.kind, 'direct-human');
-  assert.equal(spaces[0]?.title, 'shu');
+  assert.equal(spaces[0]?.title, 'taylor');
   assert.equal(spaces[0]?.participantCount, 3);
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['shu']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['taylor']);
 });
 
 test('buildParticipantSpaces groups agent-only sessions into the default self space', () => {
@@ -262,21 +262,21 @@ test('buildParticipantSpaces builds a true group when a conversation has multipl
       name: 'Kordi design group',
       subtitle: 'Planning sidebar IA',
       metadata: { groupCreatorIdentityId: 'human:me' },
-      participants: ['Me', 'shu', 'Alex', "shuhere2's Kordi"],
+      participants: ['Me', 'taylor', 'Alex', "taylor2's Kordi"],
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:shu', name: 'shu', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shu' },
+        { id: 'human:taylor', name: 'taylor', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'taylor' },
         { id: 'human:alex', name: 'Alex', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alex' },
-        { id: 'agent:shuhere2-kordi', name: "shuhere2's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', ownerName: 'shuhere2', avatarKey: 'agent-shu' },
+        { id: 'agent:taylor2-kordi', name: "taylor2's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', ownerName: 'taylor2', avatarKey: 'agent-taylor' },
       ],
     }),
   ]);
 
   assert.equal(spaces.length, 1);
   assert.equal(spaces[0]?.kind, 'group');
-  assert.equal(spaces[0]?.title, 'Alex, shu');
+  assert.equal(spaces[0]?.title, 'Alex, taylor');
   assert.equal(spaces[0]?.participantCount, 4);
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['alex', 'me', 'shu']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['alex', 'me', 'taylor']);
 });
 
 test('buildParticipantSpaces collapses duplicate blank sessions in a participant space', () => {
@@ -498,7 +498,7 @@ test('buildParticipantSpaces uses explicit custom group names before inferred pe
 
 test('buildParticipantSpaces prefers the canonical root name over a newer stale child variant', () => {
   const participants = [
-    { id: 'human:me', name: 'Shu Yang', kind: 'human' as const, role: 'self', source: 'local' as const, avatarKey: 'me' },
+    { id: 'human:me', name: 'Alex Morgan', kind: 'human' as const, role: 'self', source: 'local' as const, avatarKey: 'me' },
     { id: 'human:alice', name: 'Alice', kind: 'human' as const, role: 'person', source: 'bridge' as const, avatarKey: 'alice' },
     { id: 'human:bob', name: 'Bob', kind: 'human' as const, role: 'person', source: 'bridge' as const, avatarKey: 'bob' },
   ];
@@ -530,7 +530,7 @@ test('buildParticipantSpaces prefers the canonical root name over a newer stale 
 
 test('buildParticipantSpaces applies the latest replicated group rename independently of child activity', () => {
   const participants = [
-    { id: 'human:me', name: 'Shu Yang', kind: 'human' as const, role: 'self', source: 'local' as const, avatarKey: 'me' },
+    { id: 'human:me', name: 'Alex Morgan', kind: 'human' as const, role: 'self', source: 'local' as const, avatarKey: 'me' },
     { id: 'human:alice', name: 'Alice', kind: 'human' as const, role: 'person', source: 'bridge' as const, avatarKey: 'alice' },
     { id: 'human:bob', name: 'Bob', kind: 'human' as const, role: 'person', source: 'bridge' as const, avatarKey: 'bob' },
   ];
@@ -562,10 +562,10 @@ test('buildParticipantSpaces applies the latest replicated group rename independ
 
 test('buildParticipantSpaces infers the same group name for every viewer', () => {
   const members = [
-    { id: 'human:acct_creator', name: 'Jiaxin Pei', avatarKey: 'jiaxin' },
-    { id: 'human:acct_fish', name: 'C UFishAI', avatarKey: 'fish' },
-    { id: 'human:acct_shenzhe', name: 'Shenzhe Zhu', avatarKey: 'shenzhe' },
-    { id: 'human:acct_shu', name: 'Shu Yang', avatarKey: 'shu' },
+    { id: 'human:acct_creator', name: 'Maya Chen', avatarKey: 'maya' },
+    { id: 'human:acct_fish', name: 'Research Agent', avatarKey: 'fish' },
+    { id: 'human:acct_ethan', name: 'Ethan Park', avatarKey: 'ethan' },
+    { id: 'human:acct_alex', name: 'Alex Morgan', avatarKey: 'alex' },
   ];
   const buildForViewer = (viewerId: string, order: number[]) => buildParticipantSpaces([
     conversation({
@@ -591,9 +591,9 @@ test('buildParticipantSpaces infers the same group name for every viewer', () =>
   ])[0]?.title;
 
   const creatorView = buildForViewer('human:acct_creator', [0, 1, 2, 3]);
-  const invitedMemberView = buildForViewer('human:acct_shu', [3, 2, 0, 1]);
+  const invitedMemberView = buildForViewer('human:acct_alex', [3, 2, 0, 1]);
 
-  assert.equal(creatorView, 'C UFishAI, Shenzhe Zhu +1 more');
+  assert.equal(creatorView, 'Alex Morgan, Ethan Park +1 more');
   assert.equal(invitedMemberView, creatorView);
 });
 
@@ -827,12 +827,12 @@ test('buildParticipantSpaces keeps legacy continued group sessions in their orig
 
 test('buildParticipantSpaces truncates long inferred group names with a remaining people count', () => {
   const humans = Array.from({ length: 105 }, (_, index) => ({
-    id: `human:shuyhere${index + 1}`,
-    name: `shuyhere${index + 1}`,
+    id: `human:member${index + 1}`,
+    name: `member${index + 1}`,
     kind: 'human' as const,
     role: 'person',
     source: 'bridge',
-    avatarKey: `shuyhere${index + 1}`,
+    avatarKey: `member${index + 1}`,
   }));
   const spaces = buildParticipantSpaces([
     conversation({
@@ -850,8 +850,8 @@ test('buildParticipantSpaces truncates long inferred group names with a remainin
     }),
   ]);
 
-  assert.equal(spaces[0]?.title, 'shuyhere1, shuyhere2 +103 more');
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'shuyhere1', 'shuyhere10']);
+  assert.equal(spaces[0]?.title, 'member1, member2 +103 more');
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'member1', 'member10']);
 });
 
 test('buildParticipantSpaces does not expose raw session ids as participant-space previews', () => {
@@ -860,19 +860,19 @@ test('buildParticipantSpaces does not expose raw session ids as participant-spac
       id: 'session:raw-preview-group',
       canonicalSessionId: 'session:raw-preview-group',
       type: 'person',
-      name: 'hi shu',
+      name: 'hi taylor',
       subtitle: 'session:bridge:humans:8e32e6b4-b8e7-4591-a412-8613ad09fe25',
       messages: [],
-      participants: ['Me', 'shuyhere1', 'shuyhere2'],
+      participants: ['Me', 'member1', 'member2'],
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:shuyhere1', name: 'shuyhere1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere1' },
-        { id: 'human:shuyhere2', name: 'shuyhere2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere2' },
+        { id: 'human:member1', name: 'member1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member1' },
+        { id: 'human:member2', name: 'member2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member2' },
       ],
     }),
   ]);
 
-  assert.equal(spaces[0]?.preview, 'hi shu');
+  assert.equal(spaces[0]?.preview, 'hi taylor');
 });
 
 test('filterParticipantSpaces matches title, participant names, preview, and child session title', () => {

@@ -1,8 +1,9 @@
-# Historical implementation records
+# Historical design records
 
-The plans and specifications in this directory document implementation work
-at the time it was proposed. They are retained for engineering history and are
-not the current product architecture or an executable backlog.
+The specifications in this directory document designs at the time they were
+proposed. They are retained for engineering history and are not the current
+product architecture or an executable backlog. Historical implementation
+plans have been removed from the publishable source tree.
 
 In particular, references to `cloud_messages`, `cloud_sync_events`, mailbox
 tables, or `/v1/cloud/messages` describe superseded chat implementations. The

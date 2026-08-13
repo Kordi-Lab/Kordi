@@ -159,7 +159,7 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             kind: .agent,
             peerAccountId: "acct_me",
             agentId: nil,
-            ownerDisplayName: "Shuyang",
+            ownerDisplayName: "Alex",
             displayName: "Check all my chat",
             lastMessage: "check all my chat",
             lastActivityAt: .distantPast,

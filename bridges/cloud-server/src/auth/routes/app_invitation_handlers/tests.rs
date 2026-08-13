@@ -20,8 +20,8 @@ fn app_invite_tokens_are_opaque_and_hash_stably() {
 #[test]
 fn invitation_landing_escapes_inviter_names() {
     assert_eq!(
-        escape_html("<Shuyang & 'friends'>"),
-        "&lt;Shuyang &amp; &#39;friends&#39;&gt;"
+        escape_html("<Alex & 'friends'>"),
+        "&lt;Alex &amp; &#39;friends&#39;&gt;"
     );
 }
 
@@ -48,7 +48,7 @@ fn release_download_url_requires_a_versioned_kordi_dmg() {
 #[test]
 fn invitation_document_matches_the_approved_kordi_surface() {
     let document = invitation_landing_document(
-        "Shu Yang invited you to Kordi.",
+        "Alex Morgan invited you to Kordi.",
         "A shared workspace where people and agents work together.",
         Some(VERSIONED_DMG_URL),
     );

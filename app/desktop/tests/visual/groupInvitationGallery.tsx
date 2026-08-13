@@ -19,15 +19,15 @@ const [space] = buildParticipantSpaces([conversation({
   metadata: {
     customName: 'Product Team',
     groupSpaceId: 'session:group:invitation-visual',
-    groupCreatorIdentityId: mode === 'nonadmin' ? 'human:jiaxin' : 'human:me',
-    adminIdentityIds: [mode === 'nonadmin' ? 'human:jiaxin' : 'human:me'],
+    groupCreatorIdentityId: mode === 'nonadmin' ? 'human:maya' : 'human:me',
+    adminIdentityIds: [mode === 'nonadmin' ? 'human:maya' : 'human:me'],
   },
-  participants: ['Me', 'Jiaxin Pei', 'Shenzhe Zhu', 'C UFishAI', 'Tom Cohen'],
+  participants: ['Me', 'Maya Chen', 'Ethan Park', 'Research Agent', 'Tom Cohen'],
   canonicalParticipants: [
     { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-    { id: 'human:jiaxin', name: 'Jiaxin Pei', kind: 'human', role: mode === 'nonadmin' ? 'admin' : 'person', source: 'bridge', avatarKey: 'jiaxin' },
-    { id: 'human:shenzhe', name: 'Shenzhe Zhu', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shenzhe' },
-    { id: 'human:ufish', name: 'C UFishAI', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'ufish' },
+    { id: 'human:maya', name: 'Maya Chen', kind: 'human', role: mode === 'nonadmin' ? 'admin' : 'person', source: 'bridge', avatarKey: 'maya' },
+    { id: 'human:ethan', name: 'Ethan Park', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'ethan' },
+    { id: 'human:research', name: 'Research Agent', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'research' },
     { id: 'human:tom', name: 'Tom Cohen', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'tom' },
   ],
 })]);

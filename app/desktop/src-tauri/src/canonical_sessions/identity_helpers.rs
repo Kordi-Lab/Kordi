@@ -262,8 +262,8 @@ mod tests {
     #[test]
     fn clean_optional_trims_values() {
         assert_eq!(
-            clean_optional(Some("  Shuyang  ".to_string())),
-            Some("Shuyang".to_string()),
+            clean_optional(Some("  Alex  ".to_string())),
+            Some("Alex".to_string()),
         );
     }
 }

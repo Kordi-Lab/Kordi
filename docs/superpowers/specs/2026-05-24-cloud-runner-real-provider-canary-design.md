@@ -60,9 +60,9 @@ It:
 
 1. Requires `CONFIRM_KORDI_RUNNER_REAL_PROVIDER_CANARY=1`.
 2. Resolves local auth with the helper.
-3. Sends the snapshot JSON over SSH stdin to a remote Python/Bash canary runner on takotako.
+3. Sends the snapshot JSON over SSH stdin to a remote Python/Bash canary runner on example-cloud-host.
 4. The remote runner:
-   - port-forwards Cloud server locally on takotako
+   - port-forwards Cloud server locally on example-cloud-host
    - signs up controlled owner/requester accounts
    - publishes the provider-auth snapshot using the owner token
    - directly seeds one canary sandbox/run in Postgres

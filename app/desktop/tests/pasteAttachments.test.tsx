@@ -48,13 +48,13 @@ test('extractPastedLocalFilePaths ignores plain text paths so they stay composer
   assert.deepEqual(extractPastedLocalFilePaths('/var/folders/sj/clipboard/pi-clipboard.png'), []);
   assert.deepEqual(extractPastedLocalFilePaths('~/Desktop/report.pdf'), []);
   assert.deepEqual(extractPastedLocalFilePaths('C:\\Users\\me\\report.pdf'), []);
-  assert.deepEqual(extractPastedLocalFilePaths('/Users/shuyang/kordi-worktrees/issue-202-provider-stream-retry/app/desktop/src-tauri'), []);
+  assert.deepEqual(extractPastedLocalFilePaths('/Users/example/kordi-worktrees/issue-202-provider-stream-retry/app/desktop/src-tauri'), []);
 });
 
 test('extractPastedLocalFilePaths accepts file uri lists and decodes spaces', () => {
   assert.deepEqual(
-    extractPastedLocalFilePaths('ignored display text', '# copied file\nfile:///Users/shuyang/Desktop/My%20Image.png'),
-    ['/Users/shuyang/Desktop/My Image.png'],
+    extractPastedLocalFilePaths('ignored display text', '# copied file\nfile:///Users/example/Desktop/My%20Image.png'),
+    ['/Users/example/Desktop/My Image.png'],
   );
 });
 

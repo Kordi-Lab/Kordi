@@ -164,7 +164,7 @@ mod tests {
                 title: "Finish Issue 317".to_string(),
                 summary: Some("Fork flow".to_string()),
                 status: Some("open".to_string()),
-                involved_participants: vec!["Shuyang".to_string()],
+                involved_participants: vec!["Alex".to_string()],
             },
         )
         .expect("insert");

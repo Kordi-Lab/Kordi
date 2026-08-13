@@ -174,12 +174,12 @@ test('a regular member can find invitation links and sees who can grant access',
     metadata: {
       customName: 'Product Team',
       groupSpaceId: 'session:group:member-invite-ui',
-      groupCreatorIdentityId: 'human:jiaxin',
-      adminIdentityIds: ['human:jiaxin'],
+      groupCreatorIdentityId: 'human:maya',
+      adminIdentityIds: ['human:maya'],
     },
-    participants: ['Jiaxin Pei', 'Me'],
+    participants: ['Maya Chen', 'Me'],
     canonicalParticipants: [
-      { id: 'human:jiaxin', name: 'Jiaxin Pei', kind: 'human', role: 'admin', source: 'bridge', avatarKey: 'jiaxin' },
+      { id: 'human:maya', name: 'Maya Chen', kind: 'human', role: 'admin', source: 'bridge', avatarKey: 'maya' },
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
     ],
   })]);
@@ -216,7 +216,7 @@ test('a regular member can find invitation links and sees who can grant access',
     await act(async () => { button('Share link')?.click(); });
 
     assert.match(host.textContent ?? '', /Only group admins can create invitation links/);
-    assert.match(host.textContent ?? '', /Ask Jiaxin Pei to share a link or make you an admin/);
+    assert.match(host.textContent ?? '', /Ask Maya Chen to share a link or make you an admin/);
     assert.equal(button('Create invitation link'), undefined);
     assert.equal(listCalls, 0);
     assert.equal(createCalls, 0);

@@ -84,9 +84,9 @@ The cleanup script is dry-run by default. It scans the worktree parent directory
 Useful options:
 
 ```bash
-node scripts/clean-inactive-worktree-targets.mjs --worktrees-dir /Users/shuyang/kordi-worktrees
+node scripts/clean-inactive-worktree-targets.mjs --worktrees-dir /Users/example/kordi-worktrees
 node scripts/clean-inactive-worktree-targets.mjs --keep-root issue-216-ime-enter-composition
-node scripts/clean-inactive-worktree-targets.mjs --delete --keep-root /Users/shuyang/kordi-worktrees/main-qa
+node scripts/clean-inactive-worktree-targets.mjs --delete --keep-root /Users/example/kordi-worktrees/main-qa
 ```
 
 Use `--keep-root` for any worktree that should be protected even when there is no active process.

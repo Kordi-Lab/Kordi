@@ -105,12 +105,13 @@ test("remaining versioned chat names are migration inputs, not live choices", as
   assert.doesNotMatch(compatibility, /enabled.*v2|v2.*enabled/i);
 });
 
-test("historical plans direct readers to the canonical chat contract", async () => {
+test("historical design records direct readers to the canonical chat contract", async () => {
   const notice = await readFile(
     new URL("../docs/superpowers/README.md", import.meta.url),
     "utf8",
   );
-  assert.match(notice, /not the current product architecture/);
+  assert.match(notice, /not the current\s+product architecture/);
+  assert.match(notice, /Historical implementation\s+plans have been removed/);
   assert.match(notice, /\.\.\/cloud-mobile\.md/);
   assert.match(notice, /\.\.\/\.\.\/shared\/chat-sync\/README\.md/);
   assert.match(notice, /Do not restore a historical route or storage model/);

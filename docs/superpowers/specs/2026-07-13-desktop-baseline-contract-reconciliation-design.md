@@ -12,7 +12,7 @@ Four desktop unit-test assertions describe behavior that was intentionally super
 
 ### Shared Cloud Agent detail labels
 
-Commit `568a4d959` deliberately restored owner-scoped labels for shared Cloud Agents. The shared candidate contract and its focused test expect values such as `Shuyang's Agent`; one bridge-projection assertion still expects the older generic `Agent` label. The projection correctly forwards the owner-scoped detail.
+Commit `568a4d959` deliberately restored owner-scoped labels for shared Cloud Agents. The shared candidate contract and its focused test expect values such as `Alex's Agent`; one bridge-projection assertion still expects the older generic `Agent` label. The projection correctly forwards the owner-scoped detail.
 
 ### Group participant avatars
 

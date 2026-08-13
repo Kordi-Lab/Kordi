@@ -113,7 +113,11 @@ Expected: HTTP 200 or a healthy response.
 
 The operator profile exists for approved core-maintainer diagnostics against a remote API, including production when necessary. It is not a client-side admin role and does not connect the desktop directly to Postgres, Redis, object storage, or any other data service. The hosted backend remains the only component with database credentials and must enforce the real account permissions, IAM rules, and audit policy.
 
-The launcher verifies the account currently authenticated in GitHub CLI against [`../deploy/dev/operator-github-allowlist.txt`](../deploy/dev/operator-github-allowlist.txt). The staged allowlist contains only `shuyhere`. A local source edit is not authorization; server-side controls remain mandatory.
+The launcher verifies the account currently authenticated in GitHub CLI against
+the local `deploy/dev/operator-github-allowlist.txt`. Copy the tracked
+`operator-github-allowlist.example.txt` first, then add only approved operator
+logins. The real allowlist is ignored because it reveals privileged identities.
+A local source edit is not authorization; server-side controls remain mandatory.
 
 Authenticate GitHub CLI, then launch a desktop-only remote preview with an explicit acknowledgement against the current production API at `https://kordi.ai`:
 

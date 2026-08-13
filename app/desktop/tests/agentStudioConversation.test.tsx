@@ -89,8 +89,8 @@ test('Kordi Factory conversation uses the normal transcript identity and attachm
     <AgentStudioConversation
       targetName="Kordi"
       creating={false}
-      localProfileAvatarSeed="shu-yang"
-      localProfileDisplayName="Shu Yang"
+      localProfileAvatarSeed="alex-morgan"
+      localProfileDisplayName="Alex Morgan"
       localProfileImageUrl="https://coordinar.io/profile/avatar.png"
       sessionId="session:agent-builder:test"
       detail={builderSession()}

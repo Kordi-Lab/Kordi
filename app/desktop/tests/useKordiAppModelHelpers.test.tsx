@@ -296,13 +296,13 @@ test('group session sync context carries the exact child session and group space
     profile: { humanIdentityId: 'human:me' },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
-      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', avatarKey: 'jiaxin' },
+      { id: 'human:maya', kind: 'human', displayName: 'Maya', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_maya', humanId: 'kh_maya', avatarKey: 'maya' },
     ],
     sessions: [
       {
         id: 'session:group:root',
         title: 'thefirsttestgroup',
-        createdByIdentityId: 'human:jiaxin',
+        createdByIdentityId: 'human:maya',
         metadata: { customName: 'thefirsttestgroup', groupSpaceId: 'session:group:root' },
       },
       {
@@ -313,7 +313,7 @@ test('group session sync context carries the exact child session and group space
     ],
     participants: [
       { sessionId: 'session:group:child', identityId: 'human:me', role: 'admin', state: 'active' },
-      { sessionId: 'session:group:child', identityId: 'human:jiaxin', role: 'person', state: 'active' },
+      { sessionId: 'session:group:child', identityId: 'human:maya', role: 'person', state: 'active' },
     ],
     messages: [
       {
@@ -335,7 +335,7 @@ test('group session sync context carries the exact child session and group space
     parentGroupSpaceId: 'session:group:root',
     parentSessionParticipants: [
       { identityId: 'human:me', displayName: 'Testuser2', role: 'person', sourceIdentityId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
-      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'admin', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null, avatarKey: 'jiaxin', profileImageUrl: null },
+      { identityId: 'human:maya', displayName: 'Maya', role: 'admin', sourceIdentityId: 'kd_maya', humanId: 'kh_maya', agentId: null, avatarKey: 'maya', profileImageUrl: null },
     ],
     parentSessionMessages: [],
   });
@@ -346,7 +346,7 @@ test('group invite context carries the child session title fallback, participant
     profile: { humanIdentityId: 'human:me' },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Testuser2', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_me', humanId: 'kh_me', avatarKey: 'me' },
-      { id: 'human:jiaxin', kind: 'human', displayName: 'Jiaxin', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', avatarKey: 'jiaxin' },
+      { id: 'human:maya', kind: 'human', displayName: 'Maya', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'kd_maya', humanId: 'kh_maya', avatarKey: 'maya' },
     ],
     sessions: [
       {
@@ -362,7 +362,7 @@ test('group invite context carries the child session title fallback, participant
     ],
     participants: [
       { sessionId: 'session:group:child', identityId: 'human:me', role: 'admin', state: 'active' },
-      { sessionId: 'session:group:child', identityId: 'human:jiaxin', role: 'person', state: 'active' },
+      { sessionId: 'session:group:child', identityId: 'human:maya', role: 'person', state: 'active' },
     ],
     messages: [
       {
@@ -384,7 +384,7 @@ test('group invite context carries the child session title fallback, participant
     parentGroupSpaceId: 'session:group:root',
     parentSessionParticipants: [
       { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', sourceIdentityId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
-      { identityId: 'human:jiaxin', displayName: 'Jiaxin', role: 'person', sourceIdentityId: 'kd_jiaxin', humanId: 'kh_jiaxin', agentId: null, avatarKey: 'jiaxin', profileImageUrl: null },
+      { identityId: 'human:maya', displayName: 'Maya', role: 'person', sourceIdentityId: 'kd_maya', humanId: 'kh_maya', agentId: null, avatarKey: 'maya', profileImageUrl: null },
     ],
     parentSessionMessages: [
       { role: 'user', sender: 'Testuser2', text: 'Earlier question', timeLabel: '13:04', index: 0 },
@@ -397,7 +397,7 @@ test('group invite snapshots carry existing session messages with sender labels'
     profile: { humanIdentityId: 'human:me' },
     identities: [
       { id: 'human:me', displayName: 'Testuser2' },
-      { id: 'human:jiaxin', displayName: 'Jiaxin' },
+      { id: 'human:maya', displayName: 'Maya' },
       { id: 'agent:kordi', displayName: 'Kordi' },
     ],
     sessions: [{ id: 'session:group:child', title: 'Group', metadata: {} }],
@@ -405,7 +405,7 @@ test('group invite snapshots carry existing session messages with sender labels'
       {
         id: 'msg:2',
         sessionId: 'session:group:child',
-        senderIdentityId: 'human:jiaxin',
+        senderIdentityId: 'human:maya',
         senderRole: 'person',
         messageKind: 'text',
         contentText: 'Earlier reply',
@@ -449,6 +449,6 @@ test('group invite snapshots carry existing session messages with sender labels'
 
   assert.deepEqual(canonicalSessionMessagesForGroupInvite(state, 'session:group:child'), [
     { role: 'user', sender: 'Testuser2', text: 'Earlier question', timeLabel: '13:04', index: 0 },
-    { role: 'person', sender: 'Jiaxin', text: 'Earlier reply', timeLabel: '13:05', index: 1 },
+    { role: 'person', sender: 'Maya', text: 'Earlier reply', timeLabel: '13:05', index: 1 },
   ]);
 });

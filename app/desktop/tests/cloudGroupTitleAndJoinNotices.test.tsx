@@ -90,13 +90,13 @@ test('group invites and membership updates never synthesize rename notices', () 
         kind,
         groupId: 'session:group:cloud',
         groupSpaceId: 'session:group:cloud',
-        groupTitle: 'Shenzhe Zhu, Shu Yang',
-        createdByAccountId: 'acct_jiaxin',
-        actor: { accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null },
-        participants: [{ accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null }],
+        groupTitle: 'Ethan Park, Alex Morgan',
+        createdByAccountId: 'acct_maya',
+        actor: { accountId: 'acct_maya', displayName: 'Maya Chen', avatarUrl: null },
+        participants: [{ accountId: 'acct_maya', displayName: 'Maya Chen', avatarUrl: null }],
         message: null,
       },
-      actorIdentityId: 'human:cloud:acct_jiaxin',
+      actorIdentityId: 'human:cloud:acct_maya',
       createdAtMs: 1_234,
       cloudMessageId: `cloud-${kind}`,
     }), null);
@@ -108,10 +108,10 @@ test('historical notices classify exact recovered controls after cache loss', ()
     kind,
     groupId: 'session:group:cloud',
     groupSpaceId: 'session:group:cloud',
-    groupTitle: 'Shenzhe Zhu, Shu Yang',
-    createdByAccountId: 'acct_jiaxin',
-    actor: { accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null },
-    participants: [{ accountId: 'acct_jiaxin', displayName: 'Jiaxin Pei', avatarUrl: null }],
+    groupTitle: 'Ethan Park, Alex Morgan',
+    createdByAccountId: 'acct_maya',
+    actor: { accountId: 'acct_maya', displayName: 'Maya Chen', avatarUrl: null },
+    participants: [{ accountId: 'acct_maya', displayName: 'Maya Chen', avatarUrl: null }],
     message: null,
   });
   assert.deepEqual(legacyCloudGroupTitleNoticeClassifications(
@@ -197,15 +197,15 @@ test('group invites carry one durable join notice for each invited member', () =
     groupSpaceId: 'session:group:root',
     groupTitle: 'Research team',
     createdByAccountId: 'acct_inviter',
-    actor: { accountId: 'acct_inviter', displayName: 'Shu Yang', avatarUrl: null, role: 'admin' },
+    actor: { accountId: 'acct_inviter', displayName: 'Alex Morgan', avatarUrl: null, role: 'admin' },
     participants: [
-      { accountId: 'acct_inviter', displayName: 'Shu Yang', avatarUrl: null, role: 'admin' },
-      { accountId: 'acct_new', displayName: 'Jiaxin Pei', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_inviter', displayName: 'Alex Morgan', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_new', displayName: 'Maya Chen', avatarUrl: null, role: 'person' },
     ],
     memberJoins: [{
       eventId: 'invite_event_1',
       accountId: 'acct_new',
-      displayName: 'Jiaxin Pei',
+      displayName: 'Maya Chen',
       createdAtMs: 1234,
     }],
     message: null,
@@ -214,7 +214,7 @@ test('group invites carry one durable join notice for each invited member', () =
   assert.deepEqual(envelope?.memberJoins, [{
     eventId: 'invite_event_1',
     accountId: 'acct_new',
-    displayName: 'Jiaxin Pei',
+    displayName: 'Maya Chen',
     createdAtMs: 1234,
   }]);
   const requests = cloudGroupMemberJoinNoticeRequests({
@@ -230,13 +230,13 @@ test('group invites carry one durable join notice for each invited member', () =
   assert.equal(requests[0]?.id, 'msg:group-member-join:invite_event_1:session:group:cloud');
   assert.equal(requests[0]?.senderRole, 'system');
   assert.equal(requests[0]?.messageKind, 'status');
-  assert.equal(requests[0]?.contentText, 'Jiaxin Pei joined the group, invited by Shu Yang.');
+  assert.equal(requests[0]?.contentText, 'Maya Chen joined the group, invited by Alex Morgan.');
   assert.deepEqual(requests[0]?.content, {
     kind: 'group-member-joined',
     eventId: 'invite_event_1',
     memberIdentityId: 'human:cloud:acct_new',
-    memberDisplayName: 'Jiaxin Pei',
+    memberDisplayName: 'Maya Chen',
     invitedByIdentityId: 'human:cloud:acct_inviter',
-    invitedByDisplayName: 'Shu Yang',
+    invitedByDisplayName: 'Alex Morgan',
   });
 });

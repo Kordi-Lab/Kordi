@@ -6,10 +6,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=shu_yang
-Group=shu_yang
-WorkingDirectory=/home/shu_yang/kordi-cloud-server-data
-ExecStart=/home/shu_yang/kordi-cloud-server-deploy/target/release/kordi-cloud-server serve --port 17081 --db /home/shu_yang/kordi-cloud-server-data/kordi-cloud.db
+User=@KORDI_CLOUD_DEPLOY_USER@
+Group=@KORDI_CLOUD_DEPLOY_GROUP@
+WorkingDirectory=/home/@KORDI_CLOUD_DEPLOY_USER@/kordi-cloud-server-data
+ExecStart=/home/@KORDI_CLOUD_DEPLOY_USER@/kordi-cloud-server-deploy/target/release/kordi-cloud-server serve --port 17081 --db /home/@KORDI_CLOUD_DEPLOY_USER@/kordi-cloud-server-data/kordi-cloud.db
 Restart=on-failure
 RestartSec=5
 # stdout/stderr go to journald — `journalctl -u kordi-cloud-server -f`
@@ -21,7 +21,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/shu_yang/kordi-cloud-server-data
+ReadWritePaths=/home/@KORDI_CLOUD_DEPLOY_USER@/kordi-cloud-server-data
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

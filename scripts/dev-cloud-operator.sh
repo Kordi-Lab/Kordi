@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-allowlist_file="$repo_root/deploy/dev/operator-github-allowlist.txt"
+allowlist_file="${KORDI_OPERATOR_GITHUB_ALLOWLIST_FILE:-$repo_root/deploy/dev/operator-github-allowlist.txt}"
 api_base="${KORDI_OPERATOR_CLOUD_API_BASE:-}"
 
 if [[ "${1:-}" == "--" ]]; then
@@ -23,6 +23,12 @@ fi
 
 if [[ -z "$api_base" ]]; then
   echo "[kordi-operator] Provide the approved remote API origin as the first argument or KORDI_OPERATOR_CLOUD_API_BASE." >&2
+  exit 1
+fi
+
+if [[ ! -r "$allowlist_file" ]]; then
+  echo "[kordi-operator] Missing local operator allowlist: $allowlist_file" >&2
+  echo "[kordi-operator] Copy deploy/dev/operator-github-allowlist.example.txt to deploy/dev/operator-github-allowlist.txt and add approved GitHub logins." >&2
   exit 1
 fi
 

@@ -54,7 +54,7 @@ test('human reply preview is an inset replying-to rectangle without the quote ra
     time: '10:44',
     sourceMessage: {
       messageId: 'msg-source',
-      senderLabel: 'Jiaxin',
+      senderLabel: 'Maya',
       text: 'keep it concise',
       attachmentCount: 0,
     },
@@ -67,7 +67,7 @@ test('human reply preview is an inset replying-to rectangle without the quote ra
       role: 'person',
       senderType: 'human',
       isOwnMessage: false,
-      sender: 'Jiaxin',
+      sender: 'Maya',
     },
   }));
   const shellCss = readDesktopShellCss();
@@ -78,8 +78,8 @@ test('human reply preview is an inset replying-to rectangle without the quote ra
   assert.match(peerMarkup, /app-chat-bubble-peer/);
   assert.match(ownMarkup, />Replying to: <\/span>keep it concise/);
   assert.match(peerMarkup, />Replying to: <\/span>keep it concise/);
-  assert.doesNotMatch(ownMarkup, />Jiaxin: <\/span>keep it concise/);
-  assert.doesNotMatch(peerMarkup, />Jiaxin: <\/span>keep it concise/);
+  assert.doesNotMatch(ownMarkup, />Maya: <\/span>keep it concise/);
+  assert.doesNotMatch(peerMarkup, />Maya: <\/span>keep it concise/);
   assert.match(quoteLinkBlock, /grid-template-columns:\s*minmax\(0, 1fr\);/);
   assert.match(quoteLinkBlock, /border-radius:\s*7px;/);
   assert.match(quoteLinkBlock, /padding:\s*0\.34rem 0\.62rem;/);
@@ -101,9 +101,9 @@ test('folds long source quotes after three lines while keeping the full request 
     error: null,
     sourceMessage: {
       messageId: 'msg:long-request',
-      senderLabel: 'Jiaxin',
+      senderLabel: 'Maya',
       text: [
-        '@JiaxinsKordi create a github issue about this bug.',
+        '@MayasKordi create a github issue about this bug.',
         'Use the current Kordi repo issue template and keep the reproduction details.',
         'Mention that the bug affects Chinese Pinyin IME confirmation.',
         'Final acceptance detail should remain available when folded.',
@@ -287,8 +287,8 @@ test('keeps source quote and tool summary inside the same assistant response bac
     error: null,
     sourceMessage: {
       messageId: 'msg:request',
-      senderLabel: 'Jiaxin',
-      text: '@JiaxinsKordi create a github issue about this bug.',
+      senderLabel: 'Maya',
+      text: '@MayasKordi create a github issue about this bug.',
       attachmentCount: 0,
     },
   };

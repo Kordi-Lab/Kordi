@@ -30,7 +30,7 @@ const imageAttachment = {
 const fileAttachment = {
   id: 'second',
   name: 'notes.txt',
-  path: '/Users/shuyang/Desktop/notes-temp-uuid.txt',
+  path: '/Users/example/Desktop/notes-temp-uuid.txt',
   kind: 'file' as const,
   formatLabel: 'TXT',
 };
@@ -39,7 +39,7 @@ test('collaborationAttachmentTransportFields sends current attachment paths and 
   const fields = collaborationAttachmentTransportFields([imageAttachment, fileAttachment]);
 
   assert.deepEqual(fields, {
-    attachmentPaths: ['/tmp/pi-clipboard-1.png', '/Users/shuyang/Desktop/notes-temp-uuid.txt'],
+    attachmentPaths: ['/tmp/pi-clipboard-1.png', '/Users/example/Desktop/notes-temp-uuid.txt'],
     attachmentNames: ['Screenshot 1.png', 'notes.txt'],
   });
 });

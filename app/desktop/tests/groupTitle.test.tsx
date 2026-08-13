@@ -106,10 +106,10 @@ test('membership snapshots initialize a missing group name but never replace a s
   assert.equal(resolveReplicatedGroupTitle({
     candidates: [{ sessionId: 'session:group:root', customName: null }],
     groupSpaceId: 'session:group:root',
-    incomingTitle: 'Shenzhe Zhu, Shu Yang',
+    incomingTitle: 'Ethan Park, Alex Morgan',
     incomingUpdatedAtMs: 200,
     replaceStoredTitle: false,
-  }).title, 'Shenzhe Zhu, Shu Yang');
+  }).title, 'Ethan Park, Alex Morgan');
   assert.equal(resolveReplicatedGroupTitle({
     candidates: [{
       sessionId: 'session:group:root',

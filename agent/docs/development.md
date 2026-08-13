@@ -21,7 +21,7 @@ For the monorepo-wide command map, see [../../docs/development.md](../../docs/de
 From the monorepo root:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /Users/example/Desktop/kordi
 pnpm run:agent -- --help
 pnpm check:agent
 pnpm build:agent
@@ -30,7 +30,7 @@ pnpm build:agent
 Direct Rust entrypoints also work:
 
 ```bash
-cd /Users/shuyang/Desktop/kordi
+cd /Users/example/Desktop/kordi
 cargo run -p kordi-cli --
 cargo check -p kordi-cli
 cargo build -p kordi-cli --release

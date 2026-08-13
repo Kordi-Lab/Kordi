@@ -154,13 +154,13 @@ test('community guide routes contributors through issues and reviewed pull reque
   assert.match(guide, /pnpm check:ci/);
 });
 
-test('operator debug is allowlisted to the staged core GitHub account', () => {
-  const allowlist = read('deploy/dev/operator-github-allowlist.txt')
+test('operator debug ships only a sanitized allowlist example', () => {
+  const allowlist = read('deploy/dev/operator-github-allowlist.example.txt')
     .split('\n')
     .map((line) => line.replace(/#.*/, '').trim())
     .filter(Boolean);
 
-  assert.deepEqual(allowlist, ['shuyhere']);
+  assert.deepEqual(allowlist, ['example-maintainer']);
 });
 
 test('isolated desktop profiles initialize native Cloud account storage', () => {
@@ -243,6 +243,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
   const tempRoot = mkdtempSync(join(tmpdir(), 'kordi-operator-test-'));
   const binDir = join(tempRoot, 'bin');
   const capturePath = join(tempRoot, 'capture.txt');
+  const allowlistPath = join(tempRoot, 'operator-github-allowlist.txt');
   const scriptPath = join(repoRoot, 'scripts', 'dev-cloud-operator.sh');
   try {
     mkdirSync(binDir);
@@ -253,11 +254,13 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
     );
     chmodSync(join(binDir, 'gh'), 0o755);
     chmodSync(join(binDir, 'pnpm'), 0o755);
+    writeFileSync(allowlistPath, 'example-maintainer\n');
 
     const baseEnv = {
       ...process.env,
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
       KORDI_OPERATOR_DEBUG_ACKNOWLEDGED: '1',
+      KORDI_OPERATOR_GITHUB_ALLOWLIST_FILE: allowlistPath,
       TEST_OPERATOR_CAPTURE: capturePath,
       DATABASE_URL: 'postgresql://must-not-reach-desktop',
       REDIS_URL: 'redis://must-not-reach-desktop',
@@ -275,7 +278,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
 
     const unapprovedOrigin = spawnSync('bash', [scriptPath, 'https://staging.example.test'], {
       cwd: repoRoot,
-      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'example-maintainer' },
       encoding: 'utf8',
     });
     assert.notEqual(unapprovedOrigin.status, 0);
@@ -283,7 +286,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
 
     const legacyOrigin = spawnSync('bash', [scriptPath, 'https://coordinar.io'], {
       cwd: repoRoot,
-      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'example-maintainer' },
       encoding: 'utf8',
     });
     assert.notEqual(legacyOrigin.status, 0);
@@ -291,7 +294,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
 
     const allowed = spawnSync('bash', [scriptPath, 'https://kordi.ai'], {
       cwd: repoRoot,
-      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'example-maintainer' },
       encoding: 'utf8',
     });
     assert.equal(allowed.status, 0, allowed.stderr);
@@ -305,7 +308,7 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
       [scriptPath, '--', 'https://kordi.ai', '--port', '1492'],
       {
         cwd: repoRoot,
-        env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+        env: { ...baseEnv, TEST_GITHUB_LOGIN: 'example-maintainer' },
         encoding: 'utf8',
       },
     );

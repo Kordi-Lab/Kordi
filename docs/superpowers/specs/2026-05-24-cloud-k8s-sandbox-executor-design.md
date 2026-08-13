@@ -106,7 +106,7 @@ Add backend selection in runner runtime:
 - `cargo test -p kordi-cloud-agent-runner`
 - `cargo test -p kordi-cloud-server cloud_agent_runtime`
 - `cargo test -p kordi-cloud-server presence`
-- Remote takotako runner tests.
+- Remote example-cloud-host runner tests.
 - Remote cloud runtime e2e if server files change.
 
 ## Rollout

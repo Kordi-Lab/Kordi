@@ -52,7 +52,7 @@ For local dev:
 
 ```
 kubectl -n kordi-cloud port-forward svc/postgres 5432:5432 &
-PG_PASS=$(gcloud compute ssh shu_yang@takotako --zone us-central1-c --command \
+PG_PASS=$(gcloud compute ssh kordi@example-cloud-host --zone us-central1-c --command \
   "kubectl -n kordi-cloud get secret postgres-credentials -o jsonpath='{.data.password}' | base64 -d")
 export DATABASE_URL="postgresql://kordi:$PG_PASS@127.0.0.1:5432/kordi_cloud"
 cargo test -p kordi-cloud-server

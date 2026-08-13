@@ -15,9 +15,9 @@ import {
 } from '../src/kordi-app/components/localProfileIdentity';
 
 const activeProfile = {
-  avatarSeed: 'acct_shu',
-  displayName: 'Shu Yang',
-  profileImageUrl: 'https://images.test/shu.png',
+  avatarSeed: 'acct_alex',
+  displayName: 'Alex Morgan',
+  profileImageUrl: 'https://images.test/taylor.png',
 };
 
 test('self avatar presentation ignores viewer-local aliases and stale canonical avatar data', () => {
@@ -39,9 +39,9 @@ test('self avatar presentation ignores viewer-local aliases and stale canonical 
   });
 
   assert.deepEqual(me, {
-    fallbackLabel: 'Shu Yang',
-    normalizedSeed: 'acct_shu',
-    resolvedImageUrl: 'https://images.test/shu.png',
+    fallbackLabel: 'Alex Morgan',
+    normalizedSeed: 'acct_alex',
+    resolvedImageUrl: 'https://images.test/taylor.png',
   });
   assert.deepEqual(you, me);
 });
@@ -100,19 +100,19 @@ test('mounted self avatars react to live profile changes without changing their 
   const root = createRoot(host);
   try {
     setActiveLocalProfileIdentity({
-      avatarSeed: 'acct_shu',
-      displayName: 'Shu Yang',
+      avatarSeed: 'acct_alex',
+      displayName: 'Alex Morgan',
       profileImageUrl: null,
     });
     await act(async () => {
       root.render(<IdentityAvatar kind="human" seed="stale" name="Me" isSelf />);
     });
-    assert.equal(host.textContent, 'SH');
+    assert.equal(host.textContent, 'AL');
 
     await act(async () => {
       setActiveLocalProfileIdentity({
-        avatarSeed: 'acct_shu',
-        displayName: 'Shu Yang',
+        avatarSeed: 'acct_alex',
+        displayName: 'Alex Morgan',
         profileImageUrl: 'data:image/png;base64,c2h1',
       });
     });

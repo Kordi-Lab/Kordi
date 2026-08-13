@@ -22,16 +22,16 @@ const account: CloudAccount = {
 function contact(overrides: Partial<Contact> = {}): Contact {
   return {
     id: 'collaboration-peer-person:acct_peer:acct_peer',
-    name: 'Shuyhere',
+    name: 'Maya',
     initials: 'SH',
     classType: 'other-users',
     entityType: 'Person',
-    subtitle: "Owner of Shuyhere's Kordi",
+    subtitle: "Owner of Maya's Kordi",
     collaborationSources: ['cloud'],
     status: 'Reachable',
     discoverableOn: ['cloud'],
     detail: 'acct_peer',
-    owner: 'Shuyhere',
+    owner: 'Maya',
     sourceHostId: 'cloud',
     sourceParticipantId: 'acct_peer',
     sourceRuntime: 'person',
@@ -136,7 +136,7 @@ test('Cloud contact selection validation uses the rendered Cloud contact rows', 
 test('CloudContactsAdapter shows one human row and removes other people agent groups', () => {
   const cloudContact = cloudContactToContact({
     accountId: 'acct_peer',
-    displayName: 'Shuyhere',
+    displayName: 'Maya',
     avatarUrl: null,
     nodeId: null,
     createdAt: '2026-05-11T00:00:00Z',
@@ -152,7 +152,7 @@ test('CloudContactsAdapter shows one human row and removes other people agent gr
           classType: 'other-users-agents',
           entityType: 'External agent',
           subtitle: 'kordi-desktop',
-          detail: "Shuyhere's Kordi",
+          detail: "Maya's Kordi",
           sourceRuntime: 'kordi-desktop',
         })] },
       ],
@@ -175,5 +175,5 @@ test('CloudContactsAdapter shows one human row and removes other people agent gr
 
   assert.match(markup, /Other users/);
   assert.doesNotMatch(markup, /Other users&#x27; agents|Other users' agents/);
-  assert.doesNotMatch(markup, /Owner of Shuyhere/);
+  assert.doesNotMatch(markup, /Owner of Maya/);
 });

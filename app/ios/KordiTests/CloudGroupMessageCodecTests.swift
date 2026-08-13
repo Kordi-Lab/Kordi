@@ -5,7 +5,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
     func testOutboundMessageNormalizesFractionalMilliseconds() throws {
         let participant = CloudGroupParticipant(
             accountId: "acct_me",
-            displayName: "Shuyang",
+            displayName: "Alex",
             avatarUrl: nil,
             role: "self"
         )
@@ -23,7 +23,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
                 text: "send from iphone test",
                 createdAtMs: 1_786_443_676_216.46,
                 senderKind: "human",
-                senderDisplayName: "Shuyang",
+                senderDisplayName: "Alex",
                 deliveryState: "complete",
                 replyToMessageId: nil,
                 requestId: nil
@@ -43,7 +43,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         runtimeRoute.thinking = "xhigh"
         let participant = CloudGroupParticipant(
             accountId: "acct_me",
-            displayName: "Shuyang",
+            displayName: "Alex",
             avatarUrl: "https://example.com/me.png",
             role: "self"
         )
@@ -68,7 +68,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
                 text: "@Research Agent please review",
                 createdAtMs: 1_786_000_000_000,
                 senderKind: "human",
-                senderDisplayName: "Shuyang",
+                senderDisplayName: "Alex",
                 deliveryState: "complete",
                 replyToMessageId: "msg_source",
                 requestId: nil,
@@ -85,7 +85,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
                 targetCloudAgentId: "cloud_agent_research",
                 targetCloudAgentName: "Research Agent",
                 targetCloudAgentOwnerAccountId: "acct_me",
-                targetCloudAgentOwnerName: "Shuyang",
+                targetCloudAgentOwnerName: "Alex",
                 agentRuntimeRoute: runtimeRoute
             )
         )
@@ -101,7 +101,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
     func testForwardedGroupMessageKeepsSourceWithoutReplyLink() throws {
         let participant = CloudGroupParticipant(
             accountId: "acct_me",
-            displayName: "Shuyang",
+            displayName: "Alex",
             avatarUrl: nil,
             role: "self"
         )
@@ -126,7 +126,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
                 text: "Launch update",
                 createdAtMs: 1_786_000_000_000,
                 senderKind: "human",
-                senderDisplayName: "Shuyang",
+                senderDisplayName: "Alex",
                 deliveryState: "complete",
                 replyToMessageId: nil,
                 requestId: nil,

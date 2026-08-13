@@ -78,7 +78,7 @@ The smoke script is intentionally manual. It proves the backend shape works in K
   - `cargo test -p kordi-cloud-server cloud_agent_runtime`
   - `cargo test -p kordi-cloud-server presence`
 - Remote verification:
-  - takotako `cargo test -p kordi-cloud-agent-runner`
+  - example-cloud-host `cargo test -p kordi-cloud-agent-runner`
   - manual smoke script against K3s namespace `kordi-cloud`
   - in-cluster health smoke
 

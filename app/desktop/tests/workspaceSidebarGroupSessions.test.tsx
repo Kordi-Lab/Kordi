@@ -134,14 +134,14 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
     conversation({
       id: 'session:group-with-agent',
       canonicalSessionId: 'session:group-with-agent',
-      name: 'hi shu',
+      name: 'hi taylor',
       subtitle: 'session:bridge:humans:8e32e6b4-b8e7-4591-a412-8613ad09fe25',
       messages: [],
-      participants: ['Me', 'shuyhere1', 'shuyhere2', 'Helper Kordi'],
+      participants: ['Me', 'member1', 'member2', 'Helper Kordi'],
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:shuyhere1', name: 'shuyhere1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere1' },
-        { id: 'human:shuyhere2', name: 'shuyhere2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shuyhere2' },
+        { id: 'human:member1', name: 'member1', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member1' },
+        { id: 'human:member2', name: 'member2', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'member2' },
         { id: 'agent:helper-kordi', name: 'Helper Kordi', kind: 'agent', role: 'delegate', source: 'bridge', avatarKey: 'helper-kordi' },
       ],
     }),
@@ -154,9 +154,9 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
     activeConvId: 'session:group-with-agent',
   }) as never));
 
-  assert.match(markup, /shuyhere1, shuyhere2/);
-  assert.match(markup, /aria-label="Expand shuyhere1, shuyhere2"/);
-  assert.match(markup, /aria-label="Create session in shuyhere1, shuyhere2"/);
+  assert.match(markup, /member1, member2/);
+  assert.match(markup, /aria-label="Expand member1, member2"/);
+  assert.match(markup, /aria-label="Create session in member1, member2"/);
   assert.match(markup, /Group • 3 people • 1 session/);
   assert.doesNotMatch(markup, /Helper Kordi/);
   assert.doesNotMatch(markup, /session:bridge:humans/);

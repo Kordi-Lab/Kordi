@@ -22,7 +22,7 @@ import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { QueuedMessageBubble } from '../src/pages/chatsPage.queuedMessage';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
-const issueUrl = 'https://github.com/Kordi-Lab/Kordi/issues/865';
+const issueUrl = 'https://github.com/Kordi-AI/Kordi/issues/865';
 
 function installNativeWindow() {
   const target = globalThis as typeof globalThis & Record<string, unknown>;
@@ -75,8 +75,8 @@ test('plain message content tokenizes structured mentions and safe URLs without 
 
 test('plain message content emphasizes every textual mention alongside a structured target', () => {
   const parts = parseMessageInlineParts(
-    '@ShuYangsKordi, please ask @ShenzheZhusKordi to reply. Email test@example.com.',
-    [{ label: 'ShuYangsKordi', targetKind: 'agent' }],
+    '@AlexMorgansKordi, please ask @EthanParksKordi to reply. Email test@example.com.',
+    [{ label: 'AlexMorgansKordi', targetKind: 'agent' }],
   );
 
   assert.deepEqual(
@@ -84,8 +84,8 @@ test('plain message content emphasizes every textual mention alongside a structu
       .filter((part) => part.type === 'mention')
       .map((part) => part.type === 'mention' ? [part.label, part.targetKind] : []),
     [
-      ['@ShuYangsKordi', 'agent'],
-      ['@ShenzheZhusKordi', 'agent'],
+      ['@AlexMorgansKordi', 'agent'],
+      ['@EthanParksKordi', 'agent'],
     ],
   );
   assert.equal(
@@ -96,12 +96,12 @@ test('plain message content emphasizes every textual mention alongside a structu
 
 test('shared inline renderer gives human and agent mentions distinct semantic colors', () => {
   const html = renderToStaticMarkup(createElement(MessageInlineContent, {
-    text: '@ShenzheZhu ask @ShenzheZhusKordi',
-    mentions: [{ label: 'ShenzheZhu', targetKind: 'person' }],
+    text: '@EthanPark ask @EthanParksKordi',
+    mentions: [{ label: 'EthanPark', targetKind: 'person' }],
   }));
 
-  assert.match(html, /app-message-mention-person[^>]*data-mention-kind="person"[^>]*>@ShenzheZhu<\/span>/);
-  assert.match(html, /app-message-mention-agent[^>]*data-mention-kind="agent"[^>]*>@ShenzheZhusKordi<\/span>/);
+  assert.match(html, /app-message-mention-person[^>]*data-mention-kind="person"[^>]*>@EthanPark<\/span>/);
+  assert.match(html, /app-message-mention-agent[^>]*data-mention-kind="agent"[^>]*>@EthanParksKordi<\/span>/);
 });
 
 test('message URL validation leaves unsafe or credential-bearing schemes inert', () => {
@@ -133,7 +133,7 @@ test('shared inline renderer emits an accessible external link with a stable ico
 
   assert.match(html, /app-message-mention[^>]*>@MyKordi<\/span>/);
   assert.match(html, /data-external-message-link="true"/);
-  assert.match(html, /href="https:\/\/github\.com\/Kordi-Lab\/Kordi\/issues\/865"/);
+  assert.match(html, /href="https:\/\/github\.com\/Kordi-AI\/Kordi\/issues\/865"/);
   assert.match(html, /target="_blank"/);
   assert.match(html, /rel="noreferrer noopener"/);
   assert.match(html, /data-site-icon-host="github\.com"/);

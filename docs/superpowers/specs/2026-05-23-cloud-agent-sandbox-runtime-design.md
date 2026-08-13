@@ -218,7 +218,7 @@ Suggested subissues after this design:
 6. Tool backend remapping to sandbox execution.
 7. Agent system-prompt/runtime policy for Cloud sandbox boundaries.
 8. Artifact export/linking from sandbox to chat.
-9. End-to-end tests using takotako/K3s and the three local preview users.
+9. End-to-end tests using example-cloud-host/K3s and the three local preview users.
 
 ## Validation plan
 
@@ -234,8 +234,8 @@ Backend/unit validation:
 
 K3s/e2e validation:
 
-- Deploy Cloud server, runner, and sandbox executor to takotako K3s.
-- Use the existing tunnel: local `127.0.0.1:17081` -> takotako `127.0.0.1:17082` -> k3s `svc/kordi-cloud-server:17081`.
+- Deploy Cloud server, runner, and sandbox executor to example-cloud-host K3s.
+- Use the existing tunnel: local `127.0.0.1:17081` -> example-cloud-host `127.0.0.1:17082` -> k3s `svc/kordi-cloud-server:17081`.
 - Use exactly three preview instances: `1482`, `1484`, `1486`.
 - Sign in three users and establish contacts/group session.
 - Enable provider-auth snapshot for one owner.

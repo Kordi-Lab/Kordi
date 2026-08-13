@@ -23,8 +23,8 @@ const hosts: DesktopCollaborationHost[] = [
     connected: true,
     serverUrl: 'https://bridge.example',
     nodeId: 'human-node',
-    displayName: 'Shuyang',
-    ownerName: 'Shuyang',
+    displayName: 'Alex',
+    ownerName: 'Alex',
     endpoint: 'local',
     tokenPresent: true,
     humanId: 'human-1',
@@ -46,7 +46,7 @@ const hosts: DesktopCollaborationHost[] = [
     agents: [
       {
         id: 'agent-a',
-        label: "Shuyang's Kordi",
+        label: "Alex's Kordi",
         nodeId: 'agent-node-a',
         runtime: 'kordi-desktop',
         isDefault: true,
@@ -202,11 +202,11 @@ test('localAgentRuntimeRouteForCollaborationState applies active owned-agent thi
 test('collaborationAgentRoutingNotice is local-only copy with agent label and fallback', () => {
   assert.equal(
     collaborationAgentRoutingNotice({
-      agentLabel: "Shuyang's Kordi",
+      agentLabel: "Alex's Kordi",
       modelLabel: 'GPT-5.4',
       fallbackLabel: 'Claude Sonnet 4.5',
     }),
-    "Shuyang's Kordi model changed to GPT-5.4. Fallback: Claude Sonnet 4.5. Only you can see this.",
+    "Alex's Kordi model changed to GPT-5.4. Fallback: Claude Sonnet 4.5. Only you can see this.",
   );
 });
 
@@ -224,7 +224,7 @@ test('bridge chat routing controls keep fallback out of the composer', () => {
 test('collaborationAgentRoutingChangeNotice returns null when the selected value is unchanged', () => {
   assert.equal(
     collaborationAgentRoutingChangeNotice({
-      agentLabel: "Shuyang's Kordi",
+      agentLabel: "Alex's Kordi",
       currentModel: 'openai/gpt-5.4',
       nextModel: 'openai/gpt-5.4',
       currentThinking: 'high',
@@ -239,7 +239,7 @@ test('collaborationAgentRoutingChangeNotice returns null when the selected value
 test('collaborationAgentRoutingChangeNotice reports only the changed private setting', () => {
   assert.equal(
     collaborationAgentRoutingChangeNotice({
-      agentLabel: "Shuyang's Kordi",
+      agentLabel: "Alex's Kordi",
       currentModel: 'openai/gpt-5.4',
       nextModel: undefined,
       currentThinking: 'medium',
@@ -247,7 +247,7 @@ test('collaborationAgentRoutingChangeNotice reports only the changed private set
       modelLabel: 'GPT-5.4',
       thinkingLabel: 'High',
     }),
-    "Shuyang's Kordi thinking set to High. Only you can see this.",
+    "Alex's Kordi thinking set to High. Only you can see this.",
   );
 });
 
@@ -259,7 +259,7 @@ test('bridge routing notice auto-dismisses after two seconds with a short fade',
 
 test('owned agent inspector surfaces default and fallback model routing before runtime details', () => {
   const agent: Agent = {
-    name: "Shuyang's Kordi",
+    name: "Alex's Kordi",
     id: 'agent-a',
     role: 'My agent',
     messaging: 'Direct local chat',
@@ -395,7 +395,7 @@ test('owned agent inspector surfaces default and fallback model routing before r
 
 test('owned agent inspector resolves bare runtime defaults through the same provider/model route options as sessions', () => {
   const agent: Agent = {
-    name: "Shuyang's Kordi",
+    name: "Alex's Kordi",
     id: 'agent-a',
     role: 'My agent',
     messaging: 'Direct local chat',

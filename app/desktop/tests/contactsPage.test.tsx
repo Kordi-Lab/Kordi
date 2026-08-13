@@ -213,7 +213,7 @@ test('the locked Kordi Support contact routes reporting through its chat', () =>
 
 test('active contact rows stay visually neutral until hover', () => {
   const markup = renderToStaticMarkup(createElement(ContactRow, {
-    contact: contact({ id: 'cloud:acct_peer', name: 'Jiaxin Pei', subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e' }),
+    contact: contact({ id: 'cloud:acct_peer', name: 'Maya Chen', subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e' }),
     active: true,
     onSelect: () => undefined,
   }));
@@ -282,7 +282,7 @@ test('contact detail modal mirrors real presence instead of deriving it from sta
     contactOverlayMode: 'contact',
     activeContact: contact({
       id: 'cloud:acct_peer',
-      name: 'Jiaxin Pei',
+      name: 'Maya Chen',
       subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
       status: 'online',
       presenceStatus: null,
@@ -296,7 +296,7 @@ test('contact detail modal mirrors real presence instead of deriving it from sta
     contactOverlayMode: 'contact',
     activeContact: contact({
       id: 'cloud:acct_peer',
-      name: 'Jiaxin Pei',
+      name: 'Maya Chen',
       subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
       status: 'online',
       presenceStatus: 'online',
@@ -304,7 +304,7 @@ test('contact detail modal mirrors real presence instead of deriving it from sta
   });
 
   assert.match(presenceMarkup, /data-presence-status="online"/);
-  assert.match(presenceMarkup, /aria-label="Jiaxin Pei is online"/);
+  assert.match(presenceMarkup, /aria-label="Maya Chen is online"/);
   assert.doesNotMatch(presenceMarkup, />online<\/span>/);
 });
 
@@ -313,7 +313,7 @@ test('contact detail modal shows other users with a read-only avatar', () => {
     contactOverlayMode: 'contact',
     activeContact: contact({
       id: 'cloud:acct_peer',
-      name: 'Jiaxin Pei',
+      name: 'Maya Chen',
       subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
       sourceHostId: 'cloud',
       sourceParticipantId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
@@ -321,9 +321,9 @@ test('contact detail modal shows other users with a read-only avatar', () => {
   });
 
   assert.doesNotMatch(markup, />\s*Contact detail\s*</);
-  assert.match(markup, /Jiaxin Pei/);
+  assert.match(markup, /Maya Chen/);
   assert.doesNotMatch(markup, /app-avatar-upload-button/);
-  assert.doesNotMatch(markup, /Upload jiaxin pei avatar/i);
+  assert.doesNotMatch(markup, /Upload maya chen avatar/i);
   assert.doesNotMatch(markup, /type="file"/);
 });
 
@@ -332,7 +332,7 @@ test('contact overlays use the shared popup shell with flat actions at rest', ()
     contactOverlayMode: 'contact',
     activeContact: contact({
       id: 'cloud:acct_peer',
-      name: 'Jiaxin Pei',
+      name: 'Maya Chen',
       subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
       sourceHostId: 'cloud',
       sourceParticipantId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',

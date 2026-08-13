@@ -220,7 +220,7 @@ final class AgentSessionPresentationTests: XCTestCase {
             kind: .agent,
             peerAccountId: peerAccountId,
             agentId: agentId,
-            ownerDisplayName: peerAccountId == "acct_me" ? "Shuyang" : "Maya",
+            ownerDisplayName: peerAccountId == "acct_me" ? "Alex" : "Maya",
             displayName: title,
             lastMessage: preview,
             lastActivityAt: date,

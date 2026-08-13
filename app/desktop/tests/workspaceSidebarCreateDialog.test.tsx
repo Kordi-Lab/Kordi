@@ -174,21 +174,21 @@ test('ChatCreateDialog group picker requires at least 2 contacts and excludes ag
 });
 
 test('participant-space child session rows use hashtag titles and hide raw session ids', () => {
-  assert.equal(participantSpaceSessionRowTitle('Hi shu'), '# Hi shu');
+  assert.equal(participantSpaceSessionRowTitle('Hi taylor'), '# Hi taylor');
   assert.equal(participantSpaceSessionRowTitle('# Existing'), '# Existing');
   assert.equal(participantSpaceSessionIdLabel({ id: 'session:group:child', canonicalSessionId: 'session:group:root' }), 'Group chat');
 });
 
 test('participant-space direct sessions expose remove-chat context menu targets', () => {
   const target = sessionContextMenuTargetForConversation(conversation({
-    id: 'session:bridge:humans:shu',
-    canonicalSessionId: 'session:bridge:humans:shu',
+    id: 'session:bridge:humans:taylor',
+    canonicalSessionId: 'session:bridge:humans:taylor',
     name: 'Lunch planning',
     type: 'person',
   }), 42, 84);
 
   assert.deepEqual(target, {
-    sessionId: 'session:bridge:humans:shu',
+    sessionId: 'session:bridge:humans:taylor',
     sessionName: 'Lunch planning',
     x: 42,
     y: 84,

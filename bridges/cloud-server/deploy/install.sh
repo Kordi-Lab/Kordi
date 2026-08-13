@@ -19,6 +19,14 @@ fi
 
 DEPLOY_USER="${KORDI_CLOUD_DEPLOY_USER:?Set KORDI_CLOUD_DEPLOY_USER to the operator deploy user}"
 DEPLOY_GROUP="${KORDI_CLOUD_DEPLOY_GROUP:?Set KORDI_CLOUD_DEPLOY_GROUP to the operator deploy group}"
+if [[ ! "${DEPLOY_USER}" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then
+	echo "KORDI_CLOUD_DEPLOY_USER must be a valid local account name" >&2
+	exit 1
+fi
+if [[ ! "${DEPLOY_GROUP}" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then
+	echo "KORDI_CLOUD_DEPLOY_GROUP must be a valid local group name" >&2
+	exit 1
+fi
 DEPLOY_DIR="/home/${DEPLOY_USER}/kordi-cloud-server-deploy"
 DATA_DIR="/home/${DEPLOY_USER}/kordi-cloud-server-data"
 BINARY="${DEPLOY_DIR}/target/release/kordi-cloud-server"
@@ -93,10 +101,20 @@ else
 	echo "[install] port ${PORT} is free."
 fi
 
-# Step 3 — install the systemd unit. Replace any prior copy.
+# Step 3 — render and install the systemd unit. Replace any prior copy.
 echo
 echo "[install] writing ${UNIT_DEST}"
-install -m 0644 "${UNIT_SOURCE}" "${UNIT_DEST}"
+UNIT_RENDERED="$(mktemp)"
+trap 'rm -f "${UNIT_RENDERED}"' EXIT
+sed \
+	-e "s|@KORDI_CLOUD_DEPLOY_USER@|${DEPLOY_USER}|g" \
+	-e "s|@KORDI_CLOUD_DEPLOY_GROUP@|${DEPLOY_GROUP}|g" \
+	"${UNIT_SOURCE}" >"${UNIT_RENDERED}"
+if grep -q '@KORDI_CLOUD_DEPLOY_' "${UNIT_RENDERED}"; then
+	echo "[install] unresolved systemd unit template variable" >&2
+	exit 1
+fi
+install -m 0644 "${UNIT_RENDERED}" "${UNIT_DEST}"
 systemctl daemon-reload
 
 # Step 4 — enable and start.

@@ -72,8 +72,8 @@ test('session helpers return UI activity for a session with dedupe', () => {
 test('cloud visible task records expose one shared session task list to native agents', () => {
   const store = normalizeCloudSessionActivitySnapshot({
     tasks: [
-      { taskActivityId: 'taskact_open', sessionId: 'session:group:cloud', taskId: 'another_test_task', title: 'Another Test Task', summary: 'Shared follow-up', status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [{ accountId: 'acct_a', displayName: 'C UFishAI' }, { accountId: 'acct_b', displayName: 'Shu Yang' }], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null },
-      { taskActivityId: 'taskact_closed', sessionId: 'session:group:cloud', taskId: 'find_restaurant_options', title: 'Find Restaurant Options', summary: null, status: 'closed', createdByAccountId: 'acct_b', targetAccountId: null, participants: [{ accountId: 'acct_b', displayName: 'Shu Yang' }], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T09:00:00Z', updatedAt: '2026-05-15T09:05:00Z', archivedAt: null },
+      { taskActivityId: 'taskact_open', sessionId: 'session:group:cloud', taskId: 'another_test_task', title: 'Another Test Task', summary: 'Shared follow-up', status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [{ accountId: 'acct_a', displayName: 'Research Agent' }, { accountId: 'acct_b', displayName: 'Alex Morgan' }], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null },
+      { taskActivityId: 'taskact_closed', sessionId: 'session:group:cloud', taskId: 'find_restaurant_options', title: 'Find Restaurant Options', summary: null, status: 'closed', createdByAccountId: 'acct_b', targetAccountId: null, participants: [{ accountId: 'acct_b', displayName: 'Alex Morgan' }], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T09:00:00Z', updatedAt: '2026-05-15T09:05:00Z', archivedAt: null },
       { taskActivityId: 'taskact_other', sessionId: 'session:group:other', taskId: 'other_task', title: 'Other Task', summary: null, status: 'active', createdByAccountId: 'acct_c', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T08:00:00Z', updatedAt: '2026-05-15T08:00:00Z', archivedAt: null },
     ],
     artifacts: [],
@@ -86,7 +86,7 @@ test('cloud visible task records expose one shared session task list to native a
       title: 'Another Test Task',
       summary: 'Shared follow-up',
       status: 'open',
-      involvedParticipants: ['C UFishAI', 'Shu Yang'],
+      involvedParticipants: ['Research Agent', 'Alex Morgan'],
     },
     {
       taskId: 'find_restaurant_options',
@@ -94,7 +94,7 @@ test('cloud visible task records expose one shared session task list to native a
       title: 'Find Restaurant Options',
       summary: null,
       status: 'closed',
-      involvedParticipants: ['Shu Yang'],
+      involvedParticipants: ['Alex Morgan'],
     },
   ]);
 });
@@ -126,7 +126,7 @@ test('deriveCloudActivityFromTurn ignores context-wrapper task_operator rows wit
     turn: {
       id: 'turn_1',
       sessionId: 'session:direct-person:a:b',
-      prompt: 'Use the shared Cloud conversation below as the single context window. Current request from C UFishAI: close all the task here',
+      prompt: 'Use the shared Cloud conversation below as the single context window. Current request from Research Agent: close all the task here',
       status: 'complete',
       message: 'Closed all tasks I can access here.',
       assistantText: 'Closed all tasks I can access here.',

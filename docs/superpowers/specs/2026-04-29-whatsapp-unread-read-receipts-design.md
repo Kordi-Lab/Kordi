@@ -184,9 +184,9 @@ Before opening the PR, preview in the existing `user1` / `user2` desktop instanc
 Important: preserve existing settings/data. When launching from the feature worktree, use a temporary multi-instance config whose `dataRoot`, `logsRoot`, and `runtimeRoot` point to the main repo's existing paths:
 
 ```text
-/Users/shuyang/kordi/app/desktop/.multi-instance-data
-/Users/shuyang/kordi/app/desktop/.multi-instance-logs
-/Users/shuyang/kordi/app/desktop/.multi-instance-runtime
+/Users/example/kordi/app/desktop/.multi-instance-data
+/Users/example/kordi/app/desktop/.multi-instance-logs
+/Users/example/kordi/app/desktop/.multi-instance-runtime
 ```
 
 Manual QA matrix:

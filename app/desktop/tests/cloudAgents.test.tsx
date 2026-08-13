@@ -40,7 +40,7 @@ const rawAgent = {
 const sharedRawAgent = {
   agentId: 'cloud_agent_shared',
   ownerAccountId: 'acct_owner',
-  ownerDisplayName: 'Shuyang',
+  ownerDisplayName: 'Alex',
   accessScope: 'participant_conversations',
   name: 'Project Driver',
   role: 'Planning agent',
@@ -76,7 +76,7 @@ test('shared cloud agent summaries are mention safe', () => {
   });
 
   assert.equal(agent?.agentId, 'cloud_agent_shared');
-  assert.equal(agent?.ownerDisplayName, 'Shuyang');
+  assert.equal(agent?.ownerDisplayName, 'Alex');
   assert.equal('systemPrompt' in (agent as object), false);
   assert.equal('modelRouting' in (agent as object), false);
 });
