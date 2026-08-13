@@ -12,6 +12,9 @@ command -v rg >/dev/null || { echo "rg is required for pre-commit checks." >&2; 
 
 echo "Running Kordi pre-commit checks..."
 
+echo "• Repository privacy"
+pnpm privacy:check
+
 echo "• English-only branch content"
 pnpm check:english
 

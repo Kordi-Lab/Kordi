@@ -138,6 +138,21 @@ jobs:
         with:
           node-version: 22
 
+      - name: Block private data and user-derived captures
+        shell: bash
+        env:
+          KORDI_PRIVACY_DENYLIST: ${{ secrets.KORDI_PRIVACY_DENYLIST }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            comparison="${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            comparison="${{ github.event.before }}...${{ github.sha }}"
+          else
+            comparison="HEAD"
+          fi
+          node scripts/repository-privacy-guard.mjs --comparison "$comparison"
+
       - name: Check whitespace in changed files
         shell: bash
         run: |

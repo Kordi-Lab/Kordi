@@ -25,7 +25,9 @@ git push -u origin main
 
 Before pushing, verify:
 
-- `pnpm test:scripts` passes, including `privacy-guard.test.mjs`.
+- `pnpm test:scripts` passes, including the privacy guard's own regression tests.
+- `pnpm privacy:check` passes. This scans tracked and untracked non-ignored
+  files without printing their contents.
 - `git rev-list --count HEAD` prints `1`.
 - `git remote -v` names only the new public repository before pushing.
 - no private remote, local operator allowlist, `.env`, transcript export,
@@ -36,3 +38,9 @@ Before pushing, verify:
 Keep ongoing product work private and export reviewed snapshots to the public
 repository. Never merge the private repository's historical commits into the
 public repository.
+
+Pull requests and pushes run the same privacy guard in CI. The CI comparison
+scan inspects every new commit, so adding a transcript or user screenshot and
+deleting it in a later commit still fails. Store organization-specific private
+identity and infrastructure terms in the `KORDI_PRIVACY_DENYLIST` Actions
+secret, one term per line; do not commit that denylist to the repository.
