@@ -178,6 +178,7 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
     decidedAt: null,
     counterpart: {
       accountId: 'acct_111',
+      kordiId: '482731906',
       displayName: '111',
       avatarUrl: 'data:image/png;base64,avatar-111',
       nodeId: null,
@@ -187,6 +188,33 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
 
   assert.equal(mapped.avatarName, '111');
   assert.equal(mapped.profileImageUrl, 'data:image/png;base64,avatar-111');
+  assert.equal(mapped.detail, '@482731906');
+  assert.doesNotMatch(`${mapped.title}\n${mapped.detail}`, /acct_/);
+});
+
+test('cloud request mapping never falls back to an internal account key', () => {
+  const mapped = cloudRequestToContactRequest({
+    requestId: 'req-legacy-fallback',
+    fromAccountId: 'acct_internal_requester',
+    toAccountId: 'acct_me',
+    status: 'pending',
+    direction: 'incoming',
+    message: null,
+    createdAt: 'now',
+    decidedAt: null,
+    counterpart: {
+      accountId: 'acct_internal_requester',
+      kordiId: null,
+      displayName: null,
+      avatarUrl: null,
+      nodeId: null,
+      createdAt: 'now',
+    },
+  });
+
+  assert.equal(mapped.title, 'Kordi user wants to connect');
+  assert.equal(mapped.detail, 'Kordi ID unavailable');
+  assert.doesNotMatch(`${mapped.title}\n${mapped.detail}`, /acct_/);
 });
 
 test('the locked Kordi Support contact routes reporting through its chat', () => {

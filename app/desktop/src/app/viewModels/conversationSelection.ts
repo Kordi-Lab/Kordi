@@ -188,7 +188,7 @@ export function pendingCloudCollaborationConversationForActiveId(
   const loadingLabel = isAgent ? 'Opening agent chat…' : 'Opening chat with this contact…';
   const displayName = isKordiSupport
     ? KORDI_SUPPORT_NAME
-    : isAgent ? 'Opening agent chat…' : 'Opening contact…';
+    : isAgent ? 'Opening agent chat…' : 'New contact chat';
   return {
     id: activeConvId,
     canonicalSessionId: undefined,
@@ -199,8 +199,8 @@ export function pendingCloudCollaborationConversationForActiveId(
     collaborationSources: ['Cloud'],
     trust: 'Cloud',
     directness: isKordiSupport ? 'Person chat' : isAgent ? 'Agent chat' : 'Person chat',
-    participants: isKordiSupport ? ['Me', KORDI_SUPPORT_NAME] : ['Me'],
-    messages: isKordiSupport ? [] : [transcriptLoadingNotice(loadingLabel)],
+    participants: isKordiSupport ? ['Me', KORDI_SUPPORT_NAME] : isAgent ? ['Me'] : ['Me', 'Contact'],
+    messages: isKordiSupport || !isAgent ? [] : [transcriptLoadingNotice(loadingLabel)],
     supportTicketEnabled: isKordiSupport,
     collaborationTarget: {
       hostId: 'cloud',

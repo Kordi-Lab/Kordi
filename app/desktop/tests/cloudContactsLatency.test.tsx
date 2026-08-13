@@ -113,6 +113,33 @@ test('equivalent contact refresh preserves contact and request array identities'
   assert.equal(next.requests, current.requests);
 });
 
+test('contact refresh adopts newly hydrated public Kordi IDs', () => {
+  const current = {
+    contacts: [summary({ accountId: 'acct_contact', kordiId: null })],
+    requests: [request({
+      direction: 'incoming',
+      fromAccountId: 'acct_request',
+      counterpart: summary({ accountId: 'acct_request', kordiId: null }),
+    })],
+  };
+  const refreshed = {
+    contacts: [summary({ accountId: 'acct_contact', kordiId: '482731906' })],
+    requests: [request({
+      direction: 'incoming',
+      fromAccountId: 'acct_request',
+      counterpart: summary({ accountId: 'acct_request', kordiId: '284106395' }),
+    })],
+  };
+
+  const next = applyCloudContactsRefreshSnapshot(current, refreshed, {
+    startedMutationRevision: 1,
+    currentMutationRevision: 1,
+  });
+
+  assert.equal(next.contacts[0]?.kordiId, '482731906');
+  assert.equal(next.requests[0]?.counterpart?.kordiId, '284106395');
+});
+
 test('a system agent and its owner human remain distinct contacts', () => {
   const human = summary({ accountId: 'acct_support', displayName: 'Support owner' });
   const systemAgent = summary({

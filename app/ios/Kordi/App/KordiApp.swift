@@ -119,6 +119,7 @@ private struct LaunchingView: View {
 }
 
 struct MainTabView: View {
+    @EnvironmentObject private var model: AppModel
     @State private var selection: MainTab = {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-factory-tab") {
@@ -147,6 +148,7 @@ struct MainTabView: View {
                 ContactsView()
             }
             .tabItem { Label(MainTab.contacts.rawValue, systemImage: MainTab.contacts.symbol) }
+            .badge(pendingIncomingRequestCount)
             .tag(MainTab.contacts)
 
             NavigationStack(path: $factoryPath) {
@@ -167,6 +169,10 @@ struct MainTabView: View {
             }
         }
 #endif
+    }
+
+    private var pendingIncomingRequestCount: Int {
+        model.contactRequests.lazy.filter { $0.isIncoming && $0.status == "pending" }.count
     }
 }
 

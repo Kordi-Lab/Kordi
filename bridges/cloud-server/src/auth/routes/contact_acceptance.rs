@@ -1,4 +1,29 @@
 use super::*;
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
+
+use crate::chat_sync::models::{ConversationKind, CreateConversationRequest, SendMessageRequest};
+use crate::chat_sync::store;
+
+const CONTACT_ACCEPTANCE_GREETING: &str = "👋 Hi! Thanks for adding me — happy to connect.";
+
+fn stable_contact_acceptance_uuid(scope: &str, value: &str) -> Uuid {
+    let digest = Sha256::digest(format!("{scope}\0{}", value.trim()));
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(bytes)
+}
+
+fn direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
+    let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
+    account_ids.sort_unstable();
+    format!(
+        "session:direct-person:{}:{}",
+        account_ids[0], account_ids[1]
+    )
+}
 
 // ---------- helpers ----------
 
@@ -68,6 +93,67 @@ pub(super) async fn finalize_request_acceptance(
         }
     }
 
+    // Preserve the established acceptance behavior on the canonical V2 chat
+    // timeline. Conversation creation, greeting insertion, and contact rows
+    // share this transaction so clients never observe a permanently empty
+    // contact caused by a partial acceptance.
+    let hello_session_id = direct_person_session_id(from_id, to_id);
+    let hello_conversation = match store::create_conversation_in_transaction(
+        &mut tx,
+        to_id,
+        CreateConversationRequest {
+            client_operation_id: stable_contact_acceptance_uuid(
+                "contact-acceptance-conversation",
+                &hello_session_id,
+            ),
+            kind: ConversationKind::Direct,
+            shared_title: None,
+            client_session_id: hello_session_id.clone(),
+            member_account_ids: vec![from_id.to_string()],
+        },
+    )
+    .await
+    {
+        Ok(outcome) => outcome.value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not open the contact conversation.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let hello_message = match store::send_message_in_transaction(
+        &mut tx,
+        to_id,
+        hello_conversation.id,
+        SendMessageRequest {
+            client_message_id: stable_contact_acceptance_uuid(
+                "contact-acceptance-greeting",
+                request_id,
+            ),
+            kind: "text".to_string(),
+            content: serde_json::json!({
+                "schema": 1,
+                "blocks": [{ "type": "text", "text": CONTACT_ACCEPTANCE_GREETING }],
+                "legacy_attachments": [],
+            }),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        },
+    )
+    .await
+    {
+        Ok(outcome) => outcome.value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not record the contact greeting.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
     if tx.commit().await.is_err() {
         return err(
             "server_error",
@@ -85,9 +171,6 @@ pub(super) async fn finalize_request_acceptance(
     )
     .await;
 
-    // Contact lifecycle remains transient. Chat messages are created only
-    // through the canonical chat API, so acceptance cannot leak an
-    // unreachable row from superseded storage.
     {
         let events = state.events().clone();
         let request_id = request_id.to_string();
@@ -137,11 +220,28 @@ pub(super) async fn finalize_request_acceptance(
         decided_at: Some(now),
         counterpart,
     };
+    let hello_created_at = hello_message.created_at.to_rfc3339();
+    let hello_summary = MessageSummary {
+        message_id: hello_message.id.to_string(),
+        from_account_id: to_id.to_string(),
+        to_account_id: from_id.to_string(),
+        body: CONTACT_ACCEPTANCE_GREETING.to_string(),
+        session_id: Some(hello_session_id),
+        created_at: hello_created_at.clone(),
+        delivered_at: (session.account_id == from_id).then_some(hello_created_at),
+        read_at: None,
+        direction: if session.account_id == to_id {
+            "outgoing".to_string()
+        } else {
+            "incoming".to_string()
+        },
+        attachments: Vec::new(),
+    };
     (
         StatusCode::OK,
         Json(ContactRequestResponse {
             request: summary,
-            hello_message: None,
+            hello_message: Some(hello_summary),
         }),
     )
         .into_response()

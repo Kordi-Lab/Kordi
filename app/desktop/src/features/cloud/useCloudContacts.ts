@@ -37,6 +37,7 @@ import {
   type CloudSupportTicketInput,
   type CloudSupportTicketResult,
 } from './supportClient';
+import { formatKordiHandle } from './kordiId';
 
 export { applyCloudContactsRefreshSnapshot } from './cloudContactsSnapshot';
 export { CLOUD_HOST_SENTINEL, cloudContactToContact, isCloudContact } from './cloudContactMapping';
@@ -495,9 +496,8 @@ export function isPendingIncomingCloudContactRequest(request: Pick<ContactReques
 }
 
 export function cloudRequestToContactRequest(row: CloudContactRequest): ContactRequest {
-  const counterpartName = row.counterpart?.displayName ?? row.counterpart?.accountId ?? (
-    row.direction === 'incoming' ? row.fromAccountId : row.toAccountId
-  );
+  const counterpartKordiHandle = formatKordiHandle(row.counterpart?.kordiId);
+  const counterpartName = row.counterpart?.displayName?.trim() || counterpartKordiHandle || 'Kordi user';
   const counterpartId = row.direction === 'incoming' ? row.fromAccountId : row.toAccountId;
   const title = row.direction === 'incoming'
     ? `${counterpartName} wants to connect`
@@ -506,7 +506,7 @@ export function cloudRequestToContactRequest(row: CloudContactRequest): ContactR
     id: `cloud:${row.requestId}`,
     initials: cloudContactInitials(counterpartName),
     title,
-    detail: row.message ?? counterpartId,
+    detail: row.message?.trim() || counterpartKordiHandle || 'Kordi ID unavailable',
     time: row.createdAt,
     profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
     avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),

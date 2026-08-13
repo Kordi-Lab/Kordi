@@ -49,6 +49,7 @@ function cloudContactSummariesEqual(left: CloudContactSummary, right: CloudConta
   return left.contactId === right.contactId
     && left.contactKind === right.contactKind
     && left.accountId === right.accountId
+    && left.kordiId === right.kordiId
     && left.displayName === right.displayName
     && left.subtitle === right.subtitle
     && left.avatarUrl === right.avatarUrl
