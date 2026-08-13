@@ -1,0 +1,84 @@
+.app-attachment-image-lightbox {
+  padding: clamp(42px, 7vh, 72px) clamp(52px, 8vw, 104px) clamp(24px, 5vh, 56px);
+  background: rgb(2 5 9 / 0.84);
+  color-scheme: dark;
+  outline: none;
+  animation: app-attachment-image-lightbox-enter 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app-attachment-image-lightbox-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 4px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.app-attachment-image-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  display: inline-flex;
+  width: 44px;
+  height: 72px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.34);
+  color: rgb(255 255 255 / 0.92);
+  cursor: pointer;
+  opacity: 0;
+  outline: none;
+  transform: translateY(-50%);
+  transition:
+    background-color 140ms ease-out,
+    opacity 140ms ease-out;
+}
+
+.app-attachment-image-lightbox-nav:hover,
+.app-attachment-image-lightbox-nav:focus-visible {
+  background: rgb(0 0 0 / 0.52);
+  opacity: 1;
+}
+
+.app-attachment-image-lightbox-nav:focus-visible {
+  box-shadow: 0 0 0 2px rgb(96 165 250 / 0.82);
+}
+
+.app-attachment-image-lightbox-nav svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.8;
+}
+
+.app-attachment-image-lightbox-nav-previous {
+  left: clamp(8px, 2.25vw, 28px);
+}
+
+.app-attachment-image-lightbox-nav-next {
+  right: clamp(8px, 2.25vw, 28px);
+}
+
+@keyframes app-attachment-image-lightbox-enter {
+  from {
+    opacity: 0.01;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-attachment-image-lightbox {
+    animation: none;
+  }
+
+  .app-attachment-image-lightbox-nav {
+    transition: none;
+  }
+}

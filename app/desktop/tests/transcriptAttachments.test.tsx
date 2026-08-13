@@ -14,7 +14,6 @@ import {
 } from '../src/features/cloud/cloudAttachments';
 import { __setSessionBackendForTests, type SessionStorageBackend } from '../src/features/cloud/session';
 import {
-  AttachmentImageLightbox,
   AttachmentPreview,
   attachmentImageForegroundToneFromRgba,
   attachmentImageDeliveryVisual,
@@ -672,10 +671,10 @@ test('an evicted remote preview stays alive for its open lightbox until the ligh
     assert.equal(document.querySelector('[data-attachment-image-lightbox="true"] img')?.getAttribute('src'), created[0]);
     assert.equal(revoked.includes(created[0] ?? ''), false, 'open lightbox must outlive the replaced card');
 
-    const close = document.querySelector<HTMLButtonElement>('[aria-label="Close image preview"]');
-    assert.ok(close);
+    const backdrop = document.querySelector<HTMLDivElement>('[data-attachment-image-lightbox="true"]');
+    assert.ok(backdrop);
     await act(async () => {
-      close.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
+      backdrop.dispatchEvent(new installedDom.dom.window.MouseEvent('pointerdown', { bubbles: true }));
     });
     assert.equal(revoked.filter((previewUrl) => previewUrl === created[0]).length, 1);
   } finally {
@@ -732,22 +731,4 @@ test('right-click menu dismisses for outside clicks without requiring a blocking
   assert.equal(shouldCloseAttachmentContextMenuForTarget(menuElement, insideTarget), false);
   assert.equal(shouldCloseAttachmentContextMenuForTarget(menuElement, outsideTarget), true);
   assert.equal(shouldCloseAttachmentContextMenuForTarget(menuElement, null), true);
-});
-
-test('attachment image lightbox renders as a centered modal with close affordance', () => {
-  const markup = renderToStaticMarkup(createElement(AttachmentImageLightbox, {
-    attachment: imageMessage.attachments[0],
-    previewUrl: 'https://files.test/preview.png',
-    onClose: () => {},
-  }));
-
-  assert.match(markup, /role="dialog"/);
-  assert.match(markup, /data-attachment-image-lightbox="true"/);
-  assert.match(markup, /data-attachment-image-lightbox-panel="true"/);
-  assert.match(markup, /items-center justify-center/);
-  assert.match(markup, /Preview image/);
-  assert.doesNotMatch(markup, />Image preview</);
-  assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
-  assert.doesNotMatch(markup, /border-b border-white\/10/);
-  assert.match(markup, /Close image preview/);
 });

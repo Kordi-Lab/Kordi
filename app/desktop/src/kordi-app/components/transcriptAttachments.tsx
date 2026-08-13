@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { Check, CheckCheck, Download, ExternalLink, Image, LoaderCircle, X } from 'lucide-react';
+import { Check, CheckCheck, Download, ExternalLink, Image, LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
@@ -14,8 +14,11 @@ import {
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
 import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import type { Message, MessageAttachment } from '../types';
+
+export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
@@ -650,44 +653,6 @@ function AttachmentImageUnavailableSurface({ attachment }: { attachment: Message
   );
 }
 
-export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onContextMenu }: {
-  attachment: MessageAttachment;
-  previewUrl: string;
-  onClose: () => void;
-  onContextMenu?: (event: MouseEvent) => void;
-}) {
-  return (
-    <div
-      data-attachment-image-lightbox="true"
-      className="app-transient-overlay fixed inset-0 z-[220] flex items-center justify-center px-5 py-6 backdrop-blur-md"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Preview image"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div data-attachment-image-lightbox-panel="true" className="app-transient-surface relative flex max-h-full w-full max-w-5xl items-center justify-center overflow-hidden rounded-[24px] border p-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="app-button-quiet absolute right-3 top-3 z-10 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-0"
-          aria-label="Close image preview"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <img
-          src={previewUrl}
-          alt={attachment.name || 'Attached image'}
-          className="max-h-[min(84vh,940px)] max-w-full rounded-[18px] object-contain shadow-2xl shadow-black/35"
-          title="Right-click for image actions"
-          onContextMenu={onContextMenu}
-        />
-      </div>
-    </div>
-  );
-}
-
 function imageTileClass(index: number, totalCount: number) {
   if (totalCount <= 1) return 'col-span-6 row-span-3';
   if (totalCount === 2) return 'col-span-3 row-span-3';
@@ -713,6 +678,8 @@ function AttachmentImageCard({
     attachment: MessageAttachment,
     previewUrl: string,
     previewLease: CloudAttachmentPreviewLease | null,
+    index: number,
+    trigger: HTMLButtonElement,
   ) => void;
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
   onImageForegroundTone?: (
@@ -809,11 +776,14 @@ function AttachmentImageCard({
         <button
           type="button"
           data-attachment-image-preview-trigger="true"
+          data-attachment-image-index={index}
           title={`${displayName} · Right-click for image actions`}
-          onClick={() => onOpenPreview(
+          onClick={(event) => onOpenPreview(
             attachment,
             previewUrl,
             previewLeaseRef.current?.retain() ?? null,
+            index,
+            event.currentTarget,
           )}
           className="group relative block h-full w-full overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20"
           aria-label={`Preview ${attachment.name || 'attached image'}`}
@@ -877,9 +847,11 @@ export function AttachmentPreview({
   const [lightboxAttachment, setLightboxAttachment] = useState<{
     attachment: MessageAttachment;
     previewUrl: string;
-    previewLease: CloudAttachmentPreviewLease | null;
+    index: number;
   } | null>(null);
   const lightboxPreviewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
+  const lightboxOriginRef = useRef<HTMLButtonElement | null>(null);
+  const imageCollageRef = useRef<HTMLDivElement | null>(null);
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const [sampledForegroundTone, setSampledForegroundTone] = useState<{
     attachmentIdentity: string;
@@ -913,19 +885,33 @@ export function AttachmentPreview({
     attachment: MessageAttachment,
     previewUrl: string,
     previewLease: CloudAttachmentPreviewLease | null,
+    index: number,
+    trigger: HTMLButtonElement,
   ) => {
     const previousLease = lightboxPreviewLeaseRef.current;
     lightboxPreviewLeaseRef.current = previewLease;
+    lightboxOriginRef.current = trigger;
     previousLease?.release();
-    setLightboxAttachment({ attachment, previewUrl, previewLease });
+    setLightboxAttachment({ attachment, previewUrl, index });
   }, []);
 
   const closeLightbox = useCallback(() => {
     const previewLease = lightboxPreviewLeaseRef.current;
+    const origin = lightboxOriginRef.current;
     lightboxPreviewLeaseRef.current = null;
+    lightboxOriginRef.current = null;
     previewLease?.release();
     setLightboxAttachment(null);
+    if (origin?.isConnected) origin.focus({ preventScroll: true });
   }, []);
+
+  const navigateLightbox = useCallback((direction: -1 | 1) => {
+    if (!lightboxAttachment) return;
+    const targetIndex = lightboxAttachment.index + direction;
+    imageCollageRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-attachment-image-index="${targetIndex}"]`)
+      ?.click();
+  }, [lightboxAttachment]);
 
   function openContextMenu(attachment: MessageAttachment, event: MouseEvent) {
     event.preventDefault();
@@ -936,13 +922,20 @@ export function AttachmentPreview({
   useEffect(() => {
     if (!lightboxAttachment && !contextMenuState) return;
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return;
-      closeLightbox();
-      setContextMenuState(null);
+      if (event.key === 'Escape') {
+        closeLightbox();
+        setContextMenuState(null);
+        return;
+      }
+      if (!lightboxAttachment || contextMenuState) return;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        navigateLightbox(event.key === 'ArrowLeft' ? -1 : 1);
+      }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [closeLightbox, contextMenuState, lightboxAttachment]);
+  }, [closeLightbox, contextMenuState, lightboxAttachment, navigateLightbox]);
 
   useEffect(() => () => {
     lightboxPreviewLeaseRef.current?.release();
@@ -958,6 +951,7 @@ export function AttachmentPreview({
       <div className="flex flex-col gap-2">
         {previewImageAttachments.length > 0 ? (
           <div
+            ref={imageCollageRef}
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
             className={cn(
@@ -1004,6 +998,10 @@ export function AttachmentPreview({
             attachment={lightboxAttachment.attachment}
             previewUrl={lightboxAttachment.previewUrl}
             onClose={closeLightbox}
+            canGoPrevious={lightboxAttachment.index > 0}
+            canGoNext={lightboxAttachment.index < previewImageAttachments.length - 1}
+            onPrevious={() => navigateLightbox(-1)}
+            onNext={() => navigateLightbox(1)}
             onContextMenu={(event) => openContextMenu(lightboxAttachment.attachment, event)}
           />
         </PortalLayer>
