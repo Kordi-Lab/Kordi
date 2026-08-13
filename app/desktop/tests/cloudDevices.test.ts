@@ -6,7 +6,7 @@ function readSource(relativePath: string): string {
   return readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
 }
 
-test('device settings keep session details concise while covering review, stale recovery, and revocation', () => {
+test('device settings keep session details concise while covering review and revocation', () => {
   const panel = readSource('features/cloud/CloudDevicesPanel.tsx');
   const settings = readSource('pages/CloudAccountSettingsDialog.tsx');
 
@@ -17,7 +17,7 @@ test('device settings keep session details concise while covering review, stale 
   assert.match(panel, /renameDevice/);
   assert.match(panel, /Terminate all other sessions/);
   assert.match(panel, /authorizationState === 'pending_review'/);
-  assert.match(panel, /Showing the last device list/);
+  assert.doesNotMatch(panel, /Showing the last device list/);
   assert.doesNotMatch(panel, /Device details unavailable/);
   assert.match(panel, /lastActiveAt/);
   assert.match(panel, /approximateLocation/);

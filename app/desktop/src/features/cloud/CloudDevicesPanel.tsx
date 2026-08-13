@@ -85,7 +85,6 @@ export function CloudDevicesPanel({
   const cached = cachedDevicesByAccount.get(accountId);
   const [devices, setDevices] = useState<CloudDeviceAuthorization[]>(cached ?? []);
   const [isLoading, setIsLoading] = useState(!cached);
-  const [isStale, setIsStale] = useState(Boolean(cached));
   const [error, setError] = useState<string | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -103,10 +102,8 @@ export function CloudDevicesPanel({
       cachedDevicesByAccount.set(accountId, result.devices);
       setDevices(result.devices);
       setError(null);
-      setIsStale(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load active devices.');
-      setIsStale(cachedDevicesByAccount.has(accountId));
     } finally {
       setIsLoading(false);
     }
@@ -253,11 +250,6 @@ export function CloudDevicesPanel({
         </Button>
       </div>
 
-      {isStale ? (
-        <div className="mt-4 rounded-[12px] bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-100" role="status">
-          Showing the last device list from this session. Reconnect and refresh to verify changes.
-        </div>
-      ) : null}
       {error ? (
         <div className="app-error-text mt-4 rounded-[12px] bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
           {error}
