@@ -92,6 +92,6 @@ echo "[kordi-operator] Verified allowlisted GitHub account @$github_login."
 echo "[kordi-operator] Connecting the desktop to the approved remote API; database credentials remain server-side."
 if [[ $# -gt 0 ]]; then
   echo "[kordi-operator] Launching an isolated desktop profile."
-  exec pnpm --dir "$repo_root/app/desktop" tauri:dev:profile -- "$@"
+  exec pnpm --dir "$repo_root" dev:desktop:profile -- "$@"
 fi
-exec pnpm --dir "$repo_root/app/desktop" tauri:dev:cloud
+exec pnpm --dir "$repo_root" dev:cloud

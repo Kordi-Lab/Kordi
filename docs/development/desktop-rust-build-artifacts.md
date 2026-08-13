@@ -90,3 +90,37 @@ node scripts/clean-inactive-worktree-targets.mjs --delete --keep-root /Users/exa
 ```
 
 Use `--keep-root` for any worktree that should be protected even when there is no active process.
+
+## Automatic debug artifact budget
+
+Every supported Tauri debug entrypoint runs `scripts/run-with-debug-artifact-maintenance.sh` before launch and after exit. The maintenance step checks the shared `CARGO_TARGET_DIR` at most once per day unless free disk falls below the safety floor. It cleans only regenerable debug cache directories when the Cargo target exceeds 32 GiB or free disk falls below 100 GiB:
+
+- `debug/deps`
+- `debug/incremental`
+- `debug/build`
+- `debug/.fingerprint`
+
+It also removes recognized `.build/ios-*`, `.build/macos-*`, and `.build/cargo*` directories older than seven days across registered Kordi worktrees. Release outputs, `.xcarchive` bundles, sources, application data, and worktree directories are never candidates. Cargo/Tauri/Kordi Desktop activity protects the Rust cache, and Xcode activity protects generated Apple build directories.
+
+Inspect every safe candidate without deleting files:
+
+```bash
+pnpm clean:debug-artifacts
+```
+
+Run the same allowlisted cleanup immediately:
+
+```bash
+pnpm clean:debug-artifacts:delete
+```
+
+The automatic budgets can be adjusted locally without changing the repository:
+
+```bash
+export KORDI_DEBUG_ARTIFACT_MAX_GIB=32
+export KORDI_DEBUG_ARTIFACT_MIN_FREE_GIB=100
+export KORDI_DEBUG_ARTIFACT_STALE_DAYS=7
+export KORDI_DEBUG_ARTIFACT_CHECK_HOURS=24
+```
+
+The `*:raw` desktop package commands exist only as wrapper implementation details. Do not use them for routine debugging because they bypass disk-budget maintenance.

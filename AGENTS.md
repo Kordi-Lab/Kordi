@@ -19,6 +19,8 @@ Before starting a desktop preview or debug session, follow [Development environm
 
 Never copy production credentials or production data into an isolated development environment. Never publish database, cache, event bus, object-store, or sandbox ports publicly; bind every deliberately host-published development port to loopback. Product deployment helpers must receive an explicit project, zone, and instance instead of inheriting a gcloud default.
 
+Use the supported Tauri debug commands so `scripts/run-with-debug-artifact-maintenance.sh` enforces the local disk budget before launch and after exit. Treat desktop `*:raw` debug commands as wrapper internals only. Artifact maintenance may delete only the regenerable paths documented in `docs/development/desktop-rust-build-artifacts.md`; it must preserve release outputs, archives, sources, application data, and worktrees, and must defer while a relevant build is active.
+
 ## Desktop auth and session loading
 
 - Treat provider connection state and chat-ready model state as separate contracts. Authentication UI must reflect saved auth immediately, while send-time gating may still require a compatible discovered model.

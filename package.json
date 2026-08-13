@@ -23,6 +23,8 @@
     "build:bridges": "cargo build --manifest-path bridges/cli/Cargo.toml --release",
     "clean:worktree-targets": "node scripts/clean-inactive-worktree-targets.mjs",
     "clean:worktree-targets:delete": "node scripts/clean-inactive-worktree-targets.mjs --delete",
+    "clean:debug-artifacts": "node scripts/debug-artifact-maintenance.mjs --dry-run",
+    "clean:debug-artifacts:delete": "node scripts/debug-artifact-maintenance.mjs --delete",
     "release:publish-desktop": "node scripts/publish-desktop-release.mjs",
     "release:clear-desktop-acceptance": "node scripts/clear-desktop-release-channel.mjs --channel acceptance",
     "release:rollback-desktop-beta": "node scripts/rollback-desktop-beta-channel.mjs",
