@@ -9,6 +9,12 @@ import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
+import { CloudDeviceClient } from './cloudDeviceClient';
+import type {
+  CloudDeviceListResponse,
+  CloudDeviceMutationResponse,
+} from './cloudDeviceClient';
+import { CloudIdentityAuthClient } from './cloudIdentityAuthClient';
 import {
   acceptCloudGroupInvitation,
   createCloudGroupInvitation,
@@ -23,7 +29,7 @@ import type {
   CloudPublicProfile,
 } from './cloudIdentityTypes';
 import { ChatSyncClient } from './chatSyncClient';
-import { cloudApiBaseUrl, isProductionCloudOrigin } from './cloudApiEnvironment';
+import { cloudApiBaseUrl } from './cloudApiEnvironment';
 import type {
   ChatSyncBootstrapResponse,
   ChatSyncConversation,
@@ -31,8 +37,18 @@ import type {
   ChatSyncEvent,
   ChatSyncMessage,
 } from './chatSyncTypes';
+import {
+  installationDeviceRegistration,
+  type CloudDeviceRegistration,
+} from './deviceIdentity';
 
 export type { CloudContactSummary } from './cloudContactTypes';
+export type {
+  CloudDeviceAuthorization,
+  CloudDeviceAuthorizationState,
+  CloudDeviceListResponse,
+  CloudDeviceMutationResponse,
+} from './cloudDeviceClient';
 export { parseCloudOAuthHashResult } from './cloudOAuthResult';
 export { CloudAuthError } from './cloudAuthError';
 export { chatSyncSessionTitle, cloudMessageFromChatSync, cloudOperationUuid } from './chatSyncMapping';
@@ -71,6 +87,7 @@ export type { CloudApiEnvironment } from './cloudApiEnvironment';
 export type CloudSession = {
   token: string;
   expiresAt: string;
+  deviceId?: string;
 };
 
 export type CloudAuthResult = {
@@ -367,6 +384,7 @@ export type CloudAuthClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   requestTimeoutMs?: number;
+  deviceRegistration?: () => Promise<CloudDeviceRegistration>;
 };
 
 async function readJsonSafe(response: Response): Promise<unknown> {
@@ -400,11 +418,23 @@ export class CloudAuthClient {
   private readonly requestTimeoutMs: number;
   private activeAccountId: string | null = null;
   private readonly chat: ChatSyncClient;
+  private readonly devices: CloudDeviceClient;
+  private readonly identity: CloudIdentityAuthClient;
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
+    const deviceRegistration = options.deviceRegistration ?? installationDeviceRegistration;
+    this.devices = new CloudDeviceClient(
+      (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
+      deviceRegistration,
+    );
+    this.identity = new CloudIdentityAuthClient(
+      (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
+      this.baseUrl,
+      deviceRegistration,
+    );
     this.chat = new ChatSyncClient({
       request: (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
       getActiveAccountId: () => this.activeAccountId,
@@ -459,98 +489,66 @@ export class CloudAuthClient {
     displayName?: string;
     avatarUrl?: string;
   }): Promise<CloudAuthResult> {
-    const result = await this.send<CloudAuthResult>(
-      '/v1/cloud/auth/signup',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-      },
-      'Could not create account.',
-    );
+    const result = await this.identity.signup(input);
     this.activeAccountId = result.account.accountId;
     return result;
   }
 
   async capabilities(): Promise<CloudAuthCapabilities> {
-    try {
-      return await this.send<CloudAuthCapabilities>(
-        '/v1/cloud/auth/capabilities',
-        { method: 'GET' },
-        'Could not load available sign-in methods.',
-      );
-    } catch (caught) {
-      // The hosted product API supported both OAuth start routes before it
-      // exposed the capabilities endpoint. Keep those deployed versions
-      // usable while the start route remains the authoritative config check.
-      if (
-        caught instanceof CloudAuthError
-        && caught.status === 404
-        && isProductionCloudOrigin(this.baseUrl)
-      ) {
-        return { password: true, oauthProviders: ['google', 'github'] };
-      }
-      throw caught;
-    }
+    return this.identity.capabilities();
   }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {
-    const result = await this.send<CloudAuthResult>(
-      '/v1/cloud/auth/login',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-      },
-      'Could not sign in.',
-    );
+    const result = await this.identity.login(input);
     this.activeAccountId = result.account.accountId;
     return result;
   }
 
   async me(token: string): Promise<CloudAccount> {
-    const account = await this.send<CloudAccount>(
-      '/v1/cloud/auth/me',
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not load account.',
-    );
+    const account = await this.identity.me(token);
     this.activeAccountId = account.accountId;
     return account;
   }
 
   async startOAuth(provider: CloudOAuthProvider, redirectAfter: string): Promise<CloudOAuthStartResponse> {
-    const params = new URLSearchParams({ redirectAfter });
-    return this.send<CloudOAuthStartResponse>(
-      `/v1/cloud/auth/oauth/${encodeURIComponent(provider)}/start?${params.toString()}`,
-      { method: 'GET' },
-      'Could not start social sign-in.',
-    );
+    return this.identity.startOAuth(provider, redirectAfter);
   }
 
   async updateProfile(token: string, input: CloudProfileUpdateInput): Promise<CloudAccount> {
-    return this.send<CloudAccount>(
-      '/v1/cloud/auth/me',
-      {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(input),
-      },
-      'Could not update profile.',
-    );
+    return this.identity.updateProfile(token, input);
   }
 
   async logout(token: string): Promise<void> {
-    await this.send<void>(
-      '/v1/cloud/auth/logout',
-      {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not sign out.',
-    );
+    await this.identity.logout(token);
+  }
+
+  async listDevices(token: string): Promise<CloudDeviceListResponse> {
+    return this.devices.list(token);
+  }
+
+  async renameDevice(
+    token: string,
+    deviceId: string,
+    displayName: string,
+    clientOperationId: string = crypto.randomUUID(),
+  ): Promise<CloudDeviceMutationResponse> {
+    return this.devices.rename(token, deviceId, displayName, clientOperationId);
+  }
+
+  async confirmDevice(
+    token: string,
+    deviceId: string,
+    clientOperationId: string = crypto.randomUUID(),
+  ): Promise<CloudDeviceMutationResponse> {
+    return this.devices.confirm(token, deviceId, clientOperationId);
+  }
+
+  async revokeDevice(token: string, deviceId: string, clientOperationId: string = crypto.randomUUID()): Promise<CloudDeviceMutationResponse> {
+    return this.devices.revoke(token, deviceId, clientOperationId);
+  }
+
+  async revokeOtherDevices(token: string, clientOperationId: string = crypto.randomUUID()): Promise<CloudDeviceMutationResponse> {
+    return this.devices.revokeOthers(token, clientOperationId);
   }
 
   async publishPresenceOnline(token: string): Promise<CloudPresenceAccount> {

@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import UIKit
 
 struct CloudAPIError: LocalizedError, Equatable {
     let code: String
@@ -17,6 +18,7 @@ actor CloudAPIClient {
     private let session: URLSession
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let deviceIdentityStore: KeychainSessionStore
     private var activeAccountId: String?
     private var chatConversationsById: [String: CloudChatConversation] = [:]
     private var chatConversationsBySessionId: [String: CloudChatConversation] = [:]
@@ -24,20 +26,26 @@ actor CloudAPIClient {
     private var chatBootstrapTask: Task<CloudChatBootstrapResponse, Error>?
     private var lastChatBootstrap: CloudChatBootstrapResponse?
 
-    init(baseURL: URL = configuredBaseURL, session: URLSession = .shared) {
+    init(
+        baseURL: URL = configuredBaseURL,
+        session: URLSession = .shared,
+        deviceIdentityStore: KeychainSessionStore = KeychainSessionStore()
+    ) {
         precondition(
             KordiAppEnvironment.permitsAPIBaseURL(baseURL),
             "Kordi Cloud requires HTTPS or an isolated loopback development endpoint"
         )
         self.baseURL = baseURL
         self.session = session
+        self.deviceIdentityStore = deviceIdentityStore
     }
 
     func login(email: String, password: String) async throws -> CloudAuthResponse {
+        let device = try await deviceRegistration()
         let response: CloudAuthResponse = try await send(
             path: "/v1/cloud/auth/login",
             method: "POST",
-            body: LoginRequest(email: email, password: password),
+            body: LoginRequest(email: email, password: password, device: device),
             fallback: "Could not sign in."
         )
         activateAccount(response.account.accountId)
@@ -50,6 +58,7 @@ actor CloudAPIClient {
         displayName: String?,
         avatarUrl: String
     ) async throws -> CloudAuthResponse {
+        let device = try await deviceRegistration()
         let response: CloudAuthResponse = try await send(
             path: "/v1/cloud/auth/signup",
             method: "POST",
@@ -57,7 +66,8 @@ actor CloudAPIClient {
                 email: email,
                 password: password,
                 displayName: displayName,
-                avatarUrl: avatarUrl
+                avatarUrl: avatarUrl,
+                device: device
             ),
             fallback: "Could not create account."
         )
@@ -66,10 +76,20 @@ actor CloudAPIClient {
     }
 
     func startOAuth(provider: CloudOAuthProvider, redirectAfter: URL) async throws -> URL {
+        let device = try await deviceRegistration()
         let response: CloudOAuthStartResponse = try await send(
             path: "/v1/cloud/auth/oauth/\(provider.rawValue)/start",
             method: "GET",
-            query: [URLQueryItem(name: "redirectAfter", value: redirectAfter.absoluteString)],
+            query: [
+                URLQueryItem(name: "redirectAfter", value: redirectAfter.absoluteString),
+                URLQueryItem(name: "deviceName", value: device.displayName),
+                URLQueryItem(name: "devicePlatform", value: device.platform),
+                URLQueryItem(name: "deviceOsVersion", value: device.osVersion),
+                URLQueryItem(name: "deviceAppVersion", value: device.appVersion),
+                URLQueryItem(name: "deviceApproximateLocation", value: device.approximateLocation),
+                URLQueryItem(name: "devicePublicKey", value: device.publicKey),
+                URLQueryItem(name: "deviceKeyAlgorithm", value: device.keyAlgorithm)
+            ],
             fallback: "Could not start \(provider.displayName) sign-in."
         )
         guard let authURL = URL(string: response.authUrl),
@@ -114,6 +134,115 @@ actor CloudAPIClient {
             resetChatCache()
         }
         try await sendWithoutResponse(path: "/v1/cloud/auth/logout", method: "POST", token: token, fallback: "Could not sign out.")
+    }
+
+    func listDevices(token: String) async throws -> [CloudDeviceAuthorization] {
+        let device = try await deviceRegistration()
+        try await sendWithoutResponse(
+            path: "/v1/cloud/auth/devices/current",
+            method: "PUT",
+            token: token,
+            body: DeviceMetadataUpdateRequest(device: device),
+            fallback: "Could not update this device."
+        )
+        let response: CloudDeviceListResponse = try await send(
+            path: "/v1/cloud/auth/devices",
+            method: "GET",
+            token: token,
+            fallback: "Could not load active devices."
+        )
+        return response.devices
+    }
+
+    func renameDevice(
+        token: String,
+        deviceId: String,
+        displayName: String,
+        clientOperationId: String = UUID().uuidString.lowercased()
+    ) async throws -> CloudDeviceMutationResponse {
+        try await send(
+            path: "/v1/cloud/auth/devices/\(escapedPath(deviceId))",
+            method: "PATCH",
+            token: token,
+            body: RenameDeviceRequest(
+                clientOperationId: clientOperationId,
+                displayName: displayName
+            ),
+            fallback: "Could not rename this device."
+        )
+    }
+
+    func confirmDevice(
+        token: String,
+        deviceId: String,
+        clientOperationId: String = UUID().uuidString.lowercased()
+    ) async throws -> CloudDeviceMutationResponse {
+        try await send(
+            path: "/v1/cloud/auth/devices/\(escapedPath(deviceId))/confirm",
+            method: "POST",
+            token: token,
+            body: DeviceOperationRequest(clientOperationId: clientOperationId),
+            fallback: "Could not confirm this device."
+        )
+    }
+
+    func revokeDevice(
+        token: String,
+        deviceId: String,
+        clientOperationId: String = UUID().uuidString.lowercased()
+    ) async throws -> CloudDeviceMutationResponse {
+        try await send(
+            path: "/v1/cloud/auth/devices/\(escapedPath(deviceId))",
+            method: "DELETE",
+            token: token,
+            body: DeviceOperationRequest(clientOperationId: clientOperationId),
+            fallback: "Could not terminate this device."
+        )
+    }
+
+    func revokeOtherDevices(
+        token: String,
+        clientOperationId: String = UUID().uuidString.lowercased()
+    ) async throws -> CloudDeviceMutationResponse {
+        try await send(
+            path: "/v1/cloud/auth/devices/revoke-others",
+            method: "POST",
+            token: token,
+            body: DeviceOperationRequest(clientOperationId: clientOperationId),
+            fallback: "Could not terminate other devices."
+        )
+    }
+
+    private func deviceRegistration() async throws -> CloudDeviceRegistration {
+        let publicKey = try deviceIdentityStore.loadOrCreateDevicePublicKey()
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return await MainActor.run {
+            CloudDeviceRegistration(
+                displayName: UIDevice.current.name,
+                platform: "ios",
+                osVersion: UIDevice.current.systemVersion,
+                appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+                approximateLocation: Self.approximateLocation(),
+                publicKey: publicKey,
+                keyAlgorithm: "p256"
+            )
+        }
+    }
+
+    private static func approximateLocation() -> String {
+        let city = TimeZone.current.identifier
+            .split(separator: "/")
+            .last
+            .map(String.init)?
+            .replacingOccurrences(of: "_", with: " ")
+        let countryCode = Locale.current.region?.identifier
+        let country = countryCode.flatMap { Locale.current.localizedString(forRegionCode: $0) }
+        return [city, country]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty }
+            .joined(separator: ", ")
     }
 
     private func activateAccount(_ accountId: String) {
@@ -901,7 +1030,7 @@ actor CloudAPIClient {
                 payload: CloudSyncEventPayload(
                     message: nil, messageIds: nil, readAt: nil, sessionId: sessionId,
                     forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
-                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil, deviceId: nil
                 ),
                 occurredAt: event.occurredAt
             )]
@@ -911,6 +1040,22 @@ actor CloudAPIClient {
             "artifact.upsert", "artifact.archived", "session.pin.updated", "session.hidden",
             "session.unhidden", "session.deleted", "session-forked"
         ]
+        if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
+            .contains(event.eventType) {
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: CloudSyncEventPayload(
+                    message: nil, messageIds: nil, readAt: nil, sessionId: nil,
+                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: event.payload.deviceId
+                ),
+                occurredAt: event.occurredAt
+            )]
+        }
         if knownNonChatEvents.contains(event.eventType) { return [] }
         if event.critical {
             throw CloudAPIError(code: "CLIENT_UPDATE_REQUIRED", message: "Update Kordi to continue reliable chat sync.", statusCode: 0)
@@ -935,7 +1080,7 @@ actor CloudAPIClient {
             payload: CloudSyncEventPayload(
                 message: projected, messageIds: nil, readAt: nil, sessionId: nil,
                 forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
-                createdByAccountId: nil, createdAt: nil, sessionTitle: nil
+                createdByAccountId: nil, createdAt: nil, sessionTitle: nil, deviceId: nil
             ),
             occurredAt: occurredAt
         )
@@ -961,7 +1106,8 @@ actor CloudAPIClient {
                 sessionTitle: CloudSyncedSessionTitle(
                     sessionId: conversation.legacySessionId ?? conversation.id,
                     title: title
-                )
+                ),
+                deviceId: nil
             ),
             occurredAt: occurredAt
         )
@@ -1131,7 +1277,11 @@ actor CloudAPIClient {
     }
 }
 
-private struct LoginRequest: Encodable { let email: String; let password: String }
+private struct LoginRequest: Encodable {
+    let email: String
+    let password: String
+    let device: CloudDeviceRegistration
+}
 private struct UpdateProfileRequest: Encodable {
     let displayName: String
     let avatarUrl: String?
@@ -1141,6 +1291,27 @@ private struct SignupRequest: Encodable {
     let password: String
     let displayName: String?
     let avatarUrl: String
+    let device: CloudDeviceRegistration
+}
+private struct DeviceMetadataUpdateRequest: Encodable {
+    let displayName: String
+    let platform: String
+    let osVersion: String
+    let appVersion: String
+    let approximateLocation: String
+
+    init(device: CloudDeviceRegistration) {
+        displayName = device.displayName
+        platform = device.platform
+        osVersion = device.osVersion
+        appVersion = device.appVersion
+        approximateLocation = device.approximateLocation
+    }
+}
+private struct DeviceOperationRequest: Encodable { let clientOperationId: String }
+private struct RenameDeviceRequest: Encodable {
+    let clientOperationId: String
+    let displayName: String
 }
 private struct ContactsResponse: Decodable { let contacts: [CloudContact] }
 private struct ContactRequestsResponse: Decodable { let requests: [CloudContactRequest] }

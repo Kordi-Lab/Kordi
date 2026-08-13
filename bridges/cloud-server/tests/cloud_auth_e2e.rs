@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
 use kordi_cloud_server::auth::routes::routes_with_config;
@@ -59,6 +60,36 @@ fn signup_body(email: &str, password: &str) -> Body {
             "password": password,
             "displayName": "E2E",
             "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+        })
+        .to_string(),
+    )
+}
+
+fn p256_public_key(seed: u8) -> String {
+    let secret = p256::SecretKey::from_slice(&[seed; 32]).unwrap();
+    URL_SAFE_NO_PAD.encode(secret.public_key().to_sec1_bytes())
+}
+
+fn device_registration(seed: u8, name: &str, platform: &str) -> serde_json::Value {
+    json!({
+        "displayName": name,
+        "platform": platform,
+        "osVersion": "test-os",
+        "appVersion": "test-app",
+        "approximateLocation": "Riyadh, Saudi Arabia",
+        "publicKey": p256_public_key(seed),
+        "keyAlgorithm": "p256",
+    })
+}
+
+fn signup_body_with_device(email: &str, password: &str, device: serde_json::Value) -> Body {
+    Body::from(
+        json!({
+            "email": email,
+            "password": password,
+            "displayName": "E2E",
+            "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+            "device": device,
         })
         .to_string(),
     )
@@ -117,12 +148,32 @@ fn post_json_with_token(uri: &str, token: &str, body: serde_json::Value) -> Requ
         .unwrap()
 }
 
+fn put_json_with_token(uri: &str, token: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
 fn delete_with_token(uri: &str, token: &str) -> Request<Body> {
     Request::builder()
         .method("DELETE")
         .uri(uri)
         .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
+        .unwrap()
+}
+
+fn delete_json_with_token(uri: &str, token: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
         .unwrap()
 }
 
@@ -136,6 +187,8 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
 
 #[path = "cloud_auth_e2e/account_auth.rs"]
 mod account_auth;
+#[path = "cloud_auth_e2e/devices.rs"]
+mod devices;
 #[path = "cloud_auth_e2e/group_invitations.rs"]
 mod group_invitations;
 #[path = "cloud_auth_e2e/public_identity.rs"]

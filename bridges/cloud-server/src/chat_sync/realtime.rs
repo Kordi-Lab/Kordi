@@ -20,6 +20,7 @@ use sqlx_core::query::query;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
+use crate::auth::session::device_is_active;
 use crate::chat_sync::cursor::CursorCodec;
 use crate::chat_sync::models::SyncEventSnapshot;
 use crate::chat_sync::store::{self, StoreError};
@@ -39,6 +40,7 @@ const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLIENT_FRAME_BYTES: usize = 64 * 1024;
 const MAX_SERVER_FRAME_BYTES: usize = 512 * 1024;
 const MAX_UNACKNOWLEDGED_EVENTS: i64 = 1_000;
+const DEVICE_REVALIDATION_INTERVAL: Duration = Duration::from_secs(2);
 
 fn cursor_codec() -> Option<CursorCodec> {
     std::env::var("KORDI_CHAT_SYNC_CURSOR_SECRET")
@@ -244,19 +246,22 @@ async fn persist_device_ack(
     account_id: &str,
     device_id: &str,
     stream_seq: i64,
-) -> Result<(), sqlx_core::Error> {
-    query(
+) -> Result<bool, sqlx_core::Error> {
+    let now = Utc::now().to_rfc3339();
+    let result = query(
         "UPDATE cloud_devices \
-         SET last_ack_seq = GREATEST(last_ack_seq, $1), protocol_version = $2 \
-         WHERE device_id = $3 AND account_id = $4 AND revoked_at IS NULL",
+         SET last_ack_seq = GREATEST(last_ack_seq, $1), protocol_version = $2, \
+             last_sync_at = $3, last_seen_at = $3 \
+         WHERE device_id = $4 AND account_id = $5 AND revoked_at IS NULL",
     )
     .bind(stream_seq)
     .bind(PROTOCOL_VERSION)
+    .bind(&now)
     .bind(device_id)
     .bind(account_id)
     .execute(pool)
     .await?;
-    Ok(())
+    Ok(result.rows_affected() == 1)
 }
 
 async fn run_socket(
@@ -265,6 +270,18 @@ async fn run_socket(
     ticket: ConsumedRealtimeTicket,
     codec: CursorCodec,
 ) {
+    match device_is_active(state.db_pool(), &ticket.account_id, &ticket.device_id).await {
+        Ok(true) => {}
+        Ok(false) => {
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
+        Err(error) => {
+            eprintln!("[chat-realtime] validate device: {error}");
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
+    }
     let connect_stream_seq = match receive_connect(&mut socket, &ticket, &codec).await {
         Ok(sequence) => sequence,
         Err(()) => {
@@ -315,6 +332,8 @@ async fn run_socket(
     durable_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut heartbeat_check = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut device_revalidation = tokio::time::interval(DEVICE_REVALIDATION_INTERVAL);
+    device_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_heartbeat = tokio::time::Instant::now();
     let mut last_applied_seq = connect_stream_seq;
 
@@ -334,13 +353,22 @@ async fn run_socket(
                     }
                     last_applied_seq = applied;
                     last_heartbeat = tokio::time::Instant::now();
-                    if let Err(error) = persist_device_ack(
+                    match persist_device_ack(
                         state.db_pool(),
                         &ticket.account_id,
                         &ticket.device_id,
                         applied,
                     ).await {
-                        eprintln!("[chat-realtime] persist device ack: {error}");
+                        Ok(true) => {}
+                        Ok(false) => {
+                            let _ = sender.send(Message::Close(None)).await;
+                            return;
+                        }
+                        Err(error) => {
+                            eprintln!("[chat-realtime] persist device ack: {error}");
+                            let _ = sender.send(Message::Close(None)).await;
+                            return;
+                        }
                     }
                     if send_json(&mut sender, &HeartbeatAckFrame {
                         frame_type: "heartbeat_ack",
@@ -381,6 +409,24 @@ async fn run_socket(
                 if last_heartbeat.elapsed() > HEARTBEAT_TIMEOUT {
                     let _ = sender.send(Message::Close(None)).await;
                     return;
+                }
+            }
+            _ = device_revalidation.tick() => {
+                match device_is_active(
+                    state.db_pool(),
+                    &ticket.account_id,
+                    &ticket.device_id,
+                ).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        let _ = sender.send(Message::Close(None)).await;
+                        return;
+                    }
+                    Err(error) => {
+                        eprintln!("[chat-realtime] revalidate device: {error}");
+                        let _ = sender.send(Message::Close(None)).await;
+                        return;
+                    }
                 }
             }
         }

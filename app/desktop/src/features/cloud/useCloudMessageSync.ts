@@ -15,6 +15,7 @@ import type {
 } from './authClient';
 import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
+import { publishCloudDeviceEvents } from './cloudDeviceEvents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { compareCloudMessages } from './cloudMessageMerge';
 import {
@@ -42,10 +43,8 @@ import {
   loadChatSyncLocalState,
 } from '@/lib/desktopChatSync';
 
-// Realtime messages normally arrive through the Cloud WebSocket. This interval
-// is only a repair path for a missed frame or a temporarily disconnected
-// socket, so polling it several times per second adds load without improving
-// the normal delivery path.
+// Realtime uses the Cloud WebSocket; this interval repairs missed frames and
+// temporary disconnects without polling several times per second.
 export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
 const CLOUD_SYNC_EVENT_PAGE_LIMIT = 1_000;
 
@@ -213,6 +212,7 @@ export function useCloudMessageSync({
             messages: response.chat.messages,
             events: response.chat.events,
           });
+          publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId);
           if (local) {
             await Promise.allSettled(local.conversations.map((conversation) => (
               client.acknowledgeChatDelivery(

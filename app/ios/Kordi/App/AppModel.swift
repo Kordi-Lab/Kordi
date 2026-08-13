@@ -34,6 +34,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRefreshingProviderAuthentication = false
     @Published private(set) var isRefreshingFactory = false
     @Published private(set) var providerAuthenticationErrorMessage: String?
+    @Published private(set) var devices: [CloudDeviceAuthorization] = []
+    @Published private(set) var isRefreshingDevices = false
+    @Published private(set) var deviceErrorMessage: String?
+    @Published private(set) var deviceReviewRequired = false
     @Published private(set) var isRefreshing = false
     @Published private(set) var agentRunState: [String: AgentActivity] = [:]
     @Published private(set) var agentExecutionLocation: [String: AgentExecutionLocation] = [:]
@@ -50,6 +54,8 @@ final class AppModel: ObservableObject {
     private let sessionRuntimeRouteStore: SessionRuntimeRouteStore
     private let attachmentFileStore = AttachmentFileStore()
     private var token: String?
+    private var currentDeviceId: String?
+    private var deviceOperationIds: [String: String] = [:]
     private var cloudSyncTask: Task<Void, Never>?
     private var cloudSyncCursor = "0"
     private var hasHydratedWireSnapshot = false
@@ -80,6 +86,7 @@ final class AppModel: ObservableObject {
             || ProcessInfo.processInfo.arguments.contains("--preview-login")
             || ProcessInfo.processInfo.arguments.contains("--preview-signup")
             || ProcessInfo.processInfo.arguments.contains("--preview-account")
+            || ProcessInfo.processInfo.arguments.contains("--preview-devices")
             || ProcessInfo.processInfo.arguments.contains("--preview-authentication")
             || ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail")
             || ProcessInfo.processInfo.arguments.contains("--preview-new-chat")
@@ -135,7 +142,10 @@ final class AppModel: ObservableObject {
         } catch {
             try? keychain.deleteToken()
             token = nil
+            currentDeviceId = nil
             account = nil
+            devices = []
+            deviceOperationIds = [:]
             phase = .signedOut
         }
     }
@@ -214,6 +224,7 @@ final class AppModel: ObservableObject {
         cloudConnectionState = .connecting
         messageSyncState = .syncing
         token = nil
+        currentDeviceId = nil
         account = nil
         contacts = []
         contactRequests = []
@@ -223,6 +234,10 @@ final class AppModel: ObservableObject {
         sessionPinsByID = [:]
         providerAuthSnapshot = nil
         providerAuthSnapshots = [:]
+        devices = []
+        deviceOperationIds = [:]
+        deviceErrorMessage = nil
+        deviceReviewRequired = false
         cloudMessagesByPeer = [:]
         cloudMessageIndicesByPeer = [:]
         sessionForksById = [:]
@@ -255,8 +270,9 @@ final class AppModel: ObservableObject {
             async let ownedAgents = api.listAgents(token: token)
             async let fetchedVisibility = api.listSessionVisibility(token: token)
             async let fetchedAuth = try? api.currentProviderAuthSnapshot(token: token)
-            let (contactList, requests, owned, visibility, authSnapshot) = try await (
-                fetchedContacts, fetchedRequests, ownedAgents, fetchedVisibility, fetchedAuth
+            async let fetchedDevices = try? api.listDevices(token: token)
+            let (contactList, requests, owned, visibility, authSnapshot, deviceList) = try await (
+                fetchedContacts, fetchedRequests, ownedAgents, fetchedVisibility, fetchedAuth, fetchedDevices
             )
             var shared = try await api.listSharedAgents(
                 token: token,
@@ -266,6 +282,11 @@ final class AppModel: ObservableObject {
             contactRequests = requests
             ownedCloudAgents = owned
             providerAuthSnapshot = authSnapshot
+            if let deviceList {
+                devices = deviceList
+                currentDeviceId = deviceList.first(where: \.currentDevice)?.deviceId
+                deviceReviewRequired = deviceList.contains { $0.needsReview && !$0.currentDevice }
+            }
             if let authSnapshot {
                 providerAuthSnapshots[ProviderAuthenticationDefinition.canonicalID(authSnapshot.provider)] = authSnapshot
             }
@@ -354,6 +375,128 @@ final class AppModel: ObservableObject {
             errorMessage = userFacing(error, fallback: "Could not update your profile.")
             return false
         }
+    }
+
+    func refreshDevices() async {
+        if previewMode {
+            deviceErrorMessage = nil
+            return
+        }
+        guard let token, let account, !isRefreshingDevices else { return }
+        isRefreshingDevices = true
+        defer { isRefreshingDevices = false }
+        do {
+            let refreshed = try await api.listDevices(token: token)
+            guard self.token == token, self.account?.accountId == account.accountId else { return }
+            devices = refreshed
+            currentDeviceId = refreshed.first(where: \.currentDevice)?.deviceId
+            deviceReviewRequired = refreshed.contains { $0.needsReview && !$0.currentDevice }
+            deviceErrorMessage = nil
+        } catch {
+            deviceErrorMessage = userFacing(error, fallback: "Could not load active devices.")
+        }
+    }
+
+    func markDeviceReviewSeen() {
+        deviceReviewRequired = false
+    }
+
+    func confirmDevice(_ device: CloudDeviceAuthorization) async -> Bool {
+        guard let token else { return false }
+        let operationKey = "confirm:\(device.deviceId)"
+        let operationId = deviceOperationId(for: operationKey)
+        deviceErrorMessage = nil
+        do {
+            _ = try await api.confirmDevice(
+                token: token,
+                deviceId: device.deviceId,
+                clientOperationId: operationId
+            )
+            deviceOperationIds.removeValue(forKey: operationKey)
+            await refreshDevices()
+            return true
+        } catch {
+            deviceErrorMessage = userFacing(error, fallback: "Could not confirm this device.")
+            return false
+        }
+    }
+
+    func renameDevice(_ device: CloudDeviceAuthorization, displayName: String) async -> Bool {
+        guard let token, device.currentDevice else { return false }
+        let cleanName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty, cleanName.count <= 80 else {
+            deviceErrorMessage = "Enter a device name between 1 and 80 characters."
+            return false
+        }
+        let operationKey = "rename:\(device.deviceId):\(cleanName)"
+        let operationId = deviceOperationId(for: operationKey)
+        deviceErrorMessage = nil
+        do {
+            _ = try await api.renameDevice(
+                token: token,
+                deviceId: device.deviceId,
+                displayName: cleanName,
+                clientOperationId: operationId
+            )
+            deviceOperationIds.removeValue(forKey: operationKey)
+            await refreshDevices()
+            return true
+        } catch {
+            deviceErrorMessage = userFacing(error, fallback: "Could not rename this device.")
+            return false
+        }
+    }
+
+    func revokeDevice(_ device: CloudDeviceAuthorization) async -> Bool {
+        guard let token, !device.currentDevice else { return false }
+        let operationKey = "revoke:\(device.deviceId)"
+        let operationId = deviceOperationId(for: operationKey)
+        let previous = devices
+        devices.removeAll { $0.deviceId == device.deviceId }
+        deviceErrorMessage = nil
+        do {
+            _ = try await api.revokeDevice(
+                token: token,
+                deviceId: device.deviceId,
+                clientOperationId: operationId
+            )
+            deviceOperationIds.removeValue(forKey: operationKey)
+            await refreshDevices()
+            return true
+        } catch {
+            devices = previous
+            deviceErrorMessage = userFacing(error, fallback: "Could not terminate this device.")
+            return false
+        }
+    }
+
+    func revokeOtherDevices() async -> Bool {
+        guard let token else { return false }
+        let operationKey = "revoke-others"
+        let operationId = deviceOperationId(for: operationKey)
+        let previous = devices
+        devices.removeAll { !$0.currentDevice }
+        deviceErrorMessage = nil
+        do {
+            _ = try await api.revokeOtherDevices(
+                token: token,
+                clientOperationId: operationId
+            )
+            deviceOperationIds.removeValue(forKey: operationKey)
+            await refreshDevices()
+            return true
+        } catch {
+            devices = previous
+            deviceErrorMessage = userFacing(error, fallback: "Could not terminate other devices.")
+            return false
+        }
+    }
+
+    private func deviceOperationId(for key: String) -> String {
+        if let existing = deviceOperationIds[key] { return existing }
+        let created = UUID().uuidString.lowercased()
+        deviceOperationIds[key] = created
+        return created
     }
 
     func refreshProviderAuthentication() async {
@@ -1941,8 +2084,18 @@ final class AppModel: ObservableObject {
         guard let accountId = account?.accountId else { return }
         var upsertsByPeer: [String: [CloudMessageDTO]] = [:]
         var readUpdatesByPeer: [String: [String: String]] = [:]
+        var deviceListChanged = false
 
         for event in events {
+            if event.eventType.hasPrefix("device.") {
+                deviceListChanged = true
+                if event.eventType == "device.added",
+                   let deviceId = event.payload?.deviceId,
+                   deviceId != currentDeviceId {
+                    deviceReviewRequired = true
+                }
+                continue
+            }
             if event.eventType == "session.title.updated",
                let sessionTitle = event.payload?.sessionTitle {
                 applySyncedSessionTitles([sessionTitle])
@@ -1997,6 +2150,10 @@ final class AppModel: ObservableObject {
                   let ids = event.payload?.messageIds,
                   !ids.isEmpty else { continue }
             for id in ids { readUpdatesByPeer[peer, default: [:]][id] = readAt }
+        }
+
+        if deviceListChanged {
+            Task { await refreshDevices() }
         }
 
         // Merge and sort once per peer. Replaying a large account used to sort
@@ -2152,6 +2309,47 @@ final class AppModel: ObservableObject {
             revokedAt: nil
         )
         providerAuthSnapshots["openai"] = providerAuthSnapshot
+        let now = Date()
+        let timestamp = ISO8601DateFormatter()
+        devices = [
+            CloudDeviceAuthorization(
+                deviceId: "device_preview_iphone",
+                displayName: "iPhone 17e",
+                platform: "ios",
+                osVersion: "iOS 27.0",
+                appVersion: "0.0.1-beta.12",
+                createdAt: timestamp.string(from: now.addingTimeInterval(-2_592_000)),
+                lastActiveAt: timestamp.string(from: now),
+                authorizationState: "authorized",
+                currentDevice: true,
+                sessionExpiresAt: timestamp.string(from: now.addingTimeInterval(2_592_000)),
+                approximateLocation: "Riyadh, Saudi Arabia",
+                syncStatus: CloudDeviceSyncStatus(
+                    protocolVersion: 2,
+                    lastAppliedSequence: 1_248,
+                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-12))
+                )
+            ),
+            CloudDeviceAuthorization(
+                deviceId: "device_preview_mac",
+                displayName: "MacBook Pro",
+                platform: "macos",
+                osVersion: "macOS 26.0",
+                appVersion: "0.0.1-beta.12",
+                createdAt: timestamp.string(from: now.addingTimeInterval(-7_776_000)),
+                lastActiveAt: timestamp.string(from: now.addingTimeInterval(-540)),
+                authorizationState: "authorized",
+                currentDevice: false,
+                sessionExpiresAt: timestamp.string(from: now.addingTimeInterval(2_592_000)),
+                approximateLocation: "Riyadh, Saudi Arabia",
+                syncStatus: CloudDeviceSyncStatus(
+                    protocolVersion: 2,
+                    lastAppliedSequence: 1_248,
+                    lastSuccessfulCatchUpAt: timestamp.string(from: now.addingTimeInterval(-545))
+                )
+            )
+        ]
+        currentDeviceId = "device_preview_iphone"
         token = "preview-token"
         phase = .signedIn
         cloudConnectionState = .connected
@@ -2164,7 +2362,12 @@ final class AppModel: ObservableObject {
     private func completeAuthentication(_ response: CloudAuthResponse) async throws {
         try keychain.saveToken(response.session.token)
         token = response.session.token
+        currentDeviceId = response.session.deviceId
         account = response.account
+        devices = []
+        deviceOperationIds = [:]
+        deviceErrorMessage = nil
+        deviceReviewRequired = false
         if let snapshot = await wireCache.load(accountId: response.account.accountId) {
             cloudMessagesByPeer = snapshot.messagesByPeer
             sessionForksById = snapshot.sessionForksById ?? [:]

@@ -346,6 +346,9 @@ pub fn run() {
             cloud_session::cloud_session_store,
             cloud_session::cloud_session_load,
             cloud_session::cloud_session_clear,
+            cloud_session::cloud_device_identity_store,
+            cloud_session::cloud_device_identity_load,
+            cloud_session::cloud_device_system_metadata,
             remote_image::desktop_fetch_remote_image_data_url
         ])
         .build(tauri::generate_context!())

@@ -35,7 +35,7 @@ use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::session::lookup_session;
+use crate::auth::session::{device_is_active, lookup_session};
 use crate::server::ServerState;
 
 #[derive(Debug, Deserialize)]
@@ -90,7 +90,7 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
         // clients can tell the difference between "connected" and
         // "actually receiving events," then idle until close.
         mark_presence_online_on_websocket_connect(&state, &account_id, &device_id).await;
-        idle_without_nats(socket, &account_id).await;
+        idle_without_nats(socket, &state, &account_id, &device_id).await;
         let disconnected_at = Utc::now();
         mark_presence_offline_on_websocket_disconnect(
             &state,
@@ -130,6 +130,18 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
             return;
         }
     };
+    let control_subject = format!("kordi.device.control.{device_id}");
+    let mut device_control_sub = match client.subscribe(control_subject.clone()).await {
+        Ok(subscription) => subscription,
+        Err(err) => {
+            eprintln!("[ws] subscribe '{control_subject}': {err}");
+            let _ = general_sub.unsubscribe().await;
+            let _ = contact_request_sub.unsubscribe().await;
+            let _ = presence_sub.unsubscribe().await;
+            let _ = close_with_message(socket, "subscribe failed").await;
+            return;
+        }
+    };
 
     let (mut sender, mut receiver) = socket.split();
 
@@ -143,6 +155,8 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
         return;
     }
     mark_presence_online_on_websocket_connect(&state, &account_id, &device_id).await;
+    let mut device_revalidation = tokio::time::interval(Duration::from_secs(2));
+    device_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
@@ -187,6 +201,28 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
                 }
                 None => break,
             },
+
+            event = device_control_sub.next() => {
+                if event.is_some() {
+                    let _ = sender.send(Message::Close(None)).await;
+                }
+                break;
+            },
+
+            _ = device_revalidation.tick() => {
+                match device_is_active(state.db_pool(), &account_id, &device_id).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        let _ = sender.send(Message::Close(None)).await;
+                        break;
+                    }
+                    Err(error) => {
+                        eprintln!("[ws] revalidate device: {error}");
+                        let _ = sender.send(Message::Close(None)).await;
+                        break;
+                    }
+                }
+            },
         }
     }
 
@@ -195,6 +231,7 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
     let _ = general_sub.unsubscribe().await;
     let _ = contact_request_sub.unsubscribe().await;
     let _ = presence_sub.unsubscribe().await;
+    let _ = device_control_sub.unsubscribe().await;
     let disconnected_at = Utc::now();
     mark_presence_offline_on_websocket_disconnect(&state, &account_id, &device_id, disconnected_at)
         .await;
@@ -310,17 +347,34 @@ fn envelope_body(subject: &str, payload_bytes: &[u8]) -> Option<String> {
     }
 }
 
-async fn idle_without_nats(mut socket: WebSocket, account_id: &str) {
+async fn idle_without_nats(
+    mut socket: WebSocket,
+    state: &Arc<ServerState>,
+    account_id: &str,
+    device_id: &str,
+) {
     let frame = serde_json::to_string(&ConnectedFrame {
         event: "connected_no_events",
         account_id,
     })
     .unwrap_or_else(|_| String::from(r#"{"event":"connected_no_events"}"#));
     let _ = socket.send(Message::Text(frame)).await;
-    while let Some(msg) = socket.recv().await {
-        match msg {
-            Ok(Message::Close(_)) | Err(_) => break,
-            _ => {}
+    let mut device_revalidation = tokio::time::interval(Duration::from_secs(2));
+    loop {
+        tokio::select! {
+            message = socket.recv() => match message {
+                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                _ => {}
+            },
+            _ = device_revalidation.tick() => {
+                match device_is_active(state.db_pool(), account_id, device_id).await {
+                    Ok(true) => {}
+                    Ok(false) | Err(_) => {
+                        let _ = socket.send(Message::Close(None)).await;
+                        break;
+                    }
+                }
+            }
         }
     }
 }

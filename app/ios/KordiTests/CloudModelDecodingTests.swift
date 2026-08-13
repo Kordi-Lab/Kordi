@@ -1,7 +1,32 @@
 import XCTest
+import Security
 @testable import Kordi
 
 final class CloudModelDecodingTests: XCTestCase {
+    func testInstallationDeviceIdentityIsStableAndDistinctAcrossStores() throws {
+        let firstService = "io.kordi.tests.device.\(UUID().uuidString)"
+        let secondService = "io.kordi.tests.device.\(UUID().uuidString)"
+        defer {
+            for service in [firstService, secondService] {
+                SecItemDelete([
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: service
+                ] as CFDictionary)
+            }
+        }
+        let firstStore = KeychainSessionStore(service: firstService)
+        let secondStore = KeychainSessionStore(service: secondService)
+
+        let firstKey = try firstStore.loadOrCreateDevicePublicKey()
+        try firstStore.saveToken("temporary-session")
+        try firstStore.deleteToken()
+
+        XCTAssertEqual(firstKey.count, 65)
+        XCTAssertEqual(firstKey.first, 0x04)
+        XCTAssertEqual(try firstStore.loadOrCreateDevicePublicKey(), firstKey)
+        XCTAssertNotEqual(try secondStore.loadOrCreateDevicePublicKey(), firstKey)
+    }
+
     func testCloudSessionVisibilityDecodesMacHiddenAndDeletedSessions() throws {
         let payload = Data(#"{"hiddenSessionIds":["session:hidden"],"deletedSessionIds":["session:deleted"]}"#.utf8)
         let visibility = try JSONDecoder().decode(CloudSessionVisibility.self, from: payload)
@@ -93,6 +118,41 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(event.payload?.forkSessionId, "session:fork:child")
         XCTAssertEqual(event.payload?.parentSessionId, "session:self-agent:root")
         XCTAssertEqual(event.payload?.parentMessageId, "msg_root")
+    }
+
+    func testDeviceListDecodesReviewAndSyncStateWithoutKeyMaterial() throws {
+        let payload = Data(#"{"devices":[{"deviceId":"device_1","displayName":"Ada’s iPhone","platform":"ios","osVersion":"27.0","appVersion":"1.0","createdAt":"2026-08-13T09:00:00Z","lastActiveAt":"2026-08-13T09:05:00Z","authorizationState":"pending_review","currentDevice":false,"sessionExpiresAt":"2026-09-12T09:00:00Z","approximateLocation":null,"syncStatus":{"protocolVersion":2,"lastAppliedSequence":42,"lastSuccessfulCatchUpAt":"2026-08-13T09:04:00Z"}}]}"#.utf8)
+
+        let response = try JSONDecoder().decode(CloudDeviceListResponse.self, from: payload)
+        let device = try XCTUnwrap(response.devices.first)
+
+        XCTAssertTrue(device.needsReview)
+        XCTAssertFalse(device.currentDevice)
+        XCTAssertEqual(device.syncStatus.protocolVersion, 2)
+        XCTAssertEqual(device.syncStatus.lastAppliedSequence, 42)
+    }
+
+    func testAuthSessionAcceptsDeviceBindingAndLegacyResponses() throws {
+        let decoder = JSONDecoder()
+        let bound = try decoder.decode(
+            CloudSession.self,
+            from: Data(#"{"token":"token","expiresAt":"2026-09-12T09:00:00Z","deviceId":"device_1"}"#.utf8)
+        )
+        let legacy = try decoder.decode(
+            CloudSession.self,
+            from: Data(#"{"token":"legacy","expiresAt":"2026-09-12T09:00:00Z"}"#.utf8)
+        )
+
+        XCTAssertEqual(bound.deviceId, "device_1")
+        XCTAssertNil(legacy.deviceId)
+    }
+
+    func testDeviceLifecycleEventCarriesTheAffectedInstallation() throws {
+        let payload = Data(#"{"eventId":"44","eventType":"device.added","peerAccountId":"acct_me","messageId":null,"payload":{"deviceId":"device_other","authorizationState":"pending_review"},"occurredAt":"2026-08-13T09:00:00Z"}"#.utf8)
+
+        let event = try JSONDecoder().decode(CloudSyncEvent.self, from: payload)
+
+        XCTAssertEqual(event.payload?.deviceId, "device_other")
     }
 
     func testChatConversationDecodesDurableForkLineage() throws {

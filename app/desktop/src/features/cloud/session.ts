@@ -9,6 +9,7 @@ export type StoredSession = {
   token: string;
   accountId: string;
   expiresAt: string;
+  deviceId?: string;
 };
 
 export interface SessionStorageBackend {
@@ -37,6 +38,7 @@ class TauriKeychainBackend implements SessionStorageBackend {
       token: session.token,
       accountId: session.accountId,
       expiresAt: session.expiresAt,
+      deviceId: session.deviceId,
     });
   }
 

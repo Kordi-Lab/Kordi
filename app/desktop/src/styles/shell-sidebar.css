@@ -51,6 +51,7 @@
 }
 
 .app-workspace-sidebar .app-nav-rail-profile {
+  position: relative;
   border: 0;
   outline: none;
 }

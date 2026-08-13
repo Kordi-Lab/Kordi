@@ -9,6 +9,16 @@ import {
 
 type FetchCall = { url: string; init: RequestInit | undefined };
 
+const testDevice = {
+  displayName: 'Ada’s Mac',
+  platform: 'macos',
+  osVersion: '15.6',
+  appVersion: '0.0.1-beta.12',
+  approximateLocation: 'Riyadh, Saudi Arabia',
+  publicKey: 'test-public-key',
+  keyAlgorithm: 'p256' as const,
+};
+
 function recordingFetch(handler: (call: FetchCall) => Response | Promise<Response>) {
   const calls: FetchCall[] = [];
   const fetchImpl: typeof fetch = (input, init) => {
@@ -41,7 +51,11 @@ test('signup posts JSON to the signup route and parses the response', async () =
       session: { token: 'kordi_cs_abc', expiresAt: '2099-01-01T00:00:00Z' },
     }),
   );
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+  const client = new CloudAuthClient({
+    baseUrl: 'http://srv',
+    fetchImpl,
+    deviceRegistration: async () => testDevice,
+  });
 
   const result = await client.signup({
     email: 'ada@example.com',
@@ -59,6 +73,7 @@ test('signup posts JSON to the signup route and parses the response', async () =
     password: 'correct horse',
     displayName: 'Ada',
     avatarUrl,
+    device: testDevice,
   });
   assert.equal(result.session.token, 'kordi_cs_abc');
   assert.equal(result.account.passwordSet, true);
@@ -404,17 +419,6 @@ test('downloadAttachmentContent fetches bytes through authenticated cloud API', 
   assert.deepEqual(Array.from(new Uint8Array(await blob.arrayBuffer())), [1, 2, 3]);
   const headers = calls[0].init?.headers as Record<string, string>;
   assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
-});
-
-test('startOAuth requests a provider auth URL with redirectAfter', async () => {
-  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, { authUrl: 'https://accounts.example/auth' }));
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
-
-  const result = await client.startOAuth('google', 'http://127.0.0.1:1482/');
-
-  assert.equal(result.authUrl, 'https://accounts.example/auth');
-  assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/oauth/google/start?redirectAfter=http%3A%2F%2F127.0.0.1%3A1482%2F');
-  assert.equal(calls[0].init?.method, 'GET');
 });
 
 test('updateProfile patches cloud account profile fields', async () => {

@@ -22,6 +22,11 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use crate::auth::devices::{
+    append_device_sync_event, authorize_device, legacy_device_registration,
+    normalize_device_metadata, normalize_device_registration, DeviceRegistrationRequest,
+    NormalizedDeviceRegistration,
+};
 use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
     exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
@@ -35,8 +40,8 @@ use crate::auth::password::{
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::rows::{AccountRecordRow, ContactListRow, ContactRequestRow};
 use crate::auth::session::{
-    bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
-    SESSION_TOKEN_PREFIX,
+    bump_expiry, issue_session, lookup_session, revoke_session, touch_device_activity,
+    DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
 };
 use crate::server::ServerState;
 
@@ -44,6 +49,10 @@ mod app_invitation_handlers;
 mod contact_acceptance;
 mod contact_handlers;
 mod contact_request_handlers;
+mod device_handlers;
+mod device_operation_support;
+mod device_query_handlers;
+mod device_types;
 mod group_invitation_handlers;
 mod identity_handlers;
 mod middleware;
@@ -60,6 +69,9 @@ use app_invitation_handlers::*;
 use contact_acceptance::*;
 use contact_handlers::*;
 use contact_request_handlers::*;
+use device_handlers::*;
+use device_query_handlers::*;
+use device_types::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
 use password_handlers::*;
@@ -117,6 +129,23 @@ pub fn routes_with_config(
     let protected = Router::new()
         .route("/v1/cloud/auth/me", get(me).patch(update_me))
         .route("/v1/cloud/auth/logout", post(logout))
+        .route("/v1/cloud/auth/devices", get(list_devices))
+        .route(
+            "/v1/cloud/auth/devices/current",
+            put(update_current_device_metadata),
+        )
+        .route(
+            "/v1/cloud/auth/devices/revoke-others",
+            post(revoke_other_devices),
+        )
+        .route(
+            "/v1/cloud/auth/devices/:device_id",
+            delete(revoke_device).patch(rename_device),
+        )
+        .route(
+            "/v1/cloud/auth/devices/:device_id/confirm",
+            post(confirm_device),
+        )
         .route("/v1/cloud/accounts/:account_id/profile", get(get_profile))
         .route("/v1/cloud/invitations/app", post(create_app_invitation))
         .route(

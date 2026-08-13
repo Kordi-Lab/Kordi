@@ -202,5 +202,5 @@ pub use cursors::{advance_delivery_cursor, advance_read_cursor, bootstrap, histo
 pub use members::{accept_invited_conversation_member, add_conversation_members};
 pub(crate) use message::send_message_in_transaction;
 pub use message::{conversation_id_for_session, replace_message_snapshot, send_message};
-pub use support::publish_user_sync_events;
+pub use support::{append_user_sync_events_in_transaction, publish_user_sync_events};
 pub use titles::{update_personal_title, update_shared_title};

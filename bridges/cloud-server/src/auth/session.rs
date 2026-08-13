@@ -120,9 +120,11 @@ pub async fn lookup_session(
     let now = Utc::now();
 
     let row: Option<(String, String, String, String)> = query_as(
-        "SELECT token_id, account_id, device_id, expires_at \
-         FROM cloud_refresh_tokens \
-         WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > $2",
+        "SELECT token.token_id, token.account_id, token.device_id, token.expires_at \
+         FROM cloud_refresh_tokens token \
+         JOIN cloud_devices device ON device.device_id = token.device_id \
+         WHERE token.token_hash = $1 AND token.revoked_at IS NULL AND token.expires_at > $2 \
+           AND device.account_id = token.account_id AND device.revoked_at IS NULL",
     )
     .bind(&token_hash)
     .bind(now.to_rfc3339())
@@ -161,11 +163,55 @@ pub async fn bump_expiry(
 ) -> Result<(), SessionError> {
     let new_expiry = (Utc::now() + Duration::days(lifetime_days.max(1))).to_rfc3339();
     query(
-        "UPDATE cloud_refresh_tokens SET expires_at = $1 \
-         WHERE token_id = $2 AND revoked_at IS NULL",
+        "UPDATE cloud_refresh_tokens token SET expires_at = $1 \
+         FROM cloud_devices device \
+         WHERE token.token_id = $2 AND token.revoked_at IS NULL \
+           AND device.device_id = token.device_id AND device.account_id = token.account_id \
+           AND device.revoked_at IS NULL",
     )
     .bind(&new_expiry)
     .bind(token_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Check the PostgreSQL authorization source of truth for a long-lived
+/// connection. This is deliberately cheap and can be used at heartbeat
+/// boundaries even when the low-latency broker invalidation is unavailable.
+pub async fn device_is_active(
+    pool: &PgPool,
+    account_id: &str,
+    device_id: &str,
+) -> Result<bool, SessionError> {
+    let row: Option<(i32,)> = query_as(
+        "SELECT 1 FROM cloud_devices \
+         WHERE account_id = $1 AND device_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(account_id)
+    .bind(device_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.is_some())
+}
+
+/// Refresh non-sensitive activity metadata at most once per minute.
+pub async fn touch_device_activity(
+    pool: &PgPool,
+    account_id: &str,
+    device_id: &str,
+) -> Result<(), SessionError> {
+    let now = Utc::now();
+    let cutoff = now - Duration::minutes(1);
+    query(
+        "UPDATE cloud_devices SET last_seen_at = $1 \
+         WHERE account_id = $2 AND device_id = $3 AND revoked_at IS NULL \
+           AND last_seen_at < $4",
+    )
+    .bind(now.to_rfc3339())
+    .bind(account_id)
+    .bind(device_id)
+    .bind(cutoff.to_rfc3339())
     .execute(pool)
     .await?;
     Ok(())

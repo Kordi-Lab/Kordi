@@ -204,6 +204,7 @@ export function SidebarProfileControl({
 }: WorkspaceSidebarAccount) {
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
   const [localDialogTab, setLocalDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
+  const [deviceReview, setDeviceReview] = useState<{ accountId: string; needsReview: boolean } | null>(null);
   const isDialogControlled = Boolean(setControlledDialogTab);
   const dialogTab = isDialogControlled ? (controlledDialogTab ?? null) : localDialogTab;
   const setDialogTab = setControlledDialogTab ?? setLocalDialogTab;
@@ -223,6 +224,11 @@ export function SidebarProfileControl({
     ? cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl)
     : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
   const profileImageUrl = cloudAccount ? cloudAvatarImageUrl(cloudAccount.avatarUrl) : null;
+  const hasDeviceReview = Boolean(
+    cloudAccount
+    && deviceReview?.accountId === cloudAccount.accountId
+    && deviceReview.needsReview,
+  );
 
   useLayoutEffect(() => {
     if (!isProfileCardOpen) return;
@@ -267,8 +273,23 @@ export function SidebarProfileControl({
     };
   }, [isProfileCardOpen]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !cloudAccount?.accountId) return;
+    const handleNewDevice = (event: Event) => {
+      const accountId = (event as CustomEvent<{ accountId?: string }>).detail?.accountId;
+      if (accountId === cloudAccount.accountId) {
+        setDeviceReview({ accountId, needsReview: true });
+      }
+    };
+    window.addEventListener('kordi-cloud-new-device', handleNewDevice);
+    return () => window.removeEventListener('kordi-cloud-new-device', handleNewDevice);
+  }, [cloudAccount?.accountId]);
+
   const openCloudAccountDialog = (tab: CloudAccountSettingsTabId) => {
     setIsProfileCardOpen(false);
+    if (tab === 'devices' && cloudAccount) {
+      setDeviceReview({ accountId: cloudAccount.accountId, needsReview: false });
+    }
     setDialogTab(tab);
   };
 
@@ -290,6 +311,13 @@ export function SidebarProfileControl({
           imageUrl={profileImageUrl}
           className="app-nav-rail-avatar h-9 w-9"
         />
+        {hasDeviceReview ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-[color:var(--app-session-bg)] bg-amber-400"
+            aria-label="A new device needs review"
+            role="status"
+          />
+        ) : null}
       </button>
 
       {cloudSettings && cloudAccount && onUpdateCloudProfile ? (
@@ -356,11 +384,18 @@ export function SidebarProfileControl({
               <button
                 type="button"
                 className="app-button-quiet app-transient-flat-action app-transient-action-row app-account-popover-row grid grid-cols-[0.875rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 rounded-[12px] px-2.5 py-2 text-left"
-                onClick={() => openCloudAccountDialog('auth')}
-                aria-label="Open account settings"
+                onClick={() => openCloudAccountDialog(hasDeviceReview ? 'devices' : 'profile')}
+                aria-label={hasDeviceReview ? 'Open settings to review a new device' : 'Open account settings'}
               >
                 <Settings className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
-                <span className="app-transient-action-label truncate">Settings</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="app-transient-action-label truncate">Settings</span>
+                  {hasDeviceReview ? (
+                    <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">
+                      Review
+                    </span>
+                  ) : null}
+                </span>
                 <span className="grid h-7 w-7 place-items-center justify-self-end" aria-hidden="true">
                   <ChevronRightIcon className="app-transient-action-icon app-transient-subtle" />
                 </span>
