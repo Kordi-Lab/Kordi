@@ -3,7 +3,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-import { buildBeforeDevCommand } from './tauri-dev-env.mjs';
+import {
+  buildBeforeDevCommand,
+  resolveDesktopPreviewIcons,
+} from './tauri-dev-env.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -145,6 +148,7 @@ const nextConfig = {
   bundle: {
     ...baseConfig.bundle,
     createUpdaterArtifacts: false,
+    icon: resolveDesktopPreviewIcons(process.env),
   },
   build: {
     ...baseConfig.build,

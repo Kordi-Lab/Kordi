@@ -1,0 +1,9 @@
+{
+  "generator": "OpenAI ImageGen",
+  "purpose": "Kordi Beta iOS application icon",
+  "prompt": "Create a square iOS application icon that matches the supplied Kordi icon composition exactly: three large overlapping translucent glossy circles arranged as one centered above two below, on a clean warm-white background. Convert the brand colors to clearly differentiated neutral grayscale values: medium gray upper circle, darker gray lower-left circle, near-charcoal lower-right circle. Preserve the translucent overlap geometry, smooth glass-like shading, restrained highlights, generous centered padding, and premium minimal finish. No text, letters, borders, badges, device mockups, rounded-corner mask, or additional symbols. Keep the background fully opaque and make the result legible at small app-icon sizes.",
+  "reference": "User-supplied grayscale three-circle icon and the existing Kordi product app icon",
+  "output": "Kordi-Beta-AppIcon.png",
+  "dimensions": "1024x1024",
+  "alpha": false
+}

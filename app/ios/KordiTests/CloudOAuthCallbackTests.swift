@@ -8,7 +8,9 @@ final class CloudOAuthCallbackTests: XCTestCase {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
-        let callback = try XCTUnwrap(URL(string: "kordi://oauth/callback#kordi_cloud_oauth=\(encoded)"))
+        let callback = try XCTUnwrap(URL(
+            string: "\(CloudOAuthCallbackParser.callbackURL.absoluteString)#kordi_cloud_oauth=\(encoded)"
+        ))
 
         let result = try CloudOAuthCallbackParser.parse(callback)
 
@@ -17,15 +19,27 @@ final class CloudOAuthCallbackTests: XCTestCase {
     }
 
     func testCallbackRejectsWrongHostEvenWithValidLookingFragment() {
-        let callback = URL(string: "kordi://attacker/callback#kordi_cloud_oauth=e30")!
+        let scheme = CloudOAuthCallbackParser.callbackURL.scheme!
+        let callback = URL(string: "\(scheme)://attacker/callback#kordi_cloud_oauth=e30")!
         XCTAssertThrowsError(try CloudOAuthCallbackParser.parse(callback))
     }
 
     func testProviderErrorIsSurfaced() {
-        let callback = URL(string: "kordi://oauth/callback#kordi_cloud_oauth_error=Access%20denied")!
+        let callback = URL(
+            string: "\(CloudOAuthCallbackParser.callbackURL.absoluteString)#kordi_cloud_oauth_error=Access%20denied"
+        )!
         XCTAssertThrowsError(try CloudOAuthCallbackParser.parse(callback)) { error in
             XCTAssertEqual(error as? CloudOAuthSessionError, .provider("Access denied"))
         }
+    }
+
+    func testProductCallbackRejectsBetaCallback() {
+        let callback = URL(string: "kordi-beta://oauth/callback#kordi_cloud_oauth=e30")!
+        let productCallback = URL(string: "kordi://oauth/callback")!
+
+        XCTAssertThrowsError(
+            try CloudOAuthCallbackParser.parse(callback, expectedCallbackURL: productCallback)
+        )
     }
 }
 

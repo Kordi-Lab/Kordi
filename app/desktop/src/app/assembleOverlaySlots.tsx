@@ -66,6 +66,7 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
           authState={args.desktopAuthState}
           onRequestClose={args.handleCloseInlineAuthDialog}
           onAuthUpdated={args.refreshDesktopAuth}
+          onChatStateRefresh={args.refreshDesktopChat}
           onEnterChat={onEnterChat}
         />
       </div>

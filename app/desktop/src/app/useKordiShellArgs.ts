@@ -332,6 +332,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         selectAuthProvider: args.selectAuthProvider,
         openLoginFlow: args.openLoginFlow,
         refreshDesktopAuth: args.refreshDesktopAuth,
+        refreshDesktopChat: args.refreshDesktopChat,
         handleSelectAuthChoice: args.handleSelectAuthChoice,
         handleRemoveAuthProfile: args.handleRemoveAuthProfile,
         handleLogoutProvider: args.handleLogoutProvider,

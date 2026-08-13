@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { buildBeforeDevCommand } from '../scripts/tauri-dev-env.mjs';
+import {
+  buildBeforeDevCommand,
+  resolveDesktopPreviewIcons,
+} from '../scripts/tauri-dev-env.mjs';
 
 const appShellFrameSource = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
 
@@ -97,6 +100,17 @@ test('buildBeforeDevCommand permits production only for acknowledged operator ru
   });
   assert.match(command, /VITE_KORDI_DEV_PROFILE='operator'/);
   assert.match(command, /VITE_KORDI_PRODUCTION_DEBUG_ACK='1'/);
+});
+
+test('desktop preview icons visibly distinguish development from product', () => {
+  assert.deepEqual(
+    resolveDesktopPreviewIcons({ VITE_KORDI_DEV_PROFILE: 'community' }),
+    ['icons/icon-dev.png', 'icons/icon-dev.icns'],
+  );
+  assert.deepEqual(
+    resolveDesktopPreviewIcons({ VITE_KORDI_DEV_PROFILE: 'operator' }),
+    ['icons/icon.png', 'icons/icon.icns'],
+  );
 });
 
 test('named development profiles render a visible in-window instance label', () => {

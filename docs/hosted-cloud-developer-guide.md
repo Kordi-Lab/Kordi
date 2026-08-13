@@ -58,6 +58,8 @@ KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
 
 The underlying allowlisted entrypoint is `scripts/dev-cloud-operator.sh https://kordi.ai`; use it only through the documented command above so the acknowledgement and profile arguments remain explicit.
 
+The named-profile launcher also binds native branding to the validated environment profile: isolated community previews use the gray development icon, while this allowlisted operator path uses the color product icon. Window titles do not control that decision.
+
 If the account is not listed, fail closed. Do not edit the allowlist, bypass the launcher, or expose production credentials. The isolated contributor workflow remains available for genuinely local work, but it does not count as a remote operator or product-server test.
 
 ## Mental model

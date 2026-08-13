@@ -30,7 +30,7 @@ const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 type CloudSessionGateResult = Pick<
   UseCloudSessionResult,
   'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'
-> & Partial<Pick<UseCloudSessionResult, 'oauthProviders'>>;
+>;
 
 function readSystemTheme(): ResolvedThemeMode {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
@@ -224,7 +224,6 @@ function CloudEditionRoot({
           onSignIn={session.signIn}
           onSignUp={session.signUp}
           onSocialSignIn={session.signInWithProvider}
-          availableSocialProviders={session.oauthProviders ?? []}
           showDebugAuthDiagnostics={SHOW_DEBUG_AUTH_DIAGNOSTICS}
         />
       </CloudGateShell>

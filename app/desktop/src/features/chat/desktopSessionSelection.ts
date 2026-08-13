@@ -1,4 +1,4 @@
-export async function commitDesktopSessionSelectionAfterTranscriptReady({
+export async function selectDesktopSessionAndPreloadTranscript({
   sessionId,
   isTranscriptCached,
   preloadTranscript,
@@ -11,10 +11,9 @@ export async function commitDesktopSessionSelectionAfterTranscriptReady({
   isSelectionCurrent: () => boolean;
   selectSession: (candidateSessionId: string) => void;
 }): Promise<boolean> {
-  if (!isTranscriptCached(sessionId)) {
-    await preloadTranscript(sessionId).catch(() => false);
-  }
   if (!isSelectionCurrent()) return false;
   selectSession(sessionId);
-  return true;
+  if (isTranscriptCached(sessionId)) return true;
+  await preloadTranscript(sessionId).catch(() => false);
+  return isSelectionCurrent();
 }

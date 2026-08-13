@@ -43,7 +43,6 @@ export type CreateChatGroupRequest = {
   name?: string | null;
   contactIds: string[];
 };
-
 export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
@@ -630,6 +629,7 @@ export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'selectAuthProvider'
   | 'openLoginFlow'
   | 'refreshDesktopAuth'
+  | 'refreshDesktopChat'
   | 'handleSelectAuthChoice'
   | 'handleRemoveAuthProfile'
   | 'handleLogoutProvider'

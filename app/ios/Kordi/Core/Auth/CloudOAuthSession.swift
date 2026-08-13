@@ -23,12 +23,15 @@ enum CloudOAuthSessionError: LocalizedError, Equatable {
 }
 
 enum CloudOAuthCallbackParser {
-    static let callbackURL = URL(string: "kordi://oauth/callback")!
+    static var callbackURL: URL { KordiAppEnvironment.current.oauthCallbackURL }
 
-    static func parse(_ url: URL) throws -> CloudAuthResponse {
-        guard url.scheme == callbackURL.scheme,
-              url.host == callbackURL.host,
-              url.path == callbackURL.path,
+    static func parse(
+        _ url: URL,
+        expectedCallbackURL: URL = callbackURL
+    ) throws -> CloudAuthResponse {
+        guard url.scheme == expectedCallbackURL.scheme,
+              url.host == expectedCallbackURL.host,
+              url.path == expectedCallbackURL.path,
               let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.fragment else {
             throw CloudOAuthSessionError.invalidCallback
         }

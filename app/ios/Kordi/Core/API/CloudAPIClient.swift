@@ -10,17 +10,8 @@ struct CloudAPIError: LocalizedError, Equatable {
 }
 
 actor CloudAPIClient {
-    static let productionBaseURL = URL(string: "https://kordi.ai")!
-
-    static var configuredBaseURL: URL {
-        guard let configured = Bundle.main.object(forInfoDictionaryKey: "KordiCloudBaseURL") as? String,
-              !configured.contains("$("),
-              let url = URL(string: configured.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.scheme == "https" else {
-            return productionBaseURL
-        }
-        return url
-    }
+    static let productionBaseURL = KordiAppEnvironment.productionBaseURL
+    static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
 
     private let baseURL: URL
     private let session: URLSession
@@ -34,7 +25,10 @@ actor CloudAPIClient {
     private var lastChatBootstrap: CloudChatBootstrapResponse?
 
     init(baseURL: URL = configuredBaseURL, session: URLSession = .shared) {
-        precondition(baseURL.scheme == "https", "Kordi Cloud requires HTTPS")
+        precondition(
+            KordiAppEnvironment.permitsAPIBaseURL(baseURL),
+            "Kordi Cloud requires HTTPS or an isolated loopback development endpoint"
+        )
         self.baseURL = baseURL
         self.session = session
     }

@@ -1,6 +1,6 @@
 # Developing Kordi for iPhone
 
-This guide covers the native SwiftUI app in `app/ios`. The app targets iOS 17 and later, mirrors Kordi's macOS conversation semantics, and uses the hosted Kordi service for account and message continuity.
+This guide covers the native SwiftUI app in `app/ios`. The app targets iOS 17 and later, mirrors Kordi's macOS conversation semantics, and has separately installable Beta and production identities.
 
 Before any backend-connected development or operator validation, select the correct path in [Development environment isolation](development-environments.md). Network-free previews remain the preferred path for isolated interface work.
 
@@ -15,7 +15,7 @@ iPhone app
     -> connected macOS runtime or hosted runner for agent execution
 ```
 
-The phone never runs a model. It can choose a session route, submit an agent request, and display the synchronized result. Production builds connect to `https://kordi.ai` over HTTPS.
+The phone never runs a model. It can choose a session route, submit an agent request, and display the synchronized result. The `Kordi` production scheme connects to `https://kordi.ai` over HTTPS. The `Kordi Beta` scheme connects only to the isolated loopback development API.
 
 ## Requirements
 
@@ -67,11 +67,24 @@ open Kordi.xcodeproj
 
 Commit both `project.yml` and the regenerated `Kordi.xcodeproj/project.pbxproj` when project settings change. Never commit `xcuserdata`, `.xcuserstate`, DerivedData, archives, or local signing material.
 
+## Choose Beta or production
+
+| Scheme | Purpose | Installed name | Bundle identifier | API origin | OAuth callback | Icon |
+| --- | --- | --- | --- | --- | --- | --- |
+| `Kordi Beta` | Isolated backend development | Kordi Beta | `ai.kordi.ios.beta` | `http://127.0.0.1:17081` | `kordi-beta://oauth/callback` | Gray |
+| `Kordi` | Production and App Store release | Kordi | `ai.kordi.ios` | `https://kordi.ai` | `kordi://oauth/callback` | Color |
+
+The independent bundle identifiers isolate Keychain sessions, UserDefaults, local database stores, caches, and app installation state. The app checks the bundle identifier, distribution channel, API origin, and callback scheme together during startup; a crossed configuration fails before it can send a request.
+
+For backend development, start the isolated backend or its approved tunnel and select `Kordi Beta`. Do not change the `Kordi` scheme to point at development, and do not point `Kordi Beta` at production. The Beta loopback route is intended for the iOS Simulator; a physical iPhone cannot reach the Mac through the phone's own `127.0.0.1`.
+
 ## Run in the simulator
+
+For deterministic network-free UI work, either scheme can use preview arguments. For backend-connected development, use `Kordi Beta`.
 
 In Xcode:
 
-1. Select the `Kordi` scheme.
+1. Select `Kordi Beta` for isolated backend work or `Kordi` for a bounded production check.
 2. Choose an installed iPhone simulator.
 3. Add `--preview-data` under Scheme > Run > Arguments for deterministic mock data.
 4. Run the app.
@@ -220,7 +233,11 @@ Open Signing & Capabilities, select a team, and let Xcode create or update the d
 
 ### OAuth returns to the browser
 
-Confirm `Info.plist` declares the `kordi` URL scheme and that the hosted callback returns exactly to `kordi://oauth/callback`.
+Confirm the selected app and backend agree on the return target: `kordi-beta://oauth/callback` for `Kordi Beta`, or `kordi://oauth/callback` for `Kordi`. GitHub and Google still use their full HTTP API callback URLs; the custom scheme is only the final handoff from Kordi Cloud back to the app.
+
+### Both installed apps show the same data
+
+Stop and verify the installed bundle identifiers. Beta must be `ai.kordi.ios.beta` and production must be `ai.kordi.ios`. Do not add shared Keychain access groups or shared app groups between them.
 
 ### Production data appears in a UI preview
 

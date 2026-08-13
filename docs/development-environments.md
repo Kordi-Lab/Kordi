@@ -8,6 +8,7 @@ Use this document before starting any Kordi preview, debug session, backend proc
 | --- | --- | --- |
 | Ordinary contributor or isolated feature work | Local Docker backend | `http://127.0.0.1:17081` |
 | Approved isolated work on a remote development host | Private development host reached through an IAP-style SSH tunnel | `http://127.0.0.1:17081` through the tunnel |
+| Native iPhone backend development | `Kordi Beta` scheme plus either isolated backend above | `http://127.0.0.1:17081` |
 | Desktop-only production operator preview | Allowlisted operator launcher | `https://kordi.ai` |
 | Work that can affect or restart a product server | Corresponding product-server machine | Validate through canonical production origin `https://kordi.ai` |
 
@@ -20,7 +21,9 @@ If the impact, authorization, or environment identity is uncertain, stop and fai
 - Use separate developer-owned GitHub and Google OAuth applications. Never reuse production OAuth clients.
 - Keep PostgreSQL, Redis, NATS, MinIO, and sandbox services private. Every deliberately host-published development port, including the application API, must bind to loopback.
 - A remote development host must accept administrative access through an approved private access path such as IAP, must not carry a product service account, and must not have network access to product services.
-- Each isolated desktop window must use `VITE_KORDI_DEV_PROFILE=community`, a unique `io.kordi.cloud.*` profile, and no production updater endpoint.
+- Each isolated desktop window must use `VITE_KORDI_DEV_PROFILE=community`, a unique `io.kordi.cloud.*` profile, the gray development icon, and no production updater endpoint.
+- The allowlisted desktop operator profile uses the color product icon. The profile launcher derives the icon from the validated environment profile, so a title or profile name cannot make a development client look like Product.
+- The `Kordi Beta` iOS scheme must keep its `ai.kordi.ios.beta` identity, `kordi-beta://oauth/callback`, gray icon, and loopback origin. The `Kordi` scheme must keep the production identity, callback, color icon, and `https://kordi.ai` origin.
 - Keep real project names, instance names, IP addresses, account names, and credentials out of commits, issues, pull requests, screenshots, and shared logs.
 
 ## Local isolated backend
@@ -45,7 +48,19 @@ See [Local development with an isolated Kordi backend](self-hosted-debug.md) for
 
 ## Remote isolated backend through IAP
 
-The approved remote development host runs the same isolated Docker stack. Its API remains bound to its own loopback interface. Use private values supplied by the operator and do not commit them:
+The approved remote development host runs the same isolated Docker stack. Its API remains bound to its own loopback interface. Export private values only in the local terminal, then use the lifecycle-bound launcher:
+
+```bash
+export KORDI_DEV_GCP_PROJECT="<DEV_GCP_PROJECT>"
+export KORDI_DEV_SSH_ZONE="<DEV_GCP_ZONE>"
+export KORDI_DEV_SSH_TARGET="<DEV_GCE_INSTANCE>"
+
+pnpm dev:cloud:remote
+```
+
+The launcher verifies the active GitHub account against the ignored local allowlist, creates an IAP loopback tunnel, waits for the health endpoint, requires both development OAuth providers, and launches the gray isolated desktop profile. Exiting the desktop command also closes its tunnel. It refuses to reuse an already-serving local port because that would make the remote target ambiguous.
+
+For transport-only diagnosis, the equivalent low-level tunnel is:
 
 ```bash
 gcloud compute ssh "<DEV_GCE_INSTANCE>" \
@@ -55,7 +70,7 @@ gcloud compute ssh "<DEV_GCE_INSTANCE>" \
   -N -L 127.0.0.1:17081:127.0.0.1:17081
 ```
 
-Keep that tunnel open, then validate and launch the same named profile from a second terminal:
+Keep a manually created diagnostic tunnel open, then validate and launch the same named profile from a second terminal:
 
 ```bash
 curl --fail --silent --show-error http://127.0.0.1:17081/health
@@ -68,6 +83,19 @@ pnpm dev:desktop:profile -- \
 
 The tunnel is transport only. It does not authorize product access, and the remote host must continue to satisfy every isolation invariant above.
 
+## Native iPhone environments
+
+The generated Xcode project contains two installable app identities:
+
+| Scheme | Display name | Bundle identifier | API | OAuth callback | Icon |
+| --- | --- | --- | --- | --- | --- |
+| `Kordi Beta` | Kordi Beta | `ai.kordi.ios.beta` | `http://127.0.0.1:17081` | `kordi-beta://oauth/callback` | Gray |
+| `Kordi` | Kordi | `ai.kordi.ios` | `https://kordi.ai` | `kordi://oauth/callback` | Color |
+
+The bundle identifiers isolate Keychain, UserDefaults, local databases, cached files, and installation state, so both apps can remain installed on one device. The client validates the entire bundle/origin/callback combination at launch and fails closed if build settings are crossed.
+
+For Beta development, start the local stack or keep the approved development-host tunnel open, then select `Kordi Beta` in Xcode. The loopback route works in the iOS Simulator. A physical iPhone cannot use a loopback service on the Mac; do not weaken the checked-in origin or expose the development API publicly to work around that boundary.
+
 ## Development OAuth applications
 
 Create separate developer-owned OAuth applications with these exact callback URLs:
@@ -78,6 +106,10 @@ http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
 ```
 
 The GitHub OAuth application callback URL must contain the complete path. In Google Auth Platform, add `http://127.0.0.1:17081` as an authorized JavaScript origin and add the complete Google callback URL as an authorized redirect URI.
+
+Kordi-controlled development and product servers must report both `google` and `github` from `/v1/cloud/auth/capabilities` before OAuth testing begins. The desktop login surface keeps both official entry points available even if capability discovery is delayed or temporarily fails; provider-start errors remain visible and actionable instead of degrading the page to password-only guidance.
+
+The isolated backend also permits the native Beta handoff at `kordi-beta://oauth/callback`. That custom scheme is an app return target, not a provider callback, so it belongs in the server redirect-after allowlist and must not be entered in GitHub or Google provider consoles.
 
 Store credentials only through the hidden-input helper on the machine running the backend:
 

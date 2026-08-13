@@ -78,7 +78,7 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-Kordi opens in account login mode against an isolated Docker backend on your machine. Development launches require an explicit non-production API origin and reject the production origin.
+Kordi opens in account login mode against an isolated Docker backend on your machine. Development launches require an explicit non-production API origin, reject the production origin, and use a gray app icon. Product and allowlisted operator previews use the color icon.
 
 > [!IMPORTANT]
 > Do not run destructive, load, or throwaway multi-account tests against production. The local Docker environment is the default contributor workflow. When an approved shared staging environment is required, set its API origin explicitly:
@@ -90,7 +90,7 @@ Kordi opens in account login mode against an isolated Docker backend on your mac
 >   --profile approved-staging --title "Kordi Staging" --port 1422
 > ```
 
-Core-maintainer operator work has an additional mandatory preflight. If the requested settings, code, or test will affect or require restarting the product server, develop and test on the corresponding product-server machine and run the first end-to-end validation through `https://coordinar.io`—never `https://kordi.ai`. Desktop-only remote previews continue to use the allowlisted `https://kordi.ai` operator launcher. Start with [Development environment isolation](docs/development-environments.md), then use [Required preflight before preview or debug](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) for product paths.
+Core-maintainer operator work has an additional mandatory preflight. If the requested settings, code, or test will affect or require restarting the product server, develop and test on the corresponding product-server machine and run end-to-end validation through `https://kordi.ai`. Desktop-only remote previews use the allowlisted `https://kordi.ai` operator launcher. Start with [Development environment isolation](docs/development-environments.md), then use [Required preflight before preview or debug](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug) for product paths.
 
 For prerequisites, multi-user testing, logs, troubleshooting, and cleanup, follow the [local development guide](docs/self-hosted-debug.md).
 
@@ -129,6 +129,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | Start the isolated backend | `pnpm debug:cloud:up` |
 | Check the isolated backend | `pnpm debug:cloud:smoke` |
 | Start Kordi Desktop | Use the named-profile command in [Development environment isolation](docs/development-environments.md#local-isolated-backend) |
+| Test Kordi Beta for iPhone | `xcodebuild -project app/ios/Kordi.xcodeproj -scheme 'Kordi Beta' -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test` |
 | Test Kordi for iPhone | `xcodebuild -project app/ios/Kordi.xcodeproj -scheme Kordi -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test` |
 | Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev:cloud:multi -- --reset --users user1,user2` |
 | Build the desktop package | `pnpm build:desktop` |

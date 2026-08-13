@@ -623,10 +623,10 @@ pub async fn desktop_start_oauth_login(
                     }
                 })),
             };
-
             let result = kordi_cli::login::run_oauth_login(&provider, callbacks).await;
             match result {
                 Ok(()) => update_attempt(&snapshot, |state| {
+                    kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
                     state.status = "succeeded".to_string();
                     state.message = format!(
                         "Logged in to {}",

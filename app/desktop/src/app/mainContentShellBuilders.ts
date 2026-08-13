@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 
 import { ChatsPage } from '@/pages/ChatsPage';
-import { authStateHasChatReadyProvider } from '@/kordi-app/auth/model';
+import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -134,7 +134,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onPrefetchChatSession: args.handlePrefetchChatSession,
     },
     auth: {
-    hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
+    hasAnyAuth: authStateSatisfiesStartupGate(args.desktopAuthState),
     onOpenAuthSettings: args.openAuthSettings,
     onOpenAccountAuthentication: args.openCloudAccountAuthentication,
     },

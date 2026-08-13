@@ -39,7 +39,7 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-The named profile launches Kordi Desktop with a separate native account store and no production updater endpoint. Development launches fail closed unless you explicitly select a non-production API origin. The recommended default is the isolated Docker backend described in [`self-hosted-debug.md`](self-hosted-debug.md).
+The named profile launches Kordi Desktop with a separate native account store, a gray development icon, and no production updater endpoint. Development launches fail closed unless you explicitly select a non-production API origin. Product and allowlisted operator previews retain the color icon. The recommended default is the isolated Docker backend described in [`self-hosted-debug.md`](self-hosted-debug.md).
 
 Production API:
 
@@ -87,6 +87,8 @@ The web preview is for frontend iteration only. Native Tauri behavior, keychain/
 ## iPhone app
 
 The native SwiftUI client lives in `app/ios`, targets iOS 17 and later, and uses `app/ios/project.yml` as the XcodeGen source of truth.
+
+Use the `Kordi Beta` scheme with the isolated loopback backend for backend development. Use `Kordi` only for bounded production checks and App Store release work. The two apps install side by side with independent bundle IDs, secure storage, local data, OAuth callbacks, names, and icons.
 
 ```bash
 cd app/ios

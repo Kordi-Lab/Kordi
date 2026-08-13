@@ -17,7 +17,8 @@ test('canonical session selection pages only the selected transcript and never r
   assert.doesNotMatch(source, /fetchCanonicalSessionState/);
   assert.match(source, /activePageSessionIds/);
   assert.match(source, /hydrateSessionPage\(sessionId\)/);
-  assert.match(source, /fetchCanonicalSessionMessages\(\s*normalizedSessionId,\s*beforeSequenceNum,\s*100/);
+  assert.match(source, /const CANONICAL_MESSAGE_PAGE_SIZE = 50/);
+  assert.match(source, /fetchCanonicalSessionMessages\(\s*normalizedSessionId,\s*beforeSequenceNum,\s*CANONICAL_MESSAGE_PAGE_SIZE/);
 });
 
 test('canonical Cloud chat selection does not invoke native desktop chat reload', () => {
@@ -36,6 +37,15 @@ test('canonical Cloud chat selection does not invoke native desktop chat reload'
     cloudGuardIndex < refreshIndex,
     'canonical Cloud session selection must return before native desktop_chat_state reload',
   );
+});
+
+test('canonical Cloud chat selection begins page hydration on the click path', () => {
+  const source = readFileSync(new URL('../src/features/chat/useDesktopSessionController.ts', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf('const handleSelectChatSession = useCallback(async (sessionId: string) => {');
+  const handlerEnd = source.indexOf('  const handleCreateChatSession = useCallback', handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+
+  assert.match(handler, /setActiveConvId\(sessionId\);[\s\S]*hydrateCanonicalSessionPage\(sessionId\)/);
 });
 
 test('sidebar session intent warms authoritative transcript state before selection', () => {

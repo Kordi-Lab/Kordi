@@ -14,7 +14,7 @@ The iPhone does not run an LLM. Agent execution is restricted to the owner's con
 
 Authentication, identity, contacts, attachments, invitations, presence, agent operations, session activity, forks, and pins use independently versioned `/v1/cloud/...` resource APIs. These paths do not carry canonical chat state.
 
-The opaque session token is stored in iOS Keychain with `AfterFirstUnlockThisDeviceOnly` accessibility. It is not written to message caches or logs. OAuth accepts only the declared `kordi://oauth/callback` scheme, host, and path before decoding the Cloud result.
+The opaque session token is stored in iOS Keychain with `AfterFirstUnlockThisDeviceOnly` accessibility. It is not written to message caches or logs. The production identity accepts only `kordi://oauth/callback`; the isolated Beta identity accepts only `kordi-beta://oauth/callback`. Each build validates the exact scheme, host, and path before decoding the Cloud result.
 
 The iOS projection mirrors the macOS product model:
 
@@ -58,6 +58,7 @@ Provider-auth payloads are encrypted by the server and scoped to the authenticat
 ## Production boundary
 
 - Production builds use `https://kordi.ai` over HTTPS.
+- Beta builds use only `http://127.0.0.1:17081`, have a separate bundle identifier and secure-storage service, and are visually distinguished by a gray icon.
 - Use `--preview-data` for deterministic UI work without network writes.
 - Use dedicated test accounts for bounded manual production checks.
 - Never run destructive, load, fuzz, or throwaway multi-account tests against production.

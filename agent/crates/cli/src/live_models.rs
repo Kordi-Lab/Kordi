@@ -1,3 +1,4 @@
+mod concurrent;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
@@ -8,8 +9,9 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::{login, runtime_model};
+use concurrent::fetch_authenticated_provider_model_ids;
 
-const LIVE_MODEL_FETCH_TIMEOUT: Duration = Duration::from_secs(8);
+const LIVE_MODEL_FETCH_TIMEOUT: Duration = Duration::from_secs(4);
 
 fn live_model_client() -> Client {
     Client::builder()
@@ -137,7 +139,7 @@ pub async fn model_registry_candidates_with_live(settings: &Settings) -> Vec<Mod
         },
     );
 
-    for provider in login::authenticated_providers_for_settings(settings) {
+    for (provider, live_ids) in fetch_authenticated_provider_model_ids(settings).await {
         let static_models = by_provider.get(&provider).cloned().unwrap_or_default();
         let auth_mode_static_models = login::model_candidates_for_provider_auth_mode(
             &registry,
@@ -145,9 +147,7 @@ pub async fn model_registry_candidates_with_live(settings: &Settings) -> Vec<Mod
             &provider,
             &static_models,
         );
-        if let Some(live_ids) =
-            fetch_live_model_ids_for_provider_with_settings(&provider, settings).await
-        {
+        if let Some(live_ids) = live_ids {
             by_provider.insert(
                 provider.clone(),
                 merge_live_model_ids_with_settings(
