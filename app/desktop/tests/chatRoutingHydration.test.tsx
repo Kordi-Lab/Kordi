@@ -215,14 +215,14 @@ test('contact history loading uses the same single neutral transcript notice', (
     id: 'session:direct-person:acct_me:acct_peer',
     canonicalSessionId: 'session:direct-person:acct_me:acct_peer',
     canonicalMessageCount: 3,
-    name: 'Jiaxin Pei',
+    name: 'Maya Chen',
     type: 'person' as const,
     subtitle: 'Latest synced contact message',
     unread: 0,
     collaborationSources: ['Cloud'],
     trust: 'Bridge',
     directness: 'Person chat',
-    participants: ['Me', 'Jiaxin Pei'],
+    participants: ['Me', 'Maya Chen'],
     messages: [],
   };
 

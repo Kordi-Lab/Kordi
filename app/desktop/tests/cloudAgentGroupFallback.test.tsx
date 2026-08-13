@@ -157,7 +157,7 @@ test('cloud forwarded group mentions do not produce fallback run claims', () => 
         source: {
           sourceSessionId: 'session:source',
           sourceMessageId: 'msg:source',
-          senderLabel: 'Shu Yang',
+          senderLabel: 'Alex Morgan',
           textPreview: '@PeerPersonKordi test',
           attachmentCount: 0,
         },

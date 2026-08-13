@@ -22,7 +22,7 @@ function conversation(overrides: Partial<Conversation> = {}): Conversation {
     collaborationSources: ['Local'],
     trust: 'Owned',
     directness: 'Direct chat',
-    participants: ['Me', 'Shu'],
+    participants: ['Me', 'Taylor'],
     messages: [],
     ...overrides,
   };

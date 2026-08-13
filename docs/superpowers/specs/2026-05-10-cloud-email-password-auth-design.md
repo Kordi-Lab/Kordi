@@ -9,12 +9,12 @@ Ship a real, end-to-end email + password auth flow for the Cloud Edition desktop
 - Password reset.
 - 2FA.
 - Cross-replica rate-limit state (Redis or DB-backed). In-memory only this phase.
-- Deployment to the GCP VM (`shu_yang@takotako`). Deployment plan ships as a separate spec.
+- Deployment to the GCP VM (`kordi@example-cloud-host`). Deployment plan ships as a separate spec.
 
 ## Architecture
 
 ### Branch
-`feature/cloud-email-password-auth`, off `main`, with `feature/cloud-account-auth-foundation` and `feature/cloud-edition-login-gate` merged in. Worktree at `/Users/shuyang/kordi-worktrees/cloud-email-password-auth`.
+`feature/cloud-email-password-auth`, off `main`, with `feature/cloud-account-auth-foundation` and `feature/cloud-edition-login-gate` merged in. Worktree at `/Users/example/kordi-worktrees/cloud-email-password-auth`.
 
 ### Server (`bridges/cli`)
 
@@ -181,7 +181,7 @@ When the OS keystore is unavailable (e.g. Linux without a keystore daemon), comm
 | 1 | Rate limit state in-memory | Resets on restart, no cross-replica sharing | Switch to a SQLite-backed counter when we deploy to >1 instance |
 | 2 | No email verification | Lets anyone claim any email | Add SMTP (Postmark/Resend) + `cloud_email_verifications` table + verification middleware before sensitive ops |
 | 3 | No password reset | Locked-out users can't recover | Same SMTP infra as above + reset-token table |
-| 4 | No deployment to `shu_yang@takotako` | Slice only runs locally | Separate spec: Dockerfile / systemd unit, Caddy/Nginx, TLS, CI/CD |
+| 4 | No deployment to `kordi@example-cloud-host` | Slice only runs locally | Separate spec: Dockerfile / systemd unit, Caddy/Nginx, TLS, CI/CD |
 | 5 | No CSP-hardening on Tauri webview | Keychain mitigates token theft, but XSS in webview is still a concern | Audit Tauri capabilities + tighten CSP to disallow inline scripts |
 | 6 | No password breach check (HIBP k-anonymity) | Users can choose breached passwords | Optional addition; calls out to Have I Been Pwned API on signup/change |
 

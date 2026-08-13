@@ -73,7 +73,7 @@ test('reply navigation retains the complete identity chain from the reproduced C
     sender: 'Me',
     senderType: 'human',
     isOwnMessage: true,
-    text: '@CUFishAIsKordi  ask anything to my kordi',
+    text: '@ResearchAgentsKordi  ask anything to my kordi',
     time: '20:45',
   };
 
@@ -95,10 +95,10 @@ test('reply navigation maps persisted aliases and relative sender labels to the 
     entryId: 'runtime-entry-visible',
     replyAliasIds: ['msg:ui:persisted-request', 'bridge-request-alias'],
     role: 'user',
-    sender: 'Shu Yang',
+    sender: 'Alex Morgan',
     senderType: 'human',
     isOwnMessage: true,
-    text: '@CUFishAIsKordi ask anything to my kordi',
+    text: '@ResearchAgentsKordi ask anything to my kordi',
     time: '16:57',
   };
 
@@ -122,10 +122,10 @@ test('reply navigation treats Me as the local sender when a legacy source id cha
   const outgoingRequest: Message = {
     id: 'visible-own-message',
     role: 'user',
-    sender: 'Shu Yang',
+    sender: 'Alex Morgan',
     senderType: 'human',
     isOwnMessage: true,
-    text: '@CUFishAIsKordi ask anything to my kordi',
+    text: '@ResearchAgentsKordi ask anything to my kordi',
     time: '16:57',
   };
 
@@ -148,7 +148,7 @@ test('reply navigation does not redirect an ambiguous legacy text match', () => 
   const duplicate = (id: string): Message => ({
     id,
     role: 'user',
-    sender: 'Shu Yang',
+    sender: 'Alex Morgan',
     senderType: 'human',
     isOwnMessage: true,
     text: 'same request',

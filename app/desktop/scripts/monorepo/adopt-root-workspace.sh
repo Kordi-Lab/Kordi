@@ -5,6 +5,7 @@ ROOT_DIR="${1:-$(pwd)}"
 ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
 
 AGENT_WORKSPACE="$ROOT_DIR/agent/Cargo.toml"
+AGENT_WORKSPACE_TEMPLATE="$ROOT_DIR/agent/Cargo.workspace-template.toml"
 ROOT_CARGO="$ROOT_DIR/Cargo.toml"
 ROOT_PACKAGE="$ROOT_DIR/package.json"
 ROOT_PNPM="$ROOT_DIR/pnpm-workspace.yaml"
@@ -21,11 +22,11 @@ cp "$TEMPLATE_DIR/package.json" "$ROOT_PACKAGE"
 cp "$TEMPLATE_DIR/pnpm-workspace.yaml" "$ROOT_PNPM"
 cp "$TEMPLATE_DIR/.gitignore" "$ROOT_DIR/.gitignore"
 
-if [[ ! -f "$ROOT_DIR/agent/Cargo.toml.workspace.backup" ]]; then
-  cp "$AGENT_WORKSPACE" "$ROOT_DIR/agent/Cargo.toml.workspace.backup"
+if [[ ! -f "$AGENT_WORKSPACE_TEMPLATE" ]]; then
+  cp "$AGENT_WORKSPACE" "$AGENT_WORKSPACE_TEMPLATE"
 fi
 
-perl -0pe 's#"crates/#"agent/crates/#g' "$ROOT_DIR/agent/Cargo.toml.workspace.backup" > "$ROOT_CARGO"
+perl -0pe 's#"crates/#"agent/crates/#g' "$AGENT_WORKSPACE_TEMPLATE" > "$ROOT_CARGO"
 
 perl -0pi -e '
   s/members = \[\n(.*?)\n\]/members = [\n$1\n    "app\/desktop\/src-tauri",\n    "bridges\/cli",\n    "shared\/rust\/protocol",\n]/s;
@@ -62,8 +63,8 @@ Root workspaces written at:
   $ROOT_DIR/package.json
   $ROOT_DIR/pnpm-workspace.yaml
 
-Backups:
-  $ROOT_DIR/agent/Cargo.toml.workspace.backup
+Migration inputs:
+  $AGENT_WORKSPACE_TEMPLATE
   $ROOT_DIR/agent/Cargo.toml.legacy
 
 Suggested next commands:

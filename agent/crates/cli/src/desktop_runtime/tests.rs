@@ -347,7 +347,7 @@ async fn sync_visible_task_records_makes_active_cloud_tasks_closable_by_title() 
             title: "Another Test Task".to_string(),
             summary: Some("Shared Cloud task".to_string()),
             status: "active".to_string(),
-            involved_participants: vec!["C UFishAI".to_string(), "Shu Yang".to_string()],
+            involved_participants: vec!["Research Agent".to_string(), "Alex Morgan".to_string()],
         }])?,
         1
     );
@@ -401,7 +401,7 @@ async fn sync_context_messages_imports_cloud_history_once_as_native_session_cont
     .await?;
     let imported = vec![DesktopChatContextMessage {
         id: "msg_cloud_1".to_string(),
-        author_name: "Shu Yang".to_string(),
+        author_name: "Alex Morgan".to_string(),
         author_kind: "human".to_string(),
         text: "Hello group".to_string(),
         created_at_ms: Some(1_800_000_000_000),
@@ -438,7 +438,7 @@ async fn sync_context_messages_imports_cloud_history_once_as_native_session_cont
         Some("msg_cloud_1")
     );
     assert!(
-        matches!(&cloud_context_entries[0].0[0], ContentBlock::Text { text } if text == "Shu Yang (human): Hello group")
+        matches!(&cloud_context_entries[0].0[0], ContentBlock::Text { text } if text == "Alex Morgan (human): Hello group")
     );
     Ok(())
 }

@@ -1,3 +1,0 @@
-# GitHub accounts permitted to launch Kordi's operator debug profile.
-# This is an accidental-access guard, not a replacement for server-side authorization.
-shuyhere

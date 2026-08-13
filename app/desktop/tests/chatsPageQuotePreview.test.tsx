@@ -106,45 +106,45 @@ test('transcript sender profile resolves by canonical identity before display na
   const conversation: Conversation = {
     ...activeConv,
     canonicalParticipants: [
-      { id: 'human:acct_self', humanId: 'acct_self', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local' },
-      { id: 'human:acct_jiaxin', humanId: 'acct_jiaxin', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
-      { id: 'human:acct_other', humanId: 'acct_other', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
+      { id: 'human:acct_self', humanId: 'acct_self', name: 'Alex Morgan', kind: 'human', role: 'self', source: 'local' },
+      { id: 'human:acct_maya', humanId: 'acct_maya', name: 'Maya Chen', kind: 'human', role: 'member' },
+      { id: 'human:acct_other', humanId: 'acct_other', name: 'Maya Chen', kind: 'human', role: 'member' },
     ],
   };
   const message: Message = {
     role: 'person',
-    sender: 'Jiaxin Pei',
-    senderIdentityId: 'human:acct_jiaxin',
+    sender: 'Maya Chen',
+    senderIdentityId: 'human:acct_maya',
     senderType: 'human',
     text: 'Hello',
     time: '10:42',
   };
 
-  assert.equal(transcriptHumanParticipant(conversation, message)?.id, 'human:acct_jiaxin');
+  assert.equal(transcriptHumanParticipant(conversation, message)?.id, 'human:acct_maya');
 });
 
 test('transcript sender profile uses only an unambiguous human display-name fallback', () => {
   const uniqueConversation: Conversation = {
     ...activeConv,
     canonicalParticipants: [
-      { id: 'human:acct_self', humanId: 'acct_self', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local' },
-      { id: 'human:acct_jiaxin', humanId: 'acct_jiaxin', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
+      { id: 'human:acct_self', humanId: 'acct_self', name: 'Alex Morgan', kind: 'human', role: 'self', source: 'local' },
+      { id: 'human:acct_maya', humanId: 'acct_maya', name: 'Maya Chen', kind: 'human', role: 'member' },
     ],
   };
   const message: Message = {
     role: 'person',
-    sender: 'Jiaxin Pei',
+    sender: 'Maya Chen',
     senderType: 'human',
     text: 'Hello',
     time: '10:42',
   };
 
-  assert.equal(transcriptHumanParticipant(uniqueConversation, message)?.id, 'human:acct_jiaxin');
+  assert.equal(transcriptHumanParticipant(uniqueConversation, message)?.id, 'human:acct_maya');
   assert.equal(transcriptHumanParticipant({
     ...uniqueConversation,
     canonicalParticipants: [
       ...(uniqueConversation.canonicalParticipants ?? []),
-      { id: 'human:acct_other', humanId: 'acct_other', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
+      { id: 'human:acct_other', humanId: 'acct_other', name: 'Maya Chen', kind: 'human', role: 'member' },
     ],
   }, message), null);
 });

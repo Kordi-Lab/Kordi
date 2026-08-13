@@ -11,7 +11,7 @@ const packageName = process.env.PUBLIC_PACKAGE_NAME ?? 'bridges';
 const version = process.env.PUBLIC_VERSION ?? '0.0.1-beta';
 const productName = process.env.PUBLIC_PRODUCT_NAME ?? 'bridges';
 const readmeTitle = process.env.PUBLIC_README_TITLE ?? productName;
-const repoUrl = process.env.PUBLIC_REPO_URL ?? 'https://github.com/shuyhere/Bridges.git';
+const repoUrl = process.env.PUBLIC_REPO_URL ?? 'https://github.com/Kordi-AI/Kordi.git';
 const cloneDir = process.env.PUBLIC_CLONE_DIR ?? 'bridges';
 const cliName = process.env.PUBLIC_CLI_NAME ?? packageName;
 
@@ -28,10 +28,6 @@ function replaceAll(text) {
     .replace(/npm install -g bridges(?=@|\s|$)/g, `npm install -g ${packageName}`)
     .replace(/npm install -g bridges-bridge(?=@|\s|$)/g, `npm install -g ${packageName}`)
     .replace(/\$\(npm root -g\)\/bridges(?!-)\//g, `$(npm root -g)/${packageName}/`)
-    .replace(/https:\/\/github\.com\/shuyhere\/Bridges\.git/g, repoUrl)
-    .replace(/https:\/\/github\.com\/shuyhere\/bridges\.git/g, repoUrl)
-    .replace(/https:\/\/github\.com\/shuyhere\/bridges\.git/g, repoUrl)
-    .replace(/https:\/\/github\.com\/shuyhere\/bridges/g, repoUrl.replace(/\.git$/, ''))
     .replaceAll(`git clone ${repoUrl}`, `git clone ${repoUrl} ${cloneDir}`)
     .replaceAll(`git clone ${repoUrl} ${cloneDir} ~/bridges`, `git clone ${repoUrl} ~/bridges`)
     .replace(/cd bridges\b/g, `cd ${cloneDir}`)

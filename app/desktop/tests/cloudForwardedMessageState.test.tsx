@@ -91,7 +91,7 @@ test('forwarded mentions stay inert across direct execution and pending UI', () 
       source: {
         sourceSessionId: 'session:source',
         sourceMessageId: 'msg:source',
-        senderLabel: 'Shu Yang',
+        senderLabel: 'Alex Morgan',
         textPreview: '@KordiProjectDriver test',
         attachmentCount: 0,
       },
@@ -171,7 +171,7 @@ test('forwarded group mentions never target a local agent', () => {
     source: {
       sourceSessionId: 'session:source',
       sourceMessageId: 'msg:source',
-      senderLabel: 'Shu Yang',
+      senderLabel: 'Alex Morgan',
       textPreview: '@MyKordi test',
       attachmentCount: 0,
     },

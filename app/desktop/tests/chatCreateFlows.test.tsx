@@ -488,18 +488,18 @@ test('group update participant metadata preserves profile avatars', () => {
 test('group update targets keep same-name cloud humans separate by account id', () => {
   const participants = [
     { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-    { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a' },
-    { id: 'human:acct_b', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_b', humanId: 'acct_b', avatarKey: 'acct_b' },
+    { id: 'human:acct_a', name: 'Alex Morgan', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a' },
+    { id: 'human:acct_b', name: 'Alex Morgan', kind: 'human', role: 'person', source: 'bridge', sourceHostId: 'cloud', sourceIdentityId: 'acct_b', humanId: 'acct_b', avatarKey: 'acct_b' },
   ] satisfies Conversation['canonicalParticipants'];
 
   assert.deepEqual(buildChatGroupCollaborationUpdateTargets({ actorIdentityId: 'human:me', participants }), [
-    { hostId: 'cloud', nodeId: 'acct_a', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_a' },
-    { hostId: 'cloud', nodeId: 'acct_b', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_b' },
+    { hostId: 'cloud', nodeId: 'acct_a', displayName: 'Alex Morgan', ownerName: 'Alex Morgan', humanId: 'acct_a' },
+    { hostId: 'cloud', nodeId: 'acct_b', displayName: 'Alex Morgan', ownerName: 'Alex Morgan', humanId: 'acct_b' },
   ]);
   assert.deepEqual(buildChatGroupCollaborationUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
     { identityId: 'human:me', displayName: 'Me', role: 'admin', sourceIdentityId: null, humanId: null, agentId: null, avatarKey: 'me', profileImageUrl: null },
-    { identityId: 'human:acct_a', displayName: 'Shu Yang', role: 'person', sourceIdentityId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: null },
-    { identityId: 'human:acct_b', displayName: 'Shu Yang', role: 'person', sourceIdentityId: 'acct_b', humanId: 'acct_b', agentId: null, avatarKey: 'acct_b', profileImageUrl: null },
+    { identityId: 'human:acct_a', displayName: 'Alex Morgan', role: 'person', sourceIdentityId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: null },
+    { identityId: 'human:acct_b', displayName: 'Alex Morgan', role: 'person', sourceIdentityId: 'acct_b', humanId: 'acct_b', agentId: null, avatarKey: 'acct_b', profileImageUrl: null },
   ]);
 });
 

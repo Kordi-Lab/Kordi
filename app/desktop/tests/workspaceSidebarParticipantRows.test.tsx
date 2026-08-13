@@ -235,16 +235,16 @@ test('Bridge sync status CSS distinguishes syncing and unavailable icon states',
 test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   const chatConversations = [
     conversation({
-      id: 'session:shu-agent',
-      canonicalSessionId: 'session:shu-agent',
-      name: 'Agent-assisted chat with shu',
-      subtitle: "shuhere2's Kordi joined via mention",
-      participants: ['Me', 'shu', "shuhere2's Kordi"],
+      id: 'session:taylor-agent',
+      canonicalSessionId: 'session:taylor-agent',
+      name: 'Agent-assisted chat with taylor',
+      subtitle: "taylor2's Kordi joined via mention",
+      participants: ['Me', 'taylor', "taylor2's Kordi"],
       _updatedAtMs: 3,
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:shu', name: 'shu', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shu' },
-        { id: 'agent:shuhere2-kordi', name: "shuhere2's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', avatarKey: 'agent-shu' },
+        { id: 'human:taylor', name: 'taylor', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'taylor' },
+        { id: 'agent:taylor2-kordi', name: "taylor2's Kordi", kind: 'agent', role: 'delegate', source: 'bridge', avatarKey: 'agent-taylor' },
       ],
     }),
     conversation({
@@ -279,10 +279,10 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
     chatConversations,
     participantSpaces,
     contactParticipantSpaces: participantSpaces,
-    activeConvId: 'session:shu-agent',
+    activeConvId: 'session:taylor-agent',
   }) as never));
 
-  assert.match(markup, /shu/);
+  assert.match(markup, /taylor/);
   assert.doesNotMatch(markup, /Person • 1 chat/);
   assert.match(markup, /My chats/);
   assert.match(markup, /Personal • 2 sessions/);

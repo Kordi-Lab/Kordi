@@ -42,7 +42,10 @@ bash bridges/cloud-server/deploy/sync-and-build.sh
 Run only on an operator-provided host after reviewing `install.sh`:
 
 ```bash
-ssh <operator-host> 'sudo bash /path/to/kordi/bridges/cloud-server/deploy/install.sh'
+ssh <operator-host> \
+  'sudo KORDI_CLOUD_DEPLOY_USER=<operator-user> \
+    KORDI_CLOUD_DEPLOY_GROUP=<operator-group> \
+    bash /path/to/kordi/bridges/cloud-server/deploy/install.sh'
 ```
 
 ## Desktop testing

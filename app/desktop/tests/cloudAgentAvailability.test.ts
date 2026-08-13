@@ -36,7 +36,7 @@ test('shared cloud agent mention candidates require owner participant', () => {
   const sharedAgent = {
     agentId: 'cloud_agent_project',
     ownerAccountId: 'acct_owner',
-    ownerDisplayName: 'Shuyang',
+    ownerDisplayName: 'Alex',
     accessScope: 'participant_conversations' as const,
     name: 'Project Driver',
     role: 'Planning agent',
@@ -50,7 +50,7 @@ test('shared cloud agent mention candidates require owner participant', () => {
         id: 'human:acct_owner',
         kind: 'human',
         role: 'person',
-        name: 'Shuyang',
+        name: 'Alex',
         humanId: 'acct_owner',
       },
       {
@@ -67,7 +67,7 @@ test('shared cloud agent mention candidates require owner participant', () => {
   assert.equal(withOwner[0]?.handle, 'ProjectDriver');
   assert.equal(withOwner[0]?.targetAgentId, 'cloud_agent_project');
   assert.equal(withOwner[0]?.targetOwnerAccountId, 'acct_owner');
-  assert.equal(withOwner[0]?.detailLabel, "Shuyang's Agent");
+  assert.equal(withOwner[0]?.detailLabel, "Alex's Agent");
 
   const withoutOwner = sharedCloudAgentMentionCandidatesForConversation(
     [sharedAgent],

@@ -224,7 +224,7 @@ test('canonical read model dedupes owned-agent runtime and bridge relay when onl
 
 test('canonical read model dedupes plain local owned-agent runtime and bridge relay duplicates', () => {
   const sessionId = 'session:bridge:humans:plain-duplicate-runtime';
-  const responseText = 'The page is a Google Scholar profile for Shu Yang.';
+  const responseText = 'The page is a Google Scholar profile for Alex Morgan.';
   const canonicalState = {
     storagePath: '/tmp/canonical.sqlite3',
     profile: {

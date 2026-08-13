@@ -167,7 +167,7 @@ test('artifact inspector renders generated artifacts like files without full pat
   assert.match(markup, /data-artifact-file-row="true"/);
   assert.match(markup, /website-directions\.html/);
   assert.match(markup, /content/);
-  assert.doesNotMatch(markup, /\/Users\/shuyang/);
+  assert.doesNotMatch(markup, /\/Users\/alex/);
   assert.doesNotMatch(markup, /worktrees\/kordi/);
   assert.doesNotMatch(markup, /\.scratch\/brainstorm\/53234-1778054524\/content\/website-directions\.html/);
 });

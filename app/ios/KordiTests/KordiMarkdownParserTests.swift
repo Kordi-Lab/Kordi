@@ -178,13 +178,13 @@ final class KordiMarkdownParserTests: XCTestCase {
 
     func testChatSearchNormalizesWhitespaceAndMatchesContactIdentity() {
         let conversation = searchConversation(
-            displayName: "C UFishAI",
+            displayName: "Research Agent",
             lastMessage: "Review the latest build"
         )
         let contact = CloudContact(
             accountId: "acct_fish",
             kordiId: "331749497",
-            displayName: "C UFishAI",
+            displayName: "Research Agent",
             avatarUrl: nil,
             nodeId: nil,
             createdAt: "2026-08-10T00:00:00Z"
@@ -356,7 +356,7 @@ final class KordiMarkdownParserTests: XCTestCase {
             kind: kind,
             peerAccountId: "acct_fish",
             agentId: nil,
-            ownerDisplayName: "Shu Yang",
+            ownerDisplayName: "Alex Morgan",
             displayName: displayName,
             lastMessage: lastMessage,
             lastActivityAt: Date(timeIntervalSince1970: 1_000),

@@ -32,8 +32,8 @@ import type { CloudMessage } from '../src/features/cloud/authClient';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
-  displayName: 'Shuyheres',
-  primaryEmail: 'shu@example.com',
+  displayName: 'Mayas',
+  primaryEmail: 'taylor@example.com',
   avatarUrl: null,
   nodeId: 'node_me',
   passwordSet: true,
@@ -177,22 +177,22 @@ test('group hosted Cloud Agent runtime route prefers the targeted agent definiti
 });
 
 test('cloud agent mention matching recognizes local Kordi labels', () => {
-  assert.equal(cloudMessageMentionsLocalAgent('@Shuyheres who are you?', account), false);
-  assert.equal(cloudMessageMentionsLocalAgent('@ShuyheresKordi who are you?', account), true);
-  assert.equal(cloudMessageMentionsLocalAgent('@ShuyheressKordi who are you?', account), true);
-  assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheres who are you?', account), false);
-  assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheresKordi who are you?', account), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@Mayas who are you?', account), false);
+  assert.equal(cloudMessageMentionsLocalAgent('@MayasKordi who are you?', account), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@MayasKordi who are you?', account), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@MyMayas who are you?', account), false);
+  assert.equal(cloudMessageMentionsLocalAgent('@MyMayasKordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@Kordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@OtherKordi who are you?', account), false);
   assert.equal(cloudMessageMentionsLocalAgent('@MyKordi who are you?', account, { allowFirstPerson: false }), false);
   assert.equal(cloudMessageMentionsLocalAgent('@Kordi who are you?', account, { allowFirstPerson: false }), false);
-  assert.equal(cloudMessageMentionsLocalAgent('@ShuyheresKordi who are you?', account, { allowFirstPerson: false }), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@MayasKordi who are you?', account, { allowFirstPerson: false }), true);
 });
 
 test('cloud first-person agent mentions are sender-owned, not recipient-owned', () => {
   assert.equal(cloudMessageMentionsFirstPersonAgent('@MyKordi what is agentic?'), true);
   assert.equal(cloudMessageMentionsFirstPersonAgent('@Kordi what is agentic?'), true);
-  assert.equal(cloudMessageMentionsFirstPersonAgent('@ShuyheresKordi what is agentic?'), false);
+  assert.equal(cloudMessageMentionsFirstPersonAgent('@MayasKordi what is agentic?'), false);
 });
 
 test('cloud self-agent direct messages trigger the local agent without requiring an @ mention', () => {
@@ -240,7 +240,7 @@ test('cloud named agent mention matching recognizes remote Kordi labels', () => 
 });
 
 test('cloud agent mention prompt strips mention token', () => {
-  assert.equal(promptTextForCloudAgentMention('@ShuyheresKordi who are you?'), 'who are you?');
+  assert.equal(promptTextForCloudAgentMention('@MayasKordi who are you?'), 'who are you?');
 });
 
 test('cloud agent response envelope round trips without exposing metadata text', () => {
@@ -304,10 +304,10 @@ test('cloud agent mentions keep the current request native and sync prior cloud 
   };
   const contextMessages = cloudAgentNativeContextMessagesFromDirectCloudSession({
     localAccountId: 'acct_me',
-    localHumanName: 'Shuyhere',
-    peerHumanName: 'Shuyheretest',
+    localHumanName: 'Maya',
+    peerHumanName: 'MayaTest',
     localAgentName: 'My Kordi',
-    peerAgentName: "Shuyheretest's Kordi",
+    peerAgentName: "MayaTest's Kordi",
     requestMessage: request,
     messages: [
       {
@@ -343,7 +343,7 @@ test('cloud agent mentions keep the current request native and sync prior cloud 
             source: {
               sourceSessionId: 'session:source',
               sourceMessageId: 'msg:source',
-              senderLabel: 'Shuyheretest',
+              senderLabel: 'MayaTest',
               textPreview: '@MyKordi copied request',
               attachmentCount: 0,
             },
@@ -358,8 +358,8 @@ test('cloud agent mentions keep the current request native and sync prior cloud 
 
   assert.equal(promptTextForCloudAgentMention(request.body), 'can you see that greeting?');
   assert.deepEqual(contextMessages.map(({ authorName, authorKind, text }) => ({ authorName, authorKind, text })), [
-    { authorName: 'Shuyheretest', authorKind: 'human', text: 'Hi! Thanks for adding me.' },
-    { authorName: "Shuyheretest's Kordi", authorKind: 'agent', text: 'I can help.' },
+    { authorName: 'MayaTest', authorKind: 'human', text: 'Hi! Thanks for adding me.' },
+    { authorName: "MayaTest's Kordi", authorKind: 'agent', text: 'I can help.' },
   ]);
 });
 

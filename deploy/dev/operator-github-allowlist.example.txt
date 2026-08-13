@@ -1,0 +1,3 @@
+# Copy this file to operator-github-allowlist.txt and add approved GitHub logins.
+# The real allowlist is local authorization material and must not be committed.
+example-maintainer

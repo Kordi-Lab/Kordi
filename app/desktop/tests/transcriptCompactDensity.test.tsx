@@ -64,10 +64,10 @@ test('renders transcript loading once as neutral text without a notice backgroun
 test('renders human messages with a larger reading width than before', () => {
   const message: Message = {
     role: 'person',
-    sender: 'Shenzhe Zhu',
+    sender: 'Ethan Park',
     senderType: 'human',
     isOwnMessage: false,
-    text: '@ShenzheZhusKordi Based on the current Kordi repo issue template, I’d like to propose adding model awareness to the system prompt.',
+    text: '@EthanParksKordi Based on the current Kordi repo issue template, I’d like to propose adding model awareness to the system prompt.',
     time: '21:54',
   };
 
@@ -308,14 +308,14 @@ test('compact group transcript exposes a human sender profile action on the avat
   const message: Message = {
     id: 'msg:group-member-profile',
     role: 'person',
-    sender: 'Jiaxin Pei',
-    senderIdentityId: 'human:acct_jiaxin',
+    sender: 'Maya Chen',
+    senderIdentityId: 'human:acct_maya',
     senderType: 'human',
     isOwnMessage: false,
     showSenderMeta: true,
     text: 'Can you review this?',
     time: '10:00',
-    senderAvatarSeed: 'person:jiaxin',
+    senderAvatarSeed: 'person:maya',
   };
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, {
@@ -326,7 +326,7 @@ test('compact group transcript exposes a human sender profile action on the avat
 
   assert.match(markup, /data-message-sender-profile="true"/);
   assert.match(markup, /data-message-sender-profile-trigger="true"/);
-  assert.match(markup, /aria-label="Open Jiaxin Pei profile"/);
+  assert.match(markup, /aria-label="Open Maya Chen profile"/);
   assert.match(markup, /data-avatar-kind="human"/);
 });
 

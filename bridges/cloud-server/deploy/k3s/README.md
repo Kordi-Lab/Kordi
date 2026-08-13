@@ -112,10 +112,9 @@ contains a support form for questions, product issues, and feedback.
 
 Support form submissions are written to Postgres before email delivery is
 attempted. A background worker retries failed notifications without requiring
-the desktop to remain open. Production sends those notifications to
-`shuyhere@gmail.com` through Gmail SMTP with STARTTLS. The support agent
-owner remains the locked `trykordi@gmail.com` system account; outbound mail
-credentials and the notification inbox are configured independently.
+the desktop to remain open. Production addresses are stored in Kubernetes
+Secrets rather than this repository. The locked support-owner account,
+notification inbox, and outbound-mail identity are configured independently.
 
 Never use a Google account password for SMTP and never place mail credentials
 in a manifest, shell history, desktop environment, or repository. Enable
@@ -123,16 +122,28 @@ two-step verification on the mailbox, create a dedicated Gmail app password,
 then create the Kubernetes Secret from a trusted operator shell:
 
 ```bash
-read -s -p "Gmail app password: " KORDI_SUPPORT_GMAIL_APP_PASSWORD
+read -r -p "Support owner email: " KORDI_SUPPORT_OWNER_EMAIL
+read -r -p "Support inbox: " KORDI_SUPPORT_INBOX
+read -r -p "SMTP username: " KORDI_SUPPORT_SMTP_USERNAME
+read -r -p "SMTP From mailbox: " KORDI_SUPPORT_SMTP_FROM
+read -s -p "SMTP app password: " KORDI_SUPPORT_SMTP_PASSWORD
 echo
-kubectl -n kordi-cloud create secret generic kordi-support-smtp \
-  --from-literal=app-password="$KORDI_SUPPORT_GMAIL_APP_PASSWORD" \
+kubectl -n kordi-cloud create secret generic kordi-support-config \
+  --from-literal=enabled=true \
+  --from-literal=owner-email="$KORDI_SUPPORT_OWNER_EMAIL" \
+  --from-literal=inbox="$KORDI_SUPPORT_INBOX" \
   --dry-run=client -o yaml | kubectl apply -f -
-unset KORDI_SUPPORT_GMAIL_APP_PASSWORD
+kubectl -n kordi-cloud create secret generic kordi-support-smtp \
+  --from-literal=username="$KORDI_SUPPORT_SMTP_USERNAME" \
+  --from-literal=from="$KORDI_SUPPORT_SMTP_FROM" \
+  --from-literal=app-password="$KORDI_SUPPORT_SMTP_PASSWORD" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset KORDI_SUPPORT_OWNER_EMAIL KORDI_SUPPORT_INBOX
+unset KORDI_SUPPORT_SMTP_USERNAME KORDI_SUPPORT_SMTP_FROM KORDI_SUPPORT_SMTP_PASSWORD
 ```
 
-The hosted support chat also requires the support-owner account to have a
-current provider-auth snapshot. Sign in to Kordi as `trykordi@gmail.com`,
+The hosted support chat also requires the configured support-owner account to
+have a current provider-auth snapshot. Sign in to Kordi with that account,
 connect the intended model provider, and confirm the snapshot reaches the
 hosted server before enabling live support traffic. The system agent is
 created and locked by the server; it is intentionally hidden from normal
@@ -142,6 +153,7 @@ Verify without printing any secret values:
 
 ```bash
 kubectl -n kordi-cloud get secret kordi-support-smtp
+kubectl -n kordi-cloud get secret kordi-support-config
 kubectl -n kordi-cloud rollout status deployment/kordi-cloud-server --timeout=180s
 kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m \
   | grep -E 'Kordi support|support tickets'

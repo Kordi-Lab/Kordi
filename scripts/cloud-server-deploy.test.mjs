@@ -17,6 +17,8 @@ const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-clou
 const runnerDeployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh', import.meta.url);
 const releaseCredentialsScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const cloudServerManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml', import.meta.url);
+const legacyInstallScriptPath = new URL('../bridges/cloud-server/deploy/install.sh', import.meta.url);
+const legacyServicePath = new URL('../bridges/cloud-server/deploy/kordi-cloud-server.service', import.meta.url);
 const dockerignorePath = new URL('../.dockerignore', import.meta.url);
 
 test('cloud server sync preserves remote Cargo target while deleting stale source files', async () => {
@@ -50,6 +52,21 @@ test('all remote deployment helpers require an explicit GCP project', async () =
     assert.doesNotMatch(script, /KORDI_CLOUD_GCP_PROJECT:-/);
     assert.match(script, /--project/);
   }
+});
+
+test('legacy systemd deployment renders operator-provided account names', async () => {
+  const [installScript, service] = await Promise.all([
+    readFile(legacyInstallScriptPath, 'utf8'),
+    readFile(legacyServicePath, 'utf8'),
+  ]);
+
+  assert.match(installScript, /KORDI_CLOUD_DEPLOY_USER:\?Set KORDI_CLOUD_DEPLOY_USER/);
+  assert.match(installScript, /KORDI_CLOUD_DEPLOY_GROUP:\?Set KORDI_CLOUD_DEPLOY_GROUP/);
+  assert.match(installScript, /s\|@KORDI_CLOUD_DEPLOY_USER@\|\$\{DEPLOY_USER\}\|g/);
+  assert.match(installScript, /s\|@KORDI_CLOUD_DEPLOY_GROUP@\|\$\{DEPLOY_GROUP\}\|g/);
+  assert.match(service, /User=@KORDI_CLOUD_DEPLOY_USER@/);
+  assert.match(service, /Group=@KORDI_CLOUD_DEPLOY_GROUP@/);
+  assert.doesNotMatch(service, /User=(?!@)|Group=(?!@)/);
 });
 
 test('cloud server image context includes the prebuilt release binary', async () => {

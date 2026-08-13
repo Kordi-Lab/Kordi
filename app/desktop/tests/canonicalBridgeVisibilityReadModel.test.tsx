@@ -411,41 +411,41 @@ test('canonical read model keeps canonical parent transcript when bridge source 
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:shenzhe', kind: 'agent', displayName: "Shenzhe's Kordi", source: 'bridge', ownerIdentityId: 'human:shenzhe', sourceHostId: 'host-1', sourceIdentityId: 'node-shenzhe', agentId: 'agent-shenzhe', avatarKey: 'agent-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:ethan', kind: 'human', displayName: 'Ethan', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-ethan', humanId: 'human-ethan', avatarKey: 'human-ethan', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:ethan', kind: 'agent', displayName: "Ethan's Kordi", source: 'bridge', ownerIdentityId: 'human:ethan', sourceHostId: 'host-1', sourceIdentityId: 'node-ethan', agentId: 'agent-ethan', avatarKey: 'agent-ethan', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'relationship', title: 'check todays weather', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: 5 },
+      { id: sessionId, kind: 'relationship', title: 'check todays weather', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:ethan', relationshipIdentityId: 'human:ethan', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-ethan', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 5, lastMessageAtMs: 5 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId, identityId: 'human:shenzhe', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId, identityId: 'agent:shenzhe', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:ethan', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:ethan', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
     ],
     messages: [
-      { id: 'msg:request', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi show me the diskusage', content: { sender: 'Shenzhe', timeLabel: '17:30', kind: 'session-relay' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'request' },
-      { id: 'msg:response', sessionId, senderIdentityId: 'agent:shenzhe', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'I tried to check disk usage with `df -h`.', content: { sender: "Shenzhe's Kordi", timeLabel: '17:30', kind: 'session-relay' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'response' },
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:ethan', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi show me the diskusage', content: { sender: 'Ethan', timeLabel: '17:30', kind: 'session-relay' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'request' },
+      { id: 'msg:response', sessionId, senderIdentityId: 'agent:ethan', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'I tried to check disk usage with `df -h`.', content: { sender: "Ethan's Kordi", timeLabel: '17:30', kind: 'session-relay' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'response' },
     ],
     delegatedExchanges: [],
     presence: [],
     contextSnapshots: [],
   };
   const bridgeSourceMissingResponse = {
-    id: 'bridge:host-1:node-shenzhe:person',
+    id: 'bridge:host-1:node-ethan:person',
     canonicalSessionId: 'session:bridge:humans:stable-direct-thread',
-    name: 'Shenzhe',
+    name: 'Ethan',
     type: 'person',
     subtitle: 'latest direct person source',
     unread: 0,
     collaborationSources: ['Bridge'],
     trust: 'Bridge',
     directness: 'Person outreach',
-    participants: ['Me', 'Shenzhe'],
+    participants: ['Me', 'Ethan'],
     outreach: { parentSessionId: sessionId },
     messages: [
-      { role: 'person', sender: 'Shenzhe', senderType: 'human', text: 'older raw bridge message', time: '17:28' },
-      { role: 'person', sender: 'Shenzhe', senderType: 'human', text: '@ShenzhesKordi what is the weather today?', time: '17:29' },
-      { role: 'person', sender: 'Shenzhe', senderType: 'human', text: '@MyKordi show me the diskusage', time: '17:30' },
+      { role: 'person', sender: 'Ethan', senderType: 'human', text: 'older raw bridge message', time: '17:28' },
+      { role: 'person', sender: 'Ethan', senderType: 'human', text: '@EthansKordi what is the weather today?', time: '17:29' },
+      { role: 'person', sender: 'Ethan', senderType: 'human', text: '@MyKordi show me the diskusage', time: '17:30' },
     ],
   };
 
@@ -454,7 +454,7 @@ test('canonical read model keeps canonical parent transcript when bridge source 
 
   assert.deepEqual(
     conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText),
-    ['@ShenzhesKordi show me the diskusage', 'I tried to check disk usage with `df -h`.'],
+    ['@EthansKordi show me the diskusage', 'I tried to check disk usage with `df -h`.'],
   );
 });
 
@@ -698,17 +698,17 @@ test('canonical read model rewrites remote first-person agent mention labels', (
     },
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:shenzhe', kind: 'human', displayName: 'Shenzhe', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-shenzhe', humanId: 'human-shenzhe', avatarKey: 'human-shenzhe', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:ethan', kind: 'human', displayName: 'Ethan', source: 'bridge', sourceHostId: 'host-1', sourceIdentityId: 'node-ethan', humanId: 'human-ethan', avatarKey: 'human-ethan', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: sessionId, kind: 'direct-person', title: 'show me the diskusage', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:shenzhe', relationshipIdentityId: 'human:shenzhe', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-shenzhe', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 },
+      { id: sessionId, kind: 'direct-person', title: 'show me the diskusage', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'human:ethan', relationshipIdentityId: 'human:ethan', metadata: { source: 'bridge-session-thread', sourceHostId: 'host-1', peerNodeId: 'node-ethan', peerRuntime: 'person' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 },
     ],
     participants: [
       { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId, identityId: 'human:shenzhe', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:ethan', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
     ],
     messages: [
-      { id: 'msg:remote-mention', sessionId, senderIdentityId: 'human:shenzhe', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi  show me the diskusage', content: { sender: 'Shenzhe', timeLabel: '17:30', kind: 'session-relay' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'remote-mention-1' },
+      { id: 'msg:remote-mention', sessionId, senderIdentityId: 'human:ethan', senderRole: 'person', messageKind: 'text', contentText: '@MyKordi  show me the diskusage', content: { sender: 'Ethan', timeLabel: '17:30', kind: 'session-relay' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-bridge-session-relay', sourceEventId: 'remote-mention-1' },
     ],
     delegatedExchanges: [],
     presence: [],
@@ -718,7 +718,7 @@ test('canonical read model rewrites remote first-person agent mention labels', (
   const readModel = createCanonicalSessionReadModel(canonicalState as never);
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
 
-  assert.equal(conversations[0]?.messages[0]?.text, '@ShenzhesKordi show me the diskusage');
+  assert.equal(conversations[0]?.messages[0]?.text, '@EthansKordi show me the diskusage');
 });
 
 test('canonical read model suppresses local agent runtime user echo after bridge UI mention', () => {

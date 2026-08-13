@@ -22,14 +22,14 @@ import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex'
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 
 const participants: CloudGroupParticipant[] = [
-  { accountId: 'acct_source', displayName: 'Shu Yang', avatarUrl: null, role: 'admin' },
+  { accountId: 'acct_source', displayName: 'Alex Morgan', avatarUrl: null, role: 'admin' },
   { accountId: 'acct_target', displayName: "D'Arcy Lin", avatarUrl: null, role: 'person' },
-  { accountId: 'acct_unicode', displayName: '贾 欣', avatarUrl: null, role: 'person' },
+  { accountId: 'acct_unicode', displayName: '陈 美', avatarUrl: null, role: 'person' },
 ];
 
 const sourceAccount: CloudAccount = {
   accountId: 'acct_source',
-  displayName: 'Shu Yang',
+  displayName: 'Alex Morgan',
   primaryEmail: 'source@example.com',
   avatarUrl: null,
   nodeId: 'node_source',
@@ -51,7 +51,7 @@ test('group catalog exposes exact person and participant-Kordi handles', () => {
   assert.ok(catalog.some((entry) => (
     entry.accountId === 'acct_unicode'
     && entry.targetKind === 'agent'
-    && entry.handle === '贾欣sKordi'
+    && entry.handle === '陈美sKordi'
   )));
 
   const instruction = cloudGroupMentionInstruction({
@@ -61,8 +61,8 @@ test('group catalog exposes exact person and participant-Kordi handles', () => {
     requesterKind: 'human',
     allowAgentMentions: true,
   });
-  assert.match(instruction ?? '', /"my Kordi" means @ShuYangsKordi/);
-  assert.match(instruction ?? '', /@贾欣sKordi/);
+  assert.match(instruction ?? '', /"my Kordi" means @AlexMorgansKordi/);
+  assert.match(instruction ?? '', /@陈美sKordi/);
   assert.doesNotMatch(instruction ?? '', /@DArcyLinsKordi/);
 });
 
@@ -78,7 +78,7 @@ test('group Kordi resolution fails closed for ambiguity, invention, and self', (
     respondingAccountId: 'acct_source',
   }), null);
   assert.equal(resolveCloudGroupAgentMention({
-    text: '@ShuYangsKordi self',
+    text: '@AlexMorgansKordi self',
     participants,
     respondingAccountId: 'acct_source',
   }), null);
@@ -93,7 +93,7 @@ test('agent final text resolves one exact Kordi handoff and never a second hop',
   const requestMessage = {
     id: 'msg_request',
     senderAccountId: 'acct_source',
-    text: '@ShuYangsKordi ask the target',
+    text: '@AlexMorgansKordi ask the target',
     createdAtMs: 1,
     senderKind: 'human' as const,
   };
@@ -171,7 +171,7 @@ test('agent-authored handoffs produce only the resolved owner Cloud fallback cla
     text: '@DArcyLinsKordi prepare the budget',
     createdAtMs: 2,
     senderKind: 'agent' as const,
-    senderDisplayName: "Shu Yang's Kordi",
+    senderDisplayName: "Alex Morgan's Kordi",
     targetCloudAgentOwnerAccountId: 'acct_target',
     targetCloudAgentOwnerName: "D'Arcy Lin",
     agentMentionDepth: 1,
@@ -271,7 +271,7 @@ test('local group context maps the requester and disables second-hop agents', ()
     respondingAccountId: 'acct_target',
   });
   assert.match(context.at(-1)?.text ?? '', /Group @mention permissions/);
-  assert.match(context.at(-1)?.text ?? '', /"my Kordi" means @ShuYangsKordi/);
+  assert.match(context.at(-1)?.text ?? '', /"my Kordi" means @AlexMorgansKordi/);
   assert.doesNotMatch(context.at(-1)?.text ?? '', /@DArcyLinsKordi/);
 
   const secondHopBody = encodeCloudGroupControl({

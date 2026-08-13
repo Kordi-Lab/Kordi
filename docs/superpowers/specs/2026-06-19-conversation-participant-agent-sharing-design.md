@@ -4,7 +4,7 @@ Issue: #587
 
 ## Summary
 
-Cloud Agents created from the Agent page remain private by default. The owner can opt a Cloud Agent into **Shared in conversations with me** access. Once shared, other people can mention that agent in contact and group sessions where the owner is a participant. Replies are clearly attributed as the owner's agent, for example `Project Driver · Shuyang's Agent`.
+Cloud Agents created from the Agent page remain private by default. The owner can opt a Cloud Agent into **Shared in conversations with me** access. Once shared, other people can mention that agent in contact and group sessions where the owner is a participant. Replies are clearly attributed as the owner's agent, for example `Project Driver · Alex's Agent`.
 
 This is a focused follow-up to private Cloud Agent creation (#585/#586). It does not introduce public agent discovery, selected-contact ACLs, or broader tool/file sharing.
 
@@ -49,7 +49,7 @@ Private remains the initial state after agent creation.
 When a user opens the mention picker in a contact/group session, it includes shared Cloud Agents owned by session participants. Example:
 
 - `@ProjectDriver`
-- Secondary label: `Shuyang's Agent`
+- Secondary label: `Alex's Agent`
 
 The picker does not show a shared agent if its owner is not a participant in the active session.
 
@@ -57,7 +57,7 @@ The picker does not show a shared agent if its owner is not a participant in the
 
 When a shared agent replies, the transcript header displays owner attribution:
 
-- `Project Driver · Shuyang's Agent`
+- `Project Driver · Alex's Agent`
 
 This avoids ambiguity with the viewer's own Kordi or another participant's agents.
 
@@ -140,7 +140,7 @@ The implementation must not claim that the remote user's device can execute the 
 6. Desktop encodes the mention target with `agentId` and `ownerAccountId`.
 7. Cloud validates participant-gated access and queues/runs the agent reply.
 8. The reply syncs into the conversation with owner-attributed agent metadata.
-9. Transcript renders `Project Driver · Shuyang's Agent`.
+9. Transcript renders `Project Driver · Alex's Agent`.
 
 ## Error Handling
 

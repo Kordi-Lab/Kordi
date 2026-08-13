@@ -75,7 +75,7 @@ test('stored composer attachments persist durable local paths but drop stale blo
   const serialized = serializeStoredComposerAttachments([{
     id: 'first',
     name: 'Screenshot 2026-04-30 18.30.07.png',
-    path: '/Users/shuyang/Library/Application Support/Kordi/tmp/attachments/Screenshot-uuid.png',
+    path: '/Users/example/Library/Application Support/Kordi/tmp/attachments/Screenshot-uuid.png',
     kind: 'image',
     formatLabel: 'PNG',
     mimeType: 'image/png',
@@ -86,11 +86,11 @@ test('stored composer attachments persist durable local paths but drop stale blo
   assert.deepEqual(parseStoredComposerAttachments(serialized), [{
     id: 'first',
     name: 'Screenshot 2026-04-30 18.30.07.png',
-    path: '/Users/shuyang/Library/Application Support/Kordi/tmp/attachments/Screenshot-uuid.png',
+    path: '/Users/example/Library/Application Support/Kordi/tmp/attachments/Screenshot-uuid.png',
     kind: 'image',
     formatLabel: 'PNG',
     mimeType: 'image/png',
-    localPath: '/Users/shuyang/Library/Application Support/Kordi/tmp/attachments/Screenshot-uuid.png',
+    localPath: '/Users/example/Library/Application Support/Kordi/tmp/attachments/Screenshot-uuid.png',
     previewUrl: null,
     sizeBytes: 276000,
   }]);

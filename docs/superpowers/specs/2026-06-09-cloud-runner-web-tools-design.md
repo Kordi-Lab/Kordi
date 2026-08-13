@@ -110,6 +110,6 @@ Add Cloud runner tests for:
 After implementation:
 
 1. Run Cloud runner unit/integration tests.
-2. Deploy `kordi-cloud-agent-runner` to `takotako` with a new image tag.
+2. Deploy `kordi-cloud-agent-runner` to `example-cloud-host` with a new image tag.
 3. Replay the failed scheduled OpenAI-news task.
 4. Verify the new Cloud fallback run completes and its response includes current-source links or a concrete search/fetch result.

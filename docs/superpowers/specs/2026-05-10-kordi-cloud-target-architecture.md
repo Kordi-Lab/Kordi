@@ -6,7 +6,7 @@ The user's stated production target: **a multi-service stack on k3s supporting �
 
 | Component | Role | First-session form |
 |---|---|---|
-| **k3s** | Single orchestration plane | Single-node cluster on `takotako`; `--disable traefik` so Caddy stays the public TLS terminator |
+| **k3s** | Single orchestration plane | Single-node cluster on `example-cloud-host`; `--disable traefik` so Caddy stays the public TLS terminator |
 | **WebSocket Gateway** | Authenticates client long-connections, fans events to subscribers | Endpoint inside the existing `kordi-cloud-server` binary first; split into its own service later |
 | **Message / Sync Services** | Append-only message log + per-user/per-device sync cursors | Already partly built: `bridges/cloud-server/src/messages/log.rs`. Cursor + `/v1/sync` is Phase 3 of #332 |
 | **NATS JetStream** | Durable pub/sub bus + work queues | Helm chart in cluster; cloud-server publishes `message.arrived.<account>` events |
@@ -23,7 +23,7 @@ Each row is a single-session deliverable. Each ends with verification (cluster-s
 | # | Session | Deliverable | Verification |
 |---|---|---|---|
 | 1 | This session | Design spec + k3s install script (unrun) + Dockerfile + manifest skeleton + README | All artifacts under `bridges/cloud-server/deploy/k3s/`. No infra changes. |
-| 2 | k3s install | Run `install-k3s.sh` on `takotako` with `--disable traefik`. Verify single-node cluster. Add Caddy → cluster reverse-proxy. | `kubectl get nodes` shows Ready; existing services on the VM untouched. |
+| 2 | k3s install | Run `install-k3s.sh` on `example-cloud-host` with `--disable traefik`. Verify single-node cluster. Add Caddy → cluster reverse-proxy. | `kubectl get nodes` shows Ready; existing services on the VM untouched. |
 | 3 | Postgres | Deploy CloudNativePG (or bitnami) chart. Provision a `kordi-cloud` database. | `kubectl exec ... -- psql -c '\l'` shows the DB. |
 | 4 | Cloud-server containerized + Postgres-backed | Build Docker image. Replace SQLite calls in `bridges/cloud-server` with sqlx/Postgres. Deploy as Deployment + Service in k3s. | `curl https://kordi-cloud.<domain>/health` returns ok; signup persists to Postgres. |
 | 5 | NATS JetStream | Deploy NATS chart with JetStream enabled. Cloud-server publishes `message.created.<account>` on every signup/contact-add. | `nats stream info` shows messages queued. |
@@ -39,11 +39,11 @@ After step 10 the full topology is running. Steps 11+ are operational: monitorin
 
 1. **Existing single-VM cloud-server keeps working through every step.** Each session migrates one component. If a session breaks, you roll back that one commit and the previous state is intact.
 2. **Caddy stays the TLS terminator.** k3s gets `--disable traefik` so we don't fight over 443. Caddy reverse-proxies to a NodePort on the cluster.
-3. **Existing local-first services on `takotako` (`bridges-server`, the various `kordi-pr*` deploys) are not migrated into k3s.** They keep running on the host. k3s is for the cloud-native services only.
+3. **Existing local-first services on `example-cloud-host` (`bridges-server`, the various `kordi-pr*` deploys) are not migrated into k3s.** They keep running on the host. k3s is for the cloud-native services only.
 4. **No data loss.** When the SQLite → Postgres migration lands, both databases live side-by-side until the cutover is verified, then SQLite is retired.
 5. **No surprise costs.** Every chart we deploy uses sensible-default resource requests. The total stack should fit comfortably on a single multi-core VM during early phases.
 
-## Coexistence with `takotako` today
+## Coexistence with `example-cloud-host` today
 
 From the read-only probe earlier:
 - Debian 12, x86_64
@@ -53,12 +53,12 @@ From the read-only probe earlier:
 The k3s install must:
 - Bind only to ports it doesn't already use. k3s defaults to 6443 (API server), 10250 (kubelet), 8472/UDP (flannel VXLAN). None conflict with what's there.
 - Run with `--disable traefik` — we use Caddy.
-- Run with `--write-kubeconfig-mode 644` so non-root (`shu_yang`) can `kubectl`.
+- Run with `--write-kubeconfig-mode 644` so non-root (`kordi`) can `kubectl`.
 - Use a non-default cluster CIDR if the standard 10.42.0.0/16 collides with anything (probe shows nothing in that range, so the default should be fine).
 
 ## Out of scope for this spec
 
-- Multi-cluster / multi-region. Single-node k3s on `takotako` only.
+- Multi-cluster / multi-region. Single-node k3s on `example-cloud-host` only.
 - Network mesh (Istio, Linkerd). Plain Kubernetes Services through cluster DNS.
 - Custom CRDs / operators beyond what the dependency charts ship.
 - Authn beyond what `kordi-cloud-server` already does (cloud session tokens). External SSO is a future phase.
@@ -69,7 +69,7 @@ Files, no infrastructure changes:
 
 - `docs/superpowers/specs/2026-05-10-kordi-cloud-target-architecture.md` — this doc.
 - `bridges/cloud-server/Dockerfile` — multi-stage build producing a slim runtime image of the existing single-binary cloud-server.
-- `bridges/cloud-server/deploy/k3s/install-k3s.sh` — unrun script that lays out the k3s install on `takotako` with the constraints above.
+- `bridges/cloud-server/deploy/k3s/install-k3s.sh` — unrun script that lays out the k3s install on `example-cloud-host` with the constraints above.
 - `bridges/cloud-server/deploy/k3s/manifests/` — namespace, deployment, service skeleton for the cloud-server (used by session 4).
 - `bridges/cloud-server/deploy/k3s/README.md` — operator playbook indexing the multi-session sequence.
 

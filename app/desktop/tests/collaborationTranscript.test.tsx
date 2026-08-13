@@ -32,12 +32,12 @@ function conversation(overrides: Partial<DesktopCollaborationConversation> = {})
     canonicalSessionId: 'session:bridge:humans:peer',
     hostId: 'host-1',
     peerNodeId: 'node-peer',
-    peerDisplayName: 'Shenzhe',
-    peerOwnerName: 'Shenzhe',
+    peerDisplayName: 'Ethan',
+    peerOwnerName: 'Ethan',
     peerRuntime: 'person',
     projectId: null,
     projectName: null,
-    title: 'Shenzhe',
+    title: 'Ethan',
     subtitle: 'hi',
     unreadCount: 0,
     updatedAtMs: 1,
@@ -116,7 +116,7 @@ test('bridge transcript maps local and remote human profile images onto message 
       {
         id: 'msg-inbound',
         direction: 'inbound',
-        sender: 'Shenzhe',
+        sender: 'Ethan',
         text: 'hi',
         timeLabel: '09:57',
         timestampMs: 2,
@@ -126,10 +126,10 @@ test('bridge transcript maps local and remote human profile images onto message 
     profileImageUrl: 'https://images.test/me.png',
     visiblePeers: [{
       nodeId: 'node-peer',
-      displayName: 'Shenzhe',
+      displayName: 'Ethan',
       runtime: 'person',
       endpoint: 'https://bridge.test',
-      ownerName: 'Shenzhe',
+      ownerName: 'Ethan',
       createdAt: null,
       sharedProjects: [],
       humanId: 'human-peer',
@@ -143,7 +143,7 @@ test('bridge transcript maps local and remote human profile images onto message 
   assert.equal(view.messages[0]?.senderProfileImageUrl, 'https://images.test/me.png');
   assert.equal(view.messages[1]?.senderProfileImageUrl, 'https://images.test/peer.png');
   assert.equal(view.participantProfileImageUrls?.Me, 'https://images.test/me.png');
-  assert.equal(view.participantProfileImageUrls?.Shenzhe, 'https://images.test/peer.png');
+  assert.equal(view.participantProfileImageUrls?.Ethan, 'https://images.test/peer.png');
 });
 
 test('bridge transcript keeps implicit direct person session messages as typed', () => {
@@ -165,8 +165,8 @@ test('bridge transcript keeps implicit direct person session messages as typed',
         sourceConversationId: 'bridge:host-1:node-peer:person',
         sourceRequestId: requestId,
         targetNodeId: 'node-peer',
-        targetDisplayName: "Shenzhe's Kordi",
-        targetOwnerName: 'Shenzhe',
+        targetDisplayName: "Ethan's Kordi",
+        targetOwnerName: 'Ethan',
         targetRuntime: 'person',
         requestText: 'hello',
         triggerText: null,
@@ -201,8 +201,8 @@ test('direct person bridge transcript hides group relay agent placeholders', () 
         sourceConversationId: 'bridge:host-1:node-peer:person',
         sourceRequestId: 'bridge_req_direct',
         targetNodeId: 'node-peer',
-        targetDisplayName: 'Shenzhe',
-        targetOwnerName: 'Shenzhe',
+        targetDisplayName: 'Ethan',
+        targetOwnerName: 'Ethan',
         targetRuntime: 'person',
         requestText: 'helllo',
         contextText: null,
@@ -214,7 +214,7 @@ test('direct person bridge transcript hides group relay agent placeholders', () 
     }, {
       id: 'msg-group-agent-processing',
       direction: 'inbound-response',
-      sender: "Shenzhe's Kordi",
+      sender: "Ethan's Kordi",
       text: 'processing...',
       timeLabel: '23:19',
       timestampMs: 2,
@@ -229,8 +229,8 @@ test('direct person bridge transcript hides group relay agent placeholders', () 
         sourceConversationId: 'bridge:host-1:node-peer:person',
         sourceRequestId: 'bridge_req_group_agent',
         targetNodeId: 'node-peer',
-        targetDisplayName: 'Shenzhe',
-        targetOwnerName: 'Shenzhe',
+        targetDisplayName: 'Ethan',
+        targetOwnerName: 'Ethan',
         targetRuntime: 'person',
         requestText: 'processing...',
         contextText: null,
@@ -253,7 +253,7 @@ test('bridge transcript excludes hidden group invites from scoped unread badges'
     messages: [{
       id: 'msg-earlier-visible',
       direction: 'inbound',
-      sender: 'Shenzhe',
+      sender: 'Ethan',
       text: 'earlier visible group message',
       timeLabel: '16:35',
       timestampMs: 1,
@@ -266,8 +266,8 @@ test('bridge transcript excludes hidden group invites from scoped unread badges'
         sourceConversationId: 'bridge:host-1:node-peer:person',
         sourceRequestId: 'bridge_req_earlier_visible',
         targetNodeId: 'node-peer',
-        targetDisplayName: 'Shenzhe',
-        targetOwnerName: 'Shenzhe',
+        targetDisplayName: 'Ethan',
+        targetOwnerName: 'Ethan',
         targetRuntime: 'person',
         requestText: 'earlier visible group message',
         triggerText: null,
@@ -280,7 +280,7 @@ test('bridge transcript excludes hidden group invites from scoped unread badges'
     }, {
       id: 'msg-group-invite',
       direction: 'inbound',
-      sender: 'Shenzhe',
+      sender: 'Ethan',
       text: 'You were added to testgroup',
       timeLabel: '16:36',
       timestampMs: 2,
@@ -293,8 +293,8 @@ test('bridge transcript excludes hidden group invites from scoped unread badges'
         sourceConversationId: 'bridge:host-1:node-peer:person',
         sourceRequestId: 'bridge_req_group_invite',
         targetNodeId: 'node-peer',
-        targetDisplayName: 'Shenzhe',
-        targetOwnerName: 'Shenzhe',
+        targetDisplayName: 'Ethan',
+        targetOwnerName: 'Ethan',
         targetRuntime: 'person',
         requestText: 'You were added to testgroup',
         triggerText: null,
@@ -307,7 +307,7 @@ test('bridge transcript excludes hidden group invites from scoped unread badges'
     }, {
       id: 'msg-visible-group-message',
       direction: 'inbound',
-      sender: 'Shenzhe',
+      sender: 'Ethan',
       text: 'hello every one',
       timeLabel: '16:37',
       timestampMs: 3,
@@ -320,8 +320,8 @@ test('bridge transcript excludes hidden group invites from scoped unread badges'
         sourceConversationId: 'bridge:host-1:node-peer:person',
         sourceRequestId: 'bridge_req_visible_group_message',
         targetNodeId: 'node-peer',
-        targetDisplayName: 'Shenzhe',
-        targetOwnerName: 'Shenzhe',
+        targetDisplayName: 'Ethan',
+        targetOwnerName: 'Ethan',
         targetRuntime: 'person',
         requestText: 'hello every one',
         triggerText: null,
@@ -370,7 +370,7 @@ test('direct person bridge transcript rewrites remote first-person agent mention
     messages: [{
       id: 'msg-remote-local-agent-mention',
       direction: 'inbound',
-      sender: 'Shenzhe',
+      sender: 'Ethan',
       text: '@MyKordi show me the diskusage',
       timeLabel: '17:30',
       timestampMs: 1,
@@ -397,7 +397,7 @@ test('direct person bridge transcript rewrites remote first-person agent mention
     }],
   }), host(), 'My Kordi');
 
-  assert.equal(view.messages[0]?.text, '@ShenzhesKordi show me the diskusage');
+  assert.equal(view.messages[0]?.text, '@EthansKordi show me the diskusage');
 });
 
 test('direct person bridge transcript renders local agent responses as agent turns', () => {
@@ -405,7 +405,7 @@ test('direct person bridge transcript renders local agent responses as agent tur
     messages: [{
       id: 'msg-local-agent-response',
       direction: 'outbound-response',
-      sender: "Shuyang's Kordi",
+      sender: "Alex's Kordi",
       text: 'We were talking about San Diego weather.',
       timeLabel: '17:07',
       timestampMs: 2,
@@ -418,7 +418,7 @@ test('direct person bridge transcript renders local agent responses as agent tur
   const message = view.messages[0];
   assert.equal(message?.role, 'owned-agent');
   assert.equal(message?.senderType, 'agent');
-  assert.equal(message?.sender, "Shuyang's Kordi");
+  assert.equal(message?.sender, "Alex's Kordi");
   assert.equal(message?.text, '');
   assert.equal(message?.turn?.assistantText, 'We were talking about San Diego weather.');
   assert.deepEqual(message?.turn?.tools, []);
@@ -429,7 +429,7 @@ test('direct person bridge transcript renders remote agent responses as agent tu
     messages: [{
       id: 'msg-remote-agent-response',
       direction: 'inbound-response',
-      sender: "Shenzhe's Kordi",
+      sender: "Ethan's Kordi",
       text: 'The answer is ready.',
       timeLabel: '17:08',
       timestampMs: 2,
@@ -442,7 +442,7 @@ test('direct person bridge transcript renders remote agent responses as agent tu
   const message = view.messages[0];
   assert.equal(message?.role, 'external-agent');
   assert.equal(message?.senderType, 'agent');
-  assert.equal(message?.sender, "Shenzhe's Kordi");
+  assert.equal(message?.sender, "Ethan's Kordi");
   assert.equal(message?.text, '');
   assert.equal(message?.turn?.assistantText, 'The answer is ready.');
   assert.deepEqual(message?.turn?.tools, []);
@@ -473,7 +473,7 @@ test('direct person bridge transcript hides historical processing placeholders a
     }, {
       id: 'msg-later-human-message',
       direction: 'inbound',
-      sender: 'Shenzhe',
+      sender: 'Ethan',
       text: 'thanks',
       timeLabel: '17:09',
       timestampMs: 3,
@@ -495,10 +495,10 @@ test('bridge transcript renders cancelled bridge agent requests as stopped inste
   const view = mapCollaborationConversationToViewModel(conversation({
     id: 'bridge:host-1:node-peer',
     canonicalSessionId: 'session:bridge:agents:peer',
-    peerDisplayName: "Jiaxin's Kordi",
-    peerOwnerName: 'Jiaxin',
+    peerDisplayName: "Maya's Kordi",
+    peerOwnerName: 'Maya',
     peerRuntime: 'kordi-desktop',
-    title: "Jiaxin's Kordi",
+    title: "Maya's Kordi",
     awaitingReply: true,
     outreach: {
       targetKind: 'agent',
@@ -507,11 +507,11 @@ test('bridge transcript renders cancelled bridge agent requests as stopped inste
       sourceConversationId: 'bridge:host-1:node-peer',
       sourceRequestId: requestId,
       targetNodeId: 'node-peer',
-      targetDisplayName: "Jiaxin's Kordi",
-      targetOwnerName: 'Jiaxin',
+      targetDisplayName: "Maya's Kordi",
+      targetOwnerName: 'Maya',
       targetRuntime: 'kordi-desktop',
       requestText: 'test test',
-      triggerText: '@JiaxinsKordi test test',
+      triggerText: '@MayasKordi test test',
       contextText: null,
       contextPolicy: 'recent-window',
       status: 'cancelled',
@@ -549,8 +549,8 @@ test('bridge transcript does not show processing for unsent agent outreach', () 
       sourceConversationId: 'bridge:host-1:node-peer:kordi-desktop',
       sourceRequestId: null,
       targetNodeId: 'node-peer',
-      targetDisplayName: "Shenzhe's Kordi",
-      targetOwnerName: 'Shenzhe',
+      targetDisplayName: "Ethan's Kordi",
+      targetOwnerName: 'Ethan',
       targetRuntime: 'kordi-desktop',
       requestText: 'hello',
       status: 'awaitingReply',
@@ -573,8 +573,8 @@ test('bridge transcript preserves full outreach mention labels with spaces and p
       sourceConversationId: 'bridge:host-1:node-peer:person',
       sourceRequestId: requestId,
       targetNodeId: 'node-agent',
-      targetDisplayName: "Shenzhe's Kordi",
-      targetOwnerName: 'Shenzhe',
+      targetDisplayName: "Ethan's Kordi",
+      targetOwnerName: 'Ethan',
       targetRuntime: 'kordi-desktop',
       requestText: 'hi',
       status: 'completed',
@@ -594,6 +594,6 @@ test('bridge transcript preserves full outreach mention labels with spaces and p
     }],
   }), host(), 'My Kordi');
 
-  assert.equal(view.messages[0]?.text, "@Shenzhe's Kordi hi");
-  assert.deepEqual(view.messages[0]?.mentions?.map((mention) => mention.label), ["Shenzhe's Kordi"]);
+  assert.equal(view.messages[0]?.text, "@Ethan's Kordi hi");
+  assert.deepEqual(view.messages[0]?.mentions?.map((mention) => mention.label), ["Ethan's Kordi"]);
 });

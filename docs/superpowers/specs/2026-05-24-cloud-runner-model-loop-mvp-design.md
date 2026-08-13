@@ -152,7 +152,7 @@ Reject owner-local base URLs (`localhost`, `127.0.0.1`, `::1`, RFC1918/private/l
 
 - `cargo test -p kordi-cloud-agent-runner`
 - `cargo test -p kordi-cloud-server cloud_agent_runtime`
-- Full takotako `cloud_agent_runtime_e2e` through VM-local Postgres port-forward.
+- Full example-cloud-host `cloud_agent_runtime_e2e` through VM-local Postgres port-forward.
 - In-cluster `/health` smoke.
 
 ## Rollout

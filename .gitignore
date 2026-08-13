@@ -15,6 +15,47 @@ app/desktop/scripts/multi-instance/configs/local/
 
 .env
 .env.local
+.env.*
+!.env.example
+
+# Local application data and exports. These can contain account identities,
+# full conversation transcripts, attachment metadata, or production state.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.jsonl
+*.ndjson
+*.dump
+*.bak
+*.backup
+*.parquet
+*.avro
+*-export.csv
+*-export.tsv
+export-*.csv
+export-*.tsv
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+session-export*
+account-export*
+message-export*
+conversation-export*
+app/desktop/src-tauri/hhhaha
+.build/
+.preview/
+.impeccable/
+
+# Operator identities are local authorization material. The tracked example
+# documents the format without revealing who can access hosted data.
+deploy/dev/operator-github-allowlist.txt
+!deploy/dev/operator-github-allowlist.example.txt
 deploy/dev/.env
 deploy/dev/.env.??????
 

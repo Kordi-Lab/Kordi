@@ -73,7 +73,7 @@ test('right-panel Cloud task rows show stable task id instead of repeating the t
         id: 'cloud-task:session:group:one:another_test_task',
         sessionId: 'session:group:one',
         status: 'active',
-        initiator: { id: 'cloud:acct_a', name: 'C UFishAI', kind: 'human', role: 'person', avatarKey: 'acct_a' },
+        initiator: { id: 'cloud:acct_a', name: 'Research Agent', kind: 'human', role: 'person', avatarKey: 'acct_a' },
         target: { id: 'task:another_test_task', name: 'Another Test Task', kind: 'agent', role: 'external-agent', avatarKey: 'acct_a' },
         participants: [],
         createdAtMs: 1,
@@ -127,7 +127,7 @@ test('right-panel task dashboard ignores Cloud context-wrapper task searches wit
   const liveTurn: DesktopChatTurnSnapshot = {
     id: 'turn-cloud-search',
     sessionId: 'cloud-agent:acct_a:acct_b',
-    prompt: 'Use the shared Cloud conversation below as the single context window for both the humans and their Kordi agents.\n\nCurrent request from C UFishAI: which tasks are finished?',
+    prompt: 'Use the shared Cloud conversation below as the single context window for both the humans and their Kordi agents.\n\nCurrent request from Research Agent: which tasks are finished?',
     status: 'tooling',
     message: 'Processing…',
     assistantText: '',

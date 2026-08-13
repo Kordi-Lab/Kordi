@@ -27,7 +27,7 @@ Add `bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh`.
 
 It mirrors the Cloud server image flow:
 
-1. assumes `sync-and-build.sh` has synced source to takotako
+1. assumes `sync-and-build.sh` has synced source to example-cloud-host
 2. builds `cargo build --release -p kordi-cloud-agent-runner` on the VM
 3. builds an OCI image with Buildah using a runner runtime Dockerfile
 4. imports the image into k3s containerd
@@ -98,7 +98,7 @@ Run existing regression:
 
 Remote verification:
 
-- build/import runner image on takotako
+- build/import runner image on example-cloud-host
 - apply Deployment at replicas 0
 - run canary script with explicit confirmation
 - verify final runner replicas 0

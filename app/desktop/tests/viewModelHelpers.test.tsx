@@ -139,7 +139,7 @@ test('buildConversationPreview uses the latest agent turn response when message 
     },
   }];
 
-  assert.equal(buildConversationPreview(messages, 'Shu Yang'), 'I’m not sure yet, but I can help check.');
+  assert.equal(buildConversationPreview(messages, 'Alex Morgan'), 'I’m not sure yet, but I can help check.');
 });
 
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
@@ -187,7 +187,7 @@ test('hideRawConversationIds replaces raw names with stable friendly fallbacks',
     participants: ['Me', 'Alice'],
     messages: [{
       role: 'user',
-      text: 'Hi shu. Please check this issue after that.',
+      text: 'Hi taylor. Please check this issue after that.',
       time: '23:34',
     }],
   }, {
@@ -214,7 +214,7 @@ test('hideRawConversationIds replaces raw names with stable friendly fallbacks',
 
   assert.equal(
     rawNamedConversation.name,
-    'Hi shu.',
+    'Hi taylor.',
     'raw canonical bridge ids should use the first sentence of the first user message',
   );
   assert.equal(

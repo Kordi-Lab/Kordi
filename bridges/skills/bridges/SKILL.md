@@ -14,8 +14,8 @@ Encrypted peer-to-peer collaboration between project members and their AI agents
 
 ```bash
 # Option A: Build from source (recommended for the current beta)
-git clone https://github.com/shuyhere/Bridges.git bridges
-cd bridges
+git clone https://github.com/Kordi-AI/Kordi.git kordi
+cd kordi/bridges
 cargo build --release --manifest-path cli/Cargo.toml
 # Binary at: target/release/bridges
 # Optionally symlink: ln -sf $(pwd)/target/release/bridges ~/.local/bin/bridges

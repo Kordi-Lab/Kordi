@@ -24,7 +24,7 @@ function getCliName() {
 
 function getRepositoryUrl() {
   const pkg = getPackageJson();
-  return pkg.repository?.url || 'https://github.com/shuyhere/Bridges.git';
+  return pkg.repository?.url || 'https://github.com/Kordi-AI/Kordi.git';
 }
 
 /**

@@ -377,25 +377,25 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
 test('buildReplyAttribution resolves canonical bridge parent aliases as the source request', () => {
   const messages: Message[] = [
     humanRequest({
-      id: 'msg:canonical-jiaxin-request',
+      id: 'msg:canonical-maya-request',
       role: 'person',
-      sender: 'Jiaxin',
+      sender: 'Maya',
       isOwnMessage: false,
-      text: '@ShuyheresKordi add a github issue on not popping up new message count information pop-up.',
-      replyAliasIds: ['msg:ui:jiaxin-request', 'bridge_req_jiaxin'],
+      text: '@Kordi MaintainersKordi add a github issue on not popping up new message count information pop-up.',
+      replyAliasIds: ['msg:ui:maya-request', 'bridge_req_maya'],
     }),
     {
       id: 'msg:canonical-my-agent-response',
       role: 'owned-agent',
-      sender: "Shuyhere's Kordi",
+      sender: "Kordi Maintainer's Kordi",
       senderType: 'agent',
       text: '',
       time: '10:05',
-      replyToMessageId: 'msg:ui:jiaxin-request',
+      replyToMessageId: 'msg:ui:maya-request',
       turn: turn({
-        id: 'turn-jiaxin-response',
+        id: 'turn-maya-response',
         assistantText: 'Done — filed as issue #214.',
-        replyToMessageId: 'msg:ui:jiaxin-request',
+        replyToMessageId: 'msg:ui:maya-request',
       }),
     },
   ];
@@ -404,8 +404,8 @@ test('buildReplyAttribution resolves canonical bridge parent aliases as the sour
 
   assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
   assert.equal(replyStatusText(result.messages[0]?.replySummary), '1 reply');
-  assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:canonical-jiaxin-request');
-  assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Jiaxin');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:canonical-maya-request');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Maya');
 });
 
 test('buildReplyAttribution falls back to visible request when explicit reply target was hidden as duplicate', () => {
@@ -442,9 +442,9 @@ test('buildReplyAttribution can infer other peoples requests as source when expl
     humanRequest({
       id: 'msg:peer-request',
       role: 'person',
-      sender: 'Shenzhe Zhu',
+      sender: 'Ethan Park',
       isOwnMessage: false,
-      text: '@ShuyheresKordi please file this issue from the template.',
+      text: '@Kordi MaintainersKordi please file this issue from the template.',
     }),
     {
       id: 'msg:my-agent-response',
@@ -462,7 +462,7 @@ test('buildReplyAttribution can infer other peoples requests as source when expl
   assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
   assert.equal(replyStatusText(result.messages[0]?.replySummary), '1 reply');
   assert.equal(result.messages[1]?.turn?.sourceMessage?.messageId, 'msg:peer-request');
-  assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Shenzhe Zhu');
+  assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Ethan Park');
 });
 
 test('buildReplyAttribution prefers a newer own plain request over a stale @Kordi mention', () => {
@@ -562,20 +562,20 @@ test('buildReplyAttribution prefers the latest matching @mention over later non-
   const messages: Message[] = [
     humanRequest({
       id: 'msg:my-kordi-request',
-      sender: 'Shuyhere',
+      sender: 'Kordi Maintainer',
       text: '@MyKordi fully debug and create this issue for fix',
     }),
     humanRequest({
       id: 'msg:peer-comment',
       role: 'person',
-      sender: 'Shenzhe Zhu',
+      sender: 'Ethan Park',
       isOwnMessage: false,
       text: 'I have already create the issue',
     }),
     humanRequest({
       id: 'msg:peer-xs',
       role: 'person',
-      sender: 'Shenzhe Zhu',
+      sender: 'Ethan Park',
       isOwnMessage: false,
       text: 'xs',
     }),

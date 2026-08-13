@@ -178,7 +178,7 @@ mod tests {
                 },
                 super::CloudGroupParticipant {
                     account_id: "acct_owner".to_string(),
-                    display_name: "Shuyang".to_string(),
+                    display_name: "Alex".to_string(),
                     avatar_url: None,
                     role: Some("person".to_string()),
                 },
@@ -197,7 +197,7 @@ mod tests {
                 target_cloud_agent_id: Some("cloud_agent_project".to_string()),
                 target_cloud_agent_name: Some("Project Driver".to_string()),
                 target_cloud_agent_owner_account_id: Some("acct_owner".to_string()),
-                target_cloud_agent_owner_name: Some("Shuyang".to_string()),
+                target_cloud_agent_owner_name: Some("Alex".to_string()),
                 agent_mention_depth: None,
             }),
         };
@@ -216,7 +216,7 @@ mod tests {
 
         assert_eq!(
             message.sender_display_name.as_deref(),
-            Some("Project Driver · Shuyang's Agent")
+            Some("Project Driver · Alex's Agent")
         );
         assert_eq!(
             message.target_cloud_agent_owner_account_id.as_deref(),

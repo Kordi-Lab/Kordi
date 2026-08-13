@@ -11,20 +11,20 @@ test('GroupDetailsDialog keeps Add people after the final member for a regular m
   const [space] = buildParticipantSpaces([conversation({
     id: 'session:group-open-invites',
     canonicalSessionId: 'session:group-open-invites',
-    canonicalCreatedByIdentityId: 'human:jiaxin',
+    canonicalCreatedByIdentityId: 'human:maya',
     name: 'Open invite group',
     metadata: {
       groupSpaceId: 'session:group-open-invites',
-      groupCreatorIdentityId: 'human:jiaxin',
-      adminIdentityIds: ['human:jiaxin'],
+      groupCreatorIdentityId: 'human:maya',
+      adminIdentityIds: ['human:maya'],
       memberApprovalPolicy: 'under-50-open',
     },
-    participants: ['Jiaxin Pei', 'Me', 'C UFishAI', 'Shenzhe Zhu', 'Alice', 'Bob'],
+    participants: ['Maya Chen', 'Me', 'Research Agent', 'Ethan Park', 'Alice', 'Bob'],
     canonicalParticipants: [
-      { id: 'human:jiaxin', name: 'Jiaxin Pei', kind: 'human', role: 'admin', source: 'bridge', avatarKey: 'jiaxin' },
+      { id: 'human:maya', name: 'Maya Chen', kind: 'human', role: 'admin', source: 'bridge', avatarKey: 'maya' },
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-      { id: 'human:ufish', name: 'C UFishAI', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'ufish' },
-      { id: 'human:shenzhe', name: 'Shenzhe Zhu', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'shenzhe' },
+      { id: 'human:research', name: 'Research Agent', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'research' },
+      { id: 'human:ethan', name: 'Ethan Park', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'ethan' },
       { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
       { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
     ],
@@ -57,12 +57,12 @@ test('GroupDetailsDialog ignores a child session that falsely promotes its local
       canonicalCreatedByIdentityId: 'human:old-admin',
       name: '1111',
       metadata: { adminIdentityIds: ['human:old-admin'], groupSpaceId: 'session:group:root', customName: '1111' },
-      participants: ['Me', 'Old Admin', 'Shu Yang'],
+      participants: ['Me', 'Old Admin', 'Alex Morgan'],
       _updatedAtMs: 1,
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
         { id: 'human:old-admin', name: 'Old Admin', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'old' },
-        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', sourceIdentityId: 'acct_new', sourceHostId: 'cloud' },
+        { id: 'human:acct_new', name: 'Alex Morgan', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', sourceIdentityId: 'acct_new', sourceHostId: 'cloud' },
       ],
     }),
     conversation({
@@ -71,12 +71,12 @@ test('GroupDetailsDialog ignores a child session that falsely promotes its local
       canonicalCreatedByIdentityId: 'human:acct_new',
       name: '1111',
       metadata: { adminIdentityIds: ['human:acct_new'], groupSpaceId: 'session:group:root', customName: '1111' },
-      participants: ['Me', 'Old Admin', 'Shu Yang'],
+      participants: ['Me', 'Old Admin', 'Alex Morgan'],
       _updatedAtMs: 2,
       canonicalParticipants: [
         { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
         { id: 'human:old-admin', name: 'Old Admin', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'old' },
-        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', sourceIdentityId: 'acct_new', sourceHostId: 'cloud' },
+        { id: 'human:acct_new', name: 'Alex Morgan', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', sourceIdentityId: 'acct_new', sourceHostId: 'cloud' },
       ],
     }),
   ];
@@ -93,7 +93,7 @@ test('GroupDetailsDialog ignores a child session that falsely promotes its local
   }));
 
   assert.match(markup, /3 people · 1 admin/);
-  assert.match(markup, /aria-label="Shu Yang, member"/);
+  assert.match(markup, /aria-label="Alex Morgan, member"/);
   assert.match(markup, /aria-label="Old Admin, admin"/);
 });
 
@@ -154,17 +154,17 @@ test('GroupDetailsDialog never exposes internal account ids while disambiguating
     canonicalSessionId: 'session:group:same-name',
     name: 'Same names',
     metadata: { adminIdentityIds: ['human:me'], groupSpaceId: 'session:group:same-name' },
-    participants: ['Me', 'Shu Yang'],
+    participants: ['Me', 'Alex Morgan'],
     canonicalParticipants: [
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-      { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'a', humanId: 'acct_a', sourceIdentityId: 'acct_a', sourceHostId: 'cloud' },
+      { id: 'human:acct_a', name: 'Alex Morgan', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'a', humanId: 'acct_a', sourceIdentityId: 'acct_a', sourceHostId: 'cloud' },
     ],
   })];
   const [space] = buildParticipantSpaces(chatConversations);
   const markup = renderToStaticMarkup(createElement(GroupDetailsDialog, {
     isOpen: true,
     space,
-    contacts: [contact({ id: 'cloud:acct_b', name: 'Shu Yang', sourceHostId: 'cloud', sourceParticipantId: 'acct_b', sourceHumanId: 'acct_b', contactStatus: 'accepted' })],
+    contacts: [contact({ id: 'cloud:acct_b', name: 'Alex Morgan', sourceHostId: 'cloud', sourceParticipantId: 'acct_b', sourceHumanId: 'acct_b', contactStatus: 'accepted' })],
     onClose: () => {},
     onRename: () => {},
     onAddMembers: () => {},

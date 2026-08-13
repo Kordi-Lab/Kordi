@@ -21,7 +21,7 @@ const release: WhatsNewRelease = {
     '- Kept the workspace available when release metadata cannot load.',
   ].join('\n'),
   publishedAt: '2026-08-08T00:00:00Z',
-  changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta12',
+  changelogUrl: 'https://github.com/Kordi-AI/Kordi/releases/tag/V0.0.1.beta12',
 };
 
 const whatsNewCss = readFileSync(new URL('../src/styles/whats-new.css', import.meta.url), 'utf8');

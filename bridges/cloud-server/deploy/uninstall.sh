@@ -21,7 +21,11 @@ for arg in "$@"; do
 	esac
 done
 
-DEPLOY_USER="${KORDI_CLOUD_DEPLOY_USER:-shu_yang}"
+DEPLOY_USER="${KORDI_CLOUD_DEPLOY_USER:?Set KORDI_CLOUD_DEPLOY_USER to the operator deploy user}"
+if [[ ! "${DEPLOY_USER}" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then
+	echo "KORDI_CLOUD_DEPLOY_USER must be a valid local account name" >&2
+	exit 1
+fi
 DATA_DIR="/home/${DEPLOY_USER}/kordi-cloud-server-data"
 UNIT_DEST="/etc/systemd/system/kordi-cloud-server.service"
 

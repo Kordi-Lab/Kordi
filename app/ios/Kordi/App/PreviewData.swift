@@ -14,7 +14,7 @@ enum PreviewData {
         let account = CloudAccount(
             accountId: "acct_me",
             kordiId: "482731906",
-            displayName: "Shuyang",
+            displayName: "Alex",
             primaryEmail: "preview@kordi.ai",
             avatarUrl: previewAvatarSource,
             nodeId: nil,
@@ -29,16 +29,16 @@ enum PreviewData {
         ]
 
         let conversations = [
-            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: nil, ownerDisplayName: "Shuyang", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
-            ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Shuyang", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
+            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: nil, ownerDisplayName: "Alex", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
+            ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
             ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: "The latest iPhone build is ready.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
-                CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: previewAvatarSource, role: "self"),
+                CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: previewAvatarSource, role: "self"),
                 CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya Chen", avatarUrl: previewAvatarSource, role: "admin"),
                 CloudGroupParticipant(accountId: "acct_ethan", displayName: "Ethan Park", avatarUrl: nil, role: "person")
             ], messageCount: 341),
             ConversationSummary(id: "group:mobile-release", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "hiiiii", lastMessage: "I added the device testing notes.", lastActivityAt: now.addingTimeInterval(-240), unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile-release", groupSpaceId: "session:group:mobile", groupParticipants: [
-                CloudGroupParticipant(accountId: "acct_me", displayName: "Shuyang", avatarUrl: previewAvatarSource, role: "self"),
+                CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: previewAvatarSource, role: "self"),
                 CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya Chen", avatarUrl: previewAvatarSource, role: "admin"),
                 CloudGroupParticipant(accountId: "acct_ethan", displayName: "Ethan Park", avatarUrl: nil, role: "person")
             ], messageCount: 47),

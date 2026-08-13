@@ -16,16 +16,16 @@ function cssRule(css: string, selector: string) {
 
 const options: ComposerMentionOption[] = [
   {
-    value: 'ShenzhesKordi',
-    label: 'ShenzhesKordi',
-    detail: 'Agent owned by Shenzhe',
+    value: 'EthansKordi',
+    label: 'EthansKordi',
+    detail: 'Agent owned by Ethan',
     targetKind: 'agent',
     sourceHostId: 'host-1',
     nodeId: 'node-agent',
     runtime: 'kordi-desktop',
     agentId: 'agent-1',
-    ownerName: 'Shenzhe',
-    avatarImageUrl: 'https://images.test/shenzhe-agent.png',
+    ownerName: 'Ethan',
+    avatarImageUrl: 'https://images.test/ethan-agent.png',
   } as ComposerMentionOption,
   {
     value: 'Alice',
@@ -102,14 +102,14 @@ test('mention participant menu uses product-facing copy and correct avatars', ()
     onSelect: () => undefined,
   }));
 
-  assert.match(html, /src="https:\/\/images\.test\/shenzhe-agent\.png"/);
+  assert.match(html, /src="https:\/\/images\.test\/ethan-agent\.png"/);
   assert.match(html, /src="https:\/\/images\.test\/alice\.png"/);
   assert.doesNotMatch(html, /Bridge person/);
   assert.doesNotMatch(html, /Bridge agent/);
   assert.doesNotMatch(html, /kordi-desktop/);
   assert.doesNotMatch(html, /Owner:/);
   assert.doesNotMatch(html, /app-composer-mention-menu-detail/);
-  assert.doesNotMatch(html, />Agent owned by Shenzhe</);
+  assert.doesNotMatch(html, />Agent owned by Ethan</);
   assert.doesNotMatch(html, />Person</);
 });
 

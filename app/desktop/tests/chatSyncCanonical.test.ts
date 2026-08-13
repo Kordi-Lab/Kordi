@@ -411,7 +411,7 @@ test('chat bootstrap snapshots reconstruct every historical My Kordi session', (
   const plan = planCloudSelfAgentCanonicalSync({
     account: {
       accountId: 'acct_b',
-      displayName: 'Shu',
+      displayName: 'Taylor',
       primaryEmail: null,
       avatarUrl: null,
       nodeId: null,

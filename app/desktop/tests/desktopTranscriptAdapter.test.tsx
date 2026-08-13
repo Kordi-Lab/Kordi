@@ -265,14 +265,14 @@ test('desktop transcript maps optimistic quoted replies so the quote renders bef
 test('desktop transcript preserves shared cloud agent owner-attributed sender labels', () => {
   const [mapped] = mapDesktopMessagesForTranscript('session:group:one', [{
     role: 'assistant',
-    sender: "Project Driver · Shuyang's Agent",
+    sender: "Project Driver · Alex's Agent",
     text: 'Done.',
     timeLabel: '12:32',
     timestampMs: 2,
   } as DesktopChatMessage]);
 
-  assert.equal(mapped.sender, "Project Driver · Shuyang's Agent");
-  assert.equal(mapped.sourceSenderLabel, "Project Driver · Shuyang's Agent");
+  assert.equal(mapped.sender, "Project Driver · Alex's Agent");
+  assert.equal(mapped.sourceSenderLabel, "Project Driver · Alex's Agent");
 });
 
 test('desktop transcript maps optimistic own messages with the local profile image url immediately', () => {
@@ -304,7 +304,7 @@ test('desktop transcript attachment mapping preserves file size and local previe
       formatLabel: 'PNG',
       previewUrl: null,
       mimeType: 'image/png',
-      localPath: '/Users/shuyang/Library/Application Support/Kordi/tmp/attachments/screenshot.png',
+      localPath: '/Users/example/Library/Application Support/Kordi/tmp/attachments/screenshot.png',
       sizeBytes: 276000,
     }],
   }];
@@ -317,7 +317,7 @@ test('desktop transcript attachment mapping preserves file size and local previe
     formatLabel: 'PNG',
     previewUrl: null,
     mimeType: 'image/png',
-    localPath: '/Users/shuyang/Library/Application Support/Kordi/tmp/attachments/screenshot.png',
+    localPath: '/Users/example/Library/Application Support/Kordi/tmp/attachments/screenshot.png',
     sizeBytes: 276000,
   }]);
 });

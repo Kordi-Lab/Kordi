@@ -8,7 +8,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
       contentType: 'application/json',
       body: JSON.stringify({
         inviter: {
-          displayName: 'Jiaxin Pei',
+          displayName: 'Maya Chen',
           kordiId: '482731906',
           avatarUrl: null,
         },
@@ -43,7 +43,7 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await page.getByRole('button', { name: 'Add people' }).click();
   await page.getByRole('tab', { name: 'Share link' }).click();
   await expect(page.getByText('Only group admins can create invitation links')).toBeVisible();
-  await expect(page.getByText('Ask Jiaxin Pei to share a link or make you an admin.')).toBeVisible();
+  await expect(page.getByText('Ask Maya Chen to share a link or make you an admin.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create invitation link' })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('group-invitation-nonadmin-narrow.png') });
 

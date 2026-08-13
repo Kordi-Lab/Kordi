@@ -7,8 +7,8 @@ import type { CloudAccount } from '../src/features/cloud/authClient';
 const account: CloudAccount = {
   accountId: 'acct_50a66b83799045',
   kordiId: '482731906',
-  displayName: 'Shuyheretest',
-  primaryEmail: 'shu@example.com',
+  displayName: 'MayaTest',
+  primaryEmail: 'taylor@example.com',
   avatarUrl: 'data:image/jpeg;base64,profile',
   nodeId: 'node_9c2abc',
   passwordSet: true,

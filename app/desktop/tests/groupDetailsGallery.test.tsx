@@ -197,7 +197,7 @@ test('GroupDetailsDialog member filtering stays bounded and useful with 50 peopl
   const members = Array.from({ length: 50 }, (_, index) => ({
     id: `human:${index}`,
     humanId: `acct_${index}`,
-    name: index === 37 ? 'Jiaxin Pei' : `Member ${index + 1}`,
+    name: index === 37 ? 'Maya Chen' : `Member ${index + 1}`,
     kind: 'human' as const,
     role: 'person' as const,
     source: 'bridge' as const,
@@ -205,7 +205,7 @@ test('GroupDetailsDialog member filtering stays bounded and useful with 50 peopl
   }));
 
   assert.equal(filterGroupManagementMembers(members, '').length, 50);
-  assert.deepEqual(filterGroupManagementMembers(members, 'jiaxin').map((member) => member.id), ['human:37']);
+  assert.deepEqual(filterGroupManagementMembers(members, 'maya').map((member) => member.id), ['human:37']);
   assert.deepEqual(filterGroupManagementMembers(members, 'acct_9').map((member) => member.id), ['human:9']);
 });
 

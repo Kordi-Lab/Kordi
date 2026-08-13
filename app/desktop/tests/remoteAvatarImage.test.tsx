@@ -154,15 +154,15 @@ test('known native avatars render a neutral first frame instead of generated ide
     const markup = renderToStaticMarkup(
       <IdentityAvatar
         kind="human"
-        seed="acct_shu"
-        name="Shu Yang"
-        imageUrl="https://images.example/shu.png"
+        seed="acct_alex"
+        name="Alex Morgan"
+        imageUrl="https://images.example/taylor.png"
       />,
     );
 
     assert.match(markup, /data-avatar-state="pending"/);
     assert.doesNotMatch(markup, />SH</);
-    assert.doesNotMatch(markup, /src="https:\/\/images\.example\/shu\.png"/);
+    assert.doesNotMatch(markup, /src="https:\/\/images\.example\/taylor\.png"/);
   } finally {
     installed.restore();
   }
@@ -175,15 +175,15 @@ test('a memory-cached native avatar is present on the first render', async () =>
 
   try {
     await loadAvatarThroughNativeProxy(
-      'https://images.example/shu.png',
+      'https://images.example/taylor.png',
       async <T,>() => dataUrl as T,
     );
     const markup = renderToStaticMarkup(
       <IdentityAvatar
         kind="human"
-        seed="acct_shu"
-        name="Shu Yang"
-        imageUrl="https://images.example/shu.png"
+        seed="acct_alex"
+        name="Alex Morgan"
+        imageUrl="https://images.example/taylor.png"
       />,
     );
 
@@ -211,14 +211,14 @@ test('a blocked native avatar settles on one deterministic fallback', async () =
     const markup = renderToStaticMarkup(
       <IdentityAvatar
         kind="human"
-        seed="acct_shu"
-        name="Shu Yang"
+        seed="acct_alex"
+        name="Alex Morgan"
         imageUrl="https://images.example/blocked.png"
       />,
     );
 
     assert.match(markup, /data-avatar-state="failed"/);
-    assert.match(markup, />SH</);
+    assert.match(markup, />AL</);
     assert.doesNotMatch(markup, /<img/);
     await assert.rejects(loadAvatarThroughNativeProxy(
       'https://images.example/blocked.png',

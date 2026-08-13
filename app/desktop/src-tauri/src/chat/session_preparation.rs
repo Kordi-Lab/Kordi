@@ -143,7 +143,7 @@ mod tests {
             &labels
         ));
         assert!(!text_mentions_local_agent(
-            "@Shenzhehere's Kordi hi",
+            "@OtherPerson's Kordi hi",
             &labels
         ));
     }

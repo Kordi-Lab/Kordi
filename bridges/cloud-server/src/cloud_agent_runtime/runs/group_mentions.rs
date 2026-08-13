@@ -261,16 +261,17 @@ mod tests {
     #[test]
     fn resolves_unicode_nfkc_handle_and_rejects_self_or_ambiguity() {
         let participants = vec![
-            participant("acct_source", "Ｃ ＵFishAI"),
-            participant("acct_target", "贾 欣"),
+            participant("acct_source", "Ｒｅｓｅａｒｃｈ Ａｇｅｎｔ"),
+            participant("acct_target", "陈 美"),
         ];
         assert_eq!(
-            resolve_agent_mention("@贾欣sKordi 请确认", &participants, "acct_source")
+            resolve_agent_mention("@陈美sKordi 请确认", &participants, "acct_source")
                 .map(|target| target.account_id),
             Some("acct_target".to_string())
         );
         assert!(
-            resolve_agent_mention("@CUFishAIsKordi self", &participants, "acct_source").is_none()
+            resolve_agent_mention("@ResearchAgentsKordi self", &participants, "acct_source")
+                .is_none()
         );
 
         let ambiguous = vec![
@@ -285,8 +286,8 @@ mod tests {
     #[test]
     fn instruction_maps_human_requester_my_kordi_and_disables_second_hop() {
         let participants = vec![
-            participant("acct_requester", "Jiaxin Pei"),
-            participant("acct_owner", "C UFishAI"),
+            participant("acct_requester", "Maya Chen"),
+            participant("acct_owner", "Research Agent"),
         ];
         let mut envelope = CloudGroupEnvelope {
             kind: "group-message".to_string(),
@@ -299,7 +300,7 @@ mod tests {
             message: Some(CloudGroupMessage {
                 id: "msg_request".to_string(),
                 sender_account_id: "acct_requester".to_string(),
-                text: "@CUFishAIsKordi ask my Kordi".to_string(),
+                text: "@ResearchAgentsKordi ask my Kordi".to_string(),
                 created_at_ms: 1,
                 sender_kind: Some("human".to_string()),
                 sender_display_name: None,
@@ -315,9 +316,9 @@ mod tests {
             }),
         };
         let first = mention_instruction(&envelope, "acct_owner").expect("instruction");
-        assert!(first.contains("\"my Kordi\" means @JiaxinPeisKordi"));
+        assert!(first.contains("\"my Kordi\" means @MayaChensKordi"));
         assert!(first.contains("Agents:"));
-        assert!(!first.contains("@CUFishAIsKordi ("));
+        assert!(!first.contains("@ResearchAgentsKordi ("));
 
         let message = envelope.message.as_mut().expect("message");
         message.sender_kind = Some("agent".to_string());

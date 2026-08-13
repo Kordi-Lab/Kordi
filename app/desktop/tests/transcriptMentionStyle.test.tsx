@@ -21,10 +21,10 @@ function humanMessage(overrides: Partial<Message> = {}): Message {
     sender: 'Me',
     senderType: 'human',
     isOwnMessage: true,
-    text: '@ShenzhesKordi hello',
+    text: '@EthansKordi hello',
     time: '16:48',
     statusChips: ['read'],
-    mentions: [{ label: 'ShenzhesKordi', targetKind: 'agent' }],
+    mentions: [{ label: 'EthansKordi', targetKind: 'agent' }],
     ...overrides,
   };
 }
@@ -32,7 +32,7 @@ function humanMessage(overrides: Partial<Message> = {}): Message {
 test('chat mentions render as inline colored text without pill chrome', () => {
   const html = renderToStaticMarkup(createElement(MessageBubble, { msg: humanMessage() }));
 
-  const mentionSpan = html.match(/<span class="[^"]*app-message-mention[^"]*"[^>]*>@ShenzhesKordi<\/span>/)?.[0];
+  const mentionSpan = html.match(/<span class="[^"]*app-message-mention[^"]*"[^>]*>@EthansKordi<\/span>/)?.[0];
   assert.ok(mentionSpan);
   assert.doesNotMatch(mentionSpan, /bg-sky|border-sky|text-sky|rounded-full|px-1\.5|py-0\.5|translate-y-\[-1px\]|inline-flex/);
 });
