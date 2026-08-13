@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, KeyRound, Palette, User, X } from 'lucide-react';
+import { Camera, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,10 +12,11 @@ import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settin
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
 import type { CloudAccount, CloudProfileUpdateInput } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
+import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 
-export type CloudAccountSettingsTabId = 'profile' | 'auth' | 'appearance';
+export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'appearance';
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSection[];
@@ -156,6 +157,7 @@ export function CloudAccountSettingsDialog({
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
   const tabs: Array<{ id: CloudAccountSettingsTabId; label: string; icon: typeof User }> = [
     { id: 'profile', label: 'Profile', icon: User },
+    { id: 'devices', label: 'Active sessions', icon: Laptop },
     { id: 'auth', label: 'Authentication', icon: KeyRound },
     { id: 'appearance', label: 'Appearance', icon: Palette },
   ];
@@ -342,6 +344,8 @@ export function CloudAccountSettingsDialog({
     </div>
   );
 
+  const devicesPanel = <CloudDevicesPanel key={account.accountId} accountId={account.accountId} />;
+
   return createPortal(
     <div
       className="app-transient-overlay app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center px-6 py-6 backdrop-blur-sm"
@@ -359,7 +363,7 @@ export function CloudAccountSettingsDialog({
           <div className="mb-2 min-w-0 px-2.5 py-2">
             <div className="truncate text-[13px] font-semibold text-white">{displayName}</div>
           </div>
-          <div className="app-cloud-account-settings-tabs grid grid-cols-3 gap-1 md:grid-cols-1">
+          <div className="app-cloud-account-settings-tabs grid grid-cols-4 gap-1 md:grid-cols-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id || (tab.id !== 'profile' && activeSettingsSectionId === tab.id && activeTab === tab.id);
@@ -385,7 +389,7 @@ export function CloudAccountSettingsDialog({
           <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
             <div>
               <div className="text-[18px] font-semibold tracking-tight text-white">
-                {activeTab === 'profile' ? 'Profile' : activeTab === 'auth' ? 'Authentication' : 'Appearance'}
+                {activeTab === 'profile' ? 'Profile' : activeTab === 'devices' ? 'Active sessions' : activeTab === 'auth' ? 'Authentication' : 'Appearance'}
               </div>
             </div>
             <button type="button" className="app-button-quiet app-transient-flat-action grid h-8 w-8 place-items-center rounded-full p-0" onClick={onClose} aria-label="Close account settings">
@@ -393,7 +397,7 @@ export function CloudAccountSettingsDialog({
             </button>
           </div>
           <ScrollArea className="min-h-0 flex-1 pr-2">
-            {activeTab === 'profile' ? profilePanel : activeTab === 'auth' ? authPanel : appearancePanel}
+            {activeTab === 'profile' ? profilePanel : activeTab === 'devices' ? devicesPanel : activeTab === 'auth' ? authPanel : appearancePanel}
           </ScrollArea>
         </div>
       </div>

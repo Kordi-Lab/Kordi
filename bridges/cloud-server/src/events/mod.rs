@@ -253,6 +253,47 @@ impl EventBus {
         let subject = format!("kordi.events.presence.account.{observer_account_id}");
         self.publish_raw(subject, body).await;
     }
+
+    /// Publish a device lifecycle hint. The canonical event is already in the
+    /// account sync stream; this subject only wakes older live subscribers.
+    pub async fn publish_device_event(&self, account_id: &str, event_kind: &str, device_id: &str) {
+        if self.inner.is_none() {
+            return;
+        }
+        let payload = serde_json::json!({
+            "event_type": format!("device.{event_kind}"),
+            "account_id": account_id,
+            "device_id": device_id,
+            "occurred_at": chrono::Utc::now().to_rfc3339(),
+        });
+        let Ok(body) = serde_json::to_vec(&payload) else {
+            return;
+        };
+        self.publish_raw(
+            format!("kordi.events.device.{event_kind}.{account_id}"),
+            Bytes::from(body),
+        )
+        .await;
+    }
+
+    /// Tell every live gateway holding a socket for this device to close it.
+    /// Durable authorization remains PostgreSQL-backed; this is the prompt
+    /// cross-replica invalidation path.
+    pub async fn publish_device_revoked(&self, device_id: &str) {
+        let Some(inner) = self.inner.as_ref() else {
+            return;
+        };
+        if let Err(error) = inner
+            .client
+            .publish(
+                format!("kordi.device.control.{device_id}"),
+                Bytes::from_static(b"revoked"),
+            )
+            .await
+        {
+            eprintln!("[events] publish device revocation: {error}");
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

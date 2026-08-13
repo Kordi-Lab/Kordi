@@ -280,7 +280,7 @@ pub(super) async fn wake_dispatcher(
 /// Append a non-timeline domain event to each recipient's durable sync stream.
 /// Recipients are de-duplicated and sorted before their sync-head rows are
 /// locked, preserving the same deterministic lock order as message fanout.
-async fn append_user_sync_events(
+pub async fn append_user_sync_events_in_transaction(
     transaction: &mut Transaction<'_, Postgres>,
     account_ids: &[String],
     event_type: &str,
@@ -313,7 +313,7 @@ async fn append_user_sync_events(
 
 /// Publish an ancillary domain snapshot through canonical chat sync. Callers whose
 /// canonical row is written in the same operation should prefer
-/// `append_user_sync_events` inside their existing transaction.
+/// `append_user_sync_events_in_transaction` inside their existing transaction.
 pub async fn publish_user_sync_events(
     pool: &PgPool,
     account_ids: &[String],
@@ -322,7 +322,7 @@ pub async fn publish_user_sync_events(
     payload: Value,
 ) -> Result<(), StoreError> {
     let mut transaction = pool.begin().await?;
-    append_user_sync_events(
+    append_user_sync_events_in_transaction(
         &mut transaction,
         account_ids,
         event_type,

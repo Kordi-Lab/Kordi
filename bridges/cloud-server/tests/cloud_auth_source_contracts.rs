@@ -49,7 +49,7 @@ fn cloud_attachment_preview_recovery_only_updates_caller_visible_links() {
 }
 
 #[test]
-fn message_migrations_remain_historical_and_retirement_is_latest() {
+fn message_migrations_remain_historical_and_device_authorizations_are_embedded() {
     let pool_source = include_str!("../src/pg/pool.rs");
     for migration in [28, 29, 30, 31, 32, 47, 48, 49, 50, 51] {
         assert!(
@@ -62,6 +62,12 @@ fn message_migrations_remain_historical_and_retirement_is_latest() {
     assert!(pool_source.contains("0049_relink_legacy_agent_responses.sql"));
     assert!(pool_source.contains("0050_chat_v2_artifact_links.sql"));
     assert!(pool_source.contains("0051_retire_chat_sync_v1.sql"));
+    assert!(pool_source.contains("version: 52"));
+    assert!(pool_source.contains("0052_device_authorizations.sql"));
+    assert!(pool_source.contains("version: 53"));
+    assert!(pool_source.contains("0053_device_approximate_location.sql"));
+    assert!(pool_source.contains("version: 54"));
+    assert!(pool_source.contains("0054_oauth_device_approximate_location.sql"));
 
     let library = include_str!("../src/lib.rs");
     let events = include_str!("../src/events/mod.rs");

@@ -2,41 +2,79 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+private enum AccountSettingsRoute: Hashable {
+    case profile
+    case activeSessions
+    case authentication
+    case appearance
+}
+
 struct AccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
+    @State private var path: [AccountSettingsRoute]
+
+    init() {
+        _path = State(initialValue: [])
+    }
+
+    fileprivate init(previewing route: AccountSettingsRoute) {
+        _path = State(initialValue: [route])
+    }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     accountHeader
                 }
 
                 Section {
-                    NavigationLink {
-                        ProfileSettingsView()
-                    } label: {
+                    NavigationLink(value: AccountSettingsRoute.profile) {
                         SettingsNavigationLabel(title: "Profile", systemImage: "person")
                     }
 
-                    NavigationLink {
-                        ProviderAuthenticationView()
-                    } label: {
+                    NavigationLink(value: AccountSettingsRoute.activeSessions) {
+                        HStack {
+                            SettingsNavigationLabel(title: "Active sessions", systemImage: "iphone.and.arrow.forward")
+                            Spacer(minLength: 8)
+                            if model.deviceReviewRequired {
+                                Text("Review")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(.orange.opacity(0.12), in: Capsule())
+                                    .accessibilityLabel("New device needs review")
+                            }
+                        }
+                    }
+
+                    NavigationLink(value: AccountSettingsRoute.authentication) {
                         SettingsNavigationLabel(title: "Authentication", systemImage: "key")
                     }
 
-                    NavigationLink {
-                        AppearanceSettingsView()
-                    } label: {
+                    NavigationLink(value: AccountSettingsRoute.appearance) {
                         SettingsNavigationLabel(title: "Appearance", systemImage: "paintpalette")
                     }
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle(model.account?.preferredName ?? "Account")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: AccountSettingsRoute.self) { route in
+                switch route {
+                case .profile:
+                    ProfileSettingsView()
+                case .activeSessions:
+                    DevicesSettingsView()
+                case .authentication:
+                    ProviderAuthenticationView()
+                case .appearance:
+                    AppearanceSettingsView()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -79,6 +117,330 @@ struct AccountSheet: View {
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
     }
+}
+
+struct ActiveSessionsPreview: View {
+    var body: some View {
+        AccountSheet(previewing: .activeSessions)
+    }
+}
+
+private struct DevicesSettingsView: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var renameTarget: CloudDeviceAuthorization?
+    @State private var renameDraft = ""
+    @State private var revokeTarget: CloudDeviceAuthorization?
+    @State private var showRevokeOthers = false
+    @State private var isMutating = false
+
+    private var currentDevice: CloudDeviceAuthorization? {
+        model.devices.first(where: \.currentDevice)
+    }
+
+    private var otherDevices: [CloudDeviceAuthorization] {
+        model.devices.filter { !$0.currentDevice }
+    }
+
+    @ViewBuilder
+    private var deviceSections: some View {
+        if let currentDevice {
+            currentDeviceSection(currentDevice)
+        } else {
+            Section {
+                Label(
+                    "Kordi could not identify this iPhone in the active session list. Refresh before terminating another session.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.orange)
+            }
+        }
+        activeDevicesSection
+    }
+
+    private func currentDeviceSection(_ device: CloudDeviceAuthorization) -> some View {
+        Section {
+            DeviceAuthorizationRow(
+                device: device,
+                isMutating: isMutating,
+                confirm: {},
+                requestRevoke: {}
+            )
+
+            if !otherDevices.isEmpty {
+                Button(role: .destructive) {
+                    showRevokeOthers = true
+                } label: {
+                    Label("Terminate all other sessions", systemImage: "hand.raised")
+                        .frame(minHeight: 32)
+                }
+                .disabled(isMutating)
+            }
+        } header: {
+            HStack {
+                Text("This device")
+                Spacer()
+                Button("Rename") {
+                    renameDraft = device.displayTitle
+                    renameTarget = device
+                }
+                .font(.caption.weight(.semibold))
+                .textCase(nil)
+                .disabled(isMutating)
+            }
+        } footer: {
+            if otherDevices.isEmpty {
+                Text("No other active sessions are connected to this account.")
+            } else {
+                Text("Terminates every other Kordi session except this one. Files already saved on those devices are not erased.")
+            }
+        }
+    }
+
+    private var activeDevicesSection: some View {
+        Section {
+            if otherDevices.isEmpty {
+                Text("Your other devices will appear here after they sign in.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(otherDevices) { device in
+                    DeviceAuthorizationRow(
+                        device: device,
+                        isMutating: isMutating,
+                        confirm: {
+                            isMutating = true
+                            Task {
+                                _ = await model.confirmDevice(device)
+                                isMutating = false
+                            }
+                        },
+                        requestRevoke: { revokeTarget = device }
+                    )
+                }
+            }
+        } header: {
+            Text("Active devices")
+        }
+    }
+
+    var body: some View {
+        List {
+            if model.isRefreshingDevices && model.devices.isEmpty {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Loading active sessions…")
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .combine)
+                }
+            } else if model.devices.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "No active sessions",
+                        systemImage: "laptopcomputer.and.iphone",
+                        description: Text("Refresh the list, or sign in again if this iPhone is missing.")
+                    )
+                }
+            } else {
+                deviceSections
+            }
+
+            if let error = model.deviceErrorMessage.nonEmpty {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(error, systemImage: "exclamationmark.circle.fill")
+                            .foregroundStyle(.red)
+                        if !model.devices.isEmpty {
+                            Text("The saved list remains visible. Reconnect and refresh to verify changes.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("Try again") { Task { await model.refreshDevices() } }
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 32)
+                    }
+                }
+            }
+
+        }
+        .listStyle(.insetGrouped)
+        .environment(\.defaultMinListRowHeight, 44)
+        .navigationTitle("Active sessions")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await model.refreshDevices() }
+                } label: {
+                    if model.isRefreshingDevices {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(model.isRefreshingDevices || isMutating)
+                .accessibilityLabel("Refresh active sessions")
+            }
+        }
+        .refreshable { await model.refreshDevices() }
+        .task {
+            model.markDeviceReviewSeen()
+            await model.refreshDevices()
+        }
+        .alert(
+            "Rename this device",
+            isPresented: Binding(
+                get: { renameTarget != nil },
+                set: { if !$0 { renameTarget = nil } }
+            )
+        ) {
+            TextField("Device name", text: $renameDraft)
+            Button("Save") {
+                guard let device = renameTarget else { return }
+                isMutating = true
+                Task {
+                    _ = await model.renameDevice(device, displayName: renameDraft)
+                    isMutating = false
+                    renameTarget = nil
+                }
+            }
+            .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) { renameTarget = nil }
+        } message: {
+            Text("Use a name that helps you recognize this session in Kordi.")
+        }
+        .confirmationDialog(
+            "Terminate this device?",
+            isPresented: Binding(
+                get: { revokeTarget != nil },
+                set: { if !$0 { revokeTarget = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: revokeTarget
+        ) { device in
+            Button("Terminate \(device.displayTitle)", role: .destructive) {
+                isMutating = true
+                Task {
+                    _ = await model.revokeDevice(device)
+                    isMutating = false
+                    revokeTarget = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { revokeTarget = nil }
+        } message: { _ in
+            Text("Every Kordi Cloud session on this device will be revoked. Local files on it will not be erased.")
+        }
+        .confirmationDialog(
+            "Terminate all other sessions?",
+            isPresented: $showRevokeOthers,
+            titleVisibility: .visible
+        ) {
+            Button("Terminate all other sessions", role: .destructive) {
+                isMutating = true
+                Task {
+                    _ = await model.revokeOtherDevices()
+                    isMutating = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every other Kordi Cloud authorization and session will be revoked. This iPhone stays signed in.")
+        }
+    }
+}
+
+private struct DeviceAuthorizationRow: View {
+    let device: CloudDeviceAuthorization
+    let isMutating: Bool
+    let confirm: () -> Void
+    let requestRevoke: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 11) {
+                ZStack {
+                    Circle()
+                        .fill((device.needsReview ? Color.orange : KordiTheme.signalBlue).opacity(0.12))
+                    Image(systemName: device.needsReview ? "exclamationmark.shield.fill" : device.systemImage)
+                        .foregroundStyle(device.needsReview ? Color.orange : KordiTheme.signalBlue)
+                }
+                .frame(width: 38, height: 38)
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(device.displayTitle)
+                        .font(.body.weight(.semibold))
+                    if let detailLine = device.detailLine {
+                        Text(detailLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let activityLine = device.activityLine {
+                        Text(activityLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                if !device.currentDevice {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        if device.needsReview {
+                            Text("Needs review")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.orange)
+                        }
+                        Button(role: .destructive, action: requestRevoke) {
+                            Image(systemName: "xmark")
+                                .font(.caption.weight(.semibold))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isMutating)
+                        .accessibilityLabel("Terminate \(device.displayTitle)")
+                    }
+                }
+            }
+
+            if !device.currentDevice && device.needsReview {
+                Button("This was me", action: confirm)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(isMutating)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private extension CloudDeviceAuthorization {
+    var displayTitle: String {
+        displayName?.nonEmpty ?? (platform == "ios" ? "iPhone" : platform == "macos" ? "Mac" : "Kordi device")
+    }
+
+    var systemImage: String { platform == "ios" ? "iphone" : "laptopcomputer" }
+
+    var detailLine: String? {
+        [platform?.uppercased(), osVersion?.nonEmpty, appVersion.nonEmpty.map { "Kordi \($0)" }]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+            .nonEmpty
+    }
+
+    var activityLine: String? {
+        let lastActive = DeviceDateFormatting.iso8601.date(from: lastActiveAt)
+            .map { "Active \($0.formatted(.relative(presentation: .named)))" }
+        return [approximateLocation.nonEmpty, lastActive]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+            .nonEmpty
+    }
+}
+
+private enum DeviceDateFormatting {
+    static let iso8601 = ISO8601DateFormatter()
 }
 
 private struct SettingsNavigationLabel: View {

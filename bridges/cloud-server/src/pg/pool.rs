@@ -242,6 +242,21 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "retire superseded chat storage and compatibility bridges",
         sql: include_str!("../../migrations/0051_retire_chat_sync_v1.sql"),
     },
+    EmbeddedMigration {
+        version: 52,
+        description: "device authorizations and idempotent management operations",
+        sql: include_str!("../../migrations/0052_device_authorizations.sql"),
+    },
+    EmbeddedMigration {
+        version: 53,
+        description: "coarse device location metadata",
+        sql: include_str!("../../migrations/0053_device_approximate_location.sql"),
+    },
+    EmbeddedMigration {
+        version: 54,
+        description: "coarse OAuth device location metadata",
+        sql: include_str!("../../migrations/0054_oauth_device_approximate_location.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

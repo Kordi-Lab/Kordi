@@ -31,6 +31,15 @@ pub(super) async fn signup(
         Ok(value) => value,
         Err(response) => return *response,
     };
+    let registration = match req.device.clone() {
+        Some(device) => match normalize_device_registration(device) {
+            Ok(value) => value,
+            Err(error) => {
+                return err(error.code(), error.message(), StatusCode::BAD_REQUEST);
+            }
+        },
+        None => legacy_device_registration(SIGNUP_DEFAULT_DEVICE_NAME),
+    };
 
     let pool = state.db_pool();
 
@@ -79,9 +88,6 @@ pub(super) async fn signup(
 
     let now = Utc::now().to_rfc3339();
     let account_id = format!("acct_{}", uuid::Uuid::new_v4().simple());
-    let device_id = format!("dev_{}", uuid::Uuid::new_v4().simple());
-    let device_public_key = format!("placeholder-{}", uuid::Uuid::new_v4().simple());
-
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(_) => {
@@ -117,26 +123,18 @@ pub(super) async fn signup(
         );
     }
 
-    if query(
-        "INSERT INTO cloud_devices \
-         (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) \
-         VALUES ($1, $2, $3, $4, $5, $5)",
-    )
-    .bind(&device_id)
-    .bind(&account_id)
-    .bind(SIGNUP_DEFAULT_DEVICE_NAME)
-    .bind(&device_public_key)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await
-    .is_err()
-    {
-        return err(
-            "server_error",
-            "Could not create device.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
+    let authorized_device =
+        match authorize_device(&mut tx, &account_id, &registration, "confirmed").await {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Could not create device.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        };
+    let device_id = authorized_device.device_id;
 
     let issued = match issue_session(
         &mut *tx,
@@ -172,6 +170,24 @@ pub(super) async fn signup(
     .execute(&mut *tx)
     .await;
 
+    if append_device_sync_event(
+        &mut tx,
+        &account_id,
+        "device.added",
+        &device_id,
+        registration.display_name.as_deref(),
+        "confirmed",
+    )
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record device authorization.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
     if tx.commit().await.is_err() {
         return err(
             "server_error",
@@ -187,8 +203,12 @@ pub(super) async fn signup(
         let events = state.events().clone();
         let account_id = account_id.clone();
         let primary_email = normalized_email.clone();
+        let published_device_id = device_id.clone();
         tokio::spawn(async move {
             events.publish_signup(&account_id, &primary_email).await;
+            events
+                .publish_device_event(&account_id, "added", &published_device_id)
+                .await;
         });
     }
 
@@ -207,6 +227,7 @@ pub(super) async fn signup(
         session: SessionResponse {
             token: issued.plaintext_token,
             expires_at: issued.expires_at.to_rfc3339(),
+            device_id,
         },
     };
     (StatusCode::CREATED, Json(body)).into_response()
@@ -305,9 +326,16 @@ pub(super) async fn login(
     }
     rate_limiter.clear_email_failures(&normalized_email).await;
 
+    let registration = match req.device.clone() {
+        Some(device) => match normalize_device_registration(device) {
+            Ok(value) => value,
+            Err(error) => {
+                return err(error.code(), error.message(), StatusCode::BAD_REQUEST);
+            }
+        },
+        None => legacy_device_registration(SIGNUP_DEFAULT_DEVICE_NAME),
+    };
     let now = Utc::now().to_rfc3339();
-    let device_id = format!("dev_{}", uuid::Uuid::new_v4().simple());
-    let device_public_key = format!("placeholder-{}", uuid::Uuid::new_v4().simple());
 
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
@@ -320,26 +348,18 @@ pub(super) async fn login(
         }
     };
 
-    if query(
-        "INSERT INTO cloud_devices \
-         (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) \
-         VALUES ($1, $2, $3, $4, $5, $5)",
-    )
-    .bind(&device_id)
-    .bind(&account_id)
-    .bind(SIGNUP_DEFAULT_DEVICE_NAME)
-    .bind(&device_public_key)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await
-    .is_err()
-    {
-        return err(
-            "server_error",
-            "Could not register device.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
+    let authorized_device =
+        match authorize_device(&mut tx, &account_id, &registration, "pending_review").await {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Could not register device.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        };
+    let device_id = authorized_device.device_id;
 
     let issued = match issue_session(
         &mut *tx,
@@ -374,12 +394,42 @@ pub(super) async fn login(
     .execute(&mut *tx)
     .await;
 
+    if authorized_device.is_new_authorization
+        && append_device_sync_event(
+            &mut tx,
+            &account_id,
+            "device.added",
+            &device_id,
+            registration.display_name.as_deref(),
+            "pending_review",
+        )
+        .await
+        .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record device authorization.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
     if tx.commit().await.is_err() {
         return err(
             "server_error",
             "Could not commit login.",
             StatusCode::INTERNAL_SERVER_ERROR,
         );
+    }
+
+    if authorized_device.is_new_authorization {
+        let events = state.events().clone();
+        let published_account_id = account_id.clone();
+        let published_device_id = device_id.clone();
+        tokio::spawn(async move {
+            events
+                .publish_device_event(&published_account_id, "added", &published_device_id)
+                .await;
+        });
     }
 
     let account = match account_response_row(pool, &account_id).await {
@@ -397,6 +447,7 @@ pub(super) async fn login(
         session: SessionResponse {
             token: issued.plaintext_token,
             expires_at: issued.expires_at.to_rfc3339(),
+            device_id,
         },
     };
     (StatusCode::OK, Json(body)).into_response()

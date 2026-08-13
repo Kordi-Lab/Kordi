@@ -1,5 +1,19 @@
 use super::*;
 
+type OAuthStateRow = (
+    String,
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 pub(super) async fn auth_capabilities() -> Json<AuthCapabilitiesResponse> {
     Json(AuthCapabilitiesResponse {
         password: true,
@@ -40,14 +54,36 @@ pub(super) async fn oauth_start(
             );
         }
     };
+    let registration = if let Some(public_key) = start_query.device_public_key.as_deref() {
+        match normalize_device_registration(DeviceRegistrationRequest {
+            display_name: start_query.device_name.clone(),
+            platform: start_query.device_platform.clone(),
+            os_version: start_query.device_os_version.clone(),
+            app_version: start_query.device_app_version.clone(),
+            approximate_location: start_query.device_approximate_location.clone(),
+            public_key: public_key.to_string(),
+            key_algorithm: start_query
+                .device_key_algorithm
+                .clone()
+                .unwrap_or_else(|| "p256".to_string()),
+        }) {
+            Ok(value) => Some(value),
+            Err(error) => return err(error.code(), error.message(), StatusCode::BAD_REQUEST),
+        }
+    } else {
+        None
+    };
 
     let state_id = random_url_token("oauth_state");
     let code_verifier = random_url_token("oauth_verifier");
     let now = Utc::now();
     let expires = now + ChronoDuration::minutes(10);
     if query(
-        "INSERT INTO cloud_oauth_states (state_id, provider, redirect_after, code_verifier, created_at, expires_at) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO cloud_oauth_states \
+         (state_id, provider, redirect_after, code_verifier, created_at, expires_at, \
+          device_name, device_public_key, device_key_algorithm, device_platform, \
+          device_os_version, device_app_version, device_approximate_location) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
     )
     .bind(&state_id)
     .bind(provider.id())
@@ -55,11 +91,46 @@ pub(super) async fn oauth_start(
     .bind(&code_verifier)
     .bind(now.to_rfc3339())
     .bind(expires.to_rfc3339())
+    .bind(
+        registration
+            .as_ref()
+            .and_then(|value| value.display_name.as_deref()),
+    )
+    .bind(registration.as_ref().map(|value| value.public_key.as_str()))
+    .bind(
+        registration
+            .as_ref()
+            .map(|value| value.key_algorithm.as_str()),
+    )
+    .bind(
+        registration
+            .as_ref()
+            .and_then(|value| value.platform.as_deref()),
+    )
+    .bind(
+        registration
+            .as_ref()
+            .and_then(|value| value.os_version.as_deref()),
+    )
+    .bind(
+        registration
+            .as_ref()
+            .and_then(|value| value.app_version.as_deref()),
+    )
+    .bind(
+        registration
+            .as_ref()
+            .and_then(|value| value.approximate_location.as_deref()),
+    )
     .execute(state.db_pool())
     .await
     .is_err()
     {
-        return err("server_error", "Could not create OAuth state.", StatusCode::INTERNAL_SERVER_ERROR);
+        return err(
+            "server_error",
+            "Could not create OAuth state.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
     }
 
     let mut auth_url = url::Url::parse(provider.auth_url()).expect("valid OAuth provider auth url");
@@ -110,17 +181,39 @@ pub(super) async fn oauth_callback(
     };
 
     let pool = state.db_pool();
-    let state_row: Option<(String, String, Option<String>, String)> = match query_as(
-        "DELETE FROM cloud_oauth_states WHERE state_id = $1 RETURNING provider, redirect_after, code_verifier, expires_at",
+    let state_row: Option<OAuthStateRow> = match query_as(
+        "DELETE FROM cloud_oauth_states WHERE state_id = $1 \
+         RETURNING provider, redirect_after, code_verifier, expires_at, device_name, \
+                   device_public_key, device_key_algorithm, device_platform, \
+                   device_os_version, device_app_version, device_approximate_location",
     )
     .bind(state_id)
     .fetch_optional(pool)
     .await
     {
         Ok(row) => row,
-        Err(_) => return err("server_error", "Could not load OAuth state.", StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not load OAuth state.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     };
-    let Some((stored_provider, redirect_after, code_verifier, expires_at)) = state_row else {
+    let Some((
+        stored_provider,
+        redirect_after,
+        code_verifier,
+        expires_at,
+        device_name,
+        device_public_key,
+        device_key_algorithm,
+        device_platform,
+        device_os_version,
+        device_app_version,
+        device_approximate_location,
+    )) = state_row
+    else {
         return err(
             "invalid_oauth_state",
             "OAuth state expired or was already used.",
@@ -168,9 +261,34 @@ pub(super) async fn oauth_callback(
         Ok(profile) if !profile.provider_subject.trim().is_empty() => profile,
         _ => return redirect_with_oauth_error(&redirect_after, "Could not load OAuth profile."),
     };
+    let registration = if let (Some(public_key), Some(key_algorithm)) =
+        (device_public_key, device_key_algorithm)
+    {
+        NormalizedDeviceRegistration {
+            display_name: device_name,
+            platform: device_platform,
+            os_version: device_os_version,
+            app_version: device_app_version,
+            approximate_location: device_approximate_location,
+            public_key,
+            key_algorithm,
+        }
+    } else {
+        legacy_device_registration(&format!("oauth-{}-device", provider.id()))
+    };
 
-    match complete_oauth_login(pool, provider, profile).await {
-        Ok(body) => {
+    match complete_oauth_login(pool, provider, profile, &registration).await {
+        Ok((body, is_new_authorization)) => {
+            if is_new_authorization {
+                state
+                    .events()
+                    .publish_device_event(
+                        &body.account.account_id,
+                        "added",
+                        &body.session.device_id,
+                    )
+                    .await;
+            }
             let mut url = redirect_after;
             let separator = if url.contains('#') { '&' } else { '#' };
             url.push(separator);
@@ -210,7 +328,8 @@ pub(super) async fn complete_oauth_login(
     pool: &PgPool,
     provider: OAuthProvider,
     profile: OAuthProfile,
-) -> Result<AuthResponse, sqlx_core::Error> {
+    registration: &NormalizedDeviceRegistration,
+) -> Result<(AuthResponse, bool), sqlx_core::Error> {
     let now = Utc::now().to_rfc3339();
     let normalized_email = profile
         .email
@@ -248,6 +367,7 @@ pub(super) async fn complete_oauth_login(
             .bind(&account_id)
             .fetch_optional(pool)
             .await?;
+    let is_new_account = existing_account_avatar_url.is_none();
     let avatar_url = oauth_account_avatar_url(
         existing_account_avatar_url
             .as_ref()
@@ -299,19 +419,27 @@ pub(super) async fn complete_oauth_login(
     .execute(&mut *tx)
     .await?;
 
-    let device_id = format!("dev_{}", uuid::Uuid::new_v4().simple());
-    let device_public_key = format!("placeholder-{}", uuid::Uuid::new_v4().simple());
-    query(
-        "INSERT INTO cloud_devices (device_id, account_id, device_name, device_public_key, created_at, last_seen_at) \
-         VALUES ($1, $2, $3, $4, $5, $5)",
-    )
-    .bind(&device_id)
-    .bind(&account_id)
-    .bind(format!("oauth-{}-device", provider.id()))
-    .bind(&device_public_key)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await?;
+    let authorization_state = if is_new_account {
+        "confirmed"
+    } else {
+        "pending_review"
+    };
+    let authorized_device =
+        authorize_device(&mut tx, &account_id, registration, authorization_state).await?;
+    let is_new_authorization = authorized_device.is_new_authorization;
+    let device_id = authorized_device.device_id;
+    if is_new_authorization {
+        append_device_sync_event(
+            &mut tx,
+            &account_id,
+            "device.added",
+            &device_id,
+            registration.display_name.as_deref(),
+            authorization_state,
+        )
+        .await
+        .map_err(|_| sqlx_core::Error::Protocol("Could not append device sync event.".into()))?;
+    }
     let issued = issue_session(
         &mut *tx,
         &account_id,
@@ -325,13 +453,17 @@ pub(super) async fn complete_oauth_login(
     let account = account_response_row(pool, &account_id)
         .await?
         .ok_or(sqlx_core::Error::RowNotFound)?;
-    Ok(AuthResponse {
-        account,
-        session: SessionResponse {
-            token: issued.plaintext_token,
-            expires_at: issued.expires_at.to_rfc3339(),
+    Ok((
+        AuthResponse {
+            account,
+            session: SessionResponse {
+                token: issued.plaintext_token,
+                expires_at: issued.expires_at.to_rfc3339(),
+                device_id,
+            },
         },
-    })
+        is_new_authorization,
+    ))
 }
 
 #[cfg(test)]

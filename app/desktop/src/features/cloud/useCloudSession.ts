@@ -90,6 +90,7 @@ export async function completeCloudAuthResult({
     token: result.session.token,
     accountId: result.account.accountId,
     expiresAt: result.session.expiresAt,
+    deviceId: result.session.deviceId,
   };
   if (persistSession) {
     await persistSession(session);
@@ -293,6 +294,7 @@ export function useCloudSession({
               session: {
                 token: stored.token,
                 expiresAt: stored.expiresAt,
+                deviceId: stored.deviceId,
               },
             },
             currentAccountId: accountIdRef.current,

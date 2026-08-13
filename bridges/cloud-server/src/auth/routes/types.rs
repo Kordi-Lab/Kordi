@@ -18,18 +18,34 @@ pub struct SignupRequest {
     pub display_name: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
+    pub device: Option<crate::auth::devices::DeviceRegistrationRequest>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
+    pub device: Option<crate::auth::devices::DeviceRegistrationRequest>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct OAuthStartQuery {
     #[serde(rename = "redirectAfter")]
     pub redirect_after: String,
+    #[serde(rename = "deviceName")]
+    pub device_name: Option<String>,
+    #[serde(rename = "devicePlatform")]
+    pub device_platform: Option<String>,
+    #[serde(rename = "deviceOsVersion")]
+    pub device_os_version: Option<String>,
+    #[serde(rename = "deviceAppVersion")]
+    pub device_app_version: Option<String>,
+    #[serde(rename = "deviceApproximateLocation")]
+    pub device_approximate_location: Option<String>,
+    #[serde(rename = "devicePublicKey")]
+    pub device_public_key: Option<String>,
+    #[serde(rename = "deviceKeyAlgorithm")]
+    pub device_key_algorithm: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,6 +99,8 @@ pub struct SessionResponse {
     pub token: String,
     #[serde(rename = "expiresAt")]
     pub expires_at: String,
+    #[serde(rename = "deviceId")]
+    pub device_id: String,
 }
 
 #[derive(Debug, Serialize)]

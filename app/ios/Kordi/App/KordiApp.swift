@@ -58,6 +58,8 @@ private struct RootView: View {
             AppearanceSettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {
             ProfileSettingsPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-devices") {
+            ActiveSessionsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-account") {
             AccountSheet()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-authentication") {

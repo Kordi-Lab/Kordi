@@ -49,6 +49,7 @@ unicode-segmentation = "1.11"
 sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
+p256 = { version = "0.13", features = ["pkcs8"] }
 
 # Internal crates
 kordi-core = { version = "0.0.18", path = "agent/crates/core" }

@@ -35,6 +35,49 @@ struct CloudAccount: Codable, Hashable {
 struct CloudSession: Codable, Hashable {
     let token: String
     let expiresAt: String
+    let deviceId: String?
+}
+
+struct CloudDeviceRegistration: Codable, Hashable {
+    let displayName: String
+    let platform: String
+    let osVersion: String
+    let appVersion: String
+    let approximateLocation: String
+    let publicKey: String
+    let keyAlgorithm: String
+}
+
+struct CloudDeviceSyncStatus: Codable, Hashable {
+    let protocolVersion: Int
+    let lastAppliedSequence: Int64
+    let lastSuccessfulCatchUpAt: String?
+}
+
+struct CloudDeviceAuthorization: Codable, Hashable, Identifiable {
+    let deviceId: String
+    let displayName: String?
+    let platform: String?
+    let osVersion: String?
+    let appVersion: String?
+    let createdAt: String
+    let lastActiveAt: String
+    let authorizationState: String
+    let currentDevice: Bool
+    let sessionExpiresAt: String?
+    let approximateLocation: String?
+    let syncStatus: CloudDeviceSyncStatus
+
+    var id: String { deviceId }
+    var needsReview: Bool { authorizationState == "pending_review" }
+}
+
+struct CloudDeviceListResponse: Codable, Hashable {
+    let devices: [CloudDeviceAuthorization]
+}
+
+struct CloudDeviceMutationResponse: Codable, Hashable {
+    let affectedDeviceIds: [String]
 }
 
 struct CloudSessionPin: Codable, Hashable {
@@ -642,10 +685,12 @@ struct CloudChatEventPayload: Codable, Hashable {
     let preferences: CloudChatPreferences?
     let cursor: CloudChatCursor?
     let sessionId: String?
+    let deviceId: String?
 
     enum CodingKeys: String, CodingKey {
         case conversation, message, preferences, cursor
         case sessionId = "sessionId"
+        case deviceId = "deviceId"
     }
 }
 
@@ -763,6 +808,7 @@ struct CloudSyncEventPayload: Codable, Hashable {
     let createdByAccountId: String?
     let createdAt: String?
     let sessionTitle: CloudSyncedSessionTitle?
+    let deviceId: String?
 }
 
 extension Optional where Wrapped == String {
