@@ -16,7 +16,10 @@ import {
   type CloudAccountSettingsTabId,
 } from '@/pages/CloudAccountSettingsDialog';
 import type { WorkspaceSidebarAccount } from '@/pages/workspaceSidebar.types';
-import { buildCloudProfileRows } from '@/pages/workspaceSidebar.profileModel';
+import {
+  accountPopoverLeft,
+  buildCloudProfileRows,
+} from '@/pages/workspaceSidebar.profileModel';
 import { ChevronRight as ChevronRightIcon } from 'lucide-react';
 
 const CLOUD_PROFILE_COPY_RESET_MS = 1800;
@@ -143,25 +146,25 @@ function CloudAppInviteCopyRow({ onCreateInvite }: { onCreateInvite: () => Promi
   return (
     <button
       type="button"
-      className="app-button-quiet app-transient-flat-action app-transient-action-row flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left disabled:cursor-wait disabled:opacity-70"
+      className="app-button-quiet app-transient-flat-action app-transient-action-row app-account-popover-row grid w-full grid-cols-[0.875rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 rounded-[12px] px-2.5 py-2 text-left disabled:cursor-wait disabled:opacity-70"
       onClick={() => { void handleCopy(); }}
       disabled={status === 'copying'}
       aria-label="Copy personal invitation link"
     >
-      <span className="flex min-w-0 items-center gap-2.5">
-        <Share2 className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
-        <span className="min-w-0">
-          <span className="app-transient-action-label block truncate">Invite to Kordi</span>
-          <span className="app-transient-metadata mt-0.5 block truncate" aria-live="polite">
-            {detail}
-          </span>
+      <Share2 className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
+      <span className="min-w-0">
+        <span className="app-transient-action-label block truncate">Invite to Kordi</span>
+        <span className="app-transient-metadata block truncate" aria-live="polite">
+          {detail}
         </span>
       </span>
-      {status === 'copied' ? (
-        <Check className="app-transient-action-icon text-emerald-300" aria-hidden="true" />
-      ) : (
-        <Copy className="app-transient-action-icon app-transient-subtle" aria-hidden="true" />
-      )}
+      <span className="grid h-7 w-7 place-items-center justify-self-end" aria-hidden="true">
+        {status === 'copied' ? (
+          <Check className="app-transient-action-icon text-emerald-300" />
+        ) : (
+          <Copy className="app-transient-action-icon app-transient-subtle" />
+        )}
+      </span>
     </button>
   );
 }
@@ -227,8 +230,15 @@ export function SidebarProfileControl({
     if (!trigger) return;
     const measure = () => {
       const rect = trigger.getBoundingClientRect();
+      const rootFontSize = Number.parseFloat(
+        window.getComputedStyle(document.documentElement).fontSize,
+      ) || 16;
       setPopoverAnchor({
-        left: rect.right + 8,
+        left: accountPopoverLeft({
+          triggerRight: rect.right,
+          viewportWidth: window.innerWidth,
+          rootFontSize,
+        }),
         bottom: Math.max(8, window.innerHeight - rect.bottom),
       });
     };
@@ -312,11 +322,11 @@ export function SidebarProfileControl({
               zIndex: 170,
             }}
             className={cn(
-              'app-transient-surface app-popover app-profile-popover',
-              'w-[22rem] rounded-[18px] border px-4 py-3 text-foreground',
+              'app-transient-surface app-popover app-profile-popover app-account-popover',
+              'rounded-[18px] border p-2.5 text-foreground',
             )}
           >
-            <div className="flex items-center gap-3 px-3 py-2.5">
+            <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 px-2.5 py-2.5">
               <IdentityAvatar
                 kind="human"
                 seed={profileAvatarSeed}
@@ -326,8 +336,8 @@ export function SidebarProfileControl({
                 className="h-10 w-10 border border-white/10"
               />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold">{profileDisplayName}</div>
-                <div className="app-transient-muted mt-0.5 truncate text-[11px] tabular-nums">
+                <div className="app-transient-identity-title truncate">{profileDisplayName}</div>
+                <div className="app-transient-metadata truncate tabular-nums">
                   {profileKordiHandle || 'Kordi ID unavailable'}
                 </div>
               </div>
@@ -345,15 +355,15 @@ export function SidebarProfileControl({
               ) : null}
               <button
                 type="button"
-                className="app-button-quiet app-transient-flat-action app-transient-action-row flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left"
+                className="app-button-quiet app-transient-flat-action app-transient-action-row app-account-popover-row grid grid-cols-[0.875rem_minmax(0,1fr)_1.75rem] items-center gap-x-2.5 rounded-[12px] px-2.5 py-2 text-left"
                 onClick={() => openCloudAccountDialog('auth')}
                 aria-label="Open account settings"
               >
-                <span className="flex items-center gap-2.5">
-                  <Settings className="app-transient-action-icon app-transient-muted" />
-                  <span className="app-transient-action-label">Settings</span>
+                <Settings className="app-transient-action-icon app-transient-muted" aria-hidden="true" />
+                <span className="app-transient-action-label truncate">Settings</span>
+                <span className="grid h-7 w-7 place-items-center justify-self-end" aria-hidden="true">
+                  <ChevronRightIcon className="app-transient-action-icon app-transient-subtle" />
                 </span>
-                <ChevronRightIcon className="app-transient-action-icon app-transient-subtle" />
               </button>
             </div>
           </div>,
@@ -377,17 +387,17 @@ export function SidebarProfileControl({
               zIndex: 160,
             }}
             className={cn(
-              'app-transient-surface app-popover app-profile-popover',
-              'w-[21.25rem] rounded-[18px] border px-4 py-3 text-foreground',
+              'app-transient-surface app-popover app-profile-popover app-account-popover',
+              'rounded-[18px] border p-2.5 text-foreground',
             )}
           >
-            <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium">
+            <div className="app-transient-identity-title px-2.5 py-2">
               <span>Profile</span>
             </div>
-            <div className="grid gap-1 text-[12px]">
-              <div className="app-transient-row rounded-[12px] px-3 py-2.5 transition">
-                <div className="truncate font-medium">{profileDisplayName}</div>
-                <div className="app-transient-muted mt-0.5 truncate text-[11px]">
+            <div className="grid gap-1">
+              <div className="app-transient-row rounded-[12px] px-2.5 py-2 transition">
+                <div className="app-transient-action-label truncate">{profileDisplayName}</div>
+                <div className="app-transient-metadata truncate">
                   {cloudAccount ? 'Account' : 'Local profile'}
                 </div>
               </div>
@@ -397,8 +407,8 @@ export function SidebarProfileControl({
                   className="app-transient-row flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{row.label}</div>
-                    <div className="app-transient-muted mt-0.5 truncate text-[11px]">
+                    <div className="app-transient-action-label truncate">{row.label}</div>
+                    <div className="app-transient-metadata truncate">
                       {row.value}
                     </div>
                   </div>
@@ -407,7 +417,7 @@ export function SidebarProfileControl({
                   ) : null}
                 </div>
               )) : (
-                <div className="app-transient-muted rounded-[12px] px-3 py-2.5 text-[12px]">
+                <div className="app-transient-metadata rounded-[12px] px-2.5 py-2">
                   Profile details are stored locally.
                 </div>
               )}

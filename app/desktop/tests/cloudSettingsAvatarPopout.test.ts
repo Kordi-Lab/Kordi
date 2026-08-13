@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import { shouldRefreshCloudContactsForWsSubject } from '../src/features/cloud/useCloudContacts';
 import { cloudProfileSaveInput } from '../src/pages/CloudAccountSettingsDialog';
+import { accountPopoverLeft } from '../src/pages/workspaceSidebar.profileModel';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function readSource(relativePath: string): string {
@@ -157,6 +158,37 @@ test('account popover shows the public handle directly and copies invites withou
   assert.match(accountMenu, /Open account settings/);
   assert.match(accountMenu, />\s*Settings\s*</);
   assert.doesNotMatch(profileControl, /profileDisplayName[\s\S]{0,160}primaryEmail/);
+});
+
+test('account popover variants share compact responsive geometry and shell typography', () => {
+  const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
+  const shellCss = readDesktopShellCss();
+
+  assert.equal((profileControl.match(/app-profile-popover app-account-popover/g) ?? []).length, 2);
+  assert.doesNotMatch(profileControl, /w-\[(?:22rem|21\.25rem)\]/);
+  assert.match(shellCss, /\.app-account-popover\s*\{[^}]*width:\s*min\(17\.75rem, calc\(100vw - 1rem\)\);[^}]*font-family:\s*inherit;/s);
+  assert.match(shellCss, /\.app-account-popover \.app-transient-identity-title\s*\{[^}]*font-size:\s*0\.8125rem;[^}]*line-height:\s*1\.125rem;/s);
+  assert.match(shellCss, /\.app-account-popover \.app-transient-action-row,[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1rem;/s);
+  assert.match(shellCss, /\.app-account-popover \.app-transient-metadata\s*\{[^}]*font-size:\s*0\.6875rem;[^}]*line-height:\s*0\.9375rem;/s);
+  assert.match(profileControl, /grid-cols-\[0\.875rem_minmax\(0,1fr\)_1\.75rem\]/);
+});
+
+test('account popover stays within the compact window safe area', () => {
+  assert.equal(accountPopoverLeft({
+    triggerRight: 54,
+    viewportWidth: 1200,
+    rootFontSize: 16,
+  }), 62);
+  assert.equal(accountPopoverLeft({
+    triggerRight: 54,
+    viewportWidth: 300,
+    rootFontSize: 16,
+  }), 8);
+  assert.equal(accountPopoverLeft({
+    triggerRight: 54,
+    viewportWidth: 220,
+    rootFontSize: 16,
+  }), 8);
 });
 
 test('profile sign out action is styled as destructive red', () => {
