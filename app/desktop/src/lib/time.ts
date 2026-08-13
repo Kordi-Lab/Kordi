@@ -185,3 +185,13 @@ export function formatDesktopTranscriptTimeLabel(
   ).format(date);
   return `${calendarDate} ${time}`;
 }
+
+export function formatDesktopContactRequestTimeLabel(
+  value: string,
+  options: DesktopTranscriptTimeOptions = {},
+) {
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs)
+    ? formatDesktopTranscriptTimeLabel(timestampMs, options)
+    : value;
+}

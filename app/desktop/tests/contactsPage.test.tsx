@@ -109,11 +109,11 @@ test('contacts request activity counts incoming approvals separately from outgoi
     request({ id: 'request-out', title: 'Request sent to Maya Chen', detail: 'acct_maya_123', direction: 'outgoing' }),
   ]);
 
-  assert.equal((markup.match(/app-badge-attention/g) ?? []).length, 2);
+  assert.equal((markup.match(/app-badge-attention/g) ?? []).length, 1);
   assert.doesNotMatch(markup, /app-badge-attention[^>]*>2</);
   assert.match(markup, />Review 1 pending request\.</);
   assert.match(markup, />Sent invites</);
-  assert.match(markup, />Waiting on 1 person to approve\.</);
+  assert.match(markup, />1 awaiting approval</);
   assert.doesNotMatch(markup, />Request sent to Maya Chen</);
   assert.doesNotMatch(markup, /No pending|None sent/);
 });
@@ -125,8 +125,8 @@ test('contacts page summarizes outgoing-only pending invites without showing the
 
   assert.doesNotMatch(markup, />New requests</);
   assert.match(markup, />Sent invites</);
-  assert.match(markup, />Waiting on 1 person to approve\.</);
-  assert.match(markup, /app-badge-attention[^>]*>1</);
+  assert.match(markup, />1 awaiting approval</);
+  assert.doesNotMatch(markup, /app-badge-attention/);
   assert.doesNotMatch(markup, /No pending|None sent/);
   assert.doesNotMatch(markup, />Waiting for approval</);
   assert.doesNotMatch(markup, />Request sent to Maya Chen</);
@@ -146,17 +146,24 @@ test('sent invites section has independent fold and expand controls', () => {
 
 test('sent invite rows use real account avatars in a compact row', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const sentInvitesStart = source.indexOf('{sentInviteCount > 0 && (');
+  const sentInvitesEnd = source.indexOf('<div className="app-contacts-section-heading', sentInvitesStart);
+  assert.ok(sentInvitesStart >= 0, 'Sent invites source block should be present');
+  const sentInvitesBlock = source.slice(sentInvitesStart, sentInvitesEnd > sentInvitesStart ? sentInvitesEnd : undefined);
 
   assert.match(source, /<IdentityAvatar/);
   assert.match(source, /imageUrl=\{request\.profileImageUrl\}/);
-  assert.match(source, /name=\{request\.avatarName \?\? request\.title\}/);
-  assert.match(source, /className="app-contacts-sent-invite-item w-full px-3 py-2 text-white"/);
+  assert.match(source, /name=\{sentInviteDisplayName\(request\)\}/);
+  assert.match(source, /className="app-contacts-sent-invite-item w-full px-3 py-2\.5 text-white"/);
   assert.doesNotMatch(source, /className="app-list-item w-full rounded-2xl bg-transparent px-3 py-2 text-white"/);
   assert.doesNotMatch(source, /max-w-\[720px\]/);
-  assert.match(source, /app-contacts-sent-invite-item w-full px-3 py-2 text-white/);
+  assert.match(source, /app-contacts-sent-invite-item w-full px-3 py-2\.5 text-white/);
   assert.match(source, /className="h-9 w-9 border border-white\/10"/);
-  assert.match(source, /items-center justify-between/);
-  assert.doesNotMatch(source, /mt-3 inline-flex rounded-full border border-amber-300\/20 bg-amber-300\/10/);
+  assert.match(source, /Awaiting approval/);
+  assert.match(source, /formatDesktopContactRequestTimeLabel\(request\.time\)/);
+  assert.doesNotMatch(sentInvitesBlock, /\{request\.detail\}/);
+  assert.doesNotMatch(sentInvitesBlock, /Waiting for approval/);
+  assert.doesNotMatch(sentInvitesBlock, /border-amber|bg-amber|text-amber/);
 });
 
 test('cloud request mapping keeps counterpart name for request avatar fallback', () => {
@@ -259,6 +266,7 @@ test('contacts page uses positive-only request activity and flat page-plane cont
   assert.match(shellCss, /\.app-contacts-request-row[\s\S]*border-radius:\s*8px/);
   assert.match(shellCss, /\.app-contacts-search[\s\S]*border-radius:\s*8px/);
   assert.match(shellCss, /\.app-contacts-sent-invites-row\s*\{[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+  assert.match(shellCss, /\.app-contacts-sent-invites-row > button:hover\s*\{[^}]*background:\s*transparent;/s);
   assert.match(shellCss, /\.app-contact-request-item,[\s\S]*?\.app-contacts-sent-invite-item\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
   assert.match(shellCss, /\.app-contacts-add-form\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
   assert.match(shellCss, /\.app-input-shell\.app-flat-input\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*transition:\s*none;/s);

@@ -55,6 +55,10 @@
   border-radius: 8px;
 }
 
+.app-contacts-sent-invites-row > button:hover {
+  background: transparent;
+}
+
 .app-contact-request-item,
 .app-contacts-sent-invite-item {
   border-top: 1px solid color-mix(in oklab, var(--app-divider) 64%, transparent);

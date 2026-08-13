@@ -28,6 +28,7 @@ import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messag
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { selfDisplayName } from '@/lib/identityLabels';
+import { formatDesktopContactRequestTimeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownContent } from './markdown';
@@ -1519,7 +1520,9 @@ export function ContactRequestRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div className="truncate text-sm font-medium">{request.title}</div>
-            <div className="shrink-0 text-[11px] text-slate-400">{request.time}</div>
+            <div className="shrink-0 text-[11px] text-slate-400">
+              {formatDesktopContactRequestTimeLabel(request.time)}
+            </div>
           </div>
           <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
           <div className="mt-3 flex flex-wrap gap-2">

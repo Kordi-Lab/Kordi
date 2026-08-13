@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ContactRequestRow, LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
+import { formatDesktopContactRequestTimeLabel } from '../src/lib/time';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 test('transcript human avatars are large enough to read beside message bubbles', () => {
@@ -254,6 +255,24 @@ test('contact request row shows accept progress while sending the greeting', () 
   assert.match(markup, />Accepting and sending greeting…</);
   assert.match(markup, /animate-spin/);
   assert.match(markup, /disabled=""/);
+});
+
+test('contact request row formats transport timestamps for people', () => {
+  const request: ContactRequest = {
+    id: 'request-time',
+    initials: 'SY',
+    title: 'Shu Yang wants to connect',
+    detail: 'Contact request',
+    time: '2026-08-13T10:22:12.663250538+00:00',
+  };
+
+  const markup = renderToStaticMarkup(createElement(ContactRequestRow, {
+    request,
+    active: false,
+  }));
+
+  assert.match(markup, new RegExp(formatDesktopContactRequestTimeLabel(request.time)));
+  assert.doesNotMatch(markup, /2026-08-13T10:22:12/);
 });
 
 test('renders bridge agent stop control beside pending processing text', () => {
