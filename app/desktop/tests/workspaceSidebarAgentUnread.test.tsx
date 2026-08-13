@@ -113,6 +113,58 @@ test('WorkspaceSidebar keeps agent session hashtags aligned with fork controls o
   assert.match(shellCss, /\.app-workspace-sidebar \.app-agent-session-row\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content/s);
 });
 
+test('WorkspaceSidebar renders a self-only photo row as pinned Saved Messages', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:saved-photo',
+      canonicalSessionId: 'session:saved-photo',
+      name: 'Shu Yang',
+      type: 'person',
+      subtitle: 'Shu Yang',
+      unread: 0,
+      participants: ['Shu Yang'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      ],
+      messages: [{
+        role: 'user',
+        sender: 'Shu Yang',
+        text: '',
+        time: '14:29',
+        attachments: [{
+          kind: 'image',
+          name: 'preview.png',
+          mimeType: 'image/png',
+          previewUrl: 'data:image/png;base64,c2F2ZWQtcGhvdG8=',
+        }],
+      }],
+      updatedAtLabel: '14:29',
+      _updatedAtMs: 2,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: [],
+    agentParticipantSpaces: participantSpaces,
+    activeConvId: '',
+    initialChatChannel: 'agent',
+  }) as never));
+  const shellCss = readDesktopShellCss();
+
+  assert.match(markup, /data-saved-messages-row="true"/);
+  assert.match(markup, /Saved Messages/);
+  assert.match(markup, /app-saved-messages-avatar/);
+  assert.match(markup, /lucide-bookmark/);
+  assert.match(markup, /data-agent-session-preview-kind="image"/);
+  assert.match(markup, /data-sidebar-image-thumbnail="true"/);
+  assert.match(markup, />Photo</);
+  assert.match(markup, /aria-label="Pinned"/);
+  assert.doesNotMatch(markup, /# Shu Yang|Shu Yang · Photo/);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-agent-session-row-saved\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\) max-content/s);
+});
+
 test('WorkspaceSidebar does not show an Agent tab unread badge for hidden canonical parent forks', () => {
   const chatConversations = [
     conversation({

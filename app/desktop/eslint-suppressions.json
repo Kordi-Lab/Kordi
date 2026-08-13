@@ -578,7 +578,7 @@
       "count": 1
     },
     "react-refresh/only-export-components": {
-      "count": 6
+      "count": 5
     }
   },
   "src/kordi-app/components/transcriptChangedFiles.tsx": {

@@ -134,12 +134,12 @@ export function buildMessagePreview(message: Message) {
   }
 
   const attachments = message.attachments ?? [];
-  if (attachments.length === 0) {
-    return '';
-  }
-
+  if (attachments.length === 0) return '';
   if (attachments.length === 1) {
-    return `Attached ${attachments[0].name}`;
+    const attachment = attachments[0];
+    return attachment.kind === 'image' || attachment.mimeType?.toLowerCase().startsWith('image/')
+      ? 'Photo'
+      : `Attached ${attachment.name}`;
   }
 
   return `${attachments.length} attachments`;

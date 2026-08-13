@@ -8,12 +8,14 @@ use cloud_api_endpoint::cloud_api_base_url_from_env;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
+mod media_preview_window;
 mod project;
 mod remote_image;
 mod skill_library;
 mod system_proxy;
 #[cfg(test)]
 mod test_support;
+mod window_lifecycle;
 mod workspace;
 use std::process::Command;
 fn is_cloud_edition_context(
@@ -75,39 +77,20 @@ fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
 use auth::DesktopAuthManager;
 use chat::DesktopChatManager;
 use cloud_presence::publish_stored_offline_on_exit;
+use media_preview_window::{
+    desktop_open_media_preview_window, desktop_reveal_media_preview_window,
+};
 use tauri::Manager;
+use window_lifecycle::{
+    should_hide_window_instead_of_close, should_show_main_window_on_reopen, MAIN_WINDOW_LABEL,
+};
 use workspace::DesktopWorkspaceStatus;
-
-const MAIN_WINDOW_LABEL: &str = "main";
-
-fn should_hide_window_instead_of_close(label: &str) -> bool {
-    cfg!(target_os = "macos") && label == MAIN_WINDOW_LABEL
-}
-
-fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bool {
-    cfg!(target_os = "macos") && !has_visible_windows
-}
 
 #[cfg(test)]
 mod window_lifecycle_tests {
-    use super::{
-        is_cloud_edition_context, should_hide_window_instead_of_close,
-        should_show_main_window_on_reopen,
-    };
+    use super::is_cloud_edition_context;
     use crate::cloud_api_endpoint::DEFAULT_CLOUD_API_BASE_URL;
     use crate::cloud_presence::{offline_url, should_publish_offline_on_exit};
-
-    #[test]
-    fn macos_main_window_close_hides_instead_of_quitting() {
-        assert!(should_hide_window_instead_of_close("main"));
-        assert!(!should_hide_window_instead_of_close("secondary"));
-    }
-
-    #[test]
-    fn dock_reopen_restores_main_window_when_none_are_visible() {
-        assert!(should_show_main_window_on_reopen(false));
-        assert!(!should_show_main_window_on_reopen(true));
-    }
 
     #[test]
     fn explicit_app_exit_publishes_presence_offline() {
@@ -204,6 +187,7 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
     }
     Ok(trimmed.to_string())
 }
+
 pub fn run() {
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
@@ -230,6 +214,8 @@ pub fn run() {
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
             desktop_open_external_url,
+            desktop_open_media_preview_window,
+            desktop_reveal_media_preview_window,
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,

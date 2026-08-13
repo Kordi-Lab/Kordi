@@ -12,6 +12,7 @@
 @import './styles/shell-group-invitations.css';
 @import './styles/shell-bubbles.css';
 @import './styles/shell-transcript.css';
+@import './styles/shell-media-lightbox.css';
 @import './styles/shell-transcript-timeline.css';
 @import './styles/shell-message-actions.css';
 @import './styles/shell-live-answer.css';

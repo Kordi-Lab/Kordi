@@ -39,6 +39,7 @@ import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttributi
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
+import type { MessageForkSummary } from './transcriptMessageForks';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
@@ -46,7 +47,7 @@ import type {
   ContactRequest,
   ConversationType,
   EditFilePreview,
-  Message,
+  Message, MessageAttachment,
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -689,11 +690,6 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
     </div>
   );
 }
-export type MessageForkSummary = {
-  sessionId: string;
-  title: string;
-  updatedAtLabel?: string;
-};
 export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact' | 'agent-compact';
 function MessageBubbleView({
   msg,
@@ -707,6 +703,7 @@ function MessageBubbleView({
   onOpenSenderProfile,
   onForkMessage,
   messageForks,
+  imageGallery,
   onOpenForkSession,
   onReplyMessage,
   onForwardMessage,
@@ -739,6 +736,7 @@ function MessageBubbleView({
   onOpenSenderProfile?: (message: Message, anchorRect: DOMRect) => void;
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
+  imageGallery?: readonly MessageAttachment[];
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
@@ -1253,8 +1251,8 @@ function MessageBubbleView({
         ) : showAvatarSlot ? (
           <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
-        <div
-          data-message-context-menu-anchor="true"
+        <div data-message-context-menu-anchor="true"
+          data-message-media-side={hasOnlyImageAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined}
           data-message-sender-profile-trigger={canOpenSenderProfile ? 'true' : undefined}
           data-transcript-density={compactDensity}
           onClick={(event) => {
@@ -1355,6 +1353,7 @@ function MessageBubbleView({
                 {hasAttachments ? (
                   <AttachmentPreview
                     msg={msg}
+                    imageGallery={imageGallery}
                     imageDeliveryStatus={hasOnlyImageAttachments && isOwnHumanMessage ? deliveryStatus : null}
                     onRetryImage={hasOnlyImageAttachments && isOwnHumanMessage && deliveryVisual?.tone === 'red' && onRetryMessage
                       ? () => onRetryMessage(msg)
@@ -1383,7 +1382,7 @@ function MessageBubbleView({
         ) : (
           <>
             <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-              {hasAttachments ? <AttachmentPreview msg={msg} imageDeliveryStatus={null} /> : null}
+              {hasAttachments ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
               {hasText ? <MarkdownContent text={msg.text} showLinkIcons copySurface="message" /> : null}
             </div>
             {(msg.statusChips?.length || footerDetail) ? (
@@ -1440,6 +1439,7 @@ export const MessageBubble = memo(
     && previous.onSelectionDragEnd === next.onSelectionDragEnd
     && previous.plainAgentResponse === next.plainAgentResponse
     && previous.messageForks === next.messageForks
+    && previous.imageGallery === next.imageGallery
     && previous.densityMode === next.densityMode
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext

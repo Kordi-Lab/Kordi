@@ -284,9 +284,54 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
 
   assert.match(markup, /taylor/);
   assert.doesNotMatch(markup, /Person • 1 chat/);
-  assert.match(markup, /My chats/);
+  assert.match(markup, /Saved Messages/);
   assert.match(markup, /Personal • 2 sessions/);
   assert.doesNotMatch(markup, /Person \+ 1 agent/);
   assert.doesNotMatch(markup, /Myself \+ 2 agents/);
   assert.doesNotMatch(markup, /Group • 1 session/);
+});
+
+test('WorkspaceSidebar gives Saved Messages a bookmark identity and photo preview', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:saved-photo',
+      canonicalSessionId: 'session:saved-photo',
+      name: 'Shu Yang',
+      type: 'owned-agent',
+      subtitle: 'Shu Yang',
+      participants: ['Me', 'My Kordi'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-kordi', name: 'My Kordi', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-kordi' },
+      ],
+      messages: [{
+        role: 'user',
+        sender: 'Shu Yang',
+        text: '',
+        time: '14:29',
+        attachments: [{
+          kind: 'image',
+          name: 'preview.png',
+          mimeType: 'image/png',
+          previewUrl: 'data:image/png;base64,c2F2ZWQtcGhvdG8=',
+        }],
+      }],
+      updatedAtLabel: '14:29',
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: 'session:other',
+  }) as never));
+
+  assert.match(markup, /Saved Messages/);
+  assert.match(markup, /app-saved-messages-avatar/);
+  assert.match(markup, /lucide-bookmark/);
+  assert.match(markup, /data-participant-space-preview-kind="image"/);
+  assert.match(markup, /data-sidebar-image-thumbnail="true"/);
+  assert.match(markup, />Photo</);
+  assert.doesNotMatch(markup, /app-participant-space-row-preview[^>]*>[^<]*Shu Yang/);
 });
