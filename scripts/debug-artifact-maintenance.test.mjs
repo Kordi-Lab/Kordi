@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -153,9 +153,14 @@ test('desktop debug entrypoints share one before-and-after maintenance lifecycle
 test('debug wrapper preserves command status and enforces a temporary target budget', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'kordi-debug-wrapper-'));
   try {
+    const binDir = path.join(temp, 'bin');
     const targetDir = path.join(temp, 'target');
     const cacheDir = path.join(targetDir, 'debug', 'deps');
+    const psPath = path.join(binDir, 'ps');
+    await mkdir(binDir, { recursive: true });
     await mkdir(cacheDir, { recursive: true });
+    await writeFile(psPath, '#!/bin/sh\nexit 0\n');
+    await chmod(psPath, 0o700);
     await writeFile(path.join(cacheDir, 'artifact'), 'cache');
 
     const result = spawnSync(
@@ -166,6 +171,7 @@ test('debug wrapper preserves command status and enforces a temporary target bud
         encoding: 'utf8',
         env: {
           ...process.env,
+          PATH: `${binDir}:${process.env.PATH ?? ''}`,
           CARGO_TARGET_DIR: targetDir,
           KORDI_DEBUG_ARTIFACT_STATE_FILE: path.join(temp, 'state.json'),
           KORDI_DEBUG_ARTIFACT_MAX_GIB: '0',
