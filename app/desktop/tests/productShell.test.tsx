@@ -129,7 +129,6 @@ test('cloud login mode switch keeps the top edge stable and smooths signup secti
 test('cloud login page centers a minimal Codex-style Kordi account view before model provider auth', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
     onSocialSignIn: async () => {},
-    availableSocialProviders: ['google', 'github'],
   }));
 
   // The painted brand mark no longer renders on the login surface.
@@ -230,48 +229,33 @@ test('social buttons surface provider sign-in affordances', () => {
   assert.match(markup, /aria-label="Sign in"/);
 });
 
-test('debug auth capabilities gray unavailable providers and direct developers to email sign-in', () => {
+test('debug capability state cannot hide official social sign-in providers', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
     onSocialSignIn: async () => {},
-    availableSocialProviders: [],
     showDebugAuthDiagnostics: true,
   }));
   const googleButton = markup.match(/<button[^>]*data-provider="google"[^>]*>/)?.[0] ?? '';
   const githubButton = markup.match(/<button[^>]*data-provider="github"[^>]*>/)?.[0] ?? '';
 
   for (const button of [googleButton, githubButton]) {
-    assert.match(button, /disabled=""/);
-    assert.match(button, /data-provider-available="false"/);
-    assert.match(button, /cursor-not-allowed/);
-    assert.match(button, /grayscale/);
+    assert.doesNotMatch(button, /disabled=""/);
+    assert.match(button, /data-provider-available="true"/);
+    assert.doesNotMatch(button, /cursor-not-allowed/);
+    assert.doesNotMatch(button, /grayscale/);
   }
-  assert.match(markup, /Google and GitHub sign-in aren’t available on this server/);
-  assert.match(markup, /Email and password/);
+  assert.doesNotMatch(markup, /Google and GitHub sign-in aren’t available on this server/);
+  assert.doesNotMatch(markup, /data-cloud-social-sign-in-unavailable/);
+  assert.match(markup, />or</);
   assert.doesNotMatch(markup, /KORDI_OAUTH_GOOGLE_CLIENT_ID/);
 });
 
-test('packaged login does not expose debug server capability guidance', () => {
+test('packaged login does not expose server capability guidance', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
     onSocialSignIn: async () => {},
-    availableSocialProviders: [],
   }));
 
   assert.doesNotMatch(markup, /Google and GitHub sign-in aren’t available on this server/);
   assert.doesNotMatch(markup, /data-cloud-social-sign-in-unavailable/);
-});
-
-test('capabilities can enable one social provider without enabling the other', () => {
-  const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
-    onSocialSignIn: async () => {},
-    availableSocialProviders: ['github'],
-  }));
-  const googleButton = markup.match(/<button[^>]*data-provider="google"[^>]*>/)?.[0] ?? '';
-  const githubButton = markup.match(/<button[^>]*data-provider="github"[^>]*>/)?.[0] ?? '';
-
-  assert.match(googleButton, /disabled=""/);
-  assert.match(googleButton, /data-provider-available="false"/);
-  assert.doesNotMatch(githubButton, /disabled=""/);
-  assert.match(githubButton, /data-provider-available="true"/);
 });
 
 test('social buttons render icon marks and no provider text label', () => {

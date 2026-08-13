@@ -73,6 +73,16 @@ Desktop runtime project membership uses the local runtime session DB fields `ses
 
 All session-linked tables use `session_id` as the durable join key. Project joins, delegated exchanges, bridge/audit records, and cache/context rows should connect to the canonical DB by `session_id`; they must not depend on mutable titles.
 
+### Transcript loading and provider readiness
+
+Session identity selection is a renderer-critical path; transcript and model discovery are supporting work. Selecting an uncached local agent session updates the active conversation immediately and shows the shared `Loading chat history…` transcript notice while the authoritative runtime detail loads. The subsequent full desktop state refresh can update session metadata and model options without delaying that first visible response.
+
+Canonical group and contact selections start message-page hydration directly from the click path. The initial page is bounded to 50 newest messages, older pages use the oldest loaded sequence number as their cursor, and background sidebar prefetch remains an optimization rather than a correctness requirement.
+
+Provider connection and chat readiness are intentionally different states. A successful OAuth or API-key mutation refreshes auth state immediately and starts a desktop chat/model refresh in the background, so connected UI does not remain behind a stale model list. Live model catalogs are fetched concurrently across authenticated providers with a four-second best-effort timeout and static registry fallback. Send-time validation still requires a compatible model even when the provider is already connected.
+
+Daily/weekly report scans use read-only child agents over the canonical session-observation runtime. Those child agents receive `search_sessions` and `read_session` explicitly, do not receive shell or file-mutation tools, and must report a missing observation capability instead of falling back to a broad filesystem search. Child processes are killed when their owning runtime is dropped and have a five-minute process limit. This keeps proactive report refresh work isolated from foreground group-message and agent-session loading.
+
 Current additive sync behavior:
 
 - Desktop local chat sessions mirror into canonical `sessions` using the existing runtime session ID as canonical `session.id`.

@@ -45,7 +45,7 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-Development launches reject a missing, invalid, or production API origin. Do not remove or bypass this guard to make a test pass.
+Development launches reject a missing, invalid, or production API origin. Community profiles also use the gray development icon; Product and allowlisted operator previews use the color icon. Do not remove or bypass this guard to make a test pass.
 
 For two independent desktop profiles:
 

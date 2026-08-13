@@ -64,9 +64,9 @@ test('pending Cloud contact selection keeps active conversation on Cloud instead
 
 test('workspace active conversation resolves Cloud self-agent bridge session ids to restored canonical sessions', () => {
   const localConversation = {
-    id: '109fcf23-654c-41a7-bd73-8156b0b89703',
-    canonicalSessionId: '109fcf23-654c-41a7-bd73-8156b0b89703',
-    name: 'Thuwal weather today',
+    id: 'session-local-restored',
+    canonicalSessionId: 'session-local-restored',
+    name: 'Weekly forecast',
     type: 'owned-agent' as const,
     subtitle: 'Local restored self-agent chat',
     unread: 0,
@@ -74,9 +74,9 @@ test('workspace active conversation resolves Cloud self-agent bridge session ids
     trust: 'Owned',
     directness: 'Direct chat',
     participants: ['Me', 'My Kordi'],
-    messages: [{ role: 'user' as const, isOwnMessage: true, text: 'Can anyone relate?', time: '11:27' }],
+    messages: [{ role: 'user' as const, isOwnMessage: true, text: 'Please summarize the forecast.', time: '11:27' }],
   };
-  const cloudBridgeSelection = 'bridge:cloud:acct_me:session:109fcf23-654c-41a7-bd73-8156b0b89703';
+  const cloudBridgeSelection = 'bridge:cloud:acct_me:session:session-local-restored';
 
   const selected = activeConversationForSelection(
     cloudBridgeSelection,
@@ -85,7 +85,7 @@ test('workspace active conversation resolves Cloud self-agent bridge session ids
   );
 
   assert.equal(selected.id, localConversation.id);
-  assert.equal(selected.messages[0]?.text, 'Can anyone relate?');
+  assert.equal(selected.messages[0]?.text, 'Please summarize the forecast.');
 });
 
 test('workspace active conversation keeps selected canonical Cloud session in loading state while hydration catches up', () => {

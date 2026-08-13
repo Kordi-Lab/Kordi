@@ -2,8 +2,12 @@ import Foundation
 import Security
 
 struct KeychainSessionStore {
-    private let service = "ai.kordi.ios"
+    private let service: String
     private let account = "cloud-session-token"
+
+    init(service: String = KordiAppEnvironment.current.keychainService) {
+        self.service = service
+    }
 
     func loadToken() throws -> String? {
         let query: [String: Any] = [

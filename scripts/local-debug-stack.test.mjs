@@ -32,6 +32,7 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
   assert.doesNotMatch(compose, /^\s*-\s*"?(?:5432|6379|4222):/m);
   assert.match(compose, /KORDI_OAUTH_GITHUB_CLIENT_ID: \$\{KORDI_OAUTH_GITHUB_CLIENT_ID:-\}/);
   assert.match(compose, /KORDI_OAUTH_GOOGLE_CLIENT_ID: \$\{KORDI_OAUTH_GOOGLE_CLIENT_ID:-\}/);
+  assert.match(compose, /kordi-beta:\/\/oauth\/callback/);
   assert.doesNotMatch(compose, /KORDI_CHAT_SYNC_V2_ENABLED|CHAT_SYNC_V2_DISABLED/);
   assert.match(compose, /KORDI_CLOUD_API_BASE: http:\/\/cloud-server:17081/);
   for (const port of [1420, 1422, 1482, 1484, 1486]) {
@@ -317,6 +318,82 @@ test('operator debug launcher rejects other GitHub accounts and exports no datab
       readFileSync(capturePath, 'utf8').trim(),
       'https://kordi.ai|operator|1|||||',
     );
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('remote development launcher binds the IAP tunnel and desktop to one verified lifecycle', () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), 'kordi-remote-dev-test-'));
+  const binDir = join(tempRoot, 'bin');
+  const allowlistPath = join(tempRoot, 'operator-github-allowlist.txt');
+  const tunnelReadyPath = join(tempRoot, 'tunnel-ready');
+  const gcloudCapturePath = join(tempRoot, 'gcloud.txt');
+  const desktopCapturePath = join(tempRoot, 'desktop.txt');
+  const scriptPath = join(repoRoot, 'scripts', 'dev-cloud-remote.sh');
+  try {
+    mkdirSync(binDir);
+    writeFileSync(join(binDir, 'gh'), '#!/bin/sh\nprintf \'%s\\n\' "$TEST_GITHUB_LOGIN"\n');
+    writeFileSync(
+      join(binDir, 'gcloud'),
+      '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" > "$TEST_GCLOUD_CAPTURE"\n: > "$TEST_TUNNEL_READY"\ntrap \'exit 0\' TERM INT\nwhile true; do sleep 1; done\n',
+    );
+    writeFileSync(
+      join(binDir, 'curl'),
+      '#!/usr/bin/env bash\nurl="${@: -1}"\n[[ -f "$TEST_TUNNEL_READY" ]] || exit 7\ncase "$url" in\n  */health) printf \'{"ok":true,"server":"kordi-cloud"}\\n\' ;;\n  */v1/cloud/auth/capabilities) printf \'{"password":true,"oauthProviders":["google","github"]}\\n\' ;;\n  *) exit 22 ;;\nesac\n',
+    );
+    writeFileSync(
+      join(binDir, 'pnpm'),
+      '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*|$VITE_KORDI_CLOUD_API_BASE|$VITE_KORDI_DEV_PROFILE|${DATABASE_URL:-}|${KORDI_OAUTH_GOOGLE_CLIENT_SECRET:-}|${KORDI_CLOUD_GCP_PROJECT:-}" > "$TEST_DESKTOP_CAPTURE"\n',
+    );
+    for (const command of ['gh', 'gcloud', 'curl', 'pnpm']) {
+      chmodSync(join(binDir, command), 0o755);
+    }
+    writeFileSync(allowlistPath, 'example-maintainer\n');
+
+    const env = {
+      ...process.env,
+      PATH: `${binDir}:${process.env.PATH ?? ''}`,
+      KORDI_REMOTE_DEV_GITHUB_ALLOWLIST_FILE: allowlistPath,
+      KORDI_DEV_GCP_PROJECT: 'example-project',
+      KORDI_DEV_SSH_ZONE: 'example-zone',
+      KORDI_DEV_SSH_TARGET: 'example-user@example-instance',
+      KORDI_DEV_DESKTOP_PROFILE: 'remote-isolated',
+      KORDI_DEV_DESKTOP_TITLE: 'Kordi Remote Dev',
+      KORDI_DEV_DESKTOP_PORT: '1498',
+      TEST_GITHUB_LOGIN: 'example-maintainer',
+      TEST_TUNNEL_READY: tunnelReadyPath,
+      TEST_GCLOUD_CAPTURE: gcloudCapturePath,
+      TEST_DESKTOP_CAPTURE: desktopCapturePath,
+      DATABASE_URL: 'postgresql://must-not-reach-desktop',
+      KORDI_OAUTH_GOOGLE_CLIENT_SECRET: 'must-not-reach-desktop',
+      KORDI_CLOUD_GCP_PROJECT: 'must-not-reach-desktop',
+    };
+    const launched = spawnSync('bash', [scriptPath], {
+      cwd: repoRoot,
+      env,
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(launched.status, 0, launched.stderr);
+    const gcloudArgs = readFileSync(gcloudCapturePath, 'utf8');
+    assert.match(gcloudArgs, /compute ssh example-user@example-instance/);
+    assert.match(gcloudArgs, /--project example-project/);
+    assert.match(gcloudArgs, /--zone example-zone/);
+    assert.match(gcloudArgs, /--tunnel-through-iap/);
+    assert.match(gcloudArgs, /-L 127\.0\.0\.1:17081:127\.0\.0\.1:17081/);
+    assert.equal(
+      readFileSync(desktopCapturePath, 'utf8').trim(),
+      'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --port 1498|http://127.0.0.1:17081|community|||',
+    );
+    assert.match(launched.stdout, /Verified Google and GitHub OAuth/);
+
+    const packageJson = read('package.json');
+    const guide = read('docs/development-environments.md');
+    assert.match(packageJson, /"dev:cloud:remote": "bash scripts\/dev-cloud-remote\.sh"/);
+    assert.match(guide, /pnpm dev:cloud:remote/);
+    assert.match(guide, /KORDI_DEV_GCP_PROJECT="<DEV_GCP_PROJECT>"/);
+    assert.doesNotMatch(guide, /example-project|example-instance/);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

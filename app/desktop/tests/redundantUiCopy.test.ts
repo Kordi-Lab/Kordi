@@ -87,8 +87,4 @@ test('copy cleanup preserves operational guidance and recovery states', () => {
   assert.match(readSource('pages/ChatCreateDialog.tsx'), /Select at least 2 contacts\./);
   assert.match(readSource('pages/SessionActionOverlays.tsx'), /Use a folder path without spaces\./);
   assert.match(readSource('pages/chatsPage.mainWorkspace.tsx'), /No provider connected yet/);
-  assert.match(
-    readSource('kordi-app/cloud/CloudSocialUnavailableNotice.tsx'),
-    /Google and GitHub sign-in aren’t available on this server\. Use email and password\./,
-  );
 });

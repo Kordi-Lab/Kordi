@@ -1,30 +1,38 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-import { commitDesktopSessionSelectionAfterTranscriptReady } from '../src/features/chat/desktopSessionSelection';
+import { selectDesktopSessionAndPreloadTranscript } from '../src/features/chat/desktopSessionSelection';
 
-test('uncached desktop session selection waits for authoritative transcript preload', async () => {
+test('uncached desktop session selection commits before authoritative transcript preload finishes', async () => {
   const events: string[] = [];
+  let releasePreload = () => {};
+  const preloadPending = new Promise<void>((resolve) => {
+    releasePreload = resolve;
+  });
 
-  const committed = await commitDesktopSessionSelectionAfterTranscriptReady({
+  const committedPromise = selectDesktopSessionAndPreloadTranscript({
     sessionId: 'session-1',
     isTranscriptCached: () => false,
     preloadTranscript: async (sessionId) => {
       events.push(`preload:${sessionId}`);
+      await preloadPending;
       return true;
     },
     isSelectionCurrent: () => true,
     selectSession: (sessionId) => events.push(`select:${sessionId}`),
   });
 
+  await Promise.resolve();
+  assert.deepEqual(events, ['select:session-1', 'preload:session-1']);
+  releasePreload();
+  const committed = await committedPromise;
   assert.equal(committed, true);
-  assert.deepEqual(events, ['preload:session-1', 'select:session-1']);
 });
 
 test('cached desktop session selection commits without another preload', async () => {
   const events: string[] = [];
 
-  const committed = await commitDesktopSessionSelectionAfterTranscriptReady({
+  const committed = await selectDesktopSessionAndPreloadTranscript({
     sessionId: 'session-1',
     isTranscriptCached: () => true,
     preloadTranscript: async () => {
@@ -42,7 +50,7 @@ test('cached desktop session selection commits without another preload', async (
 test('stale desktop session selection cannot replace a newer click', async () => {
   const events: string[] = [];
 
-  const committed = await commitDesktopSessionSelectionAfterTranscriptReady({
+  const committed = await selectDesktopSessionAndPreloadTranscript({
     sessionId: 'session-1',
     isTranscriptCached: () => false,
     preloadTranscript: async () => {
@@ -54,13 +62,13 @@ test('stale desktop session selection cannot replace a newer click', async () =>
   });
 
   assert.equal(committed, false);
-  assert.deepEqual(events, ['preload']);
+  assert.deepEqual(events, []);
 });
 
 test('failed preload still commits the requested session for refresh error recovery', async () => {
   const events: string[] = [];
 
-  const committed = await commitDesktopSessionSelectionAfterTranscriptReady({
+  const committed = await selectDesktopSessionAndPreloadTranscript({
     sessionId: 'session-1',
     isTranscriptCached: () => false,
     preloadTranscript: async () => {
@@ -72,5 +80,5 @@ test('failed preload still commits the requested session for refresh error recov
   });
 
   assert.equal(committed, true);
-  assert.deepEqual(events, ['preload', 'select:session-1']);
+  assert.deepEqual(events, ['select:session-1', 'preload']);
 });

@@ -418,3 +418,15 @@ test('chat transcript member profile reuses the normal person-chat route', () =>
 
   assert.equal(props.runtime.onMessageContact, startPerson);
 });
+
+test('connected auth hides the auth notice while model discovery is still loading', () => {
+  const props = buildChatsPageProps(baseShellArgs([], {
+    desktopAuthState: {
+      hasAnyAuth: true,
+      providers: [],
+    },
+    chatModelOptions: [],
+  }) as never);
+
+  assert.equal(props.auth.hasAnyAuth, true);
+});

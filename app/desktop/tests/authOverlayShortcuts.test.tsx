@@ -17,6 +17,7 @@ function overlayArgs(overrides: Record<string, unknown> = {}) {
     selectAuthProvider: () => {},
     openLoginFlow: () => {},
     refreshDesktopAuth: async () => {},
+    refreshDesktopChat: async () => {},
     handleSelectAuthChoice: async () => {},
     handleRemoveAuthProfile: async () => {},
     handleLogoutProvider: async () => {},
@@ -41,9 +42,11 @@ test('first-run auth gate receives an enter-chat shortcut handler', () => {
 });
 
 test('inline auth popup renders above account settings modal and keeps enter-chat shortcut handler', () => {
+  const refreshDesktopChat = async () => {};
   const slots = assembleOverlaySlots(overlayArgs({
     showAuthGate: false,
     inlineAuthDialog: { providerId: 'openai', mode: 'api-key' },
+    refreshDesktopChat,
   }) as never);
   const overlay = slots.inlineAuthDialog as never as { props: { children: { props: { className: string; children: { props: Record<string, unknown> } } } } };
   const portalSafeOverlay = overlay.props.children;
@@ -52,6 +55,7 @@ test('inline auth popup renders above account settings modal and keeps enter-cha
   assert.match(portalSafeOverlay.props.className, /fixed inset-0/);
   assert.match(portalSafeOverlay.props.className, /z-\[260\]/);
   assert.equal(typeof popup.props.onEnterChat, 'function');
+  assert.equal(popup.props.onChatStateRefresh, refreshDesktopChat);
 });
 
 test('inline auth popup portals outside the app shell stacking context', () => {

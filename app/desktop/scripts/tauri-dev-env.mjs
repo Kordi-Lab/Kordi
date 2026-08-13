@@ -1,7 +1,26 @@
-import { resolveCloudDevApiBase, resolveCloudDevProfile } from './cloud-dev-endpoint.mjs';
+import {
+  OPERATOR_CLOUD_DEV_PROFILE,
+  resolveCloudDevApiBase,
+  resolveCloudDevProfile,
+} from './cloud-dev-endpoint.mjs';
+
+const DEVELOPMENT_DESKTOP_ICONS = [
+  'icons/icon-dev.png',
+  'icons/icon-dev.icns',
+];
+const PRODUCT_DESKTOP_ICONS = [
+  'icons/icon.png',
+  'icons/icon.icns',
+];
 
 export function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+export function resolveDesktopPreviewIcons(env = process.env) {
+  return resolveCloudDevProfile(env) === OPERATOR_CLOUD_DEV_PROFILE
+    ? PRODUCT_DESKTOP_ICONS
+    : DEVELOPMENT_DESKTOP_ICONS;
 }
 
 export function buildBeforeDevCommand({ title, host, port, env = process.env }) {

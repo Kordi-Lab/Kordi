@@ -95,7 +95,7 @@ From the desktop machine, use the placeholder command in that guide to forward r
 
 ## Start one desktop instance
 
-Launch a named development profile against the local API. This gives the window a separate native account store and disables production updater endpoints:
+Launch a named development profile against the local API. This gives the window a separate native account store, applies the gray development icon, and disables production updater endpoints:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
@@ -280,7 +280,7 @@ Do not patch around the guard. If a shared non-production environment is require
 
 ### OAuth login is unavailable
 
-Password sign-up and login work without third-party OAuth configuration. The desktop reads the server's authentication capabilities, so Google and GitHub buttons appear gray and cannot be clicked when their OAuth credentials are absent. Use email and password for normal local account testing.
+Password sign-up and login work without third-party OAuth configuration. The desktop keeps the Google and GitHub entry points visible so transient capability discovery cannot downgrade a configured Kordi environment. On an intentionally password-only self-hosted server, use email and password; starting an unconfigured provider reports the server error through the normal login error surface.
 
 Google or GitHub login requires separate developer-owned OAuth applications. Never copy the production client ID or secret. Configure these exact loopback callbacks:
 
@@ -288,6 +288,8 @@ Google or GitHub login requires separate developer-owned OAuth applications. Nev
 http://127.0.0.1:17081/v1/cloud/auth/oauth/github/callback
 http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
 ```
+
+The isolated stack also accepts `kordi-beta://oauth/callback` as the final return target for the native `Kordi Beta` app. Do not register that custom scheme with GitHub or Google; their provider callback remains the complete HTTP URL above.
 
 Enter each provider's matching values with the interactive helper. It hides the
 secret while typing, atomically updates the ignored `deploy/dev/.env`, and only

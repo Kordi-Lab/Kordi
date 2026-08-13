@@ -45,6 +45,8 @@ import {
   KORDI_SUPPORT_AGENT_ID,
 } from '@/features/support/supportIdentity';
 
+const CANONICAL_MESSAGE_PAGE_SIZE = 50;
+
 export function resolveCanonicalPageSessionId(
   candidate: string | null | undefined,
   catalogSessionIds: ReadonlySet<string>,
@@ -175,7 +177,7 @@ export function useKordiCanonicalSessionStore({
     const request = fetchCanonicalSessionMessages(
       normalizedSessionId,
       beforeSequenceNum,
-      100,
+      CANONICAL_MESSAGE_PAGE_SIZE,
     )
       .then((page) => {
         if (!page) return null;

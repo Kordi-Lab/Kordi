@@ -1,3 +1,4 @@
+mod child_process_policy;
 pub(crate) mod registry;
 
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
@@ -13,6 +14,8 @@ use kordi_tools::task_operator::models::{
 use kordi_tools::{TaskOperatorFn, TaskOperatorRuntime};
 use registry::{TaskAgentMetadata, TaskAgentRegistry, TaskAgentStatus};
 use tokio::{process::Command, sync::Mutex, task::JoinHandle};
+
+use child_process_policy::{CHILD_AGENT_PROCESS_TIMEOUT, child_agent_tool_names, prompt_context};
 
 const DEFAULT_MAX_LIVE_TASKS: usize = 4;
 const DEFAULT_WAIT_TIMEOUT_MS: u64 = 30_000;
@@ -565,27 +568,23 @@ impl ChildAgentRunner for SubprocessChildAgentRunner {
 
 async fn run_child_process(request: SpawnRequest) -> Result<String> {
     let executable = resolve_kordi_cli_executable()?;
-    let write_scope = if request.write_scope.is_empty() {
-        "read-only".to_string()
-    } else {
-        request.write_scope.join(", ")
-    };
-    let prompt_context = format!(
-        "You are a scoped child task agent. Task path: {}. Task name: {}. Write scope: {}. Stay within this scope and return a concise final report.",
-        request.task_path, request.task_name, write_scope
-    );
-    let output = Command::new(executable)
+    let prompt_context =
+        prompt_context(&request.task_path, &request.task_name, &request.write_scope);
+    let mut command = Command::new(executable);
+    command
+        .kill_on_drop(true)
         .arg("-C")
         .arg(&request.cwd)
         .arg("-p")
         .arg("--no-session")
         .arg("--tools")
-        .arg("read,grep,find,ls,web_fetch,bash,edit,write")
+        .arg(child_agent_tool_names(!request.write_scope.is_empty()))
         .arg("--append-system-prompt")
         .arg(prompt_context)
-        .arg(request.message)
-        .output()
-        .await?;
+        .arg(request.message);
+    let output = tokio::time::timeout(CHILD_AGENT_PROCESS_TIMEOUT, command.output())
+        .await
+        .map_err(|_| anyhow!("child task exceeded the five-minute process limit"))??;
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

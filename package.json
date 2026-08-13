@@ -54,6 +54,7 @@
     "check": "pnpm lint && pnpm typecheck:web && pnpm check:rust",
     "dev:cloud": "pnpm --dir app/desktop tauri:dev:cloud",
     "dev:cloud:operator": "bash scripts/dev-cloud-operator.sh",
+    "dev:cloud:remote": "bash scripts/dev-cloud-remote.sh",
     "dev:cloud:multi": "pnpm --dir app/desktop tauri:dev:multi:cloud",
     "build:cloud": "pnpm --dir app/desktop tauri:build:cloud",
     "debug:cloud:up": "bash scripts/dev-cloud-up.sh",

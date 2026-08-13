@@ -1,6 +1,6 @@
 # Kordi for iPhone
 
-Kordi for iPhone is the native SwiftUI companion to Kordi Desktop. It targets iOS 17 and later and connects to the canonical hosted service at `https://kordi.ai`.
+Kordi for iPhone is the native SwiftUI companion to Kordi Desktop. It targets iOS 17 and later. The production app connects to the canonical hosted service at `https://kordi.ai`; the separately installable Beta app connects only to the isolated loopback development service.
 
 Before any backend-connected development or operator validation, select the correct path in [Development environment isolation](../../docs/development-environments.md). Network-free previews remain the preferred path for isolated interface work.
 
@@ -44,13 +44,15 @@ The phone is a collaboration client, not an agent runtime. Agent requests execut
 
 `project.yml` is the source of truth. The generated `Kordi.xcodeproj` is committed so the app can be opened immediately, but it must be regenerated after target, signing, resource, or build-setting changes.
 
+Choose `Kordi Beta` for backend development and `Kordi` for production checks. They use different bundle identifiers, callback schemes, Keychain and data containers, display names, and icons. The gray Beta icon and colorful production icon can be installed side by side. See [Native iPhone environments](../../docs/development-environments.md#native-iphone-environments) for the exact boundary.
+
 ## Preview without production data
 
 Add `--preview-data` to the Kordi scheme's launch arguments to open the complete mock chat flow without signing in or writing to production. More focused preview arguments are documented in [the iOS development guide](../../docs/ios-development.md#preview-data-and-ui-states).
 
-Without a preview argument, the app uses a real Kordi account and the production service. Use a dedicated test account and never run destructive, load, or throwaway multi-account tests against production.
+Without a preview argument, the selected scheme uses its real backend: `Kordi Beta` uses the isolated loopback service, while `Kordi` uses production. Use a dedicated test account for production checks and never run destructive, load, or throwaway multi-account tests against production.
 
-That client origin does not authorize product-server development. If an operator session will affect or restart the product server, follow the [required environment preflight](../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), work on the corresponding product-server machine, and run the first end-to-end test through `https://coordinar.io`, never `https://kordi.ai`.
+That client origin does not authorize product-server development. If an operator session will affect or restart the product server, follow the [required environment preflight](../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), work on the corresponding product-server machine, and validate through `https://kordi.ai`.
 
 ## Build and test
 

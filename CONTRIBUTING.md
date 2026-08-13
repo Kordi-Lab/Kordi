@@ -30,13 +30,13 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-Development launches fail closed when the API origin is missing, invalid, or points at production. Do not bypass this guard for destructive, load, migration, or throwaway multi-account tests.
+Development launches fail closed when the API origin is missing, invalid, or points at production. The community profile uses a gray app icon; Product and allowlisted operator previews use the color icon. Do not bypass this guard for destructive, load, migration, or throwaway multi-account tests.
 
 The local stack generates its own credentials and stores all test accounts and product data in local Docker volumes. Contributors do not need production SSH, Kubernetes, database, object-store, signing, release, or secret-manager access for normal feature work.
 
 Use [Development environment isolation](docs/development-environments.md) to select the correct local, tunneled development, or product path. Follow [Local development with an isolated Kordi backend](docs/self-hosted-debug.md) for prerequisites, multi-user testing, logs, proxy troubleshooting, validation, and cleanup.
 
-An isolated contributor run does not count as product-server validation. Approved operator work that will affect or restart the product server must follow the [required environment preflight](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), run on the corresponding product-server machine, and use `https://coordinar.io` for the first end-to-end test—never `https://kordi.ai`.
+An isolated contributor run does not count as product-server validation. Approved operator work that will affect or restart the product server must follow the [required environment preflight](docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), run on the corresponding product-server machine, and use `https://kordi.ai` for end-to-end validation.
 
 ## Branch workflow
 

@@ -342,7 +342,7 @@ export function useWorkspaceViewModels({
         canonicalSessionId: session.id,
         localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
         desktopRuntimeBacked: true,
-        desktopRuntimeTranscriptLoaded: hydratedDesktopSessionIds.has(session.id),
+        desktopRuntimeTranscriptLoaded: hydratedDesktopSessionIds.has(session.id) || cachedDesktopSessionSourceMessages[session.id] !== undefined || cachedChatSessionMessages[session.id] !== undefined,
         name: session.title,
         type: 'owned-agent' as const,
         subtitle: buildConversationPreview(messages, session.subtitle),

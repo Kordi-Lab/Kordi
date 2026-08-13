@@ -17,7 +17,7 @@ import {
   isLocalDraftChatConversationId,
   isProjectDraftSessionId,
 } from './draftSessions';
-import { commitDesktopSessionSelectionAfterTranscriptReady } from './desktopSessionSelection';
+import { selectDesktopSessionAndPreloadTranscript } from './desktopSessionSelection';
 
 type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
 
@@ -121,9 +121,20 @@ export function useDesktopSessionController({
     }
 
     if (
-      isLocalDraftChatConversationId(sessionId)
-      || isLegacyCanonicalCollaborationSessionId(sessionId)
+      isLegacyCanonicalCollaborationSessionId(sessionId)
       || isCanonicalCloudSessionId(sessionId)
+    ) {
+      setActiveConvId(sessionId);
+      setDesktopChatError(null);
+      void hydrateCanonicalSessionPage(sessionId).catch((error) => {
+        if (selectionRequestIdRef.current !== requestId) return;
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
+      });
+      return;
+    }
+
+    if (
+      isLocalDraftChatConversationId(sessionId)
       || sessionId.startsWith('bridge:')
     ) {
       setActiveConvId(sessionId);
@@ -132,7 +143,7 @@ export function useDesktopSessionController({
     }
 
     setDesktopChatError(null);
-    const didCommitSelection = await commitDesktopSessionSelectionAfterTranscriptReady({
+    const didCommitSelection = await selectDesktopSessionAndPreloadTranscript({
       sessionId,
       isTranscriptCached: isDesktopSessionTranscriptCached,
       preloadTranscript: preloadDesktopSessionTranscript,
@@ -147,7 +158,7 @@ export function useDesktopSessionController({
       setActiveConvId(sessionId);
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
     }
-  }, [isDesktopSessionTranscriptCached, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [hydrateCanonicalSessionPage, isDesktopSessionTranscriptCached, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleCreateChatSession = useCallback(async () => {
     if (!isNativeShell) return;

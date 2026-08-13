@@ -125,11 +125,20 @@ export function applyCanonicalHydrationPlaceholder(
   selectedConversation: Conversation,
   hydration: SessionHydrationState | undefined,
 ): Conversation {
+  if (
+    selectedConversation.desktopRuntimeBacked
+    && selectedConversation.desktopRuntimeTranscriptLoaded !== true
+    && !isLocalDraftChatConversationId(selectedConversation.id)
+  ) {
+    return {
+      ...selectedConversation,
+      messages: [transcriptLoadingNotice()],
+    };
+  }
   const knownCanonicalMessageCount =
     selectedConversation.canonicalMessageCount;
   if (
-    selectedConversation.desktopRuntimeBacked
-    || typeof knownCanonicalMessageCount !== 'number'
+    typeof knownCanonicalMessageCount !== 'number'
     || knownCanonicalMessageCount <= 0
     || selectedConversation.messages.length > 0
     || (hydration !== 'cold' && hydration !== 'loading')

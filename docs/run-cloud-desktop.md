@@ -57,7 +57,7 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-Development launches fail closed when the API origin is missing, invalid, or points at production. To use an approved public staging or self-hosted API, set that origin explicitly:
+Development launches fail closed when the API origin is missing, invalid, or points at production. The community profile uses the gray development icon, while Product and allowlisted operator previews use the color icon. To use an approved public staging or self-hosted API, set that origin explicitly:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \

@@ -21,7 +21,6 @@ import {
 import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
-import { CloudSocialUnavailableNotice } from './CloudSocialUnavailableNotice';
 import { cloudLoginErrorMessage, PASSWORD_MIN_LENGTH } from './cloudLoginMessages';
 
 // Type scale — one place, applied everywhere. The whole page reads from these.
@@ -258,7 +257,6 @@ export type CloudLoginPageProps = {
     avatarUrl?: string;
   }) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
-  availableSocialProviders?: ReadonlyArray<CloudOAuthProvider>;
   showDebugAuthDiagnostics?: boolean;
 };
 
@@ -272,7 +270,6 @@ export function CloudLoginPage({
   onSignIn = noopSignIn,
   onSignUp = noopSignUp,
   onSocialSignIn,
-  availableSocialProviders,
   showDebugAuthDiagnostics = false,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
@@ -287,11 +284,7 @@ export function CloudLoginPage({
   const [uploadError, setUploadError] = useState<string | undefined>(undefined);
   const uploadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSignup = mode === 'signup';
-  const enabledSocialProviders = availableSocialProviders
-    ?? (onSocialSignIn ? ALL_SOCIAL_PROVIDER_IDS : []);
-  const enabledSocialProviderCount = SOCIAL_LOGIN_PROVIDERS.filter(
-    (provider) => enabledSocialProviders.includes(provider.id),
-  ).length;
+  const enabledSocialProviders = onSocialSignIn ? ALL_SOCIAL_PROVIDER_IDS : [];
 
   useEffect(() => {
     void applyCloudLoginWindowSize(mode);
@@ -470,15 +463,9 @@ export function CloudLoginPage({
           })}
         </div>
 
-        {showDebugAuthDiagnostics && onSocialSignIn && enabledSocialProviderCount === 0 ? (
-          <CloudSocialUnavailableNotice
-            className={`mx-auto mt-3 max-w-[320px] text-center ${TYPE_HINT} normal-case tracking-normal ${INK_MUTED}`}
-          />
-        ) : null}
-
         <div className={`mt-5 flex items-center gap-3 ${TYPE_DIVIDER} ${INK_SUBTLE}`}>
           <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
-          {enabledSocialProviderCount > 0 ? 'or' : 'Email and password'}
+          {onSocialSignIn ? 'or' : 'Email and password'}
           <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
         </div>
 

@@ -36,6 +36,28 @@ test('canonical history hydration keeps an already visible latest message in pla
   assert.deepEqual(loading.messages.map((message) => message.text), ['latest message stays visible']);
 });
 
+test('desktop runtime selection shows a loading notice until its transcript cache is ready', () => {
+  const selected = {
+    id: 'local-runtime-session',
+    name: 'Agent session',
+    type: 'owned-agent' as const,
+    subtitle: 'Previous summary',
+    unread: 0,
+    collaborationSources: ['Local'],
+    trust: 'Owned',
+    directness: 'Agent chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'system' as const, text: 'Session ready', time: '10:00' }],
+    desktopRuntimeBacked: true,
+    desktopRuntimeTranscriptLoaded: false,
+  };
+
+  const loading = applyCanonicalHydrationPlaceholder(selected, undefined);
+
+  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+});
+
 test('selected Agent cache is remapped with current identity metadata before native session loading settles', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
 
