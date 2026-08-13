@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import KordiApp from './KordiApp.tsx'
 import AuthPopup from './AuthPopup.tsx'
+import AttachmentMediaWindow from './AttachmentMediaWindow.tsx'
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false
@@ -23,6 +24,9 @@ function App() {
     const params = new URLSearchParams(window.location.search)
     if (params.get('authPopup') === '1') {
       return <AuthPopup />
+    }
+    if (params.get('mediaPreview') === '1') {
+      return <AttachmentMediaWindow />
     }
   }
 

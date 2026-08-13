@@ -1,5 +1,6 @@
-import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Split } from 'lucide-react';
+import { ChevronDown, ChevronRight, MoreHorizontal, Paperclip, Plus, Split } from 'lucide-react';
 
+import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { isBlankParticipantSpaceSession } from '@/features/chat/participantSpaces';
 import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
@@ -7,6 +8,7 @@ import {
   participantSpaceCanRenameSessions,
   participantSpaceDetailText,
   participantSpaceKindText,
+  participantSpacePreviewAttachment,
   participantSpaceSessionIdLabel,
   participantSpaceSessionMessageCount,
   participantSpaceSessionPreviewLine,
@@ -217,6 +219,10 @@ function ParticipantSpaceRow({
     model.unreadByParticipantSpaceIdWithForkDescendants.get(space.id)
     ?? space.unread;
   const participantSpaceDetail = participantSpaceDetailText(space);
+  const previewAttachment = participantSpacePreviewAttachment(space);
+  const previewThumbnailUrl = previewAttachment?.kind === 'image'
+    ? attachmentPreviewUrl(previewAttachment.attachment)
+    : null;
   const selectPrimarySession = () => {
     const primarySession = space.sessions[0];
     if (!primarySession) return;
@@ -274,12 +280,26 @@ function ParticipantSpaceRow({
             </div>
             <div
               className={cn(
-                'app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]',
+                'app-participant-space-row-preview mt-px flex min-w-0 items-center gap-1 text-[10.5px] leading-[0.98rem]',
                 (isExpanded || (isDirectHuman && isPrimarySessionActive))
                   && 'app-participant-space-row-preview-active',
               )}
+              data-participant-space-preview-kind={previewAttachment?.kind}
             >
-              {space.preview || `${participantSpaceKindText(space)} space`}
+              {previewThumbnailUrl ? (
+                <img
+                  src={previewThumbnailUrl}
+                  alt=""
+                  aria-hidden="true"
+                  data-sidebar-image-thumbnail="true"
+                  className="h-3.5 w-3.5 shrink-0 rounded-[2px] object-cover"
+                />
+              ) : previewAttachment?.kind === 'file' ? (
+                <Paperclip className="h-3 w-3 shrink-0" aria-hidden="true" />
+              ) : null}
+              <span className="min-w-0 truncate">
+                {space.preview || `${participantSpaceKindText(space)} space`}
+              </span>
             </div>
             {participantSpaceDetail ? (
               <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">

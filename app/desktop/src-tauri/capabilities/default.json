@@ -2,10 +2,11 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capability set for the main Kordi window.",
-  "windows": ["main", "auth-popup"],
+  "windows": ["main", "auth-popup", "media-preview"],
   "permissions": [
     "core:default",
     "core:window:allow-create",
+    "core:window:allow-close",
     "core:window:allow-center",
     "core:window:allow-set-min-size",
     "core:window:allow-set-resizable",

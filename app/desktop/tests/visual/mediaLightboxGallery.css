@@ -1,87 +1,61 @@
 html,
 body,
-#root {
+#root,
+.media-lightbox-visual-shell {
+  position: relative;
   width: 100%;
   height: 100%;
   margin: 0;
   overflow: hidden;
+  background: transparent;
 }
 
-.media-lightbox-visual-shell {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  grid-template-columns: 208px 1fr;
-  background: var(--app-main-bg);
-  color: var(--utility-foreground);
+.media-lightbox-visual-shell::before,
+.media-lightbox-visual-shell::after {
+  position: absolute;
+  pointer-events: none;
+  content: "";
 }
 
-.media-lightbox-visual-shell aside {
+.media-lightbox-visual-shell::before {
+  inset: -10% auto -10% -8%;
+  width: 42%;
+  background: #8ea8c4;
+}
+
+.media-lightbox-visual-shell::after {
+  inset: 8% -6% 8% auto;
+  width: 34%;
+  border-radius: 48%;
+  background: #c8a9b9;
+}
+
+body.theme-dark .media-lightbox-visual-shell::before {
+  background: #253b55;
+}
+
+body.theme-dark .media-lightbox-visual-shell::after {
+  background: #4a314f;
+}
+
+html.app-attachment-media-window-root[data-attachment-media-theme="dark"] {
+  background: #0d1015;
+}
+
+html.app-attachment-media-window-root[data-attachment-media-theme="light"] {
+  background: #dbe4ed;
+}
+
+.transcript-image-visual-shell {
   display: flex;
+  min-height: 100%;
   flex-direction: column;
+  align-items: flex-start;
   gap: 18px;
-  padding: 26px 22px;
-  border-right: 1px solid var(--app-divider);
-  background: var(--app-session-bg);
+  padding: 28px;
+  background: #11151b;
 }
 
-.media-lightbox-visual-brand {
-  margin-bottom: 28px;
-  font-size: 24px;
-  font-weight: 650;
-  letter-spacing: -0.035em;
-}
-
-.media-lightbox-visual-shell aside i {
-  width: 138px;
-  height: 11px;
-  border-radius: 6px;
-  background: var(--app-control-bg);
-}
-
-.media-lightbox-visual-shell section {
-  padding: 30px 38px;
-}
-
-.media-lightbox-visual-shell header {
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--app-divider);
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.media-lightbox-visual-message {
-  width: min(58%, 560px);
-  height: 76px;
-  margin-top: 34px;
-  border-radius: 16px;
-}
-
-.media-lightbox-visual-message-peer {
-  background: var(--app-chat-bubble-peer-bg);
-}
-
-.media-lightbox-visual-message-own {
-  margin-left: auto;
-  background: var(--app-chat-bubble-user-bg);
-}
-
-@media (max-width: 760px) {
-  .media-lightbox-visual-shell {
-    grid-template-columns: 72px 1fr;
-  }
-
-  .media-lightbox-visual-shell aside {
-    padding-inline: 16px;
-  }
-
-  .media-lightbox-visual-brand,
-  .media-lightbox-visual-shell aside i {
-    width: 36px;
-    overflow: hidden;
-  }
-
-  .media-lightbox-visual-shell section {
-    padding-inline: 24px;
-  }
+.transcript-image-visual-shell section {
+  width: 100%;
 }

@@ -1,3 +1,5 @@
+import { Bookmark } from 'lucide-react';
+
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { WorkspaceSidebarParticipantSpace as ParticipantSpaceItem } from '@/pages/workspaceSidebar.types';
 
@@ -6,6 +8,17 @@ export function ParticipantSpaceAvatarStack({
 }: {
   space: ParticipantSpaceItem;
 }) {
+  if (space.kind === 'self') {
+    return (
+      <span
+        className="app-saved-messages-avatar grid h-9 w-9 shrink-0 place-items-center rounded-full"
+        aria-hidden="true"
+      >
+        <Bookmark className="h-[1.15rem] w-[1.15rem]" strokeWidth={2} />
+      </span>
+    );
+  }
+
   const avatars =
     space.avatarStack.length > 0
       ? space.avatarStack
@@ -13,7 +26,7 @@ export function ParticipantSpaceAvatarStack({
         {
           kind: space.kind === 'direct-agent' ? ('agent' as const) : ('human' as const),
           seed: space.id,
-          isSelf: space.kind === 'self',
+          isSelf: false,
           imageUrl: null,
         },
       ];

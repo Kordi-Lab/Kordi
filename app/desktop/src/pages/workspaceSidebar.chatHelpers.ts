@@ -1,4 +1,5 @@
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
+import { attachmentOnlyMessagePreview } from '@/features/chat/participantConversationState';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { isGroupForkSession } from '@/features/chat/forkLineage';
 import type { Conversation } from '@/kordi-app/types';
@@ -61,7 +62,11 @@ export function participantSpaceSessionMessageCount(
     return Math.max(0, canonicalCount);
   }
   const visibleMessages = session.conversation.messages.filter(
-    (message) => message.role !== 'system' && message.text.trim().length > 0,
+    (message) => message.role !== 'system' && (
+      message.text.trim().length > 0
+      || (message.attachments?.length ?? 0) > 0
+      || Boolean(message.turn?.assistantText.trim())
+    ),
   ).length;
   return visibleMessages + (session.conversation.queuedMessages?.length ?? 0);
 }
@@ -139,4 +144,21 @@ export function participantSpaceDetailText(space: ParticipantSpaceItem) {
     return `Group • ${peopleText}${sessionText}`;
   }
   return `Agent • ${sessionText}`;
+}
+
+export function participantSpacePreviewAttachment(
+  space: ParticipantSpaceItem,
+) {
+  const messages = space.sessions[0]?.conversation.messages ?? [];
+  const latestMessage = messages[messages.length - 1];
+  const preview = attachmentOnlyMessagePreview(latestMessage);
+  if (!preview) return null;
+  const attachments = latestMessage?.attachments ?? [];
+  const attachment = preview.kind === 'image'
+    ? attachments.find((candidate) => (
+      candidate.kind === 'image'
+      || candidate.mimeType?.toLowerCase().startsWith('image/')
+    ))
+    : attachments[0];
+  return attachment ? { attachment, kind: preview.kind } : null;
 }

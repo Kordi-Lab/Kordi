@@ -139,6 +139,12 @@ export function buildMessagePreview(message: Message) {
   }
 
   if (attachments.length === 1) {
+    if (
+      attachments[0].kind === 'image'
+      || attachments[0].mimeType?.toLowerCase().startsWith('image/')
+    ) {
+      return 'Photo';
+    }
     return `Attached ${attachments[0].name}`;
   }
 

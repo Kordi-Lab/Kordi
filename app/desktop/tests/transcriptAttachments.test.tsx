@@ -7,9 +7,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import * as transcriptAttachmentsModule from '../src/kordi-app/components/transcriptAttachments';
+import { attachmentPreviewIdentity } from '../src/features/chat/attachmentMediaGallery';
 import {
-  CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY,
-  loadVisibleCloudAttachmentPreview,
   resetCloudAttachmentPreviewLoader,
 } from '../src/features/cloud/cloudAttachments';
 import { __setSessionBackendForTests, type SessionStorageBackend } from '../src/features/cloud/session';
@@ -17,13 +16,15 @@ import {
   AttachmentPreview,
   attachmentImageForegroundToneFromRgba,
   attachmentImageDeliveryVisual,
-  attachmentPreviewIdentity,
   shouldCloseAttachmentContextMenuForTarget,
 } from '../src/kordi-app/components/transcriptAttachments';
 import type { Message, MessageAttachment } from '../src/kordi-app/types';
 
 function installDom() {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    pretendToBeVisual: true,
+    url: 'http://127.0.0.1:1420/',
+  });
   const target = globalThis as typeof globalThis & Record<string, unknown>;
   const replacements: Record<string, unknown> = {
     window: dom.window,
@@ -247,9 +248,18 @@ test('attachment image preview identity changes when its remote preview is repla
 
 test('image attachments render as clickable lightweight previews without heavy footer banner', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
+  const stylesheet = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
 
   assert.match(markup, /data-attachment-image-card="true"/);
   assert.match(markup, /data-attachment-image-preview-trigger="true"/);
+  assert.match(markup, /data-attachment-image-count="1"/);
+  assert.doesNotMatch(markup, /rounded-\[15px\]|rounded-\[20px\]/);
+  assert.ok((markup.match(/rounded-\[16px\]/g) ?? []).length >= 4);
+  assert.match(markup, /w-fit auto-rows-auto/);
+  assert.match(markup, /inline-flex h-auto w-auto max-w-full rounded-\[16px\]/);
+  assert.match(markup, /max-h-\[320px\] max-w-full rounded-\[16px\] object-contain/);
+  assert.doesNotMatch(markup, /max-h-\[320px\] object-contain/);
+  assert.match(stylesheet, /\.app-attachment-image-collage\s*{[^}]*border-radius:\s*1rem;/s);
   assert.doesNotMatch(markup, /app-attachment-image-footer/);
   assert.doesNotMatch(markup, /bg-black\/10/);
   assert.match(markup, /Screenshot 2026-05-20\.png/);
@@ -262,6 +272,8 @@ test('multiple image attachments render as a banner-free collage', () => {
   assert.match(markup, /data-attachment-image-count="3"/);
   assert.match(markup, /app-attachment-image-tile/);
   assert.match(markup, /max-w-\[min\(100%,29rem\)\]/);
+  assert.doesNotMatch(markup, /rounded-\[15px\]|rounded-\[20px\]/);
+  assert.equal((markup.match(/rounded-\[16px\]/g) ?? []).length, 1);
   assert.doesNotMatch(markup, /backdrop-blur-xl/);
   assert.doesNotMatch(markup, /ring-white/);
   assert.doesNotMatch(markup, /bg-white\//);
@@ -592,13 +604,15 @@ test('attachment image cards release remote preview leases on cleanup and image 
   assert.match(imageCard, /onError=\{\(\) => \{[\s\S]*?previewLeaseRef\.current\?\.release\(\)/);
 });
 
-test('an evicted remote preview stays alive for its open lightbox until the lightbox closes', async () => {
+test('detached media preview receives the active remote image URL before releasing its temporary lease', async () => {
   const installedDom = installDom();
   const originalFetch = globalThis.fetch;
   const originalCreateObjectUrl = URL.createObjectURL;
   const originalRevokeObjectUrl = URL.revokeObjectURL;
+  const originalOpen = window.open;
   const created: string[] = [];
   const revoked: string[] = [];
+  let openedUrl = '';
   let root: Root | null = null;
   const sessionBackend: SessionStorageBackend = {
     async load() {
@@ -618,6 +632,10 @@ test('an evicted remote preview stays alive for its open lightbox until the ligh
       return previewUrl;
     };
     URL.revokeObjectURL = (previewUrl) => revoked.push(previewUrl);
+    window.open = ((url?: string | URL) => {
+      openedUrl = String(url ?? '');
+      return { focus() {} } as Window;
+    }) as typeof window.open;
 
     const host = document.createElement('div');
     document.body.append(host);
@@ -643,45 +661,19 @@ test('an evicted remote preview stays alive for its open lightbox until the ligh
     await act(async () => {
       trigger.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
     });
-    assert.equal(document.querySelector('[data-attachment-image-lightbox="true"] img')?.getAttribute('src'), created[0]);
-
-    const fillerClient = { async downloadAttachmentContent() { return new Blob(['filler']); } };
-    for (let index = 0; index < CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
-      const lease = await loadVisibleCloudAttachmentPreview({
-        token: 'token',
-        client: fillerClient,
-        attachment: { attachmentId: `filler-${index}`, kind: 'image' },
-      });
-      lease?.release();
-    }
-    assert.equal(revoked.includes(created[0] ?? ''), false, 'mounted card must keep its evicted URL alive');
-
-    const replacementMessage: Message = {
-      ...remoteMessage,
-      attachments: [{
-        ...remoteMessage.attachments?.[0],
-        attachmentId: 'replacement-preview',
-        name: 'Replacement.png',
-        previewUrl: 'https://files.test/replacement.png',
-      }],
-    };
-    await act(async () => root?.render(createElement(AttachmentPreview, { msg: replacementMessage })));
     await flushReactUpdates();
-
-    assert.equal(document.querySelector('[data-attachment-image-lightbox="true"] img')?.getAttribute('src'), created[0]);
-    assert.equal(revoked.includes(created[0] ?? ''), false, 'open lightbox must outlive the replaced card');
-
-    const backdrop = document.querySelector<HTMLDivElement>('[data-attachment-image-lightbox="true"]');
-    assert.ok(backdrop);
-    await act(async () => {
-      backdrop.dispatchEvent(new installedDom.dom.window.MouseEvent('pointerdown', { bubbles: true }));
-    });
-    assert.equal(revoked.filter((previewUrl) => previewUrl === created[0]).length, 1);
+    const requestId = new URL(openedUrl).searchParams.get('mediaPreviewRequest');
+    assert.ok(requestId);
+    const payload = JSON.parse(window.localStorage.getItem(`kordi:attachment-media:${requestId}`) ?? '');
+    assert.equal(payload.initialPreviewUrl, created[0]);
+    assert.equal(payload.attachments[0]?.attachmentId, 'remote-preview');
+    assert.equal(revoked.includes(created[0] ?? ''), false, 'the mounted image card still owns the active URL');
   } finally {
     if (root) await act(async () => root?.unmount());
     resetCloudAttachmentPreviewLoader();
     __setSessionBackendForTests(null);
     globalThis.fetch = originalFetch;
+    window.open = originalOpen;
     URL.createObjectURL = originalCreateObjectUrl;
     URL.revokeObjectURL = originalRevokeObjectUrl;
     installedDom.restore();

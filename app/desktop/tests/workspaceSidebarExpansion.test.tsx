@@ -60,8 +60,8 @@ test('WorkspaceSidebar auto-expands an active space without replacing its other 
     initialSelectedParticipantSpaceId: null,
   }) as never));
 
-  assert.match(markup, /My chats/);
-  assert.match(markup, /aria-label="Expand My chats"/);
+  assert.match(markup, /Saved Messages/);
+  assert.match(markup, /aria-label="Expand Saved Messages"/);
   assert.match(markup, /# Reviewer/);
   assert.match(markup, /# Old note/);
 });
@@ -107,7 +107,7 @@ test('WorkspaceSidebar auto-expanded group keeps every sibling session visible',
   assert.match(markup, /# hiiiii/);
 });
 
-test('WorkspaceSidebar explicit expansion shows all sessions in the active My chats space', () => {
+test('WorkspaceSidebar explicit expansion shows all sessions in the active Saved Messages space', () => {
   const chatConversations = [
     conversation({
       id: 'session:self-agent:old-note',
@@ -148,7 +148,7 @@ test('WorkspaceSidebar explicit expansion shows all sessions in the active My ch
     initialSelectedParticipantSpaceId: notesSpace?.id,
   }) as never));
 
-  assert.match(markup, /aria-label="Collapse My chats"/);
+  assert.match(markup, /aria-label="Collapse Saved Messages"/);
   assert.match(markup, /# Reviewer/);
   assert.match(markup, /# Old note/);
 });

@@ -66,6 +66,26 @@
   transform-origin: 8% 100%;
 }
 
+.app-message-media-only {
+  --app-message-media-edge-offset: var(--app-message-bubble-tail-width, 8px);
+}
+
+.app-message-media-only-own {
+  transform: translateX(var(--app-message-media-edge-offset));
+}
+
+.app-message-media-only-peer {
+  transform: translateX(calc(-1 * var(--app-message-media-edge-offset)));
+}
+
+.app-message-media-only-own .app-attachment-image-collage {
+  align-self: flex-end;
+}
+
+.app-message-media-only-peer .app-attachment-image-collage {
+  align-self: flex-start;
+}
+
 .app-message-bubble-shape {
   position: absolute;
   top: 0;
@@ -210,6 +230,10 @@
     animation: none;
     opacity: 0.52;
   }
+}
+
+.app-attachment-image-collage {
+  border-radius: 1rem;
 }
 
 .app-attachment-image-card {

@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Split } from 'lucide-react';
 
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { collectConversationImageAttachments } from '@/features/chat/attachmentMediaGallery';
 import { transcriptTimeSeparatorLabels } from '@/features/chat/transcriptTimestamps';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
@@ -133,6 +134,10 @@ export function useChatTranscriptViewport({
     () => transcriptTimeSeparatorLabels(transcriptMessages),
     [transcriptMessages],
   );
+  const imageGallery = useMemo(
+    () => collectConversationImageAttachments(transcriptMessages),
+    [transcriptMessages],
+  );
 
   return useMemo(() => (
     <VirtualTranscript
@@ -166,6 +171,7 @@ export function useChatTranscriptViewport({
           ) : null}
           <MessageBubble
             msg={msg}
+            imageGallery={imageGallery}
             onOpenSource={onOpenSource}
             onOpenArtifact={onOpenArtifact}
             onOpenAuthSettings={onOpenAuthSettings}
@@ -241,6 +247,7 @@ export function useChatTranscriptViewport({
     handleLoadOlderMessages,
     hasOlderMessages,
     isCompressionActive,
+    imageGallery,
     isMessageSelectable,
     messageForksByEntryId,
     navigationRequest,

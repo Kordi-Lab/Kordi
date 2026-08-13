@@ -47,6 +47,7 @@ import type {
   ConversationType,
   EditFilePreview,
   Message,
+  MessageAttachment,
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -707,6 +708,7 @@ function MessageBubbleView({
   onOpenSenderProfile,
   onForkMessage,
   messageForks,
+  imageGallery,
   onOpenForkSession,
   onReplyMessage,
   onForwardMessage,
@@ -739,6 +741,7 @@ function MessageBubbleView({
   onOpenSenderProfile?: (message: Message, anchorRect: DOMRect) => void;
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
+  imageGallery?: readonly MessageAttachment[];
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
@@ -1255,6 +1258,9 @@ function MessageBubbleView({
         ) : null}
         <div
           data-message-context-menu-anchor="true"
+          data-message-media-side={hasOnlyImageAttachments
+            ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined
+            : undefined}
           data-message-sender-profile-trigger={canOpenSenderProfile ? 'true' : undefined}
           data-transcript-density={compactDensity}
           onClick={(event) => {
@@ -1273,6 +1279,8 @@ function MessageBubbleView({
           }}
           className={cn(
           'app-message-hover-time-trigger min-w-0',
+          hasOnlyImageAttachments && isOwnHumanMessage ? 'app-message-media-only app-message-media-only-own' : '',
+          hasOnlyImageAttachments && isPeerHumanMessage ? 'app-message-media-only app-message-media-only-peer' : '',
           canOpenSenderProfile ? 'cursor-pointer' : '',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
@@ -1355,6 +1363,7 @@ function MessageBubbleView({
                 {hasAttachments ? (
                   <AttachmentPreview
                     msg={msg}
+                    imageGallery={imageGallery}
                     imageDeliveryStatus={hasOnlyImageAttachments && isOwnHumanMessage ? deliveryStatus : null}
                     onRetryImage={hasOnlyImageAttachments && isOwnHumanMessage && deliveryVisual?.tone === 'red' && onRetryMessage
                       ? () => onRetryMessage(msg)
@@ -1383,7 +1392,7 @@ function MessageBubbleView({
         ) : (
           <>
             <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-              {hasAttachments ? <AttachmentPreview msg={msg} imageDeliveryStatus={null} /> : null}
+              {hasAttachments ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
               {hasText ? <MarkdownContent text={msg.text} showLinkIcons copySurface="message" /> : null}
             </div>
             {(msg.statusChips?.length || footerDetail) ? (
@@ -1440,6 +1449,7 @@ export const MessageBubble = memo(
     && previous.onSelectionDragEnd === next.onSelectionDragEnd
     && previous.plainAgentResponse === next.plainAgentResponse
     && previous.messageForks === next.messageForks
+    && previous.imageGallery === next.imageGallery
     && previous.densityMode === next.densityMode
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext

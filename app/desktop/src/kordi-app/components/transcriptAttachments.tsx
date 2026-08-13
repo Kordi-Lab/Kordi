@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { Check, CheckCheck, Download, ExternalLink, Image, LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  attachmentMediaGalleryIndex,
+  attachmentPreviewIdentity,
+  attachmentPreviewUrl,
+  isLargeAttachment,
+  shouldPreviewAttachmentInline,
+} from '@/features/chat/attachmentMediaGallery';
+import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
@@ -14,14 +21,11 @@ import {
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
-import { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
 import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
 
-const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
-const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
 const ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS = 30_000;
 const recoveredAttachmentPreviewUrls = new Map<string, string>();
 const recoveringAttachmentPreviewPromises = new Map<string, Promise<string | null>>();
@@ -29,32 +33,6 @@ const attachmentPreviewRecoveryRetryAfter = new Map<string, number>();
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
-}
-
-function isInternalObjectStoreUrl(value?: string | null) {
-  if (!value) return false;
-  try {
-    return new URL(value).hostname === 'minio.kordi-cloud.svc.cluster.local';
-  } catch {
-    return value.includes('minio.kordi-cloud.svc.cluster.local');
-  }
-}
-
-export function attachmentPreviewIdentity(attachment: MessageAttachment) {
-  return [
-    attachment.attachmentId ?? '',
-    attachment.previewAttachmentId ?? '',
-    attachment.localPath ?? '',
-    attachment.previewUrl ?? '',
-    attachment.name ?? '',
-    attachment.sizeBytes ?? '',
-  ].join(':');
-}
-
-function safeAttachmentPreviewUrl(value?: string | null) {
-  const trimmed = value?.trim() ?? '';
-  if (!trimmed || isInternalObjectStoreUrl(trimmed)) return undefined;
-  return trimmed;
 }
 
 function recoverableAttachmentId(attachment: MessageAttachment) {
@@ -127,44 +105,6 @@ export async function recoverAttachmentPreviewOnce(
   })();
   recoveringAttachmentPreviewPromises.set(attachmentId, promise);
   return promise;
-}
-
-function attachmentPreviewUrl(attachment: MessageAttachment) {
-  if (!shouldPreviewAttachmentInline(attachment)) return undefined;
-  const previewUrl = safeAttachmentPreviewUrl(attachment.previewUrl);
-  if (previewUrl) return previewUrl;
-  if (attachment.localPath && isNativeShell() && !isLargeAttachment(attachment)) {
-    try {
-      return convertFileSrc(attachment.localPath);
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
-}
-
-function attachmentExtension(attachment: MessageAttachment) {
-  const candidate = attachment.name || attachment.localPath || '';
-  const match = candidate.match(/\.([A-Za-z0-9]+)$/);
-  return match?.[1]?.toLowerCase() ?? '';
-}
-
-function isArchiveAttachment(attachment: MessageAttachment) {
-  return ARCHIVE_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
-}
-
-function isLargeAttachment(attachment: MessageAttachment) {
-  return typeof attachment.sizeBytes === 'number' && attachment.sizeBytes > INLINE_ATTACHMENT_PREVIEW_MAX_BYTES;
-}
-
-function shouldPreviewAttachmentInline(attachment: MessageAttachment) {
-  return attachment.kind === 'image'
-    && !isArchiveAttachment(attachment)
-    && (
-      !isLargeAttachment(attachment)
-      || Boolean(attachment.previewAttachmentId)
-      || Boolean(safeAttachmentPreviewUrl(attachment.previewUrl))
-    );
 }
 
 function formatAttachmentSize(sizeBytes?: number | null) {
@@ -338,7 +278,7 @@ function PortalLayer({ children }: { children: ReactNode }) {
   return createPortal(children, document.body);
 }
 
-type AttachmentContextMenuState = {
+export type AttachmentContextMenuState = {
   attachment: MessageAttachment;
   x: number;
   y: number;
@@ -354,7 +294,7 @@ export function shouldCloseAttachmentContextMenuForTarget(menuElement: Attachmen
   return !menuElement.contains(target as Node);
 }
 
-function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMenuState; onClose: () => void }) {
+export function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMenuState; onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -626,7 +566,7 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
     <div
       data-attachment-image-loading="true"
       aria-label="Loading attached image"
-      className={cn('relative flex h-full min-h-28 aspect-[4/3] overflow-hidden rounded-[15px] bg-black/[0.035]', className)}
+      className={cn('relative flex h-full min-h-28 aspect-[4/3] overflow-hidden bg-black/[0.035]', className)}
     >
       <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
       <span className="sr-only">Loading attached image</span>
@@ -634,11 +574,14 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   );
 }
 
-function AttachmentImageUnavailableSurface({ attachment }: { attachment: MessageAttachment }) {
+function AttachmentImageUnavailableSurface({ attachment, className }: {
+  attachment: MessageAttachment;
+  className?: string;
+}) {
   return (
     <div
       data-attachment-image-unavailable="true"
-      className="app-attachment-image-fallback flex h-full min-h-28 aspect-[4/3] items-center gap-3 rounded-[15px] bg-black/[0.045] px-3 py-2.5"
+      className={cn('app-attachment-image-fallback flex h-full min-h-28 aspect-[4/3] items-center gap-3 bg-black/[0.045] px-3 py-2.5', className)}
       role="status"
     >
       <div className="app-attachment-image-fallback-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.06]">
@@ -653,8 +596,8 @@ function AttachmentImageUnavailableSurface({ attachment }: { attachment: Message
   );
 }
 
-function imageTileClass(index: number, totalCount: number) {
-  if (totalCount <= 1) return 'col-span-6 row-span-3';
+function imageTileClass(index: number, totalCount: number, intrinsicSingleImage = false) {
+  if (totalCount <= 1) return intrinsicSingleImage ? 'col-span-6' : 'col-span-6 row-span-3';
   if (totalCount === 2) return 'col-span-3 row-span-3';
   if (totalCount === 3) return index === 0 ? 'col-span-6 row-span-2' : 'col-span-3 row-span-2';
   if (totalCount === 4) return 'col-span-3 row-span-2';
@@ -702,6 +645,7 @@ function AttachmentImageCard({
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
+  const intrinsicSingleImage = singleImage && showImage;
   const showOriginalAction = showImage && isLargeAttachment(attachment);
 
   useEffect(() => {
@@ -769,7 +713,11 @@ function AttachmentImageCard({
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
       data-attachment-image-context-target="true"
-      className={cn('app-attachment-image-card app-attachment-image-tile relative overflow-hidden bg-transparent', imageTileClass(index, totalCount))}
+      className={cn(
+        'app-attachment-image-card app-attachment-image-tile relative overflow-hidden bg-transparent',
+        intrinsicSingleImage ? 'w-fit max-w-full justify-self-start rounded-[16px]' : singleImage ? 'rounded-[16px]' : '',
+        imageTileClass(index, totalCount, intrinsicSingleImage),
+      )}
       onContextMenu={(event) => onOpenContextMenu(attachment, event)}
     >
       {showImage && previewUrl ? (
@@ -785,17 +733,24 @@ function AttachmentImageCard({
             index,
             event.currentTarget,
           )}
-          className="group relative block h-full w-full overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20"
+          className={cn(
+            'group relative overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20',
+            intrinsicSingleImage ? 'inline-flex h-auto w-auto max-w-full rounded-[16px]' : 'block h-full w-full',
+          )}
           aria-label={`Preview ${attachment.name || 'attached image'}`}
         >
-          {!imageLoaded ? <AttachmentImageLoadingSurface className="absolute inset-0" /> : null}
+          {!imageLoaded ? (
+            <AttachmentImageLoadingSurface className={cn('absolute inset-0', singleImage ? 'rounded-[16px]' : '')} />
+          ) : null}
           <img
             src={previewUrl}
             alt={attachment.name || 'Attached image'}
             className={cn(
-              'relative block h-full w-full transition-opacity duration-200 ease-out motion-reduce:transition-none',
+              'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
               imageLoaded ? 'opacity-100' : 'opacity-0',
-              singleImage ? 'max-h-[320px] object-contain' : 'object-cover',
+              intrinsicSingleImage
+                ? 'h-auto w-auto max-h-[320px] max-w-full rounded-[16px] object-contain'
+                : 'h-full w-full object-cover',
             )}
             onLoad={(event) => {
               setImageLoaded(true);
@@ -819,9 +774,9 @@ function AttachmentImageCard({
           />
         </button>
       ) : previewUnavailable ? (
-        <AttachmentImageUnavailableSurface attachment={attachment} />
+        <AttachmentImageUnavailableSurface attachment={attachment} className={singleImage ? 'rounded-[16px]' : ''} />
       ) : (
-        <AttachmentImageLoadingSurface />
+        <AttachmentImageLoadingSurface className={singleImage ? 'rounded-[16px]' : ''} />
       )}
       {showOriginalAction ? (
         <div className="absolute bottom-2 right-2 z-10">
@@ -834,24 +789,19 @@ function AttachmentImageCard({
 
 export function AttachmentPreview({
   msg,
+  imageGallery,
   imageDeliveryStatus,
   onRetryImage,
 }: {
   msg: Message;
+  imageGallery?: readonly MessageAttachment[];
   imageDeliveryStatus?: string | null;
   onRetryImage?: () => void;
 }) {
   const attachments = msg.attachments ?? [];
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
-  const [lightboxAttachment, setLightboxAttachment] = useState<{
-    attachment: MessageAttachment;
-    previewUrl: string;
-    index: number;
-  } | null>(null);
-  const lightboxPreviewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
-  const lightboxOriginRef = useRef<HTMLButtonElement | null>(null);
-  const imageCollageRef = useRef<HTMLDivElement | null>(null);
+  const mediaAttachments = imageGallery?.length ? imageGallery : previewImageAttachments;
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const [sampledForegroundTone, setSampledForegroundTone] = useState<{
     attachmentIdentity: string;
@@ -881,37 +831,27 @@ export function AttachmentPreview({
     ));
   }, []);
 
-  const openLightbox = useCallback((
+  function openLightbox(
     attachment: MessageAttachment,
     previewUrl: string,
     previewLease: CloudAttachmentPreviewLease | null,
-    index: number,
+    _index: number,
     trigger: HTMLButtonElement,
-  ) => {
-    const previousLease = lightboxPreviewLeaseRef.current;
-    lightboxPreviewLeaseRef.current = previewLease;
-    lightboxOriginRef.current = trigger;
-    previousLease?.release();
-    setLightboxAttachment({ attachment, previewUrl, index });
-  }, []);
-
-  const closeLightbox = useCallback(() => {
-    const previewLease = lightboxPreviewLeaseRef.current;
-    const origin = lightboxOriginRef.current;
-    lightboxPreviewLeaseRef.current = null;
-    lightboxOriginRef.current = null;
-    previewLease?.release();
-    setLightboxAttachment(null);
-    if (origin?.isConnected) origin.focus({ preventScroll: true });
-  }, []);
-
-  const navigateLightbox = useCallback((direction: -1 | 1) => {
-    if (!lightboxAttachment) return;
-    const targetIndex = lightboxAttachment.index + direction;
-    imageCollageRef.current
-      ?.querySelector<HTMLButtonElement>(`[data-attachment-image-index="${targetIndex}"]`)
-      ?.click();
-  }, [lightboxAttachment]);
+  ) {
+    const galleryIndex = attachmentMediaGalleryIndex(mediaAttachments, attachment);
+    const selectedIndex = galleryIndex >= 0 ? galleryIndex : 0;
+    void openAttachmentMediaWindow({
+      attachments: [...mediaAttachments],
+      selectedIndex,
+      initialPreviewUrl: previewUrl,
+    }, {
+      onClosed: () => {
+        if (trigger.isConnected) trigger.focus({ preventScroll: true });
+      },
+    })
+      .catch(() => undefined)
+      .finally(() => previewLease?.release());
+  }
 
   function openContextMenu(attachment: MessageAttachment, event: MouseEvent) {
     event.preventDefault();
@@ -920,27 +860,15 @@ export function AttachmentPreview({
   }
 
   useEffect(() => {
-    if (!lightboxAttachment && !contextMenuState) return;
+    if (!contextMenuState) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        closeLightbox();
         setContextMenuState(null);
-        return;
-      }
-      if (!lightboxAttachment || contextMenuState) return;
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        event.preventDefault();
-        navigateLightbox(event.key === 'ArrowLeft' ? -1 : 1);
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [closeLightbox, contextMenuState, lightboxAttachment, navigateLightbox]);
-
-  useEffect(() => () => {
-    lightboxPreviewLeaseRef.current?.release();
-    lightboxPreviewLeaseRef.current = null;
-  }, []);
+  }, [contextMenuState]);
 
   if (attachments.length === 0) {
     return null;
@@ -951,12 +879,15 @@ export function AttachmentPreview({
       <div className="flex flex-col gap-2">
         {previewImageAttachments.length > 0 ? (
           <div
-            ref={imageCollageRef}
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
             className={cn(
-              'app-attachment-image-collage relative grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden rounded-[20px] p-0',
-              loadingOnlyImageCollage ? 'w-[min(100%,20rem)] auto-rows-[4rem]' : 'w-[min(100%,29rem)] auto-rows-[6.5rem]',
+              'app-attachment-image-collage relative grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden rounded-[16px] p-0',
+              loadingOnlyImageCollage
+                ? 'w-[min(100%,20rem)] auto-rows-[4rem]'
+                : previewImageAttachments.length === 1
+                  ? 'w-fit auto-rows-auto'
+                  : 'w-[min(100%,29rem)] auto-rows-[6.5rem]',
             )}
           >
             {previewImageAttachments.map((attachment, index) => (
@@ -992,20 +923,6 @@ export function AttachmentPreview({
           </div>
         ) : null}
       </div>
-      {lightboxAttachment ? (
-        <PortalLayer>
-          <AttachmentImageLightbox
-            attachment={lightboxAttachment.attachment}
-            previewUrl={lightboxAttachment.previewUrl}
-            onClose={closeLightbox}
-            canGoPrevious={lightboxAttachment.index > 0}
-            canGoNext={lightboxAttachment.index < previewImageAttachments.length - 1}
-            onPrevious={() => navigateLightbox(-1)}
-            onNext={() => navigateLightbox(1)}
-            onContextMenu={(event) => openContextMenu(lightboxAttachment.attachment, event)}
-          />
-        </PortalLayer>
-      ) : null}
       {contextMenuState ? (
         <AttachmentContextMenu state={contextMenuState} onClose={() => setContextMenuState(null)} />
       ) : null}

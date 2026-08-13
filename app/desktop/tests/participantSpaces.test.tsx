@@ -99,6 +99,35 @@ test('buildParticipantSpaces previews latest agent response when message text is
   assert.equal(spaces[0]?.sessions[0]?.preview, 'I’m doing well — thanks for asking.');
 });
 
+test('buildParticipantSpaces presents an image-only self message as a photo', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:saved-photo',
+      canonicalSessionId: 'session:saved-photo',
+      name: 'Shu Yang',
+      type: 'owned-agent',
+      subtitle: 'Shu Yang',
+      participants: ['Me', 'My Kordi'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-kordi', name: 'My Kordi', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-kordi' },
+      ],
+      messages: [{
+        role: 'user',
+        sender: 'Shu Yang',
+        text: '',
+        time: '14:29',
+        attachments: [{ kind: 'image', name: 'preview.png', mimeType: 'image/png' }],
+      }],
+      updatedAtLabel: '14:29',
+    }),
+  ]);
+
+  assert.equal(spaces[0]?.title, 'Saved Messages');
+  assert.equal(spaces[0]?.preview, 'Photo');
+  assert.equal(spaces[0]?.sessions[0]?.preview, 'Photo');
+});
+
 test('buildParticipantSpaces separates direct human and self spaces on same Bridge node', () => {
   const spaces = buildParticipantSpaces([
     conversation({
@@ -126,7 +155,7 @@ test('buildParticipantSpaces separates direct human and self spaces on same Brid
 
   assert.deepEqual(spaces.map((space) => [space.id, space.kind, space.title]), [
     ['direct-human:human:bob', 'direct-human', 'Bob'],
-    ['self:local', 'self', 'My chats'],
+    ['self:local', 'self', 'Saved Messages'],
   ]);
 });
 
@@ -150,7 +179,7 @@ test('buildParticipantSpaces infers a local owned-agent session as part of the s
   assert.equal(spaces.length, 1);
   assert.equal(spaces[0]?.id, 'self:local');
   assert.equal(spaces[0]?.kind, 'self');
-  assert.equal(spaces[0]?.title, 'My chats');
+  assert.equal(spaces[0]?.title, 'Saved Messages');
   assert.deepEqual(spaces[0]?.avatarStack, [{ kind: 'human', seed: 'human-local', isSelf: true, imageUrl: null, presenceStatus: null }]);
 });
 
@@ -210,7 +239,7 @@ test('buildParticipantSpaces groups agent-only sessions into the default self sp
   assert.equal(spaces.length, 1);
   assert.equal(spaces[0]?.id, 'self:local');
   assert.equal(spaces[0]?.kind, 'self');
-  assert.equal(spaces[0]?.title, 'My chats');
+  assert.equal(spaces[0]?.title, 'Saved Messages');
   assert.equal(spaces[0]?.sessionCount, 2);
   assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me']);
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), ['session:any-agent', 'session:my-kordi']);
@@ -890,7 +919,7 @@ test('filterParticipantSpaces matches title, participant names, preview, and chi
   assert.equal(filterParticipantSpaces(spaces, 'missing', 'contact').length, 0);
 });
 
-test('ensureSelfParticipantSpace adds My chats as a pinned contact when no self sessions exist', () => {
+test('ensureSelfParticipantSpace adds Saved Messages as a pinned contact when no self sessions exist', () => {
   const spaces = ensureSelfParticipantSpace(buildParticipantSpaces([
     conversation({
       id: 'session:bob-person',
@@ -904,11 +933,11 @@ test('ensureSelfParticipantSpace adds My chats as a pinned contact when no self 
   ]), { avatarSeed: 'local-me' });
 
   const selfSpace = spaces.find((space) => space.kind === 'self');
-  assert.equal(selfSpace?.title, 'My chats');
+  assert.equal(selfSpace?.title, 'Saved Messages');
   assert.equal(selfSpace?.sessionCount, 0);
   assert.deepEqual(selfSpace?.avatarStack, [{ kind: 'human', seed: 'local-me', isSelf: true, imageUrl: null }]);
   assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact').map((space) => space.title), ['Bob']);
-  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent').map((space) => space.title), ['My chats']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent').map((space) => space.title), ['Saved Messages']);
 });
 
 test('filterParticipantSpaces splits spaces into Contact and Agent channels', () => {

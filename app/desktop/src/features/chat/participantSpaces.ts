@@ -391,7 +391,7 @@ export function participantSpaceCustomGroupTitle(space: ParticipantSpaceViewMode
   return customGroupTitle(space.sessions, normalizeGroupSpaceId(space.id));
 }
 
-export const SELF_PARTICIPANT_SPACE_TITLE = 'My chats';
+export const SELF_PARTICIPANT_SPACE_TITLE = 'Saved Messages';
 
 function spaceTitle(
   kind: ParticipantSpaceKind,

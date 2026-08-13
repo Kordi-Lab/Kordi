@@ -1,5 +1,7 @@
-import { ChevronRight, Split } from 'lucide-react';
+import { Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
 
+import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
+import { attachmentOnlyMessagePreview } from '@/features/chat/participantConversationState';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
@@ -47,10 +49,27 @@ export function AgentSidebarRow({
     sessionMessageCount,
   );
   const agentIdentity = primaryAgentForConversation(conversation);
-  const agentName = agentIdentity?.name ?? space.title;
-  const subtitleLine = agentName
-    ? `${agentName} · ${sessionPreviewLine}`
-    : sessionPreviewLine;
+  const isSavedMessages = space.kind === 'self' && !agentIdentity;
+  const latestMessage = conversation.messages[conversation.messages.length - 1];
+  const savedMessageAttachmentPreview = isSavedMessages
+    ? attachmentOnlyMessagePreview(latestMessage)
+    : null;
+  const savedMessagePreviewAttachment = savedMessageAttachmentPreview?.kind === 'image'
+    ? latestMessage?.attachments?.find((candidate) => (
+      candidate.kind === 'image'
+      || candidate.mimeType?.toLowerCase().startsWith('image/')
+    ))
+    : latestMessage?.attachments?.[0];
+  const savedMessageThumbnailUrl = savedMessageAttachmentPreview?.kind === 'image'
+    && savedMessagePreviewAttachment
+    ? attachmentPreviewUrl(savedMessagePreviewAttachment)
+    : null;
+  const rowTitle = isSavedMessages ? space.title : sessionRowTitle;
+  const subtitleLine = isSavedMessages
+    ? sessionPreview
+    : agentIdentity?.name
+      ? `${agentIdentity.name} · ${sessionPreviewLine}`
+      : sessionPreviewLine;
   const forks =
     model.agentForkLineage.forksByParentSessionId.get(session.id) ?? [];
   const hasForks = forks.length > 0;
@@ -82,6 +101,7 @@ export function AgentSidebarRow({
         data-session-preview-line={sessionPreviewLine}
         data-session-message-count={sessionMessageCount}
         data-session-updated-at={rowTimeLabel}
+        data-saved-messages-row={isSavedMessages ? 'true' : undefined}
         data-session-fork-of={
           isFork ? (session.forkedFromSessionId ?? '') : undefined
         }
@@ -105,26 +125,47 @@ export function AgentSidebarRow({
           'app-session-row app-agent-session-row w-full px-2.5 py-1 text-left text-white',
           isActive && 'app-session-row-active',
           isFork && 'app-session-row-fork',
+          isSavedMessages && 'app-agent-session-row-saved',
         )}
       >
+        {isSavedMessages ? (
+          <span
+            className="app-saved-messages-avatar grid h-9 w-9 shrink-0 place-items-center rounded-full"
+            aria-hidden="true"
+          >
+            <Bookmark className="h-[1.15rem] w-[1.15rem]" strokeWidth={2} />
+          </span>
+        ) : null}
         <div className="app-agent-session-main min-w-0">
           <div className="flex items-center gap-1.5">
             <span
               className="app-session-row-title min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
-              title={sessionRowTitle}
+              title={rowTitle}
             >
-              {sessionRowTitle}
+              {rowTitle}
             </span>
           </div>
           <div
             className={cn(
-              'mt-0.5 truncate text-[10.5px] leading-[1rem]',
+              'app-agent-session-preview mt-0.5 flex min-w-0 items-center gap-1 text-[10.5px] leading-[1rem]',
               isActive ? 'text-slate-300' : 'text-slate-500',
               session.statusIndicator?.live
                 && 'app-participant-space-session-preview-live',
             )}
+            data-agent-session-preview-kind={savedMessageAttachmentPreview?.kind}
           >
-            {subtitleLine}
+            {savedMessageThumbnailUrl ? (
+              <img
+                src={savedMessageThumbnailUrl}
+                alt=""
+                aria-hidden="true"
+                data-sidebar-image-thumbnail="true"
+                className="h-3.5 w-3.5 shrink-0 rounded-[2px] object-cover"
+              />
+            ) : savedMessageAttachmentPreview?.kind === 'file' ? (
+              <Paperclip className="h-3 w-3 shrink-0" aria-hidden="true" />
+            ) : null}
+            <span className="min-w-0 truncate">{subtitleLine}</span>
           </div>
         </div>
         <div className="app-agent-session-side">
@@ -134,7 +175,11 @@ export function AgentSidebarRow({
             unreadScope="agent-session"
             indicator={session.statusIndicator}
             active={isActive}
+            reserveStatusSpace={!isSavedMessages}
           />
+          {isSavedMessages ? (
+            <Pin className="app-saved-messages-pin h-3 w-3" aria-label="Pinned" />
+          ) : null}
           {hasForks ? (
             <>
               <span

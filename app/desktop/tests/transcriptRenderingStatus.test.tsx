@@ -384,12 +384,40 @@ test('image-only human messages use compact frosted attachment padding', () => {
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /max-w-\[31rem\]/);
+  assert.match(markup, /data-message-media-side="own"/);
+  assert.match(markup, /app-message-media-only app-message-media-only-own/);
   assert.match(markup, /p-0/);
   assert.match(markup, /bg-transparent/);
   assert.match(markup, /shadow-none/);
   assert.doesNotMatch(markup, /app-message-bubble-shape/);
   assert.doesNotMatch(markup, /app-message-footer/);
   assert.doesNotMatch(markup, /px-4 py-2\.5/);
+});
+
+test('image-only messages align their outside edge with the matching text bubble tail', () => {
+  const peerMessage: Message = {
+    role: 'person',
+    sender: 'Shu Yang',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: '',
+    time: '21:10',
+    attachments: [{
+      kind: 'image',
+      name: 'Received screenshot.png',
+      previewUrl: 'https://files.test/received.png',
+      mimeType: 'image/png',
+    }],
+  };
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: peerMessage }));
+  const stylesheet = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
+
+  assert.match(markup, /data-message-media-side="peer"/);
+  assert.match(markup, /app-message-media-only app-message-media-only-peer/);
+  assert.match(stylesheet, /\.app-message-media-only-own\s*{[^}]*translateX\(var\(--app-message-media-edge-offset\)\)/s);
+  assert.match(stylesheet, /\.app-message-media-only-peer\s*{[^}]*translateX\(calc\(-1 \* var\(--app-message-media-edge-offset\)\)\)/s);
+  assert.match(stylesheet, /\.app-message-media-only-own \.app-attachment-image-collage\s*{[^}]*align-self:\s*flex-end;/s);
+  assert.match(stylesheet, /\.app-message-media-only-peer \.app-attachment-image-collage\s*{[^}]*align-self:\s*flex-start;/s);
 });
 
 test('pending image attachments reserve a compact image-sized loading placeholder', () => {

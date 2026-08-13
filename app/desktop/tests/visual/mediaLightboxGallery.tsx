@@ -3,12 +3,15 @@ import { createRoot } from 'react-dom/client';
 
 import '../../src/index.css';
 import { AttachmentImageLightbox } from '../../src/kordi-app/components/transcriptAttachmentLightbox';
-import type { MessageAttachment } from '../../src/kordi-app/types';
+import { MessageBubble } from '../../src/kordi-app/components/transcript';
+import type { Message, MessageAttachment } from '../../src/kordi-app/types';
 
-const theme = new URLSearchParams(window.location.search).get('theme') === 'light'
+const params = new URLSearchParams(window.location.search);
+const theme = params.get('theme') === 'light'
   ? 'light'
   : 'dark';
-const requestedIndex = Number(new URLSearchParams(window.location.search).get('index') ?? 0);
+const requestedIndex = Number(params.get('index') ?? 0);
+const surface = params.get('surface') === 'transcript' ? 'transcript' : 'lightbox';
 
 function geometricImage(width: number, height: number, palette: [string, string, string, string]) {
   const [canvas, block, signal, line] = palette;
@@ -47,20 +50,11 @@ const images: Array<MessageAttachment & { previewUrl: string }> = [
 
 function MediaLightboxGallery() {
   const [index, setIndex] = useState(Math.min(images.length - 1, Math.max(0, requestedIndex)));
+  const [zoom, setZoom] = useState(1);
   const image = images[index]!;
 
   return (
-    <main className={`kordi-app theme-${theme} media-lightbox-visual-shell`}>
-      <aside aria-hidden="true">
-        <div className="media-lightbox-visual-brand">kordi</div>
-        <i /><i /><i />
-      </aside>
-      <section aria-hidden="true">
-        <header>Design review</header>
-        <div className="media-lightbox-visual-message media-lightbox-visual-message-peer" />
-        <div className="media-lightbox-visual-message media-lightbox-visual-message-own" />
-        <div className="media-lightbox-visual-message media-lightbox-visual-message-peer" />
-      </section>
+    <main className="media-lightbox-visual-shell">
       <AttachmentImageLightbox
         attachment={image}
         previewUrl={image.previewUrl}
@@ -69,12 +63,82 @@ function MediaLightboxGallery() {
         canGoNext={index < images.length - 1}
         onPrevious={() => setIndex((current) => Math.max(0, current - 1))}
         onNext={() => setIndex((current) => Math.min(images.length - 1, current + 1))}
+        positionLabel={`${index + 1} of ${images.length}`}
+        zoom={zoom}
+        onZoomIn={() => setZoom((current) => Math.min(4, current + 0.25))}
+        onZoomOut={() => setZoom((current) => Math.max(0.25, current - 0.25))}
+        onZoomReset={() => setZoom(1)}
       />
     </main>
   );
 }
 
+const transcriptMessages: Message[] = [
+  {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Outgoing message edge',
+    time: '14:34',
+  },
+  {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '',
+    time: '14:35',
+    attachments: [images[0]!],
+  },
+  {
+    role: 'person',
+    sender: 'Shu Yang',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: 'Incoming message edge',
+    time: '14:35',
+  },
+  {
+    role: 'person',
+    sender: 'Shu Yang',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: '',
+    time: '14:36',
+    attachments: [images[1]!],
+  },
+  {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '',
+    time: '14:37',
+    attachments: images,
+  },
+];
+
+function TranscriptImageGallery() {
+  return (
+    <main className="transcript-image-visual-shell">
+      {transcriptMessages.map((message, index) => (
+        <section key={`${message.time}-${index}`} aria-label={`Transcript message ${index + 1}`}>
+          <MessageBubble msg={message} />
+        </section>
+      ))}
+    </main>
+  );
+}
+
 document.body.classList.add(`theme-${theme}`);
+if (surface === 'lightbox') {
+  document.body.classList.add('app-attachment-media-window-root');
+  document.documentElement.classList.add('app-attachment-media-window-root');
+  document.documentElement.dataset.attachmentMediaTheme = theme;
+}
 document.documentElement.style.colorScheme = theme;
-createRoot(document.querySelector('#root')!).render(<MediaLightboxGallery />);
+createRoot(document.querySelector('#root')!).render(
+  surface === 'transcript' ? <TranscriptImageGallery /> : <MediaLightboxGallery />,
+);
 document.body.dataset.visualReady = 'true';

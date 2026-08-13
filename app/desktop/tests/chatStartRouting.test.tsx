@@ -226,7 +226,7 @@ test('sidebar shell forwards chat create and group management handlers', () => {
   assert.equal(element.props.chatActions.onSetChatGroupAdmin, setAdmin);
 });
 
-test('sidebar chat-create agent option opens owned agents with local My chats creation', async () => {
+test('sidebar chat-create agent option opens owned agents with local Saved Messages creation', async () => {
   const calls: string[] = [];
   const element = assembleSidebarSlot(baseSidebarArgs({
     handleCreateChatSession: async () => { calls.push('createLocal'); },
@@ -305,7 +305,7 @@ test('contact detail delete removes the bridge contact and closes the overlay', 
   assert.deepEqual(calls, ['remove:host-1:node-shared', 'overlay:null']);
 });
 
-test('agent Message starts a fresh external agent session under My chats', () => {
+test('agent Message starts a fresh external agent session under Saved Messages', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls, {
     chatConversations: [directAgentConversation()],

@@ -2,19 +2,27 @@ import { expect, test } from '@playwright/test';
 
 test('media lightbox remains image-first across desktop sizes and themes', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/tests/visual/mediaLightboxGallery.html?theme=dark&index=0');
+  await page.goto('/tests/visual/mediaLightboxGallery.html?theme=dark&index=1');
   await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
 
-  const lightbox = page.getByRole('dialog', { name: 'Image preview: Quiet signal landscape.png' });
+  const lightbox = page.getByRole('dialog', { name: 'Image preview: Quiet signal portrait.png' });
   const image = lightbox.locator('img');
+  const previous = page.getByRole('button', { name: 'Previous image' });
   const next = page.getByRole('button', { name: 'Next image' });
   await expect(lightbox).toBeVisible();
-  await expect(next).toHaveCSS('opacity', '0');
+  await expect(previous).toHaveCSS('opacity', '0.56');
+  await expect(next).toHaveCSS('opacity', '0.56');
+  await expect(page.getByRole('button', { name: 'Zoom in' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zoom out' })).toBeVisible();
   const wideBox = await image.boundingBox();
   expect(wideBox).not.toBeNull();
-  expect(wideBox!.x).toBeGreaterThanOrEqual(100);
+  expect(wideBox!.x).toBeGreaterThanOrEqual(60);
   expect(wideBox!.y).toBeGreaterThanOrEqual(60);
   await expect(page).toHaveScreenshot('media-lightbox-wide-dark.png');
+
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(image).toHaveAttribute('data-attachment-image-zoom', '1.25');
+  await expect(page).toHaveScreenshot('media-lightbox-wide-dark-zoomed.png');
 
   await next.hover();
   await expect(next).toHaveCSS('opacity', '1');
@@ -31,4 +39,30 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   expect(compactBox!.x + compactBox!.width).toBeLessThanOrEqual(670);
   expect(compactBox!.y + compactBox!.height).toBeLessThanOrEqual(536);
   await expect(page).toHaveScreenshot('media-lightbox-compact-light.png');
+
+  await page.setViewportSize({ width: 760, height: 980 });
+  await page.goto('/tests/visual/mediaLightboxGallery.html?theme=dark&surface=transcript');
+  await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
+  const ownTextShape = page.getByLabel('Transcript message 1').locator('.app-message-bubble-shape');
+  const ownImage = page.getByLabel('Transcript message 2').locator('[data-attachment-image-count="1"] img');
+  const peerTextShape = page.getByLabel('Transcript message 3').locator('.app-message-bubble-shape');
+  const peerImage = page.getByLabel('Transcript message 4').locator('[data-attachment-image-count="1"] img');
+  const singleImage = ownImage;
+  const multiImage = page.locator('[data-attachment-image-count="3"] img').first();
+  const [ownTextBox, ownImageBox, peerTextBox, peerImageBox] = await Promise.all([
+    ownTextShape.boundingBox(),
+    ownImage.boundingBox(),
+    peerTextShape.boundingBox(),
+    peerImage.boundingBox(),
+  ]);
+  expect(ownTextBox).not.toBeNull();
+  expect(ownImageBox).not.toBeNull();
+  expect(peerTextBox).not.toBeNull();
+  expect(peerImageBox).not.toBeNull();
+  expect(Math.abs((ownTextBox!.x + ownTextBox!.width) - (ownImageBox!.x + ownImageBox!.width))).toBeLessThanOrEqual(1);
+  expect(Math.abs(peerTextBox!.x - peerImageBox!.x)).toBeLessThanOrEqual(1);
+  await expect(singleImage).toHaveCSS('border-radius', '16px');
+  await expect(page.locator('[data-attachment-image-collage="true"]').first()).toHaveCSS('border-radius', '16px');
+  await expect(multiImage).toHaveCSS('border-radius', '0px');
+  await expect(page).toHaveScreenshot('transcript-image-corners-dark.png');
 });

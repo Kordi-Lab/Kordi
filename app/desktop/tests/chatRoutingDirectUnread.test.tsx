@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 
-test('canonical read model keeps blank selected-agent sessions visible under My chats', () => {
+test('canonical read model keeps blank selected-agent sessions visible under Saved Messages', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
     profile: {

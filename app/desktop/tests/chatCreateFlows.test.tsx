@@ -268,7 +268,7 @@ test('existingSessionIdForPersonStart reuses the existing human pair session', (
   assert.equal(existingSessionIdForPersonStart(alice, conversations), 'session:direct-person:newer');
 });
 
-test('agent create flow starts a new selected-agent session under My chats', () => {
+test('agent create flow starts a new selected-agent session under Saved Messages', () => {
   const selectedAgent = agent({ id: 'agent:reviewer', name: 'Reviewer', isOwned: true });
 
   assert.equal(buildChatAgentSessionKind(selectedAgent), 'self-agent');
@@ -329,7 +329,7 @@ test('private cloud agent sessions carry runtime context for local execution', (
   assert.deepEqual(definitionContextMessages, contextMessages);
 });
 
-test('external bridge agent create flow stores bridge target metadata for My chats routing', () => {
+test('external bridge agent create flow stores bridge target metadata for Saved Messages routing', () => {
   const remoteAgent = agent({
     id: 'agent:bob',
     name: 'Bob agent',

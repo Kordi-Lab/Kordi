@@ -242,6 +242,12 @@
   color: var(--app-sidebar-preview-text);
 }
 
+.app-saved-messages-avatar {
+  background: color-mix(in oklab, var(--app-accent) 84%, #5b4ba2);
+  color: rgb(255 255 255 / 0.96);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+}
+
 .app-workspace-sidebar .app-participant-space-row-detail {
   color: var(--app-sidebar-time-text);
 }
@@ -331,6 +337,27 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0.35rem;
+}
+
+.app-workspace-sidebar .app-agent-session-row-saved {
+  grid-template-columns: auto minmax(0, 1fr) max-content;
+  min-height: 3.125rem;
+}
+
+.app-workspace-sidebar .app-agent-session-row-saved .app-agent-session-side {
+  display: grid;
+  align-self: stretch;
+  align-content: space-between;
+  justify-items: end;
+  gap: 0.2rem;
+}
+
+.app-workspace-sidebar .app-agent-session-preview {
+  color: var(--app-sidebar-preview-text);
+}
+
+.app-workspace-sidebar .app-saved-messages-pin {
+  color: var(--app-sidebar-time-text);
 }
 
 .app-workspace-sidebar .app-agent-session-fork-toggle,
