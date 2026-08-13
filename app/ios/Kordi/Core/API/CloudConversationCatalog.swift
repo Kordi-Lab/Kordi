@@ -7,6 +7,7 @@ enum CloudConversationCatalog {
         ownedAgents: [CloudAgent],
         sharedAgents: [CloudAgent],
         messagesByPeer: [String: [CloudMessageDTO]],
+        canonicalConversations: [CloudChatConversation] = [],
         canonicalParticipantsBySessionId: [String: [CloudGroupParticipant]] = [:],
         sessionForksById: [String: CloudSessionForkSummary] = [:],
         hiddenSessionIds: Set<String> = [],
@@ -40,14 +41,33 @@ enum CloudConversationCatalog {
         let agentsById = (ownedAgents + sharedAgents).reduce(into: [String: CloudAgent]()) { result, agent in
             result[agent.agentId] = agent
         }
+        let visibleCanonicalConversations = canonicalConversations.filter { conversation in
+            let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
+            return !invisibleSessionIds.contains(sessionId)
+                && !invisibleSessionIds.contains(conversation.id)
+        }
+        var canonicalConversationsBySessionId: [String: CloudChatConversation] = [:]
+        for conversation in visibleCanonicalConversations {
+            canonicalConversationsBySessionId[conversation.id] = conversation
+            if let sessionId = conversation.legacySessionId?.nonEmpty {
+                canonicalConversationsBySessionId[sessionId] = conversation
+            }
+        }
+        let supportCanonicalConversation = visibleCanonicalConversations
+            .filter {
+                KordiSupportIdentity.isSystemAgentSession($0.legacySessionId ?? $0.id)
+            }
+            .max { parseCloudDate($0.updatedAt) < parseCloudDate($1.updatedAt) }
         let groups = groupConversations(
             account: account,
             contactsById: contactsById,
+            canonicalConversations: visibleCanonicalConversations,
             canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
+            canonicalConversationsBySessionId: canonicalConversationsBySessionId,
             controls: groupRows
         )
         let groupSessionIds = Set(groups.map(\.sessionId))
-        let agentSessions = agentConversations(
+        var agentSessions = agentConversations(
             account: account,
             contactsById: contactsById,
             agentsById: agentsById,
@@ -56,6 +76,15 @@ enum CloudConversationCatalog {
             groupSessionIds: groupSessionIds,
             groupWireMessageIds: groupWireMessageIds
         )
+        let existingAgentSessionIds = Set(agentSessions.map(\.sessionId))
+        agentSessions += canonicalAgentConversations(
+            account: account,
+            contactsById: contactsById,
+            agentsById: agentsById,
+            messages: allMessages,
+            canonicalConversations: visibleCanonicalConversations,
+            sessionForksById: sessionForksById
+        ).filter { !existingAgentSessionIds.contains($0.sessionId) }
         let discoveredAgentIds = Set(agentSessions.compactMap(\.agentId))
         let hasDefaultAgentSession = agentSessions.contains { $0.agentId == nil && $0.peerAccountId == account.accountId }
 
@@ -75,8 +104,15 @@ enum CloudConversationCatalog {
             .map { defaultConversation(for: $0, account: account) }
 
         let people = contacts.map { contact in
-            let sessionId = directPersonSessionId(account.accountId, contact.accountId)
-            let matching = visibleMessagesByPeer[contact.accountId, default: []].filter { message in
+            let isSupport = KordiSupportIdentity.matches(name: contact.displayName, seed: contact.accountId)
+            let sessionId = isSupport
+                ? supportCanonicalConversation.flatMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
+                    ?? directPersonSessionId(account.accountId, contact.accountId)
+                : directPersonSessionId(account.accountId, contact.accountId)
+            let candidates = isSupport
+                ? allMessages
+                : visibleMessagesByPeer[contact.accountId, default: []]
+            let matching = candidates.filter { message in
                 guard !CloudMessageCodec.isAgentControl(message.body),
                       !groupWireMessageIds.contains(message.messageId) else { return false }
                 guard let sourceSessionId = message.sessionId?.nonEmpty else { return true }
@@ -123,15 +159,26 @@ enum CloudConversationCatalog {
     private static func groupConversations(
         account: CloudAccount,
         contactsById: [String: CloudContact],
+        canonicalConversations: [CloudChatConversation],
         canonicalParticipantsBySessionId: [String: [CloudGroupParticipant]],
+        canonicalConversationsBySessionId: [String: CloudChatConversation],
         controls: [(CloudMessageDTO, CloudGroupControlEnvelope)]
     ) -> [ConversationSummary] {
-        let grouped = Dictionary(grouping: controls, by: { $0.1.groupId })
+        var grouped = Dictionary(grouping: controls, by: { $0.1.groupId })
+        // Bootstrap contains every canonical session, while its message
+        // snapshot contains only the newest raw item. Keep the directory
+        // complete even for an empty group session or a legacy row whose
+        // newest payload cannot be decoded.
+        for conversation in canonicalConversations where conversation.kind == "group" {
+            let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
+            if grouped[sessionId] == nil { grouped[sessionId] = [] }
+        }
         let canonicalLineage = canonicalGroupLineage(controls.map(\.1))
 
         return grouped.compactMap { groupId, rows in
+            guard !KordiSupportIdentity.isSystemAgentSession(groupId) else { return nil }
             let sorted = rows.sorted { rowDate($0) < rowDate($1) }
-            guard !sorted.isEmpty else { return nil }
+            let canonical = canonicalConversationsBySessionId[groupId]
             let participants = enrichedParticipants(
                 mergedParticipants(
                     legacy: latestParticipants(in: sorted.map(\.1)),
@@ -164,6 +211,8 @@ enum CloudConversationCatalog {
                 .flatMap { Self.sessionTitle($0.text) }
             let title = sessionTitle
                 ?? (groupId == groupSpaceId ? groupTitle : nil)
+                ?? nonGenericTitle(canonical?.preferences.personalTitle)
+                ?? nonGenericTitle(canonical?.sharedTitle)
                 ?? inferredSessionTitle
                 ?? groupTitle
                 ?? participantTitle.nonEmpty
@@ -188,6 +237,7 @@ enum CloudConversationCatalog {
                 lastMessage: latestMessage?.text.nonEmpty ?? "Group conversation",
                 lastActivityAt: latestMessage.map { Date(timeIntervalSince1970: $0.createdAtMs / 1_000) }
                     ?? sorted.last.map(rowDate)
+                    ?? canonical.map { parseCloudDate($0.updatedAt) }
                     ?? .distantPast,
                 unreadCount: unreadMessageIds.count,
                 avatarSource: nil,
@@ -197,6 +247,7 @@ enum CloudConversationCatalog {
                 groupParticipants: participants,
                 messageCount: groupMessages.count,
                 forkedFromSessionId: canonicalLineage[groupId]?.forkedFromSessionId
+                    ?? canonical?.forkedFromSessionId?.nonEmpty
             )
         }
     }
@@ -315,6 +366,81 @@ enum CloudConversationCatalog {
                 sessionId: sessionId,
                 agentDisplayName: agentName,
                 forkedFromSessionId: sessionForksById[sessionId]?.parentSessionId.nonEmpty
+            )
+        }
+    }
+
+    private static func canonicalAgentConversations(
+        account: CloudAccount,
+        contactsById: [String: CloudContact],
+        agentsById: [String: CloudAgent],
+        messages: [CloudMessageDTO],
+        canonicalConversations: [CloudChatConversation],
+        sessionForksById: [String: CloudSessionForkSummary]
+    ) -> [ConversationSummary] {
+        canonicalConversations.compactMap { conversation in
+            let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
+            let isAgentSession = conversation.kind != "group" && (
+                conversation.kind == "ai"
+                || sessionId.hasPrefix("session:self-agent:")
+                || sessionId.hasPrefix("session:direct-agent:")
+                || sessionId.hasPrefix("session:fork:")
+            )
+            guard isAgentSession else { return nil }
+
+            let rows = messages
+                .filter { ($0.sessionId?.nonEmpty ?? "") == sessionId }
+                .sorted { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+            let requests = rows.compactMap { message -> CloudMessageCodec.DirectEnvelope? in
+                CloudMessageCodec.directEnvelope(message.body)
+            }
+            let targetId = requests.compactMap { $0.targetCloudAgentId?.nonEmpty }.last
+                ?? knownAgentId(from: sessionId, agentsById: agentsById)
+            let definition = targetId.flatMap { agentsById[$0] }
+            let otherMember = conversation.members.first {
+                $0.accountId != account.accountId && $0.membershipState == "active"
+            }
+            let peerAccountId = requests.compactMap { $0.targetCloudAgentOwnerAccountId?.nonEmpty }.last
+                ?? definition?.ownerAccountId
+                ?? otherMember?.accountId
+                ?? account.accountId
+            let agentName = requests.compactMap { $0.targetCloudAgentName?.nonEmpty }.last
+                ?? definition?.name
+                ?? "My Kordi"
+            guard !KordiSupportIdentity.matches(name: agentName, seed: targetId) else { return nil }
+            let ownerName = requests.compactMap { $0.targetCloudAgentOwnerName?.nonEmpty }.last
+                ?? (peerAccountId == account.accountId
+                    ? account.preferredName
+                    : contactsById[peerAccountId]?.preferredName ?? otherMember?.displayName)
+            let firstPrompt = rows.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
+                .map { CloudMessageCodec.displayText($0.body) }
+            let latest = rows.last
+            let title = nonGenericTitle(conversation.preferences.personalTitle)
+                ?? nonGenericTitle(conversation.sharedTitle)
+                ?? sessionTitle(firstPrompt)
+                ?? agentName
+            return ConversationSummary(
+                id: "agent-session:\(sessionId)",
+                kind: .agent,
+                peerAccountId: peerAccountId,
+                agentId: targetId,
+                ownerDisplayName: ownerName,
+                displayName: title,
+                lastMessage: latest.map { CloudMessageCodec.displayText($0.body) }
+                    ?? definition?.description?.nonEmpty
+                    ?? "No messages yet",
+                lastActivityAt: max(
+                    latest.map { parseCloudDate($0.createdAt) } ?? .distantPast,
+                    parseCloudDate(conversation.updatedAt)
+                ),
+                unreadCount: 0,
+                avatarSource: definition?.avatarUrl?.nonEmpty,
+                agentActivity: .ready,
+                sessionId: sessionId,
+                agentDisplayName: agentName,
+                messageCount: Int(clamping: conversation.latestMessageSequence),
+                forkedFromSessionId: conversation.forkedFromSessionId?.nonEmpty
+                    ?? sessionForksById[sessionId]?.parentSessionId.nonEmpty
             )
         }
     }

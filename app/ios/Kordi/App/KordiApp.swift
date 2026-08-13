@@ -70,8 +70,12 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
-            || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")),
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat")),
            let conversation = model.conversations.first(where: {
+               if ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat") {
+                   return $0.id == "group:mobile-release"
+               }
                if ProcessInfo.processInfo.arguments.contains("--preview-group-chat") {
                    return $0.id == "group:mobile"
                }
@@ -143,12 +147,14 @@ struct MainTabView: View {
                     onOpenConversation: { chatsPath.append($0) }
                 )
             }
+            .kordiTabBarVisibility(isRoot: chatsPath.isEmpty)
             .tabItem { Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol) }
             .tag(MainTab.chats)
 
             NavigationStack(path: $contactsPath) {
                 ContactsView()
             }
+            .kordiTabBarVisibility(isRoot: contactsPath.isEmpty)
             .tabItem { Label(MainTab.contacts.rawValue, systemImage: MainTab.contacts.symbol) }
             .badge(pendingIncomingRequestCount)
             .tag(MainTab.contacts)
@@ -156,6 +162,7 @@ struct MainTabView: View {
             NavigationStack(path: $factoryPath) {
                 FactoryView()
             }
+            .kordiTabBarVisibility(isRoot: factoryPath.isEmpty)
             .tabItem { Label(MainTab.factory.rawValue, systemImage: MainTab.factory.symbol) }
             .tag(MainTab.factory)
         }
@@ -175,6 +182,17 @@ struct MainTabView: View {
 
     private var pendingIncomingRequestCount: Int {
         model.contactRequests.lazy.filter { $0.isIncoming && $0.status == "pending" }.count
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func kordiTabBarVisibility(isRoot: Bool) -> some View {
+        if #available(iOS 18.0, *) {
+            toolbarVisibility(isRoot ? .visible : .hidden, for: .tabBar)
+        } else {
+            toolbar(isRoot ? .visible : .hidden, for: .tabBar)
+        }
     }
 }
 

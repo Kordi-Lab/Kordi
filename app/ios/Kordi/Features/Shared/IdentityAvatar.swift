@@ -85,6 +85,7 @@ enum KordiSupportIdentity {
     static let accountId = "acct_kordi_support"
     static let agentId = "cloud_agent_kordi_support"
     static let displayName = "Kordi Support"
+    private static let systemAgentSessionPrefix = "session:direct-system-agent:"
 
     static func matches(name: String?, seed: String?) -> Bool {
         let normalizedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -92,6 +93,12 @@ enum KordiSupportIdentity {
         return normalizedName?.localizedCaseInsensitiveCompare(displayName) == .orderedSame
             || normalizedSeed == accountId
             || normalizedSeed == agentId
+    }
+
+    static func isSystemAgentSession(_ sessionId: String?) -> Bool {
+        guard let sessionId = sessionId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              sessionId.hasPrefix(systemAgentSessionPrefix) else { return false }
+        return sessionId.hasSuffix(":\(agentId)")
     }
 }
 

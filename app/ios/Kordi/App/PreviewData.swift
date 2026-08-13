@@ -29,7 +29,7 @@ enum PreviewData {
         ]
 
         let conversations = [
-            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: nil, ownerDisplayName: "Alex", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
+            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: nil, ownerDisplayName: "Alex", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
             ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
             ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: "The latest iPhone build is ready.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
@@ -50,85 +50,12 @@ enum PreviewData {
         ]
 
         let messages: [String: [ChatMessage]] = [
-            "agent:my-kordi": [
-                ChatMessage(id: "m1", conversationId: "agent:my-kordi", author: .me, authorName: "You", text: "What should I focus on today?", createdAt: now.addingTimeInterval(-600), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
-                ChatMessage(
-                    id: "m2",
-                    conversationId: "agent:my-kordi",
-                    author: .agent,
-                    authorName: "My Kordi",
-                    text: """
-                    ## Mobile release
-
-                    Start with the **mobile API contract**, then validate one complete chat flow.
-
-                    - [x] Sync avatars
-                    - [ ] Verify messages on iPhone
-
-                    ```swift
-                    let environment = "production"
-                    ```
-                    """,
-                    createdAt: now.addingTimeInterval(-560),
-                    deliveryState: .delivered,
-                    errorMessage: nil,
-                    requestMessageId: "m1",
-                    attachments: [
-                        ChatAttachment(
-                            attachmentId: "att_preview_release",
-                            name: "TestFlight-release-checklist.pdf",
-                            kind: .file,
-                            mimeType: "application/pdf",
-                            sizeBytes: 248_320,
-                            previewURL: nil
-                        )
-                    ],
-                    replyToMessageId: "m1",
-                    messageAction: .quote(MessageActionSource(
-                        sourceSessionId: "session:self-agent:default",
-                        sourceMessageId: "m1",
-                        senderLabel: "You",
-                        textPreview: "What should I focus on today?",
-                        attachmentCount: 0
-                    ))
-                )
-            ],
+            "agent:my-kordi": agentConversation(now: now),
             "person:acct_kordi_support": [
                 ChatMessage(id: "support1", conversationId: "person:acct_kordi_support", author: .person, authorName: KordiSupportIdentity.displayName, text: "Welcome to Kordi.", createdAt: now.addingTimeInterval(-25), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ],
-            "person:acct_maya": [
-                ChatMessage(id: "m3", conversationId: "person:acct_maya", author: .person, authorName: "Maya Chen", text: "The rollout notes are ready.", createdAt: now.addingTimeInterval(-3_600), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
-                ChatMessage(id: "m4", conversationId: "person:acct_maya", author: .me, authorName: "You", text: "Great — I’ll review them after lunch.", createdAt: now.addingTimeInterval(-3_400), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
-                ChatMessage(id: "m5", conversationId: "person:acct_maya", author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
-                ChatMessage(
-                    id: "m6",
-                    conversationId: "person:acct_maya",
-                    author: .me,
-                    authorName: "You",
-                    text: "",
-                    createdAt: now.addingTimeInterval(-30),
-                    deliveryState: .read,
-                    errorMessage: nil,
-                    requestMessageId: nil,
-                    attachments: [
-                        ChatAttachment(
-                            attachmentId: "att_preview_image",
-                            name: "Screenshot-Preview.png",
-                            kind: .image,
-                            mimeType: "image/png",
-                            sizeBytes: 28_400,
-                            previewURL: previewImageDataURL()
-                        )
-                    ]
-                )
-            ],
-            "group:mobile": [
-                ChatMessage(id: "gm0", conversationId: "group:mobile", author: .person, authorName: "Maya Chen", text: "Hi", createdAt: now.addingTimeInterval(-1_200), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
-                ChatMessage(id: "gm1", conversationId: "group:mobile", author: .person, authorName: "Maya Chen", text: "The latest iPhone build is ready. Please review the TestFlight notes before we invite the next group of testers.", createdAt: now.addingTimeInterval(-1_170), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
-                ChatMessage(id: "gm2", conversationId: "group:mobile", author: .me, authorName: "You", text: "Got it", createdAt: now.addingTimeInterval(-700), deliveryState: .read, errorMessage: nil, requestMessageId: nil, readByCount: 2, readByAccountIds: ["acct_maya", "acct_ethan"]),
-                ChatMessage(id: "gm2b", conversationId: "group:mobile", author: .me, authorName: "You", text: "I’ll send the review notes here.", createdAt: now.addingTimeInterval(-670), deliveryState: .read, errorMessage: nil, requestMessageId: nil, readByCount: 2, readByAccountIds: ["acct_maya", "acct_ethan"]),
-                ChatMessage(id: "gm3", conversationId: "group:mobile", author: .person, authorName: "Ethan Park", text: "I also added the device matrix.", createdAt: now.addingTimeInterval(-120), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
-            ],
+            "person:acct_maya": mayaConversation(now: now),
+            "group:mobile": groupConversation(now: now),
             "group:mobile-release": [
                 ChatMessage(id: "gm2", conversationId: "group:mobile-release", author: .person, authorName: "Ethan Park", text: "I added the device testing notes.", createdAt: now.addingTimeInterval(-240), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ]
@@ -138,6 +65,181 @@ enum PreviewData {
 
     private static func timestamp(_ date: Date, _ offset: TimeInterval) -> String {
         ISO8601DateFormatter().string(from: date.addingTimeInterval(offset))
+    }
+
+    private static func agentConversation(now: Date) -> [ChatMessage] {
+        let conversationId = "agent:my-kordi"
+        let sampleTurns = [
+            "Review the mobile API contract before the next build.",
+            "I checked the authentication and message synchronization paths.",
+            "Summarize the remaining iPhone release risks.",
+            "The session entry behavior needs one more verification pass.",
+            "Compare the cached transcript with the latest server response.",
+            "I will keep the newest message visible after synchronization."
+        ]
+        var messages = (0..<72).map { index in
+            let isAgent = !index.isMultiple(of: 2)
+            return ChatMessage(
+                id: "agent-history-\(index)",
+                conversationId: conversationId,
+                author: isAgent ? .agent : .me,
+                authorName: isAgent ? "My Kordi" : "You",
+                text: sampleTurns[index % sampleTurns.count],
+                createdAt: now.addingTimeInterval(-80_000 + Double(index) * 600),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            )
+        }
+        messages.append(contentsOf: [
+            ChatMessage(id: "m1", conversationId: conversationId, author: .me, authorName: "You", text: "What should I focus on today?", createdAt: now.addingTimeInterval(-600), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(
+                id: "m2",
+                conversationId: conversationId,
+                author: .agent,
+                authorName: "My Kordi",
+                text: """
+                ## Mobile release
+
+                Start with the **mobile API contract**, then validate one complete chat flow.
+
+                - [x] Sync avatars
+                - [ ] Verify messages on iPhone
+
+                ```swift
+                let environment = "production"
+                ```
+                """,
+                createdAt: now.addingTimeInterval(-80),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: "m1",
+                attachments: [
+                    ChatAttachment(
+                        attachmentId: "att_preview_release",
+                        name: "TestFlight-release-checklist.pdf",
+                        kind: .file,
+                        mimeType: "application/pdf",
+                        sizeBytes: 248_320,
+                        previewURL: nil
+                    )
+                ],
+                replyToMessageId: "m1",
+                messageAction: .quote(MessageActionSource(
+                    sourceSessionId: "session:self-agent:default",
+                    sourceMessageId: "m1",
+                    senderLabel: "You",
+                    textPreview: "What should I focus on today?",
+                    attachmentCount: 0
+                ))
+            )
+        ])
+        return messages
+    }
+
+    private static func groupConversation(now: Date) -> [ChatMessage] {
+        let conversationId = "group:mobile"
+        let sampleTurns = [
+            "The device test results are ready for review.",
+            "I will compare them with the previous iPhone build.",
+            "Please add the latest release notes to this session.",
+            "The group timeline now includes the full test history.",
+            "I checked the sign-in and notification scenarios.",
+            "Great. Keep the newest result visible when the session opens."
+        ]
+        var messages = (0..<72).map { index in
+            let author: MessageAuthor
+            let authorName: String
+            switch index % 3 {
+            case 0:
+                author = .person
+                authorName = "Maya Chen"
+            case 1:
+                author = .me
+                authorName = "You"
+            default:
+                author = .person
+                authorName = "Ethan Park"
+            }
+            return ChatMessage(
+                id: "group-history-\(index)",
+                conversationId: conversationId,
+                author: author,
+                authorName: authorName,
+                text: sampleTurns[index % sampleTurns.count],
+                createdAt: now.addingTimeInterval(-80_000 + Double(index) * 600),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            )
+        }
+        messages.append(contentsOf: [
+            ChatMessage(id: "gm0", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Hi", createdAt: now.addingTimeInterval(-1_200), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "gm1", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "The latest iPhone build is ready. Please review the TestFlight notes before we invite the next group of testers.", createdAt: now.addingTimeInterval(-1_170), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "gm2", conversationId: conversationId, author: .me, authorName: "You", text: "Got it", createdAt: now.addingTimeInterval(-700), deliveryState: .read, errorMessage: nil, requestMessageId: nil, readByCount: 2, readByAccountIds: ["acct_maya", "acct_ethan"]),
+            ChatMessage(id: "gm2b", conversationId: conversationId, author: .me, authorName: "You", text: "I’ll send the review notes here.", createdAt: now.addingTimeInterval(-670), deliveryState: .read, errorMessage: nil, requestMessageId: nil, readByCount: 2, readByAccountIds: ["acct_maya", "acct_ethan"]),
+            ChatMessage(id: "gm3", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "I also added the device matrix.", createdAt: now.addingTimeInterval(-120), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+        ])
+        return messages
+    }
+
+    private static func mayaConversation(now: Date) -> [ChatMessage] {
+        let conversationId = "person:acct_maya"
+        let sampleTurns = [
+            "I finished the navigation audit for the iPhone build.",
+            "Thanks. I am checking the entry animation and message position now.",
+            "The contact and group timelines both use the latest fixture.",
+            "I will compare the first frame with the final resting position.",
+            "The updated session list is ready for another pass.",
+            "Great. I will verify that the tab bar stays hidden in the detail view.",
+            "Please also check the pull-to-refresh indicator when you return.",
+            "I will test that after the conversation scrolling checks.",
+            "The newest participant names and avatars are included.",
+            "Perfect. I will confirm that stale profile data never replaces them.",
+            "I added enough history to test quick-return restoration.",
+            "That should make the latest-message button easy to review."
+        ]
+        var messages = (0..<96).map { index in
+            let isMaya = index.isMultiple(of: 2)
+            return ChatMessage(
+                id: "maya-history-\(index)",
+                conversationId: conversationId,
+                author: isMaya ? .person : .me,
+                authorName: isMaya ? "Maya Chen" : "You",
+                text: sampleTurns[index % sampleTurns.count],
+                createdAt: now.addingTimeInterval(-72_000 + Double(index) * 600),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            )
+        }
+        messages.append(contentsOf: [
+            ChatMessage(id: "m3", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "The rollout notes are ready.", createdAt: now.addingTimeInterval(-3_600), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "m4", conversationId: conversationId, author: .me, authorName: "You", text: "Great — I’ll review them after lunch.", createdAt: now.addingTimeInterval(-3_400), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "m5", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(
+                id: "m6",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "",
+                createdAt: now.addingTimeInterval(-30),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                attachments: [
+                    ChatAttachment(
+                        attachmentId: "att_preview_image",
+                        name: "Screenshot-Preview.png",
+                        kind: .image,
+                        mimeType: "image/png",
+                        sizeBytes: 28_400,
+                        previewURL: previewImageDataURL()
+                    )
+                ]
+            )
+        ])
+        return messages
     }
 
     private static func previewImageDataURL() -> String? {

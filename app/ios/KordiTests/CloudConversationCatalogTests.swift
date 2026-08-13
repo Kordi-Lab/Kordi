@@ -2,6 +2,46 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testCanonicalV2AgentSessionAppearsBeforeHistoryBackfill() throws {
+        let payload = Data(#"{"id":"conversation-agent","kind":"ai","shared_title":"Check all my chats","version":3,"created_by_account_id":"acct_me","legacy_session_id":"session:self-agent:canonical","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":12,"created_at":"2026-08-08T10:00:00Z","updated_at":"2026-08-08T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":12,"last_read_sequence":12,"joined_at":"2026-08-08T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-agent","account_id":"acct_me","personal_title":null,"version":1}}"#.utf8)
+        let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: payload)
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [:],
+            canonicalConversations: [canonical]
+        )
+
+        let session = try XCTUnwrap(catalog.first { $0.sessionId == "session:self-agent:canonical" })
+        XCTAssertEqual(session.kind, .agent)
+        XCTAssertEqual(session.displayName, "Check all my chats")
+        XCTAssertEqual(session.messageCount, 12)
+    }
+
+    func testOpaqueCanonicalV2AgentSessionAppearsBeforeHistoryBackfill() throws {
+        let payload = Data(#"{"id":"conversation-agent-opaque","kind":"ai","shared_title":"Model and identity","version":3,"created_by_account_id":"acct_me","legacy_session_id":"e98c478d-6da2-46db-bf16-5caaac677f62","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":8,"created_at":"2026-08-11T17:22:11Z","updated_at":"2026-08-11T17:23:04Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-11T17:22:11Z","left_at":null}],"preferences":{"conversation_id":"conversation-agent-opaque","account_id":"acct_me","personal_title":"Model and identity","version":1}}"#.utf8)
+        let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: payload)
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [:],
+            canonicalConversations: [canonical]
+        )
+
+        let session = try XCTUnwrap(catalog.first {
+            $0.sessionId == "e98c478d-6da2-46db-bf16-5caaac677f62"
+        })
+        XCTAssertEqual(session.kind, .agent)
+        XCTAssertEqual(session.displayName, "Model and identity")
+        XCTAssertEqual(session.messageCount, 8)
+    }
+
     func testRebuildsEveryAgentSessionInsteadOfCollapsingByAgent() throws {
         let requestOne = try CloudMessageCodec.encodeDirect(
             text: "Plan the TestFlight release",
@@ -130,6 +170,54 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertFalse(catalog.contains { $0.kind == .agent && $0.representsKordiSupport })
     }
 
+    func testMigratedSupportSystemSessionIsPresentedAsTheSupportContactNotAGroup() throws {
+        let supportAccountId = "acct_real_support_owner"
+        let supportSessionId = "session:direct-system-agent:acct_me:cloud_agent_kordi_support"
+        let supportContact = CloudContact(
+            accountId: supportAccountId,
+            kordiId: "100000001",
+            displayName: KordiSupportIdentity.displayName,
+            avatarUrl: nil,
+            nodeId: nil,
+            createdAt: "2026-08-08T00:00:00Z"
+        )
+        let supportBody = try CloudMessageCodec.encodeDirect(
+            text: "Help me",
+            agentId: KordiSupportIdentity.agentId,
+            agentName: KordiSupportIdentity.displayName,
+            ownerAccountId: supportAccountId,
+            ownerName: KordiSupportIdentity.displayName
+        )
+        let canonicalPayload = Data(#"{"id":"conversation-support","kind":"group","shared_title":null,"version":27,"created_by_account_id":"acct_me","legacy_session_id":"session:direct-system-agent:acct_me:cloud_agent_kordi_support","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":27,"created_at":"2026-08-08T10:00:00Z","updated_at":"2026-08-08T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":27,"last_read_sequence":27,"joined_at":"2026-08-08T10:00:00Z","left_at":null},{"account_id":"acct_real_support_owner","display_name":"Kordi Support","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":27,"last_read_sequence":27,"joined_at":"2026-08-08T10:00:00Z","left_at":null},{"account_id":"acct_taylor","display_name":"Taylor Kim","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":27,"last_read_sequence":27,"joined_at":"2026-08-08T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-support","account_id":"acct_me","personal_title":null,"version":1}}"#.utf8)
+        let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: canonicalPayload)
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [supportContact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [
+                supportAccountId: [
+                    wire(
+                        id: "support-message",
+                        body: supportBody,
+                        sessionId: supportSessionId,
+                        createdAt: "2026-08-08T10:00:00Z",
+                        from: "acct_me",
+                        to: supportAccountId
+                    )
+                ]
+            ],
+            canonicalConversations: [canonical]
+        )
+
+        let support = try XCTUnwrap(catalog.first { $0.representsKordiSupport })
+        XCTAssertEqual(support.kind, .person)
+        XCTAssertEqual(support.sessionId, supportSessionId)
+        XCTAssertEqual(support.lastMessage, "Help me")
+        XCTAssertFalse(catalog.contains { $0.kind == .group })
+    }
+
     func testRebuildsArbitrarySelfAgentSessionAndIgnoresCancelControlForPreview() {
         let requestId = "msg:ui:05f68dc1-8d3f-4955-9131-b6429369bcce"
         let cancel = "kordi-cloud-agent-cancel:eyJraW5kIjoiYWdlbnQtY2FuY2VsIiwicmVxdWVzdElkIjoibXNnOnVpOjA1ZjY4ZGMxLThkM2YtNDk1NS05MTMxLWI2NDI5MzY5YmNjZSJ9"
@@ -231,6 +319,77 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(groups[0].unreadCount, 1)
         XCTAssertEqual(groups[0].groupParticipants.count, 2)
         XCTAssertEqual(groups[0].messageCount, 1)
+    }
+
+    func testControlOnlyCanonicalGroupSessionIsNotPresentedAsChatHistory() throws {
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Fixture Owner", avatarUrl: nil, role: "member"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "owner")
+        ]
+        let rootId = "session:group:root"
+        let artifactId = "session:group:control-only"
+        let rootMessage = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-message",
+            groupId: rootId,
+            groupSpaceId: rootId,
+            groupTitle: "Mobile builders",
+            createdByAccountId: "acct_maya",
+            actor: participants[1],
+            participants: participants,
+            message: CloudGroupMessagePayload(
+                id: "root-message",
+                senderAccountId: "acct_maya",
+                text: "Real group message",
+                createdAtMs: 1_786_180_800_000,
+                senderKind: "human",
+                senderDisplayName: "Maya",
+                deliveryState: "complete",
+                replyToMessageId: nil,
+                requestId: nil
+            )
+        ))
+        let groupUpdate = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-update",
+            groupId: artifactId,
+            groupSpaceId: rootId,
+            groupTitle: "Mobile builders",
+            createdByAccountId: "acct_maya",
+            actor: participants[1],
+            participants: participants,
+            message: nil
+        ))
+        let titleUpdate = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "session-title-update",
+            groupId: artifactId,
+            groupSpaceId: rootId,
+            groupTitle: "New chat",
+            createdByAccountId: "acct_maya",
+            actor: participants[1],
+            participants: participants,
+            message: nil
+        ))
+        let canonicalPayload = Data(#"{"id":"conversation-control-only","kind":"group","shared_title":"New chat","version":18,"created_by_account_id":"acct_maya","legacy_session_id":"session:group:control-only","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":18,"created_at":"2026-07-21T08:04:25Z","updated_at":"2026-07-22T09:25:10Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":18,"last_read_sequence":18,"joined_at":"2026-07-21T08:04:25Z","left_at":null},{"account_id":"acct_maya","display_name":"Maya","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":18,"last_read_sequence":18,"joined_at":"2026-07-21T08:04:25Z","left_at":null}],"preferences":{"conversation_id":"conversation-control-only","account_id":"acct_me","personal_title":null,"version":1}}"#.utf8)
+        let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: canonicalPayload)
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [
+                "acct_maya": [
+                    wire(id: "root", body: rootMessage, sessionId: rootId, createdAt: "2026-08-08T12:00:00Z", from: "acct_maya", to: "acct_me"),
+                    wire(id: "update", body: groupUpdate, sessionId: artifactId, createdAt: "2026-07-21T08:04:25Z", from: "acct_maya", to: "acct_me"),
+                    wire(id: "title", body: titleUpdate, sessionId: artifactId, createdAt: "2026-07-22T09:25:10Z", from: "acct_maya", to: "acct_me")
+                ]
+            ],
+            canonicalConversations: [canonical]
+        )
+
+        XCTAssertEqual(catalog.first { $0.sessionId == artifactId }?.messageCount, 0)
+        let spaces = GroupSpaceCatalog.build(conversations: catalog, ownAccountId: "acct_me")
+        XCTAssertEqual(spaces.count, 1)
+        XCTAssertEqual(spaces[0].sessions.map(\.sessionId), [rootId])
     }
 
     func testGroupUnreadIgnoresNonIncomingFanoutCopies() throws {

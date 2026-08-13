@@ -18,6 +18,28 @@ enum KordiSyncMarkMotion: Equatable {
     }
 }
 
+enum MessageSyncStatusBehavior {
+    static func motion(
+        pullState: ChatPullRefreshVisualState,
+        messageSyncState: MessageSyncState,
+        isLoadingMessages: Bool
+    ) -> KordiSyncMarkMotion {
+        switch pullState {
+        case .refreshing:
+            return .refreshing
+        case let .pulling(progress):
+            return .pulling(progress: progress)
+        case .idle:
+            if isLoadingMessages { return .syncing }
+            switch messageSyncState {
+            case .syncing: return .syncing
+            case .upToDate: return .idle
+            case .offline: return .offline
+            }
+        }
+    }
+}
+
 struct KordiSyncMarkSample: Equatable {
     let offset: CGSize
     let scale: CGFloat
@@ -103,18 +125,11 @@ struct MessageSyncStatusView: View {
     }
 
     private var motion: KordiSyncMarkMotion {
-        switch pullState {
-        case .refreshing:
-            return .refreshing
-        case let .pulling(progress):
-            return .pulling(progress: progress)
-        case .idle:
-            switch model.messageSyncState {
-            case .syncing: return .syncing
-            case .upToDate: return .idle
-            case .offline: return .offline
-            }
-        }
+        MessageSyncStatusBehavior.motion(
+            pullState: pullState,
+            messageSyncState: model.messageSyncState,
+            isLoadingMessages: isLoadingMessages
+        )
     }
 
     private var accessibilityLabel: String {
@@ -123,6 +138,7 @@ struct MessageSyncStatusView: View {
         case let .pulling(progress):
             return progress >= 1 ? "Release to refresh messages" : "Pull to refresh messages"
         case .idle:
+            if isLoadingMessages { return "Loading messages" }
             switch model.messageSyncState {
             case .syncing: return "Syncing messages"
             case .upToDate:
@@ -133,6 +149,10 @@ struct MessageSyncStatusView: View {
             case .offline: return "Message sync offline"
             }
         }
+    }
+
+    private var isLoadingMessages: Bool {
+        !model.loadingConversationIDs.isEmpty
     }
 }
 
