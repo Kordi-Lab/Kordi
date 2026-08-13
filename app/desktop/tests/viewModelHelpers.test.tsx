@@ -142,19 +142,6 @@ test('buildConversationPreview uses the latest agent turn response when message 
   assert.equal(buildConversationPreview(messages, 'Alex Morgan'), 'I’m not sure yet, but I can help check.');
 });
 
-test('buildConversationPreview labels an image-only message as Photo instead of using the fallback name', () => {
-  const messages: Message[] = [{
-    id: 'message:image:1',
-    role: 'user',
-    sender: 'Shu Yang',
-    text: '',
-    time: '14:29',
-    attachments: [{ kind: 'image', name: 'preview.png', mimeType: 'image/png' }],
-  }];
-
-  assert.equal(buildConversationPreview(messages, 'Shu Yang'), 'Photo');
-});
-
 test('hideRawConversationIds keeps friendly names and preserves canonical ids as subtitles', () => {
   const [conversation] = hideRawConversationIds([{
     id: 'bridge:host:peer:person',

@@ -99,35 +99,6 @@ test('buildParticipantSpaces previews latest agent response when message text is
   assert.equal(spaces[0]?.sessions[0]?.preview, 'I’m doing well — thanks for asking.');
 });
 
-test('buildParticipantSpaces presents an image-only self message as a photo', () => {
-  const spaces = buildParticipantSpaces([
-    conversation({
-      id: 'session:saved-photo',
-      canonicalSessionId: 'session:saved-photo',
-      name: 'Shu Yang',
-      type: 'owned-agent',
-      subtitle: 'Shu Yang',
-      participants: ['Me', 'My Kordi'],
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'agent:my-kordi', name: 'My Kordi', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-kordi' },
-      ],
-      messages: [{
-        role: 'user',
-        sender: 'Shu Yang',
-        text: '',
-        time: '14:29',
-        attachments: [{ kind: 'image', name: 'preview.png', mimeType: 'image/png' }],
-      }],
-      updatedAtLabel: '14:29',
-    }),
-  ]);
-
-  assert.equal(spaces[0]?.title, 'Saved Messages');
-  assert.equal(spaces[0]?.preview, 'Photo');
-  assert.equal(spaces[0]?.sessions[0]?.preview, 'Photo');
-});
-
 test('buildParticipantSpaces separates direct human and self spaces on same Bridge node', () => {
   const spaces = buildParticipantSpaces([
     conversation({

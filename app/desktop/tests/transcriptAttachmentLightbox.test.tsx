@@ -134,7 +134,7 @@ test('media window is resizable and keeps themed edge navigation around uncroppe
 });
 
 test('native media window owns a transparent resizable macOS material without forcing app theme', () => {
-  const source = readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src-tauri/src/media_preview_window.rs', import.meta.url), 'utf8');
   const capabilities = JSON.parse(
     readFileSync(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8'),
   ) as { permissions?: string[] };
@@ -160,7 +160,7 @@ test('native media payload is injected before first render and the image reveals
   const windowSource = readFileSync(new URL('../src/features/chat/attachmentMediaWindow.ts', import.meta.url), 'utf8');
   const viewerSource = readFileSync(new URL('../src/AttachmentMediaWindow.tsx', import.meta.url), 'utf8');
   const lightboxSource = readFileSync(new URL('../src/kordi-app/components/transcriptAttachmentLightbox.tsx', import.meta.url), 'utf8');
-  const nativeSource = readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+  const nativeSource = readFileSync(new URL('../src-tauri/src/media_preview_window.rs', import.meta.url), 'utf8');
 
   assert.match(windowSource, /invoke\('desktop_open_media_preview_window',[\s\S]*payload,/);
   assert.match(nativeSource, /payload:\s*serde_json::Value/);

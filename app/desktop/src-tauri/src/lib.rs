@@ -8,12 +8,14 @@ use cloud_api_endpoint::cloud_api_base_url_from_env;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
+mod media_preview_window;
 mod project;
 mod remote_image;
 mod skill_library;
 mod system_proxy;
 #[cfg(test)]
 mod test_support;
+mod window_lifecycle;
 mod workspace;
 use std::process::Command;
 fn is_cloud_edition_context(
@@ -75,80 +77,20 @@ fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
 use auth::DesktopAuthManager;
 use chat::DesktopChatManager;
 use cloud_presence::publish_stored_offline_on_exit;
+use media_preview_window::{
+    desktop_open_media_preview_window, desktop_reveal_media_preview_window,
+};
 use tauri::Manager;
+use window_lifecycle::{
+    should_hide_window_instead_of_close, should_show_main_window_on_reopen, MAIN_WINDOW_LABEL,
+};
 use workspace::DesktopWorkspaceStatus;
-
-const MAIN_WINDOW_LABEL: &str = "main";
-const MEDIA_PREVIEW_WINDOW_LABEL: &str = "media-preview";
-
-fn should_hide_window_instead_of_close(label: &str) -> bool {
-    cfg!(target_os = "macos") && label == MAIN_WINDOW_LABEL
-}
-
-fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bool {
-    cfg!(target_os = "macos") && !has_visible_windows
-}
-
-fn is_valid_media_preview_request_id(request_id: &str) -> bool {
-    !request_id.is_empty()
-        && request_id
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '-')
-}
-
-fn media_preview_url_matches_request(url: &tauri::Url, request_id: &str) -> bool {
-    url.query_pairs()
-        .any(|(key, value)| key == "mediaPreviewRequest" && value == request_id)
-}
 
 #[cfg(test)]
 mod window_lifecycle_tests {
-    use super::{
-        is_cloud_edition_context, is_valid_media_preview_request_id,
-        media_preview_url_matches_request, should_hide_window_instead_of_close,
-        should_show_main_window_on_reopen,
-    };
+    use super::is_cloud_edition_context;
     use crate::cloud_api_endpoint::DEFAULT_CLOUD_API_BASE_URL;
     use crate::cloud_presence::{offline_url, should_publish_offline_on_exit};
-
-    #[test]
-    fn macos_main_window_close_hides_instead_of_quitting() {
-        assert!(should_hide_window_instead_of_close("main"));
-        assert!(!should_hide_window_instead_of_close("secondary"));
-    }
-
-    #[test]
-    fn dock_reopen_restores_main_window_when_none_are_visible() {
-        assert!(should_show_main_window_on_reopen(false));
-        assert!(!should_show_main_window_on_reopen(true));
-    }
-
-    #[test]
-    fn media_preview_request_ids_allow_only_local_generated_tokens() {
-        assert!(is_valid_media_preview_request_id(
-            "4d216ab0-480b-4f5a-ae54-4c69c13c33b3"
-        ));
-        assert!(!is_valid_media_preview_request_id(""));
-        assert!(!is_valid_media_preview_request_id("https://example.com"));
-        assert!(!is_valid_media_preview_request_id("../index.html"));
-    }
-
-    #[test]
-    fn media_preview_reveal_matches_only_the_current_window_request() {
-        let current = tauri::Url::parse(
-            "tauri://localhost/index.html?mediaPreview=1&mediaPreviewRequest=request-current",
-        )
-        .expect("media preview URL should parse");
-
-        assert!(media_preview_url_matches_request(
-            &current,
-            "request-current"
-        ));
-        assert!(!media_preview_url_matches_request(
-            &current,
-            "request-stale"
-        ));
-    }
 
     #[test]
     fn explicit_app_exit_publishes_presence_offline() {
@@ -244,86 +186,6 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
         run_external_command(Command::new("xdg-open").arg(trimmed))?;
     }
     Ok(trimmed.to_string())
-}
-
-#[tauri::command]
-async fn desktop_open_media_preview_window(
-    app: tauri::AppHandle,
-    request_id: String,
-    title: String,
-    payload: serde_json::Value,
-) -> Result<(), String> {
-    if !is_valid_media_preview_request_id(&request_id) {
-        return Err("Invalid media preview request".to_string());
-    }
-    if payload.get("requestId").and_then(serde_json::Value::as_str) != Some(request_id.as_str()) {
-        return Err("Media preview payload does not match its request".to_string());
-    }
-    if let Some(existing) = app.get_webview_window(MEDIA_PREVIEW_WINDOW_LABEL) {
-        existing.destroy().map_err(|error| error.to_string())?;
-    }
-
-    let media_path = format!("index.html?mediaPreview=1&mediaPreviewRequest={request_id}");
-    let serialized_payload = serde_json::to_string(&payload).map_err(|error| error.to_string())?;
-    let initialization_script =
-        format!("window.__KORDI_ATTACHMENT_MEDIA_PAYLOAD__ = {serialized_payload};");
-    let builder = tauri::WebviewWindowBuilder::new(
-        &app,
-        MEDIA_PREVIEW_WINDOW_LABEL,
-        tauri::WebviewUrl::App(media_path.into()),
-    )
-    .title(if title.trim().is_empty() {
-        "Kordi Media"
-    } else {
-        title.trim()
-    })
-    .initialization_script(&initialization_script)
-    .inner_size(1080.0, 760.0)
-    .min_inner_size(520.0, 360.0)
-    .center()
-    .resizable(true)
-    .minimizable(true)
-    .maximizable(true)
-    .closable(true)
-    .decorations(true)
-    .shadow(true)
-    .visible(false)
-    .transparent(true)
-    .background_color(tauri::utils::config::Color(0, 0, 0, 0));
-
-    #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .effects(tauri::utils::config::WindowEffectsConfig {
-            effects: vec![tauri::window::Effect::UnderWindowBackground],
-            state: Some(tauri::window::EffectState::FollowsWindowActiveState),
-            radius: Some(12.0),
-            color: None,
-        });
-
-    builder.build().map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-fn desktop_reveal_media_preview_window(
-    app: tauri::AppHandle,
-    request_id: String,
-) -> Result<(), String> {
-    if !is_valid_media_preview_request_id(&request_id) {
-        return Err("Invalid media preview request".to_string());
-    }
-    let window = app
-        .get_webview_window(MEDIA_PREVIEW_WINDOW_LABEL)
-        .ok_or_else(|| "Media preview window is unavailable".to_string())?;
-    let window_url = window.url().map_err(|error| error.to_string())?;
-    if !media_preview_url_matches_request(&window_url, &request_id) {
-        return Err("Media preview request does not match the current window".to_string());
-    }
-    window.show().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())?;
-    Ok(())
 }
 
 pub fn run() {

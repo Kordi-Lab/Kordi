@@ -66,23 +66,23 @@
   transform-origin: 8% 100%;
 }
 
-.app-message-media-only {
+[data-message-media-side] {
   --app-message-media-edge-offset: var(--app-message-bubble-tail-width, 8px);
 }
 
-.app-message-media-only-own {
+[data-message-media-side="own"] {
   transform: translateX(var(--app-message-media-edge-offset));
 }
 
-.app-message-media-only-peer {
+[data-message-media-side="peer"] {
   transform: translateX(calc(-1 * var(--app-message-media-edge-offset)));
 }
 
-.app-message-media-only-own .app-attachment-image-collage {
+[data-message-media-side="own"] .app-attachment-image-collage {
   align-self: flex-end;
 }
 
-.app-message-media-only-peer .app-attachment-image-collage {
+[data-message-media-side="peer"] .app-attachment-image-collage {
   align-self: flex-start;
 }
 

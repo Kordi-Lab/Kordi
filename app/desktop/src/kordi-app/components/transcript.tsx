@@ -39,6 +39,7 @@ import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttributi
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
+import type { MessageForkSummary } from './transcriptMessageForks';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
@@ -46,8 +47,7 @@ import type {
   ContactRequest,
   ConversationType,
   EditFilePreview,
-  Message,
-  MessageAttachment,
+  Message, MessageAttachment,
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -690,11 +690,6 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
     </div>
   );
 }
-export type MessageForkSummary = {
-  sessionId: string;
-  title: string;
-  updatedAtLabel?: string;
-};
 export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact' | 'agent-compact';
 function MessageBubbleView({
   msg,
@@ -1256,11 +1251,8 @@ function MessageBubbleView({
         ) : showAvatarSlot ? (
           <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
-        <div
-          data-message-context-menu-anchor="true"
-          data-message-media-side={hasOnlyImageAttachments
-            ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined
-            : undefined}
+        <div data-message-context-menu-anchor="true"
+          data-message-media-side={hasOnlyImageAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined}
           data-message-sender-profile-trigger={canOpenSenderProfile ? 'true' : undefined}
           data-transcript-density={compactDensity}
           onClick={(event) => {
@@ -1279,8 +1271,6 @@ function MessageBubbleView({
           }}
           className={cn(
           'app-message-hover-time-trigger min-w-0',
-          hasOnlyImageAttachments && isOwnHumanMessage ? 'app-message-media-only app-message-media-only-own' : '',
-          hasOnlyImageAttachments && isPeerHumanMessage ? 'app-message-media-only app-message-media-only-peer' : '',
           canOpenSenderProfile ? 'cursor-pointer' : '',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
