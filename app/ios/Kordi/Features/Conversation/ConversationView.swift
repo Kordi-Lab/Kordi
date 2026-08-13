@@ -45,6 +45,7 @@ struct ConversationView: View {
 
     private var messages: [ChatMessage] { model.messages(for: conversation) }
     private let bottomAnchorID = "conversation-bottom"
+    private let timelineVerticalInset: CGFloat = 14
 
     var body: some View {
         let timeline = messages
@@ -76,87 +77,97 @@ struct ConversationView: View {
                     )
                 }
 
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        if timeline.isEmpty {
-                            EmptyConversation(conversation: conversation)
-                                .padding(.top, 70)
-                        } else {
-                            if visibleStartIndex > 0 {
-                                EarlierMessagesLoader(remainingCount: visibleStartIndex)
-                                    .id("earlier:\(visibleTimeline.first?.id ?? conversation.id)")
-                                    .onAppear {
-                                        loadEarlierMessages(
-                                            preserving: visibleTimeline.first?.id,
-                                            totalCount: timeline.count,
-                                            proxy: proxy
-                                        )
-                                    }
-                            }
-
-                            ForEach(Array(visibleTimeline.enumerated()), id: \.element.id) { offset, message in
-                                let index = visibleStartIndex + offset
-                                let presentation = timelinePresentation[index - presentationStartIndex]
-                                let avatar = avatarIdentity(for: message)
-                                let readers = readReceiptParticipants(for: message)
-
-                                VStack(spacing: 0) {
-                                    if presentation.showsTimestamp {
-                                        ConversationTimestampDivider(date: message.createdAt)
-                                    }
-
-                                    MessageBubble(
-                                        message: message,
-                                        showAuthor: message.author == .agent,
-                                        showAvatar: presentation.showsAvatar,
-                                        replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
-                                        isHighlighted: highlightedMessageID == message.id,
-                                        isPinned: pinnedMessage?.id == message.id,
-                                        selectionMode: !selectedMessageIDs.isEmpty,
-                                        isSelected: selectedMessageIDs.contains(message.id),
-                                        allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
-                                        showsAvatarSlot: message.author != .agent,
-                                        authorAvatarName: avatar.name,
-                                        authorAvatarSource: avatar.source,
-                                        authorAvatarSeed: avatar.seed,
-                                        readByNames: readers.map(\.displayName),
-                                        onRetry: { Task { await model.retry(message, in: conversation) } },
-                                        onReply: {
-                                            guard conversation.kind.supportsQuotedReplies else { return }
-                                            replySource = message.actionSource(sessionId: conversation.sessionId)
-                                        },
-                                        onPin: {
-                                            if pinnedMessage?.id == message.id {
-                                                Task { _ = await model.unpin(message, in: conversation) }
-                                            } else {
-                                                pinTarget = message
-                                            }
-                                        },
-                                        onForward: {
-                                            forwardRequest = MessageForwardRequest(
-                                                sourceConversation: conversation,
-                                                messages: [message]
+                GeometryReader { viewport in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            if timeline.isEmpty {
+                                EmptyConversation(conversation: conversation)
+                                    .padding(.top, 70)
+                            } else {
+                                if visibleStartIndex > 0 {
+                                    EarlierMessagesLoader(remainingCount: visibleStartIndex)
+                                        .id("earlier:\(visibleTimeline.first?.id ?? conversation.id)")
+                                        .onAppear {
+                                            loadEarlierMessages(
+                                                preserving: visibleTimeline.first?.id,
+                                                totalCount: timeline.count,
+                                                proxy: proxy
                                             )
-                                        },
-                                        onDetails: { detailsMessage = message },
-                                        onSelect: { toggleSelection(message.id) },
-                                        onNavigateToReply: { messageId in
-                                            navigateToMessage(messageId, in: timeline, proxy: proxy)
-                                        },
-                                        onOpenAttachment: { attachment in
-                                            prepare(attachment, forSharing: false)
-                                        },
-                                        onShareAttachment: { attachment in
-                                            prepare(attachment, forSharing: true)
                                         }
-                                    )
-                                    .equatable()
-                                    .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
-                                    .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
                                 }
-                                .id(message.id)
-                            }
 
+                                ForEach(Array(visibleTimeline.enumerated()), id: \.element.id) { offset, message in
+                                    let index = visibleStartIndex + offset
+                                    let presentation = timelinePresentation[index - presentationStartIndex]
+                                    let avatar = avatarIdentity(for: message)
+                                    let readers = readReceiptParticipants(for: message)
+
+                                    VStack(spacing: 0) {
+                                        if presentation.showsTimestamp {
+                                            ConversationTimestampDivider(date: message.createdAt)
+                                        }
+
+                                        MessageBubble(
+                                            message: message,
+                                            showAuthor: message.author == .agent,
+                                            showAvatar: presentation.showsAvatar,
+                                            replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
+                                            isHighlighted: highlightedMessageID == message.id,
+                                            isPinned: pinnedMessage?.id == message.id,
+                                            selectionMode: !selectedMessageIDs.isEmpty,
+                                            isSelected: selectedMessageIDs.contains(message.id),
+                                            allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                                            showsAvatarSlot: message.author != .agent,
+                                            authorAvatarName: avatar.name,
+                                            authorAvatarSource: avatar.source,
+                                            authorAvatarSeed: avatar.seed,
+                                            readByNames: readers.map(\.displayName),
+                                            onRetry: { Task { await model.retry(message, in: conversation) } },
+                                            onReply: {
+                                                guard conversation.kind.supportsQuotedReplies else { return }
+                                                replySource = message.actionSource(sessionId: conversation.sessionId)
+                                            },
+                                            onPin: {
+                                                if pinnedMessage?.id == message.id {
+                                                    Task { _ = await model.unpin(message, in: conversation) }
+                                                } else {
+                                                    pinTarget = message
+                                                }
+                                            },
+                                            onForward: {
+                                                forwardRequest = MessageForwardRequest(
+                                                    sourceConversation: conversation,
+                                                    messages: [message]
+                                                )
+                                            },
+                                            onDetails: { detailsMessage = message },
+                                            onSelect: { toggleSelection(message.id) },
+                                            onNavigateToReply: { messageId in
+                                                navigateToMessage(messageId, in: timeline, proxy: proxy)
+                                            },
+                                            onOpenAttachment: { attachment in
+                                                prepare(attachment, forSharing: false)
+                                            },
+                                            onShareAttachment: { attachment in
+                                                prepare(attachment, forSharing: true)
+                                            }
+                                        )
+                                        .equatable()
+                                        .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
+                                        .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                                    }
+                                    .id(message.id)
+                                }
+
+                            }
+                        }
+                        .frame(
+                            minHeight: max(0, viewport.size.height - timelineVerticalInset * 2),
+                            alignment: .top
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, timelineVerticalInset)
+                        .overlay(alignment: .bottom) {
                             Color.clear
                                 .frame(height: 1)
                                 .id(bottomAnchorID)
@@ -164,11 +175,9 @@ struct ConversationView: View {
                                 .onDisappear { isAtBottom = false }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 14)
+                    .background(Color(uiColor: .systemGroupedBackground))
+                    .scrollDismissesKeyboard(.interactively)
                 }
-                .background(Color(uiColor: .systemGroupedBackground))
-                .scrollDismissesKeyboard(.interactively)
             }
             .onAppear {
                 scrollToBottom(proxy)

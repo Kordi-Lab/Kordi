@@ -7,6 +7,19 @@ pub async fn send_message(
     conversation_id: Uuid,
     request: SendMessageRequest,
 ) -> Result<InsertOutcome<MessageSnapshot>, StoreError> {
+    let mut transaction = pool.begin().await?;
+    let outcome =
+        send_message_in_transaction(&mut transaction, account_id, conversation_id, request).await?;
+    transaction.commit().await?;
+    Ok(outcome)
+}
+
+pub(crate) async fn send_message_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    conversation_id: Uuid,
+    request: SendMessageRequest,
+) -> Result<InsertOutcome<MessageSnapshot>, StoreError> {
     let message_kind = request.kind.trim();
     if message_kind.is_empty() || message_kind.chars().count() > 64 {
         return Err(StoreError::InvalidInput("message kind is invalid"));
@@ -28,29 +41,27 @@ pub async fn send_message(
         attachment_ids: &attachment_ids,
     })?;
 
-    let mut transaction = pool.begin().await?;
-    advisory_operation_lock(&mut transaction, account_id, request.client_message_id).await?;
+    advisory_operation_lock(transaction, account_id, request.client_message_id).await?;
     let existing: Option<(Uuid, String)> = query_as(
         "SELECT message_id, request_fingerprint FROM cloud_chat_messages \
          WHERE sender_account_id = $1 AND client_message_id = $2",
     )
     .bind(account_id)
     .bind(request.client_message_id)
-    .fetch_optional(&mut *transaction)
+    .fetch_optional(&mut **transaction)
     .await?;
     if let Some((message_id, stored_fingerprint)) = existing {
         if stored_fingerprint != request_fingerprint {
             return Err(StoreError::IdempotencyKeyReused);
         }
-        let message = load_message(&mut transaction, message_id).await?;
-        transaction.commit().await?;
+        let message = load_message(transaction, message_id).await?;
         return Ok(InsertOutcome {
             value: message,
             inserted: false,
         });
     }
 
-    require_active_member(&mut transaction, conversation_id, account_id).await?;
+    require_active_member(transaction, conversation_id, account_id).await?;
     if let Some(reply_to_message_id) = request.reply_to_message_id {
         let reply: Option<(i32,)> = query_as(
             "SELECT 1 FROM cloud_chat_messages \
@@ -58,7 +69,7 @@ pub async fn send_message(
         )
         .bind(reply_to_message_id)
         .bind(conversation_id)
-        .fetch_optional(&mut *transaction)
+        .fetch_optional(&mut **transaction)
         .await?;
         if reply.is_none() {
             return Err(StoreError::InvalidInput(
@@ -73,7 +84,7 @@ pub async fn send_message(
         )
         .bind(&attachment_ids)
         .bind(account_id)
-        .fetch_one(&mut *transaction)
+        .fetch_one(&mut **transaction)
         .await?;
         if valid_attachments.0 != attachment_ids.len() as i64 {
             return Err(StoreError::InvalidInput(
@@ -92,7 +103,7 @@ pub async fn send_message(
          RETURNING next_message_sequence - 1, version",
     )
     .bind(conversation_id)
-    .fetch_optional(&mut *transaction)
+    .fetch_optional(&mut **transaction)
     .await?;
     let (conversation_sequence, _conversation_version) = allocation.ok_or(StoreError::NotFound)?;
     let message_id = Uuid::now_v7();
@@ -111,7 +122,7 @@ pub async fn send_message(
     .bind(message_kind)
     .bind(&request.content)
     .bind(request.reply_to_message_id)
-    .execute(&mut *transaction)
+    .execute(&mut **transaction)
     .await?;
     for (position, attachment_id) in attachment_ids.iter().enumerate() {
         query(
@@ -121,16 +132,16 @@ pub async fn send_message(
         .bind(message_id)
         .bind(attachment_id)
         .bind(position as i32)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
     }
-    let message = load_message(&mut transaction, message_id).await?;
-    let recipients = active_member_ids(&mut transaction, conversation_id).await?;
+    let message = load_message(transaction, message_id).await?;
+    let recipients = active_member_ids(transaction, conversation_id).await?;
     for recipient in &recipients {
-        let conversation = load_conversation(&mut transaction, conversation_id, recipient).await?;
+        let conversation = load_conversation(transaction, conversation_id, recipient).await?;
         let payload = json!({ "message": &message, "conversation": &conversation });
         insert_sync_event(
-            &mut transaction,
+            transaction,
             recipient,
             "message.created",
             Some(conversation_id),
@@ -140,8 +151,7 @@ pub async fn send_message(
         )
         .await?;
     }
-    wake_dispatcher(&mut transaction).await?;
-    transaction.commit().await?;
+    wake_dispatcher(transaction).await?;
     Ok(InsertOutcome {
         value: message,
         inserted: true,

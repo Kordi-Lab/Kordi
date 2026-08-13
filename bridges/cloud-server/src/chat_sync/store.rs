@@ -197,8 +197,10 @@ mod support;
 mod titles;
 
 pub use conversation::create_conversation;
+pub(crate) use conversation::create_conversation_in_transaction;
 pub use cursors::{advance_delivery_cursor, advance_read_cursor, bootstrap, history, sync_batch};
 pub use members::{accept_invited_conversation_member, add_conversation_members};
+pub(crate) use message::send_message_in_transaction;
 pub use message::{conversation_id_for_session, replace_message_snapshot, send_message};
 pub use support::publish_user_sync_events;
 pub use titles::{update_personal_title, update_shared_title};

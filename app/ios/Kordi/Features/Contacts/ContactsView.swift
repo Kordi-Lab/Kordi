@@ -95,6 +95,7 @@ struct ContactsView: View {
         }
         .sheet(isPresented: $showAccount) { AccountSheet() }
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
+        .task { await model.refreshContactRequests() }
     }
 
     private var accountButton: some View {

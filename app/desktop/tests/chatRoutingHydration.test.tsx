@@ -49,17 +49,17 @@ test('canonical hydration strips persisted derived cloud unread counts', () => {
   assert.equal(metadata?.keep, 'value');
 });
 
-test('pending Cloud contact selection keeps active conversation on Cloud instead of falling back to local session', () => {
+test('new Cloud contact selection opens an empty usable chat instead of waiting forever', () => {
   const conversation = pendingCloudCollaborationConversationForActiveId('bridge:cloud:acct_peer:person');
 
   assert.equal(conversation?.id, 'bridge:cloud:acct_peer:person');
   assert.equal(conversation?.collaborationTarget?.hostId, 'cloud');
   assert.equal(conversation?.collaborationTarget?.nodeId, 'acct_peer');
-  assert.equal(conversation?.name, 'Opening contact…');
+  assert.equal(conversation?.name, 'New contact chat');
   assert.equal(conversation?.collaborationSources.includes('Cloud'), true);
   assert.equal(conversation?.subtitle, '');
-  assert.equal(conversation?.messages.length, 1);
-  assert.equal(conversation?.messages[0]?.detail, 'transcript-loading');
+  assert.deepEqual(conversation?.participants, ['Me', 'Contact']);
+  assert.equal(conversation?.messages.length, 0);
 });
 
 test('workspace active conversation resolves Cloud self-agent bridge session ids to restored canonical sessions', () => {

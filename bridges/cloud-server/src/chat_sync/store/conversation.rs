@@ -6,6 +6,17 @@ pub async fn create_conversation(
     account_id: &str,
     request: CreateConversationRequest,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    let mut transaction = pool.begin().await?;
+    let outcome = create_conversation_in_transaction(&mut transaction, account_id, request).await?;
+    transaction.commit().await?;
+    Ok(outcome)
+}
+
+pub(crate) async fn create_conversation_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    request: CreateConversationRequest,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let shared_title = normalize_title(request.shared_title.as_deref())?;
     let client_session_id = normalize_client_session_id(Some(&request.client_session_id))?
         .ok_or(StoreError::InvalidInput("client session id is required"))?;
@@ -33,9 +44,8 @@ pub async fn create_conversation(
         member_account_ids: &members,
     })?;
 
-    let mut transaction = pool.begin().await?;
-    advisory_operation_lock(&mut transaction, account_id, request.client_operation_id).await?;
-    advisory_session_lock(&mut transaction, &client_session_id).await?;
+    advisory_operation_lock(transaction, account_id, request.client_operation_id).await?;
+    advisory_session_lock(transaction, &client_session_id).await?;
     let existing: Option<(Uuid, String)> = query_as(
         "SELECT conversation_id, creation_fingerprint \
          FROM cloud_chat_conversations \
@@ -43,14 +53,13 @@ pub async fn create_conversation(
     )
     .bind(account_id)
     .bind(request.client_operation_id)
-    .fetch_optional(&mut *transaction)
+    .fetch_optional(&mut **transaction)
     .await?;
     if let Some((conversation_id, stored_fingerprint)) = existing {
         if stored_fingerprint != request_fingerprint {
             return Err(StoreError::IdempotencyKeyReused);
         }
-        let conversation = load_conversation(&mut transaction, conversation_id, account_id).await?;
-        transaction.commit().await?;
+        let conversation = load_conversation(transaction, conversation_id, account_id).await?;
         return Ok(InsertOutcome {
             value: conversation,
             inserted: false,
@@ -66,20 +75,18 @@ pub async fn create_conversation(
              WHERE legacy_session_id = $1 FOR UPDATE",
         )
         .bind(&client_session_id)
-        .fetch_optional(&mut *transaction)
+        .fetch_optional(&mut **transaction)
         .await?;
         if let Some((conversation_id, stored_kind)) = existing {
             if stored_kind != request.kind.as_str() {
                 return Err(StoreError::IdempotencyKeyReused);
             }
-            require_active_member(&mut transaction, conversation_id, account_id).await?;
-            let stored_members = active_member_ids(&mut transaction, conversation_id).await?;
+            require_active_member(transaction, conversation_id, account_id).await?;
+            let stored_members = active_member_ids(transaction, conversation_id).await?;
             if stored_members != members {
                 return Err(StoreError::IdempotencyKeyReused);
             }
-            let conversation =
-                load_conversation(&mut transaction, conversation_id, account_id).await?;
-            transaction.commit().await?;
+            let conversation = load_conversation(transaction, conversation_id, account_id).await?;
             return Ok(InsertOutcome {
                 value: conversation,
                 inserted: false,
@@ -90,7 +97,7 @@ pub async fn create_conversation(
     let existing_accounts: (i64,) =
         query_as("SELECT COUNT(*) FROM cloud_accounts WHERE account_id = ANY($1)")
             .bind(&members)
-            .fetch_one(&mut *transaction)
+            .fetch_one(&mut **transaction)
             .await?;
     if existing_accounts.0 != members.len() as i64 {
         return Err(StoreError::InvalidInput(
@@ -109,7 +116,7 @@ pub async fn create_conversation(
         )
         .bind(account_id)
         .bind(&peers)
-        .fetch_one(&mut *transaction)
+        .fetch_one(&mut **transaction)
         .await?;
         if contact_count.0 != peers.len() as i64 {
             return Err(StoreError::Forbidden);
@@ -130,7 +137,7 @@ pub async fn create_conversation(
     .bind(request.client_operation_id)
     .bind(&request_fingerprint)
     .bind(&client_session_id)
-    .execute(&mut *transaction)
+    .execute(&mut **transaction)
     .await?;
     for member in &members {
         query(
@@ -144,19 +151,19 @@ pub async fn create_conversation(
         } else {
             "member"
         })
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
     }
-    let conversation = load_conversation(&mut transaction, conversation_id, account_id).await?;
+    let conversation = load_conversation(transaction, conversation_id, account_id).await?;
     for member in &members {
         let projection = if member == account_id {
             conversation.clone()
         } else {
-            load_conversation(&mut transaction, conversation_id, member).await?
+            load_conversation(transaction, conversation_id, member).await?
         };
         let payload = json!({ "conversation": &projection });
         insert_sync_event(
-            &mut transaction,
+            transaction,
             member,
             "conversation.created",
             Some(conversation_id),
@@ -166,8 +173,7 @@ pub async fn create_conversation(
         )
         .await?;
     }
-    wake_dispatcher(&mut transaction).await?;
-    transaction.commit().await?;
+    wake_dispatcher(transaction).await?;
     Ok(InsertOutcome {
         value: conversation,
         inserted: true,

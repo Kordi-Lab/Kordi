@@ -313,6 +313,18 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshContactRequests() async {
+        guard let token else { return }
+        do {
+            let requests = try await api.listContactRequests(token: token)
+            guard token == self.token else { return }
+            contactRequests = requests
+        } catch {
+            // The chat sync loop retries this best-effort inbox refresh. User-triggered
+            // contact actions continue to surface their own actionable errors.
+        }
+    }
+
     func appDidBecomeActive() async {
         guard phase == .signedIn, !previewMode else { return }
         await refreshWorkspace()
@@ -1735,6 +1747,7 @@ final class AppModel: ObservableObject {
             var hasUnpersistedChanges = resetCursor
             var nextCursor = cloudSyncCursor
             var pendingEvents: [CloudSyncEvent] = []
+            var chatPollsUntilContactRefresh = 0
             while !Task.isCancelled {
                 do {
                     let response = try await api.sync(token: token, cursor: nextCursor)
@@ -1779,6 +1792,13 @@ final class AppModel: ObservableObject {
                     recordCloudConnectionFailure(error)
                     // The next foreground poll retries. User-triggered actions
                     // still surface their own actionable network errors.
+                }
+
+                if chatPollsUntilContactRefresh == 0 {
+                    await refreshContactRequests()
+                    chatPollsUntilContactRefresh = 2
+                } else {
+                    chatPollsUntilContactRefresh -= 1
                 }
                 try? await Task.sleep(for: .seconds(5))
             }

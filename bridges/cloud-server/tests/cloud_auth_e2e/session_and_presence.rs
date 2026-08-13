@@ -97,13 +97,40 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
     let request_id = request["request"]["requestId"].as_str().unwrap();
     let b_token = b["session"]["token"].as_str().unwrap();
     let accept_path = format!("/v1/cloud/contacts/requests/{request_id}/accept");
-    let accept_status = router
+    let accept_response = router
         .clone()
         .oneshot(post_with_token(&accept_path, b_token))
         .await
-        .unwrap()
-        .status();
-    assert_eq!(accept_status, StatusCode::OK);
+        .unwrap();
+    assert_eq!(accept_response.status(), StatusCode::OK);
+    let accept_body = read_json(accept_response).await;
+    assert_eq!(
+        accept_body["helloMessage"]["body"],
+        "👋 Hi! Thanks for adding me — happy to connect."
+    );
+    assert_eq!(accept_body["helloMessage"]["fromAccountId"], b_id);
+    assert_eq!(
+        accept_body["helloMessage"]["toAccountId"],
+        a["account"]["accountId"]
+    );
+    assert_eq!(accept_body["helloMessage"]["direction"], "outgoing");
+
+    let accepted_chat: (i64, i64) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(DISTINCT conversation.conversation_id), COUNT(message.message_id) \
+         FROM cloud_chat_conversations conversation \
+         JOIN cloud_chat_messages message \
+           ON message.conversation_id = conversation.conversation_id \
+         WHERE conversation.legacy_session_id = $1 \
+           AND message.sender_account_id = $2 \
+           AND message.content #>> '{blocks,0,text}' = $3",
+    )
+    .bind(accept_body["helloMessage"]["sessionId"].as_str().unwrap())
+    .bind(b_id)
+    .bind("👋 Hi! Thanks for adding me — happy to connect.")
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(accepted_chat, (1, 1));
 
     let online_status = router
         .clone()
