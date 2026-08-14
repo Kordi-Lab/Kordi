@@ -8,6 +8,9 @@ struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
+    private let companionContext: CompanionChatContext?
+    private let allowsCompanionPanel: Bool
+    private let showsNavigationChrome: Bool
     @State private var draft = ""
     @State private var isSending = false
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
@@ -40,10 +43,22 @@ struct ConversationView: View {
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
     @State private var forwardedDestination: ConversationSummary?
+    @State private var selectedCompanionConversation: ConversationSummary?
+    @State private var showsCompanionPanel = false
+    @State private var hasOpenedCompanionPreview = false
 
-    init(conversation: ConversationSummary, initialMessageID: String? = nil) {
+    init(
+        conversation: ConversationSummary,
+        initialMessageID: String? = nil,
+        companionContext: CompanionChatContext? = nil,
+        allowsCompanionPanel: Bool = true,
+        showsNavigationChrome: Bool = true
+    ) {
         initialConversation = conversation
         self.initialMessageID = initialMessageID
+        self.companionContext = companionContext
+        self.allowsCompanionPanel = allowsCompanionPanel
+        self.showsNavigationChrome = showsNavigationChrome
     }
 
     /// Navigation can outlive a sync pass. Resolve the current summary by its
@@ -263,21 +278,34 @@ struct ConversationView: View {
                 await loadAndRevealInitialConversation(using: proxy)
             }
         }
-        .navigationTitle(conversation.displayName)
+        .navigationTitle(showsNavigationChrome ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                conversationHeader
-                    .accessibilityElement(children: .combine)
-            }
-            if #available(iOS 26.0, *) {
-                ToolbarItem(placement: .topBarTrailing) {
-                    sessionActionsButton
+            if showsNavigationChrome {
+                ToolbarItem(placement: .principal) {
+                    conversationHeader
+                        .accessibilityElement(children: .combine)
                 }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .topBarTrailing) {
-                    sessionActionsButton
+                if #available(iOS 26.0, *) {
+                    if canOpenCompanionPanel {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            askAgentButton
+                        }
+                        .sharedBackgroundVisibility(.hidden)
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        sessionActionsButton
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                } else {
+                    if canOpenCompanionPanel {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            askAgentButton
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        sessionActionsButton
+                    }
                 }
             }
         }
@@ -356,6 +384,10 @@ struct ConversationView: View {
                     attachments: PreviewData.pendingPhotoAttachments()
                 )
             }
+            openCompanionPreviewIfReady()
+        }
+        .onChange(of: canOpenCompanionPanel) { _, _ in
+            openCompanionPreviewIfReady()
         }
         .fileImporter(
             isPresented: $showFileImporter,
@@ -418,6 +450,13 @@ struct ConversationView: View {
             MessageDetailsSheet(
                 message: message,
                 readers: readReceiptParticipants(for: message)
+            )
+        }
+        .inspector(isPresented: $showsCompanionPanel) {
+            CompanionChatPanel(
+                isPresented: $showsCompanionPanel,
+                selectedConversation: $selectedCompanionConversation,
+                sourceConversation: conversation
             )
         }
         .confirmationDialog(
@@ -735,6 +774,58 @@ struct ConversationView: View {
         .accessibilityLabel("Info, Artifacts, and Tasks")
     }
 
+    private var askAgentButton: some View {
+        Button(action: openCompanionPanel) {
+            Image(systemName: "sparkles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(KordiTheme.agentViolet)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+                .accessibilityHidden(true)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .accessibilityLabel("Ask Agent")
+        .accessibilityHint("Opens an agent chat with this session attached as context")
+    }
+
+    private var canOpenCompanionPanel: Bool {
+        allowsCompanionPanel && !CompanionPanelCatalog.sections(
+            conversations: model.conversations,
+            ownAccountID: model.account?.accountId ?? ""
+        ).isEmpty
+    }
+
+    private func openCompanionPanel() {
+        guard allowsCompanionPanel else { return }
+        if selectedCompanionConversation == nil
+            || selectedCompanionConversation?.id == conversation.id {
+            selectedCompanionConversation = CompanionPanelCatalog.suggestedConversation(
+                for: conversation,
+                conversations: model.conversations,
+                ownAccountID: model.account?.accountId ?? ""
+            )
+        }
+        showsCompanionPanel = selectedCompanionConversation != nil
+    }
+
+    private func openCompanionPreviewIfReady() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("--preview-companion-panel")
+                || arguments.contains("--preview-companion-return"),
+              canOpenCompanionPanel,
+              !hasOpenedCompanionPreview else { return }
+        hasOpenedCompanionPreview = true
+        Task { @MainActor in
+            await Task.yield()
+            openCompanionPanel()
+            if arguments.contains("--preview-companion-return") {
+                try? await Task.sleep(for: .seconds(1))
+                showsCompanionPanel = false
+            }
+        }
+    }
+
     private var agentHeaderStatus: String {
         let agentName = conversation.agentDisplayName?.nonEmpty
         let status = model.agentStatusText(for: conversation)
@@ -806,6 +897,7 @@ struct ConversationView: View {
                 attachments: batch,
                 replyingTo: index == 0 ? reply : nil,
                 mentioning: index == 0 ? mention : nil,
+                agentContext: index == 0 ? companionContext?.referenceText : nil,
                 to: conversation
             )
         }

@@ -77,7 +77,9 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
             || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
-            || ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat")),
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
+            || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")),
            let conversation = model.conversations.first(where: {
                if ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat") {
                    return $0.id == "group:mobile-release"
@@ -91,7 +93,9 @@ private struct RootView: View {
                     || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
                     || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
                     || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
-                    || ProcessInfo.processInfo.arguments.contains("--preview-photo-send") {
+                    || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-companion-return") {
                    return $0.id == "person:acct_maya"
                }
                return $0.id == (ProcessInfo.processInfo.arguments.contains("--preview-agent-model")

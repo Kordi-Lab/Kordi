@@ -7,6 +7,15 @@ enum AppPhase: Equatable {
     case signedIn
 }
 
+enum AgentPromptContext {
+    static func compose(userText: String, referenceText: String?) -> String {
+        guard let referenceText = referenceText?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty else { return userText }
+        return "\(referenceText)\n\nRequest:\n\(userText)"
+    }
+}
+
 enum CloudConnectionState: Equatable {
     case connecting
     case connected
@@ -82,6 +91,7 @@ final class AppModel: ObservableObject {
     private var pendingReplyByMessageId: [String: MessageActionSource] = [:]
     private var pendingMessageActionByMessageId: [String: MessageActionMetadata] = [:]
     private var pendingMentionByMessageId: [String: ComposerMentionTarget] = [:]
+    private var pendingAgentContextByMessageId: [String: String] = [:]
     private var conversationLoadCounts: [String: Int] = [:]
     private var settledConversationPresentations: [String: ConversationPresentationSnapshot] = [:]
     private var sessionTitleOverrides: [String: String] = UserDefaults.standard.dictionary(forKey: "kordi.session-title-overrides") as? [String: String] ?? [:]
@@ -103,6 +113,8 @@ final class AppModel: ObservableObject {
             || ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail")
             || ProcessInfo.processInfo.arguments.contains("--preview-new-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-add-contact")
+            || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
+            || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-media")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
@@ -276,6 +288,7 @@ final class AppModel: ObservableObject {
         pendingReplyByMessageId = [:]
         pendingMessageActionByMessageId = [:]
         pendingMentionByMessageId = [:]
+        pendingAgentContextByMessageId = [:]
         cache?.clear()
         if let oldAccountId { await wireCache.clear(accountId: oldAccountId) }
         try? keychain.deleteToken()
@@ -910,6 +923,7 @@ final class AppModel: ObservableObject {
         replyingTo replySource: MessageActionSource? = nil,
         mentioning mentionTarget: ComposerMentionTarget? = nil,
         messageAction actionOverride: MessageActionMetadata? = nil,
+        agentContext: String? = nil,
         to conversation: ConversationSummary
     ) async {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -934,6 +948,9 @@ final class AppModel: ObservableObject {
         if let replySource { pendingReplyByMessageId[localId] = replySource }
         if let messageAction { pendingMessageActionByMessageId[localId] = messageAction }
         if let mentionTarget { pendingMentionByMessageId[localId] = mentionTarget }
+        if let agentContext = agentContext?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            pendingAgentContextByMessageId[localId] = agentContext
+        }
         messagesByConversation[conversation.id, default: []].append(optimistic)
         cacheCurrentMessages(conversation.id)
         updateConversationPreview(
@@ -977,7 +994,10 @@ final class AppModel: ObservableObject {
                         conversation: conversation,
                         requestMessageId: localId,
                         ownerAccountId: mentionTarget?.accountId ?? conversation.peerAccountId,
-                        prompt: promptText(text, removing: mentionTarget),
+                        prompt: AgentPromptContext.compose(
+                            userText: promptText(text, removing: mentionTarget),
+                            referenceText: agentContext
+                        ),
                         token: token,
                         account: account,
                         runtimeRoute: requestedRuntimeRoute(for: conversation)
@@ -1024,7 +1044,10 @@ final class AppModel: ObservableObject {
                     conversation: conversation,
                     requestMessageId: sent.messageId,
                     ownerAccountId: routedAgent?.accountId ?? conversation.peerAccountId,
-                    prompt: promptText(text, removing: routedAgent),
+                    prompt: AgentPromptContext.compose(
+                        userText: promptText(text, removing: routedAgent),
+                        referenceText: agentContext
+                    ),
                     token: token,
                     account: account,
                     runtimeRoute: requestedRuntimeRoute(for: conversation)
@@ -1041,6 +1064,7 @@ final class AppModel: ObservableObject {
         let reply = pendingReplyByMessageId[message.id]
         let messageAction = pendingMessageActionByMessageId[message.id]
         let mention = pendingMentionByMessageId[message.id]
+        let agentContext = pendingAgentContextByMessageId[message.id]
         removeMessage(message.id, conversationId: conversation.id)
         clearPendingSendMetadata(message.id)
         await send(
@@ -1049,6 +1073,7 @@ final class AppModel: ObservableObject {
             replyingTo: reply,
             mentioning: mention,
             messageAction: messageAction,
+            agentContext: agentContext,
             to: conversation
         )
     }
@@ -1756,6 +1781,7 @@ final class AppModel: ObservableObject {
         pendingReplyByMessageId[messageId] = nil
         pendingMessageActionByMessageId[messageId] = nil
         pendingMentionByMessageId[messageId] = nil
+        pendingAgentContextByMessageId[messageId] = nil
     }
 
     private func pollForAgentReply(_ conversation: ConversationSummary, requestMessageId: String) async {
