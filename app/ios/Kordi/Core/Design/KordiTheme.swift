@@ -48,14 +48,14 @@ struct KordiPullDownSearchField: View {
     let accessibilityLabel: String
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.body.weight(.medium))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
             TextField(prompt, text: $text)
-                .font(.body)
+                .font(.subheadline)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
@@ -67,21 +67,20 @@ struct KordiPullDownSearchField: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.body)
                         .foregroundStyle(.tertiary)
-                        .frame(width: 36, height: 42)
+                        .frame(width: 40, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
             }
         }
-        .padding(.leading, 14)
-        .padding(.trailing, text.isEmpty ? 14 : 4)
+        .padding(.leading, 13)
+        .padding(.trailing, text.isEmpty ? 13 : 4)
         .frame(minHeight: 44)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.36), lineWidth: 0.5)
-        }
+        .background(
+            Color(uiColor: .tertiarySystemFill),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
     }

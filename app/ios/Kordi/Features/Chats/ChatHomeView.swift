@@ -11,7 +11,6 @@ struct ChatHomeView: View {
     @EnvironmentObject private var model: AppModel
     @State private var channel: ChatChannel
     @State private var searchText = ""
-    @State private var showAccount = false
     @State private var showNewChat = false
     @State private var composedConversation: ConversationSummary?
     @State private var expandedGroupSpaceIds = Set<String>()
@@ -129,16 +128,6 @@ struct ChatHomeView: View {
                 }
             }
             if #available(iOS 26.0, *) {
-                ToolbarItem(placement: .topBarLeading) {
-                    accountButton
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .topBarLeading) {
-                    accountButton
-                }
-            }
-            if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .topBarTrailing) {
                     newChatButton
                 }
@@ -149,7 +138,6 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .sheet(isPresented: $showAccount) { AccountSheet() }
         .sheet(isPresented: $showNewChat) {
             NewChatSheet { selected in
                 openConversation(selected)
@@ -203,23 +191,6 @@ struct ChatHomeView: View {
         }
     }
 
-    private var accountButton: some View {
-        Button { showAccount = true } label: {
-            IdentityAvatar(
-                name: model.account?.preferredName ?? "Me",
-                imageSource: model.account?.avatarUrl.nonEmpty,
-                kind: .person,
-                size: 32,
-                seed: model.account?.accountId
-            )
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .contentShape(Rectangle())
-        .accessibilityLabel("Account")
-    }
-
     private var newChatButton: some View {
         Button { showNewChat = true } label: {
             Image(systemName: "plus")
@@ -246,6 +217,8 @@ struct ChatHomeView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .controlSize(.large)
+            .frame(minHeight: 44)
         }
     }
 

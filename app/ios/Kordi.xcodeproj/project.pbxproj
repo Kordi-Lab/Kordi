@@ -10,6 +10,8 @@
 		013F4527A10AEF91C682C06E /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092A3B6DDEAE95871DABB253 /* LoginView.swift */; };
 		0B72A6AC80380063ABDC7755 /* AgentSessionPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8907D09B7736B6EBC799138 /* AgentSessionPresentationTests.swift */; };
 		0D697B51F119F58F2297E35F /* GroupSessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CE270CEA87A8CE6D97F559 /* GroupSessionListView.swift */; };
+		0D1A00010000000000000001 /* DigestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1A00020000000000000002 /* DigestView.swift */; };
+		0D1A00030000000000000003 /* DigestViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D1A00040000000000000004 /* DigestViewTests.swift */; };
 		0FCC9220F6A589D7DEA8B2DD /* CloudModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F1853F7027097BBC718478 /* CloudModels.swift */; };
 		12A04863D661AF2255724438 /* IdentityAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 844BA3411A7748BF0EA7F6B3 /* IdentityAvatar.swift */; };
 		12DF1537FF5C73FEE11B47E8 /* CloudMessageStateProjectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA243B6979BEEBADE478E33E /* CloudMessageStateProjectorTests.swift */; };
@@ -59,7 +61,6 @@
 		C70D585973E462F22DE1259A /* AgentSessionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9191C934D4CD680DDA85704F /* AgentSessionPresentation.swift */; };
 		C8BD24AA4D691A02181E4FB4 /* CloudMessageCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CAA0002D51BCCCF6B07B66 /* CloudMessageCodecTests.swift */; };
 		CE3B28D7B1662C11FCB93086 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4021DE92BF82560F7905E214 /* ConversationView.swift */; };
-		D691D01B2932E6B0C0263B79 /* FactoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1738F938C84A1BC36604BB19 /* FactoryView.swift */; };
 		D6E3FF1559CAAAE57EDC446B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A3A55FE7BDA62F4175A28D2 /* Assets.xcassets */; };
 		D8DBAE5BA9E4237E34169C64 /* GroupManagementSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7E8E86F8830C031FE1EC87 /* GroupManagementSheet.swift */; };
 		D9428E4F1B6772EBB490EFC9 /* CloudMessageCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B208AC082D8D2E3AC98654A /* CloudMessageCodec.swift */; };
@@ -91,7 +92,8 @@
 		12B4F4E132BAF9FF02E0EE58 /* CloudGroupMessageCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGroupMessageCodecTests.swift; sourceTree = "<group>"; };
 		1381CF79C72E0D7F70A6AF27 /* LocalMessageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMessageStore.swift; sourceTree = "<group>"; };
 		151CB7A492FFA22F02806ED0 /* CloudOAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudOAuthSession.swift; sourceTree = "<group>"; };
-		1738F938C84A1BC36604BB19 /* FactoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryView.swift; sourceTree = "<group>"; };
+		0D1A00020000000000000002 /* DigestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestView.swift; sourceTree = "<group>"; };
+		0D1A00040000000000000004 /* DigestViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestViewTests.swift; sourceTree = "<group>"; };
 		1891761174EB0D425725600A /* CloudAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudAPIClient.swift; sourceTree = "<group>"; };
 		1A3A55FE7BDA62F4175A28D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1B208AC082D8D2E3AC98654A /* CloudMessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudMessageCodec.swift; sourceTree = "<group>"; };
@@ -172,6 +174,14 @@
 				7057F708821F2D5D4A0AE795 /* ContactsView.swift */,
 			);
 			path = Contacts;
+			sourceTree = "<group>";
+		};
+		0D1A00050000000000000005 /* Digest */ = {
+			isa = PBXGroup;
+			children = (
+				0D1A00020000000000000002 /* DigestView.swift */,
+			);
+			path = Digest;
 			sourceTree = "<group>";
 		};
 		172E9DA498FFE8B2AB2A6428 /* Models */ = {
@@ -323,6 +333,7 @@
 				4D3FAACD21D63BFA6A9455D5 /* MediaPreviewTests.swift */,
 				5BAE23D56402398862849C56 /* ProviderAuthenticationTests.swift */,
 				B7C0162644ADAD950961A3EF /* SessionRuntimeRouteStoreTests.swift */,
+				0D1A00040000000000000004 /* DigestViewTests.swift */,
 			);
 			path = KordiTests;
 			sourceTree = "<group>";
@@ -364,14 +375,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		FB7BB8A35D2B72E12D9762B3 /* Factory */ = {
-			isa = PBXGroup;
-			children = (
-				1738F938C84A1BC36604BB19 /* FactoryView.swift */,
-			);
-			path = Factory;
-			sourceTree = "<group>";
-		};
 		FC1EC9CA1DAA5A5E8ADDAB8D /* API */ = {
 			isa = PBXGroup;
 			children = (
@@ -394,7 +397,7 @@
 				73130723BD0DB27E66DA04BC /* Chats */,
 				12AF06413F9CC5B214E67C82 /* Contacts */,
 				4F7CE165D40841E48487B17F /* Conversation */,
-				FB7BB8A35D2B72E12D9762B3 /* Factory */,
+				0D1A00050000000000000005 /* Digest */,
 				1DDA9A39B8E85DDD2712FA1C /* Profile */,
 				E596A4725623F562501C9156 /* Shared */,
 			);
@@ -494,6 +497,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0B72A6AC80380063ABDC7755 /* AgentSessionPresentationTests.swift in Sources */,
+				0D1A00030000000000000003 /* DigestViewTests.swift in Sources */,
 				688B8035C36DDCB0F8505288 /* AttachmentTransferTests.swift in Sources */,
 				89AF5B2FC468A8F70E1699A7 /* AvatarIdentityTests.swift in Sources */,
 				5FEE4877B559B162470420DE /* CloudConversationCatalogTests.swift in Sources */,
@@ -539,7 +543,7 @@
 				E209B4E4DD968CF6AD4028E2 /* Conversation.swift in Sources */,
 				BE344377783EEB4A688EECBF /* ConversationRow.swift in Sources */,
 				CE3B28D7B1662C11FCB93086 /* ConversationView.swift in Sources */,
-				D691D01B2932E6B0C0263B79 /* FactoryView.swift in Sources */,
+				0D1A00010000000000000001 /* DigestView.swift in Sources */,
 				D8DBAE5BA9E4237E34169C64 /* GroupManagementSheet.swift in Sources */,
 				0D697B51F119F58F2297E35F /* GroupSessionListView.swift in Sources */,
 				32C137290032D2F00A31C64C /* GroupSpaceRow.swift in Sources */,
