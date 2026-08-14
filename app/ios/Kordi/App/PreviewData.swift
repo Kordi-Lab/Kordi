@@ -51,10 +51,75 @@ enum PreviewData {
 
         let messages: [String: [ChatMessage]] = [
             "agent:my-kordi": agentConversation(now: now),
+            "agent:research": [
+                ChatMessage(
+                    id: "research1",
+                    conversationId: "agent:research",
+                    author: .agent,
+                    authorName: "Research Agent",
+                    text: "I am comparing the TestFlight checklist with the latest device results.",
+                    createdAt: now.addingTimeInterval(-160),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil
+                )
+            ],
+            "agent:support": [
+                ChatMessage(
+                    id: "agent-support1",
+                    conversationId: "agent:support",
+                    author: .agent,
+                    authorName: "Support Agent",
+                    text: "I can help with that.",
+                    createdAt: now.addingTimeInterval(-300),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil
+                )
+            ],
             "person:acct_kordi_support": [
                 ChatMessage(id: "support1", conversationId: "person:acct_kordi_support", author: .person, authorName: KordiSupportIdentity.displayName, text: "Welcome to Kordi.", createdAt: now.addingTimeInterval(-25), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ],
             "person:acct_maya": mayaConversation(now: now),
+            "person:acct_ethan": [
+                ChatMessage(
+                    id: "ethan1",
+                    conversationId: "person:acct_ethan",
+                    author: .person,
+                    authorName: "Ethan Park",
+                    text: "Sounds good, let’s do it.",
+                    createdAt: now.addingTimeInterval(-1_100),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil
+                )
+            ],
+            "person:acct_priya": [
+                ChatMessage(
+                    id: "priya1",
+                    conversationId: "person:acct_priya",
+                    author: .person,
+                    authorName: "Priya Shah",
+                    text: "Perfect, I’ll update the deck.",
+                    createdAt: now.addingTimeInterval(-82_000),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil
+                )
+            ],
+            "person:acct_marcus": [
+                ChatMessage(
+                    id: "marcus1",
+                    conversationId: "person:acct_marcus",
+                    author: .person,
+                    authorName: "Marcus Johnson",
+                    text: "Thanks — that clears it up.",
+                    createdAt: now.addingTimeInterval(-86_000),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil
+                )
+            ],
             "group:mobile": groupConversation(now: now),
             "group:mobile-release": [
                 ChatMessage(id: "gm2", conversationId: "group:mobile-release", author: .person, authorName: "Ethan Park", text: "I added the device testing notes.", createdAt: now.addingTimeInterval(-240), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)

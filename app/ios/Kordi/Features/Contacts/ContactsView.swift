@@ -3,7 +3,6 @@ import SwiftUI
 struct ContactsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
-    @State private var showAccount = false
     @State private var showAddContact = false
 
     private var contacts: [CloudContact] {
@@ -73,16 +72,6 @@ struct ContactsView: View {
         }
         .toolbar {
             if #available(iOS 26.0, *) {
-                ToolbarItem(placement: .topBarLeading) {
-                    accountButton
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .topBarLeading) {
-                    accountButton
-                }
-            }
-            if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .topBarTrailing) {
                     addContactButton
                 }
@@ -93,26 +82,8 @@ struct ContactsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showAccount) { AccountSheet() }
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
         .task { await model.refreshContactRequests() }
-    }
-
-    private var accountButton: some View {
-        Button { showAccount = true } label: {
-            IdentityAvatar(
-                name: model.account?.preferredName ?? "Me",
-                imageSource: model.account?.avatarUrl.nonEmpty,
-                kind: .person,
-                size: 32,
-                seed: model.account?.accountId
-            )
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .contentShape(Rectangle())
-        .accessibilityLabel("Account settings")
     }
 
     private var addContactButton: some View {

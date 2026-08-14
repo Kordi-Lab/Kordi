@@ -7,6 +7,7 @@ import UIKit
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     private let initialConversation: ConversationSummary
+    private let initialMessageID: String?
     @State private var draft = ""
     @State private var isSending = false
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
@@ -40,8 +41,9 @@ struct ConversationView: View {
     @State private var pinTarget: ChatMessage?
     @State private var forwardedDestination: ConversationSummary?
 
-    init(conversation: ConversationSummary) {
+    init(conversation: ConversationSummary, initialMessageID: String? = nil) {
         initialConversation = conversation
+        self.initialMessageID = initialMessageID
     }
 
     /// Navigation can outlive a sync pass. Resolve the current summary by its
@@ -556,6 +558,10 @@ struct ConversationView: View {
             hasPositionedInitialTimeline = true
             hasRevealedInitialViewport = true
         }
+        if case let .resumed(messageID) = initialViewport,
+           messageID == initialMessageID {
+            highlightReferencedMessage(messageID)
+        }
         model.markConversationPresentationSettled(conversation)
     }
 
@@ -573,7 +579,8 @@ struct ConversationView: View {
 
         await model.loadConversation(conversation)
         guard !Task.isCancelled else { return }
-        if !hasRevealedInitialViewport,
+        if initialMessageID == nil,
+           !hasRevealedInitialViewport,
            case .resumed = viewportAtEntry,
            messages.last?.id != latestMessageIDAtEntry {
             var transaction = Transaction(animation: nil)
@@ -592,7 +599,9 @@ struct ConversationView: View {
         guard !hasPreparedInitialViewport else { return }
         let latestMessageID = timeline.last?.id
         let availableMessageIDs = Set(timeline.map(\.id))
-        let resumedMessageID = model.conversationViewportMemory.resumedMessageID(
+        let resumedMessageID = initialMessageID.flatMap { requestedMessageID in
+            availableMessageIDs.contains(requestedMessageID) ? requestedMessageID : nil
+        } ?? model.conversationViewportMemory.resumedMessageID(
             for: viewportMemoryKey,
             latestMessageID: latestMessageID,
             availableMessageIDs: availableMessageIDs,
@@ -640,6 +649,19 @@ struct ConversationView: View {
 
     private var viewportMemoryKey: String {
         "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id)"
+    }
+
+    private func highlightReferencedMessage(_ messageID: String) {
+        withAnimation(.snappy(duration: 0.2)) {
+            highlightedMessageID = messageID
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard highlightedMessageID == messageID else { return }
+            withAnimation(.easeOut(duration: 0.25)) {
+                highlightedMessageID = nil
+            }
+        }
     }
 
     private func avatarIdentity(for message: ChatMessage) -> ConversationAvatarIdentity {
