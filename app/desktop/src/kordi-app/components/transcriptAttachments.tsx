@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, CheckCheck, Download, ExternalLink, Image, LoaderCircle } from 'lucide-react';
 
@@ -802,6 +802,8 @@ export function AttachmentPreview({
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
   const mediaAttachments = imageGallery?.length ? imageGallery : previewImageAttachments;
+  const imageGroupId = useId();
+  const [isImageGroupExpanded, setIsImageGroupExpanded] = useState(false);
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const [sampledForegroundTone, setSampledForegroundTone] = useState<{
     attachmentIdentity: string;
@@ -811,10 +813,16 @@ export function AttachmentPreview({
   const resolvedImageDeliveryStatus = imageDeliveryStatus === undefined
     ? msg.statusChips?.[0] ?? null
     : imageDeliveryStatus;
-  const loadingOnlyImageCollage = previewImageAttachments.length > 0
-    && previewImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
-  const deliveryImageIdentity = previewImageAttachments.length > 0
-    ? attachmentPreviewIdentity(previewImageAttachments[previewImageAttachments.length - 1]!)
+  const hasImageGroup = previewImageAttachments.length > 1;
+  const visibleImageAttachments = hasImageGroup && !isImageGroupExpanded
+    ? previewImageAttachments.slice(0, 1)
+    : previewImageAttachments;
+  const isOwnImageGroup = msg.isOwnMessage ?? msg.role === 'user';
+  const loadingOnlyImageCollage = visibleImageAttachments.length > 0
+    && visibleImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
+  const deliveryImageAttachment = visibleImageAttachments[visibleImageAttachments.length - 1];
+  const deliveryImageIdentity = deliveryImageAttachment
+    ? attachmentPreviewIdentity(deliveryImageAttachment)
     : null;
   const deliveryForegroundTone = sampledForegroundTone?.attachmentIdentity === deliveryImageIdentity
     ? sampledForegroundTone.tone
@@ -870,6 +878,52 @@ export function AttachmentPreview({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [contextMenuState]);
 
+  const imageCollage = previewImageAttachments.length > 0 ? (
+    <div
+      id={imageGroupId}
+      data-attachment-image-collage="true"
+      data-attachment-image-count={previewImageAttachments.length}
+      data-attachment-image-group-expanded={hasImageGroup ? String(isImageGroupExpanded) : undefined}
+      className={cn(
+        'app-attachment-image-collage relative rounded-[16px] p-0',
+        hasImageGroup
+          ? cn(
+            'app-attachment-image-group-media flex w-[11.25rem] flex-col gap-1.5 overflow-visible',
+            !isImageGroupExpanded && 'app-attachment-image-group-collapsed h-[11.25rem]',
+          )
+          : cn(
+            'grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden',
+            loadingOnlyImageCollage
+              ? 'w-[min(100%,20rem)] auto-rows-[4rem]'
+              : 'w-fit auto-rows-auto',
+          ),
+      )}
+    >
+      {visibleImageAttachments.map((attachment) => {
+        const index = previewImageAttachments.indexOf(attachment);
+        return (
+          <AttachmentImageCard
+            key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
+            attachment={attachment}
+            index={index}
+            totalCount={1}
+            onOpenPreview={openLightbox}
+            onOpenContextMenu={openContextMenu}
+            onImageForegroundTone={attachmentPreviewIdentity(attachment) === deliveryImageIdentity
+              ? updateImageForegroundTone
+              : undefined}
+          />
+        );
+      })}
+      <AttachmentImageDeliveryOverlay
+        status={resolvedImageDeliveryStatus}
+        time={msg.time}
+        foregroundTone={deliveryForegroundTone}
+        onRetry={onRetryImage}
+      />
+    </div>
+  ) : null;
+
   if (attachments.length === 0) {
     return null;
   }
@@ -878,38 +932,38 @@ export function AttachmentPreview({
     <>
       <div className="flex flex-col gap-2">
         {previewImageAttachments.length > 0 ? (
-          <div
-            data-attachment-image-collage="true"
-            data-attachment-image-count={previewImageAttachments.length}
-            className={cn(
-              'app-attachment-image-collage relative grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden rounded-[16px] p-0',
-              loadingOnlyImageCollage
-                ? 'w-[min(100%,20rem)] auto-rows-[4rem]'
-                : previewImageAttachments.length === 1
-                  ? 'w-fit auto-rows-auto'
-                  : 'w-[min(100%,29rem)] auto-rows-[6.5rem]',
-            )}
-          >
-            {previewImageAttachments.map((attachment, index) => (
-              <AttachmentImageCard
-                key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
-                attachment={attachment}
-                index={index}
-                totalCount={previewImageAttachments.length}
-                onOpenPreview={openLightbox}
-                onOpenContextMenu={openContextMenu}
-                onImageForegroundTone={index === previewImageAttachments.length - 1
-                  ? updateImageForegroundTone
-                  : undefined}
-              />
-            ))}
-            <AttachmentImageDeliveryOverlay
-              status={resolvedImageDeliveryStatus}
-              time={msg.time}
-              foregroundTone={deliveryForegroundTone}
-              onRetry={onRetryImage}
-            />
-          </div>
+          hasImageGroup ? (
+            <div
+              className="app-attachment-image-group-shell"
+              data-attachment-image-group-side={isOwnImageGroup ? 'own' : 'peer'}
+            >
+              {isOwnImageGroup ? (
+                <button
+                  type="button"
+                  className="app-attachment-image-group-disclosure"
+                  data-attachment-image-group-disclosure="true"
+                  aria-expanded={isImageGroupExpanded}
+                  aria-controls={imageGroupId}
+                  onClick={() => setIsImageGroupExpanded((current) => !current)}
+                >
+                  {isImageGroupExpanded ? 'Collapse' : `Expand ${previewImageAttachments.length}`}
+                </button>
+              ) : null}
+              {imageCollage}
+              {!isOwnImageGroup ? (
+                <button
+                  type="button"
+                  className="app-attachment-image-group-disclosure"
+                  data-attachment-image-group-disclosure="true"
+                  aria-expanded={isImageGroupExpanded}
+                  aria-controls={imageGroupId}
+                  onClick={() => setIsImageGroupExpanded((current) => !current)}
+                >
+                  {isImageGroupExpanded ? 'Collapse' : `Expand ${previewImageAttachments.length}`}
+                </button>
+              ) : null}
+            </div>
+          ) : imageCollage
         ) : null}
         {downloadableAttachments.length > 0 ? (
           <div className="flex flex-col items-start gap-1.5">

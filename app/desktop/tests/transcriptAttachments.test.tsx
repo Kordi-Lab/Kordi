@@ -265,26 +265,71 @@ test('image attachments render as clickable lightweight previews without heavy f
   assert.match(markup, /Screenshot 2026-05-20\.png/);
 });
 
-test('multiple image attachments render as a banner-free collage', () => {
+test('multiple image attachments render as a folded stack with a stable disclosure', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: multiImageMessage }));
+  const stylesheet = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
 
   assert.match(markup, /data-attachment-image-collage="true"/);
   assert.match(markup, /data-attachment-image-count="3"/);
+  assert.match(markup, /data-attachment-image-group-expanded="false"/);
+  assert.match(markup, /data-attachment-image-group-disclosure="true"/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.match(markup, />Expand 3</);
+  assert.equal((markup.match(/data-attachment-image-card="true"/g) ?? []).length, 1);
   assert.match(markup, /app-attachment-image-tile/);
-  assert.match(markup, /max-w-\[min\(100%,29rem\)\]/);
+  assert.match(markup, /app-attachment-image-group-collapsed/);
   assert.doesNotMatch(markup, /rounded-\[15px\]|rounded-\[20px\]/);
-  assert.equal((markup.match(/rounded-\[16px\]/g) ?? []).length, 1);
   assert.doesNotMatch(markup, /backdrop-blur-xl/);
   assert.doesNotMatch(markup, /ring-white/);
   assert.doesNotMatch(markup, /bg-white\//);
   assert.doesNotMatch(markup, /bg-current\/10/);
-  assert.doesNotMatch(markup, /shadow-\[/);
-  assert.doesNotMatch(markup, /shadow-black/);
   assert.doesNotMatch(markup, /group-hover:scale/);
   assert.doesNotMatch(markup, /61 KB/);
   assert.doesNotMatch(markup, /168 KB/);
   assert.doesNotMatch(markup, />Screenshot 2026-05-20 20\.54\.15\.png<\/span>/);
   assert.doesNotMatch(markup, /app-attachment-image-footer/);
+  assert.match(stylesheet, /\.app-attachment-image-group-shell\s*{[^}]*gap:\s*0\.5rem;/s);
+  assert.match(stylesheet, /\.app-attachment-image-group-disclosure\s*{[^}]*width:\s*5\.125rem;[^}]*height:\s*2\.75rem;[^}]*margin-top:\s*4\.25rem;/s);
+  assert.match(stylesheet, /\.app-attachment-image-group-media\s*{[^}]*width:\s*11\.25rem;/s);
+});
+
+test('grouped image disclosure expands and collapses in place', async () => {
+  const installedDom = installDom();
+  let root: Root | null = null;
+
+  try {
+    const host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(AttachmentPreview, { msg: multiImageMessage })));
+
+    const disclosure = host.querySelector<HTMLButtonElement>('[data-attachment-image-group-disclosure="true"]');
+    assert.ok(disclosure);
+    assert.equal(disclosure.textContent, 'Expand 3');
+    assert.equal(disclosure.getAttribute('aria-expanded'), 'false');
+    assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 1);
+
+    await act(async () => {
+      disclosure.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    assert.equal(disclosure.textContent, 'Collapse');
+    assert.equal(disclosure.getAttribute('aria-expanded'), 'true');
+    assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 3);
+    assert.equal(
+      host.querySelector('[data-attachment-image-collage="true"]')?.getAttribute('data-attachment-image-group-expanded'),
+      'true',
+    );
+
+    await act(async () => {
+      disclosure.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    assert.equal(disclosure.textContent, 'Expand 3');
+    assert.equal(disclosure.getAttribute('aria-expanded'), 'false');
+    assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 1);
+  } finally {
+    if (root) await act(async () => root?.unmount());
+    installedDom.restore();
+  }
 });
 
 test('image attachment actions are available from context menu instead of sticky under-image buttons', () => {

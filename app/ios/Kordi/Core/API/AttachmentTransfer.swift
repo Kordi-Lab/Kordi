@@ -2,6 +2,19 @@ import Foundation
 import UniformTypeIdentifiers
 import UIKit
 
+enum AttachmentPreviewDataURL {
+    nonisolated static func decode(_ value: String?) -> Data? {
+        guard let value,
+              let comma = value.firstIndex(of: ",") else { return nil }
+        let metadata = value[..<comma].lowercased()
+        guard metadata.hasPrefix("data:image/"), metadata.contains(";base64") else { return nil }
+        return Data(
+            base64Encoded: String(value[value.index(after: comma)...]),
+            options: .ignoreUnknownCharacters
+        )
+    }
+}
+
 enum PendingAttachmentLoader {
     // The authenticated Cloud proxy currently accepts 2 MB request bodies.
     // Keep mobile validation at that contract so uploads fail before leaving

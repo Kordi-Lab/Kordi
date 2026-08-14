@@ -217,9 +217,52 @@ enum PreviewData {
             ChatMessage(id: "m3", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "The rollout notes are ready.", createdAt: now.addingTimeInterval(-3_600), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "m4", conversationId: conversationId, author: .me, authorName: "You", text: "Great — I’ll review them after lunch.", createdAt: now.addingTimeInterval(-3_400), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "m5", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
+        ])
+        messages.append(contentsOf: previewMediaMessages(now: now))
+        return messages
+    }
+
+    static func pendingPhotoAttachments() -> [PendingAttachment] {
+        let sources = [
+            ("preview-photo-1", "Photo-1.png", previewImageDataURL()),
+            ("preview-photo-2", "Photo-2.png", previewPortraitImageDataURL()),
+            ("preview-photo-3", "Photo-3.png", previewBarsImageDataURL()),
+        ]
+        return sources.compactMap { id, name, source in
+            guard let data = AttachmentPreviewDataURL.decode(source) else { return nil }
+            return PendingAttachment(
+                id: id,
+                name: name,
+                kind: .image,
+                mimeType: "image/png",
+                data: data,
+                previewURL: source
+            )
+        }
+    }
+
+    private static func previewMediaMessages(now: Date) -> [ChatMessage] {
+        let attachments = previewChatAttachments()
+        if ProcessInfo.processInfo.arguments.contains("--preview-media-separated") {
+            return attachments.enumerated().map { index, attachment in
+                ChatMessage(
+                    id: "m6-\(index + 1)",
+                    conversationId: "person:acct_maya",
+                    author: .me,
+                    authorName: "You",
+                    text: "",
+                    createdAt: now.addingTimeInterval(TimeInterval(-32 + index)),
+                    deliveryState: .read,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: [attachment]
+                )
+            }
+        }
+        return [
             ChatMessage(
                 id: "m6",
-                conversationId: conversationId,
+                conversationId: "person:acct_maya",
                 author: .me,
                 authorName: "You",
                 text: "",
@@ -227,19 +270,38 @@ enum PreviewData {
                 deliveryState: .read,
                 errorMessage: nil,
                 requestMessageId: nil,
-                attachments: [
-                    ChatAttachment(
-                        attachmentId: "att_preview_image",
-                        name: "Screenshot-Preview.png",
-                        kind: .image,
-                        mimeType: "image/png",
-                        sizeBytes: 28_400,
-                        previewURL: previewImageDataURL()
-                    )
-                ]
+                attachments: attachments
             )
-        ])
-        return messages
+        ]
+    }
+
+    private static func previewChatAttachments() -> [ChatAttachment] {
+        [
+            ChatAttachment(
+                attachmentId: "att_preview_image",
+                name: "Screenshot-Preview.png",
+                kind: .image,
+                mimeType: "image/png",
+                sizeBytes: 28_400,
+                previewURL: previewImageDataURL()
+            ),
+            ChatAttachment(
+                attachmentId: "att_preview_image_portrait",
+                name: "Mobile-Profile-Preview.png",
+                kind: .image,
+                mimeType: "image/png",
+                sizeBytes: 19_600,
+                previewURL: previewPortraitImageDataURL()
+            ),
+            ChatAttachment(
+                attachmentId: "att_preview_image_bars",
+                name: "Color-Bars-Preview.png",
+                kind: .image,
+                mimeType: "image/png",
+                sizeBytes: 17_800,
+                previewURL: previewBarsImageDataURL()
+            ),
+        ]
     }
 
     private static func previewImageDataURL() -> String? {
@@ -257,6 +319,46 @@ enum PreviewData {
                 color.setFill()
                 context.cgContext.fillEllipse(in: rect)
             }
+        }
+        guard let data = image.pngData() else { return nil }
+        return "data:image/png;base64,\(data.base64EncodedString())"
+    }
+
+    private static func previewPortraitImageDataURL() -> String? {
+        let size = CGSize(width: 420, height: 640)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            UIColor(red: 0.08, green: 0.10, blue: 0.14, alpha: 1).setFill()
+            context.cgContext.fill(CGRect(origin: .zero, size: size))
+
+            UIColor(red: 0.17, green: 0.42, blue: 0.91, alpha: 1).setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 90, y: 88, width: 240, height: 240))
+
+            UIColor(white: 0.98, alpha: 1).setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 145, y: 143, width: 130, height: 130))
+
+            UIColor(red: 0.95, green: 0.24, blue: 0.55, alpha: 1).setFill()
+            context.cgContext.fill(CGRect(x: 70, y: 410, width: 280, height: 28))
+            UIColor(red: 0.05, green: 0.72, blue: 0.78, alpha: 1).setFill()
+            context.cgContext.fill(CGRect(x: 110, y: 464, width: 200, height: 28))
+        }
+        guard let data = image.pngData() else { return nil }
+        return "data:image/png;base64,\(data.base64EncodedString())"
+    }
+
+    private static func previewBarsImageDataURL() -> String? {
+        let size = CGSize(width: 640, height: 480)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            UIColor(red: 0.08, green: 0.10, blue: 0.14, alpha: 1).setFill()
+            context.cgContext.fill(CGRect(origin: .zero, size: size))
+
+            UIColor(red: 0.95, green: 0.24, blue: 0.55, alpha: 1).setFill()
+            context.cgContext.fill(CGRect(x: 90, y: 108, width: 460, height: 54))
+            UIColor(red: 0.05, green: 0.72, blue: 0.78, alpha: 1).setFill()
+            context.cgContext.fill(CGRect(x: 150, y: 214, width: 340, height: 54))
+            UIColor(red: 0.98, green: 0.68, blue: 0.08, alpha: 1).setFill()
+            context.cgContext.fill(CGRect(x: 210, y: 320, width: 220, height: 54))
         }
         guard let data = image.pngData() else { return nil }
         return "data:image/png;base64,\(data.base64EncodedString())"

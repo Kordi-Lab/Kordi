@@ -340,6 +340,10 @@ enum AvatarImageLoader {
     static let maximumBytes = 2 * 1_024 * 1_024
     private static let cache = NSCache<NSString, UIImage>()
 
+    static func dataFromImageURL(_ value: String?) -> Data? {
+        AttachmentPreviewDataURL.decode(value)
+    }
+
     static func normalizedSource(_ source: String?) -> String? {
         guard let value = source?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty,
@@ -383,12 +387,6 @@ enum AvatarImageLoader {
         return data
     }
 
-    static func dataFromImageURL(_ value: String) -> Data? {
-        guard let comma = value.firstIndex(of: ",") else { return nil }
-        let metadata = value[..<comma].lowercased()
-        guard metadata.hasPrefix("data:image/"), metadata.contains(";base64") else { return nil }
-        return Data(base64Encoded: String(value[value.index(after: comma)...]), options: .ignoreUnknownCharacters)
-    }
 }
 
 private extension Color {

@@ -24,7 +24,7 @@ struct MessageBubble: View, Equatable {
     let onDetails: () -> Void
     let onSelect: () -> Void
     let onNavigateToReply: (String) -> Void
-    let onOpenAttachment: (ChatAttachment) -> Void
+    let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
@@ -85,13 +85,7 @@ struct MessageBubble: View, Equatable {
                         .padding(.horizontal, 4)
                 }
 
-                AdaptiveBubbleLayout(maximumWidth: 360) {
-                    bubbleContents
-                        .padding(.leading, 12)
-                        .padding(.trailing, message.author == .me ? 30 : 12)
-                        .padding(.vertical, 8)
-                }
-                .background(bubbleColor, in: bubbleShape)
+                messageSurface
                 .overlay(alignment: .bottomTrailing) {
                     if message.author == .me {
                         MessageDeliveryGlyph(
@@ -99,9 +93,15 @@ struct MessageBubble: View, Equatable {
                             readByCount: message.readByCount
                         )
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.trailing, 8)
-                        .padding(.bottom, 6)
+                        .foregroundStyle(usesBorderlessImageSurface ? .white : .secondary)
+                        .padding(.horizontal, usesBorderlessImageSurface ? 6 : 0)
+                        .padding(.vertical, usesBorderlessImageSurface ? 4 : 0)
+                        .background(
+                            usesBorderlessImageSurface ? Color.black.opacity(0.48) : Color.clear,
+                            in: Capsule()
+                        )
+                        .padding(.trailing, usesBorderlessImageSurface ? 7 : 8)
+                        .padding(.bottom, usesBorderlessImageSurface ? 7 : 6)
                     }
                 }
                 .overlay {
@@ -186,6 +186,26 @@ struct MessageBubble: View, Equatable {
     }
 
     @ViewBuilder
+    private var messageSurface: some View {
+        if usesBorderlessImageSurface {
+            MessageImageCollection(
+                attachments: message.attachments,
+                author: message.author,
+                onOpen: onOpenAttachment,
+                onShare: onShareAttachment
+            )
+        } else {
+            AdaptiveBubbleLayout(maximumWidth: 360) {
+                bubbleContents
+                    .padding(.leading, 12)
+                    .padding(.trailing, message.author == .me ? 30 : 12)
+                    .padding(.vertical, 8)
+            }
+            .background(bubbleColor, in: bubbleShape)
+        }
+    }
+
+    @ViewBuilder
     private var bubbleContents: some View {
         VStack(alignment: .leading, spacing: 7) {
             if let source = visibleForwardSource {
@@ -209,17 +229,32 @@ struct MessageBubble: View, Equatable {
             }
 
             if !message.attachments.isEmpty {
-                VStack(spacing: 7) {
-                    ForEach(message.attachments) { attachment in
-                        MessageAttachmentCard(
-                            attachment: attachment,
-                            onOpen: { onOpenAttachment(attachment) },
-                            onShare: { onShareAttachment(attachment) }
-                        )
+                if message.attachments.allSatisfy({ $0.kind == .image }) {
+                    MessageImageCollection(
+                        attachments: message.attachments,
+                        author: message.author,
+                        onOpen: onOpenAttachment,
+                        onShare: onShareAttachment
+                    )
+                } else {
+                    VStack(spacing: 7) {
+                        ForEach(message.attachments) { attachment in
+                            MessageAttachmentCard(
+                                attachment: attachment,
+                                onOpen: { previewImage in
+                                    onOpenAttachment(attachment, previewImage)
+                                },
+                                onShare: { onShareAttachment(attachment) }
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    private var usesBorderlessImageSurface: Bool {
+        MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
     }
 
     private var visibleReplySource: MessageActionSource? {
@@ -313,6 +348,16 @@ struct MessageBubble: View, Equatable {
     }
 }
 
+enum MessageAttachmentPresentation {
+    static func usesBorderlessImageSurface(for message: ChatMessage) -> Bool {
+        !message.attachments.isEmpty
+            && message.attachments.allSatisfy { $0.kind == .image }
+            && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && message.replyToMessageId == nil
+            && message.messageAction == nil
+    }
+}
+
 /// Lets short messages keep their intrinsic width while capping long content
 /// to the readable chat column. A fixed `maxWidth` alone expands every bubble.
 private struct AdaptiveBubbleLayout: Layout {
@@ -347,7 +392,7 @@ private struct AdaptiveBubbleLayout: Layout {
 
 private struct MessageAttachmentCard: View {
     let attachment: ChatAttachment
-    let onOpen: () -> Void
+    let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
 
     @ViewBuilder
@@ -355,16 +400,127 @@ private struct MessageAttachmentCard: View {
         if attachment.kind == .image {
             MessageImageAttachment(
                 attachment: attachment,
+                presentation: .natural,
                 onOpen: onOpen,
                 onShare: onShare
             )
         } else {
             MessageFileAttachmentCard(
                 attachment: attachment,
-                onOpen: onOpen,
+                onOpen: { onOpen(nil) },
                 onShare: onShare
             )
         }
+    }
+}
+
+private struct MessageImageCollection: View {
+    let attachments: [ChatAttachment]
+    let author: MessageAuthor
+    let onOpen: (ChatAttachment, UIImage?) -> Void
+    let onShare: (ChatAttachment) -> Void
+
+    @State private var isExpanded = ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            if showsExpansionControl, author == .me {
+                expansionButton
+            }
+
+            imageContent
+
+            if showsExpansionControl, author != .me {
+                expansionButton
+            }
+        }
+        .animation(.snappy(duration: 0.24), value: isExpanded)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var imageContent: some View {
+        Group {
+            if attachments.count == 1, let attachment = attachments.first {
+                image(attachment, presentation: .natural)
+            } else if isExpanded {
+                VStack(alignment: author == .me ? .trailing : .leading, spacing: 6) {
+                    ForEach(attachments) { attachment in
+                        image(attachment, presentation: .groupedNatural)
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            } else if let attachment = attachments.first {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                        .frame(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
+                        .rotationEffect(.degrees(4))
+                        .offset(x: 10, y: 3)
+                        .shadow(color: .black.opacity(0.14), radius: 4, y: 2)
+
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        .frame(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
+                        .rotationEffect(.degrees(-2.5))
+                        .offset(x: 4, y: -1)
+                        .shadow(color: .black.opacity(0.10), radius: 3, y: 2)
+
+                    image(attachment, presentation: .stackPreview)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 8)
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .frame(
+            width: MessageImageMetrics.collectionWidth,
+            alignment: author == .me ? .trailing : .leading
+        )
+    }
+
+    private var showsExpansionControl: Bool {
+        attachments.count > 1
+    }
+
+    private var expansionButton: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            Text(isExpanded ? "Collapse" : "Expand \(attachments.count)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(
+                    width: MessageImageMetrics.expansionControlWidth,
+                    height: MessageImageMetrics.expansionControlHeight
+                )
+                .background(.regularMaterial, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, MessageImageMetrics.expansionControlTopInset)
+        .accessibilityLabel(isExpanded
+                            ? "Collapse grouped photos"
+                            : "Expand \(attachments.count) grouped photos")
+        .accessibilityHint(isExpanded
+                           ? "Shows the photos as a stack"
+                           : "Shows every photo in this message")
+    }
+
+    private func image(
+        _ attachment: ChatAttachment,
+        presentation: MessageImagePresentation
+    ) -> some View {
+        MessageImageAttachment(
+            attachment: attachment,
+            presentation: presentation,
+            onOpen: { previewImage in
+                onOpen(attachment, previewImage)
+            },
+            onShare: { onShare(attachment) }
+        )
     }
 }
 
@@ -437,7 +593,8 @@ private struct MessageFileAttachmentCard: View {
 private struct MessageImageAttachment: View {
     @EnvironmentObject private var model: AppModel
     let attachment: ChatAttachment
-    let onOpen: () -> Void
+    let presentation: MessageImagePresentation
+    let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
 
     @State private var image: UIImage?
@@ -450,50 +607,60 @@ private struct MessageImageAttachment: View {
             if loadFailed {
                 reloadToken += 1
             } else if image != nil {
-                onOpen()
+                onOpen(image)
             }
         } label: {
             imageContent
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .topTrailing) {
-            Menu {
-                Button(action: onOpen) {
-                    Label("Review", systemImage: "eye")
-                }
-                Button(action: onShare) {
-                    Label("Download / Save to Files", systemImage: "arrow.down.circle")
-                }
+        .contentShape(
+            .contextMenuPreview,
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .contextMenu {
+            Button {
+                onOpen(image)
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(.black.opacity(0.42), in: Circle())
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                Label("Review", systemImage: "eye")
             }
-            .padding(4)
-            .accessibilityLabel("More actions for image")
+            Button(action: onShare) {
+                Label("Download / Save to Files", systemImage: "arrow.down.circle")
+            }
         }
         .task(id: "\(attachment.id):\(reloadToken)") {
             await loadImage()
         }
         .accessibilityLabel(image == nil ? "Image attachment" : "Review image attachment")
-        .accessibilityHint(loadFailed ? "Double tap to retry loading" : attachment.name)
+        .accessibilityHint(
+            loadFailed
+                ? "Double tap to retry loading"
+                : "\(attachment.name). Touch and hold for image actions."
+        )
+        .accessibilityAction(named: "Download or save to Files", onShare)
     }
 
     @ViewBuilder
     private var imageContent: some View {
         if let image {
-            let size = displaySize(for: image)
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(width: size.width, height: size.height)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .transition(.opacity)
+            if presentation == .stackPreview {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
+                    .compositingGroup()
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .transition(.opacity)
+            } else {
+                let size = displaySize(for: image)
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size.width, height: size.height)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .compositingGroup()
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .transition(.opacity)
+            }
         } else {
             ZStack {
                 Color(uiColor: .secondarySystemBackground)
@@ -509,8 +676,11 @@ private struct MessageImageAttachment: View {
                     .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 244, height: 154)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(
+                width: presentation.placeholderSize.width,
+                height: presentation.placeholderSize.height
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
@@ -546,21 +716,78 @@ private struct MessageImageAttachment: View {
 
     private func displaySize(for image: UIImage) -> CGSize {
         guard image.size.width > 0, image.size.height > 0 else {
-            return CGSize(width: 244, height: 154)
+            return presentation.placeholderSize
         }
         let ratio = min(2.4, max(0.42, image.size.width / image.size.height))
+        let maximumWidth = presentation.maximumWidth
         if ratio >= 1 {
-            return CGSize(width: 286, height: 286 / ratio)
+            return CGSize(width: maximumWidth, height: maximumWidth / ratio)
         }
-        let height = min(360, 286 / ratio)
+        let height = min(presentation.maximumHeight, maximumWidth / ratio)
         return CGSize(width: height * ratio, height: height)
     }
 }
 
-private enum AttachmentImageDecoder {
+private enum MessageImagePresentation {
+    case natural
+    case groupedNatural
+    case stackPreview
+
+    var maximumWidth: CGFloat {
+        switch self {
+        case .natural:
+            244
+        case .groupedNatural, .stackPreview:
+            MessageImageMetrics.stackSide
+        }
+    }
+
+    var maximumHeight: CGFloat {
+        switch self {
+        case .natural:
+            320
+        case .groupedNatural, .stackPreview:
+            236
+        }
+    }
+
+    var placeholderSize: CGSize {
+        switch self {
+        case .natural:
+            CGSize(width: 244, height: 154)
+        case .groupedNatural:
+            CGSize(width: MessageImageMetrics.stackSide, height: 142)
+        case .stackPreview:
+            CGSize(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
+        }
+    }
+}
+
+private enum MessageImageMetrics {
+    static let stackSide: CGFloat = 180
+    static let collectionWidth: CGFloat = 192
+    static let expansionControlWidth: CGFloat = 82
+    static let expansionControlHeight: CGFloat = 44
+    static let expansionControlTopInset: CGFloat = 76
+}
+
+enum AttachmentImageDecoder {
+    static func downsampledImage(data: Data, maximumPixelSize: CGFloat) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
+        return downsampledImage(from: source, maximumPixelSize: maximumPixelSize)
+    }
+
     static func downsampledImage(at url: URL, maximumPixelSize: CGFloat) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions) else { return nil }
+        return downsampledImage(from: source, maximumPixelSize: maximumPixelSize)
+    }
+
+    private static func downsampledImage(
+        from source: CGImageSource,
+        maximumPixelSize: CGFloat
+    ) -> UIImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,

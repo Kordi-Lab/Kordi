@@ -70,6 +70,11 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
+            || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat")),
            let conversation = model.conversations.first(where: {
@@ -80,7 +85,12 @@ private struct RootView: View {
                    return $0.id == "group:mobile"
                }
                if ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
-                    || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat") {
+                    || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-media")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-photo-send") {
                    return $0.id == "person:acct_maya"
                }
                return $0.id == (ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
