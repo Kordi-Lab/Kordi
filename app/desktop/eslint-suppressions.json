@@ -571,9 +571,6 @@
     }
   },
   "src/kordi-app/components/transcriptAttachments.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "react-hooks/set-state-in-effect": {
       "count": 1
     },

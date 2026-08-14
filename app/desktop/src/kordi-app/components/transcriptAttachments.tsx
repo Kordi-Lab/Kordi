@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CheckCheck, Download, ExternalLink, Image, LoaderCircle } from 'lucide-react';
+import { Download, ExternalLink, Image, LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,8 @@ import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
+import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
+import { TranscriptImageGroup } from './transcriptImageGroup';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
@@ -455,112 +457,6 @@ export function attachmentImageDeliveryVisual(status?: string | null): Attachmen
   return null;
 }
 
-function adaptiveDeliveryOverlayClassName(foregroundTone: AttachmentImageForegroundTone | null) {
-  return cn(
-    'app-attachment-image-delivery-overlay',
-    foregroundTone
-      ? `app-attachment-image-delivery-foreground-${foregroundTone}`
-      : 'app-attachment-image-delivery-adaptive',
-  );
-}
-
-function AttachmentImageDeliveryOverlay({ status, time, foregroundTone, onRetry }: {
-  status?: string | null;
-  time?: string | null;
-  foregroundTone: AttachmentImageForegroundTone | null;
-  onRetry?: () => void;
-}) {
-  const visual = attachmentImageDeliveryVisual(status);
-  if (!visual) return null;
-
-  if (visual.kind === 'uploading') {
-    return (
-      <div
-        data-attachment-image-delivery-status="uploading"
-        className={adaptiveDeliveryOverlayClassName(foregroundTone)}
-        role="status"
-        aria-label={visual.label}
-      >
-        <div className="app-attachment-image-media-ring" aria-hidden="true">
-          <div className="app-attachment-image-media-ring-spinner">
-            <svg viewBox="0 0 32 32" focusable="false">
-              <circle className="app-attachment-image-media-ring-track" cx="16" cy="16" r="12.5" />
-              <circle className="app-attachment-image-media-ring-progress" cx="16" cy="16" r="12.5" />
-            </svg>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (visual.kind === 'delivering') {
-    return (
-      <div
-        data-attachment-image-delivery-status="delivering"
-        className={adaptiveDeliveryOverlayClassName(foregroundTone)}
-        role="status"
-        aria-label={visual.label}
-      >
-        <div className="app-attachment-image-delivery-meta">
-          <span className="app-attachment-image-delivery-spinner" aria-hidden="true">
-            <LoaderCircle className="h-3 w-3" />
-          </span>
-          <span>Delivering…</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (visual.kind === 'failed' || visual.kind === 'partial') {
-    return (
-      <div
-        data-attachment-image-delivery-status={visual.kind}
-        className="app-attachment-image-delivery-overlay"
-        role="status"
-        aria-label={visual.label}
-        title={visual.label}
-      >
-        <div className="app-attachment-image-delivery-meta app-attachment-image-delivery-error">
-          {onRetry ? (
-            <button
-              type="button"
-              className="app-attachment-image-delivery-retry"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onRetry();
-              }}
-              aria-label="Retry sending image"
-            >
-              <span>{visual.kind === 'partial' ? 'Partial' : 'Failed'}</span>
-              <span aria-hidden="true">·</span>
-              <span className="app-attachment-image-delivery-retry-action">Retry</span>
-            </button>
-          ) : (
-            <span>{visual.kind === 'partial' ? 'Partially delivered' : 'Failed'}</span>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      data-attachment-image-delivery-status={visual.kind}
-      className={adaptiveDeliveryOverlayClassName(foregroundTone)}
-      role="status"
-      aria-label={visual.label}
-    >
-      <div className="app-attachment-image-delivery-meta">
-        {time ? <span>{time}</span> : null}
-        {visual.kind === 'delivered'
-          ? <CheckCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
-          : <Check className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />}
-      </div>
-    </div>
-  );
-}
-
 function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   return (
     <div
@@ -878,52 +774,6 @@ export function AttachmentPreview({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [contextMenuState]);
 
-  const imageCollage = previewImageAttachments.length > 0 ? (
-    <div
-      id={imageGroupId}
-      data-attachment-image-collage="true"
-      data-attachment-image-count={previewImageAttachments.length}
-      data-attachment-image-group-expanded={hasImageGroup ? String(isImageGroupExpanded) : undefined}
-      className={cn(
-        'app-attachment-image-collage relative rounded-[16px] p-0',
-        hasImageGroup
-          ? cn(
-            'app-attachment-image-group-media flex w-[11.25rem] flex-col gap-1.5 overflow-visible',
-            !isImageGroupExpanded && 'app-attachment-image-group-collapsed h-[11.25rem]',
-          )
-          : cn(
-            'grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden',
-            loadingOnlyImageCollage
-              ? 'w-[min(100%,20rem)] auto-rows-[4rem]'
-              : 'w-fit auto-rows-auto',
-          ),
-      )}
-    >
-      {visibleImageAttachments.map((attachment) => {
-        const index = previewImageAttachments.indexOf(attachment);
-        return (
-          <AttachmentImageCard
-            key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
-            attachment={attachment}
-            index={index}
-            totalCount={1}
-            onOpenPreview={openLightbox}
-            onOpenContextMenu={openContextMenu}
-            onImageForegroundTone={attachmentPreviewIdentity(attachment) === deliveryImageIdentity
-              ? updateImageForegroundTone
-              : undefined}
-          />
-        );
-      })}
-      <AttachmentImageDeliveryOverlay
-        status={resolvedImageDeliveryStatus}
-        time={msg.time}
-        foregroundTone={deliveryForegroundTone}
-        onRetry={onRetryImage}
-      />
-    </div>
-  ) : null;
-
   if (attachments.length === 0) {
     return null;
   }
@@ -932,38 +782,39 @@ export function AttachmentPreview({
     <>
       <div className="flex flex-col gap-2">
         {previewImageAttachments.length > 0 ? (
-          hasImageGroup ? (
-            <div
-              className="app-attachment-image-group-shell"
-              data-attachment-image-group-side={isOwnImageGroup ? 'own' : 'peer'}
-            >
-              {isOwnImageGroup ? (
-                <button
-                  type="button"
-                  className="app-attachment-image-group-disclosure"
-                  data-attachment-image-group-disclosure="true"
-                  aria-expanded={isImageGroupExpanded}
-                  aria-controls={imageGroupId}
-                  onClick={() => setIsImageGroupExpanded((current) => !current)}
-                >
-                  {isImageGroupExpanded ? 'Collapse' : `Expand ${previewImageAttachments.length}`}
-                </button>
-              ) : null}
-              {imageCollage}
-              {!isOwnImageGroup ? (
-                <button
-                  type="button"
-                  className="app-attachment-image-group-disclosure"
-                  data-attachment-image-group-disclosure="true"
-                  aria-expanded={isImageGroupExpanded}
-                  aria-controls={imageGroupId}
-                  onClick={() => setIsImageGroupExpanded((current) => !current)}
-                >
-                  {isImageGroupExpanded ? 'Collapse' : `Expand ${previewImageAttachments.length}`}
-                </button>
-              ) : null}
-            </div>
-          ) : imageCollage
+          <TranscriptImageGroup
+            groupId={imageGroupId}
+            imageCount={previewImageAttachments.length}
+            isExpanded={isImageGroupExpanded}
+            isOwnMessage={isOwnImageGroup}
+            loadingOnly={loadingOnlyImageCollage}
+            onToggle={() => setIsImageGroupExpanded((current) => !current)}
+            deliveryOverlay={(
+              <TranscriptImageDeliveryOverlay
+                visual={attachmentImageDeliveryVisual(resolvedImageDeliveryStatus)}
+                time={msg.time}
+                foregroundTone={deliveryForegroundTone}
+                onRetry={onRetryImage}
+              />
+            )}
+          >
+            {visibleImageAttachments.map((attachment) => {
+              const index = previewImageAttachments.indexOf(attachment);
+              return (
+                <AttachmentImageCard
+                  key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
+                  attachment={attachment}
+                  index={index}
+                  totalCount={1}
+                  onOpenPreview={openLightbox}
+                  onOpenContextMenu={openContextMenu}
+                  onImageForegroundTone={attachmentPreviewIdentity(attachment) === deliveryImageIdentity
+                    ? updateImageForegroundTone
+                    : undefined}
+                />
+              );
+            })}
+          </TranscriptImageGroup>
         ) : null}
         {downloadableAttachments.length > 0 ? (
           <div className="flex flex-col items-start gap-1.5">
