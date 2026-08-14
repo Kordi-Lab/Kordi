@@ -2,6 +2,83 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testCanonicalDirectConversationAppearsBeforeContactDirectoryRefresh() throws {
+        let sessionId = "session:direct-person:acct_maya:acct_me"
+        let canonical = CloudChatConversation(
+            id: "conversation-direct",
+            kind: "direct",
+            sharedTitle: nil,
+            version: 2,
+            createdByAccountId: "acct_me",
+            legacySessionId: sessionId,
+            forkedFromSessionId: nil,
+            forkedFromMessageId: nil,
+            latestMessageSequence: 1,
+            createdAt: "2026-08-08T10:00:00Z",
+            updatedAt: "2026-08-08T10:01:00Z",
+            members: [
+                CloudChatMember(
+                    accountId: "acct_me",
+                    displayName: "Alex",
+                    avatarUrl: nil,
+                    role: "owner",
+                    membershipState: "active",
+                    version: 1,
+                    lastDeliveredSequence: 1,
+                    lastReadSequence: 1,
+                    joinedAt: "2026-08-08T10:00:00Z",
+                    leftAt: nil
+                ),
+                CloudChatMember(
+                    accountId: "acct_maya",
+                    displayName: "Maya Chen",
+                    avatarUrl: "https://cdn.example/maya.png",
+                    role: "member",
+                    membershipState: "active",
+                    version: 1,
+                    lastDeliveredSequence: 1,
+                    lastReadSequence: 0,
+                    joinedAt: "2026-08-08T10:00:00Z",
+                    leftAt: nil
+                )
+            ],
+            preferences: CloudChatPreferences(
+                conversationId: "conversation-direct",
+                accountId: "acct_me",
+                personalTitle: nil,
+                version: 1
+            )
+        )
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [
+                "acct_maya": [
+                    wire(
+                        id: "message-direct",
+                        body: "The canonical message is ready.",
+                        sessionId: sessionId,
+                        createdAt: "2026-08-08T10:01:00Z",
+                        from: "acct_maya",
+                        to: "acct_me"
+                    )
+                ]
+            ],
+            canonicalConversations: [canonical]
+        )
+
+        let conversation = try XCTUnwrap(catalog.first { $0.id == "person:acct_maya" })
+        XCTAssertEqual(conversation.kind, .person)
+        XCTAssertEqual(conversation.displayName, "Maya Chen")
+        XCTAssertEqual(conversation.lastMessage, "The canonical message is ready.")
+        XCTAssertEqual(conversation.avatarSource, "https://cdn.example/maya.png")
+        XCTAssertEqual(conversation.unreadCount, 1)
+        XCTAssertEqual(conversation.sessionId, sessionId)
+    }
+
     func testCanonicalV2AgentSessionAppearsBeforeHistoryBackfill() throws {
         let payload = Data(#"{"id":"conversation-agent","kind":"ai","shared_title":"Check all my chats","version":3,"created_by_account_id":"acct_me","legacy_session_id":"session:self-agent:canonical","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":12,"created_at":"2026-08-08T10:00:00Z","updated_at":"2026-08-08T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":12,"last_read_sequence":12,"joined_at":"2026-08-08T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-agent","account_id":"acct_me","personal_title":null,"version":1}}"#.utf8)
         let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: payload)

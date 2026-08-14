@@ -39,6 +39,52 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(CloudAPIClient.reliableSession.configuration.timeoutIntervalForRequest, 30)
     }
 
+    func testReliableRealtimeFramesDecodeWithoutTreatingTheSocketAsRuntimePresence() throws {
+        let hello = try CloudChatRealtimeProtocol.decodeFrame(
+            Data(#"{"type":"hello","protocol_version":2,"heartbeat_interval_ms":30000}"#.utf8)
+        )
+        let event = try CloudChatRealtimeProtocol.decodeFrame(
+            Data(#"{"type":"event","stream_seq":843,"cursor":"opaque","event":{}}"#.utf8)
+        )
+        let resync = try CloudChatRealtimeProtocol.decodeFrame(
+            Data(#"{"type":"resync_required","reason":"STREAM_GAP"}"#.utf8)
+        )
+
+        XCTAssertEqual(hello, .hello(heartbeatIntervalMilliseconds: 30_000))
+        XCTAssertEqual(event, .event(streamSequence: 843))
+        XCTAssertEqual(resync, .resyncRequired(reason: "STREAM_GAP"))
+    }
+
+    func testReliableRealtimeRejectsAnUnsupportedHandshake() {
+        XCTAssertThrowsError(
+            try CloudChatRealtimeProtocol.decodeFrame(
+                Data(#"{"type":"hello","protocol_version":1,"heartbeat_interval_ms":30000}"#.utf8)
+            )
+        ) { error in
+            XCTAssertEqual(error as? CloudChatRealtimeError, .invalidFrame)
+        }
+    }
+
+    func testRealtimeReconnectBackoffIsBoundedAndJittered() {
+        XCTAssertEqual(CloudRealtimeRetryPolicy.delaySeconds(attempt: 0, unitJitter: 0.5), 1)
+        XCTAssertEqual(CloudRealtimeRetryPolicy.delaySeconds(attempt: 3, unitJitter: 0.5), 8)
+        XCTAssertEqual(CloudRealtimeRetryPolicy.delaySeconds(attempt: 20, unitJitter: 0.5), 15)
+        XCTAssertEqual(
+            CloudRealtimeRetryPolicy.delaySeconds(attempt: 0, unitJitter: 0),
+            0.8,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            CloudRealtimeRetryPolicy.delaySeconds(attempt: 0, unitJitter: 1),
+            1.2,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            CloudRealtimeRetryPolicy.delaySeconds(attempt: 20, unitJitter: 1),
+            CloudRealtimeRetryPolicy.maximumDelaySeconds
+        )
+    }
+
     func testCloudSessionVisibilityDecodesMacHiddenAndDeletedSessions() throws {
         let payload = Data(#"{"hiddenSessionIds":["session:hidden"],"deletedSessionIds":["session:deleted"]}"#.utf8)
         let visibility = try JSONDecoder().decode(CloudSessionVisibility.self, from: payload)

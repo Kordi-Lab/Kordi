@@ -43,15 +43,15 @@ WS   /v2/chat/realtime
 
 PostgreSQL is the server source of truth. Every accepted message has one canonical UUID, a conversation sequence, a stable client-generated idempotency UUID, and durable per-user sync events committed in the same transaction. Retrying the same operation returns the original result. Read and delivery cursors are monotonic. Shared titles and account-specific titles are versioned conversation preferences and travel through the same durable stream.
 
-The UI reads the account-scoped local database. A sync batch applies entity snapshots and advances its opaque cursor in one local transaction. Unknown critical events stop the client before the cursor advances. Cursor expiry requires a new consistent bootstrap.
+The UI reads account-scoped local projections. Desktop applies entity snapshots and advances its opaque cursor in one local database transaction. The iPhone atomically writes its projected messages, fork lineage, opaque cursor, and last stream sequence as one snapshot; it acknowledges only that durably saved sequence. Unknown critical events stop the client before the cursor advances. Cursor expiry requires a new consistent bootstrap.
 
 Outgoing messages appear optimistically and retain their original client message ID across timeouts and retries. A server acknowledgement or replay reconciles the pending row with its canonical message ID and sequence. Push and WebSocket frames are wake-up or low-latency delivery paths; `/v2/chat/sync` remains the recovery source.
 
-The iPhone currently uses ordered HTTP cursor recovery while foregrounded instead of opening the desktop presence WebSocket. It must not make the service believe the owner's Mac execution runtime is online.
+While foregrounded, the iPhone catches up through ordered HTTP cursor recovery and then opens the dedicated `/v2/chat/realtime` socket. Realtime frames only wake canonical HTTP catch-up and never announce execution presence, so an iPhone cannot be mistaken for the owner's Mac runtime. Reconnect attempts use bounded exponential delay and continue HTTP recovery when realtime is unavailable. The service fans committed PostgreSQL notifications to open sockets instead of polling the event table on a short interval; connect and heartbeat reads recover any missed notification from the durable stream.
 
 ## Attachments and agent execution
 
-Attachment upload and download stay on the authenticated resource API, while attachment relationships are stored on canonical chat messages. Agent requests claim execution through the Cloud agent-run APIs. Owner-online claims execute on the connected macOS runtime; otherwise the hosted fallback runner can execute. Every result is persisted as a canonical assistant message before it is considered delivered.
+Attachment upload and download stay on the authenticated resource API, while attachment relationships are stored on canonical chat messages. Agent requests claim execution through the Cloud agent-run APIs. Owner-online claims execute on the connected macOS runtime; otherwise the hosted fallback runner can execute. Every result is persisted as a canonical assistant message before it is considered delivered. The iPhone observes that message through `/v2/chat`; a slower bounded run-status check remains only for exceptional terminal states.
 
 Provider-auth payloads are encrypted by the server and scoped to the authenticated account. The iOS UI clears credential input after submission and never persists raw provider credentials in its local message database. Never include credentials in logs, previews, screenshots, issues, or test fixtures.
 

@@ -19,6 +19,18 @@ enum CloudTransportErrorPolicy {
     }
 }
 
+private struct CloudChatRealtimeTicket: Decodable {
+    let ticket: String
+    let deviceId: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case ticket
+        case deviceId = "device_id"
+        case expiresAt = "expires_at"
+    }
+}
+
 actor CloudAPIClient {
     static let productionBaseURL = KordiAppEnvironment.productionBaseURL
     static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
@@ -1211,6 +1223,7 @@ actor CloudAPIClient {
             let bootstrap = try await bootstrapChat(token: token, force: true)
             return CloudSyncResponse(
                 cursor: bootstrap.nextCursor,
+                lastStreamSequence: bootstrap.lastStreamSequence,
                 hasMore: false,
                 events: bootstrapEvents(bootstrap)
             )
@@ -1235,7 +1248,44 @@ actor CloudAPIClient {
         for event in response.events {
             events.append(contentsOf: try projectedEvents(from: event))
         }
-        return CloudSyncResponse(cursor: response.nextCursor, hasMore: response.hasMore, events: events)
+        return CloudSyncResponse(
+            cursor: response.nextCursor,
+            lastStreamSequence: response.lastStreamSequence,
+            hasMore: response.hasMore,
+            events: events
+        )
+    }
+
+    func openChatRealtime(token: String, cursor: String) async throws -> CloudChatRealtimeSession {
+        let ticket: CloudChatRealtimeTicket = try await send(
+            path: "/v2/chat/realtime/ticket",
+            method: "POST",
+            token: token,
+            fallback: "Could not open reliable realtime delivery."
+        )
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("v2/chat/realtime"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw CloudChatRealtimeError.invalidURL
+        }
+        switch components.scheme?.lowercased() {
+        case "https": components.scheme = "wss"
+        case "http": components.scheme = "ws"
+        default: throw CloudChatRealtimeError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "ticket", value: ticket.ticket)]
+        guard let url = components.url else { throw CloudChatRealtimeError.invalidURL }
+        let connection = CloudChatRealtimeConnection(
+            task: session.webSocketTask(with: url),
+            deviceId: ticket.deviceId,
+            cursor: cursor
+        )
+        let heartbeatInterval = try await connection.start()
+        return CloudChatRealtimeSession(
+            connection: connection,
+            heartbeatIntervalMilliseconds: heartbeatInterval
+        )
     }
 
     private func send<Response: Decodable>(

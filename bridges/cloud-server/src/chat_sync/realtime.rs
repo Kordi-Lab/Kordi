@@ -1,9 +1,9 @@
 //! Durable realtime transport for the canonical chat protocol.
 //!
 //! The socket never owns canonical state. It authenticates with a single-use
-//! ticket, catches up from the PostgreSQL sync stream, and keeps polling that
-//! same stream for live events. A dropped notification or gateway restart is
-//! therefore repaired by the next durable read.
+//! ticket, catches up from the PostgreSQL sync stream, and wakes on committed
+//! PostgreSQL notifications. Initial connection and heartbeat reads repair any
+//! notification dropped during a listener or gateway restart.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +18,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_postgres::PgPool;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::auth::session::device_is_active;
@@ -28,14 +29,15 @@ use crate::chat_sync::PROTOCOL_VERSION;
 use crate::server::ServerState;
 
 mod ticket;
+mod wake;
 
 use ticket::{consume_ticket, ConsumedRealtimeTicket};
 pub use ticket::{issue_ticket, IssuedRealtimeTicket, TicketError};
+pub(crate) use wake::ChatSyncWakeHub;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(65);
-const DURABLE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLIENT_FRAME_BYTES: usize = 64 * 1024;
 const MAX_SERVER_FRAME_BYTES: usize = 512 * 1024;
@@ -298,6 +300,7 @@ async fn run_socket(
         }
     };
     let mut sent_stream_seq = connect_stream_seq;
+    let mut durable_wakes = state.chat_sync_wakes().subscribe(state.db_pool());
     let (mut sender, mut receiver): (SplitSink<_, _>, SplitStream<_>) = socket.split();
     if send_json(
         &mut sender,
@@ -328,8 +331,6 @@ async fn run_socket(
         return;
     }
 
-    let mut durable_poll = tokio::time::interval(DURABLE_POLL_INTERVAL);
-    durable_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut heartbeat_check = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut device_revalidation = tokio::time::interval(DEVICE_REVALIDATION_INTERVAL);
@@ -376,6 +377,19 @@ async fn run_socket(
                     }).await.is_err() {
                         return;
                     }
+                    // A heartbeat is also the bounded recovery read for a
+                    // notification lost during a database or listener restart.
+                    if let Err(reason) = send_available_events(
+                        state.db_pool(),
+                        &ticket.account_id,
+                        &codec,
+                        &mut sender,
+                        &mut sent_stream_seq,
+                        last_applied_seq,
+                    ).await {
+                        resync_and_close(&mut sender, reason).await;
+                        return;
+                    }
                 }
                 Some(Ok(Message::Ping(payload))) => {
                     if sender.send(Message::Pong(payload)).await.is_err() {
@@ -388,7 +402,11 @@ async fn run_socket(
                     return;
                 }
             },
-            _ = durable_poll.tick() => {
+            wake = durable_wakes.recv() => {
+                match wake {
+                    Ok(()) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => return,
+                }
                 if let Err(reason) = send_available_events(
                     state.db_pool(),
                     &ticket.account_id,

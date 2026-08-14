@@ -103,7 +103,7 @@ enum CloudConversationCatalog {
             .filter { !discoveredAgentIds.contains($0.agentId) && !isKordiSupport(agent: $0) }
             .map { defaultConversation(for: $0, account: account) }
 
-        let people = contacts.map { contact in
+        var people = contacts.map { contact in
             let isSupport = KordiSupportIdentity.matches(name: contact.displayName, seed: contact.accountId)
             let sessionId = isSupport
                 ? supportCanonicalConversation.flatMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
@@ -136,6 +136,45 @@ enum CloudConversationCatalog {
                 lastActivityAt: latest.map { parseCloudDate($0.createdAt) } ?? parseCloudDate(contact.createdAt),
                 unreadCount: unread,
                 avatarSource: contact.avatarUrl.nonEmpty,
+                agentActivity: nil,
+                sessionId: sessionId
+            )
+        }
+        people += visibleCanonicalConversations.compactMap { conversation in
+            guard conversation.kind == "direct",
+                  !isCanonicalAgentConversation(conversation) else { return nil }
+            let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
+            guard !KordiSupportIdentity.isSystemAgentSession(sessionId),
+                  let peer = conversation.members.first(where: {
+                      $0.accountId != account.accountId && $0.membershipState == "active"
+                  }),
+                  contactsById[peer.accountId] == nil else { return nil }
+            let matching = visibleMessagesByPeer[peer.accountId, default: []].filter { message in
+                guard !CloudMessageCodec.isAgentControl(message.body),
+                      !groupWireMessageIds.contains(message.messageId) else { return false }
+                guard let sourceSessionId = message.sessionId?.nonEmpty else { return true }
+                return sourceSessionId == sessionId
+            }
+            let latest = matching.max { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+            let unread = matching.filter {
+                $0.toAccountId == account.accountId
+                    && $0.fromAccountId != account.accountId
+                    && $0.direction == "incoming"
+                    && $0.readAt == nil
+            }.count
+            let peerName = peer.displayName?.nonEmpty ?? "Kordi user"
+            return ConversationSummary(
+                id: "person:\(peer.accountId)",
+                kind: .person,
+                peerAccountId: peer.accountId,
+                agentId: nil,
+                ownerDisplayName: peerName,
+                displayName: peerName,
+                lastMessage: latest.map { CloudMessageCodec.displayText($0.body) } ?? "Start a conversation",
+                lastActivityAt: latest.map { parseCloudDate($0.createdAt) }
+                    ?? parseCloudDate(conversation.updatedAt),
+                unreadCount: unread,
+                avatarSource: peer.avatarUrl?.nonEmpty,
                 agentActivity: nil,
                 sessionId: sessionId
             )
@@ -380,13 +419,7 @@ enum CloudConversationCatalog {
     ) -> [ConversationSummary] {
         canonicalConversations.compactMap { conversation in
             let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
-            let isAgentSession = conversation.kind != "group" && (
-                conversation.kind == "ai"
-                || sessionId.hasPrefix("session:self-agent:")
-                || sessionId.hasPrefix("session:direct-agent:")
-                || sessionId.hasPrefix("session:fork:")
-            )
-            guard isAgentSession else { return nil }
+            guard isCanonicalAgentConversation(conversation) else { return nil }
 
             let rows = messages
                 .filter { ($0.sessionId?.nonEmpty ?? "") == sessionId }
@@ -443,6 +476,15 @@ enum CloudConversationCatalog {
                     ?? sessionForksById[sessionId]?.parentSessionId.nonEmpty
             )
         }
+    }
+
+    private static func isCanonicalAgentConversation(_ conversation: CloudChatConversation) -> Bool {
+        guard conversation.kind != "group" else { return false }
+        let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
+        return conversation.kind == "ai"
+            || sessionId.hasPrefix("session:self-agent:")
+            || sessionId.hasPrefix("session:direct-agent:")
+            || sessionId.hasPrefix("session:fork:")
     }
 
     private static func isKordiSupport(agent: CloudAgent) -> Bool {

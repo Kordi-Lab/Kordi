@@ -26,15 +26,18 @@ final class CloudWireCacheTests: XCTestCase {
             createdAt: "2026-08-08T17:31:00Z"
         )
 
-        await cache.save(
+        let saved = await cache.save(
             accountId: "acct-me",
             cursor: "842",
+            lastStreamSequence: 842,
             messagesByPeer: ["acct-peer": [message]],
             sessionForksById: [fork.forkSessionId: fork]
         )
         let restored = await cache.load(accountId: "acct-me")
 
+        XCTAssertTrue(saved)
         XCTAssertEqual(restored?.cursor, "842")
+        XCTAssertEqual(restored?.lastStreamSequence, 842)
         XCTAssertEqual(restored?.messagesByPeer["acct-peer"], [message])
         XCTAssertEqual(restored?.sessionForksById?[fork.forkSessionId], fork)
         XCTAssertEqual(restored?.forkLineageVersion, CloudWireSnapshot.currentForkLineageVersion)
@@ -45,8 +48,28 @@ final class CloudWireCacheTests: XCTestCase {
 
         let snapshot = try JSONDecoder().decode(CloudWireSnapshot.self, from: data)
 
+        XCTAssertNil(snapshot.lastStreamSequence)
         XCTAssertNil(snapshot.forkLineageVersion)
         XCTAssertNotNil(snapshot.sessionForksById)
+    }
+
+    func testSnapshotSaveReportsFailureBeforeTheSyncCursorCanAdvance() async throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-wire-cache-blocked-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let blockingFile = parent.appendingPathComponent("not-a-directory")
+        try Data("blocked".utf8).write(to: blockingFile)
+        let cache = CloudWireCache(directory: blockingFile)
+
+        let saved = await cache.save(
+            accountId: "acct-me",
+            cursor: "cursor-843",
+            lastStreamSequence: 843,
+            messagesByPeer: [:]
+        )
+
+        XCTAssertFalse(saved)
     }
 
     func testForkLineageUpgradeCannotResumeFromAnOlderCursor() {

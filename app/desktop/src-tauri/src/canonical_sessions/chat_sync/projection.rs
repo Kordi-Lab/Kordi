@@ -166,6 +166,10 @@ pub(super) fn apply_event(
             | "session.unhidden"
             | "session.deleted"
             | "session-forked"
+            | "device.added"
+            | "device.confirmed"
+            | "device.revoked"
+            | "device.renamed"
     );
     if !supported {
         return if critical {

@@ -205,6 +205,10 @@ mod tests {
             "session.unhidden",
             "session.deleted",
             "session-forked",
+            "device.added",
+            "device.confirmed",
+            "device.revoked",
+            "device.renamed",
         ];
         let events = event_types
             .iter()
@@ -219,21 +223,23 @@ mod tests {
                 })
             })
             .collect();
+        let final_stream_seq = event_types.len() as i64;
+        let final_cursor = format!("cursor-{final_stream_seq}");
         let state = apply_on_connection(
             &mut conn,
             ChatSyncApplyRequest {
                 account_id: "acct_test".to_string(),
                 bootstrap: false,
-                cursor: Some("cursor-10".to_string()),
-                last_stream_seq: Some(10),
+                cursor: Some(final_cursor.clone()),
+                last_stream_seq: Some(final_stream_seq),
                 conversations: vec![],
                 messages: vec![],
                 events,
             },
         )
         .unwrap();
-        assert_eq!(state.cursor.as_deref(), Some("cursor-10"));
-        assert_eq!(state.last_stream_seq, 10);
+        assert_eq!(state.cursor.as_deref(), Some(final_cursor.as_str()));
+        assert_eq!(state.last_stream_seq, final_stream_seq);
     }
 
     #[test]

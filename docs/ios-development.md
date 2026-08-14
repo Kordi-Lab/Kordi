@@ -195,6 +195,7 @@ Keep network and projection logic outside SwiftUI view bodies so it remains inde
 - Session tokens belong only in Keychain.
 - Raw provider credentials must not be written to UserDefaults, SwiftData, logs, fixtures, screenshots, or crash text.
 - Cached messages and sync cursors are account-scoped and cleared on sign-out.
+- Realtime chat events only wake canonical HTTP catch-up; the cached stream sequence advances only after the matching projection and cursor are atomically saved.
 - The phone must not announce desktop-runtime presence or claim that it can execute an agent locally.
 - Preview mode must remain self-contained and network-free.
 - Use dedicated test accounts for production smoke checks. Never run load, destructive, or throwaway multi-user tests against production.

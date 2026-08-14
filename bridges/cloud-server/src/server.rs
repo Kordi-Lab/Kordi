@@ -20,6 +20,7 @@ use crate::updates::store::{
 pub struct ServerState {
     pool: PgPool,
     events: EventBus,
+    chat_sync_wakes: crate::chat_sync::realtime::ChatSyncWakeHub,
     s3: Option<S3Config>,
     release_store: Option<ReleaseCatalogStore>,
     support: Option<SupportService>,
@@ -30,6 +31,7 @@ impl ServerState {
         Self {
             pool,
             events,
+            chat_sync_wakes: crate::chat_sync::realtime::ChatSyncWakeHub::new(),
             s3: None,
             release_store: None,
             support: None,
@@ -57,6 +59,10 @@ impl ServerState {
 
     pub fn events(&self) -> &EventBus {
         &self.events
+    }
+
+    pub(crate) fn chat_sync_wakes(&self) -> &crate::chat_sync::realtime::ChatSyncWakeHub {
+        &self.chat_sync_wakes
     }
 
     pub fn s3(&self) -> Option<&S3Config> {

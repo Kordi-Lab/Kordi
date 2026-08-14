@@ -771,6 +771,7 @@ struct CloudAgentRun: Codable, Hashable {
 
 struct CloudSyncResponse: Codable, Hashable {
     let cursor: String
+    let lastStreamSequence: Int64
     let hasMore: Bool
     let events: [CloudSyncEvent]
 }

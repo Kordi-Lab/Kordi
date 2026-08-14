@@ -231,3 +231,20 @@ fn canonical_routes_are_exclusive_for_chat_and_require_signed_cursors() {
         );
     }
 }
+
+#[test]
+fn realtime_uses_committed_notifications_instead_of_short_interval_polling() {
+    let root = repository_root();
+    let realtime = read(root.join("bridges/cloud-server/src/chat_sync/realtime.rs"));
+    let wake = read(root.join("bridges/cloud-server/src/chat_sync/realtime/wake.rs"));
+    let store = read(root.join("bridges/cloud-server/src/chat_sync/store/support.rs"));
+    let server = read(root.join("bridges/cloud-server/src/server.rs"));
+
+    assert!(wake.contains("PgListener"));
+    assert!(wake.contains("CHAT_SYNC_NOTIFICATION_CHANNEL"));
+    assert!(realtime.contains("durable_wakes.recv()"));
+    assert!(wake.contains("run_durable_wake_listener"));
+    assert!(!realtime.contains("DURABLE_POLL_INTERVAL"));
+    assert!(store.contains("pg_notify('chat_sync_events', 'new-events')"));
+    assert!(server.contains("chat_sync_wakes"));
+}

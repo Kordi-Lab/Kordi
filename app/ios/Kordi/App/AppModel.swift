@@ -66,7 +66,11 @@ final class AppModel: ObservableObject {
     private var currentDeviceId: String?
     private var deviceOperationIds: [String: String] = [:]
     private var cloudSyncTask: Task<Void, Never>?
+    private var cloudRealtimeConnection: CloudChatRealtimeConnection?
+    private var cloudSyncGeneration: UInt64 = 0
     private var cloudSyncCursor = "0"
+    private var cloudSyncLastStreamSequence: Int64 = 0
+    private var lastContactRequestRefreshAt: Date?
     private var hasHydratedWireSnapshot = false
     private var hasHydratedForkLineage = false
     private var fullyHydratedCanonicalGroupSessionIds = Set<String>()
@@ -127,6 +131,7 @@ final class AppModel: ObservableObject {
 
     deinit {
         cloudSyncTask?.cancel()
+        cloudRealtimeConnection?.cancel()
     }
 
     func start() async {
@@ -146,8 +151,10 @@ final class AppModel: ObservableObject {
                 sessionForksById = snapshot.sessionForksById ?? [:]
                 rebuildCloudMessageIndices()
                 cloudSyncCursor = snapshot.cursor
+                cloudSyncLastStreamSequence = snapshot.lastStreamSequence ?? 0
                 lastMessageSyncAt = snapshot.savedAt
                 hasHydratedWireSnapshot = snapshot.cursor != "0"
+                    && snapshot.lastStreamSequence != nil
                 hasHydratedForkLineage = snapshot.sessionForksById != nil
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
@@ -236,9 +243,10 @@ final class AppModel: ObservableObject {
     func signOut() async {
         let oldToken = token
         let oldAccountId = account?.accountId
-        cloudSyncTask?.cancel()
-        cloudSyncTask = nil
+        cancelCloudSync()
         cloudSyncCursor = "0"
+        cloudSyncLastStreamSequence = 0
+        lastContactRequestRefreshAt = nil
         hasHydratedWireSnapshot = false
         hasHydratedForkLineage = false
         fullyHydratedCanonicalGroupSessionIds = []
@@ -306,6 +314,7 @@ final class AppModel: ObservableObject {
             )
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             contactRequests = requests
+            lastContactRequestRefreshAt = Date()
             ownedCloudAgents = owned
             providerAuthSnapshot = authSnapshot
             if let deviceList {
@@ -664,8 +673,7 @@ final class AppModel: ObservableObject {
     }
 
     func appDidEnterBackground() {
-        cloudSyncTask?.cancel()
-        cloudSyncTask = nil
+        cancelCloudSync()
     }
 
     func hydrateCachedMessages(for conversation: ConversationSummary) {
@@ -1713,13 +1721,13 @@ final class AppModel: ObservableObject {
                 runtimeRoute: runtimeRoute
             )
             agentExecutionLocation[conversation.id] = .cloud
-            await pollForAgentReply(conversation, requestMessageId: requestMessageId)
+            await monitorAgentRun(conversation, requestMessageId: requestMessageId)
         } catch let error as CloudAPIError where error.code == "owner_online" {
             let macLabel = ownerAccountId == account.accountId
                 ? "your Mac"
                 : "\(conversation.ownerDisplayName ?? "the owner")’s Mac"
             agentExecutionLocation[conversation.id] = .mac(label: macLabel)
-            await pollForAgentReply(conversation, requestMessageId: requestMessageId)
+            await monitorAgentRun(conversation, requestMessageId: requestMessageId)
         } catch {
             recordCloudConnectionFailure(error)
             setAgentActivity(.failed, conversationId: conversation.id)
@@ -1758,12 +1766,15 @@ final class AppModel: ObservableObject {
         pendingMentionByMessageId[messageId] = nil
     }
 
-    private func pollForAgentReply(_ conversation: ConversationSummary, requestMessageId: String) async {
+    private func monitorAgentRun(_ conversation: ConversationSummary, requestMessageId: String) async {
         guard !previewMode else { return }
-        for _ in 0..<30 {
-            try? await Task.sleep(for: .seconds(2))
-            if Task.isCancelled { return }
-            await loadConversation(conversation)
+        for _ in 0..<12 {
+            do {
+                try await Task.sleep(for: .seconds(10))
+            } catch {
+                return
+            }
+            guard pendingAgentRequestIds[conversation.id] == requestMessageId else { return }
             if messages(for: conversation).contains(where: { $0.author == .agent && $0.requestMessageId == requestMessageId }) {
                 completeAgentRequest(conversationId: conversation.id)
                 return
@@ -2104,81 +2115,242 @@ final class AppModel: ObservableObject {
     }
 
     /// Mobile is a passive Cloud client, never an execution-capable device.
-    /// HTTP cursor polling intentionally avoids presence-bearing WebSockets so
-    /// an iPhone cannot block Cloud fallback by being mistaken for the owner's Mac.
+    /// This dedicated chat socket carries no runtime presence: it only wakes the
+    /// durable HTTP cursor catch-up path used by both iPhone and Mac.
     private func startCloudSync(resetCursor: Bool) {
         guard let token else { return }
-        let isForkLineageReplay = resetCursor
-        cloudSyncTask?.cancel()
+        cancelCloudSync()
+        let generation = cloudSyncGeneration
         if resetCursor {
             cloudSyncCursor = "0"
+            cloudSyncLastStreamSequence = 0
             if messageSyncState != .syncing { messageSyncState = .syncing }
         }
         cloudSyncTask = Task { [weak self] in
             guard let self else { return }
-            var hasUnpersistedChanges = resetCursor
-            var nextCursor = cloudSyncCursor
-            var pendingEvents: [CloudSyncEvent] = []
-            var chatPollsUntilContactRefresh = 0
-            while !Task.isCancelled {
+            await runCloudSync(
+                token: token,
+                requiresBootstrapCommit: resetCursor,
+                generation: generation
+            )
+        }
+    }
+
+    private func cancelCloudSync() {
+        cloudSyncGeneration &+= 1
+        cloudSyncTask?.cancel()
+        cloudSyncTask = nil
+        cloudRealtimeConnection?.cancel()
+        cloudRealtimeConnection = nil
+    }
+
+    private func runCloudSync(
+        token: String,
+        requiresBootstrapCommit: Bool,
+        generation: UInt64
+    ) async {
+        var reconnectAttempt = 0
+        var needsBootstrapCommit = requiresBootstrapCommit
+        while !Task.isCancelled, generation == cloudSyncGeneration {
+            var completedCatchUp = false
+            do {
+                try await catchUpCloudSync(
+                    token: token,
+                    includeForkLineage: needsBootstrapCommit,
+                    forceSnapshotCommit: needsBootstrapCommit,
+                    generation: generation
+                )
+                needsBootstrapCommit = false
+                completedCatchUp = true
+                await refreshContactRequestsIfDue()
+                try Task.checkCancellation()
+                guard generation == cloudSyncGeneration else { return }
+
+                let realtime = try await api.openChatRealtime(
+                    token: token,
+                    cursor: cloudSyncCursor
+                )
+                guard generation == cloudSyncGeneration else {
+                    realtime.connection.cancel()
+                    return
+                }
+                cloudRealtimeConnection = realtime.connection
+                reconnectAttempt = 0
+                try await withTaskCancellationHandler {
+                    try await consumeCloudRealtime(
+                        realtime,
+                        token: token,
+                        generation: generation
+                    )
+                } onCancel: {
+                    realtime.connection.cancel()
+                }
+            } catch {
+                guard generation == cloudSyncGeneration else { return }
+                cloudRealtimeConnection?.cancel()
+                cloudRealtimeConnection = nil
+                if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+                // Realtime is an accelerator, not the source of truth. Only a
+                // failed HTTP catch-up should move the UI into its offline state.
+                if !completedCatchUp { recordCloudConnectionFailure(error) }
+                let delay = CloudRealtimeRetryPolicy.delaySeconds(
+                    attempt: reconnectAttempt,
+                    unitJitter: Double.random(in: 0...1)
+                )
+                reconnectAttempt += 1
                 do {
-                    let response = try await api.sync(token: token, cursor: nextCursor)
-                    if cloudConnectionState != .connected {
-                        cloudConnectionState = .connected
-                        if errorMessage == Self.cloudUnavailableMessage {
-                            errorMessage = nil
-                        }
-                    }
-                    if !response.events.isEmpty {
-                        hasUnpersistedChanges = true
-                        pendingEvents.append(contentsOf: response.events)
-                    }
-                    nextCursor = response.cursor
-                    if response.hasMore { continue }
-
-                    cloudSyncCursor = nextCursor
-                    if !pendingEvents.isEmpty {
-                        applyCloudSyncEvents(pendingEvents)
-                        let hasDirectoryChanges = pendingEvents.contains {
-                            $0.eventType != "message.upsert" && $0.eventType != "message.read"
-                        }
-                        if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
-                        // Conversation snapshots are independently canonical.
-                        // Always project them even when a best-effort directory
-                        // refresh failed or was already in progress.
-                        await rebuildConversationCatalog()
-                        await refreshLoadedConversationProjections()
-                        pendingEvents.removeAll(keepingCapacity: true)
-                    }
-                    hasHydratedWireSnapshot = true
-                    if isForkLineageReplay { hasHydratedForkLineage = true }
-                    if messageSyncState != .upToDate { messageSyncState = .upToDate }
-                    if hasUnpersistedChanges, let accountId = account?.accountId {
-                        lastMessageSyncAt = Date()
-                        await persistCloudSnapshot(accountId: accountId)
-                        hasUnpersistedChanges = false
-                    }
+                    try await Task.sleep(for: .seconds(delay))
                 } catch {
-                    if Task.isCancelled { return }
-                    // No page has been committed yet. Retry from the last
-                    // persisted cursor so a background transition cannot skip
-                    // a partially received batch.
-                    nextCursor = cloudSyncCursor
-                    pendingEvents.removeAll(keepingCapacity: true)
-                    recordCloudConnectionFailure(error)
-                    // The next foreground poll retries. User-triggered actions
-                    // still surface their own actionable network errors.
+                    return
                 }
-
-                if chatPollsUntilContactRefresh == 0 {
-                    await refreshContactRequests()
-                    chatPollsUntilContactRefresh = 2
-                } else {
-                    chatPollsUntilContactRefresh -= 1
-                }
-                try? await Task.sleep(for: .seconds(5))
             }
         }
+    }
+
+    private func consumeCloudRealtime(
+        _ realtime: CloudChatRealtimeSession,
+        token: String,
+        generation: UInt64
+    ) async throws {
+        let connection = realtime.connection
+        let interval = max(5_000, realtime.heartbeatIntervalMilliseconds)
+        let heartbeatTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(Int.random(in: 0..<interval)))
+                while !Task.isCancelled {
+                    guard let self, generation == cloudSyncGeneration else {
+                        connection.cancel()
+                        return
+                    }
+                    try await connection.sendHeartbeat(
+                        lastAppliedSequence: cloudSyncLastStreamSequence
+                    )
+                    await refreshContactRequestsIfDue()
+                    try await Task.sleep(for: .milliseconds(interval))
+                }
+            } catch {
+                connection.cancel()
+            }
+        }
+        defer { heartbeatTask.cancel() }
+
+        while !Task.isCancelled, generation == cloudSyncGeneration {
+            switch try await connection.receive() {
+            case .event(let streamSequence):
+                guard streamSequence > cloudSyncLastStreamSequence else { continue }
+                try await catchUpCloudSync(
+                    token: token,
+                    includeForkLineage: false,
+                    forceSnapshotCommit: false,
+                    generation: generation
+                )
+            case .resyncRequired(let reason):
+                try await catchUpCloudSync(
+                    token: token,
+                    includeForkLineage: false,
+                    forceSnapshotCommit: false,
+                    generation: generation
+                )
+                throw CloudChatRealtimeError.server("RESYNC_REQUIRED_\(reason)")
+            case .heartbeatAcknowledged, .ignored:
+                continue
+            case .hello:
+                throw CloudChatRealtimeError.unexpectedHandshake
+            }
+        }
+        throw CancellationError()
+    }
+
+    private func catchUpCloudSync(
+        token: String,
+        includeForkLineage: Bool,
+        forceSnapshotCommit: Bool,
+        generation: UInt64
+    ) async throws {
+        guard generation == cloudSyncGeneration else { throw CancellationError() }
+        let committedCursor = cloudSyncCursor
+        let committedSequence = cloudSyncLastStreamSequence
+        var nextCursor = committedCursor
+        var nextSequence = committedSequence
+        var pendingEvents: [CloudSyncEvent] = []
+
+        while true {
+            try Task.checkCancellation()
+            let response = try await api.sync(token: token, cursor: nextCursor)
+            guard generation == cloudSyncGeneration else { throw CancellationError() }
+            guard response.lastStreamSequence >= nextSequence else {
+                throw CloudChatRealtimeError.invalidFrame
+            }
+            pendingEvents.append(contentsOf: response.events)
+            nextCursor = response.cursor
+            nextSequence = response.lastStreamSequence
+            if !response.hasMore { break }
+        }
+
+        if !pendingEvents.isEmpty {
+            applyCloudSyncEvents(pendingEvents)
+            let hasDirectoryChanges = pendingEvents.contains {
+                $0.eventType != "message.upsert" && $0.eventType != "message.read"
+            }
+            if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
+            guard generation == cloudSyncGeneration else { throw CancellationError() }
+            // Conversation snapshots are independently canonical. Always
+            // project them even if the ancillary directory refresh failed.
+            await rebuildConversationCatalog()
+            guard generation == cloudSyncGeneration else { throw CancellationError() }
+            await refreshLoadedConversationProjections()
+            guard generation == cloudSyncGeneration else { throw CancellationError() }
+        }
+
+        hasHydratedWireSnapshot = true
+        if includeForkLineage { hasHydratedForkLineage = true }
+        let requiresCommit = forceSnapshotCommit
+            || !pendingEvents.isEmpty
+            || nextCursor != committedCursor
+            || nextSequence != committedSequence
+        if requiresCommit {
+            guard let accountId = account?.accountId else {
+                throw CloudAPIError(
+                    code: "account_missing",
+                    message: "Your Kordi account session is unavailable.",
+                    statusCode: 401
+                )
+            }
+            let persisted = await wireCache.save(
+                accountId: accountId,
+                cursor: nextCursor,
+                lastStreamSequence: nextSequence,
+                messagesByPeer: cloudMessagesByPeer,
+                sessionForksById: hasHydratedForkLineage ? sessionForksById : nil
+            )
+            guard persisted else {
+                throw CloudAPIError(
+                    code: "cache_write_failed",
+                    message: "Could not save synchronized messages on this iPhone.",
+                    statusCode: 0
+                )
+            }
+            guard generation == cloudSyncGeneration else { throw CancellationError() }
+            // Cursor and acknowledgement state advance only after the canonical
+            // projection and sequence are durable together.
+            cloudSyncCursor = nextCursor
+            cloudSyncLastStreamSequence = nextSequence
+            lastMessageSyncAt = Date()
+        }
+
+        if cloudConnectionState != .connected { cloudConnectionState = .connected }
+        if messageSyncState != .upToDate { messageSyncState = .upToDate }
+        if errorMessage == Self.cloudUnavailableMessage { errorMessage = nil }
+    }
+
+    private func refreshContactRequestsIfDue() async {
+        let now = Date()
+        if let lastContactRequestRefreshAt,
+           now.timeIntervalSince(lastContactRequestRefreshAt) < 30 {
+            return
+        }
+        lastContactRequestRefreshAt = now
+        await refreshContactRequests()
     }
 
     private func refreshLoadedConversationProjections() async {
@@ -2210,6 +2382,10 @@ final class AppModel: ObservableObject {
             })
         }.value
         for (conversationId, projected) in projections {
+            if let requestId = pendingAgentRequestIds[conversationId],
+               projected.contains(where: { $0.author == .agent && $0.requestMessageId == requestId }) {
+                completeAgentRequest(conversationId: conversationId)
+            }
             guard messagesByConversation[conversationId] != projected else { continue }
             messagesByConversation[conversationId] = projected
             cacheCurrentMessages(conversationId)
@@ -2453,10 +2629,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func persistCloudSnapshot(accountId: String) async {
+    @discardableResult
+    private func persistCloudSnapshot(accountId: String) async -> Bool {
         await wireCache.save(
             accountId: accountId,
             cursor: cloudSyncCursor,
+            lastStreamSequence: cloudSyncLastStreamSequence,
             messagesByPeer: cloudMessagesByPeer,
             sessionForksById: hasHydratedForkLineage ? sessionForksById : nil
         )
@@ -2640,8 +2818,10 @@ final class AppModel: ObservableObject {
             sessionForksById = snapshot.sessionForksById ?? [:]
             rebuildCloudMessageIndices()
             cloudSyncCursor = snapshot.cursor
+            cloudSyncLastStreamSequence = snapshot.lastStreamSequence ?? 0
             lastMessageSyncAt = snapshot.savedAt
             hasHydratedWireSnapshot = snapshot.cursor != "0"
+                && snapshot.lastStreamSequence != nil
             hasHydratedForkLineage = snapshot.sessionForksById != nil
                 && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }

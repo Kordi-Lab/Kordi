@@ -5,6 +5,7 @@ struct CloudWireSnapshot: Codable {
 
     let accountId: String
     let cursor: String
+    let lastStreamSequence: Int64?
     let messagesByPeer: [String: [CloudMessageDTO]]
     let sessionForksById: [String: CloudSessionForkSummary]?
     let forkLineageVersion: Int?
@@ -50,24 +51,26 @@ actor CloudWireCache {
     func save(
         accountId: String,
         cursor: String,
+        lastStreamSequence: Int64,
         messagesByPeer: [String: [CloudMessageDTO]],
         sessionForksById: [String: CloudSessionForkSummary]? = nil
-    ) {
-        guard let directory, let url = snapshotURL(accountId: accountId) else { return }
+    ) -> Bool {
+        guard let directory, let url = snapshotURL(accountId: accountId) else { return false }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let snapshot = CloudWireSnapshot(
                 accountId: accountId,
                 cursor: cursor,
+                lastStreamSequence: lastStreamSequence,
                 messagesByPeer: messagesByPeer,
                 sessionForksById: sessionForksById,
                 forkLineageVersion: CloudWireSnapshot.currentForkLineageVersion,
                 savedAt: Date()
             )
             try encoder.encode(snapshot).write(to: url, options: .atomic)
+            return true
         } catch {
-            // Cloud remains canonical; a failed cache write only makes the next
-            // launch perform a complete replay.
+            return false
         }
     }
 
