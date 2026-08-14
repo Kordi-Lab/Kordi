@@ -65,7 +65,8 @@ enum CloudMessageStateProjector {
                     readAt: readAt,
                     direction: message.direction,
                     sessionId: message.sessionId,
-                    attachments: message.attachments
+                    attachments: message.attachments,
+                    messageKind: message.messageKind
                 )
             }
         }

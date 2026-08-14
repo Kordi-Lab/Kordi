@@ -234,6 +234,38 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(model.messages(for: conversation), messagesBeforeLoad)
     }
 
+    @MainActor
+    func testPreviewCallWritesStartAndEndActivitiesToTheConversation() throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(
+            model.conversations.first(where: { $0.id == "group:mobile" })
+        )
+        let call = CloudCall(
+            id: "0198aabc-8b27-7a30-8cba-215495609c7a",
+            conversationId: conversation.sessionId,
+            kind: .meeting,
+            state: .active,
+            createdByAccountId: "acct_me",
+            createdAt: "2026-08-14T10:00:00Z",
+            answeredAt: "2026-08-14T10:00:00Z",
+            endedAt: nil,
+            participants: []
+        )
+
+        model.recordPreviewCallStarted(call, in: conversation)
+        XCTAssertEqual(model.activeCall(for: conversation)?.id, call.id)
+
+        model.recordPreviewCallEnded(call, in: conversation)
+        let callActivities = model.messages(for: conversation).compactMap(\.callActivity)
+
+        XCTAssertNil(model.activeCall(for: conversation))
+        XCTAssertEqual(callActivities.suffix(2).map(\.event), [.started, .ended])
+        XCTAssertEqual(
+            model.conversations.first(where: { $0.id == conversation.id })?.lastMessage,
+            "The video chat ended."
+        )
+    }
+
     func testConversationLoadingKeepsTheSyncMarkMoving() {
         let motion = MessageSyncStatusBehavior.motion(
             pullState: .idle,
@@ -359,6 +391,25 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "maya"))
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "budget"))
         XCTAssertFalse(ChatHomeSearch.matches(space, query: "roadmap"))
+    }
+
+    func testSessionRelatedGroupsRequireBothConversationParticipants() {
+        let fixture = PreviewData.make(now: Date(timeIntervalSince1970: 1_000))
+
+        let sharedWithMaya = SessionRelatedGroupCatalog.mutualSpaces(
+            conversations: fixture.conversations,
+            ownAccountID: fixture.account.accountId,
+            peerAccountID: "acct_maya"
+        )
+        let sharedWithPriya = SessionRelatedGroupCatalog.mutualSpaces(
+            conversations: fixture.conversations,
+            ownAccountID: fixture.account.accountId,
+            peerAccountID: "acct_priya"
+        )
+
+        XCTAssertEqual(sharedWithMaya.map(\.displayName), ["Mobile builders"])
+        XCTAssertEqual(sharedWithMaya.first?.sessions.count, 2)
+        XCTAssertTrue(sharedWithPriya.isEmpty)
     }
 
     func testPullDistanceUsesNativeScrollGeometryInsets() {

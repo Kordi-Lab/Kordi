@@ -10,6 +10,10 @@ configs:
   Beta: debug
   Debug: debug
   Release: release
+packages:
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift.git
+    from: 2.16.0
 settings:
   base:
     SWIFT_VERSION: 5.0
@@ -31,6 +35,8 @@ targets:
       - path: Kordi/Resources/Assets.xcassets
       - path: Kordi/Supporting/Preview Content
         optional: true
+    entitlements:
+      path: Kordi/Supporting/Kordi.entitlements
     info:
       path: Kordi/Supporting/Info.plist
       properties:
@@ -38,7 +44,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
-        NSCameraUsageDescription: Kordi uses the camera when you choose to attach a new photo to a message.
+        NSCameraUsageDescription: Kordi uses the camera when you choose to share video in a call or attach a new photo to a message.
+        NSMicrophoneUsageDescription: Kordi uses the microphone when you join an audio or video call.
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER).oauth
@@ -50,6 +57,10 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
+          - remote-notification
+          - voip
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
@@ -70,6 +81,7 @@ targets:
           KORDI_DISTRIBUTION_CHANNEL: beta
           KORDI_OAUTH_CALLBACK_SCHEME: kordi-beta
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIconBeta
+          APNS_ENVIRONMENT: development
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG BETA
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios
@@ -79,6 +91,7 @@ targets:
           KORDI_DISTRIBUTION_CHANNEL: production
           KORDI_OAUTH_CALLBACK_SCHEME: kordi
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+          APNS_ENVIRONMENT: development
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios
           PRODUCT_NAME: Kordi
@@ -87,6 +100,9 @@ targets:
           KORDI_DISTRIBUTION_CHANNEL: production
           KORDI_OAUTH_CALLBACK_SCHEME: kordi
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+          APNS_ENVIRONMENT: production
+    dependencies:
+      - package: LiveKit
   KordiTests:
     type: bundle.unit-test
     platform: iOS

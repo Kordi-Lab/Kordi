@@ -706,6 +706,142 @@ actor CloudAPIClient {
         return legacyMessage(from: response.message, conversation: conversation, viewerAccountId: accountId)
     }
 
+    func startCall(
+        token: String,
+        conversation: ConversationSummary,
+        kind: CloudCallKind,
+        clientOperationId: String = UUID().uuidString.lowercased()
+    ) async throws -> CloudCallSessionResponse {
+        let canonical = try await ensureCallConversation(token: token, conversation: conversation)
+        return try await send(
+            path: "/v2/chat/conversations/\(escapedPath(canonical.id))/calls",
+            method: "POST",
+            token: token,
+            body: CloudStartCallRequest(
+                clientOperationId: operationUUID(clientOperationId),
+                kind: kind
+            ),
+            fallback: "Could not start the call."
+        )
+    }
+
+    func activeCall(
+        token: String,
+        conversation: ConversationSummary
+    ) async throws -> CloudCall? {
+        let canonical = try await ensureCallConversation(token: token, conversation: conversation)
+        let response: CloudCallResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(canonical.id))/calls/active",
+            method: "GET",
+            token: token,
+            fallback: "Could not refresh the call."
+        )
+        return response.call
+    }
+
+    func joinCall(token: String, callId: String) async throws -> CloudCallSessionResponse {
+        try await send(
+            path: "/v2/calls/\(escapedPath(callId))/join",
+            method: "POST",
+            token: token,
+            fallback: "Could not join the call."
+        )
+    }
+
+    func inviteCallParticipants(token: String, callId: String) async throws -> CloudCall? {
+        let response: CloudCallResponse = try await send(
+            path: "/v2/calls/\(escapedPath(callId))/invite",
+            method: "POST",
+            token: token,
+            fallback: "Could not invite the conversation members."
+        )
+        return response.call
+    }
+
+    func declineCall(token: String, callId: String) async throws -> CloudCall? {
+        let response: CloudCallResponse = try await send(
+            path: "/v2/calls/\(escapedPath(callId))/decline",
+            method: "POST",
+            token: token,
+            fallback: "Could not decline the call."
+        )
+        return response.call
+    }
+
+    func leaveCall(token: String, callId: String) async throws -> CloudCall? {
+        let response: CloudCallResponse = try await send(
+            path: "/v2/calls/\(escapedPath(callId))/leave",
+            method: "POST",
+            token: token,
+            fallback: "Could not leave the call."
+        )
+        return response.call
+    }
+
+    func endCall(token: String, callId: String) async throws -> CloudCall? {
+        let response: CloudCallResponse = try await send(
+            path: "/v2/calls/\(escapedPath(callId))/end",
+            method: "POST",
+            token: token,
+            fallback: "Could not end the call."
+        )
+        return response.call
+    }
+
+    func registerVoIPPushToken(
+        token: String,
+        deviceToken: String,
+        environment: String
+    ) async throws {
+        try await sendWithoutResponse(
+            path: "/v2/calls/devices/voip",
+            method: "PUT",
+            token: token,
+            body: CloudVoIPPushTokenRequest(token: deviceToken, environment: environment),
+            fallback: "Could not register this device for incoming calls."
+        )
+    }
+
+    func registerNotificationPushToken(
+        token: String,
+        deviceToken: String,
+        environment: String
+    ) async throws {
+        try await sendWithoutResponse(
+            path: "/v2/calls/devices/notifications",
+            method: "PUT",
+            token: token,
+            body: CloudVoIPPushTokenRequest(token: deviceToken, environment: environment),
+            fallback: "Could not register this device for meeting notifications."
+        )
+    }
+
+    private func ensureCallConversation(
+        token: String,
+        conversation: ConversationSummary
+    ) async throws -> CloudChatConversation {
+        let kind: String
+        switch conversation.kind {
+        case .person:
+            kind = "direct"
+        case .group:
+            kind = "group"
+        case .agent:
+            throw CloudAPIError(
+                code: "CALL_FORBIDDEN",
+                message: "Calls are available in contact and group conversations.",
+                statusCode: 403
+            )
+        }
+        return try await ensureChatConversation(
+            token: token,
+            sessionId: conversation.sessionId,
+            kind: kind,
+            memberAccountIds: conversation.remotePeerAccountIds,
+            sharedTitle: conversation.kind == .group ? conversation.displayName : nil
+        )
+    }
+
     func uploadAttachment(token: String, attachment: PendingAttachment) async throws -> CloudMessageAttachment {
         let initiated: AttachmentInitiateResponse = try await send(
             path: "/v1/cloud/attachments/initiate",
@@ -1028,7 +1164,8 @@ actor CloudAPIClient {
             readAt: read ? message.createdAt : nil,
             direction: outgoing ? "outgoing" : "incoming",
             sessionId: conversation.legacySessionId ?? conversation.id,
-            attachments: message.content.legacyAttachments
+            attachments: message.content.legacyAttachments,
+            messageKind: message.kind
         )
     }
 
@@ -1105,7 +1242,24 @@ actor CloudAPIClient {
                 payload: CloudSyncEventPayload(
                     message: nil, messageIds: nil, readAt: nil, sessionId: sessionId,
                     forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
-                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil, deviceId: nil
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: nil, call: nil
+                ),
+                occurredAt: event.occurredAt
+            )]
+        }
+        if ["call.created", "call.updated"].contains(event.eventType),
+           let call = event.payload.call {
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: CloudSyncEventPayload(
+                    message: nil, messageIds: nil, readAt: nil, sessionId: nil,
+                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: nil, call: call
                 ),
                 occurredAt: event.occurredAt
             )]
@@ -1126,7 +1280,7 @@ actor CloudAPIClient {
                     message: nil, messageIds: nil, readAt: nil, sessionId: nil,
                     forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                     createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
-                    deviceId: event.payload.deviceId
+                    deviceId: event.payload.deviceId, call: nil
                 ),
                 occurredAt: event.occurredAt
             )]
@@ -1155,7 +1309,8 @@ actor CloudAPIClient {
             payload: CloudSyncEventPayload(
                 message: projected, messageIds: nil, readAt: nil, sessionId: nil,
                 forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
-                createdByAccountId: nil, createdAt: nil, sessionTitle: nil, deviceId: nil
+                createdByAccountId: nil, createdAt: nil, sessionTitle: nil, deviceId: nil,
+                call: nil
             ),
             occurredAt: occurredAt
         )
@@ -1182,7 +1337,8 @@ actor CloudAPIClient {
                     sessionId: conversation.legacySessionId ?? conversation.id,
                     title: title
                 ),
-                deviceId: nil
+                deviceId: nil,
+                call: nil
             ),
             occurredAt: occurredAt
         )

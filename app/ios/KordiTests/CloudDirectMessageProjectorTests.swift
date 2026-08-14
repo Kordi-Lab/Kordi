@@ -70,6 +70,29 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.first?.messageAction?.source.senderLabel, "Maya")
     }
 
+    func testProjectorPreservesCallActivityKind() {
+        let message = CloudMessageDTO(
+            messageId: "msg_call",
+            fromAccountId: "acct_me",
+            toAccountId: "acct_peer",
+            body: "Maya started a video chat.",
+            createdAt: "2026-08-14T10:00:00Z",
+            deliveredAt: "2026-08-14T10:00:01Z",
+            readAt: nil,
+            direction: "incoming",
+            sessionId: conversation.sessionId,
+            messageKind: "call"
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [message],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.first?.messageKind, "call")
+    }
+
     func testLegacyMacImageMetadataStillProjectsAsAnInlineImage() {
         let mimeTypedImage = CloudMessageAttachment(
             attachmentId: "att_screenshot_mime",

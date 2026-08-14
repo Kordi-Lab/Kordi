@@ -48,6 +48,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
 aes-gcm = "0.10"
 hmac = "0.12"
+livekit-api = { version = "0.6.3", default-features = false, features = ["access-token"] }
+a2 = { version = "0.10.0", default-features = false, features = ["ring"] }
 # Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
 # up in the workspace dep graph and conflict with bridges/cli's rusqlite
 # at the libsqlite3-sys link layer.

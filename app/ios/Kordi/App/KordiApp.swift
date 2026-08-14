@@ -7,10 +7,48 @@
  */
 import SwiftUI
 import UIKit
+import UserNotifications
+
+extension Notification.Name {
+    static let kordiDidRegisterForRemoteNotifications = Notification.Name(
+        "KordiDidRegisterForRemoteNotifications"
+    )
+}
+
+final class KordiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        NotificationCenter.default.post(
+            name: .kordiDidRegisterForRemoteNotifications,
+            object: token
+        )
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+}
 
 @main
 struct KordiApp: App {
+    @UIApplicationDelegateAdaptor(KordiAppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
+    @StateObject private var callCoordinator = KordiCallCoordinator()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
 
@@ -18,12 +56,36 @@ struct KordiApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(model)
+                .environmentObject(callCoordinator)
                 .tint(KordiTheme.signalBlue)
                 .preferredColorScheme(preferredColorScheme)
-                .task { await model.start() }
+                .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
+                    KordiCallView(room: callCoordinator.room)
+                        .environmentObject(callCoordinator)
+                }
+                .task {
+                    callCoordinator.configure(model: model)
+                    await model.start()
+                    callCoordinator.configure(model: model)
+                    callCoordinator.receive(callSnapshots: Array(model.callsByConversationID.values))
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(for: .kordiDidRegisterForRemoteNotifications)
+                ) { notification in
+                    guard let token = notification.object as? String else { return }
+                    Task { await model.registerNotificationPushToken(token) }
+                }
+                .onReceive(model.$callsByConversationID) { calls in
+                    callCoordinator.receive(callSnapshots: Array(calls.values))
+                }
+                .onReceive(model.$account) { account in
+                    guard account != nil else { return }
+                    callCoordinator.configure(model: model)
+                }
                 .onChange(of: scenePhase) {
                     switch scenePhase {
                     case .active:
+                        callCoordinator.showCallScreen()
                         Task { await model.appDidBecomeActive() }
                     case .background:
                         model.appDidEnterBackground()
@@ -47,6 +109,7 @@ struct KordiApp: App {
 
 private struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var callCoordinator: KordiCallCoordinator
 
     @ViewBuilder
     var body: some View {
@@ -71,12 +134,16 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
             || ProcessInfo.processInfo.arguments.contains("--preview-media")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
             || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")),
@@ -84,11 +151,15 @@ private struct RootView: View {
                if ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat") {
                    return $0.id == "group:mobile-release"
                }
-               if ProcessInfo.processInfo.arguments.contains("--preview-group-chat") {
+               if ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-group-call") {
                    return $0.id == "group:mobile"
                }
                if ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
                     || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
                     || ProcessInfo.processInfo.arguments.contains("--preview-media")
                     || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
                     || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
@@ -103,7 +174,26 @@ private struct RootView: View {
                    : "agent:my-kordi")
            }) {
             NavigationStack {
-                ConversationView(conversation: conversation)
+                if ProcessInfo.processInfo.arguments.contains("--preview-group-detail") {
+                    SessionDetailView(conversation: conversation)
+                } else if ProcessInfo.processInfo.arguments.contains("--preview-group-invite"),
+                          let space = GroupSpaceCatalog.build(
+                              conversations: model.conversations,
+                              ownAccountId: model.account?.accountId ?? ""
+                          ).first(where: { $0.sessions.contains(where: { $0.id == conversation.id }) }) {
+                    GroupInvitePreviewHost(conversation: conversation, space: space)
+                } else {
+                    ConversationView(conversation: conversation)
+                }
+            }
+            .task {
+                if ProcessInfo.processInfo.arguments.contains("--preview-direct-call") {
+                    callCoordinator.configure(model: model)
+                    await callCoordinator.start(conversation: conversation, kind: .voice)
+                } else if ProcessInfo.processInfo.arguments.contains("--preview-group-call") {
+                    callCoordinator.configure(model: model)
+                    await callCoordinator.start(conversation: conversation, kind: .video)
+                }
             }
         } else {
             appPhase
@@ -125,6 +215,25 @@ private struct RootView: View {
         }
     }
 }
+
+#if DEBUG
+private struct GroupInvitePreviewHost: View {
+    let conversation: ConversationSummary
+    let space: GroupSpaceSummary
+    @State private var showsInviteSheet = false
+
+    var body: some View {
+        SessionDetailView(conversation: conversation)
+            .sheet(isPresented: $showsInviteSheet) {
+                GroupMemberInviteSheet(space: space)
+            }
+            .task {
+                await Task.yield()
+                showsInviteSheet = true
+            }
+    }
+}
+#endif
 
 private struct LaunchingView: View {
     var body: some View {

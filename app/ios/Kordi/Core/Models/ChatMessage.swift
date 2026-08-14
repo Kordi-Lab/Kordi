@@ -148,6 +148,46 @@ struct ComposerMentionTarget: Identifiable, Hashable {
     var mentionText: String { "@\(displayName)" }
 }
 
+enum ChatCallActivityEvent: String, Codable, Hashable {
+    case started
+    case ended
+}
+
+struct ChatCallActivity: Hashable {
+    let event: ChatCallActivityEvent
+    let callId: String?
+
+    init?(messageKind: String?) {
+        guard let messageKind = messageKind?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !messageKind.isEmpty else { return nil }
+        if messageKind == "call" {
+            event = .started
+            callId = nil
+            return
+        }
+        let components = messageKind.split(
+            separator: ".",
+            maxSplits: 2,
+            omittingEmptySubsequences: false
+        )
+        guard components.count == 3,
+              components[0] == "call",
+              let parsedEvent = ChatCallActivityEvent(rawValue: String(components[1])),
+              !components[2].isEmpty else { return nil }
+        event = parsedEvent
+        callId = String(components[2])
+    }
+
+    static func messageKind(for event: ChatCallActivityEvent, callId: String) -> String {
+        "call.\(event.rawValue).\(callId.lowercased())"
+    }
+
+    func matchesActiveCall(_ call: CloudCall?) -> Bool {
+        guard event == .started, let call, call.state != .ended else { return false }
+        return callId == nil || callId == call.id
+    }
+}
+
 struct ChatMessage: Identifiable, Codable, Hashable {
     let id: String
     let conversationId: String
@@ -163,6 +203,11 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var attachments: [ChatAttachment]
     var replyToMessageId: String?
     var messageAction: MessageActionMetadata?
+    var messageKind: String?
+
+    var callActivity: ChatCallActivity? {
+        ChatCallActivity(messageKind: messageKind)
+    }
 
     init(
         id: String,
@@ -178,7 +223,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         readByAccountIds: [String] = [],
         attachments: [ChatAttachment] = [],
         replyToMessageId: String? = nil,
-        messageAction: MessageActionMetadata? = nil
+        messageAction: MessageActionMetadata? = nil,
+        messageKind: String? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -194,6 +240,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.attachments = attachments
         self.replyToMessageId = replyToMessageId
         self.messageAction = messageAction
+        self.messageKind = messageKind
     }
 
     var actionSource: MessageActionSource {
@@ -229,6 +276,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, conversationId, author, authorName, text, createdAt, deliveryState, errorMessage
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, messageAction
+        case messageKind
     }
 
     init(from decoder: Decoder) throws {
@@ -247,5 +295,6 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         attachments = try container.decodeIfPresent([ChatAttachment].self, forKey: .attachments) ?? []
         replyToMessageId = try container.decodeIfPresent(String.self, forKey: .replyToMessageId)
         messageAction = try container.decodeIfPresent(MessageActionMetadata.self, forKey: .messageAction)
+        messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
     }
 }

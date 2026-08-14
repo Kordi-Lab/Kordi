@@ -94,6 +94,48 @@ clients never receive SMTP or mailbox secrets.
 
 Groups reuse the chat/session UI while syncing through group controls with the `kordi-cloud-group:` prefix.
 
+## Voice calls and video chats
+
+Kordi uses the hosted API for call lifecycle, participant authorization, and
+short-lived media credentials. LiveKit carries audio and video after the API
+authorizes a participant. Direct calls use PushKit and CallKit for incoming
+ringing, while group meetings use ordinary APNs alerts plus a durable Join card
+in the conversation timeline.
+
+Configure the LiveKit variables together. `KORDI_LIVEKIT_URL` must use `wss`,
+except that an isolated development service may use `ws` on a loopback host.
+The API key and secret remain on the server and are never sent to a client.
+
+```bash
+KORDI_LIVEKIT_URL=wss://<LIVEKIT_HOST>
+KORDI_LIVEKIT_API_KEY=...
+KORDI_LIVEKIT_API_SECRET=...
+```
+
+APNs delivery is optional and is enabled only when all of these variables are
+present. Use developer-owned Apple credentials in isolated development.
+
+```bash
+KORDI_APNS_ENVIRONMENT=development
+KORDI_APNS_KEY_ID=...
+KORDI_APNS_TEAM_ID=...
+KORDI_APNS_PRIVATE_KEY_BASE64=...
+KORDI_APNS_BUNDLE_ID=...
+```
+
+The APNs key value is the base64 encoding of the private key file. Direct-call
+VoIP tokens and ordinary notification tokens are registered separately so an
+alert token is never used for a PushKit request.
+
+Open-source implementation references:
+
+- [LiveKit Swift CallKit example](https://github.com/livekit-examples/swift-example-collection/tree/main/callkit)
+  for PushKit timing and CallKit-owned audio-session activation.
+- [Element Call](https://github.com/element-hq/element-call) for keeping room
+  lifecycle and authorization in the host messenger while LiveKit carries media.
+- [Mattermost Calls](https://github.com/mattermost/mattermost-plugin-calls) for
+  joinable calls attached to durable channel conversations.
+
 Control kinds:
 
 - `group-invite`
