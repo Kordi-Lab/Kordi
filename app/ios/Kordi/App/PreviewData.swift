@@ -25,7 +25,13 @@ enum PreviewData {
             CloudContact(accountId: "acct_maya", kordiId: "284106395", displayName: "Maya Chen", avatarUrl: previewAvatarSource, nodeId: nil, createdAt: timestamp(now, -500)),
             CloudContact(accountId: "acct_ethan", kordiId: "318457209", displayName: "Ethan Park", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -900)),
             CloudContact(accountId: "acct_priya", kordiId: "650917284", displayName: "Priya Shah", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -1_400)),
-            CloudContact(accountId: "acct_marcus", kordiId: "761235480", displayName: "Marcus Johnson", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -2_000))
+            CloudContact(accountId: "acct_marcus", kordiId: "761235480", displayName: "Marcus Johnson", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -2_000)),
+            CloudContact(accountId: "acct_aisha", kordiId: "407182639", displayName: "Aisha Rahman", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -2_400)),
+            CloudContact(accountId: "acct_daniel", kordiId: "592714806", displayName: "Daniel Kim", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -2_800)),
+            CloudContact(accountId: "acct_li", kordiId: "813506247", displayName: "Li Wei", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -3_200)),
+            CloudContact(accountId: "acct_nora", kordiId: "935208164", displayName: "Nora Hassan", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -3_600)),
+            CloudContact(accountId: "acct_sofia", kordiId: "246809531", displayName: "Sofia Rossi", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -4_000)),
+            CloudContact(accountId: "acct_yuki", kordiId: "174630925", displayName: "Yuki Tanaka", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -4_400))
         ]
 
         let conversations = [

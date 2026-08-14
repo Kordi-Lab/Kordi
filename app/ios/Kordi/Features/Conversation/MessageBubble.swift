@@ -17,6 +17,9 @@ struct MessageBubble: View, Equatable {
     let authorAvatarSource: String?
     let authorAvatarSeed: String?
     let readByNames: [String]
+    let isCallActive: Bool
+    let onOpenConversationInfo: () -> Void
+    let onJoinCall: () -> Void
     let onRetry: () -> Void
     let onReply: () -> Void
     let onPin: () -> Void
@@ -42,6 +45,7 @@ struct MessageBubble: View, Equatable {
             && lhs.authorAvatarSource == rhs.authorAvatarSource
             && lhs.authorAvatarSeed == rhs.authorAvatarSeed
             && lhs.readByNames == rhs.readByNames
+            && lhs.isCallActive == rhs.isCallActive
     }
 
     var body: some View {
@@ -58,21 +62,32 @@ struct MessageBubble: View, Equatable {
             }
 
             if showsAvatarSlot && message.author != .me {
-                Group {
-                    if showAvatar {
-                        IdentityAvatar(
-                            name: authorAvatarName,
-                            imageSource: authorAvatarSource,
-                            kind: message.author == .agent ? .agent : .person,
-                            size: 28,
-                            seed: authorAvatarSeed ?? authorAvatarName
-                        )
-                    } else {
-                        Color.clear.frame(width: 28, height: 28)
+                if showAvatar {
+                    Button(action: onOpenConversationInfo) {
+                        Color.clear
+                            .frame(width: 44, height: 44)
+                            .overlay(alignment: .bottom) {
+                                IdentityAvatar(
+                                    name: authorAvatarName,
+                                    imageSource: authorAvatarSource,
+                                    kind: message.author == .agent ? .agent : .person,
+                                    size: 28,
+                                    seed: authorAvatarSeed ?? authorAvatarName
+                                )
+                            }
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .disabled(selectionMode)
+                    .accessibilityLabel("Open conversation info")
+                    .accessibilityValue(authorAvatarName)
+                    .padding(.bottom, 2)
+                } else {
+                    Color.clear
+                        .frame(width: 44, height: 28)
+                        .padding(.bottom, 2)
+                        .accessibilityHidden(true)
                 }
-                .padding(.bottom, 2)
-                .accessibilityHidden(!showAvatar)
             }
 
             if message.author == .me { Spacer(minLength: 34) }
@@ -87,7 +102,7 @@ struct MessageBubble: View, Equatable {
 
                 messageSurface
                 .overlay(alignment: .bottomTrailing) {
-                    if message.author == .me {
+                    if message.author == .me && !isCallActivity {
                         MessageDeliveryGlyph(
                             state: message.deliveryState,
                             readByCount: message.readByCount
@@ -187,7 +202,13 @@ struct MessageBubble: View, Equatable {
 
     @ViewBuilder
     private var messageSurface: some View {
-        if usesBorderlessImageSurface {
+        if isCallActivity {
+            ConversationCallActivityCard(
+                message: message,
+                isActive: isCallActive,
+                onJoin: onJoinCall
+            )
+        } else if usesBorderlessImageSurface {
             MessageImageCollection(
                 attachments: message.attachments,
                 author: message.author,
@@ -255,6 +276,10 @@ struct MessageBubble: View, Equatable {
 
     private var usesBorderlessImageSurface: Bool {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
+    }
+
+    private var isCallActivity: Bool {
+        message.callActivity != nil
     }
 
     private var visibleReplySource: MessageActionSource? {
@@ -345,6 +370,75 @@ struct MessageBubble: View, Equatable {
             return "Read by \(readByNames.joined(separator: ", "))"
         }
         return "Read by \(readByNames[0]) and \(readByNames.count - 1) others"
+    }
+}
+
+private struct ConversationCallActivityCard: View {
+    let message: ChatMessage
+    let isActive: Bool
+    let onJoin: () -> Void
+
+    private var activity: ChatCallActivity {
+        message.callActivity ?? ChatCallActivity(messageKind: "call")!
+    }
+
+    private var isVoiceCall: Bool {
+        message.text.localizedCaseInsensitiveContains("voice call")
+    }
+
+    private var title: String {
+        if activity.event == .ended {
+            return isVoiceCall ? "Voice call ended" : "Video call ended"
+        }
+        if isActive {
+            return isVoiceCall ? "Voice call in progress" : "Video call in progress"
+        }
+        if activity.callId == nil {
+            return isVoiceCall ? "Voice call ended" : "Video call ended"
+        }
+        return isVoiceCall ? "Voice call started" : "Video call started"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isVoiceCall ? "phone.fill" : "video.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 42, height: 42)
+                .background(
+                    activity.event == .ended
+                        ? Color.secondary.gradient
+                        : KordiTheme.signalBlue.gradient,
+                    in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(message.text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 6)
+
+            if isActive && activity.event == .started {
+                Button("Join", action: onJoin)
+                    .font(.subheadline.weight(.semibold))
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 360)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(message.text)")
     }
 }
 

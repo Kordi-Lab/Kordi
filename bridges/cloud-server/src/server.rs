@@ -10,6 +10,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::attachments::S3Config;
 use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimiterError};
+use crate::calls::{CallMediaConfig, CallMediaConfigError, CallPushConfig, CallPushConfigError};
 use crate::events::{EventBus, EventBusError};
 use crate::pg::{init_pool, PgPoolError};
 use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
@@ -23,6 +24,8 @@ pub struct ServerState {
     s3: Option<S3Config>,
     release_store: Option<ReleaseCatalogStore>,
     support: Option<SupportService>,
+    call_media: Option<CallMediaConfig>,
+    call_push: Option<CallPushConfig>,
 }
 
 impl ServerState {
@@ -33,6 +36,8 @@ impl ServerState {
             s3: None,
             release_store: None,
             support: None,
+            call_media: None,
+            call_push: None,
         }
     }
 
@@ -48,6 +53,16 @@ impl ServerState {
 
     pub fn with_support(mut self, support: SupportService) -> Self {
         self.support = Some(support);
+        self
+    }
+
+    pub fn with_call_media(mut self, call_media: CallMediaConfig) -> Self {
+        self.call_media = Some(call_media);
+        self
+    }
+
+    pub fn with_call_push(mut self, call_push: CallPushConfig) -> Self {
+        self.call_push = Some(call_push);
         self
     }
 
@@ -69,6 +84,14 @@ impl ServerState {
 
     pub fn support(&self) -> Option<&SupportService> {
         self.support.as_ref()
+    }
+
+    pub fn call_media(&self) -> Option<&CallMediaConfig> {
+        self.call_media.as_ref()
+    }
+
+    pub fn call_push(&self) -> Option<&CallPushConfig> {
+        self.call_push.as_ref()
     }
 }
 
@@ -103,6 +126,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
             rate_limiter,
         ))
         .merge(crate::chat_sync::routes::routes(state.clone()))
+        .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
         .merge(crate::scheduled_tasks::routes::routes(state.clone()))
@@ -123,6 +147,8 @@ pub enum RunError {
     Events(EventBusError),
     RateLimiter(RateLimiterError),
     Support(SupportConfigError),
+    CallMedia(CallMediaConfigError),
+    CallPush(CallPushConfigError),
     Bind(std::io::Error),
     Serve(std::io::Error),
 }
@@ -134,6 +160,8 @@ impl std::fmt::Display for RunError {
             Self::Events(err) => write!(f, "{err}"),
             Self::RateLimiter(err) => write!(f, "{err}"),
             Self::Support(err) => write!(f, "configure support: {err}"),
+            Self::CallMedia(err) => write!(f, "configure call media: {err}"),
+            Self::CallPush(err) => write!(f, "configure incoming-call push: {err}"),
             Self::Bind(err) => write!(f, "bind: {err}"),
             Self::Serve(err) => write!(f, "serve: {err}"),
         }
@@ -203,6 +231,18 @@ pub async fn run(
         }
     };
     let mut state = ServerState::new(pool, events);
+    if let Some(call_media) = CallMediaConfig::from_env().map_err(RunError::CallMedia)? {
+        println!("Kordi call media is configured");
+        state = state.with_call_media(call_media);
+    } else {
+        println!("Kordi call media is disabled");
+    }
+    if let Some(call_push) = CallPushConfig::from_env().map_err(RunError::CallPush)? {
+        println!("Kordi incoming-call push is configured");
+        state = state.with_call_push(call_push);
+    } else {
+        println!("Kordi incoming-call push is disabled");
+    }
     if let Some(pending) = PendingSupportConfig::from_env().map_err(RunError::Support)? {
         let support_config = crate::support::bootstrap_support_agent(state.db_pool(), pending)
             .await

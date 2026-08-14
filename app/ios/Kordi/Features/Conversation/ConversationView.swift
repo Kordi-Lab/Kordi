@@ -6,6 +6,7 @@ import UIKit
 
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
     private let companionContext: CompanionChatContext?
@@ -89,8 +90,18 @@ struct ConversationView: View {
         )
         let pinnedMessage = model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId
             .flatMap { messagesById[$0] }
+        let activeConversationCall = model.activeCall(for: conversation)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
+                if let activeMeeting = activeConversationCall,
+                   activeMeeting.kind == .meeting {
+                    ConversationMeetingBanner(
+                        call: activeMeeting,
+                        onJoin: {
+                            Task { await callCoordinator.join(activeMeeting, in: conversation) }
+                        }
+                    )
+                }
                 if let pinnedMessage {
                     PinnedMessageBar(
                         message: pinnedMessage,
@@ -130,6 +141,7 @@ struct ConversationView: View {
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
                                             let readers = readReceiptParticipants(for: message)
+                                            let callActivity = message.callActivity
 
                                             VStack(spacing: 0) {
                                                 if presentation.showsTimestamp {
@@ -151,6 +163,22 @@ struct ConversationView: View {
                                                     authorAvatarSource: avatar.source,
                                                     authorAvatarSeed: avatar.seed,
                                                     readByNames: readers.map(\.displayName),
+                                                    isCallActive: callActivity?.matchesActiveCall(
+                                                        activeConversationCall
+                                                    ) == true,
+                                                    onOpenConversationInfo: openSessionDetails,
+                                                    onJoinCall: {
+                                                        guard callActivity?.matchesActiveCall(
+                                                            activeConversationCall
+                                                        ) == true,
+                                                        let activeConversationCall else { return }
+                                                        Task {
+                                                            await callCoordinator.join(
+                                                                activeConversationCall,
+                                                                in: conversation
+                                                            )
+                                                        }
+                                                    },
                                                     onRetry: { Task { await model.retry(message, in: conversation) } },
                                                     onReply: {
                                                         guard conversation.kind.supportsQuotedReplies else { return }
@@ -276,6 +304,7 @@ struct ConversationView: View {
             }
             .task(id: conversation.id) {
                 await loadAndRevealInitialConversation(using: proxy)
+                await model.refreshActiveCall(in: conversation)
             }
         }
         .navigationTitle(showsNavigationChrome ? conversation.displayName : "")
@@ -432,8 +461,8 @@ struct ConversationView: View {
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
         }
-        .sheet(isPresented: $showSessionDetails) {
-            SessionDetailSheet(conversation: conversation)
+        .navigationDestination(isPresented: $showSessionDetails) {
+            SessionDetailView(conversation: conversation)
         }
         .sheet(isPresented: $showAgentModel) {
             AgentModelSheet(conversation: conversation)
@@ -729,41 +758,21 @@ struct ConversationView: View {
         )
     }
 
-    @ViewBuilder
     private var conversationHeader: some View {
-        if conversation.kind == .agent {
-            HStack(spacing: 8) {
-                IdentityAvatar(
-                    name: conversation.agentDisplayName?.nonEmpty ?? "My Kordi",
-                    imageSource: conversation.avatarSource,
-                    kind: .agent,
-                    size: 30,
-                    seed: conversation.agentId?.nonEmpty ?? conversation.sessionId
-                )
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(conversation.displayName)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text(agentHeaderStatus)
-                        .font(.caption2)
-                        .foregroundStyle(KordiTheme.agentViolet)
-                        .lineLimit(1)
-                }
-            }
-        } else {
-            VStack(spacing: 1) {
-                Text(conversation.displayName).font(.headline)
-                if conversation.kind == .group {
-                    Text("\(max(2, conversation.groupParticipants.count)) participants")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
+        VStack(spacing: 1) {
+            Text(conversation.displayName)
+                .font(.headline)
+                .lineLimit(1)
+
+            Text(conversationHeaderStatus)
+                .font(.caption2)
+                .foregroundStyle(conversation.kind == .agent ? KordiTheme.agentViolet : .secondary)
+                .lineLimit(1)
         }
     }
 
     private var sessionActionsButton: some View {
-        Button { showSessionDetails = true } label: {
+        Button(action: openSessionDetails) {
             Image(systemName: "ellipsis")
                 .font(.body.weight(.semibold))
                 .frame(width: 44, height: 44)
@@ -771,7 +780,23 @@ struct ConversationView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .accessibilityLabel("Info, Artifacts, and Tasks")
+        .accessibilityLabel("Open info for \(conversation.displayName)")
+        .accessibilityHint("Shows media, files, tasks, and session details")
+    }
+
+    private var conversationHeaderStatus: String {
+        switch conversation.kind {
+        case .agent:
+            agentHeaderStatus
+        case .group:
+            "\(max(2, conversation.groupParticipants.count)) participants"
+        case .person:
+            conversation.representsKordiSupport ? "Official Kordi support" : "Kordi contact"
+        }
+    }
+
+    private func openSessionDetails() {
+        showSessionDetails = true
     }
 
     private var askAgentButton: some View {
@@ -1016,6 +1041,46 @@ struct ConversationView: View {
             in: timeline,
             initialImage: previewImage
         )
+    }
+}
+
+private struct ConversationMeetingBanner: View {
+    let call: CloudCall
+    let onJoin: () -> Void
+
+    private var joinedCount: Int {
+        call.participants.filter { $0.state == "joined" }.count
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "video.fill")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(KordiTheme.signalBlue.gradient, in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Meeting in progress")
+                    .font(.subheadline.weight(.semibold))
+                Text("\(joinedCount) \(joinedCount == 1 ? "person" : "people") connected")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Join", action: onJoin)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Meeting in progress, \(joinedCount) connected")
+        .accessibilityAction(named: "Join", onJoin)
     }
 }
 

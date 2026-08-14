@@ -49,9 +49,12 @@ struct NewChatSheet: View {
     private var groupContacts: [CloudContact] {
         model.contacts
             .filter {
-                searchText.isEmpty
-                    || $0.preferredName.localizedCaseInsensitiveContains(searchText)
-                    || $0.kordiId?.localizedCaseInsensitiveContains(searchText) == true
+                !KordiSupportIdentity.matches(name: $0.preferredName, seed: $0.accountId)
+                    && (
+                        searchText.isEmpty
+                            || $0.preferredName.localizedCaseInsensitiveContains(searchText)
+                            || $0.kordiId?.localizedCaseInsensitiveContains(searchText) == true
+                    )
             }
             .sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
     }

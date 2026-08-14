@@ -485,6 +485,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let direction: String
     let sessionId: String?
     let attachments: [CloudMessageAttachment]
+    let messageKind: String?
 
     var id: String { messageId }
 
@@ -498,7 +499,8 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         readAt: String?,
         direction: String,
         sessionId: String?,
-        attachments: [CloudMessageAttachment] = []
+        attachments: [CloudMessageAttachment] = [],
+        messageKind: String? = nil
     ) {
         self.messageId = messageId
         self.fromAccountId = fromAccountId
@@ -510,10 +512,12 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.direction = direction
         self.sessionId = sessionId
         self.attachments = attachments
+        self.messageKind = messageKind
     }
 
     enum CodingKeys: String, CodingKey {
         case messageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, direction, sessionId, attachments
+        case messageKind = "kind"
     }
 
     init(from decoder: Decoder) throws {
@@ -528,6 +532,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         direction = try container.decode(String.self, forKey: .direction)
         sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
         attachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .attachments) ?? []
+        messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
     }
 }
 
@@ -684,14 +689,99 @@ struct CloudChatEventPayload: Codable, Hashable {
     let message: CloudChatMessage?
     let preferences: CloudChatPreferences?
     let cursor: CloudChatCursor?
+    let call: CloudCall?
     let sessionId: String?
     let deviceId: String?
 
     enum CodingKeys: String, CodingKey {
-        case conversation, message, preferences, cursor
+        case conversation, message, preferences, cursor, call
         case sessionId = "sessionId"
         case deviceId = "deviceId"
     }
+}
+
+enum CloudCallKind: String, Codable, Hashable {
+    case voice
+    case video
+    case meeting
+
+    var allowsVideo: Bool { self != .voice }
+}
+
+enum CloudCallState: String, Codable, Hashable {
+    case ringing
+    case active
+    case ended
+}
+
+struct CloudCallParticipant: Codable, Hashable, Identifiable {
+    let accountId: String
+    let displayName: String?
+    let avatarUrl: String?
+    let state: String
+    let joinedAt: String?
+    let leftAt: String?
+
+    var id: String { accountId }
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case accountId = "account_id"
+        case displayName = "display_name"
+        case avatarUrl = "avatar_url"
+        case joinedAt = "joined_at"
+        case leftAt = "left_at"
+    }
+}
+
+struct CloudCall: Codable, Hashable, Identifiable {
+    let id: String
+    let conversationId: String
+    let kind: CloudCallKind
+    let state: CloudCallState
+    let createdByAccountId: String
+    let createdAt: String
+    let answeredAt: String?
+    let endedAt: String?
+    let participants: [CloudCallParticipant]
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, state, participants
+        case conversationId = "conversation_id"
+        case createdByAccountId = "created_by_account_id"
+        case createdAt = "created_at"
+        case answeredAt = "answered_at"
+        case endedAt = "ended_at"
+    }
+}
+
+struct CloudCallMediaConnection: Codable, Hashable {
+    let url: String
+    let token: String
+}
+
+struct CloudCallSessionResponse: Codable, Hashable {
+    let call: CloudCall
+    let media: CloudCallMediaConnection
+}
+
+struct CloudCallResponse: Codable, Hashable {
+    let call: CloudCall?
+}
+
+struct CloudStartCallRequest: Codable, Hashable {
+    let clientOperationId: String
+    let kind: CloudCallKind
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case clientOperationId = "client_operation_id"
+    }
+}
+
+struct CloudVoIPPushTokenRequest: Codable, Hashable {
+    let token: String
+    let environment: String
 }
 
 struct CloudChatEvent: Codable, Hashable {
@@ -809,6 +899,7 @@ struct CloudSyncEventPayload: Codable, Hashable {
     let createdAt: String?
     let sessionTitle: CloudSyncedSessionTitle?
     let deviceId: String?
+    let call: CloudCall?
 }
 
 extension Optional where Wrapped == String {

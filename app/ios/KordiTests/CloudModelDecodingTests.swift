@@ -96,6 +96,93 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(message.body, "Hello")
         XCTAssertEqual(message.direction, "outgoing")
         XCTAssertEqual(message.attachments, [])
+        XCTAssertNil(message.messageKind)
+    }
+
+    func testCloudCallActivityMessageKeepsItsWireKind() throws {
+        let callID = "0198aabc-8b27-7a30-8cba-215495609c7a"
+        let payload = Data(#"{"messageId":"msg_call","fromAccountId":"acct_maya","toAccountId":"acct_me","body":"Maya started a video chat.","createdAt":"2026-08-14T10:00:00Z","deliveredAt":"2026-08-14T10:00:01Z","readAt":null,"direction":"incoming","sessionId":"session:group","attachments":[],"kind":"call.started.0198aabc-8b27-7a30-8cba-215495609c7a"}"#.utf8)
+
+        let message = try JSONDecoder().decode(CloudMessageDTO.self, from: payload)
+        let activity = try XCTUnwrap(ChatCallActivity(messageKind: message.messageKind))
+
+        XCTAssertEqual(message.messageKind, "call.started.\(callID)")
+        XCTAssertEqual(activity.event, .started)
+        XCTAssertEqual(activity.callId, callID)
+        XCTAssertEqual(message.body, "Maya started a video chat.")
+    }
+
+    func testCallActivityMatchesOnlyItsOwnActiveCall() throws {
+        let callID = "0198aabc-8b27-7a30-8cba-215495609c7a"
+        let otherCallID = "0198aabc-8b27-7a30-8cba-215495609c7b"
+        let activity = try XCTUnwrap(ChatCallActivity(
+            messageKind: ChatCallActivity.messageKind(for: .started, callId: callID)
+        ))
+        let endedActivity = try XCTUnwrap(ChatCallActivity(
+            messageKind: ChatCallActivity.messageKind(for: .ended, callId: callID)
+        ))
+        let activeCall = CloudCall(
+            id: callID,
+            conversationId: "conversation",
+            kind: .video,
+            state: .active,
+            createdByAccountId: "acct_maya",
+            createdAt: "2026-08-14T10:00:00Z",
+            answeredAt: "2026-08-14T10:00:01Z",
+            endedAt: nil,
+            participants: []
+        )
+        let otherCall = CloudCall(
+            id: otherCallID,
+            conversationId: "conversation",
+            kind: .video,
+            state: .active,
+            createdByAccountId: "acct_maya",
+            createdAt: "2026-08-14T10:00:00Z",
+            answeredAt: "2026-08-14T10:00:01Z",
+            endedAt: nil,
+            participants: []
+        )
+
+        XCTAssertTrue(activity.matchesActiveCall(activeCall))
+        XCTAssertFalse(activity.matchesActiveCall(otherCall))
+        XCTAssertFalse(endedActivity.matchesActiveCall(activeCall))
+    }
+
+    func testCachedChatMessagePreservesCallActivityKind() throws {
+        let callID = "0198aabc-8b27-7a30-8cba-215495609c7a"
+        let original = ChatMessage(
+            id: "call-event",
+            conversationId: "conversation",
+            author: .person,
+            authorName: "Maya",
+            text: "The video call ended.",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatCallActivity.messageKind(for: .ended, callId: callID)
+        )
+
+        let restored = try JSONDecoder().decode(
+            ChatMessage.self,
+            from: JSONEncoder().encode(original)
+        )
+
+        XCTAssertEqual(restored.messageKind, original.messageKind)
+        XCTAssertEqual(restored.callActivity?.event, .ended)
+        XCTAssertEqual(restored.callActivity?.callId, callID)
+    }
+
+    func testCallSessionDecodesParticipantsAndShortLivedMediaConnection() throws {
+        let payload = Data(#"{"call":{"id":"0198aabc-8b27-7a30-8cba-215495609c7a","conversation_id":"0198aabc-4b58-7770-b486-a8e3fb4d0b7e","kind":"meeting","state":"active","created_by_account_id":"acct_maya","created_at":"2026-08-14T10:00:00Z","answered_at":null,"ended_at":null,"participants":[{"account_id":"acct_maya","display_name":"Maya","avatar_url":null,"state":"joined","joined_at":"2026-08-14T10:00:00Z","left_at":null},{"account_id":"acct_me","display_name":"Alex","avatar_url":null,"state":"invited","joined_at":null,"left_at":null}]},"media":{"url":"wss://media.example.test","token":"short-lived-token"}}"#.utf8)
+
+        let response = try JSONDecoder().decode(CloudCallSessionResponse.self, from: payload)
+
+        XCTAssertEqual(response.call.kind, .meeting)
+        XCTAssertEqual(response.call.state, .active)
+        XCTAssertEqual(response.call.participants.map(\.state), ["joined", "invited"])
+        XCTAssertEqual(response.media.url, "wss://media.example.test")
     }
 
     func testCloudMessageDecodesAttachmentMetadataUsedByMacOS() throws {

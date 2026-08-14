@@ -93,7 +93,8 @@ enum CloudDirectMessageProjector {
             requestMessageId: responseRequestId,
             attachments: message.attachments.map(\.chatAttachment),
             replyToMessageId: messageAction?.replyToMessageId ?? responseRequestId,
-            messageAction: messageAction
+            messageAction: messageAction,
+            messageKind: message.messageKind
         )
     }
 }

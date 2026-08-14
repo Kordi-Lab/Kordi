@@ -7,6 +7,7 @@
 
 pub mod attachments;
 pub mod auth;
+pub mod calls;
 pub mod chat_sync;
 pub mod cloud_agent_runtime;
 pub mod cloud_agents;

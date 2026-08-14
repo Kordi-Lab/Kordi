@@ -43,6 +43,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var contactRequests: [CloudContactRequest] = []
     @Published private(set) var conversations: [ConversationSummary] = []
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
+    @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
     @Published private(set) var sessionPinsByID: [String: CloudSessionPin] = [:]
     @Published private(set) var providerAuthSnapshot: CloudProviderAuthSnapshot?
@@ -82,6 +83,7 @@ final class AppModel: ObservableObject {
     private var cloudMessagesByPeer: [String: [CloudMessageDTO]] = [:]
     private var cloudMessageIndicesByPeer: [String: [String: Int]] = [:]
     private var sessionForksById: [String: CloudSessionForkSummary] = [:]
+    private var canonicalConversationIDBySessionID: [String: String] = [:]
     @Published private var ownedCloudAgents: [CloudAgent] = []
     private var sharedCloudAgents: [CloudAgent] = []
     private var hiddenCloudSessionIds = Set<String>()
@@ -96,6 +98,8 @@ final class AppModel: ObservableObject {
     private var settledConversationPresentations: [String: ConversationPresentationSnapshot] = [:]
     private var sessionTitleOverrides: [String: String] = UserDefaults.standard.dictionary(forKey: "kordi.session-title-overrides") as? [String: String] ?? [:]
     private let previewMode: Bool
+
+    var isPreviewMode: Bool { previewMode }
 
     init(
         api: CloudAPIClient = CloudAPIClient(),
@@ -116,6 +120,10 @@ final class AppModel: ObservableObject {
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
             || ProcessInfo.processInfo.arguments.contains("--preview-media")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
             || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
@@ -263,6 +271,7 @@ final class AppModel: ObservableObject {
         contactRequests = []
         conversations = []
         messagesByConversation = [:]
+        callsByConversationID = [:]
         sessionActivityByID = [:]
         sessionPinsByID = [:]
         providerAuthSnapshot = nil
@@ -274,6 +283,7 @@ final class AppModel: ObservableObject {
         cloudMessagesByPeer = [:]
         cloudMessageIndicesByPeer = [:]
         sessionForksById = [:]
+        canonicalConversationIDBySessionID = [:]
         ownedCloudAgents = []
         sharedCloudAgents = []
         hiddenCloudSessionIds = []
@@ -1170,6 +1180,182 @@ final class AppModel: ObservableObject {
         messagesByConversation[conversation.id] ?? []
     }
 
+    func activeCall(for conversation: ConversationSummary) -> CloudCall? {
+        let canonicalID = canonicalConversationIDBySessionID[conversation.sessionId]
+            ?? canonicalConversationIDBySessionID[conversation.id]
+            ?? conversation.sessionId
+        return callsByConversationID[canonicalID]
+    }
+
+    func conversation(for call: CloudCall) -> ConversationSummary? {
+        conversations.first { conversation in
+            canonicalConversationIDBySessionID[conversation.sessionId] == call.conversationId
+                || canonicalConversationIDBySessionID[conversation.id] == call.conversationId
+                || conversation.sessionId == call.conversationId
+        }
+    }
+
+    func startCall(
+        in conversation: ConversationSummary,
+        kind: CloudCallKind
+    ) async throws -> CloudCallSessionResponse {
+        guard let token else {
+            throw CloudAPIError(
+                code: "invalid_session",
+                message: "Sign in again before starting a call.",
+                statusCode: 401
+            )
+        }
+        let response = try await api.startCall(
+            token: token,
+            conversation: conversation,
+            kind: kind
+        )
+        applyCallSnapshot(response.call)
+        return response
+    }
+
+    func refreshActiveCall(in conversation: ConversationSummary) async {
+        guard let token, !previewMode else { return }
+        do {
+            if let call = try await api.activeCall(token: token, conversation: conversation) {
+                applyCallSnapshot(call)
+            }
+        } catch {
+            recordCloudConnectionFailure(error)
+        }
+    }
+
+    func joinCall(_ call: CloudCall) async throws -> CloudCallSessionResponse {
+        guard let token else {
+            throw CloudAPIError(
+                code: "invalid_session",
+                message: "Sign in again before joining the call.",
+                statusCode: 401
+            )
+        }
+        let response = try await api.joinCall(token: token, callId: call.id)
+        applyCallSnapshot(response.call)
+        return response
+    }
+
+    func inviteCallParticipants(_ call: CloudCall) async throws -> CloudCall {
+        guard let token else {
+            throw CloudAPIError(
+                code: "invalid_session",
+                message: "Sign in again before inviting participants.",
+                statusCode: 401
+            )
+        }
+        guard let updated = try await api.inviteCallParticipants(token: token, callId: call.id) else {
+            throw CloudAPIError(
+                code: "CALL_NOT_FOUND",
+                message: "The meeting is no longer available.",
+                statusCode: 404
+            )
+        }
+        applyCallSnapshot(updated)
+        return updated
+    }
+
+    func declineCall(_ call: CloudCall) async {
+        guard let token, !previewMode else {
+            callsByConversationID[call.conversationId] = nil
+            return
+        }
+        do {
+            if let updated = try await api.declineCall(token: token, callId: call.id) {
+                applyCallSnapshot(updated)
+            }
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not decline the call.")
+        }
+    }
+
+    func leaveCall(_ call: CloudCall) async {
+        guard let token, !previewMode else {
+            callsByConversationID[call.conversationId] = nil
+            return
+        }
+        do {
+            if let updated = try await api.leaveCall(token: token, callId: call.id) {
+                applyCallSnapshot(updated)
+            }
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not leave the call.")
+        }
+    }
+
+    func endCall(_ call: CloudCall) async {
+        guard let token, !previewMode else {
+            callsByConversationID[call.conversationId] = nil
+            return
+        }
+        do {
+            if let updated = try await api.endCall(token: token, callId: call.id) {
+                applyCallSnapshot(updated)
+            }
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not end the call.")
+        }
+    }
+
+    func recordPreviewCallStarted(_ call: CloudCall, in conversation: ConversationSummary) {
+        guard previewMode else { return }
+        applyCallSnapshot(call)
+        appendPreviewCallActivity(.started, call: call, conversation: conversation)
+    }
+
+    func recordPreviewCallEnded(_ call: CloudCall, in conversation: ConversationSummary) {
+        guard previewMode else { return }
+        callsByConversationID[call.conversationId] = nil
+        appendPreviewCallActivity(.ended, call: call, conversation: conversation)
+    }
+
+    func registerVoIPPushToken(_ deviceToken: String) async {
+        guard let token, !previewMode else { return }
+        do {
+#if DEBUG
+            let environment = "development"
+#else
+            let environment = "production"
+#endif
+            try await api.registerVoIPPushToken(
+                token: token,
+                deviceToken: deviceToken,
+                environment: environment
+            )
+        } catch {
+            recordCloudConnectionFailure(error)
+        }
+    }
+
+    func registerNotificationPushToken(_ deviceToken: String) async {
+        guard let token, !previewMode else { return }
+        do {
+#if DEBUG
+            let environment = "development"
+#else
+            let environment = "production"
+#endif
+            try await api.registerNotificationPushToken(
+                token: token,
+                deviceToken: deviceToken,
+                environment: environment
+            )
+        } catch {
+            recordCloudConnectionFailure(error)
+        }
+    }
+
+    private func applyCallSnapshot(_ call: CloudCall) {
+        if call.state == .ended {
+            callsByConversationID[call.conversationId] = nil
+        } else {
+            callsByConversationID[call.conversationId] = call
+        }
+    }
+
     func mentionTargets(for conversation: ConversationSummary) -> [ComposerMentionTarget] {
         guard let account else { return [] }
         var targets: [ComposerMentionTarget] = []
@@ -1389,7 +1575,7 @@ final class AppModel: ObservableObject {
     }
 
     func inviteContacts(_ selectedContacts: [CloudContact], to space: GroupSpaceSummary) async -> Bool {
-        guard !selectedContacts.isEmpty, let token, let account else { return false }
+        guard !selectedContacts.isEmpty, let account else { return false }
         let addedParticipants = selectedContacts.map { contact in
             CloudGroupParticipant(
                 accountId: contact.accountId,
@@ -1398,6 +1584,11 @@ final class AppModel: ObservableObject {
                 role: "person"
             )
         }
+        if previewMode {
+            try? await Task.sleep(for: .milliseconds(300))
+            return true
+        }
+        guard let token else { return false }
         do {
             for conversation in space.sessions {
                 let existing = groupParticipantsIncludingSelf(conversation, account: account)
@@ -2077,7 +2268,8 @@ final class AppModel: ObservableObject {
             attachments: message.attachments.map(\.chatAttachment),
             replyToMessageId: CloudMessageCodec.directEnvelope(message.body)?.messageAction?.replyToMessageId
                 ?? responseRequestId,
-            messageAction: CloudMessageCodec.directEnvelope(message.body)?.messageAction
+            messageAction: CloudMessageCodec.directEnvelope(message.body)?.messageAction,
+            messageKind: message.messageKind
         )
     }
 
@@ -2095,7 +2287,7 @@ final class AppModel: ObservableObject {
                   let payload = envelope.message else { continue }
             rowsByMessageId[payload.id, default: []].append((wire, payload))
         }
-        return rowsByMessageId.compactMap { messageId, rows -> ChatMessage? in
+        let chatMessages = rowsByMessageId.compactMap { messageId, rows -> ChatMessage? in
             guard let (wire, payload) = rows.max(by: { $0.1.createdAtMs < $1.1.createdAtMs }) else { return nil }
             let author: MessageAuthor = payload.senderKind == "agent"
                 ? .agent
@@ -2126,7 +2318,34 @@ final class AppModel: ObservableObject {
                 messageAction: payload.messageAction
             )
         }
-        .sorted { $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id) }
+        let callMessages = Dictionary(
+            grouping: messages.filter {
+                ChatCallActivity(messageKind: $0.messageKind) != nil
+                    && CloudMessageStateProjector.sessionKeys(for: $0).contains(conversation.sessionId)
+            },
+            by: \.messageId
+        ).compactMap { messageId, rows -> ChatMessage? in
+            guard let wire = rows.max(by: { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }) else {
+                return nil
+            }
+            let author: MessageAuthor = wire.fromAccountId == ownAccountId ? .me : .person
+            return ChatMessage(
+                id: messageId,
+                conversationId: conversation.id,
+                author: author,
+                authorName: author == .me
+                    ? "You"
+                    : participantNames[wire.fromAccountId] ?? "Participant",
+                text: wire.body,
+                createdAt: parseCloudDate(wire.createdAt),
+                deliveryState: CloudMessageStateProjector.deliveryState(for: wire, ownAccountId: ownAccountId),
+                errorMessage: nil,
+                requestMessageId: nil,
+                messageKind: wire.messageKind
+            )
+        }
+        return (chatMessages + callMessages)
+            .sorted { $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id) }
     }
 
     /// Mobile is a passive Cloud client, never an execution-capable device.
@@ -2266,6 +2485,12 @@ final class AppModel: ObservableObject {
     private func rebuildConversationCatalog() async {
         guard let account else { return }
         let canonicalConversations = await api.cachedChatConversations()
+        canonicalConversationIDBySessionID = canonicalConversations.reduce(into: [:]) { result, item in
+            result[item.id] = item.id
+            if let sessionID = item.legacySessionId?.nonEmpty {
+                result[sessionID] = item.id
+            }
+        }
         let canonicalParticipantsBySessionId = await api.cachedChatParticipantsBySessionId()
         let canonicalForksBySessionId = await api.cachedChatSessionForksById()
         for (sessionId, fork) in canonicalForksBySessionId {
@@ -2365,6 +2590,11 @@ final class AppModel: ObservableObject {
         var deviceListChanged = false
 
         for event in events {
+            if ["call.created", "call.updated"].contains(event.eventType),
+               let call = event.payload?.call {
+                applyCallSnapshot(call)
+                continue
+            }
             if event.eventType.hasPrefix("device.") {
                 deviceListChanged = true
                 if event.eventType == "device.added",
@@ -2455,7 +2685,8 @@ final class AppModel: ObservableObject {
                     readAt: readAt,
                     direction: message.direction,
                     sessionId: message.sessionId,
-                    attachments: message.attachments
+                    attachments: message.attachments,
+                    messageKind: message.messageKind
                 )
                 changed = true
             }
@@ -2567,6 +2798,41 @@ final class AppModel: ObservableObject {
 
     private func cacheCurrentMessages(_ conversationId: String) {
         cache?.saveMessages(messagesByConversation[conversationId] ?? [], conversationId: conversationId)
+    }
+
+    private func appendPreviewCallActivity(
+        _ event: ChatCallActivityEvent,
+        call: CloudCall,
+        conversation: ConversationSummary
+    ) {
+        let id = "preview-call-\(event.rawValue)-\(call.id)"
+        guard messagesByConversation[conversation.id]?.contains(where: { $0.id == id }) != true else {
+            return
+        }
+        let isVoice = call.kind == .voice
+        let noun = isVoice ? "voice call" : call.kind == .meeting ? "video chat" : "video call"
+        let text = event == .started ? "You started a \(noun)." : "The \(noun) ended."
+        let createdAt = event == .started ? parseCloudDate(call.createdAt) : Date()
+        let message = ChatMessage(
+            id: id,
+            conversationId: conversation.id,
+            author: .me,
+            authorName: "You",
+            text: text,
+            createdAt: createdAt,
+            deliveryState: .read,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatCallActivity.messageKind(for: event, callId: call.id)
+        )
+        messagesByConversation[conversation.id, default: []].append(message)
+        messagesByConversation[conversation.id]?.sort {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }
+        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+            conversations[index].lastMessage = text
+            conversations[index].lastActivityAt = createdAt
+        }
     }
 
     private func installPreviewData() {
