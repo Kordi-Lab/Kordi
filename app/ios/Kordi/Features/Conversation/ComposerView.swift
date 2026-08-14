@@ -3,6 +3,7 @@ import SwiftUI
 struct ComposerView: View {
     @Binding var text: String
     @Binding var attachments: [PendingAttachment]
+    @Binding var photoGrouping: PhotoSendGrouping
     @Binding var replySource: MessageActionSource?
     @Binding var selectedMention: ComposerMentionTarget?
     let mentionTargets: [ComposerMentionTarget]
@@ -216,37 +217,65 @@ struct ComposerView: View {
     }
 
     private var attachmentTray: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(attachments) { attachment in
-                    HStack(spacing: 8) {
-                        Image(systemName: attachment.kind == .image ? "photo.fill" : "doc.fill")
-                            .foregroundStyle(attachment.kind == .image ? KordiTheme.signalBlue : .secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(attachment.name)
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(1)
-                            Text(ByteCountFormatter.string(fromByteCount: attachment.sizeBytes, countStyle: .file))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(attachments) { attachment in
+                        HStack(spacing: 8) {
+                            Image(systemName: attachment.kind == .image ? "photo.fill" : "doc.fill")
+                                .foregroundStyle(attachment.kind == .image ? KordiTheme.signalBlue : .secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(attachment.name)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                Text(ByteCountFormatter.string(fromByteCount: attachment.sizeBytes, countStyle: .file))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button {
+                                attachments.removeAll { $0.id == attachment.id }
+                                if photoAttachmentCount < 2 {
+                                    photoGrouping = .combined
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 28, height: 28)
+                            }
+                            .accessibilityLabel("Remove \(attachment.name)")
                         }
-                        Button {
-                            attachments.removeAll { $0.id == attachment.id }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 28, height: 28)
-                        }
-                        .accessibilityLabel("Remove \(attachment.name)")
+                        .padding(.leading, 10)
+                        .padding(.trailing, 4)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: 240)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
                     }
-                    .padding(.leading, 10)
-                    .padding(.trailing, 4)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: 240)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
                 }
             }
+
+            if photoAttachmentCount > 1 {
+                Button {
+                    photoGrouping = photoGrouping == .combined ? .separate : .combined
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: photoGrouping == .combined ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(photoGrouping == .combined ? KordiTheme.signalBlue : .secondary)
+                        Text("Send photos as one grouped message")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(photoGrouping == .combined ? "On" : "Off")
+                .accessibilityAddTraits(photoGrouping == .combined ? .isSelected : [])
+            }
         }
+    }
+
+    private var photoAttachmentCount: Int {
+        attachments.lazy.filter { $0.kind == .image }.count
     }
 
     private var canSend: Bool {

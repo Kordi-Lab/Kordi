@@ -12,6 +12,12 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   await expect(lightbox).toBeVisible();
   await expect(previous).toHaveCSS('opacity', '0.56');
   await expect(next).toHaveCSS('opacity', '0.56');
+  await expect(previous).toHaveCSS('width', '48px');
+  await expect(previous).toHaveCSS('height', '48px');
+  await expect(previous).toHaveCSS('border-radius', '999px');
+  await expect(next).toHaveCSS('width', '48px');
+  await expect(next).toHaveCSS('height', '48px');
+  await expect(next).toHaveCSS('border-radius', '999px');
   await expect(page.getByRole('button', { name: 'Zoom in' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Zoom out' })).toBeVisible();
   const wideBox = await image.boundingBox();
@@ -40,7 +46,7 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   expect(compactBox!.y + compactBox!.height).toBeLessThanOrEqual(536);
   await expect(page).toHaveScreenshot('media-lightbox-compact-light.png');
 
-  await page.setViewportSize({ width: 760, height: 980 });
+  await page.setViewportSize({ width: 760, height: 1500 });
   await page.goto('/tests/visual/mediaLightboxGallery.html?theme=dark&surface=transcript');
   await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
   const ownTextShape = page.getByLabel('Transcript message 1').locator('.app-message-bubble-shape');
@@ -48,7 +54,10 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   const peerTextShape = page.getByLabel('Transcript message 3').locator('.app-message-bubble-shape');
   const peerImage = page.getByLabel('Transcript message 4').locator('[data-attachment-image-count="1"] img');
   const singleImage = ownImage;
-  const multiImage = page.locator('[data-attachment-image-count="3"] img').first();
+  const imageGroupMessage = page.getByLabel('Transcript message 5');
+  const imageGroup = imageGroupMessage.locator('[data-attachment-image-count="3"]');
+  const imageGroupDisclosure = imageGroupMessage.locator('[data-attachment-image-group-disclosure="true"]');
+  const multiImage = imageGroup.locator('img').first();
   const [ownTextBox, ownImageBox, peerTextBox, peerImageBox] = await Promise.all([
     ownTextShape.boundingBox(),
     ownImage.boundingBox(),
@@ -63,6 +72,27 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   expect(Math.abs(peerTextBox!.x - peerImageBox!.x)).toBeLessThanOrEqual(1);
   await expect(singleImage).toHaveCSS('border-radius', '16px');
   await expect(page.locator('[data-attachment-image-collage="true"]').first()).toHaveCSS('border-radius', '16px');
-  await expect(multiImage).toHaveCSS('border-radius', '0px');
+  await expect(imageGroupDisclosure).toHaveAccessibleName('Expand 3');
+  await expect(imageGroupDisclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(imageGroup.locator('[data-attachment-image-card="true"]')).toHaveCount(1);
+  await expect(multiImage).toHaveCSS('border-radius', '16px');
+  const [collapsedDisclosureBox, collapsedGroupBox] = await Promise.all([
+    imageGroupDisclosure.boundingBox(),
+    imageGroup.boundingBox(),
+  ]);
+  expect(collapsedDisclosureBox).not.toBeNull();
+  expect(collapsedGroupBox).not.toBeNull();
+  expect(collapsedGroupBox!.x - (collapsedDisclosureBox!.x + collapsedDisclosureBox!.width)).toBeCloseTo(8, 0);
   await expect(page).toHaveScreenshot('transcript-image-corners-dark.png');
+
+  await imageGroupDisclosure.click();
+  await expect(imageGroupDisclosure).toHaveAccessibleName('Collapse');
+  await expect(imageGroupDisclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(imageGroup).toHaveAttribute('data-attachment-image-group-expanded', 'true');
+  await expect(imageGroup.locator('[data-attachment-image-card="true"]')).toHaveCount(3);
+  const expandedDisclosureBox = await imageGroupDisclosure.boundingBox();
+  expect(expandedDisclosureBox).not.toBeNull();
+  expect(Math.abs(expandedDisclosureBox!.x - collapsedDisclosureBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(expandedDisclosureBox!.y - collapsedDisclosureBox!.y)).toBeLessThanOrEqual(1);
+  await expect(page).toHaveScreenshot('transcript-image-groups-expanded-dark.png');
 });

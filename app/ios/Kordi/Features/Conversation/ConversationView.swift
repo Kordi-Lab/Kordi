@@ -19,6 +19,8 @@ struct ConversationView: View {
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
     @State private var attachments: [PendingAttachment] = []
+    @State private var photoGrouping: PhotoSendGrouping = .combined
+    @State private var photoSelectionReview: PhotoSelectionReview?
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
     @State private var showFileImporter = false
@@ -27,6 +29,7 @@ struct ConversationView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isPreparingAttachments = false
     @State private var previewURL: URL?
+    @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
     @State private var showSessionDetails = false
     @State private var showAgentModel = false
@@ -154,8 +157,13 @@ struct ConversationView: View {
                                                     onNavigateToReply: { messageId in
                                                         navigateToMessage(messageId, in: timeline, proxy: proxy)
                                                     },
-                                                    onOpenAttachment: { attachment in
-                                                        prepare(attachment, forSharing: false)
+                                                    onOpenAttachment: { attachment, previewImage in
+                                                        openAttachment(
+                                                            attachment,
+                                                            from: message,
+                                                            in: timeline,
+                                                            previewImage: previewImage
+                                                        )
                                                     },
                                                     onShareAttachment: { attachment in
                                                         prepare(attachment, forSharing: true)
@@ -276,6 +284,7 @@ struct ConversationView: View {
                 ComposerView(
                     text: $draft,
                     attachments: $attachments,
+                    photoGrouping: $photoGrouping,
                     replySource: $replySource,
                     selectedMention: $selectedMention,
                     mentionTargets: model.mentionTargets(for: conversation),
@@ -331,6 +340,20 @@ struct ConversationView: View {
                let message = messages.last(where: { ($0.readByCount ?? 0) > 0 }) {
                 detailsMessage = message
             }
+            if ProcessInfo.processInfo.arguments.contains("--preview-media"),
+               mediaPreview == nil,
+               let message = messages.first(where: { message in
+                   message.attachments.contains(where: { $0.kind == .image })
+               }),
+               let attachment = message.attachments.first(where: { $0.kind == .image }) {
+                openAttachment(attachment, from: message, in: messages, previewImage: nil)
+            }
+            if ProcessInfo.processInfo.arguments.contains("--preview-photo-send"),
+               photoSelectionReview == nil {
+                photoSelectionReview = PhotoSelectionReview(
+                    attachments: PreviewData.pendingPhotoAttachments()
+                )
+            }
         }
         .fileImporter(
             isPresented: $showFileImporter,
@@ -342,6 +365,7 @@ struct ConversationView: View {
             isPresented: $showPhotoPicker,
             selection: $selectedPhotos,
             maxSelectionCount: max(1, PendingAttachmentLoader.maximumAttachmentCount - attachments.count),
+            selectionBehavior: .ordered,
             matching: .images
         )
         .onChange(of: selectedPhotos) { _, items in
@@ -359,6 +383,18 @@ struct ConversationView: View {
             .ignoresSafeArea()
         }
         .quickLookPreview($previewURL)
+        .fullScreenCover(item: $mediaPreview) { presentation in
+            MediaPreviewView(presentation: presentation)
+        }
+        .fullScreenCover(item: $photoSelectionReview) { review in
+            PhotoSendReviewSheet(
+                review: review,
+                allowsSeparateMessages: conversation.kind != .agent,
+                onSend: { grouping in
+                    await sendPhotoSelection(review.attachments, grouping: grouping)
+                }
+            )
+        }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
         }
@@ -688,21 +724,69 @@ struct ConversationView: View {
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!message.isEmpty || !attachments.isEmpty), !isSending else { return }
         let outgoingAttachments = attachments
+        let outgoingGrouping = conversation.kind == .agent ? .combined : photoGrouping
         let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         let outgoingMention = resolvedMentionTarget(in: message)
         draft = ""
         attachments = []
+        photoGrouping = .combined
         replySource = nil
         selectedMention = nil
         isSending = true
-        await model.send(
-            message,
+        await sendOutgoingMessages(
+            text: message,
             attachments: outgoingAttachments,
-            replyingTo: outgoingReply,
-            mentioning: outgoingMention,
-            to: conversation
+            grouping: outgoingGrouping,
+            reply: outgoingReply,
+            mention: outgoingMention
         )
         isSending = false
+    }
+
+    private func sendPhotoSelection(
+        _ selectedAttachments: [PendingAttachment],
+        grouping: PhotoSendGrouping
+    ) async {
+        guard !selectedAttachments.isEmpty, !isSending else { return }
+        let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
+        let outgoingMention = resolvedMentionTarget(in: message)
+        draft = ""
+        replySource = nil
+        selectedMention = nil
+        isSending = true
+        await sendOutgoingMessages(
+            text: message,
+            attachments: selectedAttachments,
+            grouping: conversation.kind == .agent ? .combined : grouping,
+            reply: outgoingReply,
+            mention: outgoingMention
+        )
+        isSending = false
+    }
+
+    private func sendOutgoingMessages(
+        text: String,
+        attachments: [PendingAttachment],
+        grouping: PhotoSendGrouping,
+        reply: MessageActionSource?,
+        mention: ComposerMentionTarget?
+    ) async {
+        let plannedBatches = OutgoingAttachmentGroupingPlan.batches(
+            for: attachments,
+            photoGrouping: grouping
+        )
+        let batches: [[PendingAttachment]] = plannedBatches.isEmpty ? [[]] : plannedBatches
+
+        for (index, batch) in batches.enumerated() {
+            await model.send(
+                index == 0 ? text : "",
+                attachments: batch,
+                replyingTo: index == 0 ? reply : nil,
+                mentioning: index == 0 ? mention : nil,
+                to: conversation
+            )
+        }
     }
 
     private func resolvedMentionTarget(in text: String) -> ComposerMentionTarget? {
@@ -761,7 +845,11 @@ struct ConversationView: View {
                     }.value
                     loaded.append(attachment)
                 }
-                attachments.append(contentsOf: loaded)
+                if loaded.count > 1, attachments.isEmpty {
+                    photoSelectionReview = PhotoSelectionReview(attachments: loaded)
+                } else {
+                    attachments.append(contentsOf: loaded)
+                }
             } catch {
                 model.errorMessage = error.localizedDescription
             }
@@ -796,6 +884,24 @@ struct ConversationView: View {
                 previewURL = url
             }
         }
+    }
+
+    private func openAttachment(
+        _ attachment: ChatAttachment,
+        from message: ChatMessage,
+        in timeline: [ChatMessage],
+        previewImage: UIImage?
+    ) {
+        guard attachment.kind == .image else {
+            prepare(attachment, forSharing: false)
+            return
+        }
+        mediaPreview = MediaPreviewPresentation.make(
+            opening: attachment,
+            from: message,
+            in: timeline,
+            initialImage: previewImage
+        )
     }
 }
 

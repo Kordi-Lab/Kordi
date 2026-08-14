@@ -123,11 +123,12 @@ test('media window is resizable and keeps themed edge navigation around uncroppe
   assert.ok(attachmentMediaWindowOptions.minWidth >= 480);
   assert.ok(attachmentMediaWindowOptions.minHeight >= 320);
   assert.equal(attachmentMediaWindowOptions.backgroundColor, 'transparent');
-  assert.match(css, /--app-media-window-surface:\s*rgb\(10 12 16 \/ 0\.24\)/);
-  assert.match(css, /data-attachment-media-theme="light"[\s\S]*--app-media-window-surface:\s*rgb\(255 255 255 \/ 0\.1\)/);
+  assert.match(css, /--app-media-window-surface:\s*rgb\(10 12 16 \/ 0\.12\)/);
+  assert.match(css, /data-attachment-media-theme="light"[\s\S]*--app-media-window-surface:\s*rgb\(255 255 255 \/ 0\.04\)/);
   assert.match(css, /backdrop-filter:\s*blur\(34px\) saturate\(1\.24\)/);
   assert.match(css, /\.app-attachment-image-lightbox-image[\s\S]*max-width:\s*100%[\s\S]*max-height:\s*100%[\s\S]*object-fit:\s*contain/);
-  assert.match(css, /\.app-attachment-image-lightbox-nav[\s\S]*width:\s*48px[\s\S]*height:\s*82px[\s\S]*opacity:\s*0\.56/);
+  assert.match(css, /\.app-attachment-image-lightbox-nav[\s\S]*width:\s*48px[\s\S]*height:\s*48px[\s\S]*min-width:\s*48px[\s\S]*min-height:\s*48px[\s\S]*padding:\s*0[\s\S]*border-radius:\s*999px[\s\S]*opacity:\s*0\.56/);
+  assert.doesNotMatch(css, /app-media-window-image-shadow|drop-shadow/);
   assert.match(css, /\.app-attachment-image-lightbox-nav:hover,[\s\S]*:focus-visible[\s\S]*opacity:\s*1/);
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
   assert.doesNotMatch(css, /linear-gradient/);

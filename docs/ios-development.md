@@ -118,6 +118,11 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-add-contact` | Add-contact search inside the new-chat sheet |
 | `--preview-new-group` | New-group flow inside the new-chat sheet |
 | `--preview-contact-chat` | Direct conversation |
+| `--preview-media` | Full-screen image gallery with multiple preview images |
+| `--preview-media-messages` | Borderless grouped image message in a direct conversation |
+| `--preview-media-expanded` | Expanded grouped image message in a direct conversation |
+| `--preview-media-separated` | The same selected images sent as separate messages |
+| `--preview-photo-send` | Multi-photo send review with grouped-message control |
 | `--preview-group-chat` | Group conversation |
 | `--preview-group-only` | Contact timeline containing only group spaces |
 | `--preview-expanded-groups` | Group rows with their session list expanded |

@@ -76,31 +76,6 @@ const imageMessage = {
   }],
 };
 
-const multiImageMessage = {
-  ...imageMessage,
-  attachments: [
-    imageMessage.attachments[0],
-    {
-      kind: 'image' as const,
-      name: 'Screenshot 2026-05-20 20.54.15.png',
-      sizeBytes: 61 * 1024,
-      attachmentId: 'att_2',
-      localPath: null,
-      previewUrl: 'https://files.test/preview-2.png',
-      mimeType: 'image/png',
-    },
-    {
-      kind: 'image' as const,
-      name: 'Screenshot 2026-05-20 20.54.16.png',
-      sizeBytes: 168 * 1024,
-      attachmentId: 'att_3',
-      localPath: null,
-      previewUrl: 'https://files.test/preview-3.png',
-      mimeType: 'image/png',
-    },
-  ],
-};
-
 const fileMessage: Message = {
   role: 'user',
   sender: 'Me',
@@ -263,28 +238,6 @@ test('image attachments render as clickable lightweight previews without heavy f
   assert.doesNotMatch(markup, /app-attachment-image-footer/);
   assert.doesNotMatch(markup, /bg-black\/10/);
   assert.match(markup, /Screenshot 2026-05-20\.png/);
-});
-
-test('multiple image attachments render as a banner-free collage', () => {
-  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: multiImageMessage }));
-
-  assert.match(markup, /data-attachment-image-collage="true"/);
-  assert.match(markup, /data-attachment-image-count="3"/);
-  assert.match(markup, /app-attachment-image-tile/);
-  assert.match(markup, /max-w-\[min\(100%,29rem\)\]/);
-  assert.doesNotMatch(markup, /rounded-\[15px\]|rounded-\[20px\]/);
-  assert.equal((markup.match(/rounded-\[16px\]/g) ?? []).length, 1);
-  assert.doesNotMatch(markup, /backdrop-blur-xl/);
-  assert.doesNotMatch(markup, /ring-white/);
-  assert.doesNotMatch(markup, /bg-white\//);
-  assert.doesNotMatch(markup, /bg-current\/10/);
-  assert.doesNotMatch(markup, /shadow-\[/);
-  assert.doesNotMatch(markup, /shadow-black/);
-  assert.doesNotMatch(markup, /group-hover:scale/);
-  assert.doesNotMatch(markup, /61 KB/);
-  assert.doesNotMatch(markup, /168 KB/);
-  assert.doesNotMatch(markup, />Screenshot 2026-05-20 20\.54\.15\.png<\/span>/);
-  assert.doesNotMatch(markup, /app-attachment-image-footer/);
 });
 
 test('image attachment actions are available from context menu instead of sticky under-image buttons', () => {

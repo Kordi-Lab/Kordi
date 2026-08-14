@@ -104,6 +104,11 @@ final class AppModel: ObservableObject {
             || ProcessInfo.processInfo.arguments.contains("--preview-new-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-add-contact")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
+            || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
+            || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
     ) {
         self.api = api
         self.oauth = CloudOAuthSession(api: api)
@@ -1187,8 +1192,23 @@ final class AppModel: ObservableObject {
     }
 
     func prepareAttachmentForPresentation(_ attachment: ChatAttachment) async -> URL? {
+        await prepareAttachment(attachment, allowsPreviewFallback: false)
+    }
+
+    func prepareAttachmentForSharing(_ attachment: ChatAttachment) async -> URL? {
+        await prepareAttachment(attachment, allowsPreviewFallback: true)
+    }
+
+    private func prepareAttachment(
+        _ attachment: ChatAttachment,
+        allowsPreviewFallback: Bool
+    ) async -> URL? {
         if let cached = await attachmentFileStore.cachedURL(for: attachment.attachmentId) { return cached }
         guard let token else {
+            if allowsPreviewFallback,
+               let fallback = await storeInlinePreview(for: attachment) {
+                return fallback
+            }
             errorMessage = AttachmentTransferError.missingSession.localizedDescription
             return nil
         }
@@ -1199,9 +1219,19 @@ final class AppModel: ObservableObject {
             return url
         } catch {
             recordCloudConnectionFailure(error)
+            if allowsPreviewFallback,
+               let fallback = await storeInlinePreview(for: attachment) {
+                return fallback
+            }
             errorMessage = userFacing(error, fallback: "Could not download \(attachment.name).")
             return nil
         }
+    }
+
+    private func storeInlinePreview(for attachment: ChatAttachment) async -> URL? {
+        guard let data = AttachmentPreviewDataURL.decode(attachment.previewURL),
+              data.count <= PendingAttachmentLoader.maximumAttachmentBytes else { return nil }
+        return try? await attachmentFileStore.store(data, attachment: attachment)
     }
 
     func markConversationRead(_ conversation: ConversationSummary) async {
