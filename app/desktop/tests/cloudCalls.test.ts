@@ -21,6 +21,7 @@ import type { ChatSyncConversation, ChatSyncSyncResponse } from '../src/features
 import type { CanonicalSessionMessage, Conversation } from '../src/kordi-app/types';
 import { completedCallStartMessageIds } from '../src/features/canonical/readModel/callActivity';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
+import { cloudGroupIncomingMessageAlreadyApplied } from '../src/features/cloud/useCloudGroupControlApplication';
 
 const account = {
   accountId: 'acct_me',
@@ -389,5 +390,39 @@ test('unanswered incoming calls map to missed-call history', () => {
   assert.equal(
     mapCanonicalMessage(callMessage, new Map(), 'me')?.callActivity?.outcome,
     'missed',
+  );
+});
+
+test('group call history advances one canonical row from started to ended', () => {
+  const callId = '0198d604-9ea2-7d6f-a4d4-9a65203aa760';
+  const started: CanonicalSessionMessage = {
+    id: 'call-history-message',
+    sessionId: 'session:group:friends',
+    senderIdentityId: 'me',
+    senderRole: 'user',
+    messageKind: `call.started.${callId}`,
+    contentText: 'Me started a video chat.',
+    content: null,
+    status: 'sent',
+    sequenceNum: 1,
+    createdAtMs: 1_000,
+    updatedAtMs: 1_000,
+  };
+
+  assert.equal(
+    cloudGroupIncomingMessageAlreadyApplied(
+      started,
+      null,
+      `call.ended.${callId}`,
+    ),
+    false,
+  );
+  assert.equal(
+    cloudGroupIncomingMessageAlreadyApplied(
+      { ...started, messageKind: `call.ended.${callId}` },
+      null,
+      `call.started.${callId}`,
+    ),
+    true,
   );
 });

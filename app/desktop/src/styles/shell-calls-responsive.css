@@ -71,9 +71,6 @@
     padding-inline: 12px;
   }
 
-  .app-call-activity-row {
-    padding-inline: 14px;
-  }
 }
 
 @media (max-width: 520px) {
@@ -90,10 +87,6 @@
   .app-conversation-call-banner-copy b,
   .app-conversation-call-banner-copy i {
     display: none;
-  }
-
-  .app-call-activity {
-    width: min(100%, 286px);
   }
 
   .app-call-surface-heading h2 {

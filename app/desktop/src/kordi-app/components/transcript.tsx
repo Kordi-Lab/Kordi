@@ -37,6 +37,8 @@ import { SupportContactAnswer, SupportContactTypingIndicator } from './transcrip
 import { messageSnapshotKey } from './transcriptMessageSnapshot';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
+import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
+import { transcriptMessageIsOwnHuman, transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
@@ -975,14 +977,13 @@ function MessageBubbleView({
     );
   }
 
-  if (msg.role === 'system' || msg.callActivity) {
+  if (msg.role === 'system' && !msg.callActivity) {
     return (
-      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className={msg.callActivity ? cn('app-call-activity-row', `app-call-activity-row-${msg.callActivity.direction}`) : 'app-system-notice-row flex justify-center py-0.5'}>
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
         <TranscriptSystemNoticeContent message={msg}><MessageInlineContent text={msg.text} /></TranscriptSystemNoticeContent>
       </MessageContextMenuHost>
     );
   }
-
   if (msg.role === 'action') {
     return (
       <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
@@ -1138,9 +1139,8 @@ function MessageBubbleView({
       </MessageContextMenuHost>
     );
   }
-
-  const isOwnHumanMessage = (msg.isOwnMessage ?? (msg.role === 'user')) && (msg.senderType ?? 'human') === 'human';
-  const isPeerHumanMessage = !isOwnHumanMessage && ((msg.senderType === 'human') || msg.role === 'person');
+  const isOwnHumanMessage = transcriptMessageIsOwnHuman(msg);
+  const isPeerHumanMessage = transcriptMessageIsPeerHuman(msg, isOwnHumanMessage);
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
   const compactDensity = densityMode !== 'default' && !isAgentMessage ? densityMode : undefined;
   const useHumanCompactDensity = Boolean(compactDensity);
@@ -1155,7 +1155,7 @@ function MessageBubbleView({
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
   const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
-  const hasText = msg.text.trim().length > 0;
+  const hasText = Boolean(msg.callActivity) || msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
@@ -1334,7 +1334,7 @@ function MessageBubbleView({
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
               <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
-                <MessageInlineContent text={msg.text} mentions={msg.mentions} />
+                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} />}
               </span>
               {isOwnHumanMessage || footerDetail || msg.replySummary ? (
                 <span className={cn(
@@ -1365,7 +1365,7 @@ function MessageBubbleView({
                 ) : hasText ? (
                   msg.supportContactResponse
                     ? <SupportContactAnswer text={msg.text} />
-                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message"><MessageInlineContent text={msg.text} mentions={msg.mentions} /></div>
+                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} />}</div>
                 ) : null}
               </div>
               {!hasOnlyImageAttachments ? (
@@ -1383,7 +1383,7 @@ function MessageBubbleView({
           <>
             <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
               {hasAttachments ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
-              {hasText ? <MarkdownContent text={msg.text} showLinkIcons copySurface="message" /> : null}
+              {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
             </div>
             {(msg.statusChips?.length || footerDetail) ? (
               <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>

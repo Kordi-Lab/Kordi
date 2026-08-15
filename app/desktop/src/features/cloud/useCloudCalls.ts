@@ -114,13 +114,14 @@ export function useCloudCalls({
       : existing);
   }, []);
 
-  const resetCurrent = useCallback(async () => {
+  const resetCurrent = useCallback(async ({ clearError = false }: { clearError?: boolean } = {}) => {
     operationRef.current += 1;
     currentRef.current = null;
     await clearRoom();
     setCurrent(null);
     setPhase('idle');
     setIsPresented(false);
+    if (clearError) setError(null);
   }, [clearRoom]);
 
   useEffect(() => {
@@ -284,7 +285,7 @@ export function useCloudCalls({
         if (locallyEndedCallIds.has(activeCurrent.call.id)
           || !latest
           || latest.state === 'ended'
-          || latest.endedAt) await resetCurrent();
+          || latest.endedAt) await resetCurrent({ clearError: true });
         else setCurrent({ ...activeCurrent, call: latest });
       }
     } catch {
@@ -318,7 +319,7 @@ export function useCloudCalls({
         entry.call.id === active.call.id
         && (entry.call.state === 'ended' || Boolean(entry.call.endedAt))
       ));
-      if (ended) void resetCurrent();
+      if (ended) void resetCurrent({ clearError: true });
     };
     window.addEventListener(CLOUD_CALLS_CHANGED_EVENT, handleCallsChanged);
     return () => window.removeEventListener(CLOUD_CALLS_CHANGED_EVENT, handleCallsChanged);

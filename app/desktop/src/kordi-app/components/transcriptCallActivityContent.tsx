@@ -1,11 +1,3 @@
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Phone,
-  UsersRound,
-  Video,
-} from 'lucide-react';
-
 import type { Message } from '@/kordi-app/types';
 import type { MessageCallActivity } from '@/kordi-app/types/message';
 
@@ -15,59 +7,41 @@ function callKindLabel(kind: MessageCallActivity['kind']): string {
   return 'voice call';
 }
 
-function callActivityTitle(activity: MessageCallActivity): string {
+function callActivityText(activity: MessageCallActivity): string {
   const noun = callKindLabel(activity.kind);
-  if (activity.outcome === 'missed') return `Missed ${noun}`;
-  if (activity.outcome === 'canceled') return `Canceled ${noun}`;
-  if (activity.outcome === 'ended') return `${noun[0]?.toUpperCase()}${noun.slice(1)} ended`;
-  return `${activity.direction === 'outgoing' ? 'Outgoing' : 'Incoming'} ${noun}`;
-}
-
-function callDurationWords(seconds: number): string {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  if (safeSeconds < 60) return `${safeSeconds} sec`;
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainder = safeSeconds % 60;
-  if (minutes < 60) return remainder ? `${minutes} min ${remainder} sec` : `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const minuteRemainder = minutes % 60;
-  return minuteRemainder ? `${hours} hr ${minuteRemainder} min` : `${hours} hr`;
-}
-
-function callActivityDetail(message: Message, activity: MessageCallActivity): string {
-  if (activity.outcome === 'ringing') return `${message.time} · Ringing`;
-  if (activity.outcome === 'completed' && activity.durationSeconds !== null
-    && activity.durationSeconds !== undefined) {
-    return `${message.time} · ${callDurationWords(activity.durationSeconds)}`;
+  if (activity.outcome === 'missed') return `Missed ${noun}.`;
+  if (activity.outcome === 'canceled') return `Canceled ${noun}.`;
+  if (activity.outcome === 'completed' || activity.outcome === 'ended') {
+    return `The ${noun} ended.`;
   }
-  if (activity.outcome === 'ended') return `${message.time} · Ended`;
-  return message.time;
+  return `${activity.direction === 'outgoing' ? 'Outgoing' : 'Incoming'} ${noun}.`;
+}
+
+function callDuration(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safeSeconds / 3_600);
+  const minutes = Math.floor((safeSeconds % 3_600) / 60);
+  const remainder = safeSeconds % 60;
+  return hours > 0
+    ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 }
 
 export function TranscriptCallActivityContent({ message }: { message: Message }) {
   const activity = message.callActivity;
   if (!activity) return null;
-  const title = callActivityTitle(activity);
-  const detail = callActivityDetail(message, activity);
-  const CallIcon = activity.kind === 'voice' ? Phone : activity.kind === 'video' ? Video : UsersRound;
-  const DirectionIcon = activity.direction === 'outgoing' ? ArrowUpRight : ArrowDownLeft;
+  const text = callActivityText(activity);
+  const duration = activity.durationSeconds !== null
+    && activity.durationSeconds !== undefined
+    ? ` Duration ${callDuration(activity.durationSeconds)}.`
+    : '';
   return (
-    <div
-      className="app-call-activity"
-      data-direction={activity.direction}
+    <span
+      className="app-call-activity-inline"
       data-outcome={activity.outcome}
-      aria-label={`${title}, ${detail}`}
+      aria-label={`${text}${duration}`}
     >
-      <div className="app-call-activity-copy">
-        <strong>{title}</strong>
-        <span>
-          <DirectionIcon aria-hidden="true" />
-          {detail}
-        </span>
-      </div>
-      <span className="app-call-activity-icon" aria-hidden="true">
-        <CallIcon />
-      </span>
-    </div>
+      {text}{duration}
+    </span>
   );
 }

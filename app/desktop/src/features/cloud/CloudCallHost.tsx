@@ -303,7 +303,7 @@ function CallCard({
 }
 
 function CallError({ controller }: { controller: CloudCallsController }) {
-  if (!controller.error || controller.currentCall) return null;
+  if (!controller.error || controller.currentCall || controller.phase === 'idle') return null;
   const recovery = recoveryContent(controller.error, controller.phase);
   return (
     <div className="app-call-error" role="alert">

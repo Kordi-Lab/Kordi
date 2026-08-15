@@ -34,6 +34,7 @@ type CloudGroupMessageStateOps = {
   incomingAlreadyApplied(
     existingMessage: CanonicalSessionMessage | null,
     incomingDeliveryState?: string | null,
+    incomingMessageKind?: string | null,
   ): boolean;
   removeOfflinePlaceholder(
     current: CanonicalSessionState | null,
@@ -135,6 +136,7 @@ export async function applyCloudGroupMessageControl({
   const messageAlreadyExists = stateOps.incomingAlreadyApplied(
     existingCloudGroupMessage,
     agentDeliveryState ?? humanOutgoingDeliveryState,
+    message.messageKind,
   );
   if (senderIsAgent) {
     const owner = participantByAccount.get(message.senderAccountId);
@@ -275,6 +277,7 @@ export async function applyCloudGroupMessageControl({
         : senderIsAgent && agentDeliveryState === 'cancelled'
           ? 'cancelled'
           : humanOutgoingDeliveryState ?? 'received';
+    const structuredContent = stateOps.objectContent(message.structuredContent);
     const messageRequest = {
       id: replacementAgentSlot?.id ?? terminalStableAgentNoticeId ?? message.id,
       sessionId: envelope.groupId,
@@ -282,7 +285,8 @@ export async function applyCloudGroupMessageControl({
       senderRole: senderIsAgent
         ? 'external-agent'
         : (message.senderAccountId === account.accountId ? 'user' : 'person'),
-      messageKind: senderIsAgent ? 'agent-turn' : 'text',
+      messageKind: stateOps.cleanText(message.messageKind)
+        || (senderIsAgent ? 'agent-turn' : 'text'),
       contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : message.text,
       content: senderIsAgent ? {
         sender: message.senderDisplayName?.trim() || 'Kordi',
@@ -293,7 +297,8 @@ export async function applyCloudGroupMessageControl({
         requestId: messageReplyToId,
         replyToMessageId: messageReplyToId,
         ...(agentDeliveryState === 'failed' ? { error: message.text || 'Message failed' } : {}),
-      } : (mappedAttachments.length > 0 || message.messageAction) ? {
+      } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.messageAction) ? {
+        ...structuredContent,
         ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
         ...(message.messageAction ? {
           messageAction: message.messageAction,

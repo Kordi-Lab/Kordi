@@ -104,6 +104,8 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const sessionId = cleanText(record.sessionId);
   const conversationId = cleanText(record.conversationId);
   const clientMessageId = cleanText(record.clientMessageId);
+  const messageKind = cleanText(record.messageKind);
+  const canonicalHistoryLocalMessageId = cleanText(record.canonicalHistoryLocalMessageId);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)
     && Number(record.conversationSequence) > 0 ? Number(record.conversationSequence) : null;
   const version = Number.isSafeInteger(record.version)
@@ -120,6 +122,8 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     ...(sessionId ? { sessionId } : {}),
     ...(conversationId ? { conversationId } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
+    ...(messageKind ? { messageKind } : {}),
+    ...(canonicalHistoryLocalMessageId ? { canonicalHistoryLocalMessageId } : {}),
     ...(conversationSequence ? { conversationSequence } : {}),
     ...(version ? { version } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),

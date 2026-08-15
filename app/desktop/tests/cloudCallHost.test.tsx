@@ -55,3 +55,22 @@ test('minimizing a call keeps the remote audio element mounted', () => {
   assert.match(markup, /<audio/);
   assert.doesNotMatch(markup, /app-call-surface/);
 });
+
+test('an idle call lifecycle never shows a stale connection error', () => {
+  const controller = {
+    currentCall: null,
+    incomingCall: null,
+    handoffCall: null,
+    phase: 'idle',
+    error: 'The call disconnected. Check your connection and try joining again.',
+    mediaParticipants: [],
+  } as unknown as CloudCallsController;
+
+  const idleMarkup = renderToStaticMarkup(createElement(CloudCallHost, { controller }));
+  assert.doesNotMatch(idleMarkup, /Connection lost/);
+
+  const failedMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: { ...controller, phase: 'failed' },
+  }));
+  assert.match(failedMarkup, /Connection lost/);
+});
