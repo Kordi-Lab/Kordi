@@ -10,8 +10,9 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::attachments::S3Config;
 use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimiterError};
-use crate::calls::{CallMediaConfig, CallMediaConfigError, CallPushConfig, CallPushConfigError};
+use crate::calls::{CallMediaConfig, CallMediaConfigError};
 use crate::events::{EventBus, EventBusError};
+use crate::notifications::{PushNotificationConfigError, PushNotificationService};
 use crate::pg::{init_pool, PgPoolError};
 use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
 use crate::updates::store::{
@@ -25,7 +26,7 @@ pub struct ServerState {
     release_store: Option<ReleaseCatalogStore>,
     support: Option<SupportService>,
     call_media: Option<CallMediaConfig>,
-    call_push: Option<CallPushConfig>,
+    notifications: Option<PushNotificationService>,
 }
 
 impl ServerState {
@@ -37,7 +38,7 @@ impl ServerState {
             release_store: None,
             support: None,
             call_media: None,
-            call_push: None,
+            notifications: None,
         }
     }
 
@@ -61,8 +62,8 @@ impl ServerState {
         self
     }
 
-    pub fn with_call_push(mut self, call_push: CallPushConfig) -> Self {
-        self.call_push = Some(call_push);
+    pub fn with_notifications(mut self, notifications: PushNotificationService) -> Self {
+        self.notifications = Some(notifications);
         self
     }
 
@@ -90,8 +91,8 @@ impl ServerState {
         self.call_media.as_ref()
     }
 
-    pub fn call_push(&self) -> Option<&CallPushConfig> {
-        self.call_push.as_ref()
+    pub fn notifications(&self) -> Option<&PushNotificationService> {
+        self.notifications.as_ref()
     }
 }
 
@@ -148,7 +149,7 @@ pub enum RunError {
     RateLimiter(RateLimiterError),
     Support(SupportConfigError),
     CallMedia(CallMediaConfigError),
-    CallPush(CallPushConfigError),
+    Notifications(PushNotificationConfigError),
     Bind(std::io::Error),
     Serve(std::io::Error),
 }
@@ -161,7 +162,7 @@ impl std::fmt::Display for RunError {
             Self::RateLimiter(err) => write!(f, "{err}"),
             Self::Support(err) => write!(f, "configure support: {err}"),
             Self::CallMedia(err) => write!(f, "configure call media: {err}"),
-            Self::CallPush(err) => write!(f, "configure incoming-call push: {err}"),
+            Self::Notifications(err) => write!(f, "configure Apple notifications: {err}"),
             Self::Bind(err) => write!(f, "bind: {err}"),
             Self::Serve(err) => write!(f, "serve: {err}"),
         }
@@ -237,11 +238,13 @@ pub async fn run(
     } else {
         println!("Kordi call media is disabled");
     }
-    if let Some(call_push) = CallPushConfig::from_env().map_err(RunError::CallPush)? {
-        println!("Kordi incoming-call push is configured");
-        state = state.with_call_push(call_push);
+    if let Some(notifications) =
+        PushNotificationService::from_env().map_err(RunError::Notifications)?
+    {
+        println!("Kordi Apple notifications are configured");
+        state = state.with_notifications(notifications);
     } else {
-        println!("Kordi incoming-call push is disabled");
+        println!("Kordi Apple notifications are disabled");
     }
     if let Some(pending) = PendingSupportConfig::from_env().map_err(RunError::Support)? {
         let support_config = crate::support::bootstrap_support_agent(state.db_pool(), pending)

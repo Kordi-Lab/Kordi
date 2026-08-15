@@ -34,6 +34,8 @@ sha2 = { workspace = true }
 futures-util = "0.3"
 hex = "0.4"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
+tauri-plugin-notification = "2.3.3"
+notify-rust = "4.18.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 system-configuration = "0.7"

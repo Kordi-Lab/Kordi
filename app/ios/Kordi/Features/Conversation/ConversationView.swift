@@ -7,6 +7,7 @@ import UIKit
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
+    @Environment(\.scenePhase) private var scenePhase
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
     private let companionContext: CompanionChatContext?
@@ -48,6 +49,8 @@ struct ConversationView: View {
     @State private var showsCompanionPanel = false
     @State private var showsProviderAuthentication = false
     @State private var hasOpenedCompanionPreview = false
+    @State private var readPresentationID = UUID()
+    @State private var isReadPresentationVisible = false
 
     init(
         conversation: ConversationSummary,
@@ -394,9 +397,13 @@ struct ConversationView: View {
             }
         }
         .onDisappear {
+            isReadPresentationVisible = false
+            synchronizeReadPresentation()
             rememberViewport(in: messages)
         }
         .onAppear {
+            isReadPresentationVisible = true
+            synchronizeReadPresentation()
             if !conversation.kind.supportsQuotedReplies {
                 replySource = nil
             }
@@ -438,6 +445,18 @@ struct ConversationView: View {
         }
         .onChange(of: canOpenCompanionPanel) { _, _ in
             openCompanionPreviewIfReady()
+        }
+        .onChange(of: isAtBottom) { _, _ in
+            synchronizeReadPresentation()
+        }
+        .onChange(of: hasRevealedInitialViewport) { _, _ in
+            synchronizeReadPresentation()
+        }
+        .onChange(of: scenePhase) { _, _ in
+            synchronizeReadPresentation()
+        }
+        .onChange(of: conversation.id) { _, _ in
+            synchronizeReadPresentation()
         }
         .fileImporter(
             isPresented: $showFileImporter,
@@ -659,7 +678,6 @@ struct ConversationView: View {
 
     @MainActor
     private func loadAndRevealInitialConversation(using proxy: ScrollViewProxy) async {
-        model.markConversationOpened(conversation)
         model.hydrateCachedMessages(for: conversation)
         prepareInitialViewport(in: messages)
         let latestMessageIDAtEntry = messages.last?.id
@@ -685,6 +703,16 @@ struct ConversationView: View {
             }
         }
         await positionAndRevealInitialViewport(using: proxy)
+    }
+
+    private func synchronizeReadPresentation() {
+        model.updateConversationReadPresentation(
+            id: readPresentationID,
+            conversationID: conversation.id,
+            isPresented: isReadPresentationVisible && hasRevealedInitialViewport,
+            isAppForeground: scenePhase == .active,
+            isAtLatest: isAtBottom
+        )
     }
 
     private func prepareInitialViewport(in timeline: [ChatMessage], now: Date = Date()) {

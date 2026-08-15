@@ -122,17 +122,26 @@ async fn send_message(
     )
     .await
     {
-        Ok(outcome) => (
-            if outcome.inserted {
-                StatusCode::CREATED
-            } else {
-                StatusCode::OK
-            },
-            Json(MessageResponse {
-                message: outcome.value,
-            }),
-        )
-            .into_response(),
+        Ok(outcome) => {
+            if let Some(notifications) = state.notifications().cloned() {
+                let pool = state.db_pool().clone();
+                let message = outcome.value.clone();
+                tokio::spawn(async move {
+                    notifications.send_message_attention(&pool, &message).await;
+                });
+            }
+            (
+                if outcome.inserted {
+                    StatusCode::CREATED
+                } else {
+                    StatusCode::OK
+                },
+                Json(MessageResponse {
+                    message: outcome.value,
+                }),
+            )
+                .into_response()
+        }
         Err(error) => store_error("send message", error),
     }
 }

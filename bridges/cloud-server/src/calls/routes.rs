@@ -51,10 +51,16 @@ async fn register_notification_push_token(
 ) -> Response {
     match store::register_notification_push_token(
         state.db_pool(),
-        &session.account_id,
-        &session.device_id,
-        &request.token,
-        &request.environment,
+        store::NotificationPushTokenRegistration {
+            account_id: &session.account_id,
+            device_id: &session.device_id,
+            device_token: &request.token,
+            environment: &request.environment,
+            messages_enabled: request.messages_enabled,
+            sound_enabled: request.sound_enabled,
+            previews_enabled: request.previews_enabled,
+            badge_enabled: request.badge_enabled,
+        },
     )
     .await
     {
@@ -111,7 +117,7 @@ async fn start_call(
         ) {
             Ok(token) => {
                 if started.inserted {
-                    if let Some(push) = state.call_push().cloned() {
+                    if let Some(push) = state.notifications().cloned() {
                         let pool = state.db_pool().clone();
                         let call = started.call.clone();
                         let caller_name = started.display_name.clone();
@@ -207,7 +213,7 @@ async fn invite_call(
 ) -> Response {
     match store::invite(state.db_pool(), &session.account_id, call_id).await {
         Ok(invitable) => {
-            if let Some(push) = state.call_push().cloned() {
+            if let Some(push) = state.notifications().cloned() {
                 let pool = state.db_pool().clone();
                 let call = invitable.call.clone();
                 let inviter_name = invitable.display_name;

@@ -9,6 +9,7 @@ mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
 mod media_preview_window;
+mod message_notification;
 mod project;
 mod remote_image;
 mod skill_library;
@@ -192,6 +193,7 @@ pub fn run() {
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
@@ -216,6 +218,7 @@ pub fn run() {
             desktop_open_external_url,
             desktop_open_media_preview_window,
             desktop_reveal_media_preview_window,
+            message_notification::desktop_show_message_notification,
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,

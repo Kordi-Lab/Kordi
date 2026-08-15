@@ -10,6 +10,7 @@ import type {
   ThemeMode,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
 
 type SettingsPageProps = {
   settingsRailWidth: number;
@@ -134,6 +135,8 @@ export function SettingsPage({
                 }}
                 onEnterChat={onEnterChat}
               />
+            ) : activeSettingsSection.id === 'notifications' ? (
+              <NotificationSettingsPanel isNativeShell={isNativeShell} />
             ) : activeSettingsSection.id === 'personalization' ? (
               <div className="space-y-5">
                 <div className="app-settings-profile-section px-1 py-3">

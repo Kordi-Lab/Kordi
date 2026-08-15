@@ -28,6 +28,17 @@ enum MessageSyncState: Equatable {
     case offline
 }
 
+struct ConversationReadPresentation: Equatable {
+    let conversationID: String
+    let isPresented: Bool
+    let isAppForeground: Bool
+    let isAtLatest: Bool
+
+    var canMarkRead: Bool {
+        isPresented && isAppForeground && isAtLatest
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
@@ -97,6 +108,9 @@ final class AppModel: ObservableObject {
     private var pendingAgentContextByMessageId: [String: String] = [:]
     private var conversationLoadCounts: [String: Int] = [:]
     private var settledConversationPresentations: [String: ConversationPresentationSnapshot] = [:]
+    private var conversationReadPresentations: [UUID: ConversationReadPresentation] = [:]
+    private var pendingVisibleReadMessageBySessionID: [String: String] = [:]
+    private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
     private var sessionTitleOverrides: [String: String] = UserDefaults.standard.dictionary(forKey: "kordi.session-title-overrides") as? [String: String] ?? [:]
     private let previewMode: Bool
 
@@ -295,6 +309,9 @@ final class AppModel: ObservableObject {
         loadingConversationIDs = []
         conversationLoadCounts = [:]
         settledConversationPresentations = [:]
+        conversationReadPresentations = [:]
+        pendingVisibleReadMessageBySessionID = [:]
+        persistedVisibleReadMessageBySessionID = [:]
         pendingAgentRequestIds = [:]
         pendingAttachmentDraftsByMessageId = [:]
         pendingReplyByMessageId = [:]
@@ -724,14 +741,60 @@ final class AppModel: ObservableObject {
         cache?.saveMessages(merged, conversationId: conversation.id)
     }
 
-    /// Opening a session is itself a read action. Update the local catalog
-    /// before any network work so list and parent-space badges react at once;
-    /// `loadConversation` still persists the receipt to Cloud afterward.
+    /// An explicitly read or actively presented session updates the local
+    /// catalog before network work so list and parent-space badges react at once.
     func markConversationOpened(_ conversation: ConversationSummary) {
         guard let index = conversations.firstIndex(where: { $0.id == conversation.id }),
               conversations[index].unreadCount != 0 else { return }
         conversations[index].unreadCount = 0
         cache?.saveConversations(conversations)
+    }
+
+    func updateConversationReadPresentation(
+        id: UUID,
+        conversationID: String,
+        isPresented: Bool,
+        isAppForeground: Bool,
+        isAtLatest: Bool
+    ) {
+        if isPresented {
+            conversationReadPresentations[id] = ConversationReadPresentation(
+                conversationID: conversationID,
+                isPresented: true,
+                isAppForeground: isAppForeground,
+                isAtLatest: isAtLatest
+            )
+        } else {
+            conversationReadPresentations[id] = nil
+        }
+
+        guard conversationReadPresentations.values.contains(where: {
+            $0.conversationID == conversationID && $0.canMarkRead
+        }), let conversation = conversations.first(where: { $0.id == conversationID }) else {
+            return
+        }
+        markConversationOpened(conversation)
+        Task { [weak self] in
+            await self?.reconcileVisibleConversationReadState()
+        }
+    }
+
+    func isConversationActivelyReadable(canonicalConversationID: String) -> Bool {
+        guard let conversation = conversationForNotification(
+            canonicalConversationID: canonicalConversationID
+        ) else { return false }
+        return conversationReadPresentations.values.contains {
+            $0.conversationID == conversation.id && $0.canMarkRead
+        }
+    }
+
+    func conversationForNotification(canonicalConversationID: String) -> ConversationSummary? {
+        conversations.first { conversation in
+            conversation.id == canonicalConversationID
+                || conversation.sessionId == canonicalConversationID
+                || canonicalConversationIDBySessionID[conversation.id] == canonicalConversationID
+                || canonicalConversationIDBySessionID[conversation.sessionId] == canonicalConversationID
+        }
     }
 
     func canRevealConversationImmediately(_ conversation: ConversationSummary) -> Bool {
@@ -781,7 +844,6 @@ final class AppModel: ObservableObject {
     }
 
     func loadConversation(_ conversation: ConversationSummary) async {
-        markConversationOpened(conversation)
         beginConversationLoad(conversation.id)
         defer { endConversationLoad(conversation.id) }
         prepareConversationForPresentation(conversation)
@@ -803,34 +865,15 @@ final class AppModel: ObservableObject {
         do {
             let fetchedWireMessages = try await loadWireMessages(for: conversation, token: token)
             try Task.checkCancellation()
-            let supportUsesCanonicalSession = conversation.representsKordiSupport
-                && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
-            let readScope: CloudReadScope = conversation.kind == .person && !supportUsesCanonicalSession
-                ? .peer(conversation.peerAccountId)
-                : .session(conversation.sessionId)
-            let readAt = ISO8601DateFormatter().string(from: Date())
-            let wireSnapshot = cloudMessagesByPeer
             let projection = await Task.detached(priority: .userInitiated) {
-                let allProjected = CloudMessageStateProjector.markingIncomingRead(
-                    wireSnapshot,
-                    ownAccountId: account.accountId,
-                    scope: readScope,
-                    readAt: readAt
-                )
-                let visibleWire = CloudMessageStateProjector.markingIncomingRead(
-                    ["visible": fetchedWireMessages],
-                    ownAccountId: account.accountId,
-                    scope: readScope,
-                    readAt: readAt
-                )["visible", default: fetchedWireMessages]
                 let projectedMessages = conversation.kind == .group
                     ? Self.mapGroupMessages(
-                        visibleWire,
+                        fetchedWireMessages,
                         conversation: conversation,
                         ownAccountId: account.accountId
                     )
                     : CloudDirectMessageProjector.project(
-                        visibleWire.filter { message in
+                        fetchedWireMessages.filter { message in
                             guard let sessionId = message.sessionId?.nonEmpty else {
                                 return conversation.kind == .person
                             }
@@ -839,11 +882,9 @@ final class AppModel: ObservableObject {
                         conversation: conversation,
                         ownAccountId: account.accountId
                     )
-                return (allProjected, projectedMessages)
+                return projectedMessages
             }.value
-            cloudMessagesByPeer = projection.0
-            rebuildCloudMessageIndices()
-            let remote = projection.1
+            let remote = projection
             if messagesByConversation[conversation.id] != remote {
                 messagesByConversation[conversation.id] = remote
                 cache?.saveMessages(remote, conversationId: conversation.id)
@@ -852,18 +893,7 @@ final class AppModel: ObservableObject {
                remote.contains(where: { $0.author == .agent && $0.requestMessageId == requestId }) {
                 completeAgentRequest(conversationId: conversation.id)
             }
-            do {
-                if conversation.kind == .person && !supportUsesCanonicalSession {
-                    try await api.markMessagesRead(token: token, peerAccountId: conversation.peerAccountId)
-                } else {
-                    try await api.markSessionMessagesRead(token: token, sessionId: conversation.sessionId)
-                }
-                cloudConnectionState = .connected
-            } catch {
-                recordCloudConnectionFailure(error)
-            }
             await rebuildConversationCatalog()
-            markConversationOpened(conversation)
             if let pin = await fetchedPin {
                 sessionPinsByID[conversation.sessionId] = pin
             }
@@ -1336,7 +1366,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func registerNotificationPushToken(_ deviceToken: String) async {
+    func registerNotificationPushToken(
+        _ deviceToken: String,
+        messagesEnabled: Bool,
+        soundEnabled: Bool,
+        previewsEnabled: Bool,
+        badgeEnabled: Bool
+    ) async {
         guard let token, !previewMode else { return }
         do {
 #if DEBUG
@@ -1347,7 +1383,11 @@ final class AppModel: ObservableObject {
             try await api.registerNotificationPushToken(
                 token: token,
                 deviceToken: deviceToken,
-                environment: environment
+                environment: environment,
+                messagesEnabled: messagesEnabled,
+                soundEnabled: soundEnabled,
+                previewsEnabled: previewsEnabled,
+                badgeEnabled: badgeEnabled
             )
         } catch {
             recordCloudConnectionFailure(error)
@@ -1454,6 +1494,18 @@ final class AppModel: ObservableObject {
 
     func markConversationRead(_ conversation: ConversationSummary) async {
         await loadConversation(conversation)
+        guard let current = conversations.first(where: { $0.id == conversation.id }) else {
+            return
+        }
+        _ = await applyConversationReadLocally(current)
+        do {
+            try await persistConversationRead(current)
+            persistedVisibleReadMessageBySessionID[current.sessionId] =
+                latestIncomingMessageID(for: current)
+            cloudConnectionState = .connected
+        } catch {
+            recordCloudConnectionFailure(error)
+        }
     }
 
     func loadSessionActivity(_ conversation: ConversationSummary) async {
@@ -2535,6 +2587,127 @@ final class AppModel: ObservableObject {
         if titled != conversations {
             conversations = titled
             cache?.saveConversations(titled)
+        }
+        await reconcileVisibleConversationReadState()
+    }
+
+    private func reconcileVisibleConversationReadState() async {
+        let readableConversationIDs = Set(
+            conversationReadPresentations.values
+                .filter(\.canMarkRead)
+                .map(\.conversationID)
+        )
+        guard !readableConversationIDs.isEmpty else { return }
+
+        let readableConversations = conversations.filter {
+            readableConversationIDs.contains($0.id)
+        }
+        for conversation in readableConversations {
+            guard let latestIncomingMessageID =
+                await applyConversationReadLocally(conversation) else {
+                continue
+            }
+            scheduleConversationReadPersistence(
+                conversation,
+                latestIncomingMessageID: latestIncomingMessageID
+            )
+        }
+    }
+
+    @discardableResult
+    private func applyConversationReadLocally(
+        _ conversation: ConversationSummary
+    ) async -> String? {
+        guard let latestIncomingMessageID = latestIncomingMessageID(for: conversation) else {
+            return nil
+        }
+        markConversationOpened(conversation)
+        guard let account else { return nil }
+
+        let readAt = ISO8601DateFormatter().string(from: Date())
+        let projected = CloudMessageStateProjector.markingIncomingRead(
+            cloudMessagesByPeer,
+            ownAccountId: account.accountId,
+            scope: readScope(for: conversation),
+            readAt: readAt
+        )
+        if projected != cloudMessagesByPeer {
+            cloudMessagesByPeer = projected
+            rebuildCloudMessageIndices()
+            await refreshLoadedConversationProjections()
+            await persistCloudSnapshot(accountId: account.accountId)
+        }
+        return latestIncomingMessageID
+    }
+
+    private func latestIncomingMessageID(
+        for conversation: ConversationSummary
+    ) -> String? {
+        messagesByConversation[conversation.id]?
+            .last(where: { $0.author != .me })?
+            .id
+    }
+
+    private func readScope(for conversation: ConversationSummary) -> CloudReadScope {
+        let supportUsesCanonicalSession = conversation.representsKordiSupport
+            && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
+        return conversation.kind == .person && !supportUsesCanonicalSession
+            ? .peer(conversation.peerAccountId)
+            : .session(conversation.sessionId)
+    }
+
+    private func persistConversationRead(
+        _ conversation: ConversationSummary
+    ) async throws {
+        guard let token, !previewMode else { return }
+        let supportUsesCanonicalSession = conversation.representsKordiSupport
+            && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
+        if conversation.kind == .person && !supportUsesCanonicalSession {
+            try await api.markMessagesRead(
+                token: token,
+                peerAccountId: conversation.peerAccountId
+            )
+        } else {
+            try await api.markSessionMessagesRead(
+                token: token,
+                sessionId: conversation.sessionId
+            )
+        }
+    }
+
+    private func scheduleConversationReadPersistence(
+        _ conversation: ConversationSummary,
+        latestIncomingMessageID: String
+    ) {
+        guard !previewMode,
+              token != nil,
+              persistedVisibleReadMessageBySessionID[conversation.sessionId]
+                != latestIncomingMessageID,
+              pendingVisibleReadMessageBySessionID[conversation.sessionId] == nil else {
+            return
+        }
+        pendingVisibleReadMessageBySessionID[conversation.sessionId] =
+            latestIncomingMessageID
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await persistConversationRead(conversation)
+                if pendingVisibleReadMessageBySessionID[conversation.sessionId]
+                    == latestIncomingMessageID {
+                    pendingVisibleReadMessageBySessionID[conversation.sessionId] = nil
+                    persistedVisibleReadMessageBySessionID[conversation.sessionId] =
+                        latestIncomingMessageID
+                }
+                cloudConnectionState = .connected
+                await reconcileVisibleConversationReadState()
+            } catch {
+                if pendingVisibleReadMessageBySessionID[conversation.sessionId]
+                    == latestIncomingMessageID {
+                    pendingVisibleReadMessageBySessionID[conversation.sessionId] = nil
+                }
+                recordCloudConnectionFailure(error)
+            }
         }
     }
 

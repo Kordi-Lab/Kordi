@@ -7,6 +7,7 @@ import {
 } from 'react';
 
 import { useAppLayoutState } from '@/app/useAppLayoutState';
+import { useActiveConversationReadPresentation } from '@/app/useActiveConversationReadPresentation';
 import { projects } from '@/kordi-app/data';
 import { useKordiAuthNavigationState } from '@/app/useKordiAuthNavigationState';
 import {
@@ -188,6 +189,7 @@ export function useKordiAppFoundation({
     isNativeShell,
   });
 
+  const { canMarkRead, setIsTranscriptAtLatest } = useActiveConversationReadPresentation({ activeNav, activeConversationId: activeConvId });
   const {
     visibleSettingsSections,
     visibleActiveSettingsSectionId,
@@ -314,6 +316,7 @@ export function useKordiAppFoundation({
   } = useCloudCollaborationState({
     account: cloudSession.account,
     activeConversationId: activeConvId,
+    canMarkActiveConversationRead: canMarkRead,
     canonicalSessionState,
     setCanonicalSessionState,
     localTurnsBySessionId: desktopLiveTurnsBySession,
@@ -402,6 +405,7 @@ export function useKordiAppFoundation({
     refs: {
       composerControlsRef, chatAttachmentInputRef, chatTranscriptScrollRef,
       shouldAutoFollowChatRef, lastSeenArtifactByContextRef,
+      setChatTranscriptAtLatest: setIsTranscriptAtLatest,
       syncLocalAvatarSeeds,
     },
     canonical: {

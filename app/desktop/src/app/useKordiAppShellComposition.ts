@@ -73,6 +73,7 @@ export function useKordiAppShellComposition({
     lastCollaborationSyncAt: cloud.lastCollaborationSyncAt,
     chatTranscriptScrollRef: refs.chatTranscriptScrollRef,
     shouldAutoFollowChatRef: refs.shouldAutoFollowChatRef,
+    setChatTranscriptAtLatest: refs.setChatTranscriptAtLatest,
     desktopChatState: chat.desktopChatState,
     activeConv: conversations.activeConv,
     activeConversationUsesCollaboration:

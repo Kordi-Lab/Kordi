@@ -13,10 +13,13 @@
     "core:window:allow-set-size",
     "core:window:allow-set-theme",
     "core:window:allow-set-background-color",
+    "core:window:allow-set-badge-count",
+    "core:window:allow-request-user-attention",
     "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging",
     "core:webview:allow-create-webview-window",
     "deep-link:default",
+    "notification:default",
     "updater:default",
     "process:allow-restart"
   ]

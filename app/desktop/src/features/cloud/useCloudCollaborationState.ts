@@ -235,8 +235,7 @@ function reportCloudAgentExecutionWarning(message: string, error: unknown) {
 }
 
 export function useCloudCollaborationState({
-  account,
-  activeConversationId,
+  account, activeConversationId, canMarkActiveConversationRead,
   canonicalSessionState,
   setCanonicalSessionState,
   localTurnsBySessionId,
@@ -337,8 +336,7 @@ export function useCloudCollaborationState({
   } = stores;
 
   useCloudActiveSessionLifecycle({
-    account,
-    activeConversationId,
+    account, activeConversationId, canMarkActiveConversationRead,
     canonicalState: canonicalSessionState,
     setCanonicalState: setCanonicalSessionState,
     client,
@@ -531,8 +529,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudMessageReadReceipts({
-    account,
-    activeConversationId,
+    account, activeConversationId, canMarkActiveConversationRead,
     client,
     canonical: {
       setState: setCanonicalSessionState,

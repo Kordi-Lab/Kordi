@@ -784,6 +784,24 @@ struct CloudVoIPPushTokenRequest: Codable, Hashable {
     let environment: String
 }
 
+struct CloudNotificationPushTokenRequest: Codable, Hashable {
+    let token: String
+    let environment: String
+    let messagesEnabled: Bool
+    let soundEnabled: Bool
+    let previewsEnabled: Bool
+    let badgeEnabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case token
+        case environment
+        case messagesEnabled = "messages_enabled"
+        case soundEnabled = "sound_enabled"
+        case previewsEnabled = "previews_enabled"
+        case badgeEnabled = "badge_enabled"
+    }
+}
+
 struct CloudChatEvent: Codable, Hashable {
     let streamSequence: Int64
     let eventId: String

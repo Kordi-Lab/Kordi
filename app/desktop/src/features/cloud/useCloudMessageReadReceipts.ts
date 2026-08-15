@@ -47,6 +47,7 @@ type SyncCloudCollaborationDiff =
 export function useCloudMessageReadReceipts({
   account,
   activeConversationId,
+  canMarkActiveConversationRead,
   client,
   canonical,
   messages,
@@ -54,6 +55,7 @@ export function useCloudMessageReadReceipts({
 }: {
   account: CloudAccount | null;
   activeConversationId: string | null | undefined;
+  canMarkActiveConversationRead: boolean;
   client: CloudAuthClient;
   canonical: {
     setState?: Dispatch<
@@ -86,7 +88,9 @@ export function useCloudMessageReadReceipts({
   }, [account?.accountId]);
 
   useEffect(() => {
-    if (!account || !activeConversationId) return;
+    if (!account || !activeConversationId || !canMarkActiveConversationRead) {
+      return;
+    }
     const activeConversationIds = [
       activeConversationId,
       cloudSessionIdFromConversationId(activeConversationId),
@@ -208,6 +212,7 @@ export function useCloudMessageReadReceipts({
   }, [
     account,
     activeConversationId,
+    canMarkActiveConversationRead,
     client,
     messageIndex,
     messagesByPeer,

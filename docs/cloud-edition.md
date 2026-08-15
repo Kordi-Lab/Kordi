@@ -127,6 +127,16 @@ The APNs key value is the base64 encoding of the private key file. Direct-call
 VoIP tokens and ordinary notification tokens are registered separately so an
 alert token is never used for a PushKit request.
 
+Ordinary APNs tokens also receive message attention events after the message
+transaction commits. Delivery excludes the sender, respects conversation mute
+state, deduplicates each recipient and message pair, and carries only opaque
+account, session, and message identifiers for in-app routing. Each iOS device
+registers its own message, sound, preview, and badge preferences. macOS uses
+the live synchronized conversation state to present a native local alert,
+maintain the Dock badge, and focus the exact message when the alert is opened.
+Both clients suppress an alert only while that same conversation is visible,
+foregrounded, and positioned at the latest message.
+
 Open-source implementation references:
 
 - [LiveKit Swift CallKit example](https://github.com/livekit-examples/swift-example-collection/tree/main/callkit)

@@ -15,7 +15,9 @@ mod tokens;
 
 use activity::{record_call_activity, CallActivityEvent};
 pub use start::start;
-pub use tokens::{register_notification_push_token, register_voip_push_token};
+pub use tokens::{
+    register_notification_push_token, register_voip_push_token, NotificationPushTokenRegistration,
+};
 
 type CallRow = (
     Uuid,
