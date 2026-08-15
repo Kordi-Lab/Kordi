@@ -37,23 +37,32 @@ struct KordiCallView: View {
                     )
                     .padding(.bottom, 24)
 
-                    CallControlDeck(
-                        isMicrophoneEnabled: coordinator.isMicrophoneEnabled,
-                        isCameraEnabled: coordinator.isCameraEnabled,
-                        allowsVideo: presentation.call.kind.allowsVideo,
-                        onMicrophone: {
-                            Task {
-                                await coordinator.setMicrophoneEnabled(!coordinator.isMicrophoneEnabled)
-                            }
-                        },
-                        onCamera: {
-                            Task {
-                                await coordinator.setCameraEnabled(!coordinator.isCameraEnabled)
-                            }
-                        },
-                        onParticipants: { coordinator.isParticipantListPresented = true },
-                        onLeave: { Task { await coordinator.leave() } }
-                    )
+                    Group {
+                        if coordinator.isAwaitingIncomingAnswer {
+                            IncomingCallControlDeck(
+                                onDecline: { Task { await coordinator.declineIncomingCall() } },
+                                onAnswer: { Task { await coordinator.answerIncomingCall() } }
+                            )
+                        } else {
+                            CallControlDeck(
+                                isMicrophoneEnabled: coordinator.isMicrophoneEnabled,
+                                isCameraEnabled: coordinator.isCameraEnabled,
+                                allowsVideo: presentation.call.kind.allowsVideo,
+                                onMicrophone: {
+                                    Task {
+                                        await coordinator.setMicrophoneEnabled(!coordinator.isMicrophoneEnabled)
+                                    }
+                                },
+                                onCamera: {
+                                    Task {
+                                        await coordinator.setCameraEnabled(!coordinator.isCameraEnabled)
+                                    }
+                                },
+                                onParticipants: { coordinator.isParticipantListPresented = true },
+                                onLeave: { Task { await coordinator.leave() } }
+                            )
+                        }
+                    }
                     .padding(.bottom, 28)
                 }
             }
@@ -171,7 +180,7 @@ private struct LiveCallParticipantStage: View {
 
     var body: some View {
         let participantItems = participants
-        if participantItems.isEmpty {
+        if presentation.call.kind == .voice || participantItems.isEmpty {
             CallWaitingStage(
                 conversation: presentation.conversation,
                 participants: presentation.call.participants,
@@ -453,6 +462,39 @@ private struct CallControlDeck: View {
                 .stroke(.white.opacity(0.08), lineWidth: 1)
         }
         .padding(.horizontal, 12)
+    }
+}
+
+private struct IncomingCallControlDeck: View {
+    let onDecline: () -> Void
+    let onAnswer: () -> Void
+
+    var body: some View {
+        HStack(spacing: 52) {
+            CallControlButton(
+                label: "Decline",
+                symbol: "phone.down.fill",
+                isSelected: true,
+                tint: .red,
+                action: onDecline
+            )
+            CallControlButton(
+                label: "Answer",
+                symbol: "phone.fill",
+                isSelected: true,
+                tint: .green,
+                action: onAnswer
+            )
+        }
+        .padding(.horizontal, 32)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(.black.opacity(0.32), in: .rect(cornerRadius: 36))
+        .overlay {
+            RoundedRectangle(cornerRadius: 36, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        }
+        .padding(.horizontal, 28)
     }
 }
 

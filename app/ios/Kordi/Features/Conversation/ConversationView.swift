@@ -71,7 +71,9 @@ struct ConversationView: View {
             ?? initialConversation
     }
 
-    private var messages: [ChatMessage] { model.messages(for: conversation) }
+    private var messages: [ChatMessage] {
+        ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+    }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14
 
@@ -94,12 +96,30 @@ struct ConversationView: View {
         let activeConversationCall = model.activeCall(for: conversation)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
-                if let activeMeeting = activeConversationCall,
-                   activeMeeting.kind == .meeting {
-                    ConversationMeetingBanner(
-                        call: activeMeeting,
+                if let activeCall = activeConversationCall,
+                   activeCall.kind == .meeting {
+                    ConversationCallBanner(
+                        call: activeCall,
+                        title: "Meeting in progress",
+                        subtitle: ConversationCallBanner.connectedLabel(for: activeCall),
                         onJoin: {
-                            Task { await callCoordinator.join(activeMeeting, in: conversation) }
+                            Task { await callCoordinator.join(activeCall, in: conversation) }
+                        }
+                    )
+                } else if let activeCall = activeConversationCall,
+                          activeCall.state == .ringing,
+                          activeCall.createdByAccountId != model.account?.accountId,
+                          activeCall.participants.contains(where: {
+                              $0.accountId == model.account?.accountId && $0.state == "invited"
+                          }) {
+                    ConversationCallBanner(
+                        call: activeCall,
+                        title: activeCall.kind == .video
+                            ? "Incoming video call"
+                            : "Incoming voice call",
+                        subtitle: "\(conversation.displayName) is calling",
+                        onJoin: {
+                            Task { await callCoordinator.join(activeCall, in: conversation) }
                         }
                     )
                 }
@@ -1053,26 +1073,33 @@ struct ConversationView: View {
     }
 }
 
-private struct ConversationMeetingBanner: View {
+private struct ConversationCallBanner: View {
     let call: CloudCall
+    let title: String
+    let subtitle: String
     let onJoin: () -> Void
 
-    private var joinedCount: Int {
-        call.participants.filter { $0.state == "joined" }.count
+    static func connectedLabel(for call: CloudCall) -> String {
+        let joinedCount = call.participants.filter { $0.state == "joined" }.count
+        return "\(joinedCount) \(joinedCount == 1 ? "person" : "people") connected"
+    }
+
+    private var symbol: String {
+        call.kind.allowsVideo ? "video.fill" : "phone.fill"
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "video.fill")
+            Image(systemName: symbol)
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
                 .background(KordiTheme.signalBlue.gradient, in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Meeting in progress")
+                Text(title)
                     .font(.subheadline.weight(.semibold))
-                Text("\(joinedCount) \(joinedCount == 1 ? "person" : "people") connected")
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1088,7 +1115,7 @@ private struct ConversationMeetingBanner: View {
         .background(.thinMaterial)
         .overlay(alignment: .bottom) { Divider() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Meeting in progress, \(joinedCount) connected")
+        .accessibilityLabel("\(title), \(subtitle)")
         .accessibilityAction(named: "Join", onJoin)
     }
 }

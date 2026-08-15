@@ -43,6 +43,52 @@ final class CloudOAuthCallbackTests: XCTestCase {
     }
 }
 
+final class CloudAPIClientAccountActivationTests: XCTestCase {
+    func testOAuthAccountActivationAllowsReliableChatBootstrap() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ChatBootstrapURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        do {
+            _ = try await client.bootstrapChatLatestMessages(token: "oauth-session")
+            XCTFail("Chat bootstrap should require the authenticated account context.")
+        } catch let error as CloudAPIError {
+            XCTAssertEqual(error.code, "account_missing")
+        }
+
+        await client.activateAccount("acct_oauth")
+
+        let messages = try await client.bootstrapChatLatestMessages(token: "oauth-session")
+        XCTAssertTrue(messages.isEmpty)
+    }
+}
+
+private final class ChatBootstrapURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let payload = Data(
+            #"{"protocol_version":2,"conversations":[],"latest_messages":[],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-15T00:00:00Z"}"#.utf8
+        )
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 final class SignupAvatarRendererTests: XCTestCase {
     func testGeneratedAvatarIsAcceptedWireShape() throws {
         let value = try XCTUnwrap(SignupAvatarRenderer.generatedDataURL(displayName: "Maya Chen", paletteIndex: 1))

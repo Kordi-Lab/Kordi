@@ -13,7 +13,7 @@ mod activity;
 mod start;
 mod tokens;
 
-use activity::{append_call_activity, CallActivityEvent};
+use activity::{record_call_activity, CallActivityEvent};
 pub use start::start;
 pub use tokens::{register_notification_push_token, register_voip_push_token};
 
@@ -305,20 +305,26 @@ async fn account_display_name(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
 ) -> Result<String, CallStoreError> {
-    let display_name: Option<(Option<String>, String)> = query_as(
+    let display_name: Option<(Option<String>, i64)> = query_as(
         "SELECT display_name, public_account_number FROM cloud_accounts WHERE account_id = $1",
     )
     .bind(account_id)
     .fetch_optional(&mut **transaction)
     .await?;
     Ok(display_name
-        .map(|value| {
-            value
-                .0
-                .filter(|name| !name.trim().is_empty())
-                .unwrap_or(value.1)
+        .map(|(display_name, public_account_number)| {
+            preferred_account_display_name(display_name, public_account_number)
         })
         .unwrap_or_else(|| "Kordi user".to_string()))
+}
+
+fn preferred_account_display_name(
+    display_name: Option<String>,
+    public_account_number: i64,
+) -> String {
+    display_name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| public_account_number.to_string())
 }
 
 pub async fn decline(
@@ -352,7 +358,7 @@ pub async fn decline(
     let (call, _) = load_call_in_transaction(&mut transaction, call_id).await?;
     publish_snapshot(&mut transaction, "call.updated", &call).await?;
     if call.state == CallState::Ended {
-        append_call_activity(&mut transaction, &call, CallActivityEvent::Ended, None).await?;
+        record_call_activity(&mut transaction, &call, CallActivityEvent::Ended, None).await?;
     }
     transaction.commit().await?;
     Ok(call)
@@ -397,7 +403,7 @@ pub async fn leave(
     let (call, _) = load_call_in_transaction(&mut transaction, call_id).await?;
     publish_snapshot(&mut transaction, "call.updated", &call).await?;
     if call.state == CallState::Ended {
-        append_call_activity(&mut transaction, &call, CallActivityEvent::Ended, None).await?;
+        record_call_activity(&mut transaction, &call, CallActivityEvent::Ended, None).await?;
     }
     transaction.commit().await?;
     Ok(call)
@@ -431,7 +437,28 @@ pub async fn end(
     .await?;
     let (call, _) = load_call_in_transaction(&mut transaction, call_id).await?;
     publish_snapshot(&mut transaction, "call.updated", &call).await?;
-    append_call_activity(&mut transaction, &call, CallActivityEvent::Ended, None).await?;
+    record_call_activity(&mut transaction, &call, CallActivityEvent::Ended, None).await?;
     transaction.commit().await?;
     Ok(call)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preferred_account_display_name;
+
+    #[test]
+    fn call_display_name_prefers_a_non_empty_profile_name() {
+        assert_eq!(
+            preferred_account_display_name(Some("Alex".to_string()), 123_456_789),
+            "Alex"
+        );
+    }
+
+    #[test]
+    fn call_display_name_formats_the_numeric_public_account_number() {
+        assert_eq!(
+            preferred_account_display_name(Some("  ".to_string()), 123_456_789),
+            "123456789"
+        );
+    }
 }

@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::calls::models::{CallKind, CallState, StartCallRequest};
 
-use super::activity::{append_call_activity, CallActivityEvent};
+use super::activity::{record_call_activity, CallActivityEvent};
 use super::{
     account_display_name, load_call_in_transaction, publish_snapshot, snapshot_from_row, CallRow,
     CallStoreError, StartedCall,
@@ -132,7 +132,7 @@ pub async fn start(
     let (call, _) = load_call_in_transaction(&mut transaction, call_id).await?;
     let display_name = account_display_name(&mut transaction, account_id).await?;
     publish_snapshot(&mut transaction, "call.created", &call).await?;
-    append_call_activity(
+    record_call_activity(
         &mut transaction,
         &call,
         CallActivityEvent::Started,

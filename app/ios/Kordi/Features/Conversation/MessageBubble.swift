@@ -386,24 +386,37 @@ private struct ConversationCallActivityCard: View {
         message.text.localizedCaseInsensitiveContains("voice call")
     }
 
-    private var title: String {
-        if activity.event == .ended {
-            return isVoiceCall ? "Voice call ended" : "Video call ended"
-        }
-        if isActive {
-            return isVoiceCall ? "Voice call in progress" : "Video call in progress"
-        }
-        if activity.callId == nil {
-            return isVoiceCall ? "Voice call ended" : "Video call ended"
-        }
-        return isVoiceCall ? "Voice call started" : "Video call started"
+    private var isMeeting: Bool {
+        message.text.localizedCaseInsensitiveContains("video chat")
     }
 
-    private var detailText: String {
-        guard let duration = message.text.range(of: "Duration", options: .caseInsensitive) else {
-            return message.text
+    private var callLabel: String {
+        if isVoiceCall { return "Voice call" }
+        if isMeeting { return "Video chat" }
+        return "Video call"
+    }
+
+    private var title: String {
+        if activity.event == .ended {
+            return "\(callLabel) ended"
         }
-        return String(message.text[duration.lowerBound...])
+        if isActive {
+            return "\(callLabel) in progress"
+        }
+        if activity.callId == nil {
+            return "\(callLabel) ended"
+        }
+        return "\(callLabel) started"
+    }
+
+    private var detail: String {
+        guard activity.event == .ended,
+              let range = message.text.range(
+                  of: "Duration ",
+                  options: [.caseInsensitive]
+              ) else { return message.text }
+        return String(message.text[range.lowerBound...])
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
     }
 
     var body: some View {
@@ -417,7 +430,7 @@ private struct ConversationCallActivityCard: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                Text(detailText)
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -444,7 +457,7 @@ private struct ConversationCallActivityCard: View {
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(detailText)")
+        .accessibilityLabel("\(title). \(detail)")
     }
 }
 

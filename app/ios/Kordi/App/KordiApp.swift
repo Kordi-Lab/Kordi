@@ -47,10 +47,18 @@ final class KordiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
 @main
 struct KordiApp: App {
     @UIApplicationDelegateAdaptor(KordiAppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel()
-    @StateObject private var callCoordinator = KordiCallCoordinator()
+    @StateObject private var model: AppModel
+    @StateObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
+
+    init() {
+        let model = AppModel()
+        let callCoordinator = KordiCallCoordinator()
+        callCoordinator.configure(model: model)
+        _model = StateObject(wrappedValue: model)
+        _callCoordinator = StateObject(wrappedValue: callCoordinator)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -77,6 +85,9 @@ struct KordiApp: App {
                 }
                 .onReceive(model.$callsByConversationID) { calls in
                     callCoordinator.receive(callSnapshots: Array(calls.values))
+                }
+                .onReceive(model.$latestCallSnapshot.compactMap { $0 }) { call in
+                    callCoordinator.receive(callSnapshots: [call])
                 }
                 .onReceive(model.$account) { account in
                     guard account != nil else { return }
