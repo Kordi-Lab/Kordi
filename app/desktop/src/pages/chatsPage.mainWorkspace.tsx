@@ -3,6 +3,7 @@ import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
+import { isEmptyChatSelectionId } from '@/features/chat/draftSessions';
 import {
   shouldInferLatestHumanReplyTarget,
   shouldSuppressAgentReplyAttribution,
@@ -18,6 +19,7 @@ import {
   canonicalHistorySessionIdForConversation,
   chatTranscriptDensityMode,
   conversationPaneKind,
+  localAgentConversationNeedsProvider,
   parseAskAgentTriggerCommand,
 } from '@/pages/chatsPage.model';
 import {
@@ -30,6 +32,7 @@ import {
 } from '@/pages/chatsPage.pins';
 import {
   ChatComposerShell,
+  ChatSelectionEmptyState,
   ChatSessionPane,
   SessionStartingState,
 } from '@/pages/chatsPage.sessionPane';
@@ -98,6 +101,13 @@ export function ChatMainWorkspace({
   const openAuthentication =
     auth.onOpenAccountAuthentication ?? auth.onOpenAuthSettings;
   const activePaneKind = conversationPaneKind(activeConv);
+  const isEmptySelection = isEmptyChatSelectionId(activeConv.id);
+  const needsProvider = localAgentConversationNeedsProvider({
+    activePaneKind,
+    activeConversationUsesCollaboration:
+      session.activeConversationUsesCollaboration,
+    hasAnyAuth: auth.hasAnyAuth,
+  });
   const canonicalHistorySessionId =
     canonicalHistorySessionIdForConversation(activeConv);
   const localConfigTargetSessionId =
@@ -120,6 +130,16 @@ export function ChatMainWorkspace({
   );
   const handleSend = (draftOverride?: string) => {
     const draft = draftOverride ?? composer.chatComposerText;
+    if (
+      needsProvider
+      && (
+        draft.trim().length > 0
+        || composer.chatComposerAttachments.length > 0
+      )
+    ) {
+      openAuthentication?.();
+      return;
+    }
     const trigger = parseAskAgentTriggerCommand(draft);
     if (trigger) {
       void companion.open(trigger.prompt).then((opened) => {
@@ -141,7 +161,7 @@ export function ChatMainWorkspace({
         className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]"
         data-active-side={presentation.activeSide}
       >
-        <MainChatHeader
+        {!isEmptySelection ? <MainChatHeader
           conversation={activeConv}
           layout={{
             showSessionToggle: layout.showChatDetailRail,
@@ -180,7 +200,7 @@ export function ChatMainWorkspace({
                 onSubmit: submitSupportReport,
               }
             : undefined}
-        />
+        /> : null}
 
         {models.destinations.value === 'messages' ? (
           <div
@@ -191,7 +211,7 @@ export function ChatMainWorkspace({
             data-chat-destination-page="messages"
             data-chat-destination-scope="main"
           >
-            {!auth.hasAnyAuth && !session.activeConversationUsesCollaboration ? (
+            {needsProvider ? (
               <AuthNoticeBanner
                 title="No provider connected yet"
                 description={auth.onOpenAccountAuthentication
@@ -289,18 +309,20 @@ export function ChatMainWorkspace({
                         canonicalHistorySessionId,
                       )
                     : undefined,
-                emptyState: models.header.isStarting
-                  ? <SessionStartingState />
-                  : activeConv.supportTicketEnabled
-                    ? <SupportConversationEmptyState />
-                    : null,
+                emptyState: isEmptySelection
+                  ? <ChatSelectionEmptyState />
+                  : models.header.isStarting
+                    ? <SessionStartingState />
+                    : activeConv.supportTicketEnabled
+                      ? <SupportConversationEmptyState />
+                      : null,
                 navigationRequest: models.navigation.request,
                 onNavigationHandled: models.navigation.acknowledge,
                 onTranscriptScroll: transcript.onTranscriptScroll,
                 queuedMessages: transcript.queuedDesktopMessages,
                 onEditQueuedMessage: transcript.onEditQueuedMessage,
                 onCancelQueuedMessage: transcript.onCancelQueuedMessage,
-                composer: (
+                composer: isEmptySelection ? null : (
                   <ChatComposerShell
                     chatComposerAttachments={composer.chatComposerAttachments}
                     saveDesktopAttachments={composer.saveDesktopAttachments}

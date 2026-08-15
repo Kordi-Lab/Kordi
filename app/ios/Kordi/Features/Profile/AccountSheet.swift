@@ -19,6 +19,10 @@ struct AccountSheet: View {
         _path = State(initialValue: [])
     }
 
+    init(openingAuthentication: Bool) {
+        _path = State(initialValue: openingAuthentication ? [.authentication] : [])
+    }
+
     fileprivate init(previewing route: AccountSettingsRoute) {
         _path = State(initialValue: [route])
     }

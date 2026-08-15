@@ -112,4 +112,10 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
         KordiSupportIdentity.matches(name: displayName, seed: peerAccountId)
             || KordiSupportIdentity.matches(name: agentDisplayName, seed: agentId)
     }
+
+    /// Agent definitions remain available as launch targets without pretending
+    /// that a conversation already exists in the user's session history.
+    var isAgentLaunchTemplate: Bool {
+        kind == .agent && id.hasPrefix("agent-template:")
+    }
 }

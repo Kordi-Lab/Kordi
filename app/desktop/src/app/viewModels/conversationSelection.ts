@@ -115,10 +115,10 @@ export function activeConversationForSelection(
   if (pendingCloudConversation) return pendingCloudConversation;
   const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);
   if (pendingCanonicalCloudConversation) return pendingCanonicalCloudConversation;
-  return chatConversations[0]
+  return options.fallbackConversation
     ?? (options.isNativeShell
       ? options.nativeChatPlaceholder
-      : options.fallbackConversation ?? options.nativeChatPlaceholder);
+      : chatConversations[0] ?? options.nativeChatPlaceholder);
 }
 
 export function applyCanonicalHydrationPlaceholder(

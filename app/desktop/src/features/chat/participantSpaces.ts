@@ -42,7 +42,7 @@ export function isPersistedBlankGroupContinuation(session: ParticipantSpaceSessi
 }
 
 function blankAgentConversationCollapseKey(conversation: Conversation) {
-  if (conversationHasUserContent(conversation) || conversation.type !== 'owned-agent') return null;
+  if (conversationHasUserContent(conversation) || conversation.type === 'person') return null;
   const metadata = metadataRecord(conversation.metadata);
   const agent = nonSelfAgents(allDisplayParticipants(conversation))[0];
   const title = cleanOptionalText(conversation.name).toLowerCase();
@@ -53,6 +53,12 @@ function blankAgentConversationCollapseKey(conversation: Conversation) {
     || agent?.agentId
     || cleanOptionalText(conversation.name);
   return agentKey ? `agent:${agentKey}` : null;
+}
+
+export function isUnmaterializedAgentConversation(
+  conversation: Conversation,
+) {
+  return blankAgentConversationCollapseKey(conversation) !== null;
 }
 
 function blankAgentSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
@@ -659,15 +665,35 @@ export function filterParticipantSpaces(
   channel: ChatChannel,
 ) {
   const normalized = query.trim().toLowerCase();
-  return spaces.filter((space) => {
-    if (!spaceMatchesChannel(space, channel)) return false;
-    if (!normalized) return true;
+  return spaces.flatMap((space) => {
+    if (!spaceMatchesChannel(space, channel)) return [];
+    const visibleSpace = channel === 'agent'
+      ? (() => {
+          const sessions = space.sessions.filter(
+            (session) => blankAgentSessionCollapseKey(session) === null,
+          );
+          const latest = sessions[0];
+          return {
+            ...space,
+            sessions,
+            sessionCount: sessions.length,
+            unread: sessions.reduce((sum, session) => sum + session.unread, 0),
+            updatedAtLabel: latest?.updatedAtLabel,
+            updatedAtMs: latest?.updatedAtMs ?? 0,
+            preview: latest?.preview ?? '',
+          };
+        })()
+      : space;
+    if (channel === 'agent' && visibleSpace.kind !== 'self' && visibleSpace.sessions.length === 0) {
+      return [];
+    }
+    if (!normalized) return [visibleSpace];
     const haystack = [
-      space.title,
-      space.preview,
-      ...space.participants.map((participant) => participant.name),
-      ...space.sessions.flatMap((session) => [session.title, session.preview]),
+      visibleSpace.title,
+      visibleSpace.preview,
+      ...visibleSpace.participants.map((participant) => participant.name),
+      ...visibleSpace.sessions.flatMap((session) => [session.title, session.preview]),
     ].join(' ').toLowerCase();
-    return haystack.includes(normalized);
+    return haystack.includes(normalized) ? [visibleSpace] : [];
   });
 }

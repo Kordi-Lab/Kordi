@@ -93,6 +93,8 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         desktopAuthError: args.desktopAuthError,
         activeLoginProviderId: args.activeLoginProviderId,
         selectAuthProvider: args.selectAuthProvider,
+        openAuthSettings: args.openAuthSettings,
+        openCloudAccountAuthentication: args.openCloudAccountAuthentication,
         openLoginFlow: args.openLoginFlow,
         refreshDesktopAuth: args.refreshDesktopAuth,
         handleSelectAuthChoice: args.handleSelectAuthChoice,

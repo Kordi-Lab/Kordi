@@ -16,6 +16,7 @@ import {
 } from '@/lib/desktop';
 import { isPendingIncomingCloudContactRequest, useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { normalizeKordiId } from '@/features/cloud/kordiId';
+import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 
 type SidebarChatActions = Pick<
   WorkspaceSidebarProps['chats'],
@@ -40,6 +41,10 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       chatActions={{
         onStartChatWithPerson: args.handleStartChatWithPerson,
         onStartChatWithAgent: async (agent) => {
+          if (!authStateSatisfiesStartupGate(args.desktopAuthState)) {
+            (args.openCloudAccountAuthentication ?? args.openAuthSettings)();
+            return;
+          }
           if (agent.cloudAgentId) {
             await args.handleStartChatWithAgent(agent);
             return;

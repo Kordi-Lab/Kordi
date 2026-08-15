@@ -452,7 +452,7 @@ enum CloudConversationCatalog {
 
     private static func defaultAgentConversation(account: CloudAccount, now: Date) -> ConversationSummary {
         ConversationSummary(
-            id: "agent-session:session:self-agent:default",
+            id: "agent-template:session:self-agent:default",
             kind: .agent,
             peerAccountId: account.accountId,
             agentId: nil,
@@ -472,7 +472,7 @@ enum CloudConversationCatalog {
         let owned = agent.ownerAccountId == account.accountId
         let sessionPrefix = owned ? "session:self-agent:" : "session:direct-agent:\(agent.ownerAccountId):"
         return ConversationSummary(
-            id: "agent-session:\(sessionPrefix)\(agent.agentId)",
+            id: "agent-template:\(sessionPrefix)\(agent.agentId)",
             kind: .agent,
             peerAccountId: agent.ownerAccountId,
             agentId: agent.agentId,

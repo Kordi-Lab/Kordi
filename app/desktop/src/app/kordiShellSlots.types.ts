@@ -386,6 +386,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'desktopAuthError'
   | 'activeLoginProviderId'
   | 'selectAuthProvider'
+  | 'openAuthSettings'
+  | 'openCloudAccountAuthentication'
   | 'openLoginFlow'
   | 'refreshDesktopAuth'
   | 'handleSelectAuthChoice'

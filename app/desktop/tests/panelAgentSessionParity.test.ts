@@ -422,7 +422,7 @@ test('new local sessions expose centered progress and coalesce duplicate first s
   const activeSendBlock = actionsSource.slice(activeSendStart);
 
   assert.match(chatsSource, /const isStarting = isDraft && isSending;/, 'the pending visual should be scoped to the local draft session');
-  assert.match(chatsSource, /emptyState: models\.header\.isStarting[\s\S]*\? <SessionStartingState \/>[\s\S]*: null/, 'the pending visual should occupy the empty transcript rather than the global error banner');
+  assert.match(chatsSource, /emptyState: isEmptySelection[\s\S]*: models\.header\.isStarting[\s\S]*\? <SessionStartingState \/>[\s\S]*: null/, 'the pending visual should occupy a selected draft transcript rather than the global error banner');
   assert.match(activeSendBlock, /if \(localSendDelayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'duplicate first sends should be coalesced while materialization is in flight');
   assert.doesNotMatch(actionsSource, /Kordi is still preparing this session/, 'session-starting should never use failure copy');
 

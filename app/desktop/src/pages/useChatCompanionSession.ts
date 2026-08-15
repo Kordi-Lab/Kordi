@@ -231,7 +231,7 @@ export function useChatCompanionSession({
     if (activePaneKind === 'agent' && onCreateAgentSession) {
       return create(initialPrompt);
     }
-    if (!suggested) return false;
+    if (!suggested) return create(initialPrompt);
     activate(suggested.id, initialPrompt);
     return true;
   };
@@ -271,7 +271,7 @@ export function useChatCompanionSession({
     sessionOptions,
     suggested,
     draftText,
-    canOpen: Boolean(suggested || (activePaneKind === 'agent' && onCreateAgentSession)),
+    canOpen: Boolean(suggested || onCreateAgentSession),
     transcript: {
       isLoading: transcriptNeedsLoading
         && transcriptLoadFailureSessionId !== conversationId,

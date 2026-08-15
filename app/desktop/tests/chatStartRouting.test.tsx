@@ -108,6 +108,9 @@ function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
     setActiveContactGroup: () => {},
     setActiveContactId: () => {},
     displayedAgents: [],
+    desktopAuthState: { hasAnyAuth: true, providers: [] },
+    openAuthSettings: () => {},
+    openCloudAccountAuthentication: () => {},
     activeCollaborationHost: null,
     localProfileAvatarSeed: null,
     refreshDesktopCollaboration: async () => {},
@@ -266,6 +269,26 @@ test('sidebar chat-create private cloud agent option routes to the selected clou
   });
 
   assert.deepEqual(calls, ['startCloudAgent:cloud_agent_abc']);
+});
+
+test('sidebar agent creation opens Authentication before creating a session without a provider', async () => {
+  const calls: string[] = [];
+  const element = assembleSidebarSlot(baseSidebarArgs({
+    desktopAuthState: { hasAnyAuth: false, providers: [] },
+    openCloudAccountAuthentication: () => { calls.push('authentication'); },
+    handleCreateChatSession: async () => { calls.push('createLocal'); },
+    handleStartChatWithAgent: async () => { calls.push('startAgent'); },
+  }) as never) as never as {
+    props: {
+      chatActions: {
+        onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void>;
+      };
+    };
+  };
+
+  await element.props.chatActions.onStartChatWithAgent({ id: 'agent:local', isOwned: true });
+
+  assert.deepEqual(calls, ['authentication']);
 });
 
 test('contact Message starts a fresh person session instead of selecting an existing one', () => {

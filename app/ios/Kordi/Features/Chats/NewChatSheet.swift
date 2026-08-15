@@ -16,6 +16,7 @@ struct NewChatSheet: View {
     @State private var groupName = ""
     @State private var selectedGroupContactIDs = Set<String>()
     @State private var isCreatingGroup = false
+    @State private var showsProviderAuthentication = false
 
     private let onSelect: (ConversationSummary) -> Void
 
@@ -98,6 +99,9 @@ struct NewChatSheet: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showsProviderAuthentication) {
+            AccountSheet(openingAuthentication: true)
         }
     }
 
@@ -290,6 +294,10 @@ struct NewChatSheet: View {
     }
 
     private func startAgentSession(from template: ConversationSummary) {
+        guard model.hasConfiguredProviderAuthentication else {
+            showsProviderAuthentication = true
+            return
+        }
         let accountId = model.account?.accountId ?? template.peerAccountId
         select(AgentSessionFactory.make(from: template, ownAccountId: accountId))
     }

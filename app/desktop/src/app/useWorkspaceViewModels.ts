@@ -23,9 +23,20 @@ import {
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
-import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
+import {
+  EMPTY_CHAT_SELECTION_ID,
+  LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+  isLocalDraftChatConversationId,
+  isProjectDraftSessionId,
+} from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
-import { buildParticipantSpaces, collapseBlankConversationShells, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
+import {
+  buildParticipantSpaces,
+  collapseBlankConversationShells,
+  ensureSelfParticipantSpace,
+  filterParticipantSpaces,
+  isUnmaterializedAgentConversation,
+} from '@/features/chat/participantSpaces';
 import {
   createTranscriptReferenceStabilizer,
 } from '@/features/chat/transcriptReferenceStability';
@@ -418,7 +429,7 @@ export function useWorkspaceViewModels({
       .sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0))
       .map(({ _updatedAtMs, ...conversation }) => conversation);
     return transcriptReferenceStabilizer.prepare(conversationsWithStableOrder);
-  }, [collaborationChatConversations, canonicalReadModel, conversations, isNativeShell, localChatConversations, transcriptReferenceStabilizer, transientChatConversations, visibleCollaborationChatConversations]);
+  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localChatConversations, transcriptReferenceStabilizer, transientChatConversations, visibleCollaborationChatConversations]);
   useLayoutEffect(() => {
     transcriptReferenceStabilizer.commit(hydratedChatConversations.cache);
   }, [hydratedChatConversations.cache, transcriptReferenceStabilizer]);
@@ -470,34 +481,45 @@ export function useWorkspaceViewModels({
     localAgentCollaborationReachoutSessionIds,
   ]);
 
-  const nativeChatPlaceholder = useMemo(
-    () => ({
-      id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+  const materializedChatConversations = useMemo(
+    () => chatConversations.filter(
+      (conversation) => !isUnmaterializedAgentConversation(conversation),
+    ),
+    [chatConversations],
+  );
+
+  const nativeChatPlaceholder = useMemo(() => {
+    const isExplicitDraft = isLocalDraftChatConversationId(activeConvId);
+    return {
+      id: isExplicitDraft
+        ? LOCAL_DRAFT_CHAT_CONVERSATION_ID
+        : EMPTY_CHAT_SELECTION_ID,
       canonicalSessionId: undefined,
-      name: 'New session',
+      name: isExplicitDraft ? 'New session' : 'Chats',
       type: 'owned-agent' as const,
       subtitle: '',
       unread: 0,
       collaborationSources: ['Local'],
       trust: 'Owned',
-      directness: 'Draft',
+      directness: isExplicitDraft ? 'Draft' : '',
       participants: ['Me', 'My Kordi'],
       collaborationTarget: undefined,
       messages: [],
-    }),
-    [],
-  );
+    };
+  }, [activeConvId]);
 
   const activeConv = useMemo(() => {
     const selected = activeConversationForSelection(activeConvId, chatConversations, {
       isNativeShell,
       nativeChatPlaceholder,
-      fallbackConversation: conversations[0],
+      fallbackConversation:
+        materializedChatConversations[0]
+        ?? (!isNativeShell ? conversations[0] : undefined),
     });
     const canonicalSessionId = selected.canonicalSessionId ?? selected.id;
     const hydration = canonicalHydrationBySessionId[canonicalSessionId];
     return applyCanonicalHydrationPlaceholder(selected, hydration);
-  }, [activeConvId, canonicalHydrationBySessionId, chatConversations, isNativeShell, nativeChatPlaceholder]);
+  }, [activeConvId, canonicalHydrationBySessionId, chatConversations, isNativeShell, materializedChatConversations, nativeChatPlaceholder]);
   const activeConversationUsesCollaboration = isNativeShell && (
     activeConv.id.startsWith('bridge:')
     || isLegacyCanonicalCollaborationSessionId(activeConv.canonicalSessionId ?? activeConv.id)

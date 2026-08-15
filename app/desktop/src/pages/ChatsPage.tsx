@@ -253,6 +253,10 @@ export function ChatsPage({
     onNavigateToMessage: transcriptNavigation.main.navigate,
   });
   const createSideAgentSession = async (initialPrompt = '') => {
+    if (!auth.hasAnyAuth) {
+      openAuthentication();
+      return false;
+    }
     const opened = await companionSession.actions.create(initialPrompt);
     if (!opened) return false;
     companionLayout.placeCompanion('right');
@@ -260,6 +264,10 @@ export function ChatsPage({
     return opened;
   };
   const openSideAgentPanel = async (initialPrompt = '') => {
+    if (!auth.hasAnyAuth) {
+      openAuthentication();
+      return false;
+    }
     const opened = await companionSession.actions.open(initialPrompt);
     if (!opened) return false;
     companionLayout.placeCompanion('right');
