@@ -399,46 +399,52 @@ private struct ConversationCallActivityCard: View {
         return isVoiceCall ? "Voice call started" : "Video call started"
     }
 
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isVoiceCall ? "phone.fill" : "video.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 42, height: 42)
-                .background(
-                    activity.event == .ended
-                        ? Color.secondary.gradient
-                        : KordiTheme.signalBlue.gradient,
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-                )
+    private var detailText: String {
+        guard let duration = message.text.range(of: "Duration", options: .caseInsensitive) else {
+            return message.text
+        }
+        return String(message.text[duration.lowerBound...])
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: isVoiceCall ? "phone.fill" : "video.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(activity.event == .ended ? Color.secondary : KordiTheme.signalBlue)
+                .frame(width: 20, height: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                Text(message.text)
+                Text(detailText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-
-            Spacer(minLength: 6)
+            .layoutPriority(1)
 
             if isActive && activity.event == .started {
                 Button("Join", action: onJoin)
                     .font(.subheadline.weight(.semibold))
                     .buttonStyle(.borderedProminent)
                     .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .frame(minHeight: 44)
             }
         }
-        .padding(12)
-        .frame(maxWidth: 360)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            Color(uiColor: .secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(message.text)")
+        .accessibilityLabel("\(title). \(detailText)")
     }
 }
 

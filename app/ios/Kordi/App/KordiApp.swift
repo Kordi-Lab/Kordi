@@ -134,6 +134,7 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+            || ProcessInfo.processInfo.arguments.contains("--preview-call-activity")
             || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
             || ProcessInfo.processInfo.arguments.contains("--preview-media")
@@ -159,6 +160,7 @@ private struct RootView: View {
                }
                if ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
                     || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-call-activity")
                     || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
                     || ProcessInfo.processInfo.arguments.contains("--preview-media")
                     || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")

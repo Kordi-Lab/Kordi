@@ -467,7 +467,7 @@ struct ConversationView: View {
         }
         .sheet(isPresented: $showAgentModel) {
             AgentModelSheet(conversation: conversation)
-                .presentationDetents([.medium])
+                .presentationDetents([.height(380)])
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $forwardRequest) { request in
