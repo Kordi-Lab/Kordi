@@ -120,7 +120,7 @@ enum CompanionPanelCatalog {
             )
         }
 
-        return availableSections
+        let existing = availableSections
             .flatMap(\.sessions)
             .filter { $0.id != source.id }
             .sorted {
@@ -130,6 +130,23 @@ enum CompanionPanelCatalog {
                 )
             }
             .first
+        if let existing {
+            return existing
+        }
+
+        if let template = availableSections.first?.template {
+            return AgentSessionFactory.make(
+                from: template,
+                ownAccountId: ownAccountID,
+                randomId: randomID,
+                now: now
+            )
+        }
+        return AgentSessionFactory.makeDefault(
+            ownAccountId: ownAccountID,
+            randomId: randomID,
+            now: now
+        )
     }
 
     static func existingSessions(

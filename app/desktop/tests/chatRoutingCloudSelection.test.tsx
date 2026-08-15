@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { activeConversationForSelection, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
+import { EMPTY_CHAT_SELECTION_ID } from '../src/features/chat/draftSessions';
 
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
   const localConversation = {
@@ -44,6 +45,105 @@ test('workspace active conversation resolves canonical Cloud direct session ids 
 
   assert.equal(selected.id, cloudConversation.id);
   assert.equal(selected.messages[0]?.text, 'hi');
+});
+
+test('startup fallback ignores a hidden blank shell but preserves it while an explicit first send materializes', () => {
+  const blankShell = {
+    id: 'session:self-agent:blank',
+    canonicalSessionId: 'session:self-agent:blank',
+    name: 'New chat',
+    type: 'owned-agent' as const,
+    subtitle: '',
+    unread: 0,
+    collaborationSources: ['Local'],
+    trust: 'Owned',
+    directness: 'Draft',
+    participants: ['Me', 'My Kordi'],
+    messages: [],
+  };
+  const existingChat = {
+    ...blankShell,
+    id: 'session:self-agent:existing',
+    canonicalSessionId: 'session:self-agent:existing',
+    name: 'Release plan',
+    directness: 'Agent chat',
+    messages: [{ role: 'user' as const, text: 'Review the plan', time: '10:00' }],
+  };
+  const emptyState = {
+    ...blankShell,
+    id: EMPTY_CHAT_SELECTION_ID,
+    canonicalSessionId: undefined,
+    name: 'Chats',
+    directness: '',
+  };
+
+  assert.equal(activeConversationForSelection(
+    '',
+    [blankShell, existingChat],
+    {
+      isNativeShell: true,
+      nativeChatPlaceholder: emptyState,
+      fallbackConversation: existingChat,
+    },
+  ).id, existingChat.id);
+  assert.equal(activeConversationForSelection(
+    blankShell.id,
+    [blankShell, existingChat],
+    {
+      isNativeShell: true,
+      nativeChatPlaceholder: emptyState,
+      fallbackConversation: existingChat,
+    },
+  ).id, blankShell.id);
+});
+
+test('workspace uses a neutral empty selection when the runtime contains only a blank shell', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: {
+        activeSessionId: 'session:self-agent:blank',
+        sessions: [{ id: 'session:self-agent:blank', title: 'New chat', subtitle: '', updatedAtLabel: 'Draft', messageCount: 0, draft: true }],
+        activeSession: { id: 'session:self-agent:blank', title: 'New chat', subtitle: '', updatedAtLabel: 'Draft', messageCount: 0, draft: true, messages: [], project: null, reflectionLessonArtifacts: [] },
+        localAgent: { label: 'My Kordi' },
+      } as never,
+      desktopCollaborationState: null,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'chats',
+      activeConvId: '',
+      activeProjectId: '',
+      activeProjectSessionId: 'draft:project-chat',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: () => [],
+      cloudSessionActivity: { tasksBySessionId: {}, artifactsBySessionId: {} },
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.equal(
+    viewModels?.activeConv.id,
+    EMPTY_CHAT_SELECTION_ID,
+    JSON.stringify(viewModels?.chatConversations),
+  );
+  assert.deepEqual(
+    viewModels?.agentParticipantSpaces.flatMap((space) => space.sessions),
+    [],
+  );
 });
 
 test('workspace active conversation does not fall back to a local UUID while a Cloud contact opens', () => {

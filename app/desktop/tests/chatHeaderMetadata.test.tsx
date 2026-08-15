@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { chatHeaderSubtitle, isGenericChatHeaderSubtitle } from '../src/pages/ChatsPage';
+import { localAgentConversationNeedsProvider } from '../src/pages/chatsPage.model';
 
 test('chat header subtitle hides generic session-kind labels derived from internal ids', () => {
   assert.equal(isGenericChatHeaderSubtitle('Group'), true);
@@ -17,6 +18,24 @@ test('chat header subtitle hides generic session-kind labels derived from intern
 test('chat header subtitle keeps useful user-facing temporary status copy', () => {
   assert.equal(isGenericChatHeaderSubtitle('Cloud direct chat is opening…'), false);
   assert.equal(isGenericChatHeaderSubtitle('Waiting for first message'), false);
+});
+
+test('provider configuration gates only local Agent conversations', () => {
+  assert.equal(localAgentConversationNeedsProvider({
+    activePaneKind: 'agent',
+    activeConversationUsesCollaboration: false,
+    hasAnyAuth: false,
+  }), true);
+  assert.equal(localAgentConversationNeedsProvider({
+    activePaneKind: 'human',
+    activeConversationUsesCollaboration: false,
+    hasAnyAuth: false,
+  }), false);
+  assert.equal(localAgentConversationNeedsProvider({
+    activePaneKind: 'agent',
+    activeConversationUsesCollaboration: false,
+    hasAnyAuth: true,
+  }), false);
 });
 
 test('chat header subtitle removes internal group/direct session labels but keeps useful text', () => {

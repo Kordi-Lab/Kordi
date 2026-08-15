@@ -14,6 +14,7 @@ import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import type { KordiWorkspaceState } from '@/app/useKordiWorkspaceState';
 import { buildChatCreatePeopleContactLookup } from '@/features/chat/chatCreateFlows';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
+import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
 export function useKordiAppMutationActions({
@@ -46,6 +47,12 @@ export function useKordiAppMutationActions({
     ui: {
       projectsUi,
       composerUi,
+    },
+    auth: {
+      desktopAuthState,
+    },
+    authNavigation: {
+      openCloudAccountAuthentication,
     },
     chat: {
       desktopChatState,
@@ -142,7 +149,9 @@ export function useKordiAppMutationActions({
     cloudAccountId: cloudSession.account?.accountId,
     conversations: chatConversations,
     isNativeShell,
+    hasAgentProvider: authStateSatisfiesStartupGate(desktopAuthState),
     createOwnedAgentSession: runtime.sessions.handleCreateChatSession,
+    openAgentAuthentication: openCloudAccountAuthentication,
     startCollaborationPersonSession:
       runtime.collaboration.handleStartCollaborationPersonSession,
     setActiveConversationId: setActiveConvId,

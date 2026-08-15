@@ -30,8 +30,10 @@ enum AgentSessionPresentationCatalog {
         }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return grouped.compactMap { key, sessions -> AgentSessionSection? in
-            guard let template = sessions.max(by: { $0.lastActivityAt < $1.lastActivityAt }) else { return nil }
+        return grouped.compactMap { key, candidates -> AgentSessionSection? in
+            guard let template = candidates.first(where: \.isAgentLaunchTemplate)
+                    ?? candidates.max(by: { $0.lastActivityAt < $1.lastActivityAt }) else { return nil }
+            let sessions = candidates.filter { !$0.isAgentLaunchTemplate }
             let agentName = template.agentDisplayName?.nonEmpty ?? "My Kordi"
             let agentMatches = !query.isEmpty && agentName.localizedCaseInsensitiveContains(query)
             let visibleSessions = query.isEmpty || agentMatches
@@ -40,7 +42,7 @@ enum AgentSessionPresentationCatalog {
                     session.displayName.localizedCaseInsensitiveContains(query)
                         || session.lastMessage.localizedCaseInsensitiveContains(query)
                 }
-            guard !visibleSessions.isEmpty else { return nil }
+            guard query.isEmpty || agentMatches || !visibleSessions.isEmpty else { return nil }
 
             return AgentSessionSection(
                 id: key,
@@ -79,7 +81,11 @@ enum AgentSessionTimelineCatalog {
         collapsedForkParentIds: Set<String> = []
     ) -> [AgentSessionListItem] {
         let allSessions = conversations
-            .filter { $0.kind == .agent && !$0.representsKordiSupport }
+            .filter {
+                $0.kind == .agent
+                    && !$0.representsKordiSupport
+                    && !$0.isAgentLaunchTemplate
+            }
             .sorted(by: sessionSort)
         let bySessionId = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.sessionId, $0) })
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -156,6 +162,33 @@ enum AgentSessionTimelineCatalog {
 }
 
 enum AgentSessionFactory {
+    static func makeDefault(
+        ownAccountId: String,
+        randomId: String = UUID().uuidString.lowercased(),
+        now: Date = Date()
+    ) -> ConversationSummary {
+        make(
+            from: ConversationSummary(
+                id: "agent-template:session:self-agent:default",
+                kind: .agent,
+                peerAccountId: ownAccountId,
+                agentId: nil,
+                ownerDisplayName: nil,
+                displayName: "My Kordi",
+                lastMessage: "Your private cloud agent",
+                lastActivityAt: now,
+                unreadCount: 0,
+                avatarSource: nil,
+                agentActivity: .ready,
+                sessionId: "session:self-agent:default",
+                agentDisplayName: "My Kordi"
+            ),
+            ownAccountId: ownAccountId,
+            randomId: randomId,
+            now: now
+        )
+    }
+
     static func make(
         from template: ConversationSummary,
         ownAccountId: String,

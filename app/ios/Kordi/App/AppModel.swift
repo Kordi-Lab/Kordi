@@ -682,6 +682,10 @@ final class AppModel: ObservableObject {
         providerAuthSnapshots[ProviderAuthenticationDefinition.canonicalID(providerID)]
     }
 
+    var hasConfiguredProviderAuthentication: Bool {
+        !providerAuthSnapshots.isEmpty
+    }
+
     func clearProviderAuthenticationError() {
         providerAuthenticationErrorMessage = nil
     }

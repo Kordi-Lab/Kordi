@@ -19,11 +19,15 @@ import {
   latestParticipantSpaceMessageText,
   safePreviewText,
 } from './participantConversationState';
+import {
+  filterParticipantSpacesByChannel,
+} from './participantSpaceFilters';
 
 export {
   isBlankConversation,
   isPersistedBlankGroupContinuationConversation,
 } from './participantConversationState';
+export { spaceMatchesChannel } from './participantSpaceFilters';
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
@@ -42,7 +46,7 @@ export function isPersistedBlankGroupContinuation(session: ParticipantSpaceSessi
 }
 
 function blankAgentConversationCollapseKey(conversation: Conversation) {
-  if (conversationHasUserContent(conversation) || conversation.type !== 'owned-agent') return null;
+  if (conversationHasUserContent(conversation) || conversation.type === 'person') return null;
   const metadata = metadataRecord(conversation.metadata);
   const agent = nonSelfAgents(allDisplayParticipants(conversation))[0];
   const title = cleanOptionalText(conversation.name).toLowerCase();
@@ -53,6 +57,12 @@ function blankAgentConversationCollapseKey(conversation: Conversation) {
     || agent?.agentId
     || cleanOptionalText(conversation.name);
   return agentKey ? `agent:${agentKey}` : null;
+}
+
+export function isUnmaterializedAgentConversation(
+  conversation: Conversation,
+) {
+  return blankAgentConversationCollapseKey(conversation) !== null;
 }
 
 function blankAgentSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
@@ -596,11 +606,6 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
-export function spaceMatchesChannel(space: ParticipantSpaceViewModel, channel: ChatChannel) {
-  if (channel === 'agent') return space.kind === 'self' || space.kind === 'direct-agent';
-  return space.kind === 'direct-human' || space.kind === 'group';
-}
-
 export type AgentIdentity = {
   name: string;
   avatarSeed: string;
@@ -658,16 +663,10 @@ export function filterParticipantSpaces(
   query: string,
   channel: ChatChannel,
 ) {
-  const normalized = query.trim().toLowerCase();
-  return spaces.filter((space) => {
-    if (!spaceMatchesChannel(space, channel)) return false;
-    if (!normalized) return true;
-    const haystack = [
-      space.title,
-      space.preview,
-      ...space.participants.map((participant) => participant.name),
-      ...space.sessions.flatMap((session) => [session.title, session.preview]),
-    ].join(' ').toLowerCase();
-    return haystack.includes(normalized);
-  });
+  return filterParticipantSpacesByChannel(
+    spaces,
+    query,
+    channel,
+    (session) => blankAgentSessionCollapseKey(session) === null,
+  );
 }

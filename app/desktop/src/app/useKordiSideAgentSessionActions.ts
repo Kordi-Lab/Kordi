@@ -4,6 +4,7 @@ import {
   updateScopeDraft,
   type ComposerDraftState,
 } from '@/features/chat/composerDrafts';
+import { isUnmaterializedDesktopAgentSession } from '@/features/chat/draftSessions';
 import type { DesktopChatState, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { createDesktopChatSession, fetchDesktopChatState } from '@/lib/desktop';
 
@@ -18,27 +19,6 @@ type UseKordiSideAgentSessionActionsArgs = {
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
 };
 
-function isReusableBlankDesktopSession(
-  session: Pick<DesktopChatState['activeSession'], 'draft' | 'messageCount' | 'title'>,
-) {
-  const title = session.title.trim().toLowerCase();
-  return session.messageCount === 0 && (
-    session.draft
-    || !title
-    || [
-      'new chat',
-      'new session',
-      'untitled session',
-      'session',
-      'kordi',
-      'my kordi',
-      'my agent',
-      'my kordi session',
-      'my agent session',
-    ].includes(title)
-  );
-}
-
 export function reusableBlankDesktopSessionId(
   state: DesktopChatState | null,
   excludedSessionId?: string | null,
@@ -50,15 +30,14 @@ export function reusableBlankDesktopSessionId(
     state.activeSession.id !== excludedId
     && !occupiedSessionIds.has(state.activeSession.id)
     && !state.activeSession.project
-    && state.activeSession.messages.length === 0
-    && isReusableBlankDesktopSession(state.activeSession)
+    && isUnmaterializedDesktopAgentSession(state.activeSession)
   ) {
     return state.activeSession.id;
   }
   return state.sessions.find((session) => (
     session.id !== excludedId
     && !occupiedSessionIds.has(session.id)
-    && isReusableBlankDesktopSession(session)
+    && isUnmaterializedDesktopAgentSession(session)
   ))?.id ?? null;
 }
 

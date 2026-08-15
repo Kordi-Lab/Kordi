@@ -3,16 +3,11 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 test('native blank chat draft does not surface redundant local-draft copy', () => {
-  const source = readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/app/viewModels/nativeChatSelection.ts', import.meta.url), 'utf8');
   const detailPanel = readFileSync(new URL('../src/pages/ChatDetailPanel.tsx', import.meta.url), 'utf8');
-  const start = source.indexOf('const nativeChatPlaceholder = useMemo(');
-  const end = source.indexOf('const activeConv = useMemo', start);
-  assert.ok(start >= 0 && end > start, 'native chat placeholder block should be present');
-
-  const block = source.slice(start, end);
-  assert.match(block, /subtitle:\s*'',/);
-  assert.match(block, /messages:\s*\[\],/);
-  assert.doesNotMatch(block, /Blank drafts stay local until the first real send\./);
+  assert.match(source, /subtitle:\s*'',/);
+  assert.match(source, /messages:\s*\[\],/);
+  assert.doesNotMatch(source, /Blank drafts stay local until the first real send\./);
   assert.doesNotMatch(detailPanel, /Blank drafts stay local until the first real send\./);
 
   const overviewStart = detailPanel.indexOf("if (activeDetailTab === 'info')");

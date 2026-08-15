@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import { reusableBlankDesktopSessionId } from '../src/app/useKordiSideAgentSessionActions';
 import { existingBlankSessionIdForParticipantSpace } from '../src/features/chat/chatCreateFlows';
+import { isUnmaterializedDesktopAgentSession } from '../src/features/chat/draftSessions';
 import {
   markOptimisticCanonicalMessageSent,
   sentPreparedCanonicalUserMessage,
@@ -91,6 +92,33 @@ test('Ask Agent reuses one idle blank side session but not the main or a busy se
     reusableBlankDesktopSessionId(state, 'session:main', new Set(['session:blank'])),
     null,
   );
+});
+
+test('Ask Agent remains available without an existing agent session and authenticates before creating one', () => {
+  const chatsPage = source('../src/pages/ChatsPage.tsx');
+  const companionSession = source('../src/pages/useChatCompanionSession.ts');
+
+  assert.match(companionSession, /canOpen: Boolean\(suggested \|\| onCreateAgentSession\)/);
+  assert.match(companionSession, /if \(!suggested\) return create\(initialPrompt\)/);
+  assert.match(
+    chatsPage,
+    /const openSideAgentPanel = async[\s\S]*if \(!auth\.hasAnyAuth\) \{[\s\S]*openAuthentication\(\);[\s\S]*return false;/,
+  );
+});
+
+test('desktop startup distinguishes an unmaterialized shell from a real session', () => {
+  assert.equal(isUnmaterializedDesktopAgentSession({
+    title: 'New chat',
+    messageCount: 0,
+    draft: true,
+    messages: [],
+  }), true);
+  assert.equal(isUnmaterializedDesktopAgentSession({
+    title: 'Release plan',
+    messageCount: 1,
+    draft: false,
+    messages: [{ role: 'user', text: 'Ship it' }],
+  }), false);
 });
 
 test('participant-space continuation reuses a hidden persisted group blank', () => {

@@ -46,6 +46,7 @@ struct ConversationView: View {
     @State private var forwardedDestination: ConversationSummary?
     @State private var selectedCompanionConversation: ConversationSummary?
     @State private var showsCompanionPanel = false
+    @State private var showsProviderAuthentication = false
     @State private var hasOpenedCompanionPreview = false
 
     init(
@@ -481,6 +482,9 @@ struct ConversationView: View {
                 readers: readReceiptParticipants(for: message)
             )
         }
+        .sheet(isPresented: $showsProviderAuthentication) {
+            AccountSheet(openingAuthentication: true)
+        }
         .inspector(isPresented: $showsCompanionPanel) {
             CompanionChatPanel(
                 isPresented: $showsCompanionPanel,
@@ -811,18 +815,23 @@ struct ConversationView: View {
         .buttonStyle(.plain)
         .contentShape(Circle())
         .accessibilityLabel("Ask Agent")
-        .accessibilityHint("Opens an agent chat with this session attached as context")
+        .accessibilityHint(
+            model.hasConfiguredProviderAuthentication
+                ? "Opens an agent chat with this session attached as context"
+                : "Opens Authentication to configure an agent provider"
+        )
     }
 
     private var canOpenCompanionPanel: Bool {
-        allowsCompanionPanel && !CompanionPanelCatalog.sections(
-            conversations: model.conversations,
-            ownAccountID: model.account?.accountId ?? ""
-        ).isEmpty
+        allowsCompanionPanel
     }
 
     private func openCompanionPanel() {
         guard allowsCompanionPanel else { return }
+        guard model.hasConfiguredProviderAuthentication else {
+            showsProviderAuthentication = true
+            return
+        }
         if selectedCompanionConversation == nil
             || selectedCompanionConversation?.id == conversation.id {
             selectedCompanionConversation = CompanionPanelCatalog.suggestedConversation(

@@ -63,6 +63,24 @@ export function SessionStartingState() {
   );
 }
 
+export function ChatSelectionEmptyState() {
+  return (
+    <div
+      className="flex h-full min-h-48 items-center justify-center px-8 text-center"
+      data-chat-selection-empty-state="true"
+    >
+      <div className="max-w-sm">
+        <div className="text-[14px] font-semibold text-[color:var(--utility-foreground)]">
+          No chat selected
+        </div>
+        <p className="mt-1.5 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">
+          Select a conversation, or use + to start an agent session.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function ChatSessionPane({
   viewport,
   presentation,

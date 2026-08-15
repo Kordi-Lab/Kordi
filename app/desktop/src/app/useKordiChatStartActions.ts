@@ -52,7 +52,9 @@ type UseKordiChatStartActionsArgs = {
   cloudAccountId?: string | null;
   conversations: Conversation[];
   isNativeShell: boolean;
+  hasAgentProvider: boolean;
   createOwnedAgentSession: () => Promise<void>;
+  openAgentAuthentication: () => void;
   startCollaborationPersonSession: (
     target: CollaborationPersonTarget,
   ) => Promise<void>;
@@ -75,7 +77,9 @@ export function useKordiChatStartActions({
   cloudAccountId,
   conversations,
   isNativeShell,
+  hasAgentProvider,
   createOwnedAgentSession,
+  openAgentAuthentication,
   startCollaborationPersonSession,
   setActiveConversationId,
   setActiveNav,
@@ -196,6 +200,10 @@ export function useKordiChatStartActions({
 
   const startChatWithAgent = useCallback(async (agent: Agent) => {
     setDesktopError(null);
+    if (!hasAgentProvider) {
+      openAgentAuthentication();
+      return;
+    }
     setActiveNav('chats');
 
     if (agent.isOwned) {
@@ -250,7 +258,9 @@ export function useKordiChatStartActions({
     canonicalState?.profile.humanIdentityId,
     conversations,
     createOwnedAgentSession,
+    hasAgentProvider,
     isNativeShell,
+    openAgentAuthentication,
     selectNewSession,
     setActiveNav,
     setCanonicalState,

@@ -350,6 +350,20 @@ export function conversationPaneKind(conversation: Conversation): 'human' | 'age
   return null;
 }
 
+export function localAgentConversationNeedsProvider({
+  activePaneKind,
+  activeConversationUsesCollaboration,
+  hasAnyAuth,
+}: {
+  activePaneKind: 'human' | 'agent' | null;
+  activeConversationUsesCollaboration: boolean;
+  hasAnyAuth: boolean;
+}) {
+  return activePaneKind === 'agent'
+    && !activeConversationUsesCollaboration
+    && !hasAnyAuth;
+}
+
 function oppositeCompanionSide(side: CompanionSide): CompanionSide {
   return side === 'left' ? 'right' : 'left';
 }

@@ -90,6 +90,35 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(sections[0].sessions.map(\.sessionId), [launch.sessionId])
     }
 
+    func testAgentLaunchTemplateRemainsSelectableButDoesNotAppearAsASession() {
+        let template = ConversationSummary(
+            id: "agent-template:session:self-agent:default",
+            kind: .agent,
+            peerAccountId: "acct_me",
+            agentId: nil,
+            ownerDisplayName: "Alex",
+            displayName: "My Kordi",
+            lastMessage: "Your private cloud agent",
+            lastActivityAt: Date(timeIntervalSince1970: 20),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: "session:self-agent:default",
+            agentDisplayName: "My Kordi"
+        )
+
+        let sections = AgentSessionPresentationCatalog.build(
+            conversations: [template],
+            ownAccountId: "acct_me"
+        )
+        let timeline = AgentSessionTimelineCatalog.build(conversations: [template])
+
+        XCTAssertEqual(sections.map(\.displayName), ["My Kordi"])
+        XCTAssertEqual(sections.first?.template.id, template.id)
+        XCTAssertEqual(sections.first?.sessions, [])
+        XCTAssertEqual(timeline, [])
+    }
+
     func testNewSessionUsesFreshMacCompatibleRoutingAndPreservesAgentIdentity() {
         let template = conversation(
             id: "template",

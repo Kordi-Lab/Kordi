@@ -48,6 +48,66 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertNotEqual(suggestion?.sessionId, source.sessionId)
     }
 
+    func testContactChatStartsAFreshSessionWhenOnlyAnAgentTemplateExists() {
+        let source = conversation(
+            id: "contact",
+            kind: .person,
+            date: Date(timeIntervalSince1970: 30)
+        )
+        let template = ConversationSummary(
+            id: "agent-template:session:self-agent:default",
+            kind: .agent,
+            peerAccountId: "acct_me",
+            agentId: nil,
+            ownerDisplayName: "Alex",
+            displayName: "My Kordi",
+            lastMessage: "Your private cloud agent",
+            lastActivityAt: Date(timeIntervalSince1970: 20),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: "session:self-agent:default",
+            agentDisplayName: "My Kordi"
+        )
+
+        let suggestion = CompanionPanelCatalog.suggestedConversation(
+            for: source,
+            conversations: [source, template],
+            ownAccountID: "acct_me",
+            randomID: "empty-state",
+            now: Date(timeIntervalSince1970: 40)
+        )
+        let existing = CompanionPanelCatalog.existingSessions(
+            excluding: source,
+            conversations: [source, template],
+            ownAccountID: "acct_me"
+        )
+
+        XCTAssertEqual(suggestion?.id, "agent-session:session:self-agent:empty-state")
+        XCTAssertEqual(suggestion?.displayName, "My Kordi")
+        XCTAssertEqual(existing, [])
+    }
+
+    func testContactChatStartsDefaultAgentSessionWithoutExistingAgentData() {
+        let source = conversation(
+            id: "contact",
+            kind: .person,
+            date: Date(timeIntervalSince1970: 30)
+        )
+
+        let suggestion = CompanionPanelCatalog.suggestedConversation(
+            for: source,
+            conversations: [source],
+            ownAccountID: "acct_me",
+            randomID: "provider-only",
+            now: Date(timeIntervalSince1970: 40)
+        )
+
+        XCTAssertEqual(suggestion?.id, "agent-session:session:self-agent:provider-only")
+        XCTAssertEqual(suggestion?.displayName, "My Kordi")
+        XCTAssertEqual(suggestion?.peerAccountId, "acct_me")
+    }
+
     func testExistingSessionMenuExcludesTheSourceAndOrdersByRecentActivity() {
         let source = conversation(
             id: "source",
