@@ -255,6 +255,10 @@ enum PreviewData {
     }
 
     private static func mayaConversation(now: Date) -> [ChatMessage] {
+        if ProcessInfo.processInfo.arguments.contains("--preview-call-activity") {
+            return callActivityConversation(now: now)
+        }
+
         let conversationId = "person:acct_maya"
         let sampleTurns = [
             "I finished the navigation audit for the iPhone build.",
@@ -291,6 +295,70 @@ enum PreviewData {
         ])
         messages.append(contentsOf: previewMediaMessages(now: now))
         return messages
+    }
+
+    private static func callActivityConversation(now: Date) -> [ChatMessage] {
+        let conversationId = "person:acct_maya"
+        return [
+            ChatMessage(
+                id: "preview-call-ended-peer",
+                conversationId: conversationId,
+                author: .person,
+                authorName: "Maya Chen",
+                text: "Voice call ended. Duration 00:18",
+                createdAt: now.addingTimeInterval(-900),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                messageKind: ChatCallActivity.messageKind(for: .ended, callId: "preview-peer")
+            ),
+            ChatMessage(
+                id: "preview-call-reply",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "Hello",
+                createdAt: now.addingTimeInterval(-840),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            ),
+            ChatMessage(
+                id: "preview-call-follow-up",
+                conversationId: conversationId,
+                author: .person,
+                authorName: "Maya Chen",
+                text: "Test message",
+                createdAt: now.addingTimeInterval(-810),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            ),
+            ChatMessage(
+                id: "preview-call-ended-own",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "Voice call ended. Duration 00:04",
+                createdAt: now.addingTimeInterval(-420),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                messageKind: ChatCallActivity.messageKind(for: .ended, callId: "preview-own")
+            ),
+            ChatMessage(
+                id: "preview-call-started-peer",
+                conversationId: conversationId,
+                author: .person,
+                authorName: "Maya Chen",
+                text: "Maya Chen started a voice call.",
+                createdAt: now.addingTimeInterval(-60),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil,
+                messageKind: ChatCallActivity.messageKind(for: .started, callId: "preview-started")
+            ),
+        ]
     }
 
     static func pendingPhotoAttachments() -> [PendingAttachment] {

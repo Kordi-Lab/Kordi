@@ -20,69 +20,43 @@ struct AgentModelSheet: View {
     ]
     private let thinkingLevels = ["off", "default", "minimal", "low", "medium", "high", "xhigh", "max"]
 
-    private var agent: CloudAgent? { model.ownedAgent(for: conversation) }
     private var routing: CloudModelRouting { model.runtimeRouting(for: conversation) }
     private var canEdit: Bool { model.canChangeRuntimeRouting(for: conversation) }
-    private var isSessionScoped: Bool { model.runtimeRoutingIsSessionScoped(for: conversation) }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    Picker("Provider", selection: $selectedProvider) {
-                        Text(providerSummary).tag(providerSummary)
-                    }
-                    .disabled(model.providerAuthSnapshot == nil)
+                    AgentModelMenuRow(
+                        title: "Provider",
+                        options: [providerSummary],
+                        selection: $selectedProvider,
+                        isEnabled: model.providerAuthSnapshot != nil
+                    )
 
-                    Picker("Model", selection: $selectedModel) {
-                        ForEach(routes, id: \.self) { route in
-                            Text(modelLabel(route)).tag(route)
-                        }
-                    }
+                    AgentModelMenuRow(
+                        title: "Model",
+                        options: routes,
+                        selection: $selectedModel,
+                        optionLabel: modelLabel
+                    )
 
-                    Picker("Thinking level", selection: $selectedThinking) {
-                        ForEach(thinkingLevels, id: \.self) { level in
-                            Text(thinkingLabel(level)).tag(level)
-                        }
-                    }
+                    AgentModelMenuRow(
+                        title: "Thinking level",
+                        options: thinkingLevels,
+                        selection: $selectedThinking,
+                        optionLabel: thinkingLabel
+                    )
                 }
 
-                Section {
-                    if !canEdit {
+                if !canEdit {
+                    Section {
                         Label("Only the agent owner can change this model route.", systemImage: "lock")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                    } else if isSessionScoped {
-                        Label(
-                            "This route belongs to this session. Agent work still runs in Kordi Cloud or on an available Mac—not on this iPhone.",
-                            systemImage: "rectangle.connected.to.line.below"
-                        )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    } else {
-                        Label(
-                            "This route belongs to \(agent?.name ?? "this agent") and follows it across sessions.",
-                            systemImage: "sparkles"
-                        )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                     }
                 }
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle("Agent model")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Close agent model")
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+
                 HStack(spacing: 12) {
                     Spacer()
                     Button("Cancel") { dismiss() }
@@ -99,9 +73,27 @@ struct AgentModelSheet: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!canEdit || isSaving || selectedModel.isEmpty)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.bar)
+                .controlSize(.large)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(16)
+            .contentMargins(.top, 12, for: .scrollContent)
+            .scrollContentBackground(.hidden)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Agent model")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Close agent model")
+                }
             }
         }
         .interactiveDismissDisabled(isSaving)
@@ -158,5 +150,58 @@ struct AgentModelSheet: View {
 
     private func thinkingLabel(_ value: String) -> String {
         value == "xhigh" ? "Extra High" : value.capitalized
+    }
+}
+
+private struct AgentModelMenuRow: View {
+    let title: String
+    let options: [String]
+    @Binding var selection: String
+    var isEnabled = true
+    var optionLabel: (String) -> String = { $0 }
+
+    private var selectedLabel: String {
+        optionLabel(selection.nonEmpty ?? options.first ?? "")
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        selection = option
+                    } label: {
+                        if selection == option {
+                            Label(optionLabel(option), systemImage: "checkmark")
+                        } else {
+                            Text(optionLabel(option))
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(selectedLabel)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .foregroundStyle(.primary)
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(KordiTheme.signalBlue)
+                        .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .contentShape(Rectangle())
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
+            .accessibilityLabel(title)
+            .accessibilityValue(selectedLabel)
+        }
     }
 }
