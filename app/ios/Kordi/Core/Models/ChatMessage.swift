@@ -188,6 +188,75 @@ struct ChatCallActivity: Hashable {
     }
 }
 
+enum ChatCallActivityTimeline {
+    static func collapsingStatuses(in messages: [ChatMessage]) -> [ChatMessage] {
+        var result: [ChatMessage] = []
+        var indexByCallID: [String: Int] = [:]
+
+        for message in messages {
+            guard let activity = message.callActivity, let callID = activity.callId else {
+                result.append(message)
+                continue
+            }
+            guard let existingIndex = indexByCallID[callID] else {
+                indexByCallID[callID] = result.count
+                result.append(message)
+                continue
+            }
+
+            let existing = result[existingIndex]
+            guard activity.event == .ended else {
+                if existing.callActivity?.event != .ended {
+                    result[existingIndex] = message
+                }
+                continue
+            }
+            var ended = existing
+            ended.messageKind = message.messageKind
+            ended.text = endedText(
+                message.text,
+                startedText: existing.text,
+                startedAt: existing.createdAt,
+                endedAt: message.createdAt
+            )
+            result[existingIndex] = ended
+        }
+        return result
+    }
+
+    static func durationString(from start: Date, to end: Date) -> String {
+        let totalSeconds = max(0, Int(end.timeIntervalSince(start)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private static func endedText(
+        _ endedText: String,
+        startedText: String,
+        startedAt: Date,
+        endedAt: Date
+    ) -> String {
+        if endedText.localizedCaseInsensitiveContains("duration") {
+            return endedText
+        }
+        let source = endedText.isEmpty ? startedText : endedText
+        let noun: String
+        if source.localizedCaseInsensitiveContains("voice call") {
+            noun = "voice call"
+        } else if source.localizedCaseInsensitiveContains("video chat") {
+            noun = "video chat"
+        } else {
+            noun = "video call"
+        }
+        return "The \(noun) ended. Duration \(durationString(from: startedAt, to: endedAt))."
+    }
+}
+
 struct ChatMessage: Identifiable, Codable, Hashable {
     let id: String
     let conversationId: String

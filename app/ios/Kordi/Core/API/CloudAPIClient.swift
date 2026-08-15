@@ -262,7 +262,9 @@ actor CloudAPIClient {
             .joined(separator: ", ")
     }
 
-    private func activateAccount(_ accountId: String) {
+    /// Installs the account context returned by an authentication flow before
+    /// account-scoped chat APIs begin their bootstrap work.
+    func activateAccount(_ accountId: String) {
         if activeAccountId != accountId {
             resetChatCache()
         }

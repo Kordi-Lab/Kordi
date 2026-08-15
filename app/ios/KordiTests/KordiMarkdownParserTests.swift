@@ -1,3 +1,4 @@
+import CallKit
 import XCTest
 @testable import Kordi
 
@@ -235,7 +236,7 @@ final class KordiMarkdownParserTests: XCTestCase {
     }
 
     @MainActor
-    func testPreviewCallWritesStartAndEndActivitiesToTheConversation() throws {
+    func testPreviewCallUpdatesOneActivityFromStartedToEnded() throws {
         let model = AppModel(previewMode: true)
         let conversation = try XCTUnwrap(
             model.conversations.first(where: { $0.id == "group:mobile" })
@@ -259,11 +260,47 @@ final class KordiMarkdownParserTests: XCTestCase {
         let callActivities = model.messages(for: conversation).compactMap(\.callActivity)
 
         XCTAssertNil(model.activeCall(for: conversation))
-        XCTAssertEqual(callActivities.suffix(2).map(\.event), [.started, .ended])
-        XCTAssertEqual(
-            model.conversations.first(where: { $0.id == conversation.id })?.lastMessage,
-            "The video chat ended."
+        XCTAssertEqual(callActivities.suffix(1).map(\.event), [.ended])
+        XCTAssertEqual(callActivities.filter { $0.callId == call.id }.count, 1)
+        XCTAssertTrue(
+            model.conversations.first(where: { $0.id == conversation.id })?.lastMessage
+                .contains("Duration") == true
         )
+    }
+
+    func testCallTimelineCollapsesLegacyStartAndEndIntoOneDurationEvent() throws {
+        let callID = "0198aabc-8b27-7a30-8cba-215495609c7a"
+        let started = ChatMessage(
+            id: "started",
+            conversationId: "conversation",
+            author: .me,
+            authorName: "You",
+            text: "You started a voice call.",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            deliveryState: .read,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatCallActivity.messageKind(for: .started, callId: callID)
+        )
+        let ended = ChatMessage(
+            id: "ended",
+            conversationId: "conversation",
+            author: .me,
+            authorName: "You",
+            text: "The voice call ended.",
+            createdAt: Date(timeIntervalSince1970: 1_077),
+            deliveryState: .read,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatCallActivity.messageKind(for: .ended, callId: callID)
+        )
+
+        let timeline = ChatCallActivityTimeline.collapsingStatuses(in: [started, ended])
+
+        XCTAssertEqual(timeline.count, 1)
+        XCTAssertEqual(timeline[0].id, started.id)
+        XCTAssertEqual(timeline[0].callActivity?.event, .ended)
+        XCTAssertEqual(timeline[0].text, "The voice call ended. Duration 01:17.")
     }
 
     func testConversationLoadingKeepsTheSyncMarkMoving() {
@@ -275,6 +312,62 @@ final class KordiMarkdownParserTests: XCTestCase {
 
         XCTAssertEqual(motion, .syncing)
         XCTAssertTrue(motion.runsContinuously)
+    }
+
+    func testSimulatorUsesInAppCallIntegration() {
+#if targetEnvironment(simulator)
+        XCTAssertFalse(KordiCallSystemIntegration.usesCallKit)
+#else
+        XCTAssertTrue(KordiCallSystemIntegration.usesCallKit)
+#endif
+    }
+
+    func testCallKitMuteTimeoutNeverEndsTheCall() {
+        let mute = CXSetMutedCallAction(call: UUID(), muted: true)
+        XCTAssertFalse(KordiCallActionPolicy.timeoutEndsCall(mute))
+    }
+
+    func testCallKitStartAndAnswerTimeoutsEndIncompleteCalls() {
+        let callID = UUID()
+        let start = CXStartCallAction(
+            call: callID,
+            handle: CXHandle(type: .generic, value: "Kordi contact")
+        )
+        let answer = CXAnswerCallAction(call: callID)
+
+        XCTAssertTrue(KordiCallActionPolicy.timeoutEndsCall(start))
+        XCTAssertTrue(KordiCallActionPolicy.timeoutEndsCall(answer))
+    }
+
+    func testDirectCallConnectsOnlyAfterRemoteParticipantJoinsRoom() {
+        XCTAssertFalse(
+            KordiCallConnectionReadiness.isConnected(
+                kind: .video,
+                hasRemoteParticipant: false
+            )
+        )
+        XCTAssertTrue(
+            KordiCallConnectionReadiness.isConnected(
+                kind: .video,
+                hasRemoteParticipant: true
+            )
+        )
+    }
+
+    func testMeetingConnectsWhenLocalRoomTransportIsReady() {
+        XCTAssertTrue(
+            KordiCallConnectionReadiness.isConnected(
+                kind: .meeting,
+                hasRemoteParticipant: false
+            )
+        )
+    }
+
+    func testCallRecoveryUsesBoundedIncreasingBackoff() {
+        XCTAssertEqual(
+            KordiCallRecoveryPolicy.reconnectDelays,
+            [.seconds(1), .seconds(3)]
+        )
     }
 
     func testTimelinePresentationShowsAvatarOnlyOnTheLastAdjacentHumanMessage() {

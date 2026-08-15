@@ -44,6 +44,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var conversations: [ConversationSummary] = []
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
+    @Published private(set) var latestCallSnapshot: CloudCall?
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
     @Published private(set) var sessionPinsByID: [String: CloudSessionPin] = [:]
     @Published private(set) var providerAuthSnapshot: CloudProviderAuthSnapshot?
@@ -272,6 +273,7 @@ final class AppModel: ObservableObject {
         conversations = []
         messagesByConversation = [:]
         callsByConversationID = [:]
+        latestCallSnapshot = nil
         sessionActivityByID = [:]
         sessionPinsByID = [:]
         providerAuthSnapshot = nil
@@ -1353,6 +1355,7 @@ final class AppModel: ObservableObject {
     }
 
     private func applyCallSnapshot(_ call: CloudCall) {
+        latestCallSnapshot = call
         if call.state == .ended {
             callsByConversationID[call.conversationId] = nil
         } else {
@@ -2425,7 +2428,7 @@ final class AppModel: ObservableObject {
                 } else {
                     chatPollsUntilContactRefresh -= 1
                 }
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(2))
             }
         }
     }
@@ -2809,14 +2812,33 @@ final class AppModel: ObservableObject {
         call: CloudCall,
         conversation: ConversationSummary
     ) {
-        let id = "preview-call-\(event.rawValue)-\(call.id)"
-        guard messagesByConversation[conversation.id]?.contains(where: { $0.id == id }) != true else {
-            return
-        }
+        let id = "preview-call-\(call.id)"
         let isVoice = call.kind == .voice
         let noun = isVoice ? "voice call" : call.kind == .meeting ? "video chat" : "video call"
-        let text = event == .started ? "You started a \(noun)." : "The \(noun) ended."
+        let text: String
+        if event == .started {
+            text = "You started a \(noun)."
+        } else {
+            let startedAt = call.answeredAt.map(parseCloudDate) ?? parseCloudDate(call.createdAt)
+            let duration = ChatCallActivityTimeline.durationString(
+                from: startedAt,
+                to: Date()
+            )
+            text = "The \(noun) ended. Duration \(duration)."
+        }
         let createdAt = event == .started ? parseCloudDate(call.createdAt) : Date()
+        if let index = messagesByConversation[conversation.id]?.firstIndex(where: { $0.id == id }) {
+            messagesByConversation[conversation.id]?[index].text = text
+            messagesByConversation[conversation.id]?[index].messageKind = ChatCallActivity.messageKind(
+                for: event,
+                callId: call.id
+            )
+            if let conversationIndex = conversations.firstIndex(where: { $0.id == conversation.id }) {
+                conversations[conversationIndex].lastMessage = text
+                conversations[conversationIndex].lastActivityAt = createdAt
+            }
+            return
+        }
         let message = ChatMessage(
             id: id,
             conversationId: conversation.id,
@@ -2924,6 +2946,7 @@ final class AppModel: ObservableObject {
 
     private func completeAuthentication(_ response: CloudAuthResponse) async throws {
         try keychain.saveToken(response.session.token)
+        await api.activateAccount(response.account.accountId)
         token = response.session.token
         currentDeviceId = response.session.deviceId
         account = response.account
