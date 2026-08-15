@@ -19,11 +19,15 @@ import {
   latestParticipantSpaceMessageText,
   safePreviewText,
 } from './participantConversationState';
+import {
+  filterParticipantSpacesByChannel,
+} from './participantSpaceFilters';
 
 export {
   isBlankConversation,
   isPersistedBlankGroupContinuationConversation,
 } from './participantConversationState';
+export { spaceMatchesChannel } from './participantSpaceFilters';
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
@@ -602,11 +606,6 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
 }
 
-export function spaceMatchesChannel(space: ParticipantSpaceViewModel, channel: ChatChannel) {
-  if (channel === 'agent') return space.kind === 'self' || space.kind === 'direct-agent';
-  return space.kind === 'direct-human' || space.kind === 'group';
-}
-
 export type AgentIdentity = {
   name: string;
   avatarSeed: string;
@@ -664,36 +663,10 @@ export function filterParticipantSpaces(
   query: string,
   channel: ChatChannel,
 ) {
-  const normalized = query.trim().toLowerCase();
-  return spaces.flatMap((space) => {
-    if (!spaceMatchesChannel(space, channel)) return [];
-    const visibleSpace = channel === 'agent'
-      ? (() => {
-          const sessions = space.sessions.filter(
-            (session) => blankAgentSessionCollapseKey(session) === null,
-          );
-          const latest = sessions[0];
-          return {
-            ...space,
-            sessions,
-            sessionCount: sessions.length,
-            unread: sessions.reduce((sum, session) => sum + session.unread, 0),
-            updatedAtLabel: latest?.updatedAtLabel,
-            updatedAtMs: latest?.updatedAtMs ?? 0,
-            preview: latest?.preview ?? '',
-          };
-        })()
-      : space;
-    if (channel === 'agent' && visibleSpace.kind !== 'self' && visibleSpace.sessions.length === 0) {
-      return [];
-    }
-    if (!normalized) return [visibleSpace];
-    const haystack = [
-      visibleSpace.title,
-      visibleSpace.preview,
-      ...visibleSpace.participants.map((participant) => participant.name),
-      ...visibleSpace.sessions.flatMap((session) => [session.title, session.preview]),
-    ].join(' ').toLowerCase();
-    return haystack.includes(normalized) ? [visibleSpace] : [];
-  });
+  return filterParticipantSpacesByChannel(
+    spaces,
+    query,
+    channel,
+    (session) => blankAgentSessionCollapseKey(session) === null,
+  );
 }

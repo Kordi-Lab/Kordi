@@ -24,8 +24,6 @@ import {
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {
-  EMPTY_CHAT_SELECTION_ID,
-  LOCAL_DRAFT_CHAT_CONVERSATION_ID,
   isLocalDraftChatConversationId,
   isProjectDraftSessionId,
 } from '@/features/chat/draftSessions';
@@ -35,7 +33,6 @@ import {
   collapseBlankConversationShells,
   ensureSelfParticipantSpace,
   filterParticipantSpaces,
-  isUnmaterializedAgentConversation,
 } from '@/features/chat/participantSpaces';
 import {
   createTranscriptReferenceStabilizer,
@@ -70,6 +67,7 @@ import {
   activeConversationForSelection,
   applyCanonicalHydrationPlaceholder,
 } from './viewModels/conversationSelection';
+import { materializedChatConversations, nativeChatPlaceholderForSelection } from './viewModels/nativeChatSelection';
 import { liveTurnsViewModelSignature } from './viewModels/workspaceViewModelSignatures';
 import {
   collaborationPeerIsApprovedContact,
@@ -481,45 +479,24 @@ export function useWorkspaceViewModels({
     localAgentCollaborationReachoutSessionIds,
   ]);
 
-  const materializedChatConversations = useMemo(
-    () => chatConversations.filter(
-      (conversation) => !isUnmaterializedAgentConversation(conversation),
-    ),
-    [chatConversations],
+  const visibleMaterializedChatConversations = useMemo(() => materializedChatConversations(chatConversations), [chatConversations]);
+  const nativeChatPlaceholder = useMemo(
+    () => nativeChatPlaceholderForSelection(activeConvId),
+    [activeConvId],
   );
-
-  const nativeChatPlaceholder = useMemo(() => {
-    const isExplicitDraft = isLocalDraftChatConversationId(activeConvId);
-    return {
-      id: isExplicitDraft
-        ? LOCAL_DRAFT_CHAT_CONVERSATION_ID
-        : EMPTY_CHAT_SELECTION_ID,
-      canonicalSessionId: undefined,
-      name: isExplicitDraft ? 'New session' : 'Chats',
-      type: 'owned-agent' as const,
-      subtitle: '',
-      unread: 0,
-      collaborationSources: ['Local'],
-      trust: 'Owned',
-      directness: isExplicitDraft ? 'Draft' : '',
-      participants: ['Me', 'My Kordi'],
-      collaborationTarget: undefined,
-      messages: [],
-    };
-  }, [activeConvId]);
 
   const activeConv = useMemo(() => {
     const selected = activeConversationForSelection(activeConvId, chatConversations, {
       isNativeShell,
       nativeChatPlaceholder,
       fallbackConversation:
-        materializedChatConversations[0]
+        visibleMaterializedChatConversations[0]
         ?? (!isNativeShell ? conversations[0] : undefined),
     });
     const canonicalSessionId = selected.canonicalSessionId ?? selected.id;
     const hydration = canonicalHydrationBySessionId[canonicalSessionId];
     return applyCanonicalHydrationPlaceholder(selected, hydration);
-  }, [activeConvId, canonicalHydrationBySessionId, chatConversations, isNativeShell, materializedChatConversations, nativeChatPlaceholder]);
+  }, [activeConvId, canonicalHydrationBySessionId, chatConversations, isNativeShell, nativeChatPlaceholder, visibleMaterializedChatConversations]);
   const activeConversationUsesCollaboration = isNativeShell && (
     activeConv.id.startsWith('bridge:')
     || isLegacyCanonicalCollaborationSessionId(activeConv.canonicalSessionId ?? activeConv.id)
