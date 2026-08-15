@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { chatHeaderSubtitle, isGenericChatHeaderSubtitle } from '../src/pages/ChatsPage';
-import { localAgentConversationNeedsProvider } from '../src/pages/chatsPage.model';
+import {
+  localAgentConversationNeedsProvider,
+} from '../src/pages/chatsPage.model';
 
 test('chat header subtitle hides generic session-kind labels derived from internal ids', () => {
   assert.equal(isGenericChatHeaderSubtitle('Group'), true);
@@ -52,4 +54,16 @@ test('ChatsPage header does not render trust, bridge, or directness metadata chi
   assert.doesNotMatch(source, /<Globe[\s\S]*bridge/);
   assert.doesNotMatch(source, /<ArrowRightLeft[\s\S]*activeConv\.directness/);
   assert.doesNotMatch(source, /shouldShowConversationTypeBadge\(activeConv\)/);
+});
+
+test('message sender avatars open profiles without adding an avatar to the chat header', () => {
+  const headerSource = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
+  const workspaceSource = readFileSync(new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(headerSource, /app-chat-profile-trigger/);
+  assert.doesNotMatch(workspaceSource, /profile=\{profileSpace/);
+  assert.match(workspaceSource, /onOpenSenderProfile: models\.senderProfiles\.openActive/);
+  assert.match(workspaceSource, /<ContactInfoPopover/);
+  assert.match(workspaceSource, /conversation=\{models\.senderProfiles\.target\.conversation\}/);
+  assert.match(workspaceSource, /layout\.rightDetailRail/);
 });

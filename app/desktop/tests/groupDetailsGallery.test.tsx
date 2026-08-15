@@ -8,7 +8,15 @@ import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { filterGroupManagementMembers, GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
 import { groupManagementGeometry } from '../src/pages/groupManagementGeometry';
-import { contactForGroupMember, groupMemberAccountId, MemberContactProfileContent } from '../src/pages/MemberContactProfilePopover';
+import {
+  MemberContactProfileContent,
+} from '../src/pages/MemberContactProfilePopover';
+import {
+  contactForGroupMember,
+  contactProfileGeometry,
+  contactProfileSharedSummary,
+  groupMemberAccountId,
+} from '../src/pages/memberContactProfileModel';
 import { conversation, contact } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
 test('GroupDetailsDialog renders a searchable member gallery with progressive controls', () => {
@@ -274,9 +282,13 @@ test('existing group contact profile offers Send message instead of a passive co
   assert.match(actionClass, /\bw-7\b/);
 });
 
-test('member profile popover is content-dense, preserves identity text, and dismisses outside', () => {
+test('member profile popover uses a full identity sheet and dismisses outside', () => {
   const source = readFileSync(
-    new URL('../src/pages/MemberContactProfilePopover.tsx', import.meta.url),
+    new URL('../src/pages/ContactInfoPopover.tsx', import.meta.url),
+    'utf8',
+  );
+  const modelSource = readFileSync(
+    new URL('../src/pages/memberContactProfileModel.ts', import.meta.url),
     'utf8',
   );
   const markup = renderToStaticMarkup(createElement(MemberContactProfileContent, {
@@ -295,16 +307,75 @@ test('member profile popover is content-dense, preserves identity text, and dism
     onAddContact: () => undefined,
   }));
 
-  assert.match(source, /const width = Math\.min\(256, viewportWidth - margin \* 2\);/);
+  assert.match(modelSource, /const width = Math\.min\(344, Math\.max\(0, viewport\.width - margin \* 2\)\);/);
   assert.match(source, /fixed inset-0 z-\[75\][\s\S]*aria-label="Close member profile"[\s\S]*onClick=\{onClose\}/);
-  assert.doesNotMatch(source, /app-group-management-close absolute right-2 top-2/);
-  assert.doesNotMatch(source, /className=\{cn\('pr-8'/);
+  assert.match(source, /data-contact-profile-surface="true"/);
+  assert.match(source, /aria-label="Close contact info"/);
+  assert.match(source, /aria-modal="true"/);
   assert.match(markup, /app-transient-identity-title break-words/);
   assert.match(markup, /app-transient-metadata mt-0\.5 break-words/);
   assert.match(markup, /Tom Cohen with a longer display name/);
   assert.match(markup, /@123456789/);
   assert.doesNotMatch(markup, /Group member|Contact|Request pending/);
   assert.equal(markup.match(/data-member-contact-secondary-line/g)?.length, 1);
+});
+
+test('contact profile summarizes supported shared content without exposing message text', () => {
+  const summary = contactProfileSharedSummary({
+    id: 'session:direct:maya',
+    name: 'Maya',
+    type: 'person',
+    subtitle: '',
+    unread: 0,
+    collaborationSources: [],
+    trust: '',
+    directness: '',
+    participants: [],
+    messages: [
+      {
+        role: 'person',
+        text: 'Design notes https://example.com/design and https://example.com/design.',
+        time: '10:00',
+        attachments: [
+          { kind: 'image', name: 'wireframe.png' },
+          { kind: 'file', name: 'brief.pdf' },
+        ],
+      },
+      {
+        role: 'user',
+        text: 'Reference https://example.com/spec',
+        time: '10:01',
+        attachments: [{ kind: 'image', name: 'flow.png' }],
+      },
+    ],
+  }, 2);
+
+  assert.deepEqual(summary, {
+    photos: 2,
+    files: 1,
+    links: 2,
+    commonGroups: 2,
+  });
+});
+
+test('contact profile geometry stays beside its avatar and falls back inside compact viewports', () => {
+  const desktop = contactProfileGeometry(
+    { left: 400, right: 436, top: 120, bottom: 156, width: 36, height: 36 },
+    { width: 1280, height: 800 },
+  );
+  assert.equal(desktop.placement, 'right');
+  assert.equal(desktop.style.width, 344);
+  assert.equal(desktop.style.maxHeight, 640);
+
+  const compact = contactProfileGeometry(
+    { left: 12, right: 48, top: 40, bottom: 76, width: 36, height: 36 },
+    { width: 320, height: 480 },
+  );
+  assert.equal(compact.placement, 'floating');
+  assert.equal(compact.style.left, 12);
+  assert.equal(compact.style.top, 12);
+  assert.equal(compact.style.width, 296);
+  assert.equal(compact.style.maxHeight, 456);
 });
 
 test('group management member actions use Kordi handles and dismiss without a close control', () => {

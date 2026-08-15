@@ -39,8 +39,8 @@ import {
   participantSpaceCanonicalSessionIds,
 } from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
-import { formatDesktopDate } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { GroupProfileHeader } from '@/pages/GroupProfileHeader';
 import { GroupInvitationSharePanel } from '@/pages/GroupInvitationSharePanel';
 import {
   COLLAPSED_MEMBER_GRID_ITEMS,
@@ -167,12 +167,6 @@ function duplicateNameCounts(names: string[]) {
 
 function hasDuplicateName(name: string, counts: Map<string, number>) {
   return (counts.get(name.trim().toLowerCase()) ?? 0) > 1;
-}
-
-function displayCreatedLabel(space: ParticipantSpaceViewModel) {
-  return typeof space.createdAtMs === 'number' && Number.isFinite(space.createdAtMs) && space.createdAtMs > 0
-    ? `Created ${formatDesktopDate(space.createdAtMs)}`
-    : 'Created locally';
 }
 
 function normalizedSearch(value: string) {
@@ -346,6 +340,14 @@ export function GroupDetailsDialog({
   }, [isOpen, space?.id, space?.title]);
 
   useEffect(() => {
+    if (!isEditingName || typeof document === 'undefined') return;
+    const input = document.getElementById(nameInputId);
+    if (!(input instanceof HTMLInputElement)) return;
+    input.focus();
+    input.select();
+    input.scrollIntoView({ block: 'nearest' });
+  }, [isEditingName, nameInputId]);
+  useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return undefined;
     const updateViewport = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     updateViewport();
@@ -480,24 +482,21 @@ export function GroupDetailsDialog({
         ) : null}
 
         <div className="app-group-management-layout flex min-h-0 w-full flex-col">
-          <header className="app-group-management-header flex shrink-0 items-start justify-between gap-3 px-3 pb-2 pt-3">
-            <div className="min-w-0">
-              <h2 className="text-[15px] font-semibold leading-5 text-[color:var(--utility-foreground)]">
-                Group management
-              </h2>
-              <p className="mt-0.5 truncate text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
-                {displayCreatedLabel(space)} · {members.length} people · {adminCount} admin{adminCount === 1 ? '' : 's'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="app-button-quiet app-group-management-close grid h-8 w-8 shrink-0 place-items-center rounded-[10px] p-0"
-              aria-label="Close group management"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </header>
+          <GroupProfileHeader
+            space={space}
+            memberCount={members.length}
+            adminCount={adminCount}
+            canInvitePeople={canInvitePeople}
+            canManageGroup={canManageGroup}
+            onClose={onClose}
+            onShowMembers={() => memberSearchRef.current?.focus()}
+            onAddPeople={openAddPeople}
+            onManage={() => {
+              setNameDraft(space.title);
+              setIsEditingName(true);
+              setActionError(null);
+            }}
+          />
 
           <div
             className="app-transient-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-3"
@@ -669,6 +668,7 @@ export function GroupDetailsDialog({
                 >
                   <div className="py-1">
                     <MemberContactProfileContent
+                      key={selectedMember.id}
                       participant={selectedMember}
                       contacts={contacts}
                       metadataMode="kordi-handle"

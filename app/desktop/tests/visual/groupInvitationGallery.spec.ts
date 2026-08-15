@@ -56,3 +56,26 @@ test('group invitation admin and recipient previews', async ({ page }, testInfo)
   await expect(page.getByRole('button', { name: 'Join group' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('group-invitation-recipient-dark.png') });
 });
+
+test('contact info sheet preview', async ({ page }, testInfo) => {
+  await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=contact');
+  await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
+  const profile = page.locator('[data-contact-profile-surface="true"]');
+  await expect(profile).toBeVisible();
+  await expect(profile.getByText('Maya Chen')).toBeVisible();
+  await expect(profile.getByRole('button', { name: 'Message' })).toBeVisible();
+  await expect(profile.getByRole('button', { name: 'Copy ID' })).toBeVisible();
+  await expect(profile.getByText('2 photos')).toBeVisible();
+  await expect(profile.getByText('2 groups in common')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('contact-info-sheet-desktop.png') });
+
+  await page.setViewportSize({ width: 430, height: 760 });
+  await expect(profile).toBeVisible();
+  const isContained = await profile.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= window.innerWidth
+      && rect.top >= 0 && rect.bottom <= window.innerHeight;
+  });
+  expect(isContained).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('contact-info-sheet-narrow.png') });
+});

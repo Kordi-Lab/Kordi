@@ -1,0 +1,77 @@
+.app-group-profile-actions,
+.app-contact-profile-actions {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
+
+.app-group-profile-action,
+.app-contact-profile-action {
+  min-height: 54px;
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-text);
+}
+
+.app-contact-profile-popover {
+  container-type: inline-size;
+  color: var(--app-transient-text);
+  animation: app-contact-profile-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-contact-profile-hero {
+  background: color-mix(in oklab, var(--app-transient-raised-bg) 52%, transparent);
+}
+
+.app-contact-profile-close {
+  color: var(--app-transient-muted-text);
+}
+
+.app-contact-profile-summary,
+.app-contact-profile-empty {
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-muted-text);
+}
+
+.app-contact-profile-summary-row {
+  color: var(--app-transient-text);
+}
+
+.app-contact-profile-summary-row + .app-contact-profile-summary-row {
+  border-top: 1px solid var(--app-transient-divider);
+}
+
+.app-contact-profile-summary-icon {
+  background: var(--app-transient-icon-bg);
+  color: var(--app-transient-muted-text);
+}
+
+@keyframes app-contact-profile-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0) scale(0.98);
+    filter: blur(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-contact-profile-popover {
+    animation: none;
+  }
+}
+
+@container (max-width: 280px) {
+  .app-contact-profile-actions,
+  .app-group-profile-actions {
+    gap: 4px;
+  }
+
+  .app-contact-profile-action,
+  .app-group-profile-action {
+    min-height: 50px;
+    padding-inline: 4px;
+  }
+}

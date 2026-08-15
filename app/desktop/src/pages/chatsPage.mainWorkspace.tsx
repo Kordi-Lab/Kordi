@@ -12,7 +12,7 @@ import type {
   DesktopChatTurnSnapshot,
   Message,
 } from '@/kordi-app/types';
-import { MemberContactProfilePopover } from '@/pages/MemberContactProfilePopover';
+import { ContactInfoPopover } from '@/pages/ContactInfoPopover';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
 import {
@@ -404,8 +404,11 @@ export function ChatMainWorkspace({
       </section>
 
       {models.senderProfiles.target ? (
-        <MemberContactProfilePopover
+        <ContactInfoPopover
+          key={models.senderProfiles.target.participant.id}
           participant={models.senderProfiles.target.participant}
+          conversation={models.senderProfiles.target.conversation}
+          commonGroupCount={models.senderProfiles.commonGroupCount}
           contacts={models.senderProfiles.contacts}
           presenceStatus={
             models.senderProfiles.target.participant.presenceStatus

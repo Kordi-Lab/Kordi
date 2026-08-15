@@ -32,6 +32,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     session: {
     activeConv: args.activeConv,
     chatConversations: args.chatConversations,
+    participantSpaces: args.participantSpaces,
     activeConversationUsesCollaboration: args.activeConversationUsesCollaboration,
     activeCollaborationModelHost: args.activeCollaborationConversationHost
       ?? args.desktopCollaborationState?.hosts.find((host) => host.id === args.activeConv.collaborationTarget?.hostId)

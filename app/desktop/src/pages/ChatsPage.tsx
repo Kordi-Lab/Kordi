@@ -140,6 +140,7 @@ export function ChatsPage({
   const senderProfiles = useChatSenderProfiles({
     activeConversation: activeConv,
     companionConversation,
+    participantSpaces: session.participantSpaces,
     cloudAccount,
     onMessageContact,
   });
