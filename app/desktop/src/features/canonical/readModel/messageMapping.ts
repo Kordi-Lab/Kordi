@@ -18,10 +18,9 @@ import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } 
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
+import { canonicalCallActivity } from './callActivity';
 import { isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 
-// Re-exported so external importers that previously pulled these from
-// messageMapping (none today, but the exports were public API) keep working.
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 
 export function contentRecord(value: unknown): Record<string, unknown> {
@@ -588,6 +587,7 @@ export function mapCanonicalMessage(
     text: isAgentTurn ? '' : displayText,
     time,
     timestampMs: message.createdAtMs,
+    callActivity: canonicalCallActivity(message, content, isOwnMessage),
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
     mentions: canonicalMentions(content.mentions),

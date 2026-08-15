@@ -1,0 +1,149 @@
+@media (max-width: 760px), (max-height: 680px) {
+  .app-call-surface {
+    min-height: 420px;
+  }
+
+  .app-call-surface-header {
+    min-height: 70px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 14px 18px;
+  }
+
+  .app-call-surface-kind {
+    display: none;
+  }
+
+  .app-call-direct-stage {
+    padding: 12px 18px 138px;
+  }
+
+  .app-call-identity-avatar-shell {
+    width: 118px;
+  }
+
+  .app-call-identity-stage h3 {
+    margin-top: 18px;
+    font-size: 28px;
+  }
+
+  .app-call-identity-stage p {
+    font-size: 12px;
+  }
+
+  .app-call-local-preview {
+    top: 8px;
+    right: 18px;
+    width: 124px;
+  }
+
+  .app-call-participant-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px 12px 128px;
+  }
+
+  .app-call-recovery {
+    bottom: 126px;
+  }
+
+  .app-call-controls {
+    bottom: 16px;
+    width: calc(100% - 24px);
+    max-width: 620px;
+    justify-content: space-around;
+    border-radius: 20px;
+  }
+
+  .app-call-control {
+    min-width: 60px;
+  }
+
+  .app-call-control-disc {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-call-device-menu {
+    right: 0;
+    bottom: 84px;
+  }
+
+  .app-conversation-call-banner {
+    padding-inline: 12px;
+  }
+
+  .app-call-activity-row {
+    padding-inline: 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-conversation-call-banner {
+    min-height: 62px;
+    gap: 9px;
+  }
+
+  .app-conversation-call-banner button {
+    height: 40px;
+    padding-inline: 11px;
+  }
+
+  .app-conversation-call-banner-copy b,
+  .app-conversation-call-banner-copy i {
+    display: none;
+  }
+
+  .app-call-activity {
+    width: min(100%, 286px);
+  }
+
+  .app-call-surface-heading h2 {
+    font-size: 16px;
+  }
+
+  .app-call-surface-heading p {
+    font-size: 11px;
+  }
+
+  .app-call-local-preview {
+    width: 108px;
+  }
+
+  .app-call-control {
+    min-width: 48px;
+    padding-inline: 2px;
+  }
+
+  .app-call-control-label {
+    font-size: 9px;
+  }
+
+  .app-call-recovery {
+    width: calc(100% - 24px);
+    gap: 9px;
+    padding-left: 10px;
+  }
+
+  .app-call-recovery-icon {
+    display: none;
+  }
+
+  .app-call-device-menu {
+    right: -56px;
+    width: min(286px, calc(100vw - 24px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-call-identity-stage,
+  .app-call-wave i {
+    animation: none;
+  }
+
+  .app-call-icon-button,
+  .app-call-card-button,
+  .app-call-error button,
+  .app-conversation-call-banner button,
+  .app-call-control-disc {
+    transition: none;
+  }
+}

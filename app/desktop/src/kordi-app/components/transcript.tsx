@@ -975,9 +975,9 @@ function MessageBubbleView({
     );
   }
 
-  if (msg.role === 'system') {
+  if (msg.role === 'system' || msg.callActivity) {
     return (
-      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className={msg.callActivity ? cn('app-call-activity-row', `app-call-activity-row-${msg.callActivity.direction}`) : 'app-system-notice-row flex justify-center py-0.5'}>
         <TranscriptSystemNoticeContent message={msg}><MessageInlineContent text={msg.text} /></TranscriptSystemNoticeContent>
       </MessageContextMenuHost>
     );

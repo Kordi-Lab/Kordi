@@ -166,6 +166,8 @@ pub(super) fn apply_event(
             | "session.unhidden"
             | "session.deleted"
             | "session-forked"
+            | "call.created"
+            | "call.updated"
     );
     if !supported {
         return if critical {

@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::calls::models::{
-    CallMediaConnection, CallResponse, CallSessionResponse, RegisterPushTokenRequest,
-    RegisterVoipPushTokenRequest, StartCallRequest,
+    CallListResponse, CallMediaConnection, CallResponse, CallSessionResponse,
+    RegisterPushTokenRequest, RegisterVoipPushTokenRequest, StartCallRequest,
 };
 use crate::calls::store::{self, CallStoreError};
 use crate::server::ServerState;
@@ -27,6 +27,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v2/chat/conversations/:conversation_id/calls/active",
             get(active_call),
         )
+        .route("/v2/calls/active", get(active_calls))
         .route("/v2/calls/:call_id/join", post(join_call))
         .route("/v2/calls/:call_id/invite", post(invite_call))
         .route("/v2/calls/:call_id/decline", post(decline_call))
@@ -157,6 +158,16 @@ async fn active_call(
     match store::active(state.db_pool(), &session.account_id, conversation_id).await {
         Ok(call) => Json(CallResponse { call }).into_response(),
         Err(error) => store_error("load active call", error),
+    }
+}
+
+async fn active_calls(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+) -> Response {
+    match store::active_for_account(state.db_pool(), &session.account_id).await {
+        Ok(calls) => Json(CallListResponse { calls }).into_response(),
+        Err(error) => store_error("load active calls", error),
     }
 }
 

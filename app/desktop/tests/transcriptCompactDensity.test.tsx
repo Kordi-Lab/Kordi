@@ -25,6 +25,29 @@ test('renders transcript system notices as neutral text without a colored pill',
   assert.doesNotMatch(markup, /flex justify-center py-2/);
 });
 
+test('renders calls as compact directional history items', () => {
+  const message: Message = {
+    role: 'system',
+    text: 'The video call ended.',
+    time: '14:35',
+    callActivity: {
+      callId: 'call-one',
+      kind: 'video',
+      event: 'ended',
+      direction: 'outgoing',
+      outcome: 'completed',
+      durationSeconds: 65,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-call-activity-row-outgoing/);
+  assert.match(markup, /Outgoing video call/);
+  assert.match(markup, /14:35 · 1 min 5 sec/);
+  assert.doesNotMatch(markup, /app-system-notice-text|app-chat-bubble-user/);
+});
+
 test('contact transcripts use the same neutral system-notice treatment', () => {
   const message: Message = {
     role: 'system',

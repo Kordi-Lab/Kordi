@@ -205,6 +205,8 @@ mod tests {
             "session.unhidden",
             "session.deleted",
             "session-forked",
+            "call.created",
+            "call.updated",
         ];
         let events = event_types
             .iter()
@@ -224,16 +226,16 @@ mod tests {
             ChatSyncApplyRequest {
                 account_id: "acct_test".to_string(),
                 bootstrap: false,
-                cursor: Some("cursor-10".to_string()),
-                last_stream_seq: Some(10),
+                cursor: Some("cursor-12".to_string()),
+                last_stream_seq: Some(12),
                 conversations: vec![],
                 messages: vec![],
                 events,
             },
         )
         .unwrap();
-        assert_eq!(state.cursor.as_deref(), Some("cursor-10"));
-        assert_eq!(state.last_stream_seq, 10);
+        assert_eq!(state.cursor.as_deref(), Some("cursor-12"));
+        assert_eq!(state.last_stream_seq, 12);
     }
 
     #[test]
