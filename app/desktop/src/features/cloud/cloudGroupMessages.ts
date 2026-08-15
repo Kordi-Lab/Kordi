@@ -12,7 +12,7 @@ import type {
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import { integerMilliseconds, runtimeRoute } from './cloudGroupDecoding';
+import { cloudGroupMessageRuntimeFields, integerMilliseconds } from './cloudGroupDecoding';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
@@ -75,7 +75,7 @@ export type CloudGroupControlEnvelope = {
     parentMessageId?: string | null;
     createdAtMs?: number | null;
   } | null;
-  message?: {
+  message?: ({
     id: string;
     senderAccountId: string;
     text: string;
@@ -94,7 +94,7 @@ export type CloudGroupControlEnvelope = {
     targetCloudAgentOwnerName?: string | null;
     agentMentionDepth?: number | null;
     agentRuntimeRoute?: DesktopChatMessageRoute | null;
-  } | null;
+  } & ReturnType<typeof cloudGroupMessageRuntimeFields>) | null;
 };
 type CloudGroupAttachmentReferenceInput = Pick<
   CloudMessageAttachment,
@@ -648,8 +648,8 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
     if (typeof parsed.createdByAccountId !== 'string' || !parsed.createdByAccountId.trim()) return null;
     if (!parsed.actor || typeof parsed.actor !== 'object') return null;
     if (!Array.isArray(parsed.participants)) return null;
-    const actor = cloudGroupNormalizeParticipant(parsed.actor as CloudGroupParticipant);
-    const participants = uniqueByAccount(parsed.participants as CloudGroupParticipant[]);
+    const actor = cloudGroupNormalizeParticipant(parsed.actor);
+    const participants = uniqueByAccount(parsed.participants);
     if (!actor.accountId || participants.length === 0) return null;
     let message: CloudGroupControlEnvelope['message'] = null;
     if (kind === 'group-message') {
@@ -675,7 +675,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         targetCloudAgentOwnerAccountId: cleanText(typeof candidate.targetCloudAgentOwnerAccountId === 'string' ? candidate.targetCloudAgentOwnerAccountId : null) || null,
         targetCloudAgentOwnerName: cleanText(typeof candidate.targetCloudAgentOwnerName === 'string' ? candidate.targetCloudAgentOwnerName : null) || null,
         agentMentionDepth: typeof candidate.agentMentionDepth === 'number' && Number.isInteger(candidate.agentMentionDepth) && candidate.agentMentionDepth >= 0 ? candidate.agentMentionDepth : null,
-        agentRuntimeRoute: runtimeRoute((candidate as { agentRuntimeRoute?: unknown }).agentRuntimeRoute),
+        ...cloudGroupMessageRuntimeFields(candidate),
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);

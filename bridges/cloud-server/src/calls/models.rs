@@ -76,6 +76,17 @@ pub struct CallResponse {
     pub call: Option<CallSnapshot>,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ActiveCallSnapshot {
+    pub call: CallSnapshot,
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CallListResponse {
+    pub calls: Vec<ActiveCallSnapshot>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CallMediaConnection {
     pub url: String,

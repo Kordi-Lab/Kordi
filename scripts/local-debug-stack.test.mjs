@@ -32,6 +32,9 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
   assert.doesNotMatch(compose, /^\s*-\s*"?(?:5432|6379|4222):/m);
   assert.match(compose, /KORDI_OAUTH_GITHUB_CLIENT_ID: \$\{KORDI_OAUTH_GITHUB_CLIENT_ID:-\}/);
   assert.match(compose, /KORDI_OAUTH_GOOGLE_CLIENT_ID: \$\{KORDI_OAUTH_GOOGLE_CLIENT_ID:-\}/);
+  assert.match(compose, /KORDI_LIVEKIT_URL: \$\{KORDI_LIVEKIT_URL:-\}/);
+  assert.match(compose, /KORDI_LIVEKIT_API_KEY: \$\{KORDI_LIVEKIT_API_KEY:-\}/);
+  assert.match(compose, /KORDI_LIVEKIT_API_SECRET: \$\{KORDI_LIVEKIT_API_SECRET:-\}/);
   assert.match(compose, /kordi-beta:\/\/oauth\/callback/);
   assert.doesNotMatch(compose, /KORDI_CHAT_SYNC_V2_ENABLED|CHAT_SYNC_V2_DISABLED/);
   assert.match(compose, /KORDI_CLOUD_API_BASE: http:\/\/cloud-server:17081/);

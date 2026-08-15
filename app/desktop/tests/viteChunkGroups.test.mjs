@@ -22,6 +22,23 @@ test('cloud features are split before the generic desktop features chunk', async
   );
 });
 
+test('calling media is split before the generic vendor chunk', async () => {
+  const resolvedConfig = typeof config === 'function'
+    ? await config({ command: 'build', mode: 'production' })
+    : config;
+  const groups = resolvedConfig.build?.rolldownOptions?.output?.codeSplitting?.groups ?? [];
+  const names = groups.map((group) => group.name);
+
+  const callingMediaIndex = names.indexOf('calling-media');
+  const vendorIndex = names.indexOf('vendor');
+
+  assert.notEqual(callingMediaIndex, -1, 'expected a dedicated calling-media chunk group');
+  assert.ok(
+    callingMediaIndex < vendorIndex,
+    'calling media must be matched before the generic vendor chunk',
+  );
+});
+
 test('Vite development serves only with an explicit non-production API origin', async () => {
   const previous = process.env.VITE_KORDI_CLOUD_API_BASE;
   const previousProfile = process.env.VITE_KORDI_DEV_PROFILE;

@@ -245,9 +245,6 @@
   "src/features/cloud/cloudGroupMessages.ts": {
     "@typescript-eslint/no-redundant-type-constituents": {
       "count": 7
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
     }
   },
   "src/features/cloud/cloudGroupOutbox.ts": {

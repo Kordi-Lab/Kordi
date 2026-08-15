@@ -13,6 +13,7 @@ import type {
   CanonicalSessionState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
+import { canonicalCallActivityIdentity } from '@/features/canonical/readModel/callActivity';
 import type {
   CloudAccount,
   CloudAuthClient,
@@ -128,8 +129,23 @@ export function cloudGroupAgentProcessingSlotForResponse(
 export function cloudGroupIncomingMessageAlreadyApplied(
   existingMessage: CanonicalSessionMessage | null,
   incomingDeliveryState?: string | null,
+  incomingMessageKind?: string | null,
 ): boolean {
   if (!existingMessage) return false;
+  const existingCallActivity = canonicalCallActivityIdentity(
+    existingMessage.messageKind,
+  );
+  const incomingCallActivity = canonicalCallActivityIdentity(
+    incomingMessageKind ?? '',
+  );
+  if (
+    existingCallActivity
+    && incomingCallActivity
+    && existingCallActivity.callId === incomingCallActivity.callId
+  ) {
+    return existingCallActivity.event === 'ended'
+      || incomingCallActivity.event === existingCallActivity.event;
+  }
   const incomingState =
     cleanCloudText(incomingDeliveryState).toLowerCase();
   const incomingIsTerminal = Boolean(incomingState)

@@ -212,7 +212,7 @@ export function useCloudMessageSync({
             messages: response.chat.messages,
             events: response.chat.events,
           });
-          publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId);
+          publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId, response.events);
           if (local) {
             await Promise.allSettled(local.conversations.map((conversation) => (
               client.acknowledgeChatDelivery(

@@ -51,6 +51,8 @@ export function cloudMessagesEqual(
     && (message.conversationId ?? null) === (other.conversationId ?? null)
     && (message.conversationSequence ?? null) === (other.conversationSequence ?? null)
     && (message.clientMessageId ?? null) === (other.clientMessageId ?? null)
+    && (message.messageKind ?? null) === (other.messageKind ?? null)
+    && (message.canonicalHistoryLocalMessageId ?? null) === (other.canonicalHistoryLocalMessageId ?? null)
     && (message.version ?? null) === (other.version ?? null)
     && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
 }

@@ -1,4 +1,4 @@
-import { Columns2, PanelLeftClose, PanelLeftOpen, Split } from 'lucide-react';
+import { Columns2, PanelLeftClose, PanelLeftOpen, Phone, Split, Video } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { Conversation } from '@/kordi-app/types';
@@ -9,6 +9,7 @@ import type {
   CloudSupportTicketInput,
   CloudSupportTicketResult,
 } from '@/features/cloud/supportClient';
+import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 
 type MainHeaderRename = {
   enabled: boolean;
@@ -60,6 +61,20 @@ export function MainChatHeader({
   companion,
   supportReport,
 }: MainHeaderProps) {
+  const calls = useCloudCallContext();
+  const callTarget = calls?.targetForConversation(conversation) ?? null;
+  const activeCall = calls?.callForConversation(conversation) ?? null;
+  const callIsCurrent = Boolean(activeCall && calls?.currentCall?.call.id === activeCall.id);
+  const callBusyElsewhere = Boolean(calls?.currentCall && !callIsCurrent);
+  const openActiveCall = () => {
+    if (!calls || !activeCall) return;
+    if (callIsCurrent) calls.show();
+    else void calls.join(activeCall, callTarget?.sessionId);
+  };
+  const startCall = (kind: 'voice' | 'video') => {
+    if (!calls) return;
+    void calls.start(conversation, kind);
+  };
   return (
     <div className="app-page-header app-chat-pane-header relative flex shrink-0 items-start justify-between gap-3">
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -171,6 +186,58 @@ export function MainChatHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2 self-start">
+        {calls && callTarget ? (
+          <div className="app-chat-call-actions mt-0.5 flex items-center gap-1" aria-label="Call actions">
+            {activeCall ? (
+              <button
+                type="button"
+                className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] transition"
+                onClick={openActiveCall}
+                disabled={callBusyElsewhere}
+                aria-label={callIsCurrent ? 'Return to call' : activeCall.kind === 'meeting' ? 'Join meeting' : 'Join call'}
+                title={callBusyElsewhere
+                  ? 'Finish your current call first'
+                  : callIsCurrent ? 'Return to call' : activeCall.kind === 'meeting' ? 'Join meeting' : 'Join call'}
+              >
+                {activeCall.kind === 'voice' ? <Phone className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
+              </button>
+            ) : callTarget.kind === 'group' ? (
+              <button
+                type="button"
+                className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] transition"
+                onClick={() => startCall('video')}
+                disabled={callBusyElsewhere}
+                aria-label="Start group meeting"
+                title={callBusyElsewhere ? 'Finish your current call first' : 'Start group meeting'}
+              >
+                <Video className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] transition"
+                  onClick={() => startCall('voice')}
+                  disabled={callBusyElsewhere}
+                  aria-label="Start voice call"
+                  title={callBusyElsewhere ? 'Finish your current call first' : 'Start voice call'}
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] transition"
+                  onClick={() => startCall('video')}
+                  disabled={callBusyElsewhere}
+                  aria-label="Start video call"
+                  title={callBusyElsewhere ? 'Finish your current call first' : 'Start video call'}
+                >
+                  <Video className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
         {supportReport ? (
           <SupportReportAction
             sessionId={supportReport.sessionId}
