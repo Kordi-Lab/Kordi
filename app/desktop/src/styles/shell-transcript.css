@@ -1,3 +1,19 @@
+[data-virtual-transcript-scroll] {
+  outline: none;
+}
+
+[data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
+  border-radius: 12px;
+  outline: 2px solid color-mix(in oklab, var(--app-quiet-control-focus-ring) 76%, transparent);
+  outline-offset: -4px;
+}
+
+@media (forced-colors: active) {
+  [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {
+    outline-color: Highlight;
+  }
+}
+
 .app-markdown-link {
   color: var(--app-markdown-link);
   font-weight: 500;
