@@ -1,6 +1,16 @@
 use super::support::*;
 use super::*;
 
+pub async fn load_message_snapshot(
+    pool: &PgPool,
+    message_id: Uuid,
+) -> Result<MessageSnapshot, StoreError> {
+    let mut transaction = pool.begin().await?;
+    let message = load_message(&mut transaction, message_id).await?;
+    transaction.commit().await?;
+    Ok(message)
+}
+
 pub async fn send_message(
     pool: &PgPool,
     account_id: &str,

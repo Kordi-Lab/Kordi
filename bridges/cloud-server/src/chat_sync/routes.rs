@@ -122,17 +122,24 @@ async fn send_message(
     )
     .await
     {
-        Ok(outcome) => (
-            if outcome.inserted {
-                StatusCode::CREATED
-            } else {
-                StatusCode::OK
-            },
-            Json(MessageResponse {
-                message: outcome.value,
-            }),
-        )
-            .into_response(),
+        Ok(outcome) => {
+            if let Some(notifications) = state.notifications() {
+                notifications
+                    .send_message_attention(state.db_pool(), &outcome.value)
+                    .await;
+            }
+            (
+                if outcome.inserted {
+                    StatusCode::CREATED
+                } else {
+                    StatusCode::OK
+                },
+                Json(MessageResponse {
+                    message: outcome.value,
+                }),
+            )
+                .into_response()
+        }
         Err(error) => store_error("send message", error),
     }
 }

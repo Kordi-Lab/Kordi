@@ -257,6 +257,21 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "coarse OAuth device location metadata",
         sql: include_str!("../../migrations/0054_oauth_device_approximate_location.sql"),
     },
+    EmbeddedMigration {
+        version: 55,
+        description: "call state and Apple notification tokens",
+        sql: include_str!("../../migrations/0055_calls.sql"),
+    },
+    EmbeddedMigration {
+        version: 56,
+        description: "deduplicated message notification events",
+        sql: include_str!("../../migrations/0056_message_notification_events.sql"),
+    },
+    EmbeddedMigration {
+        version: 57,
+        description: "durable per-device message notification delivery",
+        sql: include_str!("../../migrations/0057_message_notification_deliveries.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

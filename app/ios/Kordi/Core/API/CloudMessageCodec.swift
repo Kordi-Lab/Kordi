@@ -89,6 +89,11 @@ enum CloudMessageCodec {
         parsedEnvelopes(body).response != nil
     }
 
+    static func isTerminalAgentResponse(_ body: String) -> Bool {
+        guard let response = parsedEnvelopes(body).response else { return false }
+        return response.deliveryState != "processing"
+    }
+
     static func agentResponseRequestId(_ body: String) -> String? {
         parsedEnvelopes(body).response?.requestId
     }

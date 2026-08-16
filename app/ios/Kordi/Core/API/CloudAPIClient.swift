@@ -807,14 +807,25 @@ actor CloudAPIClient {
     func registerNotificationPushToken(
         token: String,
         deviceToken: String,
-        environment: String
+        environment: String,
+        messagesEnabled: Bool,
+        soundEnabled: Bool,
+        previewsEnabled: Bool,
+        badgeEnabled: Bool
     ) async throws {
         try await sendWithoutResponse(
             path: "/v2/calls/devices/notifications",
             method: "PUT",
             token: token,
-            body: CloudVoIPPushTokenRequest(token: deviceToken, environment: environment),
-            fallback: "Could not register this device for meeting notifications."
+            body: CloudNotificationPushTokenRequest(
+                token: deviceToken,
+                environment: environment,
+                messagesEnabled: messagesEnabled,
+                soundEnabled: soundEnabled,
+                previewsEnabled: previewsEnabled,
+                badgeEnabled: badgeEnabled
+            ),
+            fallback: "Could not update this device's notification settings."
         )
     }
 
@@ -1167,7 +1178,9 @@ actor CloudAPIClient {
             direction: outgoing ? "outgoing" : "incoming",
             sessionId: conversation.legacySessionId ?? conversation.id,
             attachments: message.content.legacyAttachments,
-            messageKind: message.kind
+            messageKind: message.kind,
+            conversationId: conversation.id,
+            conversationSequence: message.conversationSequence
         )
     }
 

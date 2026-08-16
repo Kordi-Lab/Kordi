@@ -6,6 +6,7 @@ private enum AccountSettingsRoute: Hashable {
     case profile
     case activeSessions
     case authentication
+    case notifications
     case appearance
 }
 
@@ -59,6 +60,10 @@ struct AccountSheet: View {
                         SettingsNavigationLabel(title: "Authentication", systemImage: "key")
                     }
 
+                    NavigationLink(value: AccountSettingsRoute.notifications) {
+                        SettingsNavigationLabel(title: "Notifications", systemImage: "bell")
+                    }
+
                     NavigationLink(value: AccountSettingsRoute.appearance) {
                         SettingsNavigationLabel(title: "Appearance", systemImage: "paintpalette")
                     }
@@ -75,6 +80,8 @@ struct AccountSheet: View {
                     DevicesSettingsView()
                 case .authentication:
                     ProviderAuthenticationView()
+                case .notifications:
+                    NotificationSettingsView()
                 case .appearance:
                     AppearanceSettingsView()
                 }
@@ -120,6 +127,74 @@ struct AccountSheet: View {
         }
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct NotificationSettingsView: View {
+    @EnvironmentObject private var coordinator: KordiNotificationCoordinator
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Label("System permission", systemImage: "bell.badge")
+                    Spacer()
+                    Text(permissionLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                if coordinator.authorizationState == .notDetermined {
+                    Button("Enable notifications") {
+                        Task { await coordinator.requestAuthorization() }
+                    }
+                } else if coordinator.authorizationState == .denied {
+                    Button("Open iPhone Settings") {
+                        coordinator.openSystemSettings()
+                    }
+                }
+            } footer: {
+                Text("iOS controls whether Kordi can show notifications. Kordi controls which message details are included.")
+            }
+
+            Section("Messages") {
+                Toggle("Message notifications", isOn: preferenceBinding(.messages))
+                Toggle("Notification sound", isOn: preferenceBinding(.sound))
+                    .disabled(!coordinator.messagesEnabled)
+                Toggle("Message previews", isOn: preferenceBinding(.previews))
+                    .disabled(!coordinator.messagesEnabled)
+                Toggle("App icon badge", isOn: preferenceBinding(.badge))
+            }
+        }
+        .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await coordinator.refreshAuthorizationState()
+        }
+    }
+
+    private var permissionLabel: String {
+        switch coordinator.authorizationState {
+        case .notDetermined: "Not requested"
+        case .denied: "Off"
+        case .authorized: "On"
+        case .provisional: "Provisional"
+        case .ephemeral: "Temporary"
+        }
+    }
+
+    private func preferenceBinding(_ preference: KordiMessageNotificationPreference) -> Binding<Bool> {
+        Binding(
+            get: {
+                switch preference {
+                case .messages: coordinator.messagesEnabled
+                case .sound: coordinator.soundEnabled
+                case .previews: coordinator.previewsEnabled
+                case .badge: coordinator.badgeEnabled
+                }
+            },
+            set: { coordinator.setPreference(preference, enabled: $0) }
+        )
     }
 }
 

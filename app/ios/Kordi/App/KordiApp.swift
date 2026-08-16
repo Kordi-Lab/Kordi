@@ -16,11 +16,15 @@ extension Notification.Name {
 }
 
 final class KordiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    @MainActor weak var notificationCoordinator: KordiNotificationCoordinator?
+    private var coldLaunchNotificationPayload: [AnyHashable: Any]?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        coldLaunchNotificationPayload = launchOptions?[.remoteNotification] as? [AnyHashable: Any]
         return true
     }
 
@@ -40,7 +44,31 @@ final class KordiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        Task { @MainActor [weak self] in
+            let options = self?.notificationCoordinator?.presentationOptions(for: notification)
+                ?? [.banner, .sound, .badge]
+            completionHandler(options)
+        }
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor [weak self] in
+            self?.notificationCoordinator?.handleNotificationResponse(response.notification)
+            completionHandler()
+        }
+    }
+
+    @MainActor
+    func attachNotificationCoordinator(_ coordinator: KordiNotificationCoordinator) {
+        notificationCoordinator = coordinator
+        if let coldLaunchNotificationPayload {
+            self.coldLaunchNotificationPayload = nil
+            coordinator.handleColdLaunchPayload(coldLaunchNotificationPayload)
+        }
     }
 }
 
@@ -49,15 +77,19 @@ struct KordiApp: App {
     @UIApplicationDelegateAdaptor(KordiAppDelegate.self) private var appDelegate
     @StateObject private var model: AppModel
     @StateObject private var callCoordinator: KordiCallCoordinator
+    @StateObject private var notificationCoordinator: KordiNotificationCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
 
     init() {
         let model = AppModel()
         let callCoordinator = KordiCallCoordinator()
+        let notificationCoordinator = KordiNotificationCoordinator()
         callCoordinator.configure(model: model)
+        notificationCoordinator.configure(model: model)
         _model = StateObject(wrappedValue: model)
         _callCoordinator = StateObject(wrappedValue: callCoordinator)
+        _notificationCoordinator = StateObject(wrappedValue: notificationCoordinator)
     }
 
     var body: some Scene {
@@ -65,6 +97,7 @@ struct KordiApp: App {
             RootView()
                 .environmentObject(model)
                 .environmentObject(callCoordinator)
+                .environmentObject(notificationCoordinator)
                 .tint(KordiTheme.signalBlue)
                 .preferredColorScheme(preferredColorScheme)
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
@@ -72,16 +105,20 @@ struct KordiApp: App {
                         .environmentObject(callCoordinator)
                 }
                 .task {
+                    appDelegate.attachNotificationCoordinator(notificationCoordinator)
                     callCoordinator.configure(model: model)
+                    notificationCoordinator.configure(model: model)
                     await model.start()
                     callCoordinator.configure(model: model)
+                    notificationCoordinator.accountDidChange()
+                    notificationCoordinator.synchronizeBadge()
                     callCoordinator.receive(callSnapshots: Array(model.callsByConversationID.values))
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: .kordiDidRegisterForRemoteNotifications)
                 ) { notification in
                     guard let token = notification.object as? String else { return }
-                    Task { await model.registerNotificationPushToken(token) }
+                    notificationCoordinator.registerPushToken(token)
                 }
                 .onReceive(model.$callsByConversationID) { calls in
                     callCoordinator.receive(callSnapshots: Array(calls.values))
@@ -90,14 +127,26 @@ struct KordiApp: App {
                     callCoordinator.receive(callSnapshots: [call])
                 }
                 .onReceive(model.$account) { account in
-                    guard account != nil else { return }
-                    callCoordinator.configure(model: model)
+                    if account != nil {
+                        callCoordinator.configure(model: model)
+                    }
+                    notificationCoordinator.accountDidChange()
+                }
+                .onReceive(model.$conversations) { _ in
+                    notificationCoordinator.synchronizeBadge()
+                    notificationCoordinator.retryPendingRoute()
                 }
                 .onChange(of: scenePhase) {
                     switch scenePhase {
                     case .active:
                         callCoordinator.showCallScreen()
                         Task { await model.appDidBecomeActive() }
+                        Task {
+                            await notificationCoordinator.refreshAuthorizationState(
+                                registerIfAllowed: true
+                            )
+                        }
+                        notificationCoordinator.synchronizeBadge()
                     case .background:
                         model.appDidEnterBackground()
                     case .inactive:
@@ -263,6 +312,7 @@ private struct LaunchingView: View {
 
 struct MainTabView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var notificationCoordinator: KordiNotificationCoordinator
     @State private var selection: MainTab = {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-digest-tab") {
@@ -294,6 +344,13 @@ struct MainTabView: View {
             await refreshAccountTabImage()
         }
         .sensoryFeedback(.selection, trigger: selection)
+        .task(id: notificationCoordinator.pendingMessageRoute) {
+            guard let route = notificationCoordinator.pendingMessageRoute else { return }
+            selection = .chats
+            chatsPath = NavigationPath()
+            chatsPath.append(route)
+            notificationCoordinator.consumePendingRoute()
+        }
 #if DEBUG
         .onAppear {
             if ProcessInfo.processInfo.arguments.contains("--preview-digest-tab") {

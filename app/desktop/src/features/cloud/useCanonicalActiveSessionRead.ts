@@ -23,11 +23,13 @@ import {
 export function useCanonicalActiveSessionRead({
   account,
   activeConversationId,
+  canMarkActiveConversationRead,
   canonicalState,
   setCanonicalState,
 }: {
   account: CloudAccount | null;
   activeConversationId: string | null | undefined;
+  canMarkActiveConversationRead: boolean;
   canonicalState: CanonicalSessionState | null | undefined;
   setCanonicalState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>
@@ -43,6 +45,7 @@ export function useCanonicalActiveSessionRead({
     const sessionId = activeConversationId?.trim() ?? '';
     if (
       !account
+      || !canMarkActiveConversationRead
       || !sessionId
       || !isSharedCloudSessionId(sessionId)
       || !canonicalState
@@ -103,6 +106,7 @@ export function useCanonicalActiveSessionRead({
   }, [
     account,
     activeConversationId,
+    canMarkActiveConversationRead,
     canonicalState,
     setCanonicalState,
   ]);

@@ -5,6 +5,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Extension, Json, Router};
+use uuid::Uuid;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::cloud_agent_runtime::artifacts::{
@@ -23,6 +24,23 @@ use crate::cloud_agent_runtime::runs::{
     CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::server::ServerState;
+
+async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
+    let Some(notifications) = state.notifications() else {
+        return;
+    };
+    let Some(message_id) = response_message_id.and_then(|value| Uuid::parse_str(value).ok()) else {
+        return;
+    };
+    let Ok(message) =
+        crate::chat_sync::store::load_message_snapshot(state.db_pool(), message_id).await
+    else {
+        return;
+    };
+    notifications
+        .send_message_attention(state.db_pool(), &message)
+        .await;
+}
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
@@ -161,7 +179,10 @@ async fn complete_runner_run(
         );
     };
     match complete_run(state.db_pool(), &run_id, &runner_id, &input.response_text).await {
-        Ok(run) => Json(RunnerRunEnvelope { run }).into_response(),
+        Ok(run) => {
+            notify_run_response(&state, run.response_message_id.as_deref()).await;
+            Json(RunnerRunEnvelope { run }).into_response()
+        }
         Err(error) => run_error_response("complete run", "Could not complete run.", error),
     }
 }
@@ -194,7 +215,10 @@ async fn fail_runner_run(
     )
     .await
     {
-        Ok(run) => Json(RunnerRunEnvelope { run }).into_response(),
+        Ok(run) => {
+            notify_run_response(&state, run.response_message_id.as_deref()).await;
+            Json(RunnerRunEnvelope { run }).into_response()
+        }
         Err(error) => run_error_response("fail run", "Could not fail run.", error),
     }
 }

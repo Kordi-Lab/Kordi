@@ -1,86 +1,14 @@
-use std::io::Cursor;
-
 use a2::{
-    Client, ClientConfig, DefaultNotificationBuilder, Endpoint, NotificationBuilder,
-    NotificationOptions, Priority, PushType,
+    DefaultNotificationBuilder, NotificationBuilder, NotificationOptions, Priority, PushType,
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use crate::calls::models::CallSnapshot;
+use crate::calls::CallSnapshot;
 
-#[derive(Clone)]
-pub struct CallPushConfig {
-    client: Client,
-    environment: String,
-    application_topic: String,
-    voip_topic: String,
-}
+use super::PushNotificationService;
 
-#[derive(Debug, thiserror::Error)]
-pub enum CallPushConfigError {
-    #[error("KORDI_APNS_ENVIRONMENT, KORDI_APNS_KEY_ID, KORDI_APNS_TEAM_ID, KORDI_APNS_PRIVATE_KEY_BASE64, and KORDI_APNS_BUNDLE_ID must be configured together")]
-    Incomplete,
-    #[error("KORDI_APNS_ENVIRONMENT must be development or production")]
-    InvalidEnvironment,
-    #[error("KORDI_APNS_BUNDLE_ID is invalid")]
-    InvalidBundleId,
-    #[error("KORDI_APNS_PRIVATE_KEY_BASE64 is invalid")]
-    InvalidPrivateKey,
-    #[error("could not configure the APNs client")]
-    Client(#[from] a2::Error),
-}
-
-impl CallPushConfig {
-    pub fn from_env() -> Result<Option<Self>, CallPushConfigError> {
-        let environment = non_empty_env("KORDI_APNS_ENVIRONMENT");
-        let key_id = non_empty_env("KORDI_APNS_KEY_ID");
-        let team_id = non_empty_env("KORDI_APNS_TEAM_ID");
-        let private_key = non_empty_env("KORDI_APNS_PRIVATE_KEY_BASE64");
-        let bundle_id = non_empty_env("KORDI_APNS_BUNDLE_ID");
-        match (environment, key_id, team_id, private_key, bundle_id) {
-            (None, None, None, None, None) => Ok(None),
-            (
-                Some(environment),
-                Some(key_id),
-                Some(team_id),
-                Some(private_key),
-                Some(bundle_id),
-            ) => {
-                let endpoint = match environment.as_str() {
-                    "development" => Endpoint::Sandbox,
-                    "production" => Endpoint::Production,
-                    _ => return Err(CallPushConfigError::InvalidEnvironment),
-                };
-                if bundle_id.len() > 200
-                    || bundle_id.split('.').count() < 2
-                    || !bundle_id
-                        .bytes()
-                        .all(|value| value.is_ascii_alphanumeric() || matches!(value, b'.' | b'-'))
-                {
-                    return Err(CallPushConfigError::InvalidBundleId);
-                }
-                let private_key = STANDARD
-                    .decode(private_key)
-                    .map_err(|_| CallPushConfigError::InvalidPrivateKey)?;
-                let client = Client::token(
-                    Cursor::new(private_key),
-                    key_id,
-                    team_id,
-                    ClientConfig::new(endpoint),
-                )?;
-                Ok(Some(Self {
-                    client,
-                    environment,
-                    application_topic: bundle_id.clone(),
-                    voip_topic: format!("{bundle_id}.voip"),
-                }))
-            }
-            _ => Err(CallPushConfigError::Incomplete),
-        }
-    }
-
+impl PushNotificationService {
     pub async fn send_incoming_call(&self, pool: &PgPool, call: &CallSnapshot, caller_name: &str) {
         let recipients = call
             .participants
@@ -95,7 +23,12 @@ impl CallPushConfig {
             "SELECT push.device_token FROM cloud_voip_push_tokens push \
              JOIN cloud_devices device ON device.device_id = push.device_id \
              WHERE push.account_id = ANY($1) AND push.apns_environment = $2 \
-               AND device.revoked_at IS NULL",
+               AND device.revoked_at IS NULL \
+               AND EXISTS (SELECT 1 FROM cloud_refresh_tokens session \
+                           WHERE session.device_id = device.device_id \
+                             AND session.account_id = push.account_id \
+                             AND session.revoked_at IS NULL \
+                             AND session.expires_at::timestamptz > NOW())",
         )
         .bind(&recipients)
         .bind(&self.environment)
@@ -161,7 +94,12 @@ impl CallPushConfig {
             "SELECT push.device_token FROM cloud_apns_push_tokens push \
              JOIN cloud_devices device ON device.device_id = push.device_id \
              WHERE push.account_id = ANY($1) AND push.apns_environment = $2 \
-               AND device.revoked_at IS NULL",
+               AND device.revoked_at IS NULL \
+               AND EXISTS (SELECT 1 FROM cloud_refresh_tokens session \
+                           WHERE session.device_id = device.device_id \
+                             AND session.account_id = push.account_id \
+                             AND session.revoked_at IS NULL \
+                             AND session.expires_at::timestamptz > NOW())",
         )
         .bind(&recipients)
         .bind(&self.environment)
@@ -208,11 +146,4 @@ impl CallPushConfig {
             }
         }
     }
-}
-
-fn non_empty_env(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
 }

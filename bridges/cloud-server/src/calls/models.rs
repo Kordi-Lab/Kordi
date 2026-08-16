@@ -105,4 +105,20 @@ pub struct RegisterVoipPushTokenRequest {
     pub environment: String,
 }
 
-pub type RegisterPushTokenRequest = RegisterVoipPushTokenRequest;
+fn enabled_by_default() -> bool {
+    true
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterPushTokenRequest {
+    pub token: String,
+    pub environment: String,
+    #[serde(default = "enabled_by_default")]
+    pub messages_enabled: bool,
+    #[serde(default = "enabled_by_default")]
+    pub sound_enabled: bool,
+    #[serde(default = "enabled_by_default")]
+    pub previews_enabled: bool,
+    #[serde(default = "enabled_by_default")]
+    pub badge_enabled: bool,
+}

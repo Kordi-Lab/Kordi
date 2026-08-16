@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
+  Conversation,
   ContactRequest,
   DesktopCollaborationHost,
   DesktopChatTurnSnapshot,
@@ -13,6 +14,7 @@ import type {
   ProjectSession,
   SessionArtifact,
 } from '@/kordi-app/types';
+import { useDesktopMessageAttention } from '@/features/notifications/useDesktopMessageAttention';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudArtifactsForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
@@ -97,7 +99,11 @@ type UseKordiDesktopActivityArgs = {
   activeConversationUsesCollaboration: boolean;
   isDesktopCollaborationSending: boolean;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot | null | undefined>;
-  chatConversations: Array<{ unread?: number | null }>;
+  chatConversations: Conversation[];
+  isNativeShell: boolean;
+  attentionReady: boolean;
+  chatTranscriptScrollRef: MutableRefObject<HTMLElement | null>;
+  onOpenNotificationSession: (sessionId: string, messageId: string) => void;
   setVisibleLocalSessionId: (sessionId: string | null) => void;
   setActiveSourcePreview: (value: EditFilePreview | null) => void;
   setActiveArtifactId: (value: string | null) => void;
@@ -121,6 +127,10 @@ export function useKordiDesktopActivity({
   isDesktopCollaborationSending,
   desktopLiveTurnsBySession,
   chatConversations,
+  isNativeShell,
+  attentionReady,
+  chatTranscriptScrollRef,
+  onOpenNotificationSession,
   setVisibleLocalSessionId,
   setActiveSourcePreview,
   setActiveArtifactId,
@@ -166,6 +176,18 @@ export function useKordiDesktopActivity({
     const baseTitle = import.meta.env.VITE_KORDI_WINDOW_TITLE?.trim() || 'Kordi';
     document.title = totalUnreadMessages > 0 ? `(${totalUnreadMessages}) ${baseTitle}` : baseTitle;
   }, [totalUnreadMessages]);
+
+  useDesktopMessageAttention({
+    isNativeShell,
+    attentionReady,
+    activeNav,
+    activeConversationId: activeConv.id,
+    activeCanonicalSessionId: activeConv.canonicalSessionId,
+    chatTranscriptScrollRef,
+    conversations: chatConversations,
+    totalUnreadCount: totalUnreadMessages,
+    onOpenSession: onOpenNotificationSession,
+  });
 
   useEffect(() => {
     setVisibleLocalSessionId(visibleLocalSessionIdForActivity({

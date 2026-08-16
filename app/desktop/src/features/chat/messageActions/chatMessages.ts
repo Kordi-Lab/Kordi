@@ -49,7 +49,6 @@ import {
   appendOptimisticOutboundMessage,
   failedPreparedCanonicalUserMessage,
   optimisticSessionTitleFromMessage,
-  markOptimisticCollaborationMessageFailed,
   markOptimisticCollaborationMessageSending,
   markOptimisticCanonicalMessageFailed,
   markOptimisticCanonicalMessageSending,
@@ -68,6 +67,7 @@ import {
   createCloudCollaborationClientMessageId,
   failedCanonicalGroupMessageRequest,
   shouldAppendOptimisticCollaborationMessage,
+  terminalCollaborationSendFailure,
 } from './collaborationSendLifecycle';
 import {
   fetchMaterializedLocalChatTarget,
@@ -90,7 +90,8 @@ import {
   shouldUseCollaborationConversationRouting,
 } from './collaborationRouting';
 import {
-  resolvedCloudConversationIdForCollaborationSend,
+  resolvedCloudConversationIdForConversation,
+  resolvedCloudConversationIdForTarget,
   resolveDirectHostedAgentTarget,
   resolveLockedKordiSupportCloudConversationId,
   resolveLockedKordiSupportAgentTarget,
@@ -543,12 +544,11 @@ export function useChatMessageActions({
   shouldAutoFollowChatRef,
   watchDesktopLiveTurn,
 }: UseChatMessageActionsArgs) {
-  const resolvedActiveCloudConversationId =
-    resolvedCloudConversationIdForCollaborationSend(
-      activeConvId,
-      activeConvCanonicalSessionId,
-      activeConvCollaborationTarget?.nodeId,
-    );
+  const resolvedActiveCloudConversationId = resolvedCloudConversationIdForTarget(
+    activeConvId,
+    activeConvCanonicalSessionId,
+    activeConvCollaborationTarget,
+  );
   const lockedSupportAgentTarget = useMemo(() => (
     resolveLockedKordiSupportAgentTarget({
       conversationId: activeConvId,
@@ -981,7 +981,8 @@ export function useChatMessageActions({
       return;
     }
 
-    if (isCloudCollaborationConversationId(targetConversation.id)) {
+    const targetCloudConversationId = resolvedCloudConversationIdForConversation(targetConversation);
+    if (isCloudCollaborationConversationId(targetCloudConversationId)) {
       if (!sendCloudCollaborationMessage || !setCloudCollaborationState) {
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
@@ -992,7 +993,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(
           current,
-          targetConversation.id,
+          targetCloudConversationId,
           text,
           sentAt,
           optimisticMessageId,
@@ -1002,16 +1003,18 @@ export function useChatMessageActions({
         clearTargetDraft();
         setChatComposerAttachments([]);
         const canonicalMessage = await sendCloudCollaborationMessage(
-          targetConversation.id,
+          targetCloudConversationId,
           text,
           chatComposerAttachments,
           { clientMessageId: optimisticMessageId },
         );
-        setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(targetConversation.id, optimisticMessageId, canonicalMessage));
+        setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(targetCloudConversationId, optimisticMessageId, canonicalMessage));
       } catch (error) {
-        const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
-        setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
-        setDesktopChatError(failureDetail);
+        const failure = terminalCollaborationSendFailure({ error, fallback: 'Unable to send message', conversationId: targetCloudConversationId, messageId: optimisticMessageId });
+        if (failure) {
+          setCloudCollaborationState(failure.updateOptimisticState);
+          setDesktopChatError(failure.detail);
+        }
       }
       return;
     }
@@ -1255,14 +1258,11 @@ export function useChatMessageActions({
           );
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, retryMessageId, canonicalMessage));
         } catch (error) {
-          const failureDetail = collaborationSendFailureDetail(error, 'Unable to retry message');
-          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(
-            current,
-            activeCloudConversationId,
-            retryMessageId,
-            failureDetail,
-          ));
-          setDesktopChatError(failureDetail);
+          const failure = terminalCollaborationSendFailure({ error, fallback: 'Unable to retry message', conversationId: activeCloudConversationId, messageId: retryMessageId });
+          if (failure) {
+            setCloudCollaborationState(failure.updateOptimisticState);
+            setDesktopChatError(failure.detail);
+          }
         } finally {
           setIsDesktopChatSending(false);
         }
@@ -1489,11 +1489,11 @@ export function useChatMessageActions({
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, optimisticMessageId, canonicalMessage));
         }
       } catch (error) {
-        const failureDetail = collaborationSendFailureDetail(error, 'Unable to send message');
-        if (appendedOptimisticCollaborationMessage) {
-          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(current, activeCloudConversationId, optimisticMessageId, failureDetail));
+        const failure = terminalCollaborationSendFailure({ error, fallback: 'Unable to send message', conversationId: activeCloudConversationId, messageId: optimisticMessageId, markOptimisticFailure: appendedOptimisticCollaborationMessage });
+        if (failure) {
+          setCloudCollaborationState(failure.updateOptimisticState);
+          setDesktopChatError(failure.detail);
         }
-        setDesktopChatError(failureDetail);
       } finally {
         setIsDesktopChatSending(false);
       }

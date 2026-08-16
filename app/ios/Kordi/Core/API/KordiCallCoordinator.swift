@@ -96,7 +96,6 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
     private var reportedIncomingCallIDs = Set<String>()
     private var isRequestingIncomingAnswer = false
     private var isAnsweringIncomingCall = false
-    private var hasRequestedMeetingNotifications = false
     private var finishingCallID: String?
     private var isSystemAudioSessionActive = false
     private var isPublishingMicrophone = false
@@ -138,20 +137,6 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         self.model = model
         if let pendingVoIPToken {
             Task { await model.registerVoIPPushToken(pendingVoIPToken) }
-        }
-        requestMeetingNotificationRegistration()
-    }
-
-    private func requestMeetingNotificationRegistration() {
-        guard !hasRequestedMeetingNotifications,
-              model?.isPreviewMode != true,
-              model?.account != nil else { return }
-        hasRequestedMeetingNotifications = true
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
-            Task { @MainActor in
-                UIApplication.shared.registerForRemoteNotifications()
-            }
         }
     }
 

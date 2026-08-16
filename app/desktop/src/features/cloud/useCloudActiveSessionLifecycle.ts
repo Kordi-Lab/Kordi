@@ -10,6 +10,7 @@ import { useCloudActiveSessionPin } from './useCloudActiveSessionPin';
 export function useCloudActiveSessionLifecycle({
   account,
   activeConversationId,
+  canMarkActiveConversationRead,
   canonicalState,
   setCanonicalState,
   client,
@@ -17,6 +18,7 @@ export function useCloudActiveSessionLifecycle({
 }: {
   account: CloudAccount | null;
   activeConversationId?: string | null;
+  canMarkActiveConversationRead: boolean;
   canonicalState?: CanonicalSessionState | null;
   setCanonicalState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   client: CloudAuthClient;
@@ -25,6 +27,7 @@ export function useCloudActiveSessionLifecycle({
   useCanonicalActiveSessionRead({
     account,
     activeConversationId,
+    canMarkActiveConversationRead,
     canonicalState,
     setCanonicalState,
   });

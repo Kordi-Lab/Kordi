@@ -8,6 +8,7 @@ import {
   isUnmaterializedDesktopAgentSession,
 } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
+import { transcriptIsAtLatest } from '@/features/cloud/activeConversationReadPolicy';
 import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, NavId, ResolvedThemeMode } from '@/kordi-app/types';
 
 type UseKordiUiEffectsArgs = {
@@ -40,6 +41,7 @@ type UseKordiUiEffectsArgs = {
   setComposerSelections: Dispatch<SetStateAction<Record<ComposerScope, { mode: string; model: string; thinking: string }>>>;
   chatTranscriptScrollRef: MutableRefObject<HTMLDivElement | null>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
+  setChatTranscriptAtLatest: Dispatch<SetStateAction<boolean>>;
   activeConvMessagesLength: number;
   activeLastMessageTime?: string;
   activeTranscriptLastMessageIsOwn: boolean;
@@ -114,6 +116,7 @@ export function useKordiUiEffects({
   setComposerSelections,
   chatTranscriptScrollRef,
   shouldAutoFollowChatRef,
+  setChatTranscriptAtLatest,
   activeConvMessagesLength,
   activeLastMessageTime,
   activeTranscriptLastMessageIsOwn,
@@ -234,13 +237,14 @@ export function useKordiUiEffects({
     if (activeNav !== 'chats' && activeNav !== 'projects') return;
 
     shouldAutoFollowChatRef.current = true;
+    setChatTranscriptAtLatest(true);
     transcriptScrollMetricsRef.current = null;
 
     const container = chatTranscriptScrollRef.current;
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [activeConvId, activeNav, activeProjectSessionId, chatTranscriptScrollRef, shouldAutoFollowChatRef]);
+  }, [activeConvId, activeNav, activeProjectSessionId, chatTranscriptScrollRef, setChatTranscriptAtLatest, shouldAutoFollowChatRef]);
 
   useLayoutEffect(() => {
     if (activeNav !== 'chats' && activeNav !== 'projects') return;
@@ -272,6 +276,8 @@ export function useKordiUiEffects({
       shouldAutoFollowChatRef.current = false;
     }
 
+    setChatTranscriptAtLatest(transcriptIsAtLatest(container));
+
     transcriptScrollMetricsRef.current = {
       scrollHeight: container.scrollHeight,
       scrollTop: container.scrollTop,
@@ -292,6 +298,7 @@ export function useKordiUiEffects({
     desktopLiveTurn?.thinkingText,
     desktopLiveTurn?.tools.length,
     chatTranscriptScrollRef,
+    setChatTranscriptAtLatest,
     shouldAutoFollowChatRef,
   ]);
 

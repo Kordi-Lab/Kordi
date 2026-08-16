@@ -13,6 +13,7 @@ import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { cloudGroupMessageRuntimeFields, integerMilliseconds } from './cloudGroupDecoding';
+import { cloudGroupMessageIsUnreadForAccount } from './cloudGroupUnreadPolicy';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
@@ -1088,9 +1089,7 @@ export function cloudGroupMessageReadTargets(input: {
     return envelope ? [{ wire, envelope, canonicalMessageId: cleanText(envelope.message?.id) || null }] : [];
   });
   for (const { wire: message, envelope } of rows) {
-    if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
-    if (!envelope || envelope.kind !== 'group-message') continue;
-    if (message.fromAccountId === accountId || envelope.message?.senderAccountId === accountId) continue;
+    if (!cloudGroupMessageIsUnreadForAccount(message, envelope, accountId)) continue;
     if (shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
       activeConversationIds: input.activeConversationIds,
@@ -1159,9 +1158,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
     return envelope ? [{ wire, envelope, canonicalMessageId: cleanText(envelope.message?.id) || null }] : [];
   });
   for (const { wire: message, envelope } of rows) {
-    if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
-    if (!envelope || envelope.kind !== 'group-message') continue;
-    if (message.fromAccountId === accountId || envelope.message?.senderAccountId === accountId) continue;
+    if (!cloudGroupMessageIsUnreadForAccount(message, envelope, accountId)) continue;
     if (!shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
       activeConversationIds: input.activeConversationIds,

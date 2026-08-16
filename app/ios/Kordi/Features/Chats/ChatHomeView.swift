@@ -113,6 +113,12 @@ struct ChatHomeView: View {
         .navigationDestination(for: ConversationSummary.self) { selected in
             ConversationView(conversation: selected)
         }
+        .navigationDestination(for: KordiMessageNotificationRoute.self) { route in
+            ConversationView(
+                conversation: route.conversation,
+                initialMessageID: route.messageID
+            )
+        }
         .navigationDestination(item: $composedConversation) { selected in
             ConversationView(conversation: selected)
         }
@@ -441,7 +447,6 @@ struct ChatHomeView: View {
     }
 
     private func openConversation(_ conversation: ConversationSummary) {
-        model.markConversationOpened(conversation)
         model.prepareConversationForPresentation(conversation)
         if let onOpenConversation {
             onOpenConversation(conversation)

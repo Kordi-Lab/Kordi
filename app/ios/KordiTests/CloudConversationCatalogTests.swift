@@ -21,6 +21,54 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(session.messageCount, 12)
     }
 
+    func testOwnAgentResponseRemainsUnreadUntilCanonicalCursorAdvances() throws {
+        let sessionId = "session:self-agent:notification"
+        let conversationId = "conversation-agent-notification"
+        let response = try agentResponseBody(
+            requestId: "request-agent-notification",
+            text: "The review is ready."
+        )
+        let responseMessage = wire(
+            id: "response-agent-notification",
+            body: response,
+            sessionId: sessionId,
+            createdAt: "2026-08-08T10:01:00Z",
+            conversationId: conversationId,
+            conversationSequence: 2
+        )
+        let unreadCatalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [responseMessage]],
+            canonicalConversations: [canonicalConversation(
+                id: conversationId,
+                kind: "ai",
+                sessionId: sessionId,
+                latestSequence: 2,
+                lastReadSequence: 1
+            )]
+        )
+        let readCatalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [responseMessage]],
+            canonicalConversations: [canonicalConversation(
+                id: conversationId,
+                kind: "ai",
+                sessionId: sessionId,
+                latestSequence: 2,
+                lastReadSequence: 2
+            )]
+        )
+
+        XCTAssertEqual(unreadCatalog.first { $0.sessionId == sessionId }?.unreadCount, 1)
+        XCTAssertEqual(readCatalog.first { $0.sessionId == sessionId }?.unreadCount, 0)
+    }
+
     func testOpaqueCanonicalV2AgentSessionAppearsBeforeHistoryBackfill() throws {
         let payload = Data(#"{"id":"conversation-agent-opaque","kind":"ai","shared_title":"Model and identity","version":3,"created_by_account_id":"acct_me","legacy_session_id":"e98c478d-6da2-46db-bf16-5caaac677f62","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":8,"created_at":"2026-08-11T17:22:11Z","updated_at":"2026-08-11T17:23:04Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-11T17:22:11Z","left_at":null}],"preferences":{"conversation_id":"conversation-agent-opaque","account_id":"acct_me","personal_title":"Model and identity","version":1}}"#.utf8)
         let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: payload)
@@ -955,7 +1003,9 @@ final class CloudConversationCatalogTests: XCTestCase {
         sessionId: String,
         createdAt: String,
         from: String = "acct_me",
-        to: String = "acct_me"
+        to: String = "acct_me",
+        conversationId: String? = nil,
+        conversationSequence: Int64? = nil
     ) -> CloudMessageDTO {
         CloudMessageDTO(
             messageId: id,
@@ -966,7 +1016,62 @@ final class CloudConversationCatalogTests: XCTestCase {
             deliveredAt: createdAt,
             readAt: nil,
             direction: from == "acct_me" ? "outgoing" : "incoming",
-            sessionId: sessionId
+            sessionId: sessionId,
+            conversationId: conversationId,
+            conversationSequence: conversationSequence
         )
+    }
+
+    private func canonicalConversation(
+        id: String,
+        kind: String,
+        sessionId: String,
+        latestSequence: Int64,
+        lastReadSequence: Int64
+    ) -> CloudChatConversation {
+        CloudChatConversation(
+            id: id,
+            kind: kind,
+            sharedTitle: nil,
+            version: 1,
+            createdByAccountId: "acct_me",
+            legacySessionId: sessionId,
+            forkedFromSessionId: nil,
+            forkedFromMessageId: nil,
+            latestMessageSequence: latestSequence,
+            createdAt: "2026-08-08T10:00:00Z",
+            updatedAt: "2026-08-08T10:01:00Z",
+            members: [CloudChatMember(
+                accountId: "acct_me",
+                displayName: "Alex",
+                avatarUrl: nil,
+                role: "owner",
+                membershipState: "active",
+                version: 1,
+                lastDeliveredSequence: latestSequence,
+                lastReadSequence: lastReadSequence,
+                joinedAt: "2026-08-08T10:00:00Z",
+                leftAt: nil
+            )],
+            preferences: CloudChatPreferences(
+                conversationId: id,
+                accountId: "acct_me",
+                personalTitle: nil,
+                version: 1
+            )
+        )
+    }
+
+    private func agentResponseBody(requestId: String, text: String) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "kind": "agent-response",
+            "requestId": requestId,
+            "text": text,
+            "deliveryState": "complete"
+        ])
+        return CloudMessageCodec.agentResponsePrefix + data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }

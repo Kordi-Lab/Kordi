@@ -1,17 +1,19 @@
 import { useCallback, useMemo } from 'react';
-import type { MutableRefObject } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { ComposerScope, Conversation, DesktopChatState, Message, ResolvedThemeMode } from '@/kordi-app/types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
+import { transcriptIsAtLatest } from '@/features/cloud/activeConversationReadPolicy';
 
 type UseKordiShellViewModelArgs = {
   themeMode: ResolvedThemeMode;
   lastCollaborationSyncAt: number | null;
   chatTranscriptScrollRef: MutableRefObject<HTMLDivElement | null>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
+  setChatTranscriptAtLatest: Dispatch<SetStateAction<boolean>>;
   desktopChatState: DesktopChatState | null;
   activeConv: Conversation;
   activeConversationUsesCollaboration: boolean;
@@ -30,6 +32,7 @@ export function useKordiShellViewModel({
   lastCollaborationSyncAt,
   chatTranscriptScrollRef,
   shouldAutoFollowChatRef,
+  setChatTranscriptAtLatest,
   desktopChatState,
   activeConv,
   activeConversationUsesCollaboration,
@@ -49,22 +52,21 @@ export function useKordiShellViewModel({
 
   const rootThemeClass = themeMode === 'light' ? 'theme-light' : 'theme-dark';
 
-  const isChatScrolledNearBottom = useCallback((container: HTMLDivElement) => {
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    return distanceFromBottom < 140;
-  }, []);
-
   const onProjectTranscriptScroll = useCallback(() => {
     const container = chatTranscriptScrollRef.current;
     if (!container) return;
-    shouldAutoFollowChatRef.current = isChatScrolledNearBottom(container);
-  }, [chatTranscriptScrollRef, isChatScrolledNearBottom, shouldAutoFollowChatRef]);
+    const isAtLatest = transcriptIsAtLatest(container);
+    shouldAutoFollowChatRef.current = isAtLatest;
+    setChatTranscriptAtLatest(isAtLatest);
+  }, [chatTranscriptScrollRef, setChatTranscriptAtLatest, shouldAutoFollowChatRef]);
 
   const onChatTranscriptScroll = useCallback(() => {
     const container = chatTranscriptScrollRef.current;
     if (!container) return;
-    shouldAutoFollowChatRef.current = isChatScrolledNearBottom(container);
-  }, [chatTranscriptScrollRef, isChatScrolledNearBottom, shouldAutoFollowChatRef]);
+    const isAtLatest = transcriptIsAtLatest(container);
+    shouldAutoFollowChatRef.current = isAtLatest;
+    setChatTranscriptAtLatest(isAtLatest);
+  }, [chatTranscriptScrollRef, setChatTranscriptAtLatest, shouldAutoFollowChatRef]);
 
   const wrappedSelectComposerValue = useCallback((scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => (
     selectComposerValue(scope, type, value, configTargetOverride)

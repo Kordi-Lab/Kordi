@@ -1,8 +1,9 @@
-import { KeyRound, Sparkles, type LucideIcon } from 'lucide-react';
+import { Bell, KeyRound, Sparkles, type LucideIcon } from 'lucide-react';
 
 export type SettingsSectionId =
   | 'general'
   | 'appearance'
+  | 'notifications'
   | 'configuration'
   | 'auth'
   | 'personalization'
@@ -40,6 +41,13 @@ export const settingsSections: SettingsSection[] = [
     label: 'Authentication',
     icon: KeyRound,
     title: 'Authentication',
+    items: [],
+  },
+  {
+    id: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
+    title: 'Notifications',
     items: [],
   },
   {

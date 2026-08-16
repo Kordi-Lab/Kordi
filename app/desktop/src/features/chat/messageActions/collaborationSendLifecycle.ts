@@ -1,7 +1,12 @@
-import type { AppendCanonicalMessageRequest } from '@/kordi-app/types';
+import type {
+  AppendCanonicalMessageRequest,
+  DesktopCollaborationState,
+} from '@/kordi-app/types';
+import { isRetryableCloudDeliveryError } from '@/features/cloud/cloudAuthError';
 
 import {
   failedPreparedCanonicalUserMessage,
+  markOptimisticCollaborationMessageFailed,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
 
@@ -21,6 +26,38 @@ export function collaborationSendFailureDetail(
   fallback = 'Unable to send collaboration message',
 ) {
   return error instanceof Error ? error.message : fallback;
+}
+
+export function shouldKeepCollaborationSendPending(error: unknown): boolean {
+  return isRetryableCloudDeliveryError(error);
+}
+
+export function terminalCollaborationSendFailure({
+  error,
+  fallback,
+  conversationId,
+  messageId,
+  markOptimisticFailure = true,
+}: {
+  error: unknown;
+  fallback: string;
+  conversationId: string;
+  messageId: string;
+  markOptimisticFailure?: boolean;
+}): {
+  detail: string;
+  updateOptimisticState: (current: DesktopCollaborationState | null) => DesktopCollaborationState | null;
+} | null {
+  if (shouldKeepCollaborationSendPending(error)) return null;
+  const detail = collaborationSendFailureDetail(error, fallback);
+  return {
+    detail,
+    updateOptimisticState: (current) => (
+      markOptimisticFailure
+        ? markOptimisticCollaborationMessageFailed(current, conversationId, messageId, detail)
+        : current
+    ),
+  };
 }
 
 export function shouldShowCollaborationSendFailureNotice(hasInlineFailureTarget: boolean) {

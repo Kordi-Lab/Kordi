@@ -335,7 +335,7 @@ test('cloud direct unread honors canonical direct-session read cursor when cache
   assert.equal(state.conversations[0].unreadCount, 0);
 });
 
-test('cloud self-agent messages never count as unread badges', () => {
+test('cloud self-authored human messages never count as unread badges', () => {
   const selfMessage: CloudMessage = {
     ...message,
     messageId: 'msg_self_agent_unread_candidate',
@@ -356,6 +356,41 @@ test('cloud self-agent messages never count as unread badges', () => {
   assert.equal(state.conversations.length, 1);
   assert.equal(state.conversations[0].canonicalSessionId, 'f51f7d19-8c8f-4228-9cdd-074ae9b2146e');
   assert.equal(state.conversations[0].unreadCount, 0);
+});
+
+test('cloud self-agent responses count as unread until the canonical cursor advances', () => {
+  const sessionId = 'f51f7d19-8c8f-4228-9cdd-074ae9b2146e';
+  const selfAgentResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_self_agent_response',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_self_agent_request', text: 'Finished.' }),
+    direction: 'outgoing',
+    readAt: null,
+    sessionId,
+  };
+  const unread = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: [selfAgentResponse] },
+    activeConversationId: null,
+  });
+  const read = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: [selfAgentResponse] },
+    readCursorsBySessionId: {
+      [sessionId]: {
+        lastReadMessageId: selfAgentResponse.messageId,
+        lastReadCreatedAtMs: Date.parse(selfAgentResponse.createdAt),
+      },
+    },
+    activeConversationId: null,
+  });
+
+  assert.equal(unread.conversations[0].unreadCount, 1);
+  assert.equal(read.conversations[0].unreadCount, 0);
 });
 
 test('cloud inbound messages with server read_at do not become unread after relaunch', () => {

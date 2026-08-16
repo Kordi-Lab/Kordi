@@ -35,6 +35,7 @@ import type {
 export type UseCloudCollaborationStateArgs = {
   account: CloudAccount | null;
   activeConversationId?: string | null;
+  canMarkActiveConversationRead: boolean;
   canonicalSessionState?: CanonicalSessionState | null;
   setCanonicalSessionState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>

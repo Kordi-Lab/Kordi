@@ -15,9 +15,12 @@ test('product navigation only exposes final Cloud pages', () => {
 });
 
 test('settings data keeps only final Cloud settings sections', () => {
-  assert.deepEqual(settingsSections.map((section) => section.id), ['auth', 'appearance']);
-  assert.deepEqual(settingsSections.map((section) => section.label), ['Authentication', 'Appearance']);
-  assert.deepEqual(settingsSections[1]?.items.map((item) => item.label), ['Theme']);
+  assert.deepEqual(settingsSections.map((section) => section.id), ['auth', 'notifications', 'appearance']);
+  assert.deepEqual(
+    settingsSections.map((section) => section.label),
+    ['Authentication', 'Notifications', 'Appearance'],
+  );
+  assert.deepEqual(settingsSections[2]?.items.map((item) => item.label), ['Theme']);
   assert.equal(normalizeSettingsSectionIdForCloud('general'), 'auth');
   assert.equal(normalizeSettingsSectionIdForCloud('appearance'), 'appearance');
 });

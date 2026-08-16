@@ -486,6 +486,8 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let sessionId: String?
     let attachments: [CloudMessageAttachment]
     let messageKind: String?
+    let conversationId: String?
+    let conversationSequence: Int64?
 
     var id: String { messageId }
 
@@ -500,7 +502,9 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         direction: String,
         sessionId: String?,
         attachments: [CloudMessageAttachment] = [],
-        messageKind: String? = nil
+        messageKind: String? = nil,
+        conversationId: String? = nil,
+        conversationSequence: Int64? = nil
     ) {
         self.messageId = messageId
         self.fromAccountId = fromAccountId
@@ -513,11 +517,14 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.sessionId = sessionId
         self.attachments = attachments
         self.messageKind = messageKind
+        self.conversationId = conversationId
+        self.conversationSequence = conversationSequence
     }
 
     enum CodingKeys: String, CodingKey {
         case messageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, direction, sessionId, attachments
         case messageKind = "kind"
+        case conversationId, conversationSequence
     }
 
     init(from decoder: Decoder) throws {
@@ -533,6 +540,8 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
         attachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .attachments) ?? []
         messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
+        conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
+        conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
     }
 }
 
@@ -782,6 +791,24 @@ struct CloudStartCallRequest: Codable, Hashable {
 struct CloudVoIPPushTokenRequest: Codable, Hashable {
     let token: String
     let environment: String
+}
+
+struct CloudNotificationPushTokenRequest: Codable, Hashable {
+    let token: String
+    let environment: String
+    let messagesEnabled: Bool
+    let soundEnabled: Bool
+    let previewsEnabled: Bool
+    let badgeEnabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case token
+        case environment
+        case messagesEnabled = "messages_enabled"
+        case soundEnabled = "sound_enabled"
+        case previewsEnabled = "previews_enabled"
+        case badgeEnabled = "badge_enabled"
+    }
 }
 
 struct CloudChatEvent: Codable, Hashable {

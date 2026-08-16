@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { participantSpaceCreateKey } from '@/app/useKordiAppModelHelpers';
 import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
@@ -9,6 +9,10 @@ import { useKordiUiEffects } from '@/app/useKordiUiEffects';
 import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import { existingBlankSessionIdForParticipantSpace } from '@/features/chat/chatCreateFlows';
+import {
+  navigateToTranscriptMessage,
+  scrollTranscriptToBottom,
+} from '@/features/chat/transcriptNavigation';
 import {
   contactRequests as demoContactRequests,
 } from '@/kordi-app/data';
@@ -24,6 +28,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       composerControlsRef,
       chatTranscriptScrollRef,
       shouldAutoFollowChatRef,
+      setChatTranscriptAtLatest,
       lastSeenArtifactByContextRef,
     },
     canonical: {
@@ -65,6 +70,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     },
     navigation: {
       activeNav,
+      setActiveNav,
       activeConvId,
       setActiveConvId,
       activeProjectId,
@@ -260,6 +266,24 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     ? collaborationContactRequests
     : demoContactRequests;
 
+  const openNotificationSession = useCallback((sessionId: string, messageId: string) => {
+    const conversation = chatConversations.find((candidate) => (
+      candidate.id === sessionId
+      || candidate.canonicalSessionId === sessionId
+    ));
+    setActiveNav('chats');
+    setActiveConvId(conversation?.id ?? sessionId);
+    const revealMessage = (attempt: number) => {
+      if (navigateToTranscriptMessage(messageId, chatTranscriptScrollRef)) return;
+      if (attempt < 8) {
+        window.setTimeout(() => revealMessage(attempt + 1), 120);
+      } else {
+        scrollTranscriptToBottom(chatTranscriptScrollRef);
+      }
+    };
+    window.setTimeout(() => revealMessage(0), 120);
+  }, [chatConversations, chatTranscriptScrollRef, setActiveConvId, setActiveNav]);
+
   const {
     activeContactRequest,
     activeSettingsSection,
@@ -281,6 +305,10 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     isDesktopCollaborationSending,
     desktopLiveTurnsBySession,
     chatConversations,
+    isNativeShell,
+    attentionReady: initialMessagesSettled,
+    chatTranscriptScrollRef,
+    onOpenNotificationSession: openNotificationSession,
     setVisibleLocalSessionId,
     setActiveSourcePreview: settingsUi.setActiveSourcePreview,
     setActiveArtifactId: settingsUi.setActiveArtifactId,
@@ -327,6 +355,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     setComposerSelections: composerUi.setComposerSelections,
     chatTranscriptScrollRef,
     shouldAutoFollowChatRef,
+    setChatTranscriptAtLatest,
     activeConvMessagesLength: activeConv.messages.length,
     activeLastMessageTime: activeLastMessage?.time,
     activeTranscriptLastMessageIsOwn: Boolean(
