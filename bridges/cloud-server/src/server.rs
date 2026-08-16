@@ -291,6 +291,9 @@ pub async fn run(
     crate::support::spawn_ticket_worker(state.clone());
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
+    if let Some(notifications) = state.notifications() {
+        notifications.spawn_message_notification_worker(state.db_pool().clone());
+    }
     let sweeper_state = state.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(crate::presence::presence_sweep_interval());

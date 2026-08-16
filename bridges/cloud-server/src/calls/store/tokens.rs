@@ -1,5 +1,6 @@
 use sqlx_core::query::query;
-use sqlx_postgres::PgPool;
+use sqlx_core::transaction::Transaction;
+use sqlx_postgres::{PgPool, Postgres};
 
 use super::CallStoreError;
 
@@ -41,15 +42,26 @@ pub async fn register_voip_push_token(
     device_token: &str,
     environment: &str,
 ) -> Result<(), CallStoreError> {
-    register_push_token(
-        pool,
-        VOIP_TOKEN_UPSERT,
-        account_id,
+    let clean_token = validate_push_token(device_token, environment)?;
+    let mut transaction = pool.begin().await?;
+    lock_push_token(&mut transaction, &clean_token, environment).await?;
+    remove_previous_token_owner(
+        &mut transaction,
+        PushTokenStore::Voip,
         device_id,
-        device_token,
+        &clean_token,
         environment,
     )
-    .await
+    .await?;
+    query(VOIP_TOKEN_UPSERT)
+        .bind(device_id)
+        .bind(account_id)
+        .bind(clean_token)
+        .bind(environment)
+        .execute(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    Ok(())
 }
 
 pub async fn register_notification_push_token(
@@ -57,6 +69,16 @@ pub async fn register_notification_push_token(
     registration: NotificationPushTokenRegistration<'_>,
 ) -> Result<(), CallStoreError> {
     let clean_token = validate_push_token(registration.device_token, registration.environment)?;
+    let mut transaction = pool.begin().await?;
+    lock_push_token(&mut transaction, &clean_token, registration.environment).await?;
+    remove_previous_token_owner(
+        &mut transaction,
+        PushTokenStore::Notification,
+        registration.device_id,
+        &clean_token,
+        registration.environment,
+    )
+    .await?;
     query(NOTIFICATION_TOKEN_UPSERT)
         .bind(registration.device_id)
         .bind(registration.account_id)
@@ -66,26 +88,52 @@ pub async fn register_notification_push_token(
         .bind(registration.sound_enabled)
         .bind(registration.previews_enabled)
         .bind(registration.badge_enabled)
-        .execute(pool)
+        .execute(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum PushTokenStore {
+    Notification,
+    Voip,
+}
+
+async fn lock_push_token(
+    transaction: &mut Transaction<'_, Postgres>,
+    device_token: &str,
+    environment: &str,
+) -> Result<(), sqlx_core::Error> {
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("apns-token:{environment}:{device_token}"))
+        .execute(&mut **transaction)
         .await?;
     Ok(())
 }
 
-async fn register_push_token(
-    pool: &PgPool,
-    statement: &'static str,
-    account_id: &str,
+async fn remove_previous_token_owner(
+    transaction: &mut Transaction<'_, Postgres>,
+    store: PushTokenStore,
     device_id: &str,
     device_token: &str,
     environment: &str,
-) -> Result<(), CallStoreError> {
-    let clean_token = validate_push_token(device_token, environment)?;
+) -> Result<(), sqlx_core::Error> {
+    let statement = match store {
+        PushTokenStore::Voip => {
+            "DELETE FROM cloud_voip_push_tokens \
+             WHERE device_token = $1 AND apns_environment = $2 AND device_id <> $3"
+        }
+        PushTokenStore::Notification => {
+            "DELETE FROM cloud_apns_push_tokens \
+             WHERE device_token = $1 AND apns_environment = $2 AND device_id <> $3"
+        }
+    };
     query(statement)
-        .bind(device_id)
-        .bind(account_id)
-        .bind(clean_token)
+        .bind(device_token)
         .bind(environment)
-        .execute(pool)
+        .bind(device_id)
+        .execute(&mut **transaction)
         .await?;
     Ok(())
 }

@@ -1178,7 +1178,9 @@ actor CloudAPIClient {
             direction: outgoing ? "outgoing" : "incoming",
             sessionId: conversation.legacySessionId ?? conversation.id,
             attachments: message.content.legacyAttachments,
-            messageKind: message.kind
+            messageKind: message.kind,
+            conversationId: conversation.id,
+            conversationSequence: message.conversationSequence
         )
     }
 

@@ -150,6 +150,22 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
   }
 }
 
+export function isTerminalCloudAgentResponse(body: string) {
+  const response = parseCloudAgentResponse(body);
+  return Boolean(response && response.deliveryState !== 'processing');
+}
+
+export function cloudDirectMessageIsUnreadForAccount(
+  message: CloudMessage,
+  accountId: string,
+) {
+  return message.toAccountId === accountId
+    && (
+      (message.fromAccountId !== accountId && !message.readAt)
+      || (message.fromAccountId === accountId && isTerminalCloudAgentResponse(message.body))
+    );
+}
+
 export function encodeCloudAgentCancel(input: { requestId: string }): string {
   const envelope: CloudAgentCancelEnvelope = {
     kind: 'agent-cancel',

@@ -123,12 +123,10 @@ async fn send_message(
     .await
     {
         Ok(outcome) => {
-            if let Some(notifications) = state.notifications().cloned() {
-                let pool = state.db_pool().clone();
-                let message = outcome.value.clone();
-                tokio::spawn(async move {
-                    notifications.send_message_attention(&pool, &message).await;
-                });
+            if let Some(notifications) = state.notifications() {
+                notifications
+                    .send_message_attention(state.db_pool(), &outcome.value)
+                    .await;
             }
             (
                 if outcome.inserted {

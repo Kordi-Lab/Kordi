@@ -113,6 +113,55 @@ test('cloud group unread helper ignores self-authored cached controls even when 
   assert.deepEqual(unread, {});
 });
 
+test('cloud group unread helper counts self-agent replies until the local read cursor advances', () => {
+  const accountId = 'acct_self';
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:self-agent',
+    groupSpaceId: 'session:group:self-agent',
+    groupTitle: 'Agent team',
+    createdByAccountId: accountId,
+    actor: { accountId, displayName: 'Me', avatarUrl: null, role: 'admin' },
+    participants: [{ accountId, displayName: 'Me', avatarUrl: null, role: 'admin' }],
+    message: {
+      id: 'msg_self_agent_group',
+      senderAccountId: accountId,
+      senderDisplayName: "Researcher · Me's Agent",
+      text: 'Finished the group task',
+      createdAtMs: 1783440000000,
+      senderKind: 'agent',
+    },
+  });
+  const messages = [{
+    messageId: 'cloud_msg_self_agent_group',
+    fromAccountId: accountId,
+    toAccountId: accountId,
+    body,
+    createdAt: '2026-07-07T18:00:00Z',
+    deliveredAt: '2026-07-07T18:00:00Z',
+    readAt: '2026-07-07T18:01:00Z',
+    direction: 'outgoing' as const,
+    sessionId: 'session:group:self-agent',
+  }];
+
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId,
+    activeConversationId: 'session:outside',
+    messages,
+  }), { 'session:group:self-agent': 1 });
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId,
+    activeConversationId: 'session:outside',
+    readCursorsBySessionId: {
+      'session:group:self-agent': {
+        lastReadMessageId: 'msg_self_agent_group',
+        lastReadCreatedAtMs: 1783440000000,
+      },
+    },
+    messages,
+  }), {});
+});
+
 test('cloud group unread count helper deduplicates inbound unread controls per hidden session', () => {
   const groupMessage = encodeCloudGroupControl({
     kind: 'group-message',

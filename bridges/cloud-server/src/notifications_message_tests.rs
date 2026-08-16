@@ -1,6 +1,8 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use serde_json::{json, Value};
 
+use super::content::is_agent_authored_message;
 use super::*;
 
 fn message(content: Value, attachments: usize) -> MessageSnapshot {
@@ -105,6 +107,86 @@ fn hidden_protocol_rows_do_not_notify() {
     let mut snapshot = message(json!({ "schema": 1, "blocks": [] }), 0);
     snapshot.kind = "agent_control".to_string();
     assert!(!is_notifiable_message(&snapshot));
+}
+
+#[test]
+fn only_agent_envelopes_allow_notifying_the_sender_account() {
+    let direct_agent = encoded_envelope(
+        CLOUD_AGENT_RESPONSE_PREFIX,
+        json!({ "kind": "agent-response", "text": "Finished the task" }),
+    );
+    assert!(is_agent_authored_message(&message(
+        json!({ "schema": 1, "blocks": [{ "type": "text", "text": direct_agent }] }),
+        0,
+    )));
+
+    let group_agent = encoded_envelope(
+        CLOUD_GROUP_PREFIX,
+        json!({
+            "kind": "group-message",
+            "message": { "senderKind": "agent", "text": "Shared result" }
+        }),
+    );
+    assert!(is_agent_authored_message(&message(
+        json!({ "schema": 1, "blocks": [{ "type": "text", "text": group_agent }] }),
+        0,
+    )));
+
+    let group_human = encoded_envelope(
+        CLOUD_GROUP_PREFIX,
+        json!({
+            "kind": "group-message",
+            "message": { "senderKind": "human", "text": "My own message" }
+        }),
+    );
+    assert!(!is_agent_authored_message(&message(
+        json!({ "schema": 1, "blocks": [{ "type": "text", "text": group_human }] }),
+        0,
+    )));
+    assert!(!is_agent_authored_message(&message(
+        json!({ "schema": 1, "blocks": [{ "type": "text", "text": "Plain message" }] }),
+        0,
+    )));
+}
+
+#[test]
+fn agent_notifications_use_the_agent_display_name() {
+    let direct_agent = encoded_envelope(
+        CLOUD_AGENT_RESPONSE_PREFIX,
+        json!({ "kind": "agent-response", "text": "Finished" }),
+    );
+    assert_eq!(
+        notification_sender_display_name(
+            &message(
+                json!({ "schema": 1, "blocks": [{ "type": "text", "text": direct_agent }] }),
+                0,
+            ),
+            "Alex".to_string(),
+        ),
+        "Kordi"
+    );
+
+    let group_agent = encoded_envelope(
+        CLOUD_GROUP_PREFIX,
+        json!({
+            "kind": "group-message",
+            "message": {
+                "senderKind": "agent",
+                "senderDisplayName": "Researcher · Maya's Agent",
+                "text": "Finished"
+            }
+        }),
+    );
+    assert_eq!(
+        notification_sender_display_name(
+            &message(
+                json!({ "schema": 1, "blocks": [{ "type": "text", "text": group_agent }] }),
+                0,
+            ),
+            "Maya".to_string(),
+        ),
+        "Researcher · Maya's Agent"
+    );
 }
 
 #[test]

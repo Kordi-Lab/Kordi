@@ -25,21 +25,21 @@ use crate::cloud_agent_runtime::runs::{
 };
 use crate::server::ServerState;
 
-fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
-    let Some(notifications) = state.notifications().cloned() else {
+async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
+    let Some(notifications) = state.notifications() else {
         return;
     };
     let Some(message_id) = response_message_id.and_then(|value| Uuid::parse_str(value).ok()) else {
         return;
     };
-    let pool = state.db_pool().clone();
-    tokio::spawn(async move {
-        let Ok(message) = crate::chat_sync::store::load_message_snapshot(&pool, message_id).await
-        else {
-            return;
-        };
-        notifications.send_message_attention(&pool, &message).await;
-    });
+    let Ok(message) =
+        crate::chat_sync::store::load_message_snapshot(state.db_pool(), message_id).await
+    else {
+        return;
+    };
+    notifications
+        .send_message_attention(state.db_pool(), &message)
+        .await;
 }
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -180,7 +180,7 @@ async fn complete_runner_run(
     };
     match complete_run(state.db_pool(), &run_id, &runner_id, &input.response_text).await {
         Ok(run) => {
-            notify_run_response(&state, run.response_message_id.as_deref());
+            notify_run_response(&state, run.response_message_id.as_deref()).await;
             Json(RunnerRunEnvelope { run }).into_response()
         }
         Err(error) => run_error_response("complete run", "Could not complete run.", error),
@@ -216,7 +216,7 @@ async fn fail_runner_run(
     .await
     {
         Ok(run) => {
-            notify_run_response(&state, run.response_message_id.as_deref());
+            notify_run_response(&state, run.response_message_id.as_deref()).await;
             Json(RunnerRunEnvelope { run }).into_response()
         }
         Err(error) => run_error_response("fail run", "Could not fail run.", error),

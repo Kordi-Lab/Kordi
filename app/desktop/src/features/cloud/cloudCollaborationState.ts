@@ -53,6 +53,7 @@ import {
   cloudMessageMentionsFirstPersonAgent,
   cloudMessageMentionsLocalAgent,
   cloudMessageMentionsNamedAgent,
+  cloudDirectMessageIsUnreadForAccount,
   isCloudAgentControlMessage,
   parseCloudAgentCancel,
   parseCloudAgentResponse,
@@ -730,9 +731,7 @@ export function buildCloudCollaborationConversation({
     unreadCount: forceRead
       ? 0
       : visibleCloudMessages.filter((message) => (
-          message.toAccountId === account.accountId
-          && message.fromAccountId !== account.accountId
-          && !message.readAt
+          cloudDirectMessageIsUnreadForAccount(message, account.accountId)
           && !readInboundMessageIds?.has(message.messageId)
           && !cloudMessageIsAtOrBeforeReadCursor(message, readCursorSessionId ? readCursorsBySessionId[readCursorSessionId] : null)
         )).length,

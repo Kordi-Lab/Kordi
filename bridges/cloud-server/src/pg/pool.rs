@@ -267,6 +267,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "deduplicated message notification events",
         sql: include_str!("../../migrations/0056_message_notification_events.sql"),
     },
+    EmbeddedMigration {
+        version: 57,
+        description: "durable per-device message notification delivery",
+        sql: include_str!("../../migrations/0057_message_notification_deliveries.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

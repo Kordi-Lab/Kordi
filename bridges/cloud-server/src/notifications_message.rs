@@ -1,21 +1,36 @@
 use a2::{
     request::payload::PayloadLike, Error as ApnsError, NotificationOptions, Priority, PushType,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::Serialize;
 use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
-use tokio::time::{sleep, Duration};
+use tokio::task::JoinHandle;
+use tokio::time::{Duration, MissedTickBehavior};
 use uuid::Uuid;
 
 use crate::chat_sync::models::MessageSnapshot;
 
 use super::PushNotificationService;
 
+#[path = "notifications_message_content.rs"]
+mod content;
+#[path = "notifications_message_delivery.rs"]
+mod delivery;
+
+use content::{
+    is_notifiable_message, message_event_id, message_preview, notification_sender_display_name,
+};
+use delivery::{
+    finish_message_notification_event, mark_message_delivery_finished,
+    reconcile_message_deliveries, register_message_notification_events,
+};
+
 const MESSAGE_CATEGORY: &str = "KORDI_MESSAGE";
 const MESSAGE_PREVIEW_LIMIT: usize = 140;
-const MESSAGE_DELIVERY_RETRY_DELAY: Duration = Duration::from_secs(31);
-const MESSAGE_DELIVERY_ATTEMPTS: usize = 3;
+const MESSAGE_DELIVERY_RETRY_AFTER_SECONDS: i32 = 30;
+const MESSAGE_DELIVERY_WORKER_INTERVAL: Duration = Duration::from_secs(15);
+const MESSAGE_DELIVERY_ATTEMPTS: i32 = 8;
+const MESSAGE_DELIVERY_BATCH_SIZE: i64 = 100;
 const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
@@ -60,12 +75,7 @@ struct MessageDevicePreferences {
     sound_enabled: bool,
     previews_enabled: bool,
     badge_enabled: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum MessageNotificationContent {
-    Visible(Option<String>),
-    Hidden,
+    attempt_count: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,38 +106,85 @@ impl PushNotificationService {
         if !is_notifiable_message(message) {
             return;
         }
-        let recipients = match register_message_notification_events(pool, message).await {
-            Ok(recipients) => recipients,
-            Err(error) => {
-                eprintln!("[notifications] could not register message events: {error}");
-                return;
-            }
-        };
+        let recipients =
+            match register_message_notification_events(pool, message, &self.environment).await {
+                Ok(recipients) => recipients,
+                Err(error) => {
+                    eprintln!("[notifications] could not register message events: {error}");
+                    return;
+                }
+            };
 
         for recipient in recipients {
             let service = self.clone();
             let pool = pool.clone();
             let message = message.clone();
             tokio::spawn(async move {
-                for attempt in 0..MESSAGE_DELIVERY_ATTEMPTS {
-                    match service
-                        .send_message_attention_to_recipient(&pool, &message, &recipient)
-                        .await
-                    {
-                        Ok(false) => return,
-                        Ok(true) if attempt + 1 < MESSAGE_DELIVERY_ATTEMPTS => {
-                            sleep(MESSAGE_DELIVERY_RETRY_DELAY).await;
-                        }
-                        Ok(true) => return,
-                        Err(error) => {
-                            let event_id = message_event_id(&recipient, message.id);
-                            eprintln!("[notifications] message event {event_id} failed: {error}");
-                            return;
-                        }
-                    }
+                if let Err(error) = service
+                    .send_message_attention_to_recipient(&pool, &message, &recipient)
+                    .await
+                {
+                    let event_id = message_event_id(&recipient, message.id);
+                    eprintln!("[notifications] message event {event_id} failed: {error}");
                 }
             });
         }
+    }
+
+    pub fn spawn_message_notification_worker(&self, pool: PgPool) -> JoinHandle<()> {
+        let service = self.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(MESSAGE_DELIVERY_WORKER_INTERVAL);
+            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                if let Err(error) = service.retry_pending_message_notifications(&pool).await {
+                    eprintln!("[notifications] retry pending message events: {error}");
+                }
+            }
+        })
+    }
+
+    async fn retry_pending_message_notifications(
+        &self,
+        pool: &PgPool,
+    ) -> Result<(), sqlx_core::Error> {
+        let pending: Vec<(String, Uuid)> = query_as(
+            "SELECT event.recipient_account_id, event.message_id \
+             FROM cloud_message_notification_events event \
+             WHERE event.accepted_at IS NULL \
+               AND EXISTS (SELECT 1 FROM cloud_message_notification_deliveries delivery \
+                           WHERE delivery.recipient_account_id = event.recipient_account_id \
+                             AND delivery.message_id = event.message_id \
+                             AND delivery.accepted_at IS NULL AND delivery.failed_at IS NULL \
+                             AND (delivery.last_attempt_at IS NULL OR \
+                                  delivery.last_attempt_at < NOW() - ($1 * INTERVAL '1 second'))) \
+             ORDER BY event.created_at ASC \
+             LIMIT $2",
+        )
+        .bind(MESSAGE_DELIVERY_RETRY_AFTER_SECONDS)
+        .bind(MESSAGE_DELIVERY_BATCH_SIZE)
+        .fetch_all(pool)
+        .await?;
+
+        for (recipient, message_id) in pending {
+            let message =
+                match crate::chat_sync::store::load_message_snapshot(pool, message_id).await {
+                    Ok(message) => message,
+                    Err(error) => {
+                        eprintln!("[notifications] load pending message {message_id}: {error:?}");
+                        continue;
+                    }
+                };
+            if let Err(error) = self
+                .send_message_attention_to_recipient(pool, &message, &recipient)
+                .await
+            {
+                let event_id = message_event_id(&recipient, message_id);
+                eprintln!("[notifications] retry message event {event_id}: {error}");
+            }
+        }
+        Ok(())
     }
 
     async fn send_message_attention_to_recipient(
@@ -135,21 +192,8 @@ impl PushNotificationService {
         pool: &PgPool,
         message: &MessageSnapshot,
         recipient: &str,
-    ) -> Result<bool, sqlx_core::Error> {
-        let claimed: Option<(i32,)> = query_as(
-            "UPDATE cloud_message_notification_events \
-             SET attempt_count = attempt_count + 1, last_attempt_at = NOW() \
-             WHERE recipient_account_id = $1 AND message_id = $2 AND accepted_at IS NULL \
-               AND (last_attempt_at IS NULL OR last_attempt_at < NOW() - INTERVAL '30 seconds') \
-             RETURNING attempt_count",
-        )
-        .bind(recipient)
-        .bind(message.id)
-        .fetch_optional(pool)
-        .await?;
-        if claimed.is_none() {
-            return Ok(false);
-        }
+    ) -> Result<(), sqlx_core::Error> {
+        reconcile_message_deliveries(pool, recipient, message.id, &self.environment).await?;
 
         let context: Option<(String, String, i64, i64)> = query_as(
             "SELECT COALESCE(sender.display_name, 'Kordi'), conversation.kind, \
@@ -158,7 +202,10 @@ impl PushNotificationService {
                      JOIN cloud_chat_messages unread \
                        ON unread.conversation_id = membership.conversation_id \
                       AND unread.conversation_sequence > membership.last_read_sequence \
-                      AND unread.sender_account_id <> membership.account_id \
+                      AND (unread.sender_account_id <> membership.account_id OR \
+                           EXISTS (SELECT 1 FROM cloud_message_notification_events unread_event \
+                                   WHERE unread_event.recipient_account_id = membership.account_id \
+                                     AND unread_event.message_id = unread.message_id)) \
                       AND unread.deleted_at IS NULL \
                      WHERE membership.account_id = $1 \
                        AND membership.membership_state = 'active'), \
@@ -181,8 +228,9 @@ impl PushNotificationService {
         let Some((sender_display_name, conversation_kind, unread_count, image_attachment_count)) =
             context
         else {
-            return Ok(false);
+            return Ok(());
         };
+        let sender_display_name = notification_sender_display_name(message, sender_display_name);
         let (preview_kind, preview_text) =
             message_preview(message, image_attachment_count.max(0) as usize);
         let event = MessageAttentionEvent {
@@ -197,31 +245,86 @@ impl PushNotificationService {
             preview_text,
             absolute_unread_count: unread_count.clamp(0, u32::MAX as i64) as u32,
         };
-        let tokens: Vec<(String, String, bool, bool, bool)> = query_as(
+        let tokens: Vec<(String, String, bool, bool, bool, i32)> = query_as(
             "SELECT push.device_id, push.device_token, push.message_sound_enabled, \
-                    push.message_previews_enabled, push.message_badge_enabled \
-             FROM cloud_apns_push_tokens push \
+                    push.message_previews_enabled, push.message_badge_enabled, \
+                    delivery.attempt_count \
+             FROM cloud_message_notification_deliveries delivery \
+             JOIN cloud_apns_push_tokens push ON push.device_id = delivery.device_id \
              JOIN cloud_devices device ON device.device_id = push.device_id \
-             WHERE push.account_id = $1 AND push.apns_environment = $2 \
-               AND push.message_notifications_enabled \
-               AND device.revoked_at IS NULL",
+             WHERE delivery.recipient_account_id = $1 AND delivery.message_id = $2 \
+               AND delivery.accepted_at IS NULL AND delivery.failed_at IS NULL \
+               AND delivery.attempt_count < $3 \
+               AND (delivery.last_attempt_at IS NULL OR \
+                    delivery.last_attempt_at < NOW() - ($4 * INTERVAL '1 second')) \
+               AND push.account_id = $1 AND push.apns_environment = $5 \
+               AND push.message_notifications_enabled AND device.revoked_at IS NULL \
+               AND device.account_id = push.account_id \
+               AND EXISTS (SELECT 1 FROM cloud_refresh_tokens session \
+                           WHERE session.device_id = device.device_id \
+                             AND session.account_id = push.account_id \
+                             AND session.revoked_at IS NULL \
+                             AND session.expires_at::timestamptz > NOW())",
         )
         .bind(recipient)
+        .bind(message.id)
+        .bind(MESSAGE_DELIVERY_ATTEMPTS)
+        .bind(MESSAGE_DELIVERY_RETRY_AFTER_SECONDS)
         .bind(&self.environment)
         .fetch_all(pool)
         .await?;
 
-        let mut retry_required = false;
-        for (device_id, device_token, sound_enabled, previews_enabled, badge_enabled) in tokens {
+        for (
+            device_id,
+            device_token,
+            sound_enabled,
+            previews_enabled,
+            badge_enabled,
+            attempt_count,
+        ) in tokens
+        {
             let preferences = MessageDevicePreferences {
                 device_id,
                 device_token,
                 sound_enabled,
                 previews_enabled,
                 badge_enabled,
+                attempt_count,
             };
-            if let Err(error) = self.send_message_payload(&preferences, &event).await {
-                if is_permanent_token_error(&error) {
+            let claimed: Option<(i32,)> = query_as(
+                "UPDATE cloud_message_notification_deliveries \
+                 SET attempt_count = attempt_count + 1, last_attempt_at = NOW() \
+                 WHERE recipient_account_id = $1 AND message_id = $2 AND device_id = $3 \
+                   AND accepted_at IS NULL AND failed_at IS NULL AND attempt_count = $4 \
+                   AND attempt_count < $5 \
+                   AND (last_attempt_at IS NULL OR \
+                        last_attempt_at < NOW() - ($6 * INTERVAL '1 second')) \
+                 RETURNING attempt_count",
+            )
+            .bind(recipient)
+            .bind(message.id)
+            .bind(&preferences.device_id)
+            .bind(preferences.attempt_count)
+            .bind(MESSAGE_DELIVERY_ATTEMPTS)
+            .bind(MESSAGE_DELIVERY_RETRY_AFTER_SECONDS)
+            .fetch_optional(pool)
+            .await?;
+            let Some((attempt_count,)) = claimed else {
+                continue;
+            };
+
+            match self.send_message_payload(&preferences, &event).await {
+                Ok(()) => {
+                    mark_message_delivery_finished(
+                        pool,
+                        recipient,
+                        message.id,
+                        &preferences.device_id,
+                        true,
+                    )
+                    .await?;
+                }
+                Err(error) if is_permanent_token_error(&error) => {
                     query(
                         "DELETE FROM cloud_apns_push_tokens \
                          WHERE device_id = $1 AND device_token = $2 AND apns_environment = $3",
@@ -231,22 +334,33 @@ impl PushNotificationService {
                     .bind(&self.environment)
                     .execute(pool)
                     .await?;
-                } else {
-                    retry_required = true;
+                    mark_message_delivery_finished(
+                        pool,
+                        recipient,
+                        message.id,
+                        &preferences.device_id,
+                        false,
+                    )
+                    .await?;
+                }
+                Err(error) if attempt_count >= MESSAGE_DELIVERY_ATTEMPTS => {
+                    eprintln!("[notifications] message device delivery exhausted retries: {error}");
+                    mark_message_delivery_finished(
+                        pool,
+                        recipient,
+                        message.id,
+                        &preferences.device_id,
+                        false,
+                    )
+                    .await?;
+                }
+                Err(error) => {
+                    eprintln!("[notifications] message device delivery will retry: {error}");
                 }
             }
         }
-        if !retry_required {
-            query(
-                "UPDATE cloud_message_notification_events SET accepted_at = NOW() \
-                 WHERE recipient_account_id = $1 AND message_id = $2",
-            )
-            .bind(recipient)
-            .bind(message.id)
-            .execute(pool)
-            .await?;
-        }
-        Ok(retry_required)
+        finish_message_notification_event(pool, recipient, message.id).await?;
+        Ok(())
     }
 
     async fn send_message_payload(
@@ -294,175 +408,6 @@ impl PushNotificationService {
             device_token: &preferences.device_token,
         };
         self.client.send(payload).await.map(|_| ())
-    }
-}
-
-async fn register_message_notification_events(
-    pool: &PgPool,
-    message: &MessageSnapshot,
-) -> Result<Vec<String>, sqlx_core::Error> {
-    let mut transaction = pool.begin().await?;
-    let inserted: Vec<(String, bool)> = query_as(
-        "INSERT INTO cloud_message_notification_events \
-         (recipient_account_id, message_id, conversation_id, accepted_at) \
-         SELECT member.account_id, $1, $2, \
-                CASE WHEN member.muted_until IS NOT NULL AND member.muted_until > NOW() \
-                     THEN NOW() ELSE NULL END \
-         FROM cloud_chat_conversation_members member \
-         WHERE member.conversation_id = $2 \
-           AND member.membership_state = 'active' \
-           AND member.account_id <> $3 \
-         ON CONFLICT (recipient_account_id, message_id) DO NOTHING \
-         RETURNING recipient_account_id, accepted_at IS NULL",
-    )
-    .bind(message.id)
-    .bind(message.conversation_id)
-    .bind(&message.sender_account_id)
-    .fetch_all(&mut *transaction)
-    .await?;
-    let mut recipients = inserted
-        .into_iter()
-        .filter_map(|(account_id, should_deliver)| should_deliver.then_some(account_id))
-        .collect::<Vec<_>>();
-    let retryable: Vec<(String,)> = query_as(
-        "SELECT recipient_account_id FROM cloud_message_notification_events \
-         WHERE message_id = $1 AND accepted_at IS NULL \
-           AND (last_attempt_at IS NULL OR last_attempt_at < NOW() - INTERVAL '30 seconds')",
-    )
-    .bind(message.id)
-    .fetch_all(&mut *transaction)
-    .await?;
-    for (account_id,) in retryable {
-        if !recipients.contains(&account_id) {
-            recipients.push(account_id);
-        }
-    }
-    transaction.commit().await?;
-    Ok(recipients)
-}
-
-fn message_event_id(recipient: &str, message_id: Uuid) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!("kordi:message:{recipient}:{message_id}").as_bytes(),
-    )
-}
-
-fn is_notifiable_message(message: &MessageSnapshot) -> bool {
-    if message.deleted_at.is_some() {
-        return false;
-    }
-    let kind = message.kind.trim().to_ascii_lowercase();
-    !kind.is_empty()
-        && !kind.contains("control")
-        && !kind.contains("snapshot")
-        && !kind.contains("cursor")
-        && !kind.contains("presence")
-        && message_notification_content(message) != MessageNotificationContent::Hidden
-}
-
-fn raw_message_text(message: &MessageSnapshot) -> Option<&str> {
-    message
-        .content
-        .get("blocks")
-        .and_then(|blocks| blocks.as_array())
-        .into_iter()
-        .flatten()
-        .filter(|block| block.get("type").and_then(|value| value.as_str()) == Some("text"))
-        .filter_map(|block| block.get("text").and_then(|value| value.as_str()))
-        .map(str::trim)
-        .find(|text| !text.is_empty())
-}
-
-fn decoded_envelope(value: &str, prefix: &str) -> Option<serde_json::Value> {
-    let encoded = value.trim().strip_prefix(prefix)?;
-    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
-    serde_json::from_slice(&bytes).ok()
-}
-
-fn visible_envelope_text(value: &serde_json::Value) -> Option<String> {
-    value
-        .get("text")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(ToString::to_string)
-}
-
-fn message_notification_content(message: &MessageSnapshot) -> MessageNotificationContent {
-    let Some(raw_text) = raw_message_text(message) else {
-        return MessageNotificationContent::Visible(None);
-    };
-    if raw_text.starts_with(CLOUD_AGENT_CANCEL_PREFIX) {
-        return MessageNotificationContent::Hidden;
-    }
-    if raw_text.starts_with(CLOUD_DIRECT_MESSAGE_PREFIX) {
-        let Some(envelope) = decoded_envelope(raw_text, CLOUD_DIRECT_MESSAGE_PREFIX) else {
-            return MessageNotificationContent::Hidden;
-        };
-        if envelope.get("kind").and_then(serde_json::Value::as_str) != Some("message") {
-            return MessageNotificationContent::Hidden;
-        }
-        return MessageNotificationContent::Visible(visible_envelope_text(&envelope));
-    }
-    if raw_text.starts_with(CLOUD_AGENT_RESPONSE_PREFIX) {
-        let Some(envelope) = decoded_envelope(raw_text, CLOUD_AGENT_RESPONSE_PREFIX) else {
-            return MessageNotificationContent::Hidden;
-        };
-        if envelope.get("kind").and_then(serde_json::Value::as_str) != Some("agent-response") {
-            return MessageNotificationContent::Hidden;
-        }
-        return MessageNotificationContent::Visible(visible_envelope_text(&envelope));
-    }
-    if raw_text.starts_with(CLOUD_GROUP_PREFIX) {
-        let Some(envelope) = decoded_envelope(raw_text, CLOUD_GROUP_PREFIX) else {
-            return MessageNotificationContent::Hidden;
-        };
-        if envelope.get("kind").and_then(serde_json::Value::as_str) != Some("group-message") {
-            return MessageNotificationContent::Hidden;
-        }
-        let text = envelope
-            .get("message")
-            .and_then(|message| message.get("text"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|text| !text.is_empty())
-            .map(ToString::to_string);
-        return MessageNotificationContent::Visible(text);
-    }
-    MessageNotificationContent::Visible(Some(raw_text.to_string()))
-}
-
-fn message_preview(message: &MessageSnapshot, image_attachment_count: usize) -> (String, String) {
-    let text = match message_notification_content(message) {
-        MessageNotificationContent::Visible(text) => text.map(|text| truncate_preview(&text)),
-        MessageNotificationContent::Hidden => None,
-    };
-    if let Some(text) = text {
-        return ("text".to_string(), text);
-    }
-    match message.attachment_ids.len() {
-        0 => ("generic".to_string(), "New message".to_string()),
-        1 if image_attachment_count == 1 => ("image".to_string(), "Sent a photo".to_string()),
-        1 => ("files".to_string(), "Sent a file".to_string()),
-        count if image_attachment_count == count => {
-            ("files".to_string(), format!("Sent {count} photos"))
-        }
-        count => ("files".to_string(), format!("Sent {count} files")),
-    }
-}
-
-fn truncate_preview(value: &str) -> String {
-    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut characters = compact.chars();
-    let preview = characters
-        .by_ref()
-        .take(MESSAGE_PREVIEW_LIMIT)
-        .collect::<String>();
-    if characters.next().is_some() {
-        format!("{preview}…")
-    } else {
-        preview
     }
 }
 

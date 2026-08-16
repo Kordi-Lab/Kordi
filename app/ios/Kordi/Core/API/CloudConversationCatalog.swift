@@ -74,7 +74,8 @@ enum CloudConversationCatalog {
             messages: allMessages,
             sessionForksById: sessionForksById,
             groupSessionIds: groupSessionIds,
-            groupWireMessageIds: groupWireMessageIds
+            groupWireMessageIds: groupWireMessageIds,
+            canonicalConversationsBySessionId: canonicalConversationsBySessionId
         )
         let existingAgentSessionIds = Set(agentSessions.map(\.sessionId))
         agentSessions += canonicalAgentConversations(
@@ -219,12 +220,24 @@ enum CloudConversationCatalog {
                 ?? "Group"
             let unreadMessageIds = Set(sorted.compactMap { wire, envelope -> String? in
                 guard envelope.kind == "group-message",
-                      let message = envelope.message,
-                      wire.toAccountId == account.accountId,
-                      wire.direction == "incoming",
-                      wire.fromAccountId != account.accountId,
-                      message.senderAccountId != account.accountId,
-                      wire.readAt == nil else { return nil }
+                      let message = envelope.message else { return nil }
+                if message.senderKind == "agent",
+                   ["queued", "processing"].contains(message.deliveryState ?? "") {
+                    return nil
+                }
+                let selfAgentMessage = message.senderKind == "agent"
+                    && message.senderAccountId == account.accountId
+                let incomingMessage = wire.toAccountId == account.accountId
+                    && wire.direction == "incoming"
+                    && wire.fromAccountId != account.accountId
+                    && message.senderAccountId != account.accountId
+                guard selfAgentMessage || incomingMessage,
+                      messageIsUnread(
+                        wire,
+                        conversation: canonical,
+                        accountId: account.accountId,
+                        allowSelfAuthoredAgent: selfAgentMessage
+                      ) else { return nil }
                 return message.id
             })
             return ConversationSummary(
@@ -309,7 +322,8 @@ enum CloudConversationCatalog {
         messages: [CloudMessageDTO],
         sessionForksById: [String: CloudSessionForkSummary],
         groupSessionIds: Set<String>,
-        groupWireMessageIds: Set<String>
+        groupWireMessageIds: Set<String>,
+        canonicalConversationsBySessionId: [String: CloudChatConversation]
     ) -> [ConversationSummary] {
         let candidateRows = messages.filter { message in
             guard let sessionId = message.sessionId?.nonEmpty,
@@ -360,7 +374,11 @@ enum CloudConversationCatalog {
                 displayName: sessionTitle(firstPrompt) ?? agentName,
                 lastMessage: latest.map { CloudMessageCodec.displayText($0.body) } ?? definition?.description?.nonEmpty ?? "No messages yet",
                 lastActivityAt: latest.map { parseCloudDate($0.createdAt) } ?? definition.map { parseCloudDate($0.updatedAt) } ?? .distantPast,
-                unreadCount: 0,
+                unreadCount: unreadAgentResponseCount(
+                    sorted,
+                    conversation: canonicalConversationsBySessionId[sessionId],
+                    accountId: account.accountId
+                ),
                 avatarSource: definition?.avatarUrl?.nonEmpty,
                 agentActivity: .ready,
                 sessionId: sessionId,
@@ -368,6 +386,43 @@ enum CloudConversationCatalog {
                 forkedFromSessionId: sessionForksById[sessionId]?.parentSessionId.nonEmpty
             )
         }
+    }
+
+    private static func unreadAgentResponseCount(
+        _ messages: [CloudMessageDTO],
+        conversation: CloudChatConversation?,
+        accountId: String
+    ) -> Int {
+        Set(messages.compactMap { message -> String? in
+            guard CloudMessageCodec.isTerminalAgentResponse(message.body),
+                  messageIsUnread(
+                    message,
+                    conversation: conversation,
+                    accountId: accountId,
+                    allowSelfAuthoredAgent: true
+                  ) else { return nil }
+            return message.messageId
+        }).count
+    }
+
+    private static func messageIsUnread(
+        _ message: CloudMessageDTO,
+        conversation: CloudChatConversation?,
+        accountId: String,
+        allowSelfAuthoredAgent: Bool
+    ) -> Bool {
+        let authoredByViewer = message.fromAccountId == accountId
+        if authoredByViewer && !allowSelfAuthoredAgent { return false }
+        if let sequence = message.conversationSequence,
+           let member = conversation?.members.first(where: {
+               $0.accountId == accountId && $0.membershipState == "active"
+           }) {
+            return sequence > member.lastReadSequence
+        }
+        if authoredByViewer { return false }
+        return message.toAccountId == accountId
+            && message.direction == "incoming"
+            && message.readAt == nil
     }
 
     private static func canonicalAgentConversations(
@@ -433,7 +488,11 @@ enum CloudConversationCatalog {
                     latest.map { parseCloudDate($0.createdAt) } ?? .distantPast,
                     parseCloudDate(conversation.updatedAt)
                 ),
-                unreadCount: 0,
+                unreadCount: unreadAgentResponseCount(
+                    rows,
+                    conversation: conversation,
+                    accountId: account.accountId
+                ),
                 avatarSource: definition?.avatarUrl?.nonEmpty,
                 agentActivity: .ready,
                 sessionId: sessionId,
