@@ -6,6 +6,7 @@ import {
   transcriptSystemNoticeClassName,
 } from '@/features/chat/transcriptLoadingNotice';
 import type { Message } from '@/kordi-app/types';
+import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
 
 export function TranscriptSystemNoticeContent({
   message,
@@ -14,6 +15,7 @@ export function TranscriptSystemNoticeContent({
   message: Message;
   children: ReactNode;
 }) {
+  if (message.callActivity) return <TranscriptCallActivityContent message={message} />;
   const loading = isTranscriptLoadingNotice(message);
   return (
     <div

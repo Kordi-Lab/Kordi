@@ -5,6 +5,8 @@ import { AppShellFrame } from '@/app/AppShellFrame';
 import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
+import { CloudCallHost } from '@/features/cloud/CloudCallHost';
+import { CloudCallProvider } from '@/features/cloud/CloudCallProvider';
 import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
 import {
   clearNativeTextSelection,
@@ -288,7 +290,7 @@ function KordiAppShell({
   }, []);
 
   const appShellFrameProps = useKordiAppModel({ cloudSessionOverride: cloudSession });
-  const { cloudInitialSync } = appShellFrameProps;
+  const { cloudInitialSync, cloudCalls, ...frameProps } = appShellFrameProps;
   if (cloudInitialSync.status !== 'ready') {
     return (
       <div className={`kordi-app ${appShellFrameProps.rootThemeClass}`}>
@@ -301,7 +303,12 @@ function KordiAppShell({
   }
   return (
     <>
-      <AppShellFrame {...appShellFrameProps} />
+      <CloudCallProvider controller={cloudCalls}>
+        <AppShellFrame
+          {...frameProps}
+          callOverlay={<CloudCallHost controller={cloudCalls} />}
+        />
+      </CloudCallProvider>
       <WhatsNewLaunchWindow />
       {pendingGroupInvitation.token ? (
         <GroupInvitationDialog

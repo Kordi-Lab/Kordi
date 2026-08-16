@@ -22,6 +22,7 @@ import {
   processingAgentMessage,
   stringValue,
 } from './messageMapping';
+import { completedCallStartMessageIds } from './callActivity';
 import { canonicalMessageCountsForLastActive } from './conversationMapping';
 
 export type CanonicalIndexes = {
@@ -132,10 +133,8 @@ function childMessageSortPosition(
       basePosition.sortAtMs === parentPosition.sortAtMs
       && basePosition.sequenceNum > parentPosition.sequenceNum
     );
-  // Parent links express causality and reply attribution, not transcript
-  // placement. Preserve the child's real chronological position whenever it
-  // is already after the parent; only clamp genuine clock drift so a response
-  // cannot render before the request that caused it.
+  // Parent links express causality, not transcript placement. Preserve real chronology;
+  // only clamp clock drift that would render a response before its request.
   const position = isAlreadyAfterParent
     ? basePosition
     : {
@@ -555,9 +554,8 @@ function isPureLegacyCollaborationAgentStatusRow(message: CanonicalSessionMessag
   if (!isOwnedAgentTurn(message)) return false;
   const content = contentRecord(message.content);
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
-  // `processing` is the in-flight placeholder that the legacy fanout wrote to peers; on the
-  // sender's own canonical session it duplicates the local desktop-chat turn until the
-  // assistant text streams in. Cancelled/failed are the terminal status markers.
+  // Legacy `processing` fanout duplicates the sender's local turn until assistant text streams;
+  // cancelled and failed rows are terminal status markers.
   return deliveryState === 'processing'
     || deliveryState === 'cancelled'
     || deliveryState === 'processing_failed';
@@ -1133,6 +1131,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         .filter((message) => rawLegacyCollaborationProcessingPlaceholderCoveredByPendingDelegation(message, pendingDelegationRequestKeys, pendingDelegationIds))
         .map((message) => message.id),
     );
+    const suppressedCompletedCallStartIds = completedCallStartMessageIds(sortedMessages);
     rawMessageCountBySessionId.set(sessionId, sortedMessages.length);
     const senderIdentityIdByMessageId = new Map<string, string>(
       sortedMessages.map((message) => [message.id, message.senderIdentityId]),
@@ -1158,6 +1157,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
         || suppressedAgedLegacyCollaborationProcessingPlaceholderIds.has(message.id)
         || suppressedPendingDelegationRawProcessingPlaceholderIds.has(message.id)
+        || suppressedCompletedCallStartIds.has(message.id)
       ) return [];
       const displaySourceMessage: CanonicalSessionMessage = confirmedLocalAgentUiMessageIds.has(message.id)
         ? {

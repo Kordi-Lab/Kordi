@@ -28,6 +28,13 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
   const attachments = Array.isArray(record.attachments)
     ? record.attachments as CloudMessage['attachments']
     : undefined;
+  const conversationSequence = Number.isSafeInteger(record.conversationSequence)
+    && Number(record.conversationSequence) > 0
+    ? Number(record.conversationSequence)
+    : null;
+  const version = Number.isSafeInteger(record.version) && Number(record.version) > 0
+    ? Number(record.version)
+    : null;
   return cloudMessageMetadataOnly({
     messageId,
     fromAccountId,
@@ -38,6 +45,14 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
     readAt: typeof record.readAt === 'string' ? record.readAt : null,
     direction,
     ...(typeof record.sessionId === 'string' ? { sessionId: record.sessionId } : {}),
+    ...(typeof record.conversationId === 'string' ? { conversationId: record.conversationId } : {}),
+    ...(conversationSequence ? { conversationSequence } : {}),
+    ...(typeof record.clientMessageId === 'string' ? { clientMessageId: record.clientMessageId } : {}),
+    ...(typeof record.messageKind === 'string' ? { messageKind: record.messageKind } : {}),
+    ...(typeof record.canonicalHistoryLocalMessageId === 'string'
+      ? { canonicalHistoryLocalMessageId: record.canonicalHistoryLocalMessageId }
+      : {}),
+    ...(version ? { version } : {}),
     ...(attachments ? { attachments } : {}),
   });
 }

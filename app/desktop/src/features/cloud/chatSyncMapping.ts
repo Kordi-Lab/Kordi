@@ -1,5 +1,10 @@
 import type { CloudMessage, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
+import {
+  encodeCloudGroupControl,
+  isCloudGroupSessionId,
+  type CloudGroupParticipant,
+} from './cloudGroupMessages';
 
 function decodeBase64UrlJson<T>(value: string): T | null {
   try {
@@ -118,6 +123,68 @@ function textFromChatContent(content: unknown): string {
     .join('');
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function groupCallActivityBody(
+  message: ChatSyncMessage,
+  conversation: ChatSyncConversation,
+  text: string,
+): string | null {
+  if (conversation.kind !== 'group') return null;
+  const kindMatch = /^call\.(started|ended)\.(.+)$/.exec(message.kind.trim());
+  const content = recordValue(message.content);
+  const activity = recordValue(content?.callActivity);
+  if (
+    !kindMatch?.[2]
+    || activity?.schema !== 1
+    || activity.callId !== kindMatch[2]
+    || activity.event !== kindMatch[1]
+  ) return null;
+
+  const participants: CloudGroupParticipant[] = conversation.members
+    .filter((member) => member.membership_state === 'active')
+    .map((member) => ({
+      accountId: member.account_id,
+      displayName: member.display_name?.trim() || member.account_id,
+      avatarUrl: member.avatar_url?.trim() || null,
+      role: member.role,
+    }));
+  const actor = participants.find(
+    (participant) => participant.accountId === message.sender_account_id,
+  ) ?? {
+    accountId: message.sender_account_id,
+    displayName: message.sender_account_id,
+    avatarUrl: null,
+    role: 'person',
+  };
+  const groupId = conversation.legacy_session_id?.trim() || conversation.id.trim();
+  if (!isCloudGroupSessionId(groupId) || participants.length === 0) return null;
+
+  return encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: null,
+    groupTitle: conversation.shared_title,
+    createdByAccountId: conversation.created_by_account_id,
+    actor,
+    participants,
+    message: {
+      id: message.id,
+      senderAccountId: message.sender_account_id,
+      text,
+      createdAtMs: Date.parse(message.created_at) || Date.now(),
+      senderKind: 'human',
+      senderDisplayName: actor.displayName,
+      messageKind: message.kind,
+      structuredContent: content,
+    },
+  });
+}
+
 function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
   const attachments = (content as { legacy_attachments?: unknown }).legacy_attachments;
@@ -203,11 +270,13 @@ export function cloudMessageFromChatSync(
   const canonicalHistory = canonicalHistoryMetadata(message.content);
   const createdAt = canonicalHistory?.originalCreatedAt
     ?? message.created_at;
+  const text = textFromChatContent(message.content);
+  const body = groupCallActivityBody(message, conversation, text) ?? text;
   return {
     messageId: message.id,
     fromAccountId: message.sender_account_id,
     toAccountId: outgoing ? peerAccountId : viewerAccountId,
-    body: textFromChatContent(message.content),
+    body,
     createdAt,
     deliveredAt: delivered ? createdAt : null,
     readAt: read ? createdAt : null,

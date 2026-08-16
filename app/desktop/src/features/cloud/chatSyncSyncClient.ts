@@ -236,6 +236,16 @@ export class ChatSyncSyncClient {
       messageId: event.entity_id,
       occurredAt: event.occurred_at,
     };
+    if (event.type === 'call.created' || event.type === 'call.updated') {
+      return [{
+        ...base,
+        eventType: event.type,
+        payload: {
+          ...event.payload,
+          sessionId: conversation?.legacy_session_id ?? event.conversation_id,
+        },
+      }];
+    }
     if ([
       'message.created',
       'message.updated',

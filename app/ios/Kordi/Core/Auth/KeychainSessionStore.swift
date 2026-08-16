@@ -4,14 +4,22 @@ import Security
 
 struct KeychainSessionStore {
     private let service: String
+    private let developmentDefaults: UserDefaults
     private let account = "cloud-session-token"
     private let deviceIdentityAccount = "cloud-device-identity-p256"
 
-    init(service: String = KordiAppEnvironment.current.keychainService) {
+    init(
+        service: String = KordiAppEnvironment.current.keychainService,
+        developmentDefaults: UserDefaults = .standard
+    ) {
         self.service = service
+        self.developmentDefaults = developmentDefaults
     }
 
     func loadToken() throws -> String? {
+        #if BETA && targetEnvironment(simulator)
+        return developmentDefaults.string(forKey: defaultsKey(for: account))
+        #else
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -26,9 +34,13 @@ struct KeychainSessionStore {
             throw KeychainError(status: status)
         }
         return token
+        #endif
     }
 
     func saveToken(_ token: String) throws {
+        #if BETA && targetEnvironment(simulator)
+        developmentDefaults.set(token, forKey: defaultsKey(for: account))
+        #else
         guard let data = token.data(using: .utf8) else { return }
         try? deleteToken()
         let query: [String: Any] = [
@@ -40,9 +52,13 @@ struct KeychainSessionStore {
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
+        #endif
     }
 
     func deleteToken() throws {
+        #if BETA && targetEnvironment(simulator)
+        developmentDefaults.removeObject(forKey: defaultsKey(for: account))
+        #else
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -52,12 +68,24 @@ struct KeychainSessionStore {
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError(status: status)
         }
+        #endif
     }
 
     /// Returns the stable public identity for this app installation. The P-256
     /// private key is device-only Keychain material and deliberately survives
     /// account sign-out; only its public X9.63 representation leaves the app.
     func loadOrCreateDevicePublicKey() throws -> Data {
+        #if BETA && targetEnvironment(simulator)
+        let key = defaultsKey(for: deviceIdentityAccount)
+        if let data = developmentDefaults.data(forKey: key),
+           let privateKey = try? P256.Signing.PrivateKey(rawRepresentation: data) {
+            return privateKey.publicKey.x963Representation
+        }
+
+        let privateKey = P256.Signing.PrivateKey()
+        developmentDefaults.set(privateKey.rawRepresentation, forKey: key)
+        return privateKey.publicKey.x963Representation
+        #else
         let identityQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -90,6 +118,13 @@ struct KeychainSessionStore {
         let insertStatus = SecItemAdd(insert as CFDictionary, nil)
         guard insertStatus == errSecSuccess else { throw KeychainError(status: insertStatus) }
         return privateKey.publicKey.x963Representation
+        #endif
+    }
+
+    private func defaultsKey(for account: String) -> String {
+        // Xcode's ad-hoc Beta Simulator signature has no Keychain access group.
+        // Keep this fallback compile-time limited to isolated Beta Simulator builds.
+        "kordi.beta-simulator.\(service).\(account)"
     }
 }
 

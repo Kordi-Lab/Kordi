@@ -127,6 +127,15 @@ export type MessageActionMetadata = {
   source: MessageActionSource;
 };
 
+export type MessageCallActivity = {
+  callId: string;
+  kind: 'voice' | 'video' | 'meeting';
+  event: 'started' | 'ended';
+  direction: 'incoming' | 'outgoing';
+  outcome: 'ringing' | 'completed' | 'missed' | 'canceled' | 'ended';
+  durationSeconds?: number | null;
+};
+
 export type ComposerQuoteState = {
   action: 'quote';
   source: MessageActionSource;
@@ -161,6 +170,9 @@ export type Message = {
    * Keep this value numeric instead of reconstructing it from the localized
    * `time` label. */
   timestampMs?: number | null;
+  /** Structured call history metadata rendered as a dedicated call item rather
+   * than a generic system notice or ordinary message bubble. */
+  callActivity?: MessageCallActivity;
   detail?: string;
   statusChips?: string[];
   attachments?: MessageAttachment[];

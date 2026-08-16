@@ -116,6 +116,8 @@ function revisionForMessages(messages: readonly CloudMessage[]): string {
     addFingerprintValue(message.deliveredAt ?? '');
     addFingerprintValue(message.readAt ?? '');
     addFingerprintValue(message.sessionId ?? '');
+    addFingerprintValue(message.messageKind ?? '');
+    addFingerprintValue(String(message.version ?? ''));
     addFingerprintValue(String(message.body.length));
     for (const attachment of message.attachments ?? []) {
       addFingerprintValue(attachment.attachmentId);
@@ -139,7 +141,7 @@ export function cloudGroupReplayKeyForRow(row: IndexedCloudGroupRow) {
 }
 
 export function cloudGroupCanonicalMessageSource(
-  wire: Pick<CloudMessage, 'messageId'>,
+  wire: Pick<CloudMessage, 'messageId' | 'version'>,
   envelope: CloudGroupControlEnvelope,
 ): CanonicalMessageSourceRef | null {
   const message = envelope.message;
@@ -150,9 +152,14 @@ export function cloudGroupCanonicalMessageSource(
     : message.senderKind === 'agent'
       ? 'cloud-group-agent'
       : 'cloud-group';
+  const callActivityVersion = /^call\.(?:started|ended)\./.test(
+    message.messageKind?.trim() ?? '',
+  ) && Number.isSafeInteger(wire.version) && Number(wire.version) > 0
+    ? `:${wire.version}`
+    : '';
   return {
     sourceTransport,
-    sourceEventId: `${sourceTransport}:${messageId}`,
+    sourceEventId: `${sourceTransport}:${messageId}${callActivityVersion}`,
   };
 }
 

@@ -80,6 +80,12 @@ fn format_call_duration(duration: Duration) -> String {
     }
 }
 
+fn call_activity_duration_seconds(call: &CallSnapshot) -> Option<i64> {
+    let answered_at = call.answered_at?;
+    let ended_at = call.ended_at?;
+    Some((ended_at - answered_at).num_seconds().max(0))
+}
+
 fn call_activity_content(
     call: &CallSnapshot,
     event: CallActivityEvent,
@@ -97,6 +103,19 @@ fn call_activity_content(
             "duration_seconds": match event {
                 CallActivityEvent::Started => None,
                 CallActivityEvent::Ended => Some(call_duration(call).num_seconds().max(0)),
+            }
+        },
+        "callActivity": {
+            "schema": 1,
+            "callId": call.id,
+            "kind": call.kind.as_str(),
+            "event": event.as_str(),
+            "createdAtMs": call.created_at.timestamp_millis(),
+            "answeredAtMs": call.answered_at.map(|value| value.timestamp_millis()),
+            "endedAtMs": call.ended_at.map(|value| value.timestamp_millis()),
+            "durationSeconds": match event {
+                CallActivityEvent::Started => None,
+                CallActivityEvent::Ended => call_activity_duration_seconds(call),
             }
         }
     })
@@ -142,8 +161,9 @@ pub(super) async fn record_call_activity(
 #[cfg(test)]
 mod tests {
     use super::{
-        call_activity_client_message_id, call_activity_message_kind, call_activity_text,
-        call_duration, format_call_duration, CallActivityEvent,
+        call_activity_client_message_id, call_activity_content, call_activity_duration_seconds,
+        call_activity_message_kind, call_activity_text, call_duration, format_call_duration,
+        CallActivityEvent,
     };
     use crate::calls::models::{CallKind, CallSnapshot, CallState};
     use chrono::{TimeZone, Utc};
@@ -208,5 +228,31 @@ mod tests {
         snapshot.ended_at = Some(Utc.timestamp_opt(4_732, 0).unwrap());
         assert_eq!(call_duration(&snapshot).num_seconds(), 3_727);
         assert_eq!(format_call_duration(call_duration(&snapshot)), "01:02:07");
+    }
+
+    #[test]
+    fn structured_activity_duration_is_absent_until_answered() {
+        let call = call(CallKind::Voice);
+        assert_eq!(call_activity_duration_seconds(&call), Some(77));
+        assert_eq!(
+            call_activity_duration_seconds(&CallSnapshot {
+                answered_at: None,
+                ..call
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn activity_content_keeps_main_identity_and_desktop_metadata_in_one_record() {
+        let snapshot = call(CallKind::Video);
+        let content = call_activity_content(&snapshot, CallActivityEvent::Ended, None);
+
+        assert_eq!(content["call"]["id"], snapshot.id.to_string());
+        assert_eq!(content["call"]["status"], "ended");
+        assert_eq!(content["callActivity"]["callId"], snapshot.id.to_string());
+        assert_eq!(content["callActivity"]["kind"], "video");
+        assert_eq!(content["callActivity"]["event"], "ended");
+        assert_eq!(content["callActivity"]["durationSeconds"], 77);
     }
 }

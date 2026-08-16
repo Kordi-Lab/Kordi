@@ -3,6 +3,7 @@ import { useKordiAppFoundation } from '@/app/useKordiAppFoundation';
 import { useKordiAppShellComposition } from '@/app/useKordiAppShellComposition';
 import { useKordiWorkspaceState } from '@/app/useKordiWorkspaceState';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
+import { useCloudCalls } from '@/features/cloud/useCloudCalls';
 
 export function useKordiAppModel({
   cloudSessionOverride,
@@ -22,10 +23,15 @@ export function useKordiAppModel({
   });
   const workspace = useKordiWorkspaceState(foundation);
   const actions = useKordiAppActions({ foundation, workspace });
+  const cloudCalls = useCloudCalls({
+    account: foundation.environment.cloudSession.account,
+    conversations: workspace.conversations.chatConversations,
+  });
 
-  return useKordiAppShellComposition({
+  const shell = useKordiAppShellComposition({
     foundation,
     workspace,
     actions,
   });
+  return { ...shell, cloudCalls };
 }

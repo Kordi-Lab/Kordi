@@ -6,7 +6,10 @@ final class CloudModelDecodingTests: XCTestCase {
     func testInstallationDeviceIdentityIsStableAndDistinctAcrossStores() throws {
         let firstService = "io.kordi.tests.device.\(UUID().uuidString)"
         let secondService = "io.kordi.tests.device.\(UUID().uuidString)"
+        let defaultsName = "io.kordi.tests.session-store.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
         defer {
+            defaults.removePersistentDomain(forName: defaultsName)
             for service in [firstService, secondService] {
                 SecItemDelete([
                     kSecClass as String: kSecClassGenericPassword,
@@ -14,12 +17,21 @@ final class CloudModelDecodingTests: XCTestCase {
                 ] as CFDictionary)
             }
         }
-        let firstStore = KeychainSessionStore(service: firstService)
-        let secondStore = KeychainSessionStore(service: secondService)
+        let firstStore = KeychainSessionStore(
+            service: firstService,
+            developmentDefaults: defaults
+        )
+        let secondStore = KeychainSessionStore(
+            service: secondService,
+            developmentDefaults: defaults
+        )
 
         let firstKey = try firstStore.loadOrCreateDevicePublicKey()
+        XCTAssertNil(try firstStore.loadToken())
         try firstStore.saveToken("temporary-session")
+        XCTAssertEqual(try firstStore.loadToken(), "temporary-session")
         try firstStore.deleteToken()
+        XCTAssertNil(try firstStore.loadToken())
 
         XCTAssertEqual(firstKey.count, 65)
         XCTAssertEqual(firstKey.first, 0x04)

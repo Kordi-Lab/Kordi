@@ -53,6 +53,7 @@ import type { useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
 import type { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
 import { SupportConversationEmptyState } from '@/features/support/SupportReportDialog';
 import { SupportReportSubmissionProvider } from '@/features/support/SupportReportSubmissionContext';
+import { ConversationCallBanner } from '@/features/cloud/ConversationCallBanner';
 
 type ChatMainWorkspaceProps = {
   layout: ChatsPageLayout;
@@ -211,6 +212,7 @@ export function ChatMainWorkspace({
             data-chat-destination-page="messages"
             data-chat-destination-scope="main"
           >
+            <ConversationCallBanner conversation={activeConv} />
             {needsProvider ? (
               <AuthNoticeBanner
                 title="No provider connected yet"

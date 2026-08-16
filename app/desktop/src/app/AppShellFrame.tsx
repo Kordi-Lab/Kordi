@@ -30,6 +30,7 @@ type AppShellFrameProps = {
   inlineAuthDialog?: ReactNode;
   messageForwardDialog?: ReactNode;
   windowResizeHandles?: ReactNode;
+  callOverlay?: ReactNode;
 };
 
 function previewInstanceLabel() {
@@ -60,6 +61,7 @@ export function AppShellFrame({
   inlineAuthDialog,
   messageForwardDialog,
   windowResizeHandles,
+  callOverlay,
 }: AppShellFrameProps) {
   const instanceLabel = previewInstanceLabel();
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
@@ -212,6 +214,7 @@ export function AppShellFrame({
         {authGate}
         {inlineAuthDialog}
         {messageForwardDialog}
+        {callOverlay}
         {!isNativeShell ? windowResizeHandles : null}
       </div>
     </div>

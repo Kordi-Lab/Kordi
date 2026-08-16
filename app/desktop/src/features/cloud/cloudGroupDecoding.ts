@@ -20,6 +20,21 @@ export function runtimeRoute(value: unknown): DesktopChatMessageRoute | null {
   } : null;
 }
 
+export function cloudGroupMessageRuntimeFields(candidate: Record<string, unknown>): {
+  agentRuntimeRoute?: DesktopChatMessageRoute | null;
+  messageKind?: string | null;
+  structuredContent?: Record<string, unknown> | null;
+} {
+  const structuredContent = candidate.structuredContent;
+  return {
+    agentRuntimeRoute: runtimeRoute(candidate.agentRuntimeRoute),
+    messageKind: cleanText(candidate.messageKind) || null,
+    structuredContent: structuredContent && typeof structuredContent === 'object' && !Array.isArray(structuredContent)
+      ? structuredContent as Record<string, unknown>
+      : null,
+  };
+}
+
 export function integerMilliseconds(
   value: unknown,
   fallback: number | null = null,
