@@ -43,6 +43,15 @@ export class CloudAuthError extends Error {
   }
 }
 
+export function isRetryableCloudDeliveryError(error: unknown): boolean {
+  const status = error instanceof CloudAuthError ? error.status : null;
+  return status === null
+    || status === 0
+    || status === 401
+    || status === 429
+    || status >= 500;
+}
+
 type ServerErrorBody = { errorCode?: string; message?: string };
 
 const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([

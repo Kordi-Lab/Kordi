@@ -11,6 +11,7 @@ import type { Conversation } from '@/kordi-app/types';
 import {
   messageAttentionSnapshot,
   newMessageAttentionEvents,
+  shouldRequestDockAttention,
   type MessageAttentionSnapshot,
 } from './messageAttentionPolicy';
 import { useNotificationPreferences } from './notificationPreferences';
@@ -71,11 +72,39 @@ export function useDesktopMessageAttention({
   const previousSnapshotRef = useRef<MessageAttentionSnapshot | null>(null);
   const presentedEventIdsRef = useRef(loadPresentedEventIds());
   const lastBounceAtRef = useRef(0);
+  const nativeWindowFocusedRef = useRef(
+    typeof document !== 'undefined'
+      ? documentHasActivePresentation(document)
+      : false,
+  );
   const onOpenSessionRef = useRef(onOpenSession);
 
   useEffect(() => {
     onOpenSessionRef.current = onOpenSession;
   }, [onOpenSession]);
+
+  useEffect(() => {
+    if (!isNativeShell) return;
+    const windowHandle = getCurrentWindow();
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void windowHandle.isFocused().then((focused) => {
+      if (!disposed) nativeWindowFocusedRef.current = focused;
+    }).catch(() => {});
+    void windowHandle.onFocusChanged(({ payload: focused }) => {
+      nativeWindowFocusedRef.current = focused;
+    }).then((listener) => {
+      if (disposed) {
+        listener();
+      } else {
+        unlisten = listener;
+      }
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell) return;
@@ -121,7 +150,9 @@ export function useDesktopMessageAttention({
     previousSnapshotRef.current = currentSnapshot;
     if (events.length === 0 || !preferences.messages) return;
 
-    const appIsActive = documentHasActivePresentation(document);
+    const appIsActive = isNativeShell
+      ? nativeWindowFocusedRef.current
+      : documentHasActivePresentation(document);
     const activeSessionId = activeCanonicalSessionId?.trim() || activeConversationId;
     const transcriptAtLatest = chatTranscriptScrollRef.current
       ? transcriptIsAtLatest(chatTranscriptScrollRef.current)
@@ -140,11 +171,26 @@ export function useDesktopMessageAttention({
     savePresentedEventIds(presentedEventIdsRef.current);
     const present = async () => {
       if (isNativeShell) {
+        const windowHandle = getCurrentWindow();
+        const now = Date.now();
+        const requestDockAttention = shouldRequestDockAttention({
+          enabled: preferences.dockBounce,
+          windowFocused: nativeWindowFocusedRef.current,
+          lastRequestedAt: lastBounceAtRef.current,
+          now,
+          minimumIntervalMs: BOUNCE_BURST_MS,
+        });
+        const dockAttentionPromise = requestDockAttention
+          ? windowHandle.requestUserAttention(UserAttentionType.Informational)
+          : Promise.resolve();
+        if (requestDockAttention) lastBounceAtRef.current = now;
+
         const permissionGranted = await isPermissionGranted().catch(() => false);
+        const presentationPromises: Promise<unknown>[] = [dockAttentionPromise];
         if (permissionGranted) {
           try {
             const { invoke } = await import('@tauri-apps/api/core');
-            await Promise.allSettled(qualifyingEvents.map((event) => invoke(
+            presentationPromises.push(...qualifyingEvents.map((event) => invoke(
               'desktop_show_message_notification',
               {
                 request: {
@@ -160,15 +206,7 @@ export function useDesktopMessageAttention({
             // Native presentation is best-effort; badge and Dock attention must continue.
           }
         }
-        if (!appIsActive && preferences.dockBounce) {
-          const now = Date.now();
-          if (now - lastBounceAtRef.current >= BOUNCE_BURST_MS) {
-            lastBounceAtRef.current = now;
-            await getCurrentWindow()
-              .requestUserAttention(UserAttentionType.Informational)
-              .catch(() => {});
-          }
-        }
+        await Promise.allSettled(presentationPromises);
         return;
       }
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {

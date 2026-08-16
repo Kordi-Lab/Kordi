@@ -1,4 +1,5 @@
 import type { AppendCanonicalMessageRequest } from '@/kordi-app/types';
+import { isRetryableCloudDeliveryError } from '@/features/cloud/cloudAuthError';
 
 import {
   failedPreparedCanonicalUserMessage,
@@ -21,6 +22,10 @@ export function collaborationSendFailureDetail(
   fallback = 'Unable to send collaboration message',
 ) {
   return error instanceof Error ? error.message : fallback;
+}
+
+export function shouldKeepCollaborationSendPending(error: unknown): boolean {
+  return isRetryableCloudDeliveryError(error);
 }
 
 export function shouldShowCollaborationSendFailureNotice(hasInlineFailureTarget: boolean) {

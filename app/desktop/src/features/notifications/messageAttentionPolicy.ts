@@ -14,6 +14,24 @@ export type DesktopMessageAttentionEvent = {
   unreadCount: number;
 };
 
+export function shouldRequestDockAttention({
+  enabled,
+  windowFocused,
+  lastRequestedAt,
+  now,
+  minimumIntervalMs,
+}: {
+  enabled: boolean;
+  windowFocused: boolean;
+  lastRequestedAt: number;
+  now: number;
+  minimumIntervalMs: number;
+}) {
+  return enabled
+    && !windowFocused
+    && (lastRequestedAt <= 0 || now - lastRequestedAt >= minimumIntervalMs);
+}
+
 function isIncomingVisibleMessage(message: Message) {
   if (!message.id || message.isForkSnapshot) return false;
   if (message.isOwnMessage ?? message.role === 'user') return false;

@@ -6,6 +6,7 @@ import {
   messageAttentionSnapshot,
   newMessageAttentionEvents,
   notificationNumericId,
+  shouldRequestDockAttention,
 } from '../src/features/notifications/messageAttentionPolicy';
 
 function conversation(messages: Message[], unread = 0): Conversation {
@@ -68,4 +69,28 @@ test('an unread update still notifies when message data arrived first', () => {
 test('native notification ids are stable signed 32-bit values', () => {
   assert.equal(notificationNumericId('message-1'), notificationNumericId('message-1'));
   assert.notEqual(notificationNumericId('message-1'), notificationNumericId('message-2'));
+});
+
+test('Dock attention requests one background bounce per burst', () => {
+  assert.equal(shouldRequestDockAttention({
+    enabled: true,
+    windowFocused: false,
+    lastRequestedAt: 0,
+    now: 10_000,
+    minimumIntervalMs: 2_000,
+  }), true);
+  assert.equal(shouldRequestDockAttention({
+    enabled: true,
+    windowFocused: false,
+    lastRequestedAt: 9_000,
+    now: 10_000,
+    minimumIntervalMs: 2_000,
+  }), false);
+  assert.equal(shouldRequestDockAttention({
+    enabled: true,
+    windowFocused: true,
+    lastRequestedAt: 0,
+    now: 10_000,
+    minimumIntervalMs: 2_000,
+  }), false);
 });

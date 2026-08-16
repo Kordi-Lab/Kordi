@@ -3,7 +3,11 @@ import test from 'node:test';
 
 import { canonicalUserStatusChip } from '../src/features/canonical/readModel/messageMapping';
 import { messageDeliveryVisual } from '../src/features/chat/deliveryStatus';
-import { shouldShowCollaborationSendFailureNotice } from '../src/features/chat/messageActions/collaborationSendLifecycle';
+import {
+  shouldKeepCollaborationSendPending,
+  shouldShowCollaborationSendFailureNotice,
+} from '../src/features/chat/messageActions/collaborationSendLifecycle';
+import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 
 test('messageDeliveryVisual maps sent and delivered to a single gray check', () => {
   assert.deepEqual(messageDeliveryVisual('sent'), {
@@ -34,6 +38,27 @@ test('messageDeliveryVisual maps read and responded to quiet double checks', () 
 test('inline bridge send failures do not also show a sidebar failure notice', () => {
   assert.equal(shouldShowCollaborationSendFailureNotice(true), false);
   assert.equal(shouldShowCollaborationSendFailureNotice(false), true);
+});
+
+test('retryable Cloud sends remain pending until durable sync confirms delivery', () => {
+  assert.equal(shouldKeepCollaborationSendPending(
+    new CloudAuthError('network_error', 'timed out', 0),
+  ), true);
+  assert.equal(shouldKeepCollaborationSendPending(
+    new CloudAuthError('rate_limited', 'try later', 429),
+  ), true);
+  assert.equal(shouldKeepCollaborationSendPending(
+    new CloudAuthError('server_error', 'unavailable', 503),
+  ), true);
+  assert.equal(shouldKeepCollaborationSendPending(
+    new Error('Empty response from chat sync server.'),
+  ), true);
+});
+
+test('definitive Cloud send rejection becomes an inline failure', () => {
+  assert.equal(shouldKeepCollaborationSendPending(
+    new CloudAuthError('invalid_attachment', 'invalid attachment', 400),
+  ), false);
 });
 
 test('messageDeliveryVisual marks sending clock as animated', () => {

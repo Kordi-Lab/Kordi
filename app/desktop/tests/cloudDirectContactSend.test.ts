@@ -35,7 +35,9 @@ test('legacy support selection sends through its scoped system-agent conversatio
     resolvedCloudConversationIdForCollaborationSend(
       'cloud:conversation:acct_kordi_support:agent',
       canonicalSessionId,
+      'cloud',
       'acct_real_support_owner',
+      'kordi-desktop',
     ),
     'cloud:conversation:acct_real_support_owner:agent:session:session%3Adirect-system-agent%3Aacct_me%3Acloud_agent_kordi_support',
   );
@@ -45,5 +47,31 @@ test('legacy support selection sends through its scoped system-agent conversatio
       'session:direct-person:acct_me:acct_peer',
     ),
     'cloud:conversation:acct_peer:person',
+  );
+});
+
+test('canonical Cloud contact selection resolves back to a sendable conversation', () => {
+  assert.equal(
+    resolvedCloudConversationIdForCollaborationSend(
+      'session:direct-person:acct_me:acct_peer',
+      'session:direct-person:acct_me:acct_peer',
+      'cloud',
+      'acct_peer',
+      'person',
+    ),
+    'cloud:conversation:acct_peer:person',
+  );
+});
+
+test('canonical non-Cloud targets are never converted into Cloud sends', () => {
+  assert.equal(
+    resolvedCloudConversationIdForCollaborationSend(
+      'session:direct-person:local_me:local_peer',
+      'session:direct-person:local_me:local_peer',
+      'local-bridge',
+      'node_peer',
+      'person',
+    ),
+    'session:direct-person:local_me:local_peer',
   );
 });

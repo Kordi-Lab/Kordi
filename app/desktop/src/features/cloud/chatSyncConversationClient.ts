@@ -9,6 +9,7 @@ import {
 } from './chatSyncMapping';
 import { ChatSyncState } from './chatSyncState';
 import type { ChatSyncConversation, ChatSyncMessage, ChatSyncPreferences } from './chatSyncTypes';
+import { isRetryableCloudDeliveryError } from './cloudAuthError';
 import { completeChatSyncOutbox, dueChatSyncOutbox, enqueueChatSyncOutbox, failChatSyncOutbox } from '@/lib/desktopChatSync';
 
 export class ChatSyncConversationClient {
@@ -191,17 +192,11 @@ export class ChatSyncConversationClient {
       );
     } catch (error) {
       if (accountId) {
-        const status = this.state.errorStatus(error);
-        const retryable = status === null
-          || status === 0
-          || status === 401
-          || status === 429
-          || status >= 500;
         await failChatSyncOutbox(
           accountId,
           clientMessageId,
           error instanceof Error ? error.message : 'Reliable chat send failed.',
-          retryable,
+          isRetryableCloudDeliveryError(error),
         ).catch(() => {});
       }
       throw error;

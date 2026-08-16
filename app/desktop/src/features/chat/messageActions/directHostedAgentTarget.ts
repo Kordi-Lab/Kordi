@@ -10,6 +10,7 @@ import {
   KORDI_SUPPORT_AGENT_ID,
   KORDI_SUPPORT_NAME,
 } from '@/features/support/supportIdentity';
+import { CLOUD_HOST_SENTINEL } from '@/features/cloud/cloudContactMapping';
 import type { ConversationCollaborationTarget } from '@/kordi-app/types';
 
 import type { ResolvedMentionedCollaborationTarget } from './types';
@@ -31,12 +32,28 @@ export type LockedHostedAgentTarget = {
 export function resolvedCloudConversationIdForCollaborationSend(
   conversationId: string,
   canonicalSessionId?: string | null,
+  resolvedPeerHostId?: string | null,
   resolvedPeerAccountId?: string | null,
+  resolvedPeerRuntime?: string | null,
 ): string {
-  if (
-    !isCloudCollaborationConversationId(conversationId)
-    || cloudSessionIdFromConversationId(conversationId)
-  ) return conversationId;
+  const isCloudConversation = isCloudCollaborationConversationId(conversationId);
+  if (!isCloudConversation) {
+    const peerAccountId = resolvedPeerAccountId?.trim() ?? '';
+    if (resolvedPeerHostId?.trim() !== CLOUD_HOST_SENTINEL || !peerAccountId) {
+      return conversationId;
+    }
+    const runtime = resolvedPeerRuntime?.trim() || 'person';
+    const scopedSessionId = runtime.toLowerCase() === 'person'
+      ? null
+      : canonicalSessionId;
+    return cloudCollaborationConversationId(
+      peerAccountId,
+      runtime,
+      scopedSessionId,
+    );
+  }
+
+  if (cloudSessionIdFromConversationId(conversationId)) return conversationId;
 
   const normalizedSessionId = canonicalSessionId?.trim() ?? '';
   if (!isCloudSystemAgentSessionId(normalizedSessionId)) return conversationId;
