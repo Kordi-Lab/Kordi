@@ -889,10 +889,10 @@ final class AppModel: ObservableObject {
                 messagesByConversation[conversation.id] = remote
                 cache?.saveMessages(remote, conversationId: conversation.id)
             }
-            if let requestId = pendingAgentRequestIds[conversation.id],
-               remote.contains(where: { $0.author == .agent && $0.requestMessageId == requestId }) {
-                completeAgentRequest(conversationId: conversation.id)
-            }
+            reconcilePendingAgentRequest(
+                conversationId: conversation.id,
+                wireMessages: fetchedWireMessages
+            )
             await rebuildConversationCatalog()
             if let pin = await fetchedPin {
                 sessionPinsByID[conversation.sessionId] = pin
@@ -2037,19 +2037,24 @@ final class AppModel: ObservableObject {
     private func pollForAgentReply(_ conversation: ConversationSummary, requestMessageId: String) async {
         guard !previewMode else { return }
         for _ in 0..<30 {
-            try? await Task.sleep(for: .seconds(2))
-            if Task.isCancelled { return }
-            await loadConversation(conversation)
-            if messages(for: conversation).contains(where: { $0.author == .agent && $0.requestMessageId == requestMessageId }) {
-                completeAgentRequest(conversationId: conversation.id)
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
                 return
             }
+            await loadConversation(conversation)
+            guard pendingAgentRequestIds[conversation.id] == requestMessageId else { return }
             if let token,
-               let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId),
-               run.status == "failed" || run.status == "cancelled" {
-                setAgentActivity(.failed, conversationId: conversation.id)
-                pendingAgentRequestIds[conversation.id] = nil
-                return
+               let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {
+                if run.status == "failed" {
+                    setAgentActivity(.failed, conversationId: conversation.id)
+                    pendingAgentRequestIds[conversation.id] = nil
+                    return
+                }
+                if run.status == "cancelled" {
+                    completeAgentRequest(conversationId: conversation.id)
+                    return
+                }
             }
         }
         // Cloud and Mac runs may legitimately exceed this foreground polling
@@ -2514,6 +2519,13 @@ final class AppModel: ObservableObject {
             })
         }.value
         for (conversationId, projected) in projections {
+            if let conversation = loadedConversations.first(where: { $0.id == conversationId }),
+               conversation.kind != .group {
+                reconcilePendingAgentRequest(
+                    conversationId: conversationId,
+                    wireMessages: Self.directWireMessages(for: conversation, in: wireSnapshot)
+                )
+            }
             guard messagesByConversation[conversationId] != projected else { continue }
             messagesByConversation[conversationId] = projected
             cacheCurrentMessages(conversationId)
@@ -2578,9 +2590,16 @@ final class AppModel: ObservableObject {
         }.value
         guard self.account?.accountId == account.accountId else { return }
         let titled = rebuilt.map { conversation in
-            guard let override = sessionTitleOverrides[conversation.sessionId]?.nonEmpty else { return conversation }
             var copy = conversation
-            copy.displayName = override
+            if let override = sessionTitleOverrides[conversation.sessionId]?.nonEmpty {
+                copy.displayName = override
+            }
+            if conversation.kind == .agent {
+                if pendingAgentRequestIds[conversation.id] != nil {
+                    copy.agentActivity = agentRunState[conversation.id] ?? .replying
+                }
+                agentRunState[conversation.id] = copy.agentActivity ?? .ready
+            }
             return copy
         }
         titled.forEach(prepareConversationForPresentation)
@@ -2909,6 +2928,26 @@ final class AppModel: ObservableObject {
     private func completeAgentRequest(conversationId: String) {
         pendingAgentRequestIds[conversationId] = nil
         setAgentActivity(.ready, conversationId: conversationId)
+    }
+
+    private func reconcilePendingAgentRequest(
+        conversationId: String,
+        wireMessages: [CloudMessageDTO]
+    ) {
+        guard let requestId = pendingAgentRequestIds[conversationId],
+              let state = CloudAgentLifecycleProjector.state(
+                forRequestId: requestId,
+                in: wireMessages
+              ) else { return }
+        switch state {
+        case .processing:
+            setAgentActivity(.replying, conversationId: conversationId)
+        case .failed:
+            pendingAgentRequestIds[conversationId] = nil
+            setAgentActivity(.failed, conversationId: conversationId)
+        case .complete, .cancelled:
+            completeAgentRequest(conversationId: conversationId)
+        }
     }
 
     private func setUnreadCount(_ count: Int, conversationId: String) {

@@ -6,7 +6,7 @@ enum CloudDirectMessageProjector {
         conversation: ConversationSummary,
         ownAccountId: String
     ) -> [ChatMessage] {
-        let sorted = messages.sorted { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+        let sorted = CloudAgentLifecycleProjector.visibleRows(messages)
         let cancellations = Dictionary(
             sorted.compactMap { message -> (String, CloudMessageDTO)? in
                 guard let requestId = CloudMessageCodec.agentCancelEnvelope(message.body)?.requestId.nonEmpty else {
@@ -17,16 +17,11 @@ enum CloudDirectMessageProjector {
             uniquingKeysWith: { first, _ in first }
         )
         let responseRequestIds = Set(sorted.compactMap { CloudMessageCodec.agentResponseRequestId($0.body)?.nonEmpty })
-        var visibleResponseKeys = Set<String>()
         var result: [ChatMessage] = []
 
         for wire in sorted {
             if CloudMessageCodec.isAgentControl(wire.body) || CloudGroupMessageCodec.parse(wire.body) != nil {
                 continue
-            }
-            if let requestId = CloudMessageCodec.agentResponseRequestId(wire.body)?.nonEmpty {
-                let responseKey = "\(requestId):\(wire.fromAccountId)"
-                guard visibleResponseKeys.insert(responseKey).inserted else { continue }
             }
 
             result.append(map(wire, conversation: conversation, ownAccountId: ownAccountId))

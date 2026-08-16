@@ -176,6 +176,99 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.last?.replyToMessageId, "msg_request")
     }
 
+    func testTerminalResponseReplacesEarlierProcessingRow() throws {
+        let processing = try agentResponse(
+            requestId: "msg_request",
+            text: "processing...",
+            deliveryState: "processing"
+        )
+        let complete = try agentResponse(
+            requestId: "msg_request",
+            text: "The rollout is ready.",
+            deliveryState: "complete"
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(id: "msg_request", body: "Prepare the rollout", createdAt: "2026-08-08T10:00:00Z"),
+                wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z"),
+                wire(id: "msg_complete", body: complete, createdAt: "2026-08-08T10:00:02Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.map(\.text), ["Prepare the rollout", "The rollout is ready."])
+        XCTAssertEqual(
+            CloudAgentLifecycleProjector.activity(in: [
+                wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z"),
+                wire(id: "msg_complete", body: complete, createdAt: "2026-08-08T10:00:02Z")
+            ]),
+            .ready
+        )
+    }
+
+    func testLateProcessingHeartbeatCannotRegressTerminalResponse() throws {
+        let complete = try agentResponse(
+            requestId: "msg_request",
+            text: "Finished once.",
+            deliveryState: "complete"
+        )
+        let lateProcessing = try agentResponse(
+            requestId: "msg_request",
+            text: "processing...",
+            deliveryState: "processing"
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(id: "msg_complete", body: complete, createdAt: "2026-08-08T10:00:02Z"),
+                wire(id: "msg_late_processing", body: lateProcessing, createdAt: "2026-08-08T10:00:03Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.map(\.text), ["Finished once."])
+        XCTAssertEqual(
+            CloudAgentLifecycleProjector.state(
+                forRequestId: "msg_request",
+                in: [
+                    wire(id: "msg_complete", body: complete, createdAt: "2026-08-08T10:00:02Z"),
+                    wire(id: "msg_late_processing", body: lateProcessing, createdAt: "2026-08-08T10:00:03Z")
+                ]
+            ),
+            .complete
+        )
+    }
+
+    func testCanonicalProcessingAndFailureMapToConversationActivity() throws {
+        let processing = try agentResponse(
+            requestId: "msg_processing_request",
+            text: "processing...",
+            deliveryState: "processing"
+        )
+        let failed = try agentResponse(
+            requestId: "msg_failed_request",
+            text: "No provider configured yet.",
+            deliveryState: "failed"
+        )
+
+        XCTAssertEqual(
+            CloudAgentLifecycleProjector.activity(in: [
+                wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z")
+            ]),
+            .replying
+        )
+        XCTAssertEqual(
+            CloudAgentLifecycleProjector.activity(in: [
+                wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z"),
+                wire(id: "msg_failed", body: failed, createdAt: "2026-08-08T10:00:02Z")
+            ]),
+            .failed
+        )
+    }
+
     private var conversation: ConversationSummary {
         ConversationSummary(
             id: "agent-session:session:plain-id",
@@ -206,5 +299,22 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             direction: "outgoing",
             sessionId: "session:plain-id"
         )
+    }
+
+    private func agentResponse(
+        requestId: String,
+        text: String,
+        deliveryState: String
+    ) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "kind": "agent-response",
+            "requestId": requestId,
+            "text": text,
+            "deliveryState": deliveryState
+        ])
+        return CloudMessageCodec.agentResponsePrefix + data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }

@@ -344,7 +344,7 @@ enum CloudConversationCatalog {
 
         return grouped.compactMap { sessionId, rows in
             guard !sessionId.isEmpty else { return nil }
-            let sorted = rows.sorted { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+            let sorted = CloudAgentLifecycleProjector.visibleRows(rows)
             let requests = sorted.compactMap { message -> (CloudMessageDTO, CloudMessageCodec.DirectEnvelope)? in
                 guard let envelope = CloudMessageCodec.directEnvelope(message.body) else { return nil }
                 return (message, envelope)
@@ -380,7 +380,7 @@ enum CloudConversationCatalog {
                     accountId: account.accountId
                 ),
                 avatarSource: definition?.avatarUrl?.nonEmpty,
-                agentActivity: .ready,
+                agentActivity: CloudAgentLifecycleProjector.activity(in: sorted),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
                 forkedFromSessionId: sessionForksById[sessionId]?.parentSessionId.nonEmpty
@@ -443,9 +443,9 @@ enum CloudConversationCatalog {
             )
             guard isAgentSession else { return nil }
 
-            let rows = messages
-                .filter { ($0.sessionId?.nonEmpty ?? "") == sessionId }
-                .sorted { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+            let rows = CloudAgentLifecycleProjector.visibleRows(
+                messages.filter { ($0.sessionId?.nonEmpty ?? "") == sessionId }
+            )
             let requests = rows.compactMap { message -> CloudMessageCodec.DirectEnvelope? in
                 CloudMessageCodec.directEnvelope(message.body)
             }
@@ -494,7 +494,7 @@ enum CloudConversationCatalog {
                     accountId: account.accountId
                 ),
                 avatarSource: definition?.avatarUrl?.nonEmpty,
-                agentActivity: .ready,
+                agentActivity: CloudAgentLifecycleProjector.activity(in: rows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
                 messageCount: Int(clamping: conversation.latestMessageSequence),

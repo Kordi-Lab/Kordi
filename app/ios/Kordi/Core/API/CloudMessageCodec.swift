@@ -94,6 +94,21 @@ enum CloudMessageCodec {
         return response.deliveryState != "processing"
     }
 
+    static func agentResponseDeliveryState(_ body: String) -> CloudAgentLifecycleState? {
+        guard let response = parsedEnvelopes(body).response else { return nil }
+        switch response.deliveryState?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "processing":
+            return .processing
+        case "failed":
+            return .failed
+        case "cancelled":
+            return .cancelled
+        default:
+            // Legacy responses omitted deliveryState and were terminal.
+            return .complete
+        }
+    }
+
     static func agentResponseRequestId(_ body: String) -> String? {
         parsedEnvelopes(body).response?.requestId
     }
@@ -154,5 +169,109 @@ enum CloudMessageCodec {
             normalized += String(repeating: "=", count: 4 - remainder)
         }
         return Data(base64Encoded: normalized)
+    }
+}
+
+enum CloudAgentLifecycleState: String, Equatable {
+    case processing
+    case complete
+    case failed
+    case cancelled
+
+    var isTerminal: Bool { self != .processing }
+
+    var activity: AgentActivity {
+        switch self {
+        case .processing:
+            return .replying
+        case .failed:
+            return .failed
+        case .complete, .cancelled:
+            return .ready
+        }
+    }
+}
+
+/// Reduces append-only Cloud agent response rows into one monotonic lifecycle
+/// slot per request and agent. A late processing heartbeat must never replace a
+/// completed, failed, or cancelled response that another device already saw.
+enum CloudAgentLifecycleProjector {
+    private struct ResponseKey: Hashable {
+        let requestId: String
+        let fromAccountId: String
+    }
+
+    static func visibleRows(_ messages: [CloudMessageDTO]) -> [CloudMessageDTO] {
+        let sorted = messages.sorted(by: messagePrecedes)
+        var preferredByKey: [ResponseKey: CloudMessageDTO] = [:]
+        for message in sorted {
+            guard let key = responseKey(for: message) else { continue }
+            guard let existing = preferredByKey[key] else {
+                preferredByKey[key] = message
+                continue
+            }
+            preferredByKey[key] = preferredResponse(existing, message)
+        }
+
+        var emittedResponseKeys = Set<ResponseKey>()
+        return sorted.filter { message in
+            guard let key = responseKey(for: message) else { return true }
+            guard preferredByKey[key]?.messageId == message.messageId else { return false }
+            return emittedResponseKeys.insert(key).inserted
+        }
+    }
+
+    static func activity(in messages: [CloudMessageDTO]) -> AgentActivity {
+        let visible = visibleRows(messages)
+        let latestRequest = visible
+            .filter { CloudMessageCodec.directEnvelope($0.body)?.targetCloudAgentId?.nonEmpty != nil }
+            .max(by: messagePrecedes)
+        if let latestRequest {
+            return state(forRequestId: latestRequest.messageId, in: visible)?.activity ?? .replying
+        }
+        let latestResponse = visible
+            .filter { CloudMessageCodec.isAgentResponse($0.body) }
+            .max(by: messagePrecedes)
+        return latestResponse
+            .flatMap { CloudMessageCodec.agentResponseDeliveryState($0.body) }?
+            .activity ?? .ready
+    }
+
+    static func state(
+        forRequestId requestId: String,
+        in messages: [CloudMessageDTO]
+    ) -> CloudAgentLifecycleState? {
+        visibleRows(messages)
+            .filter { CloudMessageCodec.agentResponseRequestId($0.body) == requestId }
+            .max(by: messagePrecedes)
+            .flatMap { CloudMessageCodec.agentResponseDeliveryState($0.body) }
+    }
+
+    private static func responseKey(for message: CloudMessageDTO) -> ResponseKey? {
+        guard let requestId = CloudMessageCodec.agentResponseRequestId(message.body)?.nonEmpty else {
+            return nil
+        }
+        return ResponseKey(requestId: requestId, fromAccountId: message.fromAccountId)
+    }
+
+    private static func preferredResponse(
+        _ existing: CloudMessageDTO,
+        _ candidate: CloudMessageDTO
+    ) -> CloudMessageDTO {
+        let existingState = CloudMessageCodec.agentResponseDeliveryState(existing.body)
+        let candidateState = CloudMessageCodec.agentResponseDeliveryState(candidate.body)
+        if existingState?.isTerminal == true, candidateState == .processing {
+            return existing
+        }
+        if existingState == .processing, candidateState?.isTerminal == true {
+            return candidate
+        }
+        return messagePrecedes(existing, candidate) ? candidate : existing
+    }
+
+    private static func messagePrecedes(_ lhs: CloudMessageDTO, _ rhs: CloudMessageDTO) -> Bool {
+        let lhsDate = parseCloudDate(lhs.createdAt)
+        let rhsDate = parseCloudDate(rhs.createdAt)
+        return lhsDate < rhsDate || (lhsDate == rhsDate && lhs.messageId < rhs.messageId)
     }
 }

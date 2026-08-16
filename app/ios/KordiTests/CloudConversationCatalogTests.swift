@@ -69,6 +69,121 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(readCatalog.first { $0.sessionId == sessionId }?.unreadCount, 0)
     }
 
+    func testCanonicalAgentActivityTracksLatestRequestLifecycle() throws {
+        let sessionId = "session:self-agent:lifecycle"
+        let request = try CloudMessageCodec.encodeDirect(
+            text: "Review the rollout",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            ownerAccountId: "acct_me",
+            ownerName: "Alex"
+        )
+        let processing = try agentResponseBody(
+            requestId: "request-lifecycle",
+            text: "processing...",
+            deliveryState: "processing"
+        )
+        let complete = try agentResponseBody(
+            requestId: "request-lifecycle",
+            text: "The rollout is ready.",
+            deliveryState: "complete"
+        )
+
+        func activity(_ messages: [CloudMessageDTO]) -> AgentActivity? {
+            CloudConversationCatalog.build(
+                account: account,
+                contacts: [],
+                ownedAgents: [ownedAgent],
+                sharedAgents: [],
+                messagesByPeer: ["acct_me": messages]
+            ).first { $0.sessionId == sessionId }?.agentActivity
+        }
+
+        let requestRow = wire(
+            id: "request-lifecycle",
+            body: request,
+            sessionId: sessionId,
+            createdAt: "2026-08-08T10:00:00Z"
+        )
+        XCTAssertEqual(activity([requestRow]), .replying)
+        XCTAssertEqual(activity([
+            requestRow,
+            wire(
+                id: "response-processing",
+                body: processing,
+                sessionId: sessionId,
+                createdAt: "2026-08-08T10:00:01Z"
+            )
+        ]), .replying)
+        XCTAssertEqual(activity([
+            requestRow,
+            wire(
+                id: "response-processing",
+                body: processing,
+                sessionId: sessionId,
+                createdAt: "2026-08-08T10:00:01Z"
+            ),
+            wire(
+                id: "response-complete",
+                body: complete,
+                sessionId: sessionId,
+                createdAt: "2026-08-08T10:00:02Z"
+            )
+        ]), .ready)
+    }
+
+    func testNewAgentRequestDoesNotInheritPreviousFailure() throws {
+        let sessionId = "session:self-agent:retry"
+        let firstRequest = try CloudMessageCodec.encodeDirect(
+            text: "First attempt",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            ownerAccountId: "acct_me",
+            ownerName: "Alex"
+        )
+        let failure = try agentResponseBody(
+            requestId: "request-first",
+            text: "The first attempt failed.",
+            deliveryState: "failed"
+        )
+        let retry = try CloudMessageCodec.encodeDirect(
+            text: "Try again",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            ownerAccountId: "acct_me",
+            ownerName: "Alex"
+        )
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [ownedAgent],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [
+                wire(
+                    id: "request-first",
+                    body: firstRequest,
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:00:00Z"
+                ),
+                wire(
+                    id: "response-failed",
+                    body: failure,
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:00:01Z"
+                ),
+                wire(
+                    id: "request-retry",
+                    body: retry,
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:00:02Z"
+                )
+            ]]
+        )
+
+        XCTAssertEqual(catalog.first { $0.sessionId == sessionId }?.agentActivity, .replying)
+    }
+
     func testOpaqueCanonicalV2AgentSessionAppearsBeforeHistoryBackfill() throws {
         let payload = Data(#"{"id":"conversation-agent-opaque","kind":"ai","shared_title":"Model and identity","version":3,"created_by_account_id":"acct_me","legacy_session_id":"e98c478d-6da2-46db-bf16-5caaac677f62","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":8,"created_at":"2026-08-11T17:22:11Z","updated_at":"2026-08-11T17:23:04Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-11T17:22:11Z","left_at":null}],"preferences":{"conversation_id":"conversation-agent-opaque","account_id":"acct_me","personal_title":"Model and identity","version":1}}"#.utf8)
         let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: payload)
@@ -1062,12 +1177,16 @@ final class CloudConversationCatalogTests: XCTestCase {
         )
     }
 
-    private func agentResponseBody(requestId: String, text: String) throws -> String {
+    private func agentResponseBody(
+        requestId: String,
+        text: String,
+        deliveryState: String = "complete"
+    ) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: [
             "kind": "agent-response",
             "requestId": requestId,
             "text": text,
-            "deliveryState": "complete"
+            "deliveryState": deliveryState
         ])
         return CloudMessageCodec.agentResponsePrefix + data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
