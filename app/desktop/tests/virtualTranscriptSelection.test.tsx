@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { act } from 'react';
@@ -56,4 +57,61 @@ test('transcript owns Cmd+A and Escape for semantic message selection', async ()
 
   assert.equal(selectAllCount, 1);
   assert.equal(cancelCount, 1);
+});
+
+test('transcript only exposes its focus ring for non-pointer focus', async () => {
+  const view = await render(transcript({
+    items: rows('focus-', 0, 3),
+    sessionKey: 'focus-origin',
+  }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+
+  await act(async () => viewport.focus());
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, 'true');
+
+  await act(async () => {
+    viewport.dispatchEvent(new window.MouseEvent('pointerdown', {
+      button: 0,
+      bubbles: true,
+      cancelable: true,
+    }));
+  });
+  assert.equal(document.activeElement, viewport);
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined);
+
+  await act(async () => {
+    viewport.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+    }));
+  });
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, 'true');
+
+  await act(async () => {
+    viewport.dispatchEvent(new window.MouseEvent('pointerdown', {
+      button: 0,
+      bubbles: true,
+      cancelable: true,
+    }));
+  });
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined);
+
+  await act(async () => viewport.blur());
+  await act(async () => viewport.focus());
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, 'true');
+
+  await act(async () => viewport.blur());
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined);
+});
+
+test('transcript replaces the native WebKit outline with a deliberate keyboard focus ring', () => {
+  const css = readFileSync(new URL('../src/styles/shell-transcript.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\[data-virtual-transcript-scroll\]\s*\{[^}]*outline:\s*none;/s);
+  assert.match(
+    css,
+    /\[data-virtual-transcript-scroll\]\[data-transcript-keyboard-focus='true'\]:focus\s*\{[^}]*border-radius:\s*12px;[^}]*outline:\s*2px solid color-mix\(in oklab, var\(--app-quiet-control-focus-ring\) 76%, transparent\);[^}]*outline-offset:\s*-4px;/s,
+  );
+  assert.match(css, /@media \(forced-colors:\s*active\)/);
 });
