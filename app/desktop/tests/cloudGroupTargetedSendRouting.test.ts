@@ -13,7 +13,7 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
   assert.notEqual(sendTargetedEnd, -1, 'expected end of targeted chat send handler');
   const targetedHandler = source.slice(sendTargetedStart, sendTargetedEnd);
 
-  const directCloudBranch = targetedHandler.indexOf('if (isCloudCollaborationConversationId(targetConversation.id))');
+  const directCloudBranch = targetedHandler.indexOf('if (isCloudCollaborationConversationId(targetCloudConversationId))');
   const groupTargets = targetedHandler.indexOf('const groupTargets = isCollaborationGroupSession(targetGroupScope)');
   const groupTransportSend = targetedHandler.indexOf("kind: 'group-message'", groupTargets);
 

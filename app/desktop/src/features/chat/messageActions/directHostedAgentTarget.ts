@@ -11,7 +11,10 @@ import {
   KORDI_SUPPORT_NAME,
 } from '@/features/support/supportIdentity';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/cloudContactMapping';
-import type { ConversationCollaborationTarget } from '@/kordi-app/types';
+import type {
+  Conversation,
+  ConversationCollaborationTarget,
+} from '@/kordi-app/types';
 
 import type { ResolvedMentionedCollaborationTarget } from './types';
 
@@ -61,6 +64,30 @@ export function resolvedCloudConversationIdForCollaborationSend(
     || cloudPeerAccountIdFromConversationId(conversationId);
   if (!peerAccountId) return conversationId;
   return cloudCollaborationConversationId(peerAccountId, 'agent', normalizedSessionId);
+}
+
+export function resolvedCloudConversationIdForTarget(
+  conversationId: string,
+  canonicalSessionId: string | null | undefined,
+  target: ConversationCollaborationTarget | null | undefined,
+): string {
+  return resolvedCloudConversationIdForCollaborationSend(
+    conversationId,
+    canonicalSessionId,
+    target?.hostId,
+    target?.nodeId,
+    target?.runtime,
+  );
+}
+
+export function resolvedCloudConversationIdForConversation(
+  conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'collaborationTarget'>,
+): string {
+  return resolvedCloudConversationIdForTarget(
+    conversation.id,
+    conversation.canonicalSessionId,
+    conversation.collaborationTarget,
+  );
 }
 
 export function resolveLockedKordiSupportAgentTarget({
