@@ -291,6 +291,16 @@ actor CloudAPIClient {
         return response.contacts
     }
 
+    func listContactPresence(token: String) async throws -> [CloudPresenceAccount] {
+        let response: ContactPresenceResponse = try await send(
+            path: "/v1/cloud/presence/contacts",
+            method: "GET",
+            token: token,
+            fallback: "Could not load contact presence."
+        )
+        return response.accounts
+    }
+
     func cachedChatParticipantsBySessionId() -> [String: [CloudGroupParticipant]] {
         var result: [String: [CloudGroupParticipant]] = [:]
         for conversation in chatConversationsById.values where conversation.kind == "group" {
@@ -1632,6 +1642,7 @@ private struct SaveExpressiveMediaRequest: Encodable {
     let name: String
 }
 private struct ContactsResponse: Decodable { let contacts: [CloudContact] }
+private struct ContactPresenceResponse: Decodable { let accounts: [CloudPresenceAccount] }
 private struct ContactRequestsResponse: Decodable { let requests: [CloudContactRequest] }
 private struct ContactRequestResponse: Decodable { let request: CloudContactRequest }
 private struct SendContactRequest: Encodable { let peerAccountId: String; let message: String? }

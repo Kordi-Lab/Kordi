@@ -418,6 +418,7 @@ export function ChatMainWorkspace({
           conversation={models.senderProfiles.target.conversation}
           commonGroups={models.senderProfiles.commonGroups}
           contacts={models.senderProfiles.contacts}
+          presence={models.senderProfiles.presence}
           presenceStatus={
             models.senderProfiles.target.participant.presenceStatus
           }

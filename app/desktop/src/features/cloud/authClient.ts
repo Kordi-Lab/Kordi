@@ -7,6 +7,7 @@
 // available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
 import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
+import type { CloudPresenceAccount, CloudPresenceContactsResponse } from './presence';
 import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
@@ -44,6 +45,7 @@ import {
 } from './deviceIdentity';
 
 export type { CloudContactSummary } from './cloudContactTypes';
+export type { CloudPresenceAccount, CloudPresenceContactsResponse, CloudPresenceStatus } from './presence';
 export type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 export type {
   CloudDeviceAuthorization,
@@ -281,18 +283,6 @@ export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivity
 export type UpsertCloudArtifactActivityInput = Omit<CloudArtifactActivity, 'artifactActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
-};
-
-export type CloudPresenceStatus = 'online' | 'offline';
-
-export type CloudPresenceAccount = {
-  accountId: string;
-  status: CloudPresenceStatus;
-  updatedAt: string;
-};
-
-export type CloudPresenceContactsResponse = {
-  accounts: CloudPresenceAccount[];
 };
 
 export type CloudProviderAuthSnapshotInput = {

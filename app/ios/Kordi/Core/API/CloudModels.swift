@@ -105,6 +105,17 @@ struct CloudContact: Codable, Hashable, Identifiable {
     var preferredName: String { displayName?.nonEmpty ?? kordiId?.nonEmpty ?? "Kordi user" }
 }
 
+enum CloudPresenceStatus: String, Codable, Hashable {
+    case online
+    case offline
+}
+
+struct CloudPresenceAccount: Codable, Hashable {
+    let accountId: String
+    let status: CloudPresenceStatus
+    let lastSeenAt: String?
+}
+
 struct CloudPublicProfile: Codable, Hashable {
     let accountId: String
     let kordiId: String

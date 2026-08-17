@@ -50,7 +50,9 @@ export function isGenericChatHeaderSubtitle(value: string): boolean {
 
 export function chatHeaderSubtitle(
   conversation: Pick<Conversation, 'subtitle'>,
+  contactPresence?: string | null,
 ): string | null {
+  if (contactPresence) return contactPresence;
   const formatted = formatSessionIdSubtitle(conversation.subtitle).trim();
   if (!formatted || isGenericChatHeaderSubtitle(formatted)) return null;
   return formatted;

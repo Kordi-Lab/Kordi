@@ -1,4 +1,6 @@
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import type { CloudPresenceAccount } from '@/features/cloud/presence';
+import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
 import {
   chatHeaderSubtitle,
   selfAgentSessionIdForTitleRename,
@@ -9,6 +11,7 @@ import type {
 } from '@/pages/chatsPage.types';
 
 type UseChatHeaderModelInput = {
+  contactPresence?: CloudPresenceAccount | null;
   isNativeShell: ChatsPageLayout['isNativeShell'];
   isSending: boolean;
   session: Pick<
@@ -24,6 +27,7 @@ type UseChatHeaderModelInput = {
 };
 
 export function useChatHeaderModel({
+  contactPresence,
   isNativeShell,
   isSending,
   session,
@@ -41,6 +45,7 @@ export function useChatHeaderModel({
   const isDraft = activeConv.id === LOCAL_DRAFT_CHAT_CONVERSATION_ID
     || activeConv.canonicalSessionId === LOCAL_DRAFT_CHAT_CONVERSATION_ID;
   const isStarting = isDraft && isSending;
+  const contactPresenceSubtitle = useContactPresenceLabel(contactPresence);
   const canRename = isNativeShell
     && activeConv.type === 'owned-agent'
     && (Boolean(selfAgentSessionId) || isDraft)
@@ -79,7 +84,7 @@ export function useChatHeaderModel({
   };
 
   return {
-    subtitle: chatHeaderSubtitle(activeConv),
+    subtitle: chatHeaderSubtitle(activeConv, contactPresenceSubtitle),
     isStarting,
     rename: {
       enabled: canRename,

@@ -10,14 +10,17 @@ import {
 import {
   applyPresenceSnapshot,
   cloudPresenceChangedFromWsPayload,
+  contactPresenceLabel,
   mergePresenceEvent,
   presenceStatusForAccount,
   shouldRefreshPresenceForWsSubject,
+  type CloudPresenceAccount,
   type CloudPresenceStore,
 } from './presence';
 import { loadSession } from './session';
 
 const REFRESH_MS = 15_000;
+const LABEL_REFRESH_MS = 60_000;
 
 type CloudPresenceStoreState = {
   snapshot: CloudPresenceStore;
@@ -108,4 +111,23 @@ export function useCloudPresence(account: CloudAccount | null) {
     snapshot,
     statusForAccount: useCallback((accountId?: string | null) => presenceStatusForAccount(snapshot, accountId), [snapshot]),
   };
+}
+
+export function useContactPresenceLabel(
+  presence: CloudPresenceAccount | null | undefined,
+) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const hasPresenceTarget = presence !== undefined;
+  const lastSeenAt = presence?.lastSeenAt;
+  const presenceStatus = presence?.status;
+  useEffect(() => {
+    if (!hasPresenceTarget || presenceStatus === 'online' || !lastSeenAt) return;
+    const initialTimer = window.setTimeout(() => setNowMs(Date.now()), 0);
+    const timer = window.setInterval(() => setNowMs(Date.now()), LABEL_REFRESH_MS);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [hasPresenceTarget, lastSeenAt, presenceStatus]);
+  return presence === undefined ? null : contactPresenceLabel(presence, { now: nowMs });
 }

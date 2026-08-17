@@ -247,9 +247,9 @@ async fn publish_presence_if_changed(
     state: &Arc<ServerState>,
     account_id: &str,
     before: crate::presence::AccountPresenceStatus,
-    after: crate::presence::AccountPresenceStatus,
+    after: &crate::presence::AccountPresenceSummary,
 ) {
-    if before == after {
+    if before == after.status {
         return;
     }
     if let Err(err) = crate::presence::publish_presence_to_observers(
@@ -289,7 +289,7 @@ async fn mark_presence_online_on_websocket_connect(
     }
     let before = account_presence_or_offline(state, account_id).await;
     match crate::presence::mark_device_online(state.db_pool(), account_id, device_id).await {
-        Ok(summary) => publish_presence_if_changed(state, account_id, before, summary.status).await,
+        Ok(summary) => publish_presence_if_changed(state, account_id, before, &summary).await,
         Err(err) => eprintln!("[ws] mark presence online on connect: {err}"),
     }
 }
@@ -313,9 +313,7 @@ async fn mark_presence_offline_on_websocket_disconnect(
     )
     .await
     {
-        Ok(Some(summary)) => {
-            publish_presence_if_changed(state, account_id, before, summary.status).await
-        }
+        Ok(Some(summary)) => publish_presence_if_changed(state, account_id, before, &summary).await,
         Ok(None) => {}
         Err(err) => eprintln!("[ws] mark presence offline on disconnect: {err}"),
     }

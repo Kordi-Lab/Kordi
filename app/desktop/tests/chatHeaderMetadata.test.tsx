@@ -50,6 +50,10 @@ test('chat header subtitle removes internal group/direct session labels but keep
   assert.equal(chatHeaderSubtitle({ subtitle: 'session:direct-person:acct_a:acct_b' }), null);
   assert.equal(chatHeaderSubtitle({ subtitle: 'session:direct-agent:next-id' }), null);
   assert.equal(chatHeaderSubtitle({ subtitle: 'Cloud direct chat is opening…' }), 'Cloud direct chat is opening…');
+  assert.equal(
+    chatHeaderSubtitle({ subtitle: 'Previous message preview' }, 'last seen today at 12:55'),
+    'last seen today at 12:55',
+  );
 });
 
 test('ChatsPage header does not render trust, bridge, or directness metadata chips', () => {

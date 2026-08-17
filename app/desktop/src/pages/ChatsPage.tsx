@@ -5,6 +5,8 @@ import { suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Message } from '@/kordi-app/types';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
+import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
+import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cn } from '@/lib/utils';
 import type { ChatsPageProps } from '@/pages/chatsPage.types';
 import {
@@ -116,7 +118,15 @@ export function ChatsPage({
   const activeLiveTurnIsRunning = Boolean(
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
+  const cloudPresence = useCloudPresence(cloudAccount);
+  const activePresenceTarget = cloudAccount
+    ? cloudCallTargetForConversation(cloudAccount, activeConv)
+    : null;
+  const activeContactPresence = activePresenceTarget?.kind === 'direct'
+    ? cloudPresence.snapshot[activePresenceTarget.peerAccountId] ?? null
+    : undefined;
   const chatHeader = useChatHeaderModel({
+    contactPresence: activeContactPresence,
     isNativeShell,
     isSending: isDesktopChatSending,
     session,
@@ -152,6 +162,7 @@ export function ChatsPage({
     companionConversation,
     participantSpaces: session.participantSpaces,
     cloudAccount,
+    presenceSnapshot: cloudPresence.snapshot,
     onMessageContact,
     onSelectSession,
   });

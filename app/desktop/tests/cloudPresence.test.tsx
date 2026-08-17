@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   applyPresenceSnapshot,
   cloudPresenceChangedFromWsPayload,
+  contactPresenceLabel,
   mergePresenceEvent,
   presenceStatusForAccount,
   shouldRefreshPresenceForWsSubject,
@@ -16,8 +17,8 @@ import { IdentityAvatar } from '../src/kordi-app/components/IdentityAvatar';
 test('presence snapshot stores account statuses by account id', () => {
   const snapshot = applyPresenceSnapshot({}, {
     accounts: [
-      { accountId: 'acct_1', status: 'online', updatedAt: '2026-05-23T00:00:00Z' },
-      { accountId: 'acct_2', status: 'offline', updatedAt: '2026-05-23T00:01:00Z' },
+      { accountId: 'acct_1', status: 'online', updatedAt: '2026-05-23T00:00:00Z', lastSeenAt: null },
+      { accountId: 'acct_2', status: 'offline', updatedAt: '2026-05-23T00:01:00Z', lastSeenAt: '2026-05-23T00:00:30Z' },
     ],
   });
   assert.equal(presenceStatusForAccount(snapshot, 'acct_1'), 'online');
@@ -26,8 +27,30 @@ test('presence snapshot stores account statuses by account id', () => {
 });
 
 test('presence websocket event updates a single account', () => {
-  const next = mergePresenceEvent({}, { accountId: 'acct_1', status: 'online', updatedAt: '2026-05-23T00:00:00Z' });
+  const next = mergePresenceEvent({}, {
+    accountId: 'acct_1',
+    status: 'online',
+    updatedAt: '2026-05-23T00:00:00Z',
+    lastSeenAt: null,
+  });
   assert.equal(next.acct_1?.status, 'online');
+});
+
+test('contact presence labels cover online and locale-aware last-seen tiers', () => {
+  const now = new Date('2026-08-17T13:00:00Z');
+  const label = (status: 'online' | 'offline', lastSeenAt: string | null) => contactPresenceLabel({
+    accountId: 'acct_1',
+    status,
+    updatedAt: now.toISOString(),
+    lastSeenAt,
+  }, { now, locales: 'en-GB', timeZone: 'UTC' });
+
+  assert.equal(label('online', null), 'online');
+  assert.equal(label('offline', null), 'last seen recently');
+  assert.equal(label('offline', '2026-08-17T12:59:30Z'), 'last seen just now');
+  assert.equal(label('offline', '2026-08-17T12:55:00Z'), 'last seen today at 12:55');
+  assert.equal(label('offline', '2026-08-16T12:55:00Z'), 'last seen yesterday at 12:55');
+  assert.equal(label('offline', '2026-08-10T12:55:00Z'), 'last seen 10 Aug at 12:55');
 });
 
 test('unchanged presence data preserves store identity', () => {
@@ -36,6 +59,7 @@ test('unchanged presence data preserves store identity', () => {
       accountId: 'acct_1',
       status: 'online' as const,
       updatedAt: '2026-05-23T00:00:00Z',
+      lastSeenAt: null,
     },
   };
   assert.equal(applyPresenceSnapshot(current, {
@@ -43,24 +67,28 @@ test('unchanged presence data preserves store identity', () => {
       accountId: 'acct_1',
       status: 'online',
       updatedAt: '2026-05-23T00:00:00Z',
+      lastSeenAt: null,
     }],
   }), current);
   assert.equal(mergePresenceEvent(current, {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: '2026-05-23T00:00:00Z',
+    lastSeenAt: null,
   }), current);
   assert.equal(applyPresenceSnapshot(current, {
     accounts: [{
       accountId: 'acct_1',
       status: 'online',
       updatedAt: '2026-05-23T00:05:00Z',
+      lastSeenAt: null,
     }],
   }), current);
   assert.equal(mergePresenceEvent(current, {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: '2026-05-23T00:05:00Z',
+    lastSeenAt: null,
   }), current);
 });
 
@@ -70,12 +98,14 @@ test('presence updates without a timestamp preserve the prior timestamp', () => 
       accountId: 'acct_1',
       status: 'online' as const,
       updatedAt: '2026-05-23T00:00:00Z',
+      lastSeenAt: null,
     },
   };
   assert.equal(mergePresenceEvent(current, {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: '',
+    lastSeenAt: null,
   }), current);
 });
 
@@ -86,7 +116,14 @@ test('presence subject and payload parser recognize account changes', () => {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: 'now',
+    lastSeenAt: null,
   });
+  assert.equal(cloudPresenceChangedFromWsPayload({
+    account_id: 'acct_1',
+    status: 'offline',
+    occurred_at: 'now',
+    last_seen_at: '2026-05-23T00:00:00Z',
+  })?.lastSeenAt, '2026-05-23T00:00:00Z');
 });
 
 test('IdentityAvatar can render an online presence light without visible status text', () => {

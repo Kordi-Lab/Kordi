@@ -14,7 +14,9 @@ import {
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import type { CloudPresenceAccount } from '@/features/cloud/presence';
 import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
+import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { ContactProfileSharedContent } from '@/pages/ContactProfileSharedContent';
 import type {
@@ -35,6 +37,7 @@ import {
 type ContactInfoPopoverProps = {
   participant: ConversationParticipant;
   contacts: Contact[];
+  presence?: CloudPresenceAccount | null;
   presenceStatus?: string | null;
   onAddContact?: (accountId: string) => Promise<void> | void;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
@@ -55,6 +58,10 @@ function memberStableId(member: ConversationParticipant) {
   return member.humanId?.trim()
     || member.sourceIdentityId?.trim()
     || member.id.trim();
+}
+
+function sentenceCase(value: string) {
+  return value ? value[0].toLocaleUpperCase() + value.slice(1) : value;
 }
 
 function ProfileAction({
@@ -91,6 +98,7 @@ export function ContactInfoPopover({
   onClose,
   participant,
   contacts,
+  presence,
   presenceStatus,
   onAddContact,
   onMessageContact,
@@ -136,10 +144,14 @@ export function ContactInfoPopover({
   const requestPending = contactStatus === 'pending' || requestState === 'sent';
   const canAddContact = Boolean(onAddContact && accountId && !isExistingContact && !requestPending);
   const canMessage = Boolean(onMessageContact && contact && isExistingContact);
-  const resolvedPresence = presenceStatus
+  const resolvedPresence = presence?.status
+    ?? presenceStatus
     ?? contact?.presenceStatus
     ?? participant.presenceStatus
     ?? 'offline';
+  const livePresenceLabel = useContactPresenceLabel(presence);
+  const resolvedPresenceLabel = livePresenceLabel
+    ?? (resolvedPresence === 'online' ? 'online' : 'last seen recently');
   const handle = formatKordiHandle(participant.kordiId)
     || formatKordiHandle(contact?.detail)
     || formatKordiHandle(contact?.subtitle);
@@ -275,13 +287,13 @@ export function ContactInfoPopover({
             imageUrl={participant.profileImageUrl ?? contact?.profileImageUrl}
             className="mx-auto h-[4.5rem] w-[4.5rem] border border-white/10"
             presenceStatus={resolvedPresence}
-            presenceLabel={`${participant.name} is ${resolvedPresence === 'online' ? 'online' : 'offline'}`}
+            presenceLabel={`${participant.name}, ${resolvedPresenceLabel}`}
           />
           <h2 className="mx-auto mt-3 max-w-[17rem] truncate text-[17px] font-semibold leading-6" title={participant.name}>
             {participant.name}
           </h2>
           <p className="mt-0.5 text-[11px] leading-4 text-[color:var(--app-transient-muted-text)]">
-            {resolvedPresence === 'online' ? 'Online' : 'Offline'}
+            {sentenceCase(resolvedPresenceLabel)}
           </p>
           {handle ? (
             <p className="mt-1 text-[11px] font-medium text-[color:var(--app-transient-muted-text)]">

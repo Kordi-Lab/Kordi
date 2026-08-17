@@ -4,9 +4,9 @@ pub(super) async fn publish_presence_change_if_needed(
     state: &Arc<ServerState>,
     account_id: &str,
     before: crate::presence::AccountPresenceStatus,
-    after: crate::presence::AccountPresenceStatus,
+    after: &crate::presence::AccountPresenceSummary,
 ) {
-    if before == after {
+    if before == after.status {
         return;
     }
     let _ = crate::presence::publish_presence_to_observers(
@@ -39,8 +39,7 @@ pub(super) async fn publish_current_device_online(
     .await
     {
         Ok(summary) => {
-            publish_presence_change_if_needed(&state, &session.account_id, before, summary.status)
-                .await;
+            publish_presence_change_if_needed(&state, &session.account_id, before, &summary).await;
             Json(summary).into_response()
         }
         Err(_) => err(
@@ -79,8 +78,7 @@ pub(super) async fn publish_current_device_offline(
     .await
     {
         Ok(summary) => {
-            publish_presence_change_if_needed(&state, &session.account_id, before, summary.status)
-                .await;
+            publish_presence_change_if_needed(&state, &session.account_id, before, &summary).await;
             Json(summary).into_response()
         }
         Err(_) => err(

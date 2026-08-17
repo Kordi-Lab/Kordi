@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
+import type { CloudPresenceStore } from '@/features/cloud/presence';
 import type { CloudSupportTicketInput } from '@/features/cloud/supportClient';
 import type {
   Contact,
@@ -10,6 +11,10 @@ import type {
   ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
 import { transcriptHumanParticipant } from '@/pages/chatSenderProfileModel';
+import {
+  contactForGroupMember,
+  groupMemberAccountId,
+} from '@/pages/memberContactProfileModel';
 import type {
   ChatsPageRuntime,
   ChatsPageSession,
@@ -31,6 +36,7 @@ type UseChatSenderProfilesInput = {
   companionConversation: Conversation | null;
   participantSpaces: ParticipantSpaceViewModel[];
   cloudAccount: ChatsPageSession['cloudAccount'];
+  presenceSnapshot: CloudPresenceStore;
   onMessageContact: ChatsPageRuntime['onMessageContact'];
   onSelectSession: ChatsPageRuntime['onSelectSession'];
 };
@@ -60,6 +66,7 @@ export function useChatSenderProfiles({
   companionConversation,
   participantSpaces,
   cloudAccount,
+  presenceSnapshot,
   onMessageContact,
   onSelectSession,
 }: UseChatSenderProfilesInput) {
@@ -131,6 +138,15 @@ export function useChatSenderProfiles({
         groupContainsParticipant(space, state.target!.participant)
       ))
     : [];
+  const targetContact = state.target
+    ? contactForGroupMember(cloudContacts.contacts, state.target.participant)
+    : null;
+  const targetAccountId = state.target
+    ? groupMemberAccountId(state.target.participant, targetContact)
+    : '';
+  const targetPresence = state.target && targetAccountId
+    ? presenceSnapshot[targetAccountId] ?? null
+    : undefined;
   const openCommonGroup = useCallback((space: ParticipantSpaceViewModel) => {
     const sessionId = space.sessions[0]?.id;
     if (!sessionId || !onSelectSession) return;
@@ -143,6 +159,7 @@ export function useChatSenderProfiles({
 
   return {
     target: state.target,
+    presence: targetPresence,
     commonGroups,
     contacts: cloudContacts.contacts,
     sendRequest: normalizedCloudAccount

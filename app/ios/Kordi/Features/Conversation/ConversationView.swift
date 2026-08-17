@@ -384,6 +384,18 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if showsNavigationChrome {
+                if canOpenCompanionPanel {
+                    if #available(iOS 26.0, *) {
+                        ToolbarItem(placement: .topBarLeading) {
+                            headerBalanceSpacer
+                        }
+                        .sharedBackgroundVisibility(.hidden)
+                    } else {
+                        ToolbarItem(placement: .topBarLeading) {
+                            headerBalanceSpacer
+                        }
+                    }
+                }
                 ToolbarItem(placement: .principal) {
                     conversationHeader
                         .accessibilityElement(children: .combine)
@@ -925,6 +937,10 @@ struct ConversationView: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Agent is working")
+            } else if conversation.kind == .person, !conversation.representsKordiSupport {
+                ContactPresenceStatusText(
+                    presence: model.contactPresenceByAccountID[conversation.peerAccountId]
+                )
             } else {
                 Text(conversationHeaderStatus)
                     .font(.caption2)
@@ -932,6 +948,12 @@ struct ConversationView: View {
                     .lineLimit(1)
             }
         }
+    }
+
+    private var headerBalanceSpacer: some View {
+        Color.clear
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
     }
 
     private var agentActivity: AgentActivity {
@@ -958,7 +980,13 @@ struct ConversationView: View {
         case .group:
             "\(max(2, conversation.groupParticipants.count)) participants"
         case .person:
-            conversation.representsKordiSupport ? "Official Kordi support" : "Kordi contact"
+            if conversation.representsKordiSupport {
+                "Official Kordi support"
+            } else {
+                ContactPresencePresentation.label(
+                    for: model.contactPresenceByAccountID[conversation.peerAccountId]
+                )
+            }
         }
     }
 
@@ -1261,6 +1289,93 @@ struct ConversationView: View {
             from: message,
             in: timeline,
             initialImage: previewImage
+        )
+    }
+}
+
+private struct ContactPresenceStatusText: View {
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+
+    let presence: CloudPresenceAccount?
+
+    var body: some View {
+        if presence?.status == .online {
+            statusText("online")
+                .foregroundStyle(KordiTheme.signalBlue)
+        } else {
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                statusText(
+                    ContactPresencePresentation.label(
+                        for: presence,
+                        now: context.date,
+                        calendar: calendar,
+                        locale: locale
+                    )
+                )
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func statusText(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2)
+            .lineLimit(1)
+    }
+}
+
+enum ContactPresencePresentation {
+    static func label(
+        for presence: CloudPresenceAccount?,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        guard presence?.status != .online else { return "online" }
+        guard let value = presence?.lastSeenAt else {
+            return "last seen recently"
+        }
+
+        let lastSeen = parseCloudDate(value)
+        guard lastSeen != .distantPast else { return "last seen recently" }
+        let time = formattedTime(lastSeen, calendar: calendar, locale: locale)
+        if calendar.isDate(lastSeen, inSameDayAs: now) {
+            let elapsed = now.timeIntervalSince(lastSeen)
+            return elapsed >= -60 && elapsed < 60
+                ? "last seen just now"
+                : "last seen today at \(time)"
+        }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(lastSeen, inSameDayAs: yesterday) {
+            return "last seen yesterday at \(time)"
+        }
+        return "last seen \(formattedDate(lastSeen, calendar: calendar, locale: locale)) at \(time)"
+    }
+
+    private static func formattedTime(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        date.formatted(
+            Date.FormatStyle(
+                date: .omitted,
+                time: .shortened,
+                locale: locale,
+                calendar: calendar,
+                timeZone: calendar.timeZone
+            )
+        )
+    }
+
+    private static func formattedDate(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        date.formatted(
+            Date.FormatStyle(
+                date: .omitted,
+                time: .omitted,
+                locale: locale,
+                calendar: calendar,
+                timeZone: calendar.timeZone
+            )
+            .month(.abbreviated)
+            .day()
         )
     }
 }

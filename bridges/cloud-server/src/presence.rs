@@ -27,6 +27,8 @@ pub struct AccountPresenceSummary {
     pub status: AccountPresenceStatus,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+    #[serde(rename = "lastSeenAt")]
+    pub last_seen_at: Option<String>,
 }
 
 pub const DEFAULT_PRESENCE_TIMEOUT_SECONDS: i64 = 35;
@@ -79,14 +81,21 @@ fn parse_rfc3339(value: Option<String>) -> Option<DateTime<Utc>> {
         .map(|ts| ts.with_timezone(&Utc))
 }
 
+fn latest_presence_activity<I>(timestamps: I) -> Option<DateTime<Utc>>
+where
+    I: IntoIterator<Item = Option<String>>,
+{
+    timestamps.into_iter().filter_map(parse_rfc3339).max()
+}
+
 pub async fn account_presence_status(
     pool: &PgPool,
     account_id: &str,
     now: DateTime<Utc>,
     timeout: ChronoDuration,
 ) -> Result<AccountPresenceSummary, sqlx_core::Error> {
-    let rows: Vec<(String, Option<String>)> = query_as(
-        "SELECT p.state, p.last_heartbeat_at \
+    let rows: Vec<(String, Option<String>, Option<String>)> = query_as(
+        "SELECT p.state, p.last_heartbeat_at, p.last_offline_at \
          FROM cloud_device_presence p \
          JOIN cloud_devices d ON d.device_id = p.device_id \
          WHERE p.account_id = $1 AND d.revoked_at IS NULL",
@@ -94,13 +103,22 @@ pub async fn account_presence_status(
     .bind(account_id)
     .fetch_all(pool)
     .await?;
-    let status = rollup_account_presence(rows.into_iter().map(|(state, heartbeat)| {
-        device_presence_is_currently_online(&state, parse_rfc3339(heartbeat), now, timeout)
+    let status = rollup_account_presence(rows.iter().map(|(state, heartbeat, _)| {
+        device_presence_is_currently_online(state, parse_rfc3339(heartbeat.clone()), now, timeout)
     }));
+    let last_seen_at = match status {
+        AccountPresenceStatus::Online => None,
+        AccountPresenceStatus::Offline => latest_presence_activity(
+            rows.into_iter()
+                .flat_map(|(_, heartbeat, offline)| [heartbeat, offline]),
+        )
+        .map(|timestamp| timestamp.to_rfc3339()),
+    };
     Ok(AccountPresenceSummary {
         account_id: account_id.to_string(),
         status,
         updated_at: now.to_rfc3339(),
+        last_seen_at,
     })
 }
 
@@ -238,11 +256,16 @@ pub async fn publish_presence_to_observers(
     pool: &PgPool,
     events: &crate::events::EventBus,
     account_id: &str,
-    status: AccountPresenceStatus,
+    presence: &AccountPresenceSummary,
 ) -> Result<(), sqlx_core::Error> {
     for observer in presence_observer_account_ids(pool, account_id).await? {
         events
-            .publish_presence_account_changed(account_id, &observer, status.as_str())
+            .publish_presence_account_changed(
+                account_id,
+                &observer,
+                presence.status.as_str(),
+                presence.last_seen_at.as_deref(),
+            )
             .await;
     }
     Ok(())
@@ -299,7 +322,7 @@ pub async fn sweep_stale_presence(
         .await?;
         let after = account_presence_status(pool, &account_id, now, timeout).await?;
         if before.status != after.status {
-            publish_presence_to_observers(pool, events, &account_id, after.status).await?;
+            publish_presence_to_observers(pool, events, &account_id, &after).await?;
             changed.push(after);
         }
     }
@@ -365,6 +388,19 @@ mod tests {
             stale_presence_cutoff(now, ChronoDuration::seconds(90)).to_rfc3339(),
             "2026-05-23T11:58:30+00:00"
         );
+    }
+
+    #[test]
+    fn last_seen_uses_the_latest_device_activity() {
+        let latest = latest_presence_activity([
+            Some("2026-05-23T11:58:00Z".to_string()),
+            None,
+            Some("2026-05-23T11:59:30Z".to_string()),
+            Some("not-a-timestamp".to_string()),
+        ])
+        .unwrap();
+
+        assert_eq!(latest.to_rfc3339(), "2026-05-23T11:59:30+00:00");
     }
 
     #[test]
