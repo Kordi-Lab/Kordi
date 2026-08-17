@@ -69,6 +69,7 @@ export function useComposerMessageActions({
     canonicalHumanIdentityId,
     setCanonicalSessionState,
     desktopLiveTurn,
+    resolveChatRuntimeRoute,
   } = runtime;
   const {
     composerSelections,
@@ -104,6 +105,7 @@ export function useComposerMessageActions({
     setCloudCollaborationState,
     sendCloudCollaborationMessage,
     sendCloudGroupControl,
+    publishCloudAgentRuntimeRouteChange,
     cancelCloudAgentRequest,
     watchDesktopLiveTurn,
     shouldAutoFollowChatRef,
@@ -201,6 +203,7 @@ export function useComposerMessageActions({
     desktopCollaborationState,
     desktopChatState,
     desktopLiveTurn,
+    resolveChatRuntimeRoute,
     handleLocalSlashCommand,
     isDesktopChatSending,
     isNativeShell,
@@ -215,6 +218,7 @@ export function useComposerMessageActions({
     setCloudCollaborationState,
     sendCloudCollaborationMessage,
     sendCloudGroupControl,
+    publishCloudAgentRuntimeRouteChange,
     setDesktopChatError,
     setDesktopChatState,
     setDesktopLiveTurnsBySession,

@@ -5,9 +5,11 @@ import type { CloudMessage } from '../src/features/cloud/authClient';
 import { parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import {
   cloudSelfAgentProcessingLedgerKey,
+  publishCloudSelfAgentExecutionSnapshot,
   publishCloudSelfAgentHeartbeat,
   publishCloudSelfAgentOperations,
 } from '../src/features/cloud/cloudSelfAgentForwardExecution';
+import type { CloudAgentExecutionSnapshot } from '../src/features/cloud/cloudAgentMessages';
 import type {
   CloudSelfAgentSyncLedger,
   CloudSelfAgentSyncOperation,
@@ -125,10 +127,22 @@ test('self-agent execution heartbeats are idempotent within one time bucket', as
       };
     },
   };
+  const execution: CloudAgentExecutionSnapshot = {
+    phase: 'using-tool',
+    summary: 'Check disk usage',
+    steps: [{
+      id: 'tool:shell',
+      label: 'Check disk usage',
+      state: 'running',
+    }],
+    updatedAtMs: 60_000,
+    completed: false,
+  };
   const publish = (nowMs: number) => publishCloudSelfAgentHeartbeat({
     accountId: 'acct_me',
     client,
     cloudRequestMessageId: 'cloud-request',
+    execution: { ...execution, updatedAtMs: nowMs },
     localRequestMessageId: 'local-request',
     nowMs,
     sessionId: 'session:self-agent:shared',
@@ -142,8 +156,63 @@ test('self-agent execution heartbeats are idempotent within one time bucket', as
   assert.equal(clientMessageIds[0], clientMessageIds[1]);
   assert.notEqual(clientMessageIds[1], clientMessageIds[2]);
   assert.equal(parseCloudAgentResponse(first.body)?.requestId, 'cloud-request');
+  assert.equal(
+    parseCloudAgentResponse(retry.body)?.execution?.summary,
+    'Check disk usage',
+  );
   assert.equal(parseCloudAgentResponse(retry.body)?.deliveryState, 'processing');
   assert.equal(parseCloudAgentResponse(next.body)?.deliveryState, 'processing');
+});
+
+test('self-agent execution stream publishes an owner-only lifecycle update', async () => {
+  const calls: Array<{ accountId: string; clientMessageId: string; body: string }> = [];
+  const client = {
+    async sendMessage(
+      _token: string,
+      accountId: string,
+      body: string,
+      options: { sessionId?: string | null; clientMessageId?: string | null },
+    ): Promise<CloudMessage> {
+      calls.push({
+        accountId,
+        body,
+        clientMessageId: options.clientMessageId ?? '',
+      });
+      return {
+        messageId: 'cloud-progress',
+        fromAccountId: accountId,
+        toAccountId: accountId,
+        body,
+        sessionId: options.sessionId ?? null,
+        createdAt: '2026-08-16T12:00:00Z',
+        deliveredAt: null,
+        readAt: null,
+      };
+    },
+  };
+  const execution: CloudAgentExecutionSnapshot = {
+    phase: 'using-tool',
+    summary: 'Using Search',
+    steps: [{ id: 'tool:search', label: 'Using Search', state: 'running' }],
+    startedAtMs: 1_000,
+    updatedAtMs: 2_000,
+    completed: false,
+  };
+
+  const message = await publishCloudSelfAgentExecutionSnapshot({
+    accountId: 'acct_me',
+    client,
+    cloudRequestMessageId: 'cloud-request',
+    execution,
+    localRequestMessageId: 'local-request',
+    revision: 3,
+    sessionId: 'session:self-agent:shared',
+    token: 'token',
+  });
+
+  assert.equal(calls[0]?.accountId, 'acct_me');
+  assert.match(calls[0]?.clientMessageId ?? '', /:execution:3$/);
+  assert.deepEqual(parseCloudAgentResponse(message.body)?.execution, execution);
 });
 
 test('historical self-agent recovery does not publish a fake processing state', async () => {

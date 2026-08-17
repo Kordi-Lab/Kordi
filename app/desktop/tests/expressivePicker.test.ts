@@ -201,6 +201,7 @@ test('public sticker search uses keyless Commons results with reusable licenses'
 
 test('public sticker results download as immediate image attachments', async () => {
   let storedName = '';
+  let requestedRedirect: RequestRedirect | undefined;
   const originalWindow = Reflect.get(globalThis, 'window');
   Reflect.set(globalThis, 'window', {
     __TAURI_INTERNALS__: {
@@ -214,10 +215,13 @@ test('public sticker results download as immediate image attachments', async () 
       title: 'Surprised Cat',
       mediaUrl: 'https://upload.wikimedia.org/wikipedia/commons/surprised-cat.jpg',
     }, {
-      fetchFile: async () => ({
+      fetchFile: async (_input, init) => {
+        requestedRedirect = init?.redirect;
+        return {
         ok: true,
         blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }),
-      }),
+        };
+      },
       storeFile: async (name) => {
         storedName = name;
         return '/stored/ancient-aliens-guy.jpg';
@@ -225,12 +229,65 @@ test('public sticker results download as immediate image attachments', async () 
     });
 
     assert.equal(storedName, 'Surprised Cat.jpg');
+    assert.equal(requestedRedirect, 'error');
     assert.equal(attachment.mimeType, 'image/jpeg');
     assert.match(attachment.id, /^provider:wikimedia-sticker:42:/);
   } finally {
     if (originalWindow === undefined) Reflect.deleteProperty(globalThis, 'window');
     else Reflect.set(globalThis, 'window', originalWindow);
   }
+});
+
+test('public media rejects untrusted hosts and unsupported MIME types', async () => {
+  let requested = false;
+  await assert.rejects(
+    providerMediaAttachment({
+      providerMediaId: 'untrusted:1',
+      mediaKind: 'sticker',
+      title: 'Untrusted sticker',
+      mediaUrl: 'https://example.com/sticker.png',
+    }, {
+      fetchFile: async () => {
+        requested = true;
+        return {
+          ok: true,
+          blob: async () => new Blob([], { type: 'image/png' }),
+        };
+      },
+    }),
+    /trusted media URL/,
+  );
+  assert.equal(requested, false);
+
+  await assert.rejects(
+    providerMediaAttachment({
+      providerMediaId: 'wikimedia:svg',
+      mediaKind: 'sticker',
+      title: 'Vector sticker',
+      mediaUrl: 'https://upload.wikimedia.org/wikipedia/commons/vector.svg',
+    }, {
+      fetchFile: async () => ({
+        ok: true,
+        blob: async () => new Blob([], { type: 'image/svg+xml' }),
+      }),
+    }),
+    /not a supported image/,
+  );
+
+  await assert.rejects(
+    providerMediaAttachment({
+      providerMediaId: 'wikimedia:not-gif',
+      mediaKind: 'gif',
+      title: 'Static image',
+      mediaUrl: 'https://upload.wikimedia.org/wikipedia/commons/static.png',
+    }, {
+      fetchFile: async () => ({
+        ok: true,
+        blob: async () => new Blob([], { type: 'image/png' }),
+      }),
+    }),
+    /not a supported image/,
+  );
 });
 
 test('expressive picker uses a compact narrow popover', () => {

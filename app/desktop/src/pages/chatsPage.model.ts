@@ -350,9 +350,26 @@ export function conversationPaneKind(conversation: Conversation): 'human' | 'age
   return null;
 }
 
+export function shouldSynchronizeConversationModelRoute({
+  conversation,
+  usesCollaborationTransport,
+  hasCloudAccount,
+  hasModelHost,
+}: {
+  conversation: Conversation;
+  usesCollaborationTransport: boolean;
+  hasCloudAccount: boolean;
+  hasModelHost: boolean;
+}) {
+  if (usesCollaborationTransport) return true;
+  return conversationPaneKind(conversation) === 'agent'
+    && hasCloudAccount
+    && hasModelHost;
+}
+
 export function localAgentConversationNeedsProvider({
   activePaneKind,
-  activeConversationUsesCollaboration,
+  activeConversationUsesCollaboration: _activeConversationUsesCollaboration,
   hasAnyAuth,
 }: {
   activePaneKind: 'human' | 'agent' | null;
@@ -360,7 +377,6 @@ export function localAgentConversationNeedsProvider({
   hasAnyAuth: boolean;
 }) {
   return activePaneKind === 'agent'
-    && !activeConversationUsesCollaboration
     && !hasAnyAuth;
 }
 

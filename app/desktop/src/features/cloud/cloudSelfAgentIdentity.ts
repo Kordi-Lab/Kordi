@@ -13,6 +13,15 @@ export function cloudSelfAgentRequestClientMessageId(
   );
 }
 
+export function cloudSelfAgentResponseClientMessageId(
+  sessionId: string,
+  localRequestMessageId: string,
+): string {
+  return cloudOperationUuid(
+    `self-agent:${sessionId}:${localRequestMessageId}:response`,
+  );
+}
+
 export function cloudSelfAgentOperationClientMessageId(
   operation: CloudSelfAgentSyncOperation,
 ): string {
@@ -23,8 +32,9 @@ export function cloudSelfAgentOperationClientMessageId(
       requestId,
     );
   }
-  return cloudOperationUuid(
-    `self-agent:${operation.sessionId}:${requestId}:response`,
+  return cloudSelfAgentResponseClientMessageId(
+    operation.sessionId,
+    requestId,
   );
 }
 

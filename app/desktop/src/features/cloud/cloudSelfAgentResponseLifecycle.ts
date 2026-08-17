@@ -24,7 +24,7 @@ function cleanText(value?: string | null) {
 
 type CloudSelfAgentCanonicalMatchInput = {
   sessionId: string;
-  role: 'user' | 'agent';
+  role: 'user' | 'agent' | 'system';
   text: string;
   createdAtMs: number;
   cloudMessageId: string;
@@ -62,7 +62,7 @@ export function existingCanonicalMessageMatchesCloudSelfAgent(
     existing.sourceTransport === 'cloud-self-agent'
     && existing.sourceEventId === input.cloudMessageId
   ) return true;
-  if (input.role === 'agent') return false;
+  if (input.role !== 'user') return false;
   const existingText = cleanText(existing.contentText);
   if (!existingText || existingText !== input.text) return false;
   if (existing.senderRole !== 'user') return false;
@@ -139,7 +139,7 @@ export function findExistingCanonicalCloudSelfAgentMessage(
   if (source && existingCanonicalMessageMatchesCloudSelfAgent(source, input)) {
     return source;
   }
-  if (input.role === 'agent') return null;
+  if (input.role !== 'user') return null;
   const entries = index.localUsersBySessionAndText.get(
     sessionValueKey(input.sessionId, input.text),
   ) ?? [];
@@ -193,11 +193,14 @@ export function legacyCloudSelfAgentResponseIds({
     const legacyId = legacyBySessionAndSourceEvent.get(
       `${response.sessionId}\u0000${response.responseCloudMessageId}`,
     );
-    if (legacyId) {
-      legacyByStableId.set(
-        cloudSelfAgentStableResponseId(response.requestCloudMessageId),
-        legacyId,
-      );
+    const stableId = cloudSelfAgentStableResponseId(
+      response.requestCloudMessageId,
+    );
+    if (legacyId && !legacyByStableId.has(stableId)) {
+      // Keep the earliest persisted lifecycle row. A later terminal Cloud
+      // message must update the processing row instead of creating a second
+      // completed response below it.
+      legacyByStableId.set(stableId, legacyId);
     }
   }
   return legacyByStableId;
@@ -234,9 +237,8 @@ export function shouldReplacePlannedCloudSelfAgentResponse(
   if (!currentDeliveryState) return true;
   const currentPriority = DELIVERY_STATE_PRIORITY[currentDeliveryState];
   const nextPriority = DELIVERY_STATE_PRIORITY[nextDeliveryState];
-  return nextPriority > currentPriority
-    || (
-      nextPriority === currentPriority
-      && nextDeliveryState !== 'processing'
-    );
+  // Cloud lifecycle rows are append-only. Equal-priority rows replace older
+  // snapshots so owner-visible execution progress updates in place; terminal
+  // rows remain protected from processing rows by their higher priority.
+  return nextPriority >= currentPriority;
 }

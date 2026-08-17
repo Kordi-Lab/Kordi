@@ -64,6 +64,7 @@ type UseDesktopSessionControllerArgs = {
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
   onForkCreated?: (result: Awaited<ReturnType<typeof forkDesktopChatSessionFromMessage>>) => Promise<void> | void;
+  onPrepareChatDraftSession?: () => void;
 };
 
 export function useDesktopSessionController({
@@ -88,6 +89,7 @@ export function useDesktopSessionController({
   setDesktopSessionRenameDraft,
   setIsEditingDesktopSessionTitle,
   onForkCreated,
+  onPrepareChatDraftSession,
 }: UseDesktopSessionControllerArgs) {
   const selectionRequestIdRef = useRef(0);
 
@@ -166,12 +168,13 @@ export function useDesktopSessionController({
     shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
     setPendingUserChatMessage(null);
+    onPrepareChatDraftSession?.();
     setActiveConvId(LOCAL_DRAFT_CHAT_CONVERSATION_ID);
     setDesktopChatState((current) => draftDesktopChatState(current));
     setComposerDrafts((current) => updateScopeDraft(current, 'chat', LOCAL_DRAFT_CHAT_CONVERSATION_ID, ''));
     setChatComposerAttachments([]);
     void prepareDesktopChatDraftSession().catch(() => {});
-  }, [isNativeShell, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [isNativeShell, onPrepareChatDraftSession, setActiveConvId, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, setDesktopChatState, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleSelectProjectSession = useCallback(async (projectId: string, sessionId: string) => {
     shouldAutoFollowChatRef.current = true;

@@ -144,6 +144,82 @@ struct CloudModelRouting: Codable, Hashable {
     var plugins: [String]?
 
     static let empty = CloudModelRouting()
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultModel
+        case defaultAuthProvider
+        case defaultAuthChoice
+        case fallbackModel
+        case fallbackAuthProvider
+        case fallbackAuthChoice
+        case thinking
+        case tools
+        case plugins
+        case model
+        case authProvider
+        case authChoice
+    }
+
+    init(
+        defaultModel: String? = nil,
+        defaultAuthProvider: String? = nil,
+        defaultAuthChoice: String? = nil,
+        fallbackModel: String? = nil,
+        fallbackAuthProvider: String? = nil,
+        fallbackAuthChoice: String? = nil,
+        thinking: String? = nil,
+        tools: [String]? = nil,
+        plugins: [String]? = nil
+    ) {
+        self.defaultModel = defaultModel
+        self.defaultAuthProvider = defaultAuthProvider
+        self.defaultAuthChoice = defaultAuthChoice
+        self.fallbackModel = fallbackModel
+        self.fallbackAuthProvider = fallbackAuthProvider
+        self.fallbackAuthChoice = fallbackAuthChoice
+        self.thinking = thinking
+        self.tools = tools
+        self.plugins = plugins
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        defaultModel = try container.decodeIfPresent(String.self, forKey: .defaultModel)
+            ?? container.decodeIfPresent(String.self, forKey: .model)
+        defaultAuthProvider = try container.decodeIfPresent(
+            String.self,
+            forKey: .defaultAuthProvider
+        ) ?? container.decodeIfPresent(String.self, forKey: .authProvider)
+        defaultAuthChoice = try container.decodeIfPresent(
+            String.self,
+            forKey: .defaultAuthChoice
+        ) ?? container.decodeIfPresent(String.self, forKey: .authChoice)
+        fallbackModel = try container.decodeIfPresent(String.self, forKey: .fallbackModel)
+        fallbackAuthProvider = try container.decodeIfPresent(
+            String.self,
+            forKey: .fallbackAuthProvider
+        )
+        fallbackAuthChoice = try container.decodeIfPresent(
+            String.self,
+            forKey: .fallbackAuthChoice
+        )
+        thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
+        tools = try container.decodeIfPresent([String].self, forKey: .tools)
+        plugins = try container.decodeIfPresent([String].self, forKey: .plugins)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(defaultModel, forKey: .defaultModel)
+        try container.encodeIfPresent(defaultAuthProvider, forKey: .defaultAuthProvider)
+        try container.encodeIfPresent(defaultAuthChoice, forKey: .defaultAuthChoice)
+        try container.encodeIfPresent(fallbackModel, forKey: .fallbackModel)
+        try container.encodeIfPresent(fallbackAuthProvider, forKey: .fallbackAuthProvider)
+        try container.encodeIfPresent(fallbackAuthChoice, forKey: .fallbackAuthChoice)
+        try container.encodeIfPresent(thinking, forKey: .thinking)
+        try container.encodeIfPresent(tools, forKey: .tools)
+        try container.encodeIfPresent(plugins, forKey: .plugins)
+    }
 }
 
 enum CloudAgentAccessScope: String, CaseIterable, Codable, Hashable, Identifiable {

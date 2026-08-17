@@ -1,4 +1,36 @@
 import SwiftUI
+import UIKit
+
+struct ComposerTextSelection: Equatable {
+    var location: Int
+    var length: Int
+}
+
+struct ComposerTextReplacement: Equatable {
+    var text: String
+    var selection: ComposerTextSelection
+}
+
+func replacingComposerText(
+    _ text: String,
+    selection: ComposerTextSelection,
+    with replacement: String
+) -> ComposerTextReplacement {
+    let source = text as NSString
+    let safeLocation = min(max(selection.location, 0), source.length)
+    let safeLength = min(max(selection.length, 0), source.length - safeLocation)
+    let updatedText = source.replacingCharacters(
+        in: NSRange(location: safeLocation, length: safeLength),
+        with: replacement
+    )
+    return ComposerTextReplacement(
+        text: updatedText,
+        selection: ComposerTextSelection(
+            location: safeLocation + (replacement as NSString).length,
+            length: 0
+        )
+    )
+}
 
 struct ComposerView: View {
     @Binding var text: String
@@ -19,7 +51,8 @@ struct ComposerView: View {
     let onOpenAgentModel: () -> Void
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
-    @FocusState private var isFocused: Bool
+    @State private var isFocused = false
+    @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -79,12 +112,23 @@ struct ComposerView: View {
 
             expressivePickerButton
 
-            TextField("Message \(destinationName)", text: $text, axis: .vertical)
-                .lineLimit(1...6)
-                .textFieldStyle(.plain)
-                .focused($isFocused)
+            ZStack(alignment: .leading) {
+                if text.isEmpty {
+                    Text("Message \(destinationName)")
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 13)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+
+                ComposerTextView(
+                    text: $text,
+                    selection: $textSelection,
+                    isFocused: $isFocused,
+                    accessibilityLabel: "Message \(destinationName)"
+                )
+                .frame(minHeight: 44)
                 .padding(.horizontal, 8)
-                .padding(.vertical, 11)
                 .onChange(of: isFocused) { _, isFocused in
                     if isFocused { isExpressivePickerPresented = false }
                 }
@@ -94,6 +138,7 @@ struct ComposerView: View {
                         self.selectedMention = nil
                     }
                 }
+            }
 
             sendButton
         }
@@ -127,7 +172,13 @@ struct ComposerView: View {
     }
 
     private func insertEmoji(_ emoji: String) {
-        text.append(emoji)
+        let replacement = replacingComposerText(
+            text,
+            selection: textSelection,
+            with: emoji
+        )
+        text = replacement.text
+        textSelection = replacement.selection
     }
 
     private func dismissExpressivePicker() {
@@ -459,6 +510,10 @@ struct ComposerView: View {
     private func insertMention(_ target: ComposerMentionTarget) {
         guard let at = text.lastIndex(of: "@") else { return }
         text = String(text[..<at]) + target.mentionText + " "
+        textSelection = ComposerTextSelection(
+            location: (text as NSString).length,
+            length: 0
+        )
         selectedMention = target
         isFocused = true
     }
@@ -470,5 +525,126 @@ struct ComposerView: View {
 
     private func attachmentCountText(_ count: Int) -> String {
         count == 1 ? "1 attachment" : "\(count) attachments"
+    }
+}
+
+private struct ComposerTextView: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var selection: ComposerTextSelection
+    @Binding var isFocused: Bool
+    let accessibilityLabel: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.adjustsFontForContentSizeCategory = true
+        textView.isScrollEnabled = false
+        textView.textContainerInset = UIEdgeInsets(top: 11, left: 5, bottom: 11, right: 5)
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.accessibilityLabel = accessibilityLabel
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        context.coordinator.parent = self
+        textView.accessibilityLabel = accessibilityLabel
+
+        if textView.markedTextRange == nil, textView.text != text {
+            textView.text = text
+        }
+        if textView.markedTextRange == nil {
+            let utf16Count = (textView.text as NSString).length
+            let location = min(max(selection.location, 0), utf16Count)
+            let length = min(max(selection.length, 0), utf16Count - location)
+            let selectedRange = NSRange(location: location, length: length)
+            if textView.selectedRange != selectedRange {
+                textView.selectedRange = selectedRange
+            }
+        }
+
+        if isFocused, !textView.isFirstResponder {
+            textView.becomeFirstResponder()
+        } else if !isFocused, textView.isFirstResponder {
+            textView.resignFirstResponder()
+        }
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UITextView,
+        context: Context
+    ) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        let fittingSize = uiView.sizeThatFits(
+            CGSize(width: width, height: .greatestFiniteMagnitude)
+        )
+        let lineHeight = uiView.font?.lineHeight ?? UIFont.preferredFont(forTextStyle: .body).lineHeight
+        let insets = uiView.textContainerInset.top + uiView.textContainerInset.bottom
+        let minimumHeight = lineHeight + insets
+        let maximumHeight = lineHeight * 6 + insets
+        return CGSize(
+            width: width,
+            height: min(max(fittingSize.height, minimumHeight), maximumHeight)
+        )
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: ComposerTextView
+
+        init(parent: ComposerTextView) {
+            self.parent = parent
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            updateFocus(true)
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            updateFocus(false)
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            guard textView.markedTextRange == nil else { return }
+            let updatedText = textView.text ?? ""
+            let updatedSelection = ComposerTextSelection(
+                location: textView.selectedRange.location,
+                length: textView.selectedRange.length
+            )
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.parent.text != updatedText {
+                    self.parent.text = updatedText
+                }
+                if self.parent.selection != updatedSelection {
+                    self.parent.selection = updatedSelection
+                }
+            }
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard textView.markedTextRange == nil else { return }
+            let updatedSelection = ComposerTextSelection(
+                location: textView.selectedRange.location,
+                length: textView.selectedRange.length
+            )
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.parent.selection != updatedSelection else { return }
+                self.parent.selection = updatedSelection
+            }
+        }
+
+        private func updateFocus(_ focused: Bool) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.parent.isFocused != focused else { return }
+                self.parent.isFocused = focused
+            }
+        }
     }
 }

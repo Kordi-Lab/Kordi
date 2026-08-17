@@ -59,6 +59,15 @@ import {
   parseCloudAgentResponse,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
+import { cloudAgentExecutionTurnForMessage } from './cloudAgentExecutionTrace';
+import {
+  cleanCloudConversationTitle,
+  cleanCloudSessionId,
+} from './cloudConversationMetadata';
+import {
+  latestVisibleConversationMessage,
+  visibleCloudAgentResponseMessages,
+} from './cloudAgentResponseSelection';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import {
   cloudDirectMessageAction,
@@ -143,18 +152,6 @@ export function cloudContactsToCanonicalIdentityRequests({
   return requests;
 }
 
-
-function cleanCloudSessionId(value?: string | null): string | null {
-  const trimmed = value?.trim() ?? '';
-  return trimmed || null;
-}
-
-function cleanCloudConversationTitle(value?: string | null): string | null {
-  const title = value?.trim().replace(/\s+/g, ' ') ?? '';
-  if (!title || /^(#\s*)?(my kordi|new session|untitled session)$/i.test(title)) return null;
-  return title;
-}
-
 function cloudMessageIsGroupControl(message: CloudMessage, groupControlMessageIds?: ReadonlySet<string>) {
   return groupControlMessageIds
     ? groupControlMessageIds.has(message.messageId)
@@ -166,6 +163,7 @@ function cloudSelfAgentTitleFromMessages(
   groupControlMessageIds?: ReadonlySet<string>,
 ): string | null {
   for (const message of [...messages].sort(compareCloudMessages)) {
+    if (message.messageKind === 'agent-model-change') continue;
     if (isCloudAgentControlMessage(message.body) || cloudMessageIsGroupControl(message, groupControlMessageIds) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
     const title = cleanCloudConversationTitle(message.body.split(/\r?\n/, 1)[0]);
     if (title) return title.length > 80 ? `${title.slice(0, 77).trimEnd()}…` : title;
@@ -194,6 +192,10 @@ export function cloudMessageToCollaborationMessage(
   const directMessageAction = agentResponse ? null : cloudDirectMessageAction(message.body);
   const displayText = agentResponse?.text ?? cloudDirectMessageDisplayText(message.body);
   const isOwn = message.fromAccountId === account.accountId;
+  const syncedExecutionTurn = cloudAgentExecutionTurnForMessage(
+    message,
+    agentResponse,
+  );
   const displayBody = cloudDirectMessageDisplayText(message.body);
   const agentRequestId = !agentResponse && cloudMessageActionAllowsAgentTrigger(directMessageAction) && (
     Boolean(cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body))
@@ -227,7 +229,11 @@ export function cloudMessageToCollaborationMessage(
     detail: undefined,
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
     messageAction: directMessageAction,
-    localTurn: agentResponse?.requestId ? options.localAgentTurnsByRequestId?.[agentResponse.requestId] ?? null : null,
+    messageKind: message.messageKind ?? null,
+    localTurn: agentResponse?.requestId
+      ? options.localAgentTurnsByRequestId?.[agentResponse.requestId]
+        ?? syncedExecutionTurn
+      : null,
   };
 }
 
@@ -568,21 +574,14 @@ export function buildCloudCollaborationConversation({
       requestTargetAgentNames.set(message.messageId, 'My Kordi');
     }
   }
-  const visibleResponseKeys = new Set<string>();
-  const visibleCloudMessages = messages.filter((message) => {
-    if (isCloudAgentControlMessage(message.body) || cloudMessageIsGroupControl(message, groupControlMessageIds)) return false;
-    const response = parseCloudAgentResponse(message.body);
-    if (!response) return true;
-    const expectedResponderAccountId = requestTargetAccountIds.get(response.requestId);
-    if (expectedResponderAccountId && message.fromAccountId !== expectedResponderAccountId) return false;
-    const responderAccountId = expectedResponderAccountId || message.fromAccountId;
-    const responseKey = `${response.requestId}:${responderAccountId}`;
-    if (visibleResponseKeys.has(responseKey)) return false;
-    visibleResponseKeys.add(responseKey);
-    return true;
-  });
+  const visibleCloudMessages = visibleCloudAgentResponseMessages(
+    messages,
+    requestTargetAccountIds,
+    (message) => cloudMessageIsGroupControl(message, groupControlMessageIds),
+  );
   const agentRequests = messages.filter((message) => {
     if (cloudMessageIsGroupControl(message, groupControlMessageIds)) return false;
+    if (message.messageKind === 'agent-model-change') return false;
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
     return Boolean(requestTargetAccountIds.get(message.messageId));
   });
@@ -660,7 +659,7 @@ export function buildCloudCollaborationConversation({
         ? 'My Kordi'
         : cloudAgentDisplayName(contact);
   const pendingAgentRequest = [...pendingAgentRequests].reverse()[0] ?? null;
-  const last = collaborationMessages[collaborationMessages.length - 1] ?? null;
+  const last = latestVisibleConversationMessage(collaborationMessages);
   const updatedAtMs = last?.timestampMs ?? Date.now();
   const conversationId = cloudCollaborationConversationId(peerAccountId, runtime, normalizedCloudSessionId);
   const pendingAgentTargetsLocalAgent = pendingAgentRequest
@@ -941,6 +940,7 @@ export function buildCloudDesktopCollaborationState({
         if (isSelfPeer && hasMessages) {
           const { hasSessionScopedMessages, messagesBySessionId } = cloudSelfAgentMessagesBySession(messages);
           return [...messagesBySessionId.entries()].flatMap(([cloudSessionId, sessionMessages]) => {
+            if (cloudSessionId?.startsWith('draft:')) return [];
             if (cloudSessionId && hiddenCloudSessionIds.has(cloudSessionId)) return [];
             if ((hasSessionScopedMessages || suppressUnscopedSelfAgentConversation) && !cloudSessionId) return [];
             const forceRead = isActivePeer && (!activeCloudSessionId || activeCloudSessionId === cloudSessionId);

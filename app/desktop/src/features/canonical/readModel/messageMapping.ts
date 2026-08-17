@@ -254,8 +254,8 @@ function agentLabelForHumanIdentity(
     .find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity.id)
     ?.displayName ?? 'Kordi';
 }
-
 export function canonicalMessageRole(message: CanonicalSessionMessage, identity?: CanonicalIdentity): Message['role'] {
+  if (message.messageKind === 'agent-model-change') return 'system';
   if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(message.senderRole)) {
     return message.senderRole as Message['role'];
   }

@@ -1,5 +1,4 @@
 import { useId, useRef } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -40,7 +39,6 @@ import {
   ComposerQuotePreview,
   MessageSelectionBar,
 } from '@/pages/chatsPage.composerPrimitives';
-import { COLLABORATION_ROUTING_NOTICE_EXIT_MS } from '@/pages/chatsPage.constants';
 import {
   canConfigureConversationModelRoute,
   shouldUseCompactModelRouteMenu,
@@ -154,29 +152,6 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
-      <AnimatePresence initial={false}>
-        {collaborationRouting.enabled && collaborationRouting.notice ? (
-          <motion.div
-            key={collaborationRouting.notice}
-            className="mb-2 flex justify-center"
-            role="status"
-            aria-live="polite"
-            initial={{ opacity: 0, y: display.prefersReducedMotion ? 0 : 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: display.prefersReducedMotion ? 0 : -4 }}
-            transition={{
-              duration: display.prefersReducedMotion
-                ? 0.01
-                : COLLABORATION_ROUTING_NOTICE_EXIT_MS / 1000,
-              ease: [0.22, 1, 0.36, 1],
-            }}
-          >
-            <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
-              Private · {collaborationRouting.notice}
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
       <ComposerDropSurface saveDesktopAttachments={saveDesktopAttachments}>
         <div className="relative">
           {filteredChatSlashCommands.length > 0 ? (

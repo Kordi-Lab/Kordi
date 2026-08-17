@@ -67,6 +67,10 @@ export function useCloudSelfAgentCanonicalSync({
     accountId: string;
     signature: string;
   } | null>(null);
+  const failedRef = useRef<{
+    accountId: string;
+    signature: string;
+  } | null>(null);
   const [followUpRevision, requestFollowUp] = useReducer(
     (revision: number) => revision + 1,
     0,
@@ -132,6 +136,10 @@ export function useCloudSelfAgentCanonicalSync({
       completedRef.current?.accountId === account.accountId
       && completedRef.current.signature === signature
     ) return;
+    if (
+      failedRef.current?.accountId === account.accountId
+      && failedRef.current.signature === signature
+    ) return;
 
     const accountId = account.accountId;
     inFlightRef.current = { accountId, signature };
@@ -147,10 +155,12 @@ export function useCloudSelfAgentCanonicalSync({
         || latestInputRef.current.account?.accountId !== accountId
       ) return;
       completedRef.current = { accountId, signature };
+      failedRef.current = null;
       latestInputRef.current.setCanonicalState?.((current) => (
         mergeCloudSelfAgentCanonicalSyncBatch(current, batch)
       ));
     }).catch((error) => {
+      failedRef.current = { accountId, signature };
       latestInputRef.current.reportWarning(
         '[cloud-self-agent-sync] failed to materialize cloud session locally',
         error,

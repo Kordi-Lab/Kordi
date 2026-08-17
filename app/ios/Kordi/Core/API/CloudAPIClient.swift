@@ -671,6 +671,7 @@ actor CloudAPIClient {
         sessionId: String,
         clientMessageId: String,
         attachments: [CloudMessageAttachment] = [],
+        messageKind: String = "text",
         conversationKind: String? = nil,
         memberAccountIds: [String]? = nil,
         sharedTitle: String? = nil
@@ -695,7 +696,7 @@ actor CloudAPIClient {
             token: token,
             body: ChatSendMessageRequest(
                 clientMessageId: operationUUID(clientMessageId),
-                kind: "text",
+                kind: messageKind.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "text",
                 content: CloudChatContent(body: body, attachments: attachments),
                 replyToMessageId: nil,
                 attachmentIds: attachments.map(\.attachmentId)
@@ -1311,9 +1312,29 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
+        if ["agent.definition.upserted", "agent.definition.archived"]
+            .contains(event.eventType) {
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: nil,
+                occurredAt: event.occurredAt
+            )]
+        }
+        if event.eventType == "provider-auth.updated" {
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: nil,
+                occurredAt: event.occurredAt
+            )]
+        }
         let knownNonChatEvents: Set<String> = [
-            "agent.definition.upserted", "agent.definition.archived", "task.upsert",
-            "artifact.upsert", "artifact.archived", "session.pin.updated", "session.hidden",
+            "task.upsert", "artifact.upsert", "artifact.archived", "session.pin.updated", "session.hidden",
             "session.unhidden", "session.deleted", "session-forked"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]

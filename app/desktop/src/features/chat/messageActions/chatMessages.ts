@@ -38,7 +38,6 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalS
 import type { AttachmentItem } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
-import { NO_PROVIDER_PENDING_LIVE_TURN_PREFIX } from '../desktopLiveTurns';
 import {
   mentionForCollaborationTarget,
   mentionsLocalAgent,
@@ -98,6 +97,18 @@ import {
   resolveLockedKordiSupportCloudConversationId,
   resolveLockedKordiSupportAgentTarget,
 } from './directHostedAgentTarget';
+import {
+  canonicalNoProviderFailedAgentMessageRequest,
+  initialCloudAgentSessionTitle,
+  noProviderPendingLiveTurn,
+  ownedAgentIdentityId,
+} from './agentMessageLifecycle';
+
+export {
+  canonicalNoProviderFailedAgentMessageRequest,
+  initialCloudAgentSessionTitle,
+  noProviderPendingLiveTurn,
+} from './agentMessageLifecycle';
 
 export {
   collaborationGroupMentionRelayTargets,
@@ -119,16 +130,6 @@ async function persistCanonicalGroupMessageFailure(
   const request = failedCanonicalGroupMessageRequest(prepared, detail, recipientIds);
   if (!request) return;
   await upsertCanonicalMessage(request);
-}
-
-function canonicalIdentityKind(state: CanonicalSessionState, identityId?: string | null): string | null {
-  return state.identities.find((identity) => identity.id === identityId)?.kind ?? null;
-}
-
-function ownedAgentIdentityId(state: CanonicalSessionState | null, fallbackPrimaryIdentityId?: string | null) {
-  const fallback = fallbackPrimaryIdentityId?.trim();
-  if (state && fallback && canonicalIdentityKind(state, fallback) === 'agent') return fallback;
-  return state?.identities.find((identity) => identity.kind === 'agent' && identity.ownerIdentityId === state.profile.humanIdentityId)?.id ?? null;
 }
 
 function mergeCanonicalSessionState(current: CanonicalSessionState | null, next: CanonicalSessionState | null): CanonicalSessionState | null {
@@ -195,76 +196,6 @@ function appendCanonicalRequestToLocalState(
   };
 }
 
-export function noProviderPendingLiveTurn({
-  sessionId,
-  requestMessageId,
-  text,
-  now = Date.now(),
-}: {
-  sessionId: string;
-  requestMessageId: string;
-  text: string;
-  now?: number;
-}): DesktopChatTurnSnapshot {
-  return {
-    id: `${NO_PROVIDER_PENDING_LIVE_TURN_PREFIX}${requestMessageId}`,
-    sessionId,
-    prompt: text.trim(),
-    status: 'starting',
-    message: 'Working…',
-    assistantText: '',
-    thinkingText: '',
-    tools: [],
-    completed: false,
-    succeeded: false,
-    startedAtMs: now,
-    completedAtMs: null,
-    error: null,
-    replyToMessageId: requestMessageId,
-  };
-}
-
-export function canonicalNoProviderFailedAgentMessageRequest({
-  state,
-  sessionId,
-  requestMessageId,
-  now = Date.now(),
-}: {
-  state: CanonicalSessionState | null;
-  sessionId: string;
-  requestMessageId: string;
-  now?: number;
-}): AppendCanonicalMessageRequest | null {
-  if (!state) return null;
-  const session = state.sessions.find((candidate) => candidate.id === sessionId) ?? null;
-  if (!session) return null;
-  const agentIdentityId = ownedAgentIdentityId(state, session.primaryIdentityId);
-  if (!agentIdentityId) return null;
-  const notice = cloudAgentNoProviderNoticeText();
-  return {
-    id: `msg:no-provider:${requestMessageId}`,
-    sessionId,
-    senderIdentityId: agentIdentityId,
-    senderRole: 'owned-agent',
-    messageKind: 'agent-turn',
-    contentText: '',
-    content: {
-      sender: 'My Kordi',
-      timestampMs: now,
-      deliveryState: 'failed',
-      requestId: requestMessageId,
-      replyToMessageId: requestMessageId,
-      error: notice,
-    },
-    createdAtMs: now,
-    parentMessageId: requestMessageId,
-    delegatedExchangeId: null,
-    status: 'failed',
-    sourceTransport: 'desktop-chat-ui',
-    sourceEventId: `desktop-chat-ui-no-provider:${sessionId}:${requestMessageId}`,
-  };
-}
-
 export function localChatSendIsInFlightForTarget(
   inFlight: LocalChatSendInFlight | null,
   targetSessionId: string | null,
@@ -311,6 +242,7 @@ export function queuedDesktopChatMessageFromDraft({
   attachments,
   scope = 'chat',
   contextMessages,
+  runtimeRoute,
 }: {
   sessionId: string;
   text: string;
@@ -318,6 +250,7 @@ export function queuedDesktopChatMessageFromDraft({
   attachments: QueuedDesktopChatMessage['attachments'];
   scope?: QueuedDesktopChatMessage['scope'];
   contextMessages?: DesktopChatContextMessage[];
+  runtimeRoute?: QueuedDesktopChatMessage['runtimeRoute'];
 }): QueuedDesktopChatMessage {
   const timestamp = Date.now();
   const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -331,6 +264,7 @@ export function queuedDesktopChatMessageFromDraft({
     time,
     attachments,
     ...(contextMessages && contextMessages.length > 0 ? { contextMessages } : null),
+    ...(runtimeRoute ? { runtimeRoute } : null),
   };
 }
 
@@ -524,6 +458,7 @@ export function useChatMessageActions({
   canonicalSessionState,
   hasAnyDesktopAuth,
   desktopLiveTurn,
+  resolveChatRuntimeRoute,
   handleLocalSlashCommand,
   isNativeShell,
   queuedDesktopMessagesBySession,
@@ -536,6 +471,7 @@ export function useChatMessageActions({
   setCloudCollaborationState,
   sendCloudCollaborationMessage,
   sendCloudGroupControl,
+  publishCloudAgentRuntimeRouteChange,
   setDesktopChatError,
   setDesktopChatState,
   setDesktopLiveTurnsBySession,
@@ -615,6 +551,7 @@ export function useChatMessageActions({
       time: formatDesktopEventTime(),
       attachments,
       contextMessages,
+      runtimeRoute: resolveChatRuntimeRoute(sessionId),
     });
     enqueueLocalQueuedMessage(queuedMessage);
     shouldAutoFollowChatRef.current = true;
@@ -622,7 +559,7 @@ export function useChatMessageActions({
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
     resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-  }, [enqueueLocalQueuedMessage, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
+  }, [enqueueLocalQueuedMessage, resolveChatRuntimeRoute, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
 
   const watchLocalTurnAndFlushQueue = useCallback((
     turn: DesktopChatTurnSnapshot,
@@ -670,7 +607,13 @@ export function useChatMessageActions({
       const materializedState = await materializeLocalChatTarget(message.sessionId);
       const attachmentPaths = message.attachments.map((item) => item.path);
       const previewText = attachmentSummaryText(message.text);
-      const turn = await startDesktopChatMessage(message.sessionId, message.text, attachmentPaths, null, message.contextMessages ?? []);
+      const turn = await startDesktopChatMessage(
+        message.sessionId,
+        message.text,
+        attachmentPaths,
+        message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId),
+        message.contextMessages ?? [],
+      );
       const preparedCanonicalMessage = sentPreparedCanonicalUserMessage(
         prepareCanonicalUserMessage(
           message.sessionId,
@@ -702,7 +645,7 @@ export function useChatMessageActions({
       enqueueLocalQueuedMessage(message, 'front');
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send queued chat message');
     }
-  }, [attachmentSummaryText, canonicalHumanIdentityId, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, watchLocalTurnAndFlushQueue]);
+  }, [attachmentSummaryText, canonicalHumanIdentityId, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, resolveChatRuntimeRoute, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, watchLocalTurnAndFlushQueue]);
 
   useEffect(() => {
     flushQueuedDesktopMessagesForSessionRef.current = (sessionId: string) => {
@@ -746,6 +689,7 @@ export function useChatMessageActions({
     materializeTarget,
     preserveComposer = false,
     setSendingState,
+    runtimeRoute,
   }: {
     targetConversationId: string;
     canonicalSessionId: string;
@@ -759,6 +703,7 @@ export function useChatMessageActions({
     materializeTarget?: () => Promise<DesktopChatState | null>;
     preserveComposer?: boolean;
     setSendingState: boolean;
+    runtimeRoute?: QueuedDesktopChatMessage['runtimeRoute'];
   }) => {
     if (setSendingState) setIsDesktopChatSending(true);
     shouldAutoFollowChatRef.current = true;
@@ -794,7 +739,13 @@ export function useChatMessageActions({
         return appendOptimisticOutboundMessage(baseState, targetConversationId, previewText, text, attachments, sentAt, [], quote);
       });
       await persistCanonicalUserMessage(preparedCanonicalMessage);
-      const turn = await startDesktopChatMessage(targetConversationId, text, attachmentPaths, null, contextMessages);
+      const turn = await startDesktopChatMessage(
+        targetConversationId,
+        text,
+        attachmentPaths,
+        runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
+        contextMessages,
+      );
       const sentCanonicalMessage = sentPreparedCanonicalUserMessage(preparedCanonicalMessage);
       if (sentCanonicalMessage) {
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageSent(
@@ -880,6 +831,7 @@ export function useChatMessageActions({
     setPendingUserChatMessage,
     shouldAutoFollowChatRef,
     watchLocalTurnAndFlushQueue,
+    resolveChatRuntimeRoute,
   ]);
 
   const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string, contextMessages: DesktopChatContextMessage[] = []) => {
@@ -1261,6 +1213,9 @@ export function useChatMessageActions({
                 schemaVersion: 1,
                 kind: 'message',
                 text,
+                agentRuntimeRoute: resolveChatRuntimeRoute(
+                  activeConvCanonicalSessionId ?? activeConvId,
+                ),
                 ...retryDirectHostedAgentTarget,
               })
             : text;
@@ -1358,6 +1313,7 @@ export function useChatMessageActions({
             targetCloudAgentName: targetCloudAgentId ? mentionedTarget?.displayLabel ?? null : null,
             targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
             targetCloudAgentOwnerName: targetCloudAgentId ? mentionedTarget?.peer.ownerName ?? null : null,
+            agentRuntimeRoute: resolveChatRuntimeRoute(cloudAgentMentionSessionId),
           },
           attachments: attachmentsToSend,
         });
@@ -1483,6 +1439,11 @@ export function useChatMessageActions({
               schemaVersion: 1,
               kind: 'message',
               text,
+              ...(directHostedAgentTarget ? {
+                agentRuntimeRoute: resolveChatRuntimeRoute(
+                  activeConvCanonicalSessionId ?? activeConvId,
+                ),
+              } : {}),
               ...(activeChatQuote?.source ? { messageAction: quoteMessageAction(activeChatQuote.source) } : {}),
               ...(directHostedAgentTarget ?? {}),
             })
@@ -1665,6 +1626,9 @@ export function useChatMessageActions({
     }
 
     let materializedState: DesktopChatState | null = null;
+    const runtimeRouteForSend = resolveChatRuntimeRoute(
+      targetSessionId ?? activeConvCanonicalSessionId ?? activeConvId,
+    );
     const ensureLocalSessionId = async () => {
       if (targetSessionId) {
         if (!activeConvCollaborationTarget && desktopChatState?.activeSessionId !== targetSessionId) {
@@ -1682,6 +1646,19 @@ export function useChatMessageActions({
       }
       materializedState = await createDesktopChatSession();
       targetSessionId = materializedState.activeSessionId;
+      if (runtimeRouteForSend?.model && publishCloudAgentRuntimeRouteChange) {
+        await publishCloudAgentRuntimeRouteChange({
+          sessionId: targetSessionId,
+          model: runtimeRouteForSend.model,
+          authProvider: runtimeRouteForSend.authProvider,
+          authChoice: runtimeRouteForSend.authChoice,
+          thinking: runtimeRouteForSend.thinking,
+          initialSessionTitle: initialCloudAgentSessionTitle(
+            text,
+            chatComposerAttachments.length,
+          ),
+        });
+      }
       setDesktopChatState(materializedState);
       setActiveConvId(targetSessionId);
       return targetSessionId;
@@ -1815,6 +1792,7 @@ export function useChatMessageActions({
         materializedState,
         preserveComposer,
         setSendingState: true,
+        runtimeRoute: runtimeRouteForSend,
       });
     } catch (error) {
       setPendingUserChatMessage(null);
@@ -1851,7 +1829,9 @@ export function useChatMessageActions({
     isNativeShell,
     localChatSendInFlightRef,
     queueLocalDraftForSession,
+    publishCloudAgentRuntimeRouteChange,
     refreshDesktopChat,
+    resolveChatRuntimeRoute,
     setActiveConvId,
     setCanonicalSessionState,
     setCloudCollaborationState,

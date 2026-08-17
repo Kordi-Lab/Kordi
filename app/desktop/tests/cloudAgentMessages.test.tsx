@@ -26,7 +26,10 @@ import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from '../src/features/cloud/cloudAgentRuntime';
-import { buildCloudCollaborationHost, cloudMessageToCollaborationMessage } from '../src/features/cloud/cloudCollaborationState';
+import {
+  buildCloudCollaborationHost,
+  cloudMessageToCollaborationMessage,
+} from '../src/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 
@@ -86,7 +89,7 @@ test('cloud agent runtime ids map current cloud conversations to local runtime s
   );
   assert.equal(
     cloudAgentRuntimeSessionId('acct_me', 'session:direct-person:acct_me:acct_peer'),
-    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:acct_peer`,
+    `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:session:direct-person:acct_me:acct_peer`,
   );
   assert.equal(
     cloudAgentRuntimeSessionId('acct_me', 'session:group:cloud-room'),
@@ -129,7 +132,7 @@ test('cloud agent runtime route is reflected on the synthetic local cloud agent 
   assert.equal(buildCloudCollaborationHost(account, []).agents[0]?.defaultModel, null);
 });
 
-test('group hosted Cloud Agent runtime route prefers the targeted agent definition route', () => {
+test('group hosted Cloud Agent runtime route prefers the canonical session route', () => {
   const route = cloudAgentRuntimeRouteForTargetCloudAgent({
     targetCloudAgentId: 'cloud_agent_project_driver',
     cloudAgentDefinitionsById: {
@@ -169,10 +172,9 @@ test('group hosted Cloud Agent runtime route prefers the targeted agent definiti
   });
 
   assert.deepEqual(route, {
-    model: 'openai/gpt-5.1',
-    authProvider: 'openai',
-    authChoice: 'main',
-    thinking: 'medium',
+    model: 'anthropic/claude-opus-4-7',
+    authProvider: 'anthropic',
+    authChoice: 'fallback',
   });
 });
 
@@ -228,6 +230,18 @@ test('cloud self-agent direct messages trigger the local agent without requiring
     readAt: null,
     direction: 'outgoing',
     sessionId: 'session-self',
+  }, account), false);
+  assert.equal(cloudMessageIsSelfAgentRequest({
+    messageId: 'msg_self_model_change',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: 'Switched model to anthropic/claude-opus-4-1',
+    createdAt: '2026-05-11T10:00:02Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: 'session-self',
+    messageKind: 'agent-model-change',
   }, account), false);
 });
 

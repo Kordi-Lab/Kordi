@@ -2,6 +2,39 @@ import XCTest
 @testable import Kordi
 
 final class CompanionChatPanelTests: XCTestCase {
+    func testEmojiInsertionUsesTheCurrentUTF16Caret() {
+        let replacement = replacingComposerText(
+            "Hi world",
+            selection: ComposerTextSelection(location: 3, length: 0),
+            with: "👋"
+        )
+
+        XCTAssertEqual(replacement.text, "Hi 👋world")
+        XCTAssertEqual(replacement.selection, ComposerTextSelection(location: 5, length: 0))
+    }
+
+    func testEmojiInsertionReplacesTheSelectedText() {
+        let replacement = replacingComposerText(
+            "Ship later",
+            selection: ComposerTextSelection(location: 5, length: 5),
+            with: "🚀"
+        )
+
+        XCTAssertEqual(replacement.text, "Ship 🚀")
+        XCTAssertEqual(replacement.selection, ComposerTextSelection(location: 7, length: 0))
+    }
+
+    func testEmojiInsertionClampsAStaleSelectionAfterTextIsCleared() {
+        let replacement = replacingComposerText(
+            "",
+            selection: ComposerTextSelection(location: 20, length: 4),
+            with: "✨"
+        )
+
+        XCTAssertEqual(replacement.text, "✨")
+        XCTAssertEqual(replacement.selection, ComposerTextSelection(location: 1, length: 0))
+    }
+
     func testContactChatSuggestsTheMostRecentAgentSession() {
         let source = conversation(
             id: "contact",

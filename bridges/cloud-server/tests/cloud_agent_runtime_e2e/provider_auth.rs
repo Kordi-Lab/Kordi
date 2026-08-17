@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "provider_auth/route_sync.rs"]
+mod route_sync;
+
 #[tokio::test]
 async fn provider_auth_snapshot_create_current_revoke_and_audit() {
     let Some(pool) = try_pool().await else { return };
@@ -100,6 +103,21 @@ async fn provider_auth_snapshot_create_current_revoke_and_audit() {
     .await
     .unwrap();
     assert_eq!(audit_count.0, 3);
+
+    let sync_events: Vec<(String, Value)> = sqlx_core::query_as::query_as(
+        "SELECT event_type, payload FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'provider-auth.updated' \
+         ORDER BY stream_seq ASC",
+    )
+    .bind(&owner.account_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(sync_events.len(), 2);
+    assert_eq!(sync_events[0].1["action"], "published");
+    assert_eq!(sync_events[0].1["provider"], "openai");
+    assert_eq!(sync_events[1].1["action"], "revoked");
+    assert_eq!(sync_events[1].1["snapshotId"], snapshot_id);
 }
 
 #[tokio::test]

@@ -94,6 +94,28 @@ fn provider_config_uses_native_anthropic_and_google_defaults() {
 }
 
 #[test]
+fn provider_config_accepts_anthropic_oauth_material() {
+    let material = ProviderAuthMaterial {
+        snapshot_id: "snap-anthropic-oauth".to_string(),
+        provider: "anthropic".to_string(),
+        auth_choice: "local-active-oauth".to_string(),
+        payload: json!({
+            "apiMode": "anthropic-oauth",
+            "accessToken": "oauth-token",
+            "model": "claude-opus-4-1"
+        }),
+    };
+
+    let config = OpenAiProviderConfig::from_material(&material).unwrap();
+
+    assert_eq!(config.provider, "anthropic");
+    assert_eq!(config.api_mode, OpenAiApiMode::AnthropicOAuth);
+    assert_eq!(config.base_url, "https://api.anthropic.com");
+    assert_eq!(config.model, "claude-opus-4-1");
+    assert_eq!(config.request_options().auth_mode, ProviderAuthMode::OAuth);
+}
+
+#[test]
 fn codex_oauth_snapshot_strips_provider_prefix_from_route_model() {
     let material = ProviderAuthMaterial {
         snapshot_id: "snap".to_string(),

@@ -14,6 +14,7 @@ import {
   localChatSendDelayReason,
   localChatSendIsInFlightForTarget,
   localChatTargetHasRunningTurn,
+  initialCloudAgentSessionTitle,
   queuedDesktopChatMessageFromDraft,
   waitForCompletedDesktopTurn,
 } from '../src/features/chat/messageActions/chatMessages';
@@ -90,11 +91,18 @@ test('chat send guard only blocks transient sends and same-session local turns',
 });
 
 test('queued local chat messages preserve draft text and attachments', () => {
+  const runtimeRoute = {
+    model: 'openai/gpt-5.6-sol',
+    authProvider: 'openai',
+    authChoice: 'local-active-oauth',
+    thinking: 'max',
+  };
   const queued = queuedDesktopChatMessageFromDraft({
     sessionId: 'session-a',
     text: 'follow up while running',
     time: '12:34',
     attachments: [{ id: 'att-1', path: '/tmp/report.png', kind: 'image', name: 'report.png' }],
+    runtimeRoute,
   });
 
   assert.equal(queued.sessionId, 'session-a');
@@ -102,6 +110,19 @@ test('queued local chat messages preserve draft text and attachments', () => {
   assert.equal(queued.text, 'follow up while running');
   assert.equal(queued.time, '12:34');
   assert.deepEqual(queued.attachments, [{ id: 'att-1', path: '/tmp/report.png', kind: 'image', name: 'report.png' }]);
+  assert.deepEqual(queued.runtimeRoute, runtimeRoute);
+});
+
+test('new agent sessions receive a stable first-message title across devices', () => {
+  assert.equal(
+    initialCloudAgentSessionTitle(
+      'one two three four five six seven eight nine ten',
+      0,
+    ),
+    'one two three four five six seven eight',
+  );
+  assert.equal(initialCloudAgentSessionTitle('', 1), 'File attachment');
+  assert.equal(initialCloudAgentSessionTitle('', 3), '3 attachments');
 });
 
 test('chat composer is always in send mode regardless of running/busy state', () => {

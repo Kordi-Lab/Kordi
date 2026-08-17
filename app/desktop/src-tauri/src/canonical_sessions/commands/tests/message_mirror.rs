@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn delayed_cloud_user_mirror_is_reparented_and_removed_atomically() {
-    let mut conn = test_conn();
+    let conn = test_conn();
     seed_identity(&conn);
     conn.execute(
         "INSERT INTO sessions (
@@ -103,7 +103,7 @@ fn delayed_cloud_user_mirror_is_reparented_and_removed_atomically() {
     .expect("seed derived cache");
 
     assert!(
-        reconcile_canonical_message_mirror_in_db(&mut conn, "message:local", "message:cloud",)
+        reconcile_canonical_message_mirror_in_db(&conn, "message:local", "message:cloud",)
             .expect("reconcile mirror")
     );
 
@@ -199,7 +199,119 @@ fn delayed_cloud_user_mirror_is_reparented_and_removed_atomically() {
     assert_eq!(cache_count, 0);
 
     assert!(
-        reconcile_canonical_message_mirror_in_db(&mut conn, "message:local", "message:cloud",)
+        reconcile_canonical_message_mirror_in_db(&conn, "message:local", "message:cloud",)
             .expect("idempotent mirror retry")
     );
+}
+
+#[test]
+fn completed_cloud_agent_mirror_is_merged_into_the_local_runtime_turn() {
+    let conn = test_conn();
+    seed_identity(&conn);
+    conn.execute_batch(
+        "INSERT INTO identities (
+             id, kind, display_name, source, avatar_key,
+             created_at_ms, updated_at_ms
+         ) VALUES
+             ('agent:local', 'agent', 'My Kordi', 'local',
+              'agent:local', 1, 1),
+             ('agent:cloud', 'agent', 'My Kordi', 'local',
+              'agent:cloud', 1, 1);
+         INSERT INTO sessions (
+             id, kind, title, status, created_by_identity_id,
+             primary_identity_id, created_at_ms, updated_at_ms,
+             last_message_at_ms
+         ) VALUES (
+             'session:self', 'self-agent', 'Self', 'active',
+             'human:me', 'agent:local', 1, 3, 3
+         );
+         INSERT INTO session_messages (
+             id, session_id, sender_identity_id, sender_role,
+             message_kind, content_text, parent_message_id,
+             status, sequence_num,
+             created_at_ms, updated_at_ms, source_transport,
+             source_event_id
+         ) VALUES
+             ('message:request', 'session:self', 'human:me',
+              'user', 'text', 'Check the status', NULL,
+              'sent', 1, 1, 1, 'desktop-chat', 'runtime:request'),
+             ('message:local-agent', 'session:self', 'agent:local',
+              'owned-agent', 'agent-turn', 'The completed response',
+              'message:request', 'complete', 2, 2, 2,
+              'desktop-chat', 'runtime:turn'),
+             ('message:cloud-agent', 'session:self', 'agent:cloud',
+              'owned-agent', 'agent-turn', 'processing...',
+              'message:request', 'processing', 3, 3, 3,
+              'cloud-self-agent', 'cloud:response');",
+    )
+    .expect("seed mirrored agent turn");
+
+    assert!(reconcile_canonical_message_mirror_in_db(
+        &conn,
+        "message:local-agent",
+        "message:cloud-agent",
+    )
+    .expect("reconcile agent mirror"));
+
+    let rows: Vec<(String, String)> = conn
+        .prepare(
+            "SELECT id, source_transport
+             FROM session_messages
+             WHERE sender_role = 'owned-agent'
+             ORDER BY sequence_num",
+        )
+        .expect("prepare message query")
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("query messages")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect messages");
+    assert_eq!(
+        rows,
+        vec![(
+            "message:local-agent".to_string(),
+            "desktop-chat".to_string(),
+        )]
+    );
+}
+
+#[test]
+fn committed_cloud_mirror_retry_still_clears_stale_in_memory_rows() {
+    let conn = test_conn();
+    seed_identity(&conn);
+    conn.execute_batch(
+        "INSERT INTO identities (
+             id, kind, display_name, source, avatar_key,
+             created_at_ms, updated_at_ms
+         ) VALUES (
+             'agent:cloud', 'agent', 'My Kordi', 'cloud',
+             'agent:cloud', 1, 1
+         );
+         INSERT INTO sessions (
+             id, kind, title, status, created_by_identity_id,
+             primary_identity_id, created_at_ms, updated_at_ms,
+             last_message_at_ms
+         ) VALUES (
+             'session:self', 'self-agent', 'Self', 'active',
+             'human:me', 'agent:cloud', 1, 3, 3
+         );
+         INSERT INTO session_messages (
+             id, session_id, sender_identity_id, sender_role,
+             message_kind, content_text, parent_message_id,
+             status, sequence_num, created_at_ms, updated_at_ms,
+             source_transport, source_event_id
+         ) VALUES (
+             'message:retained-cloud', 'session:self', 'agent:cloud',
+             'owned-agent', 'agent-turn', 'Completed response',
+             'message:request', 'complete', 2, 2, 2,
+             'cloud-self-agent', 'cloud:response'
+         );",
+    )
+    .expect("seed committed Cloud mirror");
+
+    assert!(reconcile_canonical_message_mirror_in_db(
+        &conn,
+        "message:retained-cloud",
+        "message:already-removed-local",
+    )
+    .expect("retry committed reconciliation"));
 }

@@ -361,7 +361,7 @@ export function ChatMainWorkspace({
                         cacheText: runtime.activeRuntimeCacheText,
                       }}
                       collaborationRouting={{
-                        enabled: session.activeConversationUsesCollaboration,
+                        enabled: models.routing.enabled,
                         notice: models.routing.notice,
                         model: models.routing.selectedAgent ? {
                           agents: models.routing.agents,

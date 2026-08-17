@@ -102,6 +102,14 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
         return peerAccountId.isEmpty ? [] : [peerAccountId]
     }
 
+    var cloudChatKind: String {
+        switch kind {
+        case .person: "direct"
+        case .agent: "ai"
+        case .group: "group"
+        }
+    }
+
     var accessibilitySummary: String {
         let unread = unreadCount > 0 ? ", \(unreadCount) unread" : ""
         let state = agentActivity.map { ", \($0.label)" } ?? ""

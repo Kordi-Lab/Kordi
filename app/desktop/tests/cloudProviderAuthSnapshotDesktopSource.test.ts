@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 test('desktop cloud provider-auth snapshot uses the root OpenAI runtime default', () => {
-  const source = readFileSync(new URL('../src-tauri/src/auth.rs', import.meta.url), 'utf8');
+  const source = readFileSync(
+    new URL('../src-tauri/src/auth/provider_snapshot.rs', import.meta.url),
+    'utf8',
+  );
 
   assert.match(source, /unwrap_or\(kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID\)/);
   assert.doesNotMatch(source, /unwrap_or\("gpt-5\.5"\)/);

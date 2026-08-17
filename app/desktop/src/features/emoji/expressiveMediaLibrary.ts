@@ -39,7 +39,10 @@ export type ExpressiveMediaLibraryItem = {
 
 type ExpressiveMediaStorage = Pick<Storage, 'getItem' | 'setItem'>;
 type StoreMediaFile = (name: string, data: number[]) => Promise<string>;
-type FetchMediaFile = (input: string) => Promise<Pick<Response, 'ok' | 'blob'>>;
+type FetchMediaFile = (
+  input: string,
+  init?: Pick<RequestInit, 'redirect'>,
+) => Promise<Pick<Response, 'ok' | 'blob'>>;
 
 type ExpressiveMediaSource = {
   name: string;
@@ -407,21 +410,35 @@ export async function providerMediaAttachment(
     storeFile?: StoreMediaFile;
   } = {},
 ): Promise<AttachmentItem> {
-  const response = await (options.fetchFile ?? fetch)(selection.mediaUrl);
+  let mediaUrl: URL;
+  try {
+    mediaUrl = new URL(selection.mediaUrl);
+  } catch {
+    throw new Error('That result does not use a trusted media URL. Try another result.');
+  }
+  if (mediaUrl.protocol !== 'https:' || mediaUrl.hostname !== 'upload.wikimedia.org') {
+    throw new Error('That result does not use a trusted media URL. Try another result.');
+  }
+
+  const response = await (options.fetchFile ?? fetch)(selection.mediaUrl, { redirect: 'error' });
   if (!response.ok) throw new Error('Unable to download that media. Try another result.');
   const blob = await response.blob();
-  if (!blob.type.startsWith('image/')) {
+  const mimeType = blob.type.trim().toLocaleLowerCase();
+  const allowedMimeTypes = selection.mediaKind === 'gif'
+    ? GIF_MIME_TYPES
+    : STICKER_MIME_TYPES;
+  if (!allowedMimeTypes.has(mimeType)) {
     throw new Error('That result is not a supported image. Try another result.');
   }
   if (blob.size > EXPRESSIVE_MEDIA_MAX_BYTES) {
     throw new Error('That result is larger than the 2 MB attachment limit. Try another result.');
   }
   const safeTitle = selection.title.trim().replace(/[^A-Za-z0-9 _-]+/g, '').trim();
-  const extension = blob.type === 'image/webp'
+  const extension = mimeType === 'image/webp'
     ? 'webp'
-    : blob.type === 'image/png'
+    : mimeType === 'image/png'
       ? 'png'
-      : blob.type === 'image/jpeg'
+      : mimeType === 'image/jpeg'
         ? 'jpg'
         : 'gif';
   const fallbackTitle = selection.mediaKind === 'sticker' ? 'Public sticker' : 'Public GIF';
@@ -433,7 +450,7 @@ export async function providerMediaAttachment(
     kind: selection.mediaKind,
     name,
     path,
-    mimeType: blob.type,
+    mimeType,
     sizeBytes: blob.size,
     createdAtMs: Date.now(),
   };

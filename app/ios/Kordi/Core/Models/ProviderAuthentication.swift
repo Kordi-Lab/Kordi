@@ -115,6 +115,34 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
         default: provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
     }
+
+    static func definition(for providerID: String) -> ProviderAuthenticationDefinition? {
+        let canonicalProviderID = canonicalID(providerID)
+        return all.first { $0.id == canonicalProviderID }
+    }
+
+    static func preferredFallbackSnapshot(
+        in snapshots: [String: CloudProviderAuthSnapshot],
+        excluding providerID: String? = nil
+    ) -> CloudProviderAuthSnapshot? {
+        let excluded = providerID.map(canonicalID)
+        return snapshots.values
+            .filter { canonicalID($0.provider) != excluded }
+            .max { left, right in left.createdAt < right.createdAt }
+    }
+}
+
+enum ProviderAuthenticationPolicy {
+    static func requiresAuthentication(
+        isAgentConversation: Bool,
+        mentionedAgentOwnerAccountID: String?,
+        ownAccountID: String?
+    ) -> Bool {
+        if isAgentConversation { return true }
+        guard let mentionedAgentOwnerAccountID,
+              let ownAccountID else { return false }
+        return mentionedAgentOwnerAccountID == ownAccountID
+    }
 }
 
 enum AppAppearance: String, CaseIterable, Identifiable {

@@ -2,7 +2,9 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
+import type { CloudAgentRuntimeRouteChangeInput } from '@/features/cloud/cloudAgentRuntime';
 import type { CloudMessage } from '@/features/cloud/authClient';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   SendCloudCollaborationMessageOptions,
   SendCloudGroupControlInput,
@@ -87,6 +89,7 @@ export type ComposerRuntimeContext = {
   canonicalHumanIdentityId?: string | null;
   setCanonicalSessionState: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
+  resolveChatRuntimeRoute: (sessionId?: string | null) => DesktopChatMessageRoute | null;
 };
 
 export type ComposerDraftContext = {
@@ -134,6 +137,9 @@ export type ComposerMessageRuntimeContext = {
     options?: SendCloudCollaborationMessageOptions,
   ) => Promise<CloudMessage>;
   sendCloudGroupControl?: (input: SendCloudGroupControlInput) => Promise<void>;
+  publishCloudAgentRuntimeRouteChange?: (
+    input: CloudAgentRuntimeRouteChangeInput,
+  ) => Promise<void>;
   cancelCloudAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
@@ -154,7 +160,9 @@ export type UseComposerInputActionsArgs = {
   environment: Pick<ComposerEnvironmentContext, 'isNativeShell'>;
   conversation: Pick<
     ComposerConversationContext,
-    'activeConvId' | 'activeConvCanonicalSessionId'
+    | 'activeConversationUsesCollaboration'
+    | 'activeConvId'
+    | 'activeConvCanonicalSessionId'
   >;
   project: Pick<ComposerProjectContext, 'activeProjectSessionId'>;
   runtime: Pick<ComposerRuntimeContext, 'desktopChatState'>;
@@ -176,6 +184,9 @@ export type UseComposerInputActionsArgs = {
   >;
   messageRuntime: Pick<
     ComposerMessageRuntimeContext,
-    'setDesktopChatState' | 'setDesktopChatError' | 'shouldAutoFollowChatRef'
+    | 'setDesktopChatState'
+    | 'setDesktopChatError'
+    | 'shouldAutoFollowChatRef'
+    | 'publishCloudAgentRuntimeRouteChange'
   >;
 };

@@ -108,6 +108,18 @@ export function routingSelectionForCollaborationAgent(agent: LocalCollaborationA
   };
 }
 
+export function collaborationAgentWithSessionRoute(
+  agent: LocalCollaborationAgentRoutingOption | null,
+  route: { model?: string | null; thinking?: string | null } | null | undefined,
+) {
+  if (!agent) return null;
+  return {
+    ...agent,
+    defaultModel: compactModelValue(route?.model) ?? agent.defaultModel,
+    thinking: compactModelValue(route?.thinking) ?? agent.thinking,
+  };
+}
+
 export function activeLocalCollaborationAgent(collaborationState: Pick<DesktopCollaborationState, 'activeHostId' | 'hosts'> | null | undefined) {
   const activeHost = collaborationState?.hosts.find((host) => host.id === collaborationState.activeHostId)
     ?? collaborationState?.hosts[0]
