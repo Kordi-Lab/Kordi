@@ -93,6 +93,73 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.first?.messageKind, "call")
     }
 
+    func testRuntimeRouteChangeWithLegacyTextKindProjectsAsSessionNotice() throws {
+        var route = CloudModelRouting.empty
+        route.defaultModel = "anthropic/claude-fable-5"
+        route.defaultAuthProvider = "anthropic"
+        route.defaultAuthChoice = "local-active-oauth"
+        let body = try CloudMessageCodec.encodeDirect(
+            text: "Switched model to anthropic/claude-fable-5",
+            agentId: nil,
+            agentName: nil,
+            ownerAccountId: nil,
+            ownerName: nil,
+            agentRuntimeRoute: route
+        )
+        let message = CloudMessageDTO(
+            messageId: "legacy-route-change",
+            fromAccountId: "acct_me",
+            toAccountId: "acct_me",
+            body: body,
+            createdAt: "2026-08-17T06:24:00Z",
+            deliveredAt: "2026-08-17T06:24:00Z",
+            readAt: nil,
+            direction: "outgoing",
+            sessionId: conversation.sessionId,
+            messageKind: "text"
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [message],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.first?.messageKind, ChatMessage.agentModelChangeMessageKind)
+        XCTAssertTrue(projected.first?.isAgentModelChangeNotice == true)
+    }
+
+    func testOrdinaryTextThatLooksLikeAModelChangeRemainsAChatMessage() throws {
+        let body = try CloudMessageCodec.encodeDirect(
+            text: "Switched model to anthropic/claude-fable-5",
+            agentId: nil,
+            agentName: nil,
+            ownerAccountId: nil,
+            ownerName: nil
+        )
+        let message = CloudMessageDTO(
+            messageId: "ordinary-text",
+            fromAccountId: "acct_me",
+            toAccountId: "acct_me",
+            body: body,
+            createdAt: "2026-08-17T06:24:00Z",
+            deliveredAt: "2026-08-17T06:24:00Z",
+            readAt: nil,
+            direction: "outgoing",
+            sessionId: conversation.sessionId,
+            messageKind: "text"
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [message],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.first?.messageKind, "text")
+        XCTAssertFalse(projected.first?.isAgentModelChangeNotice == true)
+    }
+
     func testLegacyMacImageMetadataStillProjectsAsAnInlineImage() {
         let mimeTypedImage = CloudMessageAttachment(
             attachmentId: "att_screenshot_mime",
@@ -208,6 +275,183 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
     }
 
+    func testTerminalResponseRetainsTheLatestRealExecutionTrajectory() throws {
+        let processing = try agentResponse(
+            requestId: "msg_request",
+            text: "processing...",
+            deliveryState: "processing",
+            execution: [
+                "phase": "using-tool",
+                "summary": "Running the disk usage command",
+                "steps": [[
+                    "id": "tool:disk-usage",
+                    "label": "Check disk usage",
+                    "state": "complete"
+                ]],
+                "thinkingText": "Inspect the real APFS volume values.",
+                "updatedAtMs": 2_000,
+                "startedAtMs": 1_000,
+                "completed": false
+            ]
+        )
+        let complete = try agentResponse(
+            requestId: "msg_request",
+            text: "The disk has 218 GiB available.",
+            deliveryState: "complete"
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(id: "msg_request", body: "Check disk usage", createdAt: "2026-08-08T10:00:00Z"),
+                wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z"),
+                wire(id: "msg_complete", body: complete, createdAt: "2026-08-08T10:00:02Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.count, 2)
+        XCTAssertEqual(projected.last?.text, "The disk has 218 GiB available.")
+        XCTAssertEqual(projected.last?.agentExecution?.phase, .complete)
+        XCTAssertEqual(projected.last?.agentExecution?.summary, "Running the disk usage command")
+        XCTAssertEqual(
+            projected.last?.agentExecution?.thinkingText,
+            "Inspect the real APFS volume values."
+        )
+        XCTAssertTrue(projected.last?.agentExecution?.completed == true)
+    }
+
+    func testDelayedResponseStaysBesideItsRequestInsteadOfJumpingBelowNewerTurns() throws {
+        let firstResponse = try agentResponse(
+            requestId: "msg_first_request",
+            text: "first answer",
+            deliveryState: "complete"
+        )
+        let secondResponse = try agentResponse(
+            requestId: "msg_second_request",
+            text: "second answer",
+            deliveryState: "complete"
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(id: "msg_first_request", body: "first request", createdAt: "2026-08-16T16:58:00Z"),
+                wire(id: "msg_second_request", body: "second request", createdAt: "2026-08-16T16:58:01Z"),
+                wire(id: "msg_second_response", body: secondResponse, createdAt: "2026-08-16T16:58:02Z"),
+                wire(id: "msg_delayed_first_response", body: firstResponse, createdAt: "2026-08-16T16:59:00Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(
+            projected.map(\.text),
+            ["first request", "first answer", "second request", "second answer"]
+        )
+    }
+
+    func testOwnerExecutionTimelineProjectsOnlyInsideTheOwnersSelfAgentSession() throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "kind": "agent-response",
+            "requestId": "msg_request",
+            "text": "processing...",
+            "deliveryState": "processing",
+            "execution": [
+                "phase": "analyzing",
+                "summary": "Analyzing the request",
+                "steps": [[
+                    "id": "analysis",
+                    "label": "Analyzing the request",
+                    "state": "running"
+                ]],
+                "updatedAtMs": 2_000,
+                "completed": false
+            ]
+        ])
+        let body = CloudMessageCodec.agentResponsePrefix + data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let selfMessage = wire(
+            id: "msg_owner_progress",
+            body: body,
+            createdAt: "2026-08-08T10:00:01Z"
+        )
+        let peerMessage = CloudMessageDTO(
+            messageId: "msg_peer_progress",
+            fromAccountId: "acct_peer",
+            toAccountId: "acct_me",
+            body: body,
+            createdAt: "2026-08-08T10:00:01Z",
+            deliveredAt: nil,
+            readAt: nil,
+            direction: "incoming",
+            sessionId: conversation.sessionId
+        )
+
+        let ownerProjected = CloudDirectMessageProjector.project(
+            [selfMessage],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+        let peerProjected = CloudDirectMessageProjector.project(
+            [peerMessage],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(ownerProjected.first?.agentExecution?.phase, .analyzing)
+        XCTAssertNil(peerProjected.first?.agentExecution)
+    }
+
+    func testLatestOwnerProcessingSnapshotStreamsInPlace() throws {
+        let analyzing = try agentResponse(
+            requestId: "msg_request",
+            text: "processing...",
+            deliveryState: "processing",
+            execution: [
+                "phase": "analyzing",
+                "summary": "Analyzing the request",
+                "steps": [[
+                    "id": "analysis",
+                    "label": "Analyzing the request",
+                    "state": "running"
+                ]],
+                "updatedAtMs": 1_000,
+                "completed": false
+            ]
+        )
+        let usingTool = try agentResponse(
+            requestId: "msg_request",
+            text: "processing...",
+            deliveryState: "processing",
+            execution: [
+                "phase": "using-tool",
+                "summary": "Using Web Search",
+                "steps": [[
+                    "id": "tool:web-search",
+                    "label": "Using Web Search",
+                    "state": "running"
+                ]],
+                "updatedAtMs": 2_000,
+                "completed": false
+            ]
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(id: "msg_execution_1", body: analyzing, createdAt: "2026-08-08T10:00:01Z"),
+                wire(id: "msg_execution_2", body: usingTool, createdAt: "2026-08-08T10:00:02Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.count, 1)
+        XCTAssertEqual(projected.first?.id, "msg_execution_2")
+        XCTAssertEqual(projected.first?.agentExecution?.summary, "Using Web Search")
+    }
+
     func testLateProcessingHeartbeatCannotRegressTerminalResponse() throws {
         let complete = try agentResponse(
             requestId: "msg_request",
@@ -304,14 +548,19 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
     private func agentResponse(
         requestId: String,
         text: String,
-        deliveryState: String
+        deliveryState: String,
+        execution: [String: Any]? = nil
     ) throws -> String {
-        let data = try JSONSerialization.data(withJSONObject: [
+        var payload: [String: Any] = [
             "kind": "agent-response",
             "requestId": requestId,
             "text": text,
             "deliveryState": deliveryState
-        ])
+        ]
+        if let execution {
+            payload["execution"] = execution
+        }
+        let data = try JSONSerialization.data(withJSONObject: payload)
         return CloudMessageCodec.agentResponsePrefix + data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")

@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 
-import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
+import type { CloudAgentRuntimeRouteChangeInput } from '@/features/cloud/cloudAgentRuntime';
 import {
   cloudCollaborationConversationId,
   isCloudCollaborationHostId,
@@ -11,7 +11,6 @@ import type {
   DesktopCollaborationProject,
   NavId,
 } from '@/kordi-app/types';
-import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 type UnsupportedCollaborationAction = (...args: unknown[]) => Promise<void>;
 
@@ -22,9 +21,9 @@ type UseKordiCollaborationNavigationActionsArgs = {
   setActiveConversationId: Dispatch<SetStateAction<string>>;
   setActiveNav: Dispatch<SetStateAction<NavId>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
-  setRuntimeRoutesBySessionId: Dispatch<
-    SetStateAction<Record<string, DesktopChatMessageRoute>>
-  >;
+  publishCloudAgentRuntimeRouteChange: (
+    input: CloudAgentRuntimeRouteChangeInput,
+  ) => Promise<void>;
   unsupportedAction: UnsupportedCollaborationAction;
 };
 
@@ -35,7 +34,7 @@ export function useKordiCollaborationNavigationActions({
   setActiveConversationId,
   setActiveNav,
   setDesktopChatError,
-  setRuntimeRoutesBySessionId,
+  publishCloudAgentRuntimeRouteChange,
   unsupportedAction,
 }: UseKordiCollaborationNavigationActionsArgs) {
   const openConversation = useCallback(
@@ -127,26 +126,28 @@ export function useKordiCollaborationNavigationActions({
         || activeConversation.canonicalSessionId
         || activeConversation.id
         || activeConversationId;
-      const runtimeSessionId = cloudAgentRuntimeSessionId(
-        accountId,
-        routeTargetSessionId,
-      );
-      if (!runtimeSessionId) {
+      if (!accountId || !routeTargetSessionId || !defaultModel?.trim()) {
         setDesktopChatError(
           'Account is still loading. Try again in a moment.',
         );
         return;
       }
-      setRuntimeRoutesBySessionId((current) => ({
-        ...current,
-        [runtimeSessionId]: {
-          model: defaultModel ?? null,
-          authProvider: defaultAuthProvider ?? null,
-          authChoice: defaultAuthChoice ?? null,
-          thinking: thinking ?? null,
-        },
-      }));
-      setDesktopChatError(null);
+      try {
+        await publishCloudAgentRuntimeRouteChange({
+          sessionId: routeTargetSessionId,
+          model: defaultModel,
+          authProvider: defaultAuthProvider,
+          authChoice: defaultAuthChoice,
+          thinking,
+        });
+        setDesktopChatError(null);
+      } catch (error) {
+        setDesktopChatError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to synchronize the session model.',
+        );
+      }
     },
     [
       accountId,
@@ -154,7 +155,7 @@ export function useKordiCollaborationNavigationActions({
       activeConversation.id,
       activeConversationId,
       setDesktopChatError,
-      setRuntimeRoutesBySessionId,
+      publishCloudAgentRuntimeRouteChange,
       unsupportedAction,
     ],
   );

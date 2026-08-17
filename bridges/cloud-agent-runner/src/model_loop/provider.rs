@@ -15,6 +15,7 @@ use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelTool
 pub enum OpenAiApiMode {
     ChatCompletions,
     CodexOAuth,
+    AnthropicOAuth,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +51,7 @@ impl OpenAiProviderConfig {
             .map(str::trim)
         {
             Some("openai-codex-oauth") => OpenAiApiMode::CodexOAuth,
+            Some("anthropic-oauth") => OpenAiApiMode::AnthropicOAuth,
             _ => OpenAiApiMode::ChatCompletions,
         };
         let provider = normalize_provider(&material.provider).to_string();
@@ -123,7 +125,9 @@ impl OpenAiProviderConfig {
             api_key: self.api_key.clone(),
             auth_mode: match self.api_mode {
                 OpenAiApiMode::ChatCompletions => ProviderAuthMode::ApiKey,
-                OpenAiApiMode::CodexOAuth => ProviderAuthMode::OAuth,
+                OpenAiApiMode::CodexOAuth | OpenAiApiMode::AnthropicOAuth => {
+                    ProviderAuthMode::OAuth
+                }
             },
             auth_account_id: self.account_id.clone(),
             base_url: self.base_url.clone(),

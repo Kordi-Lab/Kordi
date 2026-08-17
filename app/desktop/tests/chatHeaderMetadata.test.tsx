@@ -20,10 +20,15 @@ test('chat header subtitle keeps useful user-facing temporary status copy', () =
   assert.equal(isGenericChatHeaderSubtitle('Waiting for first message'), false);
 });
 
-test('provider configuration gates only local Agent conversations', () => {
+test('provider configuration gates every Agent conversation', () => {
   assert.equal(localAgentConversationNeedsProvider({
     activePaneKind: 'agent',
     activeConversationUsesCollaboration: false,
+    hasAnyAuth: false,
+  }), true);
+  assert.equal(localAgentConversationNeedsProvider({
+    activePaneKind: 'agent',
+    activeConversationUsesCollaboration: true,
     hasAnyAuth: false,
   }), true);
   assert.equal(localAgentConversationNeedsProvider({

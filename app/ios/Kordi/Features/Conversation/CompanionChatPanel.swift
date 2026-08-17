@@ -223,10 +223,7 @@ struct CompanionChatPanel: View {
     }
 
     private func createSession(from conversation: ConversationSummary) {
-        selectedConversation = AgentSessionFactory.make(
-            from: conversation,
-            ownAccountId: model.account?.accountId ?? conversation.peerAccountId
-        )
+        selectedConversation = model.makeAgentSession(from: conversation)
     }
 }
 

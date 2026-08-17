@@ -96,6 +96,13 @@ test('side-panel Agent chat renders the same reusable session pane as the main A
   assert.doesNotMatch(side, /<textarea[\s\S]*data-composer-scope="companion"/, 'side panel must not keep a bespoke composer textarea');
 });
 
+test('model route changes use transcript notices instead of private composer notices', () => {
+  const source = chatsPageSource();
+
+  assert.doesNotMatch(source, /Private · \{collaborationRouting\.notice\}/);
+  assert.doesNotMatch(source, /collaborationRouting\.notice \? \(/);
+});
+
 test('side-panel destinations do not repeat Ask Agent or destination headings inside the page', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
@@ -411,7 +418,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, chatComposerAttachments, contextMessages\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
   assert.match(targetedSendBlock, /if \(delayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'side-panel duplicate sends should wait for the in-flight session without promoting normal preparation to an error');
   assert.doesNotMatch(targetedSendBlock, /Kordi is still preparing this session/, 'normal session preparation should not render through the sidebar-wide error channel');
-  assert.match(actionsSource, /startDesktopChatMessage\(message\.sessionId, message\.text, attachmentPaths, null, message\.contextMessages \?\? \[\]\)/, 'flushing queued side messages should send their preserved reference context');
+  assert.match(actionsSource, /message\.runtimeRoute \?\? resolveChatRuntimeRoute\(message\.sessionId\)[\s\S]*message\.contextMessages \?\? \[\]/, 'flushing queued side messages should preserve the selected runtime route and reference context');
 });
 
 test('new local sessions expose centered progress and coalesce duplicate first sends', () => {

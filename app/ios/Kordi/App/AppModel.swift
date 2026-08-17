@@ -63,6 +63,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRefreshingProviderAuthentication = false
     @Published private(set) var isRefreshingFactory = false
     @Published private(set) var providerAuthenticationErrorMessage: String?
+    @Published private(set) var sessionRuntimeRouteRevision = 0
     @Published private(set) var devices: [CloudDeviceAuthorization] = []
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var deviceErrorMessage: String?
@@ -91,6 +92,7 @@ final class AppModel: ObservableObject {
     private var cloudSyncCursor = "0"
     private var hasHydratedWireSnapshot = false
     private var hasHydratedForkLineage = false
+    private var hasObservedOwnedAgentRouting = false
     private var fullyHydratedCanonicalGroupSessionIds = Set<String>()
     private var cloudMessagesByPeer: [String: [CloudMessageDTO]] = [:]
     private var cloudMessageIndicesByPeer: [String: [String: Int]] = [:]
@@ -101,6 +103,11 @@ final class AppModel: ObservableObject {
     private var hiddenCloudSessionIds = Set<String>()
     private var deletedCloudSessionIds = Set<String>()
     private var pendingAgentRequestIds: [String: String] = [:]
+    private var pendingAgentRequestStartedAt: [String: Date] = [:]
+    private var pendingAgentDisplayNames: [String: String] = [:]
+    private var agentRequestPresentationIds: [String: String] = [:]
+    private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
+    private var providerAuthenticationSyncTask: Task<Void, Never>?
     private var pendingAttachmentDraftsByMessageId: [String: [PendingAttachment]] = [:]
     private var pendingReplyByMessageId: [String: MessageActionSource] = [:]
     private var pendingMessageActionByMessageId: [String: MessageActionMetadata] = [:]
@@ -180,6 +187,7 @@ final class AppModel: ObservableObject {
                 cloudMessagesByPeer = snapshot.messagesByPeer
                 sessionForksById = snapshot.sessionForksById ?? [:]
                 rebuildCloudMessageIndices()
+                applyLatestSyncedAgentModelChanges()
                 cloudSyncCursor = snapshot.cursor
                 lastMessageSyncAt = snapshot.savedAt
                 hasHydratedWireSnapshot = snapshot.cursor != "0"
@@ -276,6 +284,7 @@ final class AppModel: ObservableObject {
         cloudSyncCursor = "0"
         hasHydratedWireSnapshot = false
         hasHydratedForkLineage = false
+        hasObservedOwnedAgentRouting = false
         fullyHydratedCanonicalGroupSessionIds = []
         cloudConnectionState = .connecting
         messageSyncState = .syncing
@@ -313,6 +322,12 @@ final class AppModel: ObservableObject {
         pendingVisibleReadMessageBySessionID = [:]
         persistedVisibleReadMessageBySessionID = [:]
         pendingAgentRequestIds = [:]
+        pendingAgentRequestStartedAt = [:]
+        pendingAgentDisplayNames = [:]
+        agentRequestPresentationIds = [:]
+        pendingProviderAuthBindingsBySessionID = [:]
+        providerAuthenticationSyncTask?.cancel()
+        providerAuthenticationSyncTask = nil
         pendingAttachmentDraftsByMessageId = [:]
         pendingReplyByMessageId = [:]
         pendingMessageActionByMessageId = [:]
@@ -327,6 +342,10 @@ final class AppModel: ObservableObject {
 
     func refreshWorkspace(showSyncActivity: Bool = true) async {
         guard let token, let account, !isRefreshing else { return }
+        let previousOwnedAgents = Dictionary(
+            uniqueKeysWithValues: ownedCloudAgents.map { ($0.agentId, $0) }
+        )
+        let shouldRecordRemoteModelChanges = hasObservedOwnedAgentRouting
         isRefreshing = true
         if showSyncActivity { messageSyncState = .syncing }
         defer { isRefreshing = false }
@@ -349,6 +368,13 @@ final class AppModel: ObservableObject {
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             contactRequests = requests
             ownedCloudAgents = owned
+            if shouldRecordRemoteModelChanges {
+                recordSyncedAgentModelChanges(
+                    previousAgentsByID: previousOwnedAgents,
+                    updatedAgents: owned
+                )
+            }
+            hasObservedOwnedAgentRouting = true
             providerAuthSnapshot = authSnapshot
             if let deviceList {
                 devices = deviceList
@@ -396,6 +422,7 @@ final class AppModel: ObservableObject {
             }
             mergeMessageHistories(history.messagesByPeer)
             await rebuildConversationCatalog()
+            await refreshProviderAuthentication()
             cloudConnectionState = .connected
             messageSyncState = history.complete
                 && groupHistoryComplete
@@ -632,7 +659,13 @@ final class AppModel: ObservableObject {
                 snapshots[ProviderAuthenticationDefinition.canonicalID(latestSnapshot.provider)] = latestSnapshot
             }
             providerAuthSnapshot = latestSnapshot
+            let authenticationChanged = providerAuthSnapshots != snapshots
             providerAuthSnapshots = snapshots
+            reconcilePendingProviderAuthentication()
+            if authenticationChanged {
+                sessionRuntimeRouteRevision &+= 1
+                await reconcileUnavailableProviderRuntimeRoutes()
+            }
             providerAuthenticationErrorMessage = nil
         } catch {
             providerAuthenticationErrorMessage = authenticationUserFacing(
@@ -664,6 +697,8 @@ final class AppModel: ObservableObject {
             )
             providerAuthSnapshot = snapshot
             providerAuthSnapshots[provider.id] = snapshot
+            sessionRuntimeRouteRevision &+= 1
+            await reconcileUnavailableProviderRuntimeRoutes()
             providerAuthenticationErrorMessage = nil
             return true
         } catch {
@@ -677,13 +712,26 @@ final class AppModel: ObservableObject {
 
     func revokeProviderAuthentication(_ snapshot: CloudProviderAuthSnapshot) async -> Bool {
         guard let token else { return false }
+        let providerID = ProviderAuthenticationDefinition.canonicalID(snapshot.provider)
+        let queryProviderIDs = ProviderAuthenticationDefinition.definition(for: providerID)?
+            .queryProviderIDs ?? [snapshot.provider]
         do {
-            _ = try await api.revokeProviderAuthSnapshot(token: token, snapshotId: snapshot.snapshotId)
-            let providerID = ProviderAuthenticationDefinition.canonicalID(snapshot.provider)
-            if providerAuthSnapshots[providerID]?.snapshotId == snapshot.snapshotId {
-                providerAuthSnapshots[providerID] = nil
+            for queryProviderID in queryProviderIDs {
+                for _ in 0..<16 {
+                    guard let activeSnapshot = try await api.currentProviderAuthSnapshot(
+                        token: token,
+                        provider: queryProviderID
+                    ) else { break }
+                    _ = try await api.revokeProviderAuthSnapshot(
+                        token: token,
+                        snapshotId: activeSnapshot.snapshotId
+                    )
+                }
             }
-            if providerAuthSnapshot?.snapshotId == snapshot.snapshotId {
+            providerAuthSnapshots[providerID] = nil
+            if providerAuthSnapshot.map({
+                ProviderAuthenticationDefinition.canonicalID($0.provider)
+            }) == providerID {
                 providerAuthSnapshot = nil
             }
             await refreshProviderAuthentication()
@@ -703,6 +751,46 @@ final class AppModel: ObservableObject {
 
     var hasConfiguredProviderAuthentication: Bool {
         !providerAuthSnapshots.isEmpty
+    }
+
+    private func reconcileUnavailableProviderRuntimeRoutes() async {
+        let fallback = ProviderAuthenticationDefinition.preferredFallbackSnapshot(
+            in: providerAuthSnapshots
+        )
+        let fallbackProvider = fallback.map {
+            ProviderAuthenticationDefinition.canonicalID($0.provider)
+        }
+        let fallbackModel = fallbackProvider
+            .flatMap { ProviderAuthenticationDefinition.definition(for: $0)?.defaultModel }
+
+        var reconciledSessionIDs = Set<String>()
+        for conversation in conversations {
+            guard reconciledSessionIDs.insert(conversation.sessionId).inserted,
+                  canChangeRuntimeRouting(for: conversation) else { continue }
+            var routing = sessionRuntimeRouteStore.route(
+                accountId: account?.accountId,
+                sessionId: conversation.sessionId
+            ) ?? defaultRuntimeRouting(for: conversation)
+            guard let routeProvider = routing.defaultAuthProvider?.nonEmpty,
+                  authenticationSnapshot(for: routeProvider) == nil else { continue }
+
+            guard let fallback, let fallbackProvider, let fallbackModel else {
+                if routing.defaultAuthChoice != nil {
+                    routing.defaultAuthChoice = nil
+                    saveSessionRuntimeRoute(routing, sessionId: conversation.sessionId)
+                }
+                continue
+            }
+            _ = await updateRuntimeRouting(
+                for: conversation,
+                provider: fallbackProvider,
+                model: fallbackModel,
+                thinking: routing.thinking?.nonEmpty ?? "medium"
+            )
+            if providerAuthSnapshot?.snapshotId != fallback.snapshotId {
+                providerAuthSnapshot = fallback
+            }
+        }
     }
 
     func clearProviderAuthenticationError() {
@@ -884,7 +972,10 @@ final class AppModel: ObservableObject {
                     )
                 return projectedMessages
             }.value
-            let remote = projection
+            let remote = Self.mergeProjectedMessages(
+                projection,
+                preservingLocalMessagesFrom: messagesByConversation[conversation.id, default: []]
+            )
             if messagesByConversation[conversation.id] != remote {
                 messagesByConversation[conversation.id] = remote
                 cache?.saveMessages(remote, conversationId: conversation.id)
@@ -975,6 +1066,29 @@ final class AppModel: ObservableObject {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!text.isEmpty || !attachments.isEmpty), let token, let account else { return }
         let localId = "ios_\(UUID().uuidString.lowercased())"
+        let routedAgent = mentionTarget?.kind == .agent ? mentionTarget : nil
+        let routesToSupportAgent = conversation.representsKordiSupport
+            && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
+        let requestsAgentRun = conversation.kind == .agent
+            || routedAgent != nil
+            || routesToSupportAgent
+        let isNewAgentSession = conversation.kind == .agent
+            && !conversations.contains { $0.sessionId == conversation.sessionId }
+        let initialAgentSessionTitle = isNewAgentSession
+            ? initialSessionTitle(text: text, attachmentCount: attachments.count)
+            : nil
+        let inheritedRuntimeRoute = isNewAgentSession
+            ? requestedRuntimeRoute(for: conversation)
+            : nil
+        let inheritedRouteNotice = inheritedRuntimeRoute.flatMap { routing in
+            recordAgentModelChange(
+                model: routing.defaultModel,
+                routing: routing,
+                conversation: conversation,
+                revision: UUID().uuidString,
+                previousRouting: nil
+            )
+        }
         let messageAction = actionOverride ?? replySource.map(MessageActionMetadata.quote)
         let optimistic = ChatMessage(
             id: localId,
@@ -998,6 +1112,16 @@ final class AppModel: ObservableObject {
             pendingAgentContextByMessageId[localId] = agentContext
         }
         messagesByConversation[conversation.id, default: []].append(optimistic)
+        if requestsAgentRun {
+            beginPendingAgentRequest(
+                conversationId: conversation.id,
+                requestMessageId: localId,
+                startedAt: optimistic.createdAt,
+                agentDisplayName: routedAgent?.displayName
+                    ?? conversation.agentDisplayName?.nonEmpty
+                    ?? "My Kordi"
+            )
+        }
         cacheCurrentMessages(conversation.id)
         updateConversationPreview(
             conversation.id,
@@ -1007,6 +1131,18 @@ final class AppModel: ObservableObject {
 
         do {
             let uploadedAttachments = try await uploadAttachments(attachments, token: token)
+            if let inheritedRouteNotice, let inheritedRuntimeRoute,
+               await publishAgentModelChangeNotice(
+                 inheritedRouteNotice,
+                 conversation: conversation,
+                 routing: inheritedRuntimeRoute
+               ) == false {
+                throw CloudAPIError(
+                    code: "agent_route_sync_failed",
+                    message: "Could not synchronize the new session model.",
+                    statusCode: 0
+                )
+            }
             if conversation.kind == .group {
                 let sentRows = try await sendGroupMessage(
                     text: text,
@@ -1052,9 +1188,6 @@ final class AppModel: ObservableObject {
                 return
             }
             let wireBody: String
-            let routedAgent = mentionTarget?.kind == .agent ? mentionTarget : nil
-            let routesToSupportAgent = conversation.representsKordiSupport
-                && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
             if conversation.kind == .agent || routedAgent != nil || messageAction != nil || routesToSupportAgent {
                 wireBody = try CloudMessageCodec.encodeDirect(
                     text: text,
@@ -1078,10 +1211,34 @@ final class AppModel: ObservableObject {
                 body: wireBody,
                 sessionId: conversation.sessionId,
                 clientMessageId: localId,
-                attachments: uploadedAttachments
+                attachments: uploadedAttachments,
+                sharedTitle: initialAgentSessionTitle
+            )
+            if let initialAgentSessionTitle {
+                _ = try await api.updateSessionTitle(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    title: initialAgentSessionTitle,
+                    peerAccountId: conversation.peerAccountId,
+                    conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
+                    memberAccountIds: [conversation.peerAccountId]
+                )
+            }
+            promotePendingAgentRequest(
+                conversationId: conversation.id,
+                from: localId,
+                to: sent.messageId
             )
             mergeCloudMessage(sent, peerHint: conversation.peerAccountId)
             replaceMessage(localId, with: mapMessage(sent, conversation: conversation, ownAccountId: account.accountId))
+            if isNewAgentSession {
+                // The route event may be the first row that materializes this
+                // stable session in reliable chat. Rebuild immediately so the
+                // current device and every other device use the same session
+                // identity and synchronized title instead of retaining a
+                // provisional template row until the next background refresh.
+                await rebuildConversationCatalog()
+            }
             cloudConnectionState = .connected
             clearPendingSendMetadata(localId)
 
@@ -1100,7 +1257,16 @@ final class AppModel: ObservableObject {
                 )
             }
         } catch {
+            if let inheritedRouteNotice {
+                messagesByConversation[conversation.id]?.removeAll {
+                    $0.id == inheritedRouteNotice.id
+                }
+            }
             recordCloudConnectionFailure(error)
+            if pendingAgentRequestIds[conversation.id] == localId {
+                clearPendingAgentRequest(conversationId: conversation.id)
+                setAgentActivity(.failed, conversationId: conversation.id)
+            }
             markMessageFailed(localId, error: userFacing(error, fallback: "Message not sent."))
         }
     }
@@ -1213,7 +1379,83 @@ final class AppModel: ObservableObject {
     }
 
     func messages(for conversation: ConversationSummary) -> [ChatMessage] {
-        messagesByConversation[conversation.id] ?? []
+        let messages = messagesByConversation[conversation.id] ?? []
+        guard let requestMessageId = pendingAgentRequestIds[conversation.id],
+              let startedAt = pendingAgentRequestStartedAt[conversation.id],
+              !messages.contains(where: {
+                  $0.author == .agent && $0.requestMessageId == requestMessageId
+              }) else {
+            return messages
+        }
+
+        let requestCreatedAt = messages.first(where: { $0.id == requestMessageId })?.createdAt
+            ?? startedAt
+        let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
+        let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
+        let placeholder = ChatMessage(
+            id: "local-agent-progress:\(conversation.id)",
+            conversationId: conversation.id,
+            author: .agent,
+            authorName: pendingAgentDisplayNames[conversation.id] ?? "My Kordi",
+            text: "processing...",
+            createdAt: placeholderCreatedAt,
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: requestMessageId,
+            agentExecution: AgentExecutionSnapshot(
+                phase: .preparing,
+                summary: "Preparing the response",
+                steps: [],
+                thinkingText: nil,
+                tools: nil,
+                startedAtMs: startedAtMs,
+                updatedAtMs: startedAtMs,
+                completed: false
+            )
+        )
+        return (messages + [placeholder]).sorted {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }
+    }
+
+    static func mergeProjectedMessages(
+        _ projected: [ChatMessage],
+        preservingLocalMessagesFrom existing: [ChatMessage]
+    ) -> [ChatMessage] {
+        var messagesByID = Dictionary(uniqueKeysWithValues: projected.map { ($0.id, $0) })
+        for localMessage in existing where localMessage.isAgentModelChangeNotice {
+            let hasMatchingCloudNotice = projected.contains { cloudMessage in
+                cloudMessage.isAgentModelChangeNotice
+                    && cloudMessage.text == localMessage.text
+                    && abs(cloudMessage.createdAt.timeIntervalSince(localMessage.createdAt)) <= 60
+            }
+            if hasMatchingCloudNotice { continue }
+            messagesByID[localMessage.id] = localMessage
+        }
+        return messagesByID.values.sorted {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }
+    }
+
+    func timelineIdentity(for message: ChatMessage) -> String {
+        Self.timelineIdentity(
+            for: message,
+            requestPresentationIds: agentRequestPresentationIds
+        )
+    }
+
+    static func timelineIdentity(
+        for message: ChatMessage,
+        requestPresentationIds: [String: String]
+    ) -> String {
+        if message.author != .agent,
+           let presentationId = requestPresentationIds[message.id] {
+            return "request:\(message.conversationId):\(presentationId)"
+        }
+        guard message.author == .agent,
+              let requestMessageId = message.requestMessageId?.nonEmpty else { return message.id }
+        let presentationId = requestPresentationIds[requestMessageId] ?? requestMessageId
+        return "agent-response:\(message.conversationId):\(presentationId)"
     }
 
     func activeCall(for conversation: ConversationSummary) -> CloudCall? {
@@ -1786,6 +2028,44 @@ final class AppModel: ObservableObject {
     }
 
     func runtimeRouting(for conversation: ConversationSummary) -> CloudModelRouting {
+        if let sessionRoute = sessionRuntimeRouteStore.route(
+            accountId: account?.accountId,
+            sessionId: conversation.sessionId
+        ) {
+            return sessionRoute
+        }
+        return defaultRuntimeRouting(for: conversation)
+    }
+
+    func makeAgentSession(from template: ConversationSummary) -> ConversationSummary {
+        let accountId = account?.accountId ?? template.peerAccountId
+        let session = AgentSessionFactory.make(
+            from: template,
+            ownAccountId: accountId
+        )
+        let inheritedRoute = runtimeRouting(for: template)
+        if inheritedRoute.defaultModel?.nonEmpty != nil
+            || inheritedRoute.defaultAuthProvider?.nonEmpty != nil
+            || inheritedRoute.defaultAuthChoice?.nonEmpty != nil
+            || inheritedRoute.thinking?.nonEmpty != nil {
+            saveSessionRuntimeRoute(inheritedRoute, sessionId: session.sessionId)
+        }
+        return session
+    }
+
+    private func saveSessionRuntimeRoute(
+        _ route: CloudModelRouting,
+        sessionId: String
+    ) {
+        sessionRuntimeRouteStore.save(
+            route,
+            accountId: account?.accountId,
+            sessionId: sessionId
+        )
+        sessionRuntimeRouteRevision &+= 1
+    }
+
+    private func defaultRuntimeRouting(for conversation: ConversationSummary) -> CloudModelRouting {
         if let ownedAgent = ownedAgent(for: conversation) {
             return ownedAgent.modelRouting
         }
@@ -1794,10 +2074,7 @@ final class AppModel: ObservableObject {
            let sharedAgent = sharedCloudAgents.first(where: { $0.agentId == agentId }) {
             return sharedAgent.modelRouting
         }
-        return sessionRuntimeRouteStore.route(
-            accountId: account?.accountId,
-            sessionId: conversation.sessionId
-        ) ?? .empty
+        return .empty
     }
 
     func canChangeRuntimeRouting(for conversation: ConversationSummary) -> Bool {
@@ -1807,32 +2084,108 @@ final class AppModel: ObservableObject {
     }
 
     func runtimeRoutingIsSessionScoped(for conversation: ConversationSummary) -> Bool {
-        conversation.kind != .agent || conversation.agentId == nil
+        true
+    }
+
+    private func canonicalProviderID(_ provider: String?) -> String? {
+        guard let provider = provider?.nonEmpty else { return nil }
+        return ProviderAuthenticationDefinition.canonicalID(provider)
+    }
+
+    private func qualifiedRuntimeModel(
+        _ model: String,
+        provider: String?
+    ) -> String? {
+        guard let model = model.nonEmpty else { return nil }
+        guard let provider = provider?.nonEmpty else { return model }
+        if let separator = model.firstIndex(of: "/") {
+            let modelProvider = String(model[..<separator])
+            if canonicalProviderID(modelProvider) == canonicalProviderID(provider) {
+                return model
+            }
+            if let defaultModel = ProviderAuthenticationDefinition.all
+                .first(where: { $0.id == canonicalProviderID(provider) })?
+                .defaultModel?.nonEmpty {
+                return "\(provider)/\(defaultModel)"
+            }
+        }
+        return "\(provider)/\(model)"
+    }
+
+    private func runtimeRoutesMatch(
+        _ left: CloudModelRouting,
+        _ right: CloudModelRouting
+    ) -> Bool {
+        runtimeRouteSelectionsMatch(left, right)
+            && left.thinking?.nonEmpty == right.thinking?.nonEmpty
+    }
+
+    private func runtimeRouteSelectionsMatch(
+        _ left: CloudModelRouting,
+        _ right: CloudModelRouting
+    ) -> Bool {
+        qualifiedRuntimeModel(
+            left.defaultModel ?? "",
+            provider: left.defaultAuthProvider
+        ) == qualifiedRuntimeModel(
+            right.defaultModel ?? "",
+            provider: right.defaultAuthProvider
+        )
+            && canonicalProviderID(left.defaultAuthProvider)
+                == canonicalProviderID(right.defaultAuthProvider)
+            && left.defaultAuthChoice?.nonEmpty == right.defaultAuthChoice?.nonEmpty
     }
 
     func updateRuntimeRouting(
         for conversation: ConversationSummary,
+        provider: String? = nil,
         model: String,
         thinking: String
     ) async -> Bool {
-        if ownedAgent(for: conversation) != nil {
-            return await updateAgentRouting(for: conversation, model: model, thinking: thinking)
-        }
         guard canChangeRuntimeRouting(for: conversation) else { return false }
 
         var routing = runtimeRouting(for: conversation)
-        routing.defaultModel = model.nonEmpty
+        let previousRouting = routing
+        let selectedProvider = provider?.nonEmpty
+            ?? model.firstIndex(of: "/").map { String(model[..<$0]) }
+            ?? routing.defaultAuthProvider?.nonEmpty
+        routing.defaultModel = qualifiedRuntimeModel(model, provider: selectedProvider)
         routing.thinking = thinking.nonEmpty
-        if let auth = providerAuthSnapshot,
-           model.hasPrefix("\(auth.provider)/") {
-            routing.defaultAuthProvider = auth.provider
-            routing.defaultAuthChoice = auth.authChoice
+        if let selectedProvider {
+            routing.defaultAuthProvider = selectedProvider
+            if let auth = authenticationSnapshot(for: selectedProvider) {
+                routing.defaultAuthChoice = auth.authChoice
+            } else if canonicalProviderID(previousRouting.defaultAuthProvider)
+                != canonicalProviderID(selectedProvider) {
+                routing.defaultAuthChoice = nil
+            }
         }
-        sessionRuntimeRouteStore.save(
-            routing,
-            accountId: account?.accountId,
-            sessionId: conversation.sessionId
-        )
+        saveSessionRuntimeRoute(routing, sessionId: conversation.sessionId)
+        if !runtimeRoutesMatch(previousRouting, routing) {
+            let notice = recordAgentModelChange(
+                model: routing.defaultModel,
+                routing: routing,
+                conversation: conversation,
+                revision: UUID().uuidString,
+                previousRouting: previousRouting
+            )
+            if let notice,
+               await publishAgentModelChangeNotice(
+                 notice,
+                 conversation: conversation,
+                 routing: routing
+               ) == false {
+                saveSessionRuntimeRoute(
+                    previousRouting,
+                    sessionId: conversation.sessionId
+                )
+                messagesByConversation[conversation.id]?.removeAll {
+                    $0.id == notice.id
+                }
+                cacheCurrentMessages(conversation.id)
+                return false
+            }
+        }
         return true
     }
 
@@ -1908,23 +2261,42 @@ final class AppModel: ObservableObject {
 
     func updateAgentRouting(
         for conversation: ConversationSummary,
+        provider: String? = nil,
         model: String,
         thinking: String
     ) async -> Bool {
         guard let agent = ownedAgent(for: conversation) else { return false }
-        return await updateAgentRouting(agent: agent, model: model, thinking: thinking)
+        return await updateAgentRouting(
+            agent: agent,
+            provider: provider,
+            model: model,
+            thinking: thinking
+        )
     }
 
-    func updateAgentRouting(agent: CloudAgent, model: String, thinking: String) async -> Bool {
+    func updateAgentRouting(
+        agent: CloudAgent,
+        provider: String? = nil,
+        model: String,
+        thinking: String
+    ) async -> Bool {
         guard let token else { return false }
         do {
             var routing = agent.modelRouting
-            routing.defaultModel = model.nonEmpty
+            let selectedProvider = provider?.nonEmpty
+                ?? model.firstIndex(of: "/").map { String(model[..<$0]) }
+                ?? routing.defaultAuthProvider?.nonEmpty
+            routing.defaultModel = qualifiedRuntimeModel(model, provider: selectedProvider)
             routing.thinking = thinking.nonEmpty
-            if let auth = providerAuthSnapshot,
-               model.hasPrefix("\(auth.provider)/") {
-                routing.defaultAuthProvider = auth.provider
+            if let selectedProvider {
+                routing.defaultAuthProvider = selectedProvider
+            }
+            if let selectedProvider,
+               let auth = authenticationSnapshot(for: selectedProvider) {
                 routing.defaultAuthChoice = auth.authChoice
+            } else if canonicalProviderID(agent.modelRouting.defaultAuthProvider)
+                != canonicalProviderID(selectedProvider) {
+                routing.defaultAuthChoice = nil
             }
             let updated = try await api.updateAgentRouting(
                 token: token,
@@ -1934,9 +2306,185 @@ final class AppModel: ObservableObject {
             if let index = ownedCloudAgents.firstIndex(where: { $0.agentId == updated.agentId }) {
                 ownedCloudAgents[index] = updated
             }
+            if !runtimeRoutesMatch(agent.modelRouting, updated.modelRouting) {
+                let notices = recordAgentModelChange(
+                    model: updated.modelRouting.defaultModel,
+                    routing: updated.modelRouting,
+                    agentID: updated.agentId,
+                    revision: updated.updatedAt,
+                    previousRouting: agent.modelRouting
+                )
+                for (notice, conversation) in notices {
+                    guard await publishAgentModelChangeNotice(
+                        notice,
+                        conversation: conversation,
+                        routing: updated.modelRouting
+                    ) else { return false }
+                }
+            }
             return true
         } catch {
             errorMessage = userFacing(error, fallback: "Could not update this agent's model.")
+            return false
+        }
+    }
+
+    private func recordSyncedAgentModelChanges(
+        previousAgentsByID: [String: CloudAgent],
+        updatedAgents: [CloudAgent]
+    ) {
+        for updatedAgent in updatedAgents {
+            guard let previousAgent = previousAgentsByID[updatedAgent.agentId],
+                  !runtimeRoutesMatch(
+                    previousAgent.modelRouting,
+                    updatedAgent.modelRouting
+                  ) else {
+                continue
+            }
+            _ = recordAgentModelChange(
+                model: updatedAgent.modelRouting.defaultModel,
+                routing: updatedAgent.modelRouting,
+                agentID: updatedAgent.agentId,
+                revision: updatedAgent.updatedAt,
+                previousRouting: previousAgent.modelRouting
+            )
+        }
+    }
+
+    private func recordAgentModelChange(
+        model: String?,
+        routing: CloudModelRouting,
+        agentID: String,
+        revision: String,
+        previousRouting: CloudModelRouting?
+    ) -> [(ChatMessage, ConversationSummary)] {
+        conversations
+            .filter { $0.kind == .agent && $0.agentId == agentID }
+            .compactMap { conversation in
+                recordAgentModelChange(
+                    model: model,
+                    routing: routing,
+                    conversation: conversation,
+                    revision: revision,
+                    previousRouting: previousRouting
+                ).map { ($0, conversation) }
+            }
+    }
+
+    private func recordAgentModelChange(
+        model: String?,
+        routing: CloudModelRouting,
+        conversation: ConversationSummary,
+        revision: String,
+        previousRouting: CloudModelRouting?
+    ) -> ChatMessage? {
+        guard let model = model?.nonEmpty else { return nil }
+        hydrateCachedMessages(for: conversation)
+        let qualifiedModel = model.contains("/")
+            ? model
+            : routing.defaultAuthProvider.map { "\($0)/\(model)" } ?? model
+        var synchronizedRouting = routing
+        synchronizedRouting.defaultModel = qualifiedModel
+        if let provider = qualifiedModel.split(separator: "/", maxSplits: 1).first,
+           qualifiedModel.contains("/") {
+            synchronizedRouting.defaultAuthProvider = String(provider)
+        }
+        saveSessionRuntimeRoute(
+            synchronizedRouting,
+            sessionId: conversation.sessionId
+        )
+        let messageID = "\(ChatMessage.agentModelChangeMessageKind):\(conversation.id):\(revision)"
+        var messages = messagesByConversation[conversation.id, default: []]
+        guard !messages.contains(where: { $0.id == messageID }) else {
+            return nil
+        }
+
+        if messages.last?.isAgentModelChangeNotice == true {
+            messages.removeLast()
+        }
+        let revisionDate = parseCloudDate(revision)
+        let noticeText = ChatMessage.runtimeRouteChangeNotice(
+            model: qualifiedModel,
+            thinking: synchronizedRouting.thinking
+        )
+        let notice = ChatMessage(
+            id: messageID,
+            conversationId: conversation.id,
+            author: .agent,
+            authorName: ownedAgent(for: conversation)?.name ?? "My Kordi",
+            text: noticeText,
+            createdAt: revisionDate == .distantPast ? Date() : revisionDate,
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatMessage.agentModelChangeMessageKind
+        )
+        messages.append(notice)
+        messages.sort {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }
+        messagesByConversation[conversation.id] = messages
+        cacheCurrentMessages(conversation.id)
+        return notice
+    }
+
+    private func publishAgentModelChangeNotice(
+        _ notice: ChatMessage,
+        conversation: ConversationSummary,
+        routing: CloudModelRouting
+    ) async -> Bool {
+        if previewMode { return true }
+        guard let token, let account else { return false }
+        do {
+            // Synchronize only the selected session route. The auth choice is a
+            // non-secret profile identifier; credentials remain in the provider
+            // snapshot store and are never embedded in this message.
+            var synchronizedRouting = CloudModelRouting.empty
+            synchronizedRouting.defaultModel = routing.defaultModel
+            synchronizedRouting.defaultAuthProvider = routing.defaultAuthProvider
+            synchronizedRouting.defaultAuthChoice = routing.defaultAuthChoice
+            synchronizedRouting.thinking = routing.thinking
+            let body = try CloudMessageCodec.encodeDirect(
+                text: notice.text,
+                agentId: nil,
+                agentName: nil,
+                ownerAccountId: nil,
+                ownerName: nil,
+                agentRuntimeRoute: synchronizedRouting
+            )
+            let sent = try await api.sendMessage(
+                token: token,
+                peerAccountId: conversation.peerAccountId,
+                body: body,
+                sessionId: conversation.sessionId,
+                clientMessageId: notice.id,
+                messageKind: ChatMessage.agentModelChangeMessageKind,
+                conversationKind: conversation.cloudChatKind,
+                memberAccountIds: conversation.remotePeerAccountIds
+            )
+            guard self.token == token,
+                  self.account?.accountId == account.accountId else {
+                return false
+            }
+            mergeCloudMessage(sent, peerHint: conversation.peerAccountId)
+            let syncedNotice = mapMessage(
+                sent,
+                conversation: conversation,
+                ownAccountId: account.accountId
+            )
+            var messages = messagesByConversation[conversation.id, default: []]
+            messages.removeAll { $0.id == notice.id || $0.id == syncedNotice.id }
+            messages.append(syncedNotice)
+            messages.sort {
+                $0.createdAt < $1.createdAt
+                    || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+            }
+            messagesByConversation[conversation.id] = messages
+            cacheCurrentMessages(conversation.id)
+            cloudConnectionState = .connected
+            return true
+        } catch {
+            recordCloudConnectionFailure(error)
             return false
         }
     }
@@ -1975,8 +2523,45 @@ final class AppModel: ObservableObject {
         account: CloudAccount,
         runtimeRoute: CloudModelRouting?
     ) async {
-        pendingAgentRequestIds[conversation.id] = requestMessageId
-        setAgentActivity(.replying, conversationId: conversation.id)
+        if pendingAgentRequestIds[conversation.id] != requestMessageId {
+            beginPendingAgentRequest(
+                conversationId: conversation.id,
+                requestMessageId: requestMessageId,
+                startedAt: Date(),
+                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
+            )
+        }
+        if ownerAccountId == account.accountId {
+            agentExecutionLocation[conversation.id] = .mac(label: "your Mac")
+            for _ in 0..<5 {
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+                await loadConversation(conversation)
+                guard pendingAgentRequestIds[conversation.id] == requestMessageId else {
+                    return
+                }
+                guard hasRecentDesktopExecutionHeartbeat(
+                    requestMessageId: requestMessageId,
+                    sessionId: conversation.sessionId
+                ) else { continue }
+                repeat {
+                    await pollForAgentReply(
+                        conversation,
+                        requestMessageId: requestMessageId
+                    )
+                    guard pendingAgentRequestIds[conversation.id] == requestMessageId else {
+                        return
+                    }
+                } while hasRecentDesktopExecutionHeartbeat(
+                    requestMessageId: requestMessageId,
+                    sessionId: conversation.sessionId
+                )
+                break
+            }
+        }
         do {
             _ = try await api.claimAgentRun(
                 token: token,
@@ -1998,8 +2583,24 @@ final class AppModel: ObservableObject {
         } catch {
             recordCloudConnectionFailure(error)
             setAgentActivity(.failed, conversationId: conversation.id)
-            pendingAgentRequestIds[conversation.id] = nil
+            clearPendingAgentRequest(conversationId: conversation.id)
             errorMessage = userFacing(error, fallback: "The agent could not start. Try again.")
+        }
+    }
+
+    private func hasRecentDesktopExecutionHeartbeat(
+        requestMessageId: String,
+        sessionId: String,
+        now: Date = Date()
+    ) -> Bool {
+        let freshnessWindow: TimeInterval = 90
+        return cloudMessagesByPeer.values.joined().contains { message in
+            guard message.sessionId == sessionId,
+                  CloudMessageCodec.agentResponseRequestId(message.body) == requestMessageId,
+                  CloudMessageCodec.agentResponseDeliveryState(message.body) == .processing else {
+                return false
+            }
+            return now.timeIntervalSince(parseCloudDate(message.createdAt)) <= freshnessWindow
         }
     }
 
@@ -2020,6 +2621,15 @@ final class AppModel: ObservableObject {
         let route = runtimeRouting(for: conversation)
         guard route.defaultModel?.nonEmpty != nil || route.thinking?.nonEmpty != nil else { return nil }
         return route
+    }
+
+    private func initialSessionTitle(text: String, attachmentCount: Int) -> String {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        let title = words.prefix(8).joined(separator: " ").prefix(60).description
+        if let title = title.nonEmpty { return title }
+        if attachmentCount == 1 { return "File attachment" }
+        if attachmentCount > 1 { return "\(attachmentCount) attachments" }
+        return "New session"
     }
 
     private func attachmentSummary(_ count: Int) -> String {
@@ -2048,7 +2658,7 @@ final class AppModel: ObservableObject {
                let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {
                 if run.status == "failed" {
                     setAgentActivity(.failed, conversationId: conversation.id)
-                    pendingAgentRequestIds[conversation.id] = nil
+                    clearPendingAgentRequest(conversationId: conversation.id)
                     return
                 }
                 if run.status == "cancelled" {
@@ -2319,6 +2929,11 @@ final class AppModel: ObservableObject {
         let responseRequestId = isAgentResponse ? CloudMessageCodec.agentResponseRequestId(message.body) : nil
         let author: MessageAuthor = isAgentResponse ? .agent : (message.fromAccountId == ownAccountId ? .me : .person)
         let state = CloudMessageStateProjector.deliveryState(for: message, ownAccountId: ownAccountId)
+        let ownerExecution = isAgentResponse
+            && message.fromAccountId == ownAccountId
+            && message.toAccountId == ownAccountId
+            ? CloudMessageCodec.agentExecution(message.body)
+            : nil
         return ChatMessage(
             id: message.messageId,
             conversationId: conversation.id,
@@ -2333,7 +2948,8 @@ final class AppModel: ObservableObject {
             replyToMessageId: CloudMessageCodec.directEnvelope(message.body)?.messageAction?.replyToMessageId
                 ?? responseRequestId,
             messageAction: CloudMessageCodec.directEnvelope(message.body)?.messageAction,
-            messageKind: message.messageKind
+            messageKind: CloudMessageCodec.canonicalMessageKind(message),
+            agentExecution: ownerExecution
         )
     }
 
@@ -2447,9 +3063,17 @@ final class AppModel: ObservableObject {
 
                     cloudSyncCursor = nextCursor
                     if !pendingEvents.isEmpty {
+                        let hasProviderAuthenticationChanges = pendingEvents.contains {
+                            $0.eventType == "provider-auth.updated"
+                        }
+                        if hasProviderAuthenticationChanges {
+                            await refreshProviderAuthentication()
+                        }
                         applyCloudSyncEvents(pendingEvents)
                         let hasDirectoryChanges = pendingEvents.contains {
-                            $0.eventType != "message.upsert" && $0.eventType != "message.read"
+                            $0.eventType != "message.upsert"
+                                && $0.eventType != "message.read"
+                                && $0.eventType != "provider-auth.updated"
                         }
                         if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
                         // Conversation snapshots are independently canonical.
@@ -2519,6 +3143,14 @@ final class AppModel: ObservableObject {
             })
         }.value
         for (conversationId, projected) in projections {
+            let merged = Self.mergeProjectedMessages(
+                projected,
+                preservingLocalMessagesFrom: messagesByConversation[conversationId, default: []]
+            )
+            if messagesByConversation[conversationId] != merged {
+                messagesByConversation[conversationId] = merged
+                cacheCurrentMessages(conversationId)
+            }
             if let conversation = loadedConversations.first(where: { $0.id == conversationId }),
                conversation.kind != .group {
                 reconcilePendingAgentRequest(
@@ -2526,9 +3158,6 @@ final class AppModel: ObservableObject {
                     wireMessages: Self.directWireMessages(for: conversation, in: wireSnapshot)
                 )
             }
-            guard messagesByConversation[conversationId] != projected else { continue }
-            messagesByConversation[conversationId] = projected
-            cacheCurrentMessages(conversationId)
         }
     }
 
@@ -2736,6 +3365,11 @@ final class AppModel: ObservableObject {
 
     private func mergeMessages(_ messages: [CloudMessageDTO], for peer: String) {
         guard !peer.isEmpty, !messages.isEmpty else { return }
+        let modelChangeSessionIDs = Set(messages.compactMap { message in
+            CloudMessageCodec.isAgentModelChange(message)
+                ? message.sessionId?.nonEmpty
+                : nil
+        })
         var existing = cloudMessagesByPeer[peer, default: []]
         var indices = cloudMessageIndicesByPeer[peer]
             ?? Dictionary(uniqueKeysWithValues: existing.enumerated().map { ($0.element.messageId, $0.offset) })
@@ -2756,6 +3390,9 @@ final class AppModel: ObservableObject {
         }
         guard changed else {
             cloudMessageIndicesByPeer[peer] = indices
+            if !modelChangeSessionIDs.isEmpty {
+                applyLatestSyncedAgentModelChanges(sessionIds: modelChangeSessionIDs)
+            }
             return
         }
         if appended {
@@ -2766,6 +3403,114 @@ final class AppModel: ObservableObject {
         }
         cloudMessagesByPeer[peer] = existing
         cloudMessageIndicesByPeer[peer] = indices
+        if !modelChangeSessionIDs.isEmpty {
+            applyLatestSyncedAgentModelChanges(sessionIds: modelChangeSessionIDs)
+        }
+    }
+
+    private func applyLatestSyncedAgentModelChanges(
+        sessionIds: Set<String>? = nil
+    ) {
+        for message in CloudMessageStateProjector.latestAgentModelChanges(
+            in: cloudMessagesByPeer,
+            sessionIds: sessionIds,
+            ownAccountId: account?.accountId
+        ) {
+            applySyncedAgentModelChange(message)
+        }
+    }
+
+    private func applySyncedAgentModelChange(_ message: CloudMessageDTO) {
+        guard CloudMessageCodec.isAgentModelChange(message),
+              let sessionId = message.sessionId?.nonEmpty else {
+            return
+        }
+
+        let envelopeRouting = CloudMessageCodec.directEnvelope(message.body)?.agentRuntimeRoute
+        let legacyModel = ChatMessage.modelFromAgentModelChangeNotice(
+            CloudMessageCodec.displayText(message.body)
+        )
+        guard envelopeRouting?.defaultModel?.nonEmpty != nil || legacyModel != nil else { return }
+
+        let conversation = conversations.first { $0.sessionId == sessionId }
+        var routing = sessionRuntimeRouteStore.route(
+            accountId: account?.accountId,
+            sessionId: sessionId
+        ) ?? conversation.map { defaultRuntimeRouting(for: $0) } ?? .empty
+        let previousRouting = routing
+        let remoteModel = envelopeRouting?.defaultModel?.nonEmpty ?? legacyModel
+        let modelProvider = remoteModel.flatMap { model in
+            model.firstIndex(of: "/").map { String(model[..<$0]) }
+        }
+        let remoteProvider = envelopeRouting?.defaultAuthProvider?.nonEmpty
+            ?? modelProvider
+            ?? routing.defaultAuthProvider?.nonEmpty
+        if let remoteModel {
+            routing.defaultModel = qualifiedRuntimeModel(
+                remoteModel,
+                provider: remoteProvider
+            )
+        }
+        routing.defaultAuthProvider = remoteProvider
+        if let remoteThinking = envelopeRouting?.thinking?.nonEmpty {
+            routing.thinking = remoteThinking
+        }
+        if let remoteProvider {
+            if let remoteAuthChoice = envelopeRouting?.defaultAuthChoice?.nonEmpty {
+                routing.defaultAuthChoice = remoteAuthChoice
+            } else if let auth = authenticationSnapshot(for: remoteProvider) {
+                routing.defaultAuthChoice = auth.authChoice
+            } else if canonicalProviderID(previousRouting.defaultAuthProvider)
+                != canonicalProviderID(remoteProvider) {
+                routing.defaultAuthChoice = nil
+            }
+            if envelopeRouting?.defaultAuthChoice?.nonEmpty == nil {
+                pendingProviderAuthBindingsBySessionID[sessionId] = remoteProvider
+            } else {
+                pendingProviderAuthBindingsBySessionID[sessionId] = nil
+            }
+        }
+        let authChanged = routing.defaultAuthChoice?.nonEmpty
+            != previousRouting.defaultAuthChoice?.nonEmpty
+        guard !runtimeRoutesMatch(previousRouting, routing) || authChanged else { return }
+
+        saveSessionRuntimeRoute(routing, sessionId: sessionId)
+        scheduleProviderAuthenticationRefresh()
+    }
+
+    private func reconcilePendingProviderAuthentication() {
+        var resolvedSessionIDs: [String] = []
+        for (sessionId, provider) in pendingProviderAuthBindingsBySessionID {
+            guard let snapshot = authenticationSnapshot(for: provider),
+                  var route = sessionRuntimeRouteStore.route(
+                    accountId: account?.accountId,
+                    sessionId: sessionId
+                  ) else { continue }
+            route.defaultAuthProvider = provider
+            route.defaultAuthChoice = snapshot.authChoice
+            saveSessionRuntimeRoute(route, sessionId: sessionId)
+            resolvedSessionIDs.append(sessionId)
+        }
+        for sessionId in resolvedSessionIDs {
+            pendingProviderAuthBindingsBySessionID[sessionId] = nil
+        }
+    }
+
+    private func scheduleProviderAuthenticationRefresh() {
+        guard providerAuthenticationSyncTask == nil,
+              !pendingProviderAuthBindingsBySessionID.isEmpty else { return }
+        providerAuthenticationSyncTask = Task { [weak self] in
+            guard let self else { return }
+            for attempt in 0..<3 {
+                if attempt > 0 {
+                    try? await Task.sleep(for: .seconds(1))
+                }
+                guard !Task.isCancelled else { break }
+                await refreshProviderAuthentication()
+                if pendingProviderAuthBindingsBySessionID.isEmpty { break }
+            }
+            providerAuthenticationSyncTask = nil
+        }
     }
 
     private func rebuildCloudMessageIndices() {
@@ -2925,8 +3670,40 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func completeAgentRequest(conversationId: String) {
+    private func beginPendingAgentRequest(
+        conversationId: String,
+        requestMessageId: String,
+        startedAt: Date,
+        agentDisplayName: String
+    ) {
+        pendingAgentRequestIds[conversationId] = requestMessageId
+        pendingAgentRequestStartedAt[conversationId] = startedAt
+        pendingAgentDisplayNames[conversationId] = agentDisplayName
+        agentRequestPresentationIds[requestMessageId] = agentRequestPresentationIds[requestMessageId]
+            ?? requestMessageId
+        setAgentActivity(.replying, conversationId: conversationId)
+    }
+
+    private func promotePendingAgentRequest(
+        conversationId: String,
+        from localRequestMessageId: String,
+        to serverRequestMessageId: String
+    ) {
+        guard pendingAgentRequestIds[conversationId] == localRequestMessageId else { return }
+        let presentationId = agentRequestPresentationIds[localRequestMessageId]
+            ?? localRequestMessageId
+        agentRequestPresentationIds[serverRequestMessageId] = presentationId
+        pendingAgentRequestIds[conversationId] = serverRequestMessageId
+    }
+
+    private func clearPendingAgentRequest(conversationId: String) {
         pendingAgentRequestIds[conversationId] = nil
+        pendingAgentRequestStartedAt[conversationId] = nil
+        pendingAgentDisplayNames[conversationId] = nil
+    }
+
+    private func completeAgentRequest(conversationId: String) {
+        clearPendingAgentRequest(conversationId: conversationId)
         setAgentActivity(.ready, conversationId: conversationId)
     }
 
@@ -2943,7 +3720,7 @@ final class AppModel: ObservableObject {
         case .processing:
             setAgentActivity(.replying, conversationId: conversationId)
         case .failed:
-            pendingAgentRequestIds[conversationId] = nil
+            clearPendingAgentRequest(conversationId: conversationId)
             setAgentActivity(.failed, conversationId: conversationId)
         case .complete, .cancelled:
             completeAgentRequest(conversationId: conversationId)
@@ -3170,6 +3947,7 @@ final class AppModel: ObservableObject {
             cloudMessagesByPeer = snapshot.messagesByPeer
             sessionForksById = snapshot.sessionForksById ?? [:]
             rebuildCloudMessageIndices()
+            applyLatestSyncedAgentModelChanges()
             cloudSyncCursor = snapshot.cursor
             lastMessageSyncAt = snapshot.savedAt
             hasHydratedWireSnapshot = snapshot.cursor != "0"

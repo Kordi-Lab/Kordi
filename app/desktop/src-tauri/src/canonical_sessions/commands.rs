@@ -43,8 +43,7 @@ pub(super) use self::lifecycle::{
     desktop_canonical_upsert_identity_fast,
 };
 pub(super) use self::message_mirror::desktop_canonical_reconcile_message_mirror;
-#[cfg(test)]
-use self::message_mirror::reconcile_canonical_message_mirror_in_db;
+pub(crate) use self::message_mirror::reconcile_canonical_message_mirror_in_db;
 
 #[cfg(test)]
 mod tests;

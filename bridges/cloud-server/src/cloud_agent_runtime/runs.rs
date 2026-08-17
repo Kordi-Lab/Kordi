@@ -21,6 +21,7 @@ pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest}
 use delivery::{
     cloud_group_response_recipients, direct_person_peer_account_id, is_scheduled_run_request_id,
 };
+pub(crate) use envelopes::cloud_agent_response_is_processing_for_request;
 pub use envelopes::encode_cloud_agent_response_body;
 #[cfg(test)]
 use envelopes::{

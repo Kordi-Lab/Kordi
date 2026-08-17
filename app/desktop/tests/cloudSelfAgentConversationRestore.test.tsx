@@ -103,6 +103,52 @@ test('cloud self-agent bridge state restores session titles instead of naming ev
   assert.equal(state.conversations[0]?.peerDisplayName, 'OpenClaw notes');
 });
 
+test('cloud self-agent bridge state ignores draft sessions and model changes in list previews', () => {
+  const sessionId = 'session:self-agent:preview';
+  const modelChange = {
+    ...message,
+    messageId: 'msg_model_change',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    direction: 'outgoing',
+    body: 'Switched model to openai/gpt-5.6-luna',
+    sessionId,
+    messageKind: 'agent-model-change',
+    createdAt: '2026-05-11T10:01:00Z',
+  } as CloudMessage;
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [],
+    messagesByPeer: {
+      [account.accountId]: [
+        {
+          ...message,
+          messageId: 'msg_prompt',
+          fromAccountId: account.accountId,
+          toAccountId: account.accountId,
+          direction: 'outgoing',
+          body: 'Check my disk usage',
+          sessionId,
+          createdAt: '2026-05-11T10:00:00Z',
+        },
+        modelChange,
+        {
+          ...modelChange,
+          messageId: 'msg_draft_model_change',
+          sessionId: 'draft:local-chat',
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    state.conversations.map((conversation) => conversation.canonicalSessionId),
+    [sessionId],
+  );
+  assert.equal(state.conversations[0]?.title, 'Check my disk usage');
+  assert.equal(state.conversations[0]?.subtitle, 'Check my disk usage');
+});
+
 test('cloud self-agent bridge state falls back to the first prompt as restored title', () => {
   const sessionId = 'e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83';
   const cloudMessages = [

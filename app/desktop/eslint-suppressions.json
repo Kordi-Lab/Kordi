@@ -297,9 +297,6 @@
   "src/features/cloud/useCloudCollaborationState.ts": {
     "no-console": {
       "count": 2
-    },
-    "react-hooks/refs": {
-      "count": 3
     }
   },
   "src/features/cloud/useCloudContacts.ts": {
@@ -522,9 +519,6 @@
     }
   },
   "src/kordi-app/components/composer.tsx": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    },
     "react-hooks/set-state-in-effect": {
       "count": 1
     },

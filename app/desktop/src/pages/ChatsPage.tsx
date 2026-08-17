@@ -21,7 +21,10 @@ import { useChatHeaderModel } from '@/pages/useChatHeaderModel';
 import { useChatPins } from '@/pages/useChatPins';
 import { useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
 import { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
-import { conversationPaneKind } from '@/pages/chatsPage.model';
+import {
+  conversationPaneKind,
+  shouldSynchronizeConversationModelRoute,
+} from '@/pages/chatsPage.model';
 
 export {
   chatHeaderSubtitle,
@@ -123,6 +126,12 @@ export function ChatsPage({
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
   const activeConversationIsGroupFork = isGroupForkSession(activeConv);
   const activePaneKind = conversationPaneKind(activeConv);
+  const sessionRouteSyncEnabled = shouldSynchronizeConversationModelRoute({
+    conversation: activeConv,
+    usesCollaborationTransport: activeConversationUsesCollaboration,
+    hasCloudAccount: Boolean(cloudAccount),
+    hasModelHost: Boolean(activeCollaborationModelHost),
+  });
   const companionSession = useChatCompanionSession({
     activeConversation: activeConv,
     conversations: chatConversations,
@@ -195,7 +204,7 @@ export function ChatsPage({
     main: {
       conversation: activeConv,
       host: activeCollaborationModelHost,
-      enabled: activeConversationUsesCollaboration,
+      enabled: sessionRouteSyncEnabled,
       isBusy: isDesktopChatSending || activeLiveTurnIsRunning,
       openSelector: openComposerSelector,
       toggleSelector: toggleComposerSelector,

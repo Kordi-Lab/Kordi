@@ -85,6 +85,7 @@ enum AgentSessionTimelineCatalog {
                 $0.kind == .agent
                     && !$0.representsKordiSupport
                     && !$0.isAgentLaunchTemplate
+                    && !isEmptyCanonicalPlaceholder($0)
             }
             .sorted(by: sessionSort)
         let bySessionId = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.sessionId, $0) })
@@ -144,6 +145,11 @@ enum AgentSessionTimelineCatalog {
         }
         for root in roots { append(root, depth: 0) }
         return output
+    }
+
+    private static func isEmptyCanonicalPlaceholder(_ conversation: ConversationSummary) -> Bool {
+        conversation.messageCount == 0
+            && conversation.lastMessage.trimmingCharacters(in: .whitespacesAndNewlines) == "No messages yet"
     }
 
     private static func matches(_ conversation: ConversationSummary, query: String) -> Bool {

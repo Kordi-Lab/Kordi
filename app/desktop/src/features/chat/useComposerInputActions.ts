@@ -8,16 +8,13 @@ import { readDesktopChatAttachment, storeDesktopChatAttachment, storeDesktopChat
 
 import { friendlyAttachmentName } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
-import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotices';
+import { appendOptimisticSessionConfigMessage } from './composerSessionConfigState';
 
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
-  formatDesktopEventTime,
-  formatThinkingSelectionLabel,
-  parseModelSelection,
   resizeComposerTextarea,
 } from './composerController.shared';
 import type { ComposerScope, ComposerSelectorType } from '@/kordi-app/types';
@@ -25,11 +22,9 @@ import type {
   AttachmentItem,
   ComposerConfigTargetOverride,
   ComposerDraftState,
-  ComposerRuntimeContext,
   ComposerSelection,
   ComposerSelectionState,
   ComposerSelectorState,
-  MinimalModelOption,
   MinimalProviderOption,
   UseComposerInputActionsArgs,
 } from './composerController.types';
@@ -40,18 +35,21 @@ export function desktopChatStateAfterConfigUpdate<T>(current: T, next: T, isolat
 
 export function composerConfigTargetSessionId({
   scope,
+  activeConversationUsesCollaboration = false,
   activeConvId,
   activeConvCanonicalSessionId,
   activeProjectSessionId,
   desktopActiveSessionId,
 }: {
   scope: ComposerScope;
+  activeConversationUsesCollaboration?: boolean;
   activeConvId: string;
   activeConvCanonicalSessionId?: string | null;
   activeProjectSessionId: string;
   desktopActiveSessionId?: string | null;
 }) {
   if (scope === 'project') return activeProjectSessionId;
+  if (activeConversationUsesCollaboration) return null;
   if (isLocalDraftChatConversationId(activeConvId)) return activeConvId;
 
   const sessionId = activeConvCanonicalSessionId?.trim() || activeConvId.trim();
@@ -60,83 +58,6 @@ export function composerConfigTargetSessionId({
     return null;
   }
   return activeConvId;
-}
-
-function appendOptimisticSessionConfigMessage({
-  current,
-  targetSessionId,
-  nextModelValue,
-  nextThinkingValue,
-  chatModelOptions,
-}: {
-  current: NonNullable<ComposerRuntimeContext['desktopChatState']>;
-  targetSessionId: string;
-  nextModelValue?: string;
-  nextThinkingValue?: string;
-  chatModelOptions: MinimalModelOption[];
-}) {
-  const selectedModelOption = nextModelValue
-    ? chatModelOptions.find((option) => option.value === nextModelValue)
-    : null;
-  const parsedModel = nextModelValue ? parseModelSelection(nextModelValue) : null;
-  const timeLabel = formatDesktopEventTime();
-  const timestampMs = Date.now();
-  const modelChanged = Boolean(
-    parsedModel
-      && (parsedModel.provider !== current.activeSession.provider
-        || parsedModel.modelId !== current.activeSession.model),
-  );
-  const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== current.activeSession.thinking);
-  const systemMessage = {
-    role: 'system' as const,
-    text: modelChanged
-      ? `Switched model to ${nextModelValue}`
-      : `Thinking set to ${formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)}`,
-    detail: modelChanged ? 'Model updated' : 'Thinking updated',
-    timeLabel,
-    timestampMs,
-  };
-  const nextMessages = appendOrReplaceTrailingSessionConfigNotice(current.activeSession.messages, systemMessage);
-  const messageCountDelta = nextMessages.appended ? 1 : 0;
-
-  return {
-    ...current,
-    sessions: current.sessions.map((session) => (
-      session.id === targetSessionId
-        ? {
-            ...session,
-            updatedAtLabel: timeLabel,
-            updatedAtMs: timestampMs,
-            messageCount: session.messageCount + messageCountDelta,
-          }
-        : session
-    )),
-    activeSession: {
-      ...current.activeSession,
-      provider: modelChanged
-        ? (selectedModelOption?.provider ?? parsedModel?.provider ?? current.activeSession.provider)
-        : current.activeSession.provider,
-      providerLabel: modelChanged
-        ? (selectedModelOption?.providerLabel ?? current.activeSession.providerLabel)
-        : current.activeSession.providerLabel,
-      model: modelChanged
-        ? (selectedModelOption?.label ?? parsedModel?.modelId ?? current.activeSession.model)
-        : current.activeSession.model,
-      modelLabel: modelChanged
-        ? (selectedModelOption?.label ?? parsedModel?.modelId ?? current.activeSession.modelLabel)
-        : current.activeSession.modelLabel,
-      thinking: thinkingChanged
-        ? (nextThinkingValue ?? current.activeSession.thinking)
-        : current.activeSession.thinking,
-      thinkingLabel: thinkingChanged
-        ? formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)
-        : current.activeSession.thinkingLabel,
-      updatedAtLabel: timeLabel,
-      updatedAtMs: timestampMs,
-      messageCount: current.activeSession.messageCount + messageCountDelta,
-      messages: nextMessages.messages,
-    },
-  };
 }
 
 function attachmentFormatLabel(name: string, mimeType?: string) {
@@ -242,7 +163,11 @@ export function useComposerInputActions({
   messageRuntime,
 }: UseComposerInputActionsArgs) {
   const { isNativeShell } = environment;
-  const { activeConvId, activeConvCanonicalSessionId } = conversation;
+  const {
+    activeConversationUsesCollaboration,
+    activeConvId,
+    activeConvCanonicalSessionId,
+  } = conversation;
   const { activeProjectSessionId } = project;
   const { desktopChatState } = runtime;
   const {
@@ -261,6 +186,7 @@ export function useComposerInputActions({
     setDesktopChatState,
     setDesktopChatError,
     shouldAutoFollowChatRef,
+    publishCloudAgentRuntimeRouteChange,
   } = messageRuntime;
   const toggleComposerSelector = useCallback((scope: ComposerScope, type: ComposerSelectorType) => {
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
@@ -321,8 +247,43 @@ export function useComposerInputActions({
     const overrideSessionId = typeof configTargetOverride === 'string'
       ? configTargetOverride
       : isolatedTarget?.sessionId;
+    const cloudRuntimeSessionId = activeConvCanonicalSessionId?.trim()
+      || activeConvId.trim();
+    if (
+      isNativeShell
+      && scope === 'chat'
+      && activeConversationUsesCollaboration
+      && !isolatedTarget
+      && (modelChanged || thinkingChanged)
+      && nextSelection.model
+      && cloudRuntimeSessionId
+      && publishCloudAgentRuntimeRouteChange
+    ) {
+      try {
+        setDesktopChatError(null);
+        await publishCloudAgentRuntimeRouteChange({
+          sessionId: cloudRuntimeSessionId,
+          model: nextSelection.model,
+          thinking: nextThinkingValue ?? nextSelection.thinking,
+        });
+      } catch (error) {
+        setComposerSelections((current: ComposerSelectionState) => ({
+          ...current,
+          [scope]: current[scope].model === nextSelection.model
+            ? currentSelection
+            : current[scope],
+        }));
+        setDesktopChatError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to synchronize the session model',
+        );
+      }
+      return;
+    }
     const targetSessionId = overrideSessionId?.trim() || composerConfigTargetSessionId({
       scope,
+      activeConversationUsesCollaboration,
       activeConvId,
       activeConvCanonicalSessionId,
       activeProjectSessionId,
@@ -377,12 +338,14 @@ export function useComposerInputActions({
   }, [
     activeConvId,
     activeConvCanonicalSessionId,
+    activeConversationUsesCollaboration,
     activeProjectSessionId,
     chatModelOptions,
     composerSelections,
     desktopChatState?.activeSessionId,
     isNativeShell,
     preferredModelValueForProvider,
+    publishCloudAgentRuntimeRouteChange,
     refreshDesktopChat,
     setComposerSelections,
     setDesktopChatError,

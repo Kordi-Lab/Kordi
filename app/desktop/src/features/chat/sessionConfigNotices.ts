@@ -4,7 +4,7 @@ type SessionConfigNoticeLike = {
   detail?: string | null;
 };
 
-const SESSION_CONFIG_NOTICE_DETAILS = new Set(['Model updated', 'Thinking updated']);
+const SESSION_CONFIG_NOTICE_DETAILS = new Set(['Model updated', 'Thinking updated', 'Runtime updated']);
 
 export function isSessionConfigNoticeMessage(message?: SessionConfigNoticeLike | null) {
   if (!message || message.role !== 'system') return false;
@@ -13,7 +13,8 @@ export function isSessionConfigNoticeMessage(message?: SessionConfigNoticeLike |
   return Boolean(
     (detail && SESSION_CONFIG_NOTICE_DETAILS.has(detail))
       || text.startsWith('Switched model to ')
-      || text.startsWith('Thinking set to '),
+      || text.startsWith('Thinking set to ')
+      || text.startsWith('Model: '),
   );
 }
 

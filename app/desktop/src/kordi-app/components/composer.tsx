@@ -20,6 +20,15 @@ import {
 import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
+import {
+  composerThinkingLevelsIncludingCurrent,
+  fallbackComposerThinkingValue,
+} from './composerThinking';
+
+export {
+  fallbackComposerThinkingValue,
+  normalizeComposerThinkingLevels,
+} from './composerThinking';
 import { IdentityAvatar } from './IdentityAvatar';
 import {
   normalizeComposerProviderId,
@@ -274,24 +283,6 @@ export function composerThinkingLabel(value: string) {
         : value);
 }
 
-export function normalizeComposerThinkingLevels(levels: string[]) {
-  const normalized = levels.map((level) => level.trim()).filter(Boolean);
-  if (normalized.length === 1 && normalized[0] === 'off') return ['default'];
-  return normalized;
-}
-
-export function fallbackComposerThinkingValue(levels: string[], requested: string) {
-  const normalizedLevels = normalizeComposerThinkingLevels(levels);
-  if (normalizedLevels.includes(requested)) return requested;
-  if (requested === 'max' && normalizedLevels.includes('xhigh')) return 'xhigh';
-  if (requested === 'max' && normalizedLevels.includes('high')) return 'high';
-  if (requested === 'xhigh' && normalizedLevels.includes('high')) return 'high';
-  if (normalizedLevels.includes('medium')) return 'medium';
-  if (normalizedLevels.includes('default')) return 'default';
-  if (normalizedLevels.includes('off')) return 'off';
-  return normalizedLevels[0] ?? requested;
-}
-
 function lowerComposerLabel(value?: string | null) {
   return (value?.trim() || '').toLocaleLowerCase();
 }
@@ -346,9 +337,12 @@ export function CompactComposerModelMenu({
     ? modelOptions.filter((option) => (option.provider ?? stagedProviderId) === stagedProviderId)
     : modelOptions;
   const stagedModelOption = modelOptions.find((option) => option.value === stagedModel) ?? selectedModelOption ?? visibleModelOptions[0] ?? null;
-  const stagedThinkingLevels = normalizeComposerThinkingLevels(stagedModelOption?.thinkingLevels?.length
-    ? stagedModelOption.thinkingLevels
-    : composerThinkingOptions.map((option) => option.value));
+  const stagedThinkingLevels = composerThinkingLevelsIncludingCurrent(
+    stagedModelOption?.thinkingLevels?.length
+      ? stagedModelOption.thinkingLevels
+      : composerThinkingOptions.map((option) => option.value),
+    stagedThinking,
+  );
   const stagedThinkingValue = fallbackComposerThinkingValue(stagedThinkingLevels, stagedThinking);
   const providerSummary = lowerComposerLabel(
     stagedProviderOption?.selectionLabel
@@ -600,7 +594,7 @@ export function ComposerModelControls({
   openSelector,
   onToggleSelector,
   onSelectValue,
-  authLabel,
+  authLabel: _authLabel,
   authOptions,
   onSelectAuthChoice,
   onSelectProviderChoice,
@@ -639,9 +633,12 @@ export function ComposerModelControls({
   const filteredModelOptions = selectedProviderValue
     ? modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue)
     : modelOptions;
-  const selectedThinkingLevels = normalizeComposerThinkingLevels(selectedModelOption?.thinkingLevels?.length
-    ? selectedModelOption.thinkingLevels
-    : composerThinkingOptions.map((option) => option.value));
+  const selectedThinkingLevels = composerThinkingLevelsIncludingCurrent(
+    selectedModelOption?.thinkingLevels?.length
+      ? selectedModelOption.thinkingLevels
+      : composerThinkingOptions.map((option) => option.value),
+    selection.thinking,
+  );
   const thinkingOptions = selectedThinkingLevels.map((value) => ({
     value,
     label: composerThinkingLabel(value),

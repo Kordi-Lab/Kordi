@@ -21,6 +21,7 @@ enum CloudMessageCodec {
         let text: String
         let requestId: String?
         let deliveryState: String?
+        let execution: AgentExecutionSnapshot?
     }
 
     struct AgentCancelEnvelope: Codable, Equatable {
@@ -113,6 +114,10 @@ enum CloudMessageCodec {
         parsedEnvelopes(body).response?.requestId
     }
 
+    static func agentExecution(_ body: String) -> AgentExecutionSnapshot? {
+        parsedEnvelopes(body).response?.execution
+    }
+
     static func agentCancelEnvelope(_ body: String) -> AgentCancelEnvelope? {
         guard let envelope = parsedEnvelopes(body).cancel,
               envelope.kind == "agent-cancel",
@@ -128,6 +133,26 @@ enum CloudMessageCodec {
 
     static func directEnvelope(_ body: String) -> DirectEnvelope? {
         parsedEnvelopes(body).direct
+    }
+
+    /// Returns the semantic kind used by the local timeline. A compatibility
+    /// projection may omit the typed kind even though the direct envelope still
+    /// carries the authoritative runtime route. Recover that event type at the
+    /// decoding boundary so every projection renders it as a session notice.
+    static func canonicalMessageKind(_ message: CloudMessageDTO) -> String? {
+        if message.messageKind == ChatMessage.agentModelChangeMessageKind {
+            return ChatMessage.agentModelChangeMessageKind
+        }
+        guard let envelope = directEnvelope(message.body),
+              envelope.agentRuntimeRoute != nil,
+              ChatMessage.modelFromAgentModelChangeNotice(envelope.text) != nil else {
+            return message.messageKind
+        }
+        return ChatMessage.agentModelChangeMessageKind
+    }
+
+    static func isAgentModelChange(_ message: CloudMessageDTO) -> Bool {
+        canonicalMessageKind(message) == ChatMessage.agentModelChangeMessageKind
     }
 
     private static func parsedEnvelopes(_ body: String) -> ParsedMessageEnvelopeBox {
@@ -196,9 +221,68 @@ enum CloudAgentLifecycleState: String, Equatable {
 /// slot per request and agent. A late processing heartbeat must never replace a
 /// completed, failed, or cancelled response that another device already saw.
 enum CloudAgentLifecycleProjector {
-    private struct ResponseKey: Hashable {
+    struct ResponseKey: Hashable {
         let requestId: String
         let fromAccountId: String
+    }
+
+    static func executionByResponseKey(
+        in messages: [CloudMessageDTO]
+    ) -> [ResponseKey: AgentExecutionSnapshot] {
+        var snapshots: [ResponseKey: AgentExecutionSnapshot] = [:]
+        for message in messages {
+            guard let key = responseKey(for: message),
+                  let execution = CloudMessageCodec.agentExecution(message.body) else {
+                continue
+            }
+            guard let existing = snapshots[key] else {
+                snapshots[key] = execution
+                continue
+            }
+            if execution.updatedAtMs > existing.updatedAtMs
+                || (execution.updatedAtMs == existing.updatedAtMs
+                    && execution.completed && !existing.completed) {
+                snapshots[key] = execution
+            }
+        }
+        return snapshots
+    }
+
+    static func responseKey(for message: CloudMessageDTO) -> ResponseKey? {
+        guard let requestId = CloudMessageCodec.agentResponseRequestId(message.body)?.nonEmpty else {
+            return nil
+        }
+        return ResponseKey(requestId: requestId, fromAccountId: message.fromAccountId)
+    }
+
+    static func execution(
+        _ snapshot: AgentExecutionSnapshot,
+        finalizedFor message: CloudMessageDTO
+    ) -> AgentExecutionSnapshot {
+        guard let state = CloudMessageCodec.agentResponseDeliveryState(message.body),
+              state.isTerminal,
+              !snapshot.completed else {
+            return snapshot
+        }
+        let phase: AgentExecutionSnapshot.Phase = switch state {
+        case .complete: .complete
+        case .failed: .failed
+        case .cancelled: .cancelled
+        case .processing: snapshot.phase
+        }
+        return AgentExecutionSnapshot(
+            phase: phase,
+            summary: snapshot.summary,
+            steps: snapshot.steps,
+            thinkingText: snapshot.thinkingText,
+            tools: snapshot.tools,
+            startedAtMs: snapshot.startedAtMs,
+            updatedAtMs: max(
+                snapshot.updatedAtMs,
+                parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
+            ),
+            completed: true
+        )
     }
 
     static func visibleRows(_ messages: [CloudMessageDTO]) -> [CloudMessageDTO] {
@@ -245,13 +329,6 @@ enum CloudAgentLifecycleProjector {
             .filter { CloudMessageCodec.agentResponseRequestId($0.body) == requestId }
             .max(by: messagePrecedes)
             .flatMap { CloudMessageCodec.agentResponseDeliveryState($0.body) }
-    }
-
-    private static func responseKey(for message: CloudMessageDTO) -> ResponseKey? {
-        guard let requestId = CloudMessageCodec.agentResponseRequestId(message.body)?.nonEmpty else {
-            return nil
-        }
-        return ResponseKey(requestId: requestId, fromAccountId: message.fromAccountId)
     }
 
     private static func preferredResponse(

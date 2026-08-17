@@ -2,6 +2,7 @@ use super::*;
 use kordi_core::settings::ProviderOverride;
 use std::sync::Mutex;
 
+include!("tests/route_switch.rs");
 #[test]
 fn session_prompt_context_strips_current_and_legacy_wrappers() {
     assert_eq!(
@@ -89,7 +90,6 @@ fn attachment_metadata_from_path_includes_size_local_path_and_mime_type() -> Res
         uuid::Uuid::new_v4()
     ));
     std::fs::write(&path, b"png-bytes")?;
-
     let metadata = attachment_metadata_from_path(path.to_str().expect("temp path is utf-8"));
 
     assert_eq!(metadata.kind, "image");

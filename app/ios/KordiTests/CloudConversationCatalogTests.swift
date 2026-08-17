@@ -2,6 +2,100 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testDraftModelChangeDoesNotCreateAgentSession() throws {
+        var runtimeRoute = CloudModelRouting.empty
+        runtimeRoute.defaultModel = "openai/gpt-5.6-luna"
+        runtimeRoute.defaultAuthProvider = "openai"
+        runtimeRoute.defaultAuthChoice = "oauth"
+        runtimeRoute.thinking = "high"
+        let modelChange = try CloudMessageCodec.encodeDirect(
+            text: "Switched model to openai/gpt-5.6-luna",
+            agentId: nil,
+            agentName: nil,
+            ownerAccountId: nil,
+            ownerName: nil,
+            agentRuntimeRoute: runtimeRoute
+        )
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [
+                wire(
+                    id: "draft-model-change",
+                    body: modelChange,
+                    sessionId: "draft:local-chat",
+                    createdAt: "2026-08-16T11:00:00Z",
+                    messageKind: ChatMessage.agentModelChangeMessageKind
+                )
+            ]]
+        )
+
+        XCTAssertNil(catalog.first { $0.sessionId == "draft:local-chat" })
+    }
+
+    func testModelChangeDoesNotReplaceAgentSessionTitleOrPreview() throws {
+        let sessionId = "session:self-agent:model-preview"
+        var runtimeRoute = CloudModelRouting.empty
+        runtimeRoute.defaultModel = "openai/gpt-5.6-luna"
+        runtimeRoute.defaultAuthProvider = "openai"
+        runtimeRoute.defaultAuthChoice = "oauth"
+        runtimeRoute.thinking = "high"
+        let modelChange = try CloudMessageCodec.encodeDirect(
+            text: "Switched model to openai/gpt-5.6-luna",
+            agentId: nil,
+            agentName: nil,
+            ownerAccountId: nil,
+            ownerName: nil,
+            agentRuntimeRoute: runtimeRoute
+        )
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [
+                wire(
+                    id: "prompt",
+                    body: "Check my disk usage",
+                    sessionId: sessionId,
+                    createdAt: "2026-08-16T11:00:00Z"
+                ),
+                wire(
+                    id: "model-change",
+                    body: modelChange,
+                    sessionId: sessionId,
+                    createdAt: "2026-08-16T11:00:01Z",
+                    messageKind: ChatMessage.agentModelChangeMessageKind
+                )
+            ]]
+        )
+
+        let session = try XCTUnwrap(catalog.first { $0.sessionId == sessionId })
+        XCTAssertEqual(session.displayName, "Check my disk usage")
+        XCTAssertEqual(session.lastMessage, "Check my disk usage")
+    }
+
+    func testCanonicalDraftAgentConversationIsHidden() {
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [:],
+            canonicalConversations: [canonicalConversation(
+                id: "conversation-draft",
+                kind: "ai",
+                sessionId: "draft:local-chat",
+                latestSequence: 1,
+                lastReadSequence: 1
+            )]
+        )
+
+        XCTAssertNil(catalog.first { $0.sessionId == "draft:local-chat" })
+    }
+
     func testCanonicalV2AgentSessionAppearsBeforeHistoryBackfill() throws {
         let payload = Data(#"{"id":"conversation-agent","kind":"ai","shared_title":"Check all my chats","version":3,"created_by_account_id":"acct_me","legacy_session_id":"session:self-agent:canonical","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":12,"created_at":"2026-08-08T10:00:00Z","updated_at":"2026-08-08T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Fixture Owner","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":12,"last_read_sequence":12,"joined_at":"2026-08-08T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-agent","account_id":"acct_me","personal_title":null,"version":1}}"#.utf8)
         let canonical = try JSONDecoder().decode(CloudChatConversation.self, from: payload)
@@ -1119,6 +1213,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         createdAt: String,
         from: String = "acct_me",
         to: String = "acct_me",
+        messageKind: String? = nil,
         conversationId: String? = nil,
         conversationSequence: Int64? = nil
     ) -> CloudMessageDTO {
@@ -1132,6 +1227,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             readAt: nil,
             direction: from == "acct_me" ? "outgoing" : "incoming",
             sessionId: sessionId,
+            messageKind: messageKind,
             conversationId: conversationId,
             conversationSequence: conversationSequence
         )

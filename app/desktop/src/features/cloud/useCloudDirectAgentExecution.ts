@@ -23,7 +23,6 @@ import {
   resolveCloudMessageAttachments,
 } from './cloudAttachments';
 import {
-  CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   cloudAgentNoProviderNoticeText,
   encodeCloudAgentResponse,
@@ -32,8 +31,10 @@ import {
 } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
+  cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
 import {
+  cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
 } from './cloudDirectMessages';
@@ -151,8 +152,11 @@ export function useCloudDirectAgentExecution({
             activitySessionId,
           )
           : [];
-        const runtimeSessionId =
-          `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${peerId}`;
+        const runtimeSessionId = cloudAgentRuntimeSessionId(
+          account.accountId,
+          activitySessionId ?? peerId,
+        );
+        if (!runtimeSessionId) continue;
         const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
           setLocalTurns((current) => ({
             ...current,
@@ -221,6 +225,7 @@ export function useCloudDirectAgentExecution({
                 routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
                 runtimeSessionId,
                 fallbackRoute: defaultCloudAgentRuntimeRoute,
+                requestRoute: cloudDirectMessageAgentRuntimeRoute(message.body),
               }),
               contextMessages,
               visibleTaskRecords,

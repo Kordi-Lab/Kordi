@@ -1,8 +1,4 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useMemo } from 'react';
 import type {
   DesktopCollaborationState,
   MessageActionMetadata,
@@ -20,11 +16,7 @@ import {
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
-import {
-  buildCloudMessageIndex,
-  type CloudMessageIndex,
-  type IndexedCloudGroupRow,
-} from './cloudMessageIndex';
+import { type IndexedCloudGroupRow } from './cloudMessageIndex';
 import { defaultCloudAgentsClient } from './cloudAgentsClient';
 import { defaultCloudMessageCache } from './cloudMessageCache';
 import {
@@ -41,6 +33,7 @@ import {
   useCloudAgentRequestCancellation,
 } from './useCloudAgentCancellation';
 import { useCloudDirectAgentExecution } from './useCloudDirectAgentExecution';
+import { useCloudSelfAgentExecution } from './useCloudSelfAgentExecution';
 import { useCloudSelfAgentForwardSync } from './useCloudSelfAgentForwardSync';
 import { useCloudSelfAgentMetadataSync } from './useCloudSelfAgentMetadataSync';
 import { useCloudSelfAgentCanonicalSync } from './useCloudSelfAgentCanonicalSync';
@@ -80,8 +73,8 @@ import {
 } from './useCloudCollaborationTopology';
 import {
   useCloudCollaborationStores,
-  type CloudCollaborationMessageStore,
 } from './useCloudCollaborationStores';
+import { useCloudCollaborationMessageStore } from './useCloudCollaborationMessageStore';
 import {
   useCloudCollaborationTransport,
 } from './useCloudCollaborationTransport';
@@ -187,51 +180,13 @@ export {
   suppressCloudCollaborationUnreadCounts,
 } from './useCloudCollaborationReadModel';
 
-const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
-
-function useCloudCollaborationMessageStore(
-  account: CloudAccount | null,
-): CloudCollaborationMessageStore {
-  const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
-  const cacheAccountRef = useRef<string | null>(null);
-  const hydratedCacheAccountRef = useRef<string | null>(null);
-  const peerReadAtByPeerRef = useRef<Record<string, string>>({});
-  const belongsToCurrentAccount = Boolean(account?.accountId
-    && cacheAccountRef.current === account.accountId);
-  const currentAccountMessagesByPeer = belongsToCurrentAccount
-    ? messagesByPeer
-    : EMPTY_CLOUD_MESSAGES_BY_PEER;
-  const indexRef = useRef<CloudMessageIndex>(null!);
-  const index = useMemo(
-    () => buildCloudMessageIndex(
-      account?.accountId ?? null,
-      currentAccountMessagesByPeer,
-      { previousIndex: indexRef.current },
-    ),
-    [account?.accountId, currentAccountMessagesByPeer],
-  );
-  const valueRef = useRef<Record<string, CloudMessage[]>>({});
-
-  return {
-    value: messagesByPeer,
-    setValue: setMessagesByPeer,
-    valueRef,
-    currentAccountValue: currentAccountMessagesByPeer,
-    belongsToCurrentAccount,
-    index,
-    indexRef,
-    cacheAccountRef,
-    hydratedCacheAccountRef,
-    peerReadAtByPeerRef,
-  };
-}
-
 function reportCloudAgentAvailabilityWarning(message: string, error: unknown) {
   console.warn(message, error);
 }
 
 function reportCloudAgentExecutionWarning(message: string, error: unknown) {
-  console.warn(message, error);
+  const detail = error instanceof Error ? error.message : String(error);
+  console.warn(`${message}: ${detail}`);
 }
 
 export function useCloudCollaborationState({
@@ -241,6 +196,8 @@ export function useCloudCollaborationState({
   localTurnsBySessionId,
   cloudAgentRuntimeRoutesBySessionId,
   defaultCloudAgentRuntimeRoute,
+  defaultCloudAgentRuntimeReady = true,
+  desktopAuthState,
 }: UseCloudCollaborationStateArgs): UseCloudCollaborationStateResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const cloudAgentsClient = useMemo(() => defaultCloudAgentsClient(), []);
@@ -384,6 +341,7 @@ export function useCloudCollaborationState({
     mergeMessage,
     prepareForwardAttachments: prepareCloudForwardAttachments,
     sendMessage: sendCloudCollaborationMessage,
+    updateSessionTitle: updateCloudCollaborationSessionTitle,
   } = useCloudCollaborationTransport({
     account,
     canonicalState: canonicalSessionState,
@@ -494,6 +452,7 @@ export function useCloudCollaborationState({
     account,
     client,
     route: defaultCloudAgentRuntimeRoute,
+    desktopAuthState,
     initialMessagesSettled,
     reportWarning: reportCloudAgentExecutionWarning,
   });
@@ -506,6 +465,23 @@ export function useCloudCollaborationState({
     initialMessagesSettled,
     processedRequestIdsRef: processedCloudAgentMentionIdsRef,
     turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
+    reportWarning: reportCloudAgentExecutionWarning,
+  });
+
+  useCloudSelfAgentExecution({
+    account,
+    client,
+    messageIndex: cloudMessageIndex,
+    initialMessagesSettled,
+    runtimeReady: defaultCloudAgentRuntimeReady,
+    routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
+    defaultRoute: defaultCloudAgentRuntimeRoute,
+    cloudAgentDefinitionsById,
+    processedRequestIdsRef: processedCloudAgentMentionIdsRef,
+    turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
+    setLocalTurns: setLocalAgentTurnsByRequestId,
+    mergeMessage,
+    syncMessages: syncCloudCollaborationDiff,
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
@@ -661,12 +637,21 @@ export function useCloudCollaborationState({
     turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
     setCollaborationOverride: setCloudCollaborationOverride,
   });
+  const cloudAgentRuntimeRouteMessages = useMemo(() => (
+    cloudMessageIndex.allMessages.filter((message) => (
+      message.messageKind === 'agent-model-change'
+      && message.fromAccountId === account?.accountId
+      && message.toAccountId === account?.accountId
+    ))
+  ), [account?.accountId, cloudMessageIndex.allMessages]);
   return {
+    cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,
     setCloudCollaborationState,
     mergedCollaborationState: cloudCollaborationState,
     prepareCloudForwardAttachments,
     sendCloudCollaborationMessage,
+    updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
     recordCloudSessionFork,
     updateCloudSessionPin,

@@ -54,13 +54,21 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 }
 
 #[tokio::test]
-async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_online() {
+async fn cloud_agent_runtime_fallback_claim_is_rejected_when_owner_mac_is_online() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
     let owner = signup(&router, "online-owner", "Owner").await;
     let requester = signup(&router, "online-requester", "Requester").await;
     accept_contacts(&router, &requester, &owner).await;
+
+    sqlx_core::query::query(
+        "UPDATE cloud_devices SET device_platform = 'macos' WHERE account_id = $1",
+    )
+    .bind(&owner.account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let online = router
         .clone()
@@ -79,29 +87,60 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_online()
         .await
         .unwrap();
 
-    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(first.status(), StatusCode::CONFLICT);
     let first_body = read_json(first).await;
-
-    let second = router
-        .clone()
-        .oneshot(post_json_with_token(
-            "/v1/cloud/agent-runs/claim",
-            &requester.token,
-            claim_body(&owner, &requester, "msg_online_owner"),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(second.status(), StatusCode::OK);
-    let second_body = read_json(second).await;
-
-    assert_eq!(first_body["runId"], second_body["runId"]);
+    assert_eq!(first_body["errorCode"], "owner_online");
     let idempotency_key = claim_body(&owner, &requester, "msg_online_owner")["idempotencyKey"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(
         count_cloud_agent_runs_for_key(&pool, &idempotency_key).await,
-        1
+        0
+    );
+}
+
+#[tokio::test]
+async fn cloud_agent_runtime_fallback_claim_is_rejected_for_fresh_desktop_execution() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "processing-owner", "Owner").await;
+    let request_message_id = format!("msg_processing_{}", uuid::Uuid::new_v4().simple());
+    let session_id = format!("session:self-agent:{}", uuid::Uuid::new_v4().simple());
+    let conversation_id = create_test_conversation(
+        &pool,
+        &owner.account_id,
+        &session_id,
+        ConversationKind::Ai,
+        Vec::new(),
+    )
+    .await;
+    insert_test_message(
+        &pool,
+        &owner.account_id,
+        conversation_id,
+        &encode_test_cloud_agent_processing_response(&request_message_id),
+    )
+    .await;
+
+    let claim = claim_body_with_session(&owner, &owner, &request_message_id, &session_id);
+    let response = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &owner.token,
+            claim.clone(),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = read_json(response).await;
+    assert_eq!(body["errorCode"], "owner_online");
+    assert_eq!(
+        count_cloud_agent_runs_for_key(&pool, claim["idempotencyKey"].as_str().unwrap()).await,
+        0,
     );
 }
 

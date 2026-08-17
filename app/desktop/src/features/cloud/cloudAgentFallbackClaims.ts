@@ -31,6 +31,7 @@ import {
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
 import { isCloudAgentProcessingPlaceholderText } from './cloudAgentRequestState';
+import { CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND } from './cloudAgentRuntime';
 
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES = 12;
 
@@ -71,7 +72,11 @@ function cloudFallbackHistoryLine({
   message: CloudMessage;
   ownerAccountId: string;
 }): string | null {
-  if (isGroupControl || parseCloudAgentCancel(message.body)) return null;
+  if (
+    isGroupControl
+    || message.messageKind === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
+    || parseCloudAgentCancel(message.body)
+  ) return null;
   if (
     !cloudMessageActionAllowsAgentContext(
       cloudDirectMessageAction(message.body),
@@ -295,6 +300,7 @@ export function cloudFallbackRunClaimsForMessages({
         if (
           message.fromAccountId !== account.accountId
           || message.toAccountId !== account.accountId
+          || message.messageKind === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
           || groupControlMessageIds.has(message.messageId)
           || parseCloudAgentResponse(message.body)
           || parseCloudAgentCancel(message.body)

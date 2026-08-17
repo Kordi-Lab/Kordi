@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import {
   collaborationAgentRoutingChangeNotice,
+  collaborationAgentWithSessionRoute,
   collaborationChatRoutingControlVisibility,
   localOwnedCollaborationAgentsForModelRouting,
   resolveCollaborationAgentRoutingUpdate,
@@ -112,9 +113,12 @@ function selectedRoutingAgent(
     ?? agents[0]
     ?? null;
   if (!agent) return null;
+  const optimistic = key && !isCloudCollaborationHostId(agent.hostId)
+    ? optimisticRouting[key]
+    : null;
   return {
     ...agent,
-    ...(key ? optimisticRouting[key] : null),
+    ...optimistic,
   };
 }
 
@@ -158,12 +162,15 @@ export function useChatCollaborationRouting({
     ?? null;
   const mainKey = routingKey(mainBase, main.conversation);
   const companionKey = routingKey(companionBase, companion.conversation);
-  const mainAgent = selectedRoutingAgent(
+  const selectedMainAgent = selectedRoutingAgent(
     mainAgents,
     selectedMainAgentId,
     mainKey,
     optimisticRouting,
   );
+  const mainAgent = selectedMainAgent && isCloudCollaborationHostId(selectedMainAgent.hostId)
+    ? collaborationAgentWithSessionRoute(selectedMainAgent, main.composerSelection)
+    : selectedMainAgent;
   const companionAgent = selectedRoutingAgent(
     companionAgents,
     selectedCompanionAgentId,
@@ -232,7 +239,9 @@ export function useChatCollaborationRouting({
       : null);
     if (!notice) return;
 
-    setOptimisticRouting((current) => ({ ...current, [key]: routing }));
+    if (!isCloudCollaborationHostId(agent.hostId)) {
+      setOptimisticRouting((current) => ({ ...current, [key]: routing }));
+    }
     setNotice(notice);
     void shared.updateRouting(
       agent.hostId,
@@ -266,6 +275,9 @@ export function useChatCollaborationRouting({
       patch,
       isBusy: main.isBusy,
       setNotice: setMainNotice,
+      targetSessionId: main.conversation?.canonicalSessionId
+        ?? main.conversation?.id
+        ?? null,
     });
   };
 
@@ -318,6 +330,7 @@ export function useChatCollaborationRouting({
 
   return {
     main: {
+      enabled: main.enabled && Boolean(mainAgent),
       notice: mainNotice,
       agents: mainAgents,
       selectedAgent: mainAgent,
