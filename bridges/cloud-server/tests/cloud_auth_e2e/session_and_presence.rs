@@ -195,6 +195,7 @@ async fn presence_rollup_stays_online_until_all_devices_offline() {
     )
     .await;
     assert_eq!(online["accounts"][0]["status"], "online");
+    assert_eq!(online["accounts"][0]["lastSeenAt"], serde_json::Value::Null);
 
     assert_eq!(
         router
@@ -214,4 +215,5 @@ async fn presence_rollup_stays_online_until_all_devices_offline() {
     )
     .await;
     assert_eq!(offline["accounts"][0]["status"], "offline");
+    assert!(offline["accounts"][0]["lastSeenAt"].as_str().is_some());
 }

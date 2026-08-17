@@ -22,11 +22,12 @@ export function applyPresenceSnapshot(current: CloudPresenceStore, response: Clo
       updatedAt: cleanText(account.updatedAt)
         || previous?.updatedAt
         || new Date().toISOString(),
+      lastSeenAt: cleanText(account.lastSeenAt) || null,
     };
-    // The UI consumes presence status, not heartbeat timestamps. Keeping the
-    // existing object for a timestamp-only refresh prevents a routine poll
-    // from invalidating the complete collaboration read model.
-    if (previous?.status === normalized.status) continue;
+    // Online heartbeat timestamps are not a visible presence change. Keep the
+    // existing object unless status changes or an offline last-seen value moves.
+    if (previous?.status === normalized.status
+      && (normalized.status === 'online' || previous.lastSeenAt === normalized.lastSeenAt)) continue;
     if (next === current) next = { ...current };
     next[accountId] = normalized;
   }
@@ -43,8 +44,10 @@ export function mergePresenceEvent(current: CloudPresenceStore, event: CloudPres
     updatedAt: cleanText(event.updatedAt)
       || previous?.updatedAt
       || new Date().toISOString(),
+    lastSeenAt: cleanText(event.lastSeenAt) || null,
   };
-  if (previous?.status === normalized.status) return current;
+  if (previous?.status === normalized.status
+    && (normalized.status === 'online' || previous.lastSeenAt === normalized.lastSeenAt)) return current;
   return {
     ...current,
     [accountId]: normalized,
@@ -70,5 +73,6 @@ export function cloudPresenceChangedFromWsPayload(payload: unknown): CloudPresen
     accountId,
     status: normalizePresenceStatus(record.status),
     updatedAt: cleanText(record.occurred_at ?? record.updatedAt) || new Date().toISOString(),
+    lastSeenAt: cleanText(record.last_seen_at ?? record.lastSeenAt) || null,
   };
 }

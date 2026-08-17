@@ -336,6 +336,7 @@ export type CloudPresenceAccount = {
   accountId: string;
   status: CloudPresenceStatus;
   updatedAt: string;
+  lastSeenAt: string | null;
 };
 
 export type CloudPresenceContactsResponse = {

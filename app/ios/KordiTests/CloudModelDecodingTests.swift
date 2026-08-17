@@ -102,6 +102,58 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(activity.artifacts.first?.attachmentId, nil)
     }
 
+    func testContactPresenceDecodesLastSeenTimestamp() throws {
+        let payload = Data(#"{"accountId":"acct_maya","status":"offline","updatedAt":"2026-08-17T10:00:00Z","lastSeenAt":"2026-08-17T09:55:00Z"}"#.utf8)
+
+        let presence = try JSONDecoder().decode(CloudPresenceAccount.self, from: payload)
+
+        XCTAssertEqual(presence.status, .offline)
+        XCTAssertEqual(presence.lastSeenAt, "2026-08-17T09:55:00Z")
+    }
+
+    func testContactPresencePresentationMatchesTelegramStyle() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let locale = Locale(identifier: "en_US")
+        let now = parseCloudDate("2026-08-17T13:00:00Z")
+
+        XCTAssertEqual(
+            ContactPresencePresentation.label(
+                for: CloudPresenceAccount(
+                    accountId: "acct_maya",
+                    status: .online,
+                    lastSeenAt: nil
+                ),
+                now: now,
+                calendar: calendar,
+                locale: locale
+            ),
+            "online"
+        )
+        XCTAssertEqual(
+            ContactPresencePresentation.label(
+                for: CloudPresenceAccount(
+                    accountId: "acct_maya",
+                    status: .offline,
+                    lastSeenAt: "2026-08-17T12:55:00Z"
+                ),
+                now: now,
+                calendar: calendar,
+                locale: locale
+            ),
+            "last seen today at 12:55\u{202F}PM"
+        )
+        XCTAssertEqual(
+            ContactPresencePresentation.label(
+                for: nil,
+                now: now,
+                calendar: calendar,
+                locale: locale
+            ),
+            "last seen recently"
+        )
+    }
+
     func testCloudMessageDecodesWithoutAttachmentModel() throws {
         let payload = Data(#"{"messageId":"msg_1","fromAccountId":"acct_me","toAccountId":"acct_maya","body":"Hello","createdAt":"2026-08-08T00:00:00Z","deliveredAt":"2026-08-08T00:00:01Z","readAt":null,"direction":"outgoing","sessionId":"session:direct-person:acct_maya:acct_me","attachments":[]}"#.utf8)
         let message = try JSONDecoder().decode(CloudMessageDTO.self, from: payload)

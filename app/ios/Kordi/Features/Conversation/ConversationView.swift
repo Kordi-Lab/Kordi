@@ -818,7 +818,7 @@ struct ConversationView: View {
 
             Text(conversationHeaderStatus)
                 .font(.caption2)
-                .foregroundStyle(conversation.kind == .agent ? KordiTheme.agentViolet : .secondary)
+                .foregroundStyle(conversationHeaderStatusColor)
                 .lineLimit(1)
         }
     }
@@ -843,8 +843,25 @@ struct ConversationView: View {
         case .group:
             "\(max(2, conversation.groupParticipants.count)) participants"
         case .person:
-            conversation.representsKordiSupport ? "Official Kordi support" : "Kordi contact"
+            if conversation.representsKordiSupport {
+                "Official Kordi support"
+            } else {
+                ContactPresencePresentation.label(
+                    for: model.contactPresenceByAccountID[conversation.peerAccountId]
+                )
+            }
         }
+    }
+
+    private var conversationHeaderStatusColor: Color {
+        if conversation.kind == .agent {
+            return KordiTheme.agentViolet
+        }
+        if conversation.kind == .person,
+           model.contactPresenceByAccountID[conversation.peerAccountId]?.status == .online {
+            return KordiTheme.signalBlue
+        }
+        return .secondary
     }
 
     private func openSessionDetails() {
@@ -1097,6 +1114,61 @@ struct ConversationView: View {
             from: message,
             in: timeline,
             initialImage: previewImage
+        )
+    }
+}
+
+enum ContactPresencePresentation {
+    static func label(
+        for presence: CloudPresenceAccount?,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        guard presence?.status != .online else { return "online" }
+        guard let value = presence?.lastSeenAt else {
+            return "last seen recently"
+        }
+
+        let lastSeen = parseCloudDate(value)
+        guard lastSeen != .distantPast else { return "last seen recently" }
+        let time = formattedTime(lastSeen, calendar: calendar, locale: locale)
+        if calendar.isDate(lastSeen, inSameDayAs: now) {
+            let elapsed = now.timeIntervalSince(lastSeen)
+            return elapsed >= 0 && elapsed < 60
+                ? "last seen just now"
+                : "last seen today at \(time)"
+        }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(lastSeen, inSameDayAs: yesterday) {
+            return "last seen yesterday at \(time)"
+        }
+        return "last seen \(formattedDate(lastSeen, calendar: calendar, locale: locale)) at \(time)"
+    }
+
+    private static func formattedTime(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        date.formatted(
+            Date.FormatStyle(
+                date: .omitted,
+                time: .shortened,
+                locale: locale,
+                calendar: calendar,
+                timeZone: calendar.timeZone
+            )
+        )
+    }
+
+    private static func formattedDate(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        date.formatted(
+            Date.FormatStyle(
+                date: .omitted,
+                time: .omitted,
+                locale: locale,
+                calendar: calendar,
+                timeZone: calendar.timeZone
+            )
+            .month(.abbreviated)
+            .day()
         )
     }
 }

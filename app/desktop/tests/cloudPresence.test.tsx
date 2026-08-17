@@ -16,8 +16,8 @@ import { IdentityAvatar } from '../src/kordi-app/components/IdentityAvatar';
 test('presence snapshot stores account statuses by account id', () => {
   const snapshot = applyPresenceSnapshot({}, {
     accounts: [
-      { accountId: 'acct_1', status: 'online', updatedAt: '2026-05-23T00:00:00Z' },
-      { accountId: 'acct_2', status: 'offline', updatedAt: '2026-05-23T00:01:00Z' },
+      { accountId: 'acct_1', status: 'online', updatedAt: '2026-05-23T00:00:00Z', lastSeenAt: null },
+      { accountId: 'acct_2', status: 'offline', updatedAt: '2026-05-23T00:01:00Z', lastSeenAt: '2026-05-23T00:00:30Z' },
     ],
   });
   assert.equal(presenceStatusForAccount(snapshot, 'acct_1'), 'online');
@@ -26,7 +26,12 @@ test('presence snapshot stores account statuses by account id', () => {
 });
 
 test('presence websocket event updates a single account', () => {
-  const next = mergePresenceEvent({}, { accountId: 'acct_1', status: 'online', updatedAt: '2026-05-23T00:00:00Z' });
+  const next = mergePresenceEvent({}, {
+    accountId: 'acct_1',
+    status: 'online',
+    updatedAt: '2026-05-23T00:00:00Z',
+    lastSeenAt: null,
+  });
   assert.equal(next.acct_1?.status, 'online');
 });
 
@@ -36,6 +41,7 @@ test('unchanged presence data preserves store identity', () => {
       accountId: 'acct_1',
       status: 'online' as const,
       updatedAt: '2026-05-23T00:00:00Z',
+      lastSeenAt: null,
     },
   };
   assert.equal(applyPresenceSnapshot(current, {
@@ -43,24 +49,28 @@ test('unchanged presence data preserves store identity', () => {
       accountId: 'acct_1',
       status: 'online',
       updatedAt: '2026-05-23T00:00:00Z',
+      lastSeenAt: null,
     }],
   }), current);
   assert.equal(mergePresenceEvent(current, {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: '2026-05-23T00:00:00Z',
+    lastSeenAt: null,
   }), current);
   assert.equal(applyPresenceSnapshot(current, {
     accounts: [{
       accountId: 'acct_1',
       status: 'online',
       updatedAt: '2026-05-23T00:05:00Z',
+      lastSeenAt: null,
     }],
   }), current);
   assert.equal(mergePresenceEvent(current, {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: '2026-05-23T00:05:00Z',
+    lastSeenAt: null,
   }), current);
 });
 
@@ -70,12 +80,14 @@ test('presence updates without a timestamp preserve the prior timestamp', () => 
       accountId: 'acct_1',
       status: 'online' as const,
       updatedAt: '2026-05-23T00:00:00Z',
+      lastSeenAt: null,
     },
   };
   assert.equal(mergePresenceEvent(current, {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: '',
+    lastSeenAt: null,
   }), current);
 });
 
@@ -86,6 +98,7 @@ test('presence subject and payload parser recognize account changes', () => {
     accountId: 'acct_1',
     status: 'online',
     updatedAt: 'now',
+    lastSeenAt: null,
   });
 });
 

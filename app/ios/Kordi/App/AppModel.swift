@@ -51,6 +51,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var phase: AppPhase = .launching
     @Published private(set) var account: CloudAccount?
     @Published private(set) var contacts: [CloudContact] = []
+    @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
     @Published private(set) var conversations: [ConversationSummary] = []
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
@@ -283,6 +284,7 @@ final class AppModel: ObservableObject {
         currentDeviceId = nil
         account = nil
         contacts = []
+        contactPresenceByAccountID = [:]
         contactRequests = []
         conversations = []
         messagesByConversation = [:]
@@ -332,14 +334,15 @@ final class AppModel: ObservableObject {
         defer { isRefreshing = false }
         do {
             async let fetchedContacts = api.listContacts(token: token)
+            async let fetchedPresence = try? api.listContactPresence(token: token)
             async let fetchedRequests = api.listContactRequests(token: token)
             async let ownedAgents = api.listAgents(token: token)
             async let fetchedVisibility = api.listSessionVisibility(token: token)
             async let fetchedAuth = try? api.currentProviderAuthSnapshot(token: token)
             async let fetchedDevices = try? api.listDevices(token: token)
             async let canonicalLatestMessages = api.bootstrapChatLatestMessages(token: token)
-            let (contactList, requests, owned, visibility, authSnapshot, deviceList, latestCanonical) = try await (
-                fetchedContacts, fetchedRequests, ownedAgents, fetchedVisibility, fetchedAuth,
+            let (contactList, presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical) = try await (
+                fetchedContacts, fetchedPresence, fetchedRequests, ownedAgents, fetchedVisibility, fetchedAuth,
                 fetchedDevices, canonicalLatestMessages
             )
             var shared = try await api.listSharedAgents(
@@ -347,6 +350,9 @@ final class AppModel: ObservableObject {
                 ownerAccountIds: contactList.map(\.accountId)
             )
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
+            if let presence {
+                applyContactPresenceSnapshot(presence)
+            }
             contactRequests = requests
             ownedCloudAgents = owned
             providerAuthSnapshot = authSnapshot
@@ -424,6 +430,24 @@ final class AppModel: ObservableObject {
             // The chat sync loop retries this best-effort inbox refresh. User-triggered
             // contact actions continue to surface their own actionable errors.
         }
+    }
+
+    func refreshContactPresence() async {
+        guard let token else { return }
+        do {
+            let presence = try await api.listContactPresence(token: token)
+            guard token == self.token else { return }
+            applyContactPresenceSnapshot(presence)
+        } catch {
+            // Presence is best effort. Keep the most recent snapshot while the
+            // regular sync loop retries instead of degrading message sync.
+        }
+    }
+
+    private func applyContactPresenceSnapshot(_ presence: [CloudPresenceAccount]) {
+        let next = Dictionary(uniqueKeysWithValues: presence.map { ($0.accountId, $0) })
+        guard next != contactPresenceByAccountID else { return }
+        contactPresenceByAccountID = next
     }
 
     func appDidBecomeActive() async {
@@ -2424,6 +2448,7 @@ final class AppModel: ObservableObject {
             var nextCursor = cloudSyncCursor
             var pendingEvents: [CloudSyncEvent] = []
             var chatPollsUntilContactRefresh = 0
+            var chatPollsUntilPresenceRefresh = 0
             while !Task.isCancelled {
                 do {
                     let response = try await api.sync(token: token, cursor: nextCursor)
@@ -2479,6 +2504,12 @@ final class AppModel: ObservableObject {
                     chatPollsUntilContactRefresh = 2
                 } else {
                     chatPollsUntilContactRefresh -= 1
+                }
+                if chatPollsUntilPresenceRefresh == 0 {
+                    await refreshContactPresence()
+                    chatPollsUntilPresenceRefresh = 7
+                } else {
+                    chatPollsUntilPresenceRefresh -= 1
                 }
                 try? await Task.sleep(for: .seconds(2))
             }
@@ -3043,6 +3074,18 @@ final class AppModel: ObservableObject {
         previewRouting.thinking = "medium"
         account = fixture.account
         contacts = fixture.contacts
+        let now = Date()
+        let timestamp = ISO8601DateFormatter()
+        contactPresenceByAccountID = Dictionary(uniqueKeysWithValues: fixture.contacts.map { contact in
+            (
+                contact.accountId,
+                CloudPresenceAccount(
+                    accountId: contact.accountId,
+                    status: .offline,
+                    lastSeenAt: timestamp.string(from: now.addingTimeInterval(-90))
+                )
+            )
+        })
         conversations = fixture.conversations
         messagesByConversation = fixture.messagesByConversation
         ownedCloudAgents = [
@@ -3067,8 +3110,6 @@ final class AppModel: ObservableObject {
             revokedAt: nil
         )
         providerAuthSnapshots["openai"] = providerAuthSnapshot
-        let now = Date()
-        let timestamp = ISO8601DateFormatter()
         devices = [
             CloudDeviceAuthorization(
                 deviceId: "device_preview_iphone",
