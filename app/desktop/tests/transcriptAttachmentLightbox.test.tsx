@@ -114,6 +114,30 @@ test('media lightbox is native-window content without modal chrome or tooltip no
   assert.doesNotMatch(markup, /Right-click for image actions|Close image preview|data-attachment-image-lightbox-panel/);
 });
 
+test('media lightbox uses meme alt text as its image description', () => {
+  const attachment = {
+    ...galleryMessage.attachments?.[0],
+    kind: 'image' as const,
+    subtype: 'meme' as const,
+    altText: 'A calm dog says everything is fine while tests fail around it.',
+  };
+  const markup = renderToStaticMarkup(createElement(AttachmentImageLightbox, {
+    attachment,
+    previewUrl: attachment.previewUrl,
+    onClose: () => {},
+    canGoPrevious: false,
+    canGoNext: false,
+    onPrevious: () => {},
+    onNext: () => {},
+    positionLabel: '1 of 1',
+  }));
+
+  assert.match(
+    markup,
+    /alt="A calm dog says everything is fine while tests fail around it\."/,
+  );
+});
+
 test('media window is resizable and keeps themed edge navigation around uncropped images', () => {
   const css = readFileSync(new URL('../src/styles/shell-media-lightbox.css', import.meta.url), 'utf8');
 

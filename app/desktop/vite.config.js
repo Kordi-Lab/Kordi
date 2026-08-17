@@ -32,6 +32,7 @@ export default defineConfig(({ command, mode }) => {
             minSize: 20_000,
             groups: [
               { name: 'calling-media', test: /(?:^|[\\/])node_modules[\\/](?:livekit-client|@livekit|webrtc-adapter|sdp-transform|jose)(?:[\\/]|$)/ },
+              { name: 'expressive-media', test: /(?:^|[\\/])node_modules[\\/]emoji-picker-react(?:[\\/]|$)/ },
               { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
               { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/ },
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/ },

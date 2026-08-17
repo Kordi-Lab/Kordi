@@ -146,15 +146,41 @@ enum ChatAttachmentKind: String, Codable, Hashable {
     case file
 }
 
+enum ChatAttachmentSubtype: String, Codable, Hashable {
+    case meme
+}
+
 struct ChatAttachment: Identifiable, Codable, Hashable {
     let attachmentId: String
     let name: String
     let kind: ChatAttachmentKind
+    let subtype: ChatAttachmentSubtype?
+    let altText: String?
     let mimeType: String?
     let sizeBytes: Int64?
     let previewURL: String?
 
     var id: String { attachmentId }
+
+    init(
+        attachmentId: String,
+        name: String,
+        kind: ChatAttachmentKind,
+        subtype: ChatAttachmentSubtype? = nil,
+        altText: String? = nil,
+        mimeType: String?,
+        sizeBytes: Int64?,
+        previewURL: String?
+    ) {
+        self.attachmentId = attachmentId
+        self.name = name
+        self.kind = kind
+        self.subtype = subtype
+        self.altText = altText
+        self.mimeType = mimeType
+        self.sizeBytes = sizeBytes
+        self.previewURL = previewURL
+    }
 
     var formatLabel: String {
         if let extensionName = URL(fileURLWithPath: name).pathExtension.nonEmpty {
@@ -228,9 +254,34 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     let id: String
     let name: String
     let kind: ChatAttachmentKind
+    var subtype: ChatAttachmentSubtype?
+    var altText: String?
+    var memeRightsConfirmed: Bool
     let mimeType: String?
     let data: Data
     let previewURL: String?
+
+    init(
+        id: String,
+        name: String,
+        kind: ChatAttachmentKind,
+        subtype: ChatAttachmentSubtype? = nil,
+        altText: String? = nil,
+        memeRightsConfirmed: Bool = false,
+        mimeType: String?,
+        data: Data,
+        previewURL: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.subtype = subtype
+        self.altText = altText
+        self.memeRightsConfirmed = memeRightsConfirmed
+        self.mimeType = mimeType
+        self.data = data
+        self.previewURL = previewURL
+    }
 
     var sizeBytes: Int64 { Int64(data.count) }
 
@@ -239,10 +290,55 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
             attachmentId: "pending:\(id)",
             name: name,
             kind: kind,
+            subtype: subtype,
+            altText: altText,
             mimeType: mimeType,
             sizeBytes: sizeBytes,
             previewURL: previewURL
         )
+    }
+}
+
+enum MemeAttachmentPolicy {
+    static let maximumAltTextCharacters = 500
+    static let imageMIMETypes: Set<String> = [
+        "image/gif",
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+    ]
+    static let imageExtensions: Set<String> = ["gif", "jpeg", "jpg", "png", "webp"]
+
+    static func isSupportedImage(_ attachment: PendingAttachment) -> Bool {
+        guard attachment.kind == .image else { return false }
+        if let mimeType = attachment.mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !mimeType.isEmpty {
+            return imageMIMETypes.contains(mimeType)
+        }
+        return imageExtensions.contains(URL(fileURLWithPath: attachment.name).pathExtension.lowercased())
+    }
+
+    static func draftError(
+        for attachments: [PendingAttachment],
+        requiresRightsConfirmation: Bool = true
+    ) -> String? {
+        for attachment in attachments where attachment.subtype == .meme {
+            guard isSupportedImage(attachment) else {
+                return "Choose a PNG, JPEG, GIF, or WebP image for \(attachment.name)."
+            }
+            let altText = attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !altText.isEmpty else {
+                return "Add alt text for \(attachment.name) before sending."
+            }
+            guard altText.count <= maximumAltTextCharacters else {
+                return "Shorten the alt text for \(attachment.name) to \(maximumAltTextCharacters) characters or fewer."
+            }
+            if requiresRightsConfirmation, !attachment.memeRightsConfirmed {
+                return "Confirm that you have permission or another legal right to share \(attachment.name)."
+            }
+        }
+        return nil
     }
 }
 

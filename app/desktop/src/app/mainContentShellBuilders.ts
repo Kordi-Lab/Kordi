@@ -83,6 +83,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     saveDesktopAttachments: args.saveDesktopAttachments,
     saveDesktopAttachmentPaths: args.saveDesktopAttachmentPaths,
     removeChatComposerAttachment: args.removeChatComposerAttachment,
+    updateChatComposerAttachment: args.updateChatComposerAttachment,
     chatComposerText: args.chatComposerText,
     updateChatComposerDraft: args.updateChatComposerDraft,
     setChatComposerText: args.setChatComposerText,

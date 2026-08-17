@@ -36,10 +36,12 @@ struct ConversationView: View {
     @State private var photoSelectionReview: PhotoSelectionReview?
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
+    @State private var isExpressivePickerPresented = false
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
@@ -392,6 +394,11 @@ struct ConversationView: View {
                 }
             }
         }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                dismissExpressivePicker()
+            }
+        )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selectedMessageIDs.isEmpty {
                 ComposerView(
@@ -400,15 +407,24 @@ struct ConversationView: View {
                     photoGrouping: $photoGrouping,
                     replySource: $replySource,
                     selectedMention: $selectedMention,
+                    isExpressivePickerPresented: $isExpressivePickerPresented,
                     mentionTargets: model.mentionTargets(for: conversation),
                     isSending: isSending,
                     isPreparingAttachments: isPreparingAttachments,
                     destinationName: conversation.displayName,
                     cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
                     onTakePhoto: { showCamera = true },
-                    onChoosePhotos: { showPhotoPicker = true },
+                    onChoosePhotos: {
+                        selectedPhotoSubtype = nil
+                        showPhotoPicker = true
+                    },
+                    onChooseMeme: {
+                        selectedPhotoSubtype = .meme
+                        showPhotoPicker = true
+                    },
                     onChooseFiles: { showFileImporter = true },
                     onOpenAgentModel: { showAgentModel = true },
+                    onSendExpressiveMedia: sendExpressiveMedia,
                     onSend: { Task { await send() } }
                 )
             } else {
@@ -924,6 +940,7 @@ struct ConversationView: View {
     }
 
     private func openSessionDetails() {
+        dismissExpressivePicker()
         showSessionDetails = true
     }
 
@@ -951,6 +968,7 @@ struct ConversationView: View {
     }
 
     private func openCompanionPanel() {
+        dismissExpressivePicker()
         guard allowsCompanionPanel else { return }
         guard model.hasConfiguredProviderAuthentication else {
             showsProviderAuthentication = true
@@ -965,6 +983,10 @@ struct ConversationView: View {
             )
         }
         showsCompanionPanel = selectedCompanionConversation != nil
+    }
+
+    private func dismissExpressivePicker() {
+        isExpressivePickerPresented = false
     }
 
     private func openCompanionPreviewIfReady() {
@@ -994,6 +1016,10 @@ struct ConversationView: View {
     private func send() async {
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!message.isEmpty || !attachments.isEmpty), !isSending else { return }
+        if let error = MemeAttachmentPolicy.draftError(for: attachments) {
+            model.errorMessage = error
+            return
+        }
         let outgoingMention = resolvedMentionTarget(in: message)
         guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
         let outgoingAttachments = attachments
@@ -1011,6 +1037,21 @@ struct ConversationView: View {
             grouping: outgoingGrouping,
             reply: outgoingReply,
             mention: outgoingMention
+        )
+        isSending = false
+    }
+
+    private func sendExpressiveMedia(_ attachment: PendingAttachment) async {
+        guard !isSending else { return }
+        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
+        replySource = nil
+        isSending = true
+        await sendOutgoingMessages(
+            text: "",
+            attachments: [attachment],
+            grouping: .combined,
+            reply: outgoingReply,
+            mention: nil
         )
         isSending = false
     }
@@ -1113,6 +1154,8 @@ struct ConversationView: View {
 
     private func importPhotos(_ items: [PhotosPickerItem]) {
         guard !isPreparingAttachments else { return }
+        let importedSubtype = selectedPhotoSubtype
+        selectedPhotoSubtype = nil
         isPreparingAttachments = true
         selectedPhotos = []
         Task {
@@ -1128,15 +1171,20 @@ struct ConversationView: View {
                         throw AttachmentTransferError.invalidImage
                     }
                     let preferredExtension = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-                    let attachment = try await Task.detached(priority: .userInitiated) {
+                    var attachment = try await Task.detached(priority: .userInitiated) {
                         try PendingAttachmentLoader.loadImage(
                             data: data,
                             suggestedName: "Photo-\(index + 1).\(preferredExtension)"
                         )
                     }.value
+                    attachment.subtype = importedSubtype
+                    if importedSubtype == .meme {
+                        attachment.altText = ""
+                        attachment.memeRightsConfirmed = false
+                    }
                     loaded.append(attachment)
                 }
-                if loaded.count > 1, attachments.isEmpty {
+                if importedSubtype == nil, loaded.count > 1, attachments.isEmpty {
                     photoSelectionReview = PhotoSelectionReview(attachments: loaded)
                 } else {
                     attachments.append(contentsOf: loaded)

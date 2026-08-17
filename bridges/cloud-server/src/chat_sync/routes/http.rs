@@ -161,5 +161,79 @@ pub(super) fn validate_message_request(
             message: "The message references too many attachments.",
         });
     }
+    validate_meme_attachments(content, &request.attachment_ids)?;
+    Ok(())
+}
+
+fn validate_meme_attachments(
+    content: &serde_json::Map<String, serde_json::Value>,
+    attachment_ids: &[String],
+) -> Result<(), MessageValidationError> {
+    let Some(attachments) = content.get("legacy_attachments") else {
+        return Ok(());
+    };
+    let Some(attachments) = attachments.as_array() else {
+        return Err(MessageValidationError {
+            status: StatusCode::BAD_REQUEST,
+            code: "INVALID_ATTACHMENT_METADATA",
+            message: "Attachment metadata must be an array.",
+        });
+    };
+    for attachment in attachments {
+        let Some(attachment) = attachment.as_object() else {
+            return Err(MessageValidationError {
+                status: StatusCode::BAD_REQUEST,
+                code: "INVALID_ATTACHMENT_METADATA",
+                message: "Attachment metadata must contain structured objects.",
+            });
+        };
+        let Some(subtype) = attachment.get("subtype") else {
+            continue;
+        };
+        if subtype.is_null() {
+            continue;
+        }
+        if subtype.as_str() != Some("meme") {
+            return Err(MessageValidationError {
+                status: StatusCode::BAD_REQUEST,
+                code: "INVALID_ATTACHMENT_SUBTYPE",
+                message: "The attachment subtype is not supported.",
+            });
+        }
+        let attachment_id = attachment
+            .get("attachmentId")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        let alt_text = attachment
+            .get("altText")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        let mime_type = attachment
+            .get("mimeType")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        let supported_mime = matches!(
+            mime_type.to_ascii_lowercase().as_str(),
+            "image/png" | "image/jpeg" | "image/jpg" | "image/gif" | "image/webp"
+        );
+        if attachment_id.is_empty()
+            || !attachment_ids
+                .iter()
+                .any(|value| value.trim() == attachment_id)
+            || attachment.get("kind").and_then(serde_json::Value::as_str) != Some("image")
+            || alt_text.is_empty()
+            || alt_text.chars().count() > 500
+            || !supported_mime
+        {
+            return Err(MessageValidationError {
+                status: StatusCode::BAD_REQUEST,
+                code: "INVALID_MEME_ATTACHMENT",
+                message: "Meme attachments require a supported image, a matching attachment ID, and alt text of 500 characters or fewer.",
+            });
+        }
+    }
     Ok(())
 }

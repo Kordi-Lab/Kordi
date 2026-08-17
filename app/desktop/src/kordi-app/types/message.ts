@@ -62,6 +62,8 @@ export type EditFilePreview = {
 
 export type MessageAttachment = {
   kind: 'image' | 'file';
+  subtype?: 'meme' | null;
+  altText?: string | null;
   name: string;
   formatLabel?: string | null;
   previewUrl?: string | null;
@@ -71,6 +73,20 @@ export type MessageAttachment = {
   sizeBytes?: number | null;
   attachmentId?: string | null;
   previewAttachmentId?: string | null;
+};
+
+export type DesktopChatAttachment = {
+  kind: 'image' | 'file';
+  subtype?: 'meme' | null;
+  altText?: string | null;
+  name: string;
+  formatLabel?: string | null;
+  previewUrl?: string | null;
+  downloadUrl?: string | null;
+  mimeType?: string | null;
+  localPath?: string | null;
+  sizeBytes?: number | null;
+  attachmentId?: string | null;
 };
 
 export type MessageMention = {

@@ -37,7 +37,14 @@ export type ComposerConfigTargetOverride = string | null | {
 };
 export type { ComposerDraftEntry, ComposerDraftState } from './composerDrafts';
 export type ComposerSelectorState = { scope: ComposerScope; type: ComposerSelectorType } | null;
-export type AttachmentItem = MessageAttachment & { id: string; path: string };
+export type AttachmentItem = MessageAttachment & {
+  id: string;
+  path: string;
+  memeRightsConfirmed?: boolean;
+};
+export type SaveDesktopAttachmentOptions = {
+  subtype?: MessageAttachment['subtype'];
+};
 export type MinimalModelOption = {
   value: string;
   label: string;

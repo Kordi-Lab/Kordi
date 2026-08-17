@@ -74,6 +74,10 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
     attachmentId,
     name,
     kind,
+    ...(record.subtype === 'meme' && kind === 'image' ? {
+      subtype: 'meme' as const,
+      altText: typeof record.altText === 'string' ? record.altText : null,
+    } : {}),
     mimeType,
     sizeBytes,
     ...(previewAttachmentId ? { previewAttachmentId } : {}),

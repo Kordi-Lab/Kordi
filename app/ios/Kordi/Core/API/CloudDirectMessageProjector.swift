@@ -135,6 +135,8 @@ extension CloudMessageAttachment {
             attachmentId: attachmentId,
             name: name,
             kind: inferredChatAttachmentKind,
+            subtype: subtype,
+            altText: altText,
             mimeType: mimeType,
             sizeBytes: sizeBytes,
             previewURL: previewUrl

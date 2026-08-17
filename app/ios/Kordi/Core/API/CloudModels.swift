@@ -542,12 +542,57 @@ struct CloudMessageAttachment: Codable, Hashable, Identifiable {
     let attachmentId: String
     let name: String
     let kind: String
+    let subtype: ChatAttachmentSubtype?
+    let altText: String?
     let mimeType: String?
     let sizeBytes: Int64?
     let downloadUrl: String?
     let previewUrl: String?
 
     var id: String { attachmentId }
+
+    init(
+        attachmentId: String,
+        name: String,
+        kind: String,
+        subtype: ChatAttachmentSubtype? = nil,
+        altText: String? = nil,
+        mimeType: String?,
+        sizeBytes: Int64?,
+        downloadUrl: String?,
+        previewUrl: String?
+    ) {
+        self.attachmentId = attachmentId
+        self.name = name
+        self.kind = kind
+        self.subtype = subtype
+        self.altText = altText
+        self.mimeType = mimeType
+        self.sizeBytes = sizeBytes
+        self.downloadUrl = downloadUrl
+        self.previewUrl = previewUrl
+    }
+}
+
+struct CloudExpressiveMediaItem: Codable, Hashable, Identifiable {
+    let itemId: String
+    let attachmentId: String
+    let kind: ExpressiveMediaLibraryKind
+    let name: String
+    let mimeType: String
+    let sizeBytes: Int64
+    let createdAt: String
+    let updatedAt: String
+
+    var id: String { itemId }
+}
+
+struct CloudExpressiveMediaListResponse: Codable, Hashable {
+    let items: [CloudExpressiveMediaItem]
+}
+
+struct CloudExpressiveMediaMutationResponse: Codable, Hashable {
+    let item: CloudExpressiveMediaItem
 }
 
 struct CloudMessageDTO: Codable, Hashable, Identifiable {

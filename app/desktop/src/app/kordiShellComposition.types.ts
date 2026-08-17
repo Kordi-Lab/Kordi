@@ -181,6 +181,7 @@ export type KordiShellCompositionArgs = {
     | 'saveDesktopAttachments'
     | 'saveDesktopAttachmentPaths'
     | 'removeChatComposerAttachment'
+    | 'updateChatComposerAttachment'
   >;
   composerDrafts: ShellArgGroup<
     | 'projectComposerText'
