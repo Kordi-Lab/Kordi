@@ -5,6 +5,7 @@ import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   CanonicalSessionState,
   Contact,
+  DesktopAuthState,
   DesktopCollaborationState,
   DesktopChatTurnSnapshot,
   MessageAttachment,
@@ -13,6 +14,7 @@ import type {
   CloudAccount,
   CloudMessage,
   CloudSessionPin,
+  CloudSessionTitle,
   UpsertCloudArtifactActivityInput,
   UpsertCloudTaskActivityInput,
 } from './authClient';
@@ -46,9 +48,12 @@ export type UseCloudCollaborationStateArgs = {
     DesktopChatMessageRoute
   >;
   defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
+  defaultCloudAgentRuntimeReady?: boolean;
+  desktopAuthState?: DesktopAuthState | null;
 };
 
 export type UseCloudCollaborationStateResult = {
+  cloudAgentRuntimeRouteMessages: CloudMessage[];
   cloudCollaborationState: DesktopCollaborationState | null;
   setCloudCollaborationState:
     Dispatch<SetStateAction<DesktopCollaborationState | null>>;
@@ -61,6 +66,10 @@ export type UseCloudCollaborationStateResult = {
     attachments?: AttachmentItem[],
     options?: SendCloudCollaborationMessageOptions,
   ) => Promise<CloudMessage>;
+  updateCloudCollaborationSessionTitle: (
+    sessionId: string,
+    title: string,
+  ) => Promise<CloudSessionTitle>;
   sendCloudGroupControl: (input: SendCloudGroupControlInput) => Promise<void>;
   recordCloudSessionFork: (input: {
     sourceSessionId: string;

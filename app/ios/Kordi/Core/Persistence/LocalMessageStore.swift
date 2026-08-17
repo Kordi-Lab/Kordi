@@ -89,6 +89,7 @@ final class CachedMessageRecord {
     var replyToMessageId: String?
     var messageActionJSON: String?
     var messageKind: String?
+    var agentExecutionJSON: String?
 
     init(_ message: ChatMessage) {
         id = message.id
@@ -106,6 +107,7 @@ final class CachedMessageRecord {
         replyToMessageId = message.replyToMessageId
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
+        agentExecutionJSON = Self.encode(message.agentExecution)
     }
 
     func update(from message: ChatMessage) {
@@ -123,6 +125,7 @@ final class CachedMessageRecord {
         replyToMessageId = message.replyToMessageId
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
+        agentExecutionJSON = Self.encode(message.agentExecution)
     }
 
     var value: ChatMessage? {
@@ -143,7 +146,11 @@ final class CachedMessageRecord {
             attachments: Self.decode([ChatAttachment].self, from: attachmentsJSON) ?? [],
             replyToMessageId: replyToMessageId,
             messageAction: Self.decode(MessageActionMetadata.self, from: messageActionJSON),
-            messageKind: messageKind
+            messageKind: messageKind,
+            agentExecution: Self.decode(
+                AgentExecutionSnapshot.self,
+                from: agentExecutionJSON
+            )
         )
     }
 

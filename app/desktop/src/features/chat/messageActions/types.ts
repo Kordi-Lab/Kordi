@@ -48,6 +48,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'desktopChatState'
   | 'canonicalSessionState'
   | 'desktopLiveTurn'
+  | 'resolveChatRuntimeRoute'
   | 'setCanonicalSessionState'
 > & Pick<
   ComposerDraftContext,
@@ -69,6 +70,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'setCloudCollaborationState'
   | 'sendCloudCollaborationMessage'
   | 'sendCloudGroupControl'
+  | 'publishCloudAgentRuntimeRouteChange'
   | 'setDesktopChatError'
   | 'setDesktopChatState'
   | 'setDesktopLiveTurnsBySession'

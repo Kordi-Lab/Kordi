@@ -14,7 +14,6 @@ import type {
   SessionArtifact,
   SessionStatusIndicator,
 } from './types/message';
-
 export type { Contact, ContactClass } from './types/contact';
 
 export type {
@@ -932,6 +931,7 @@ export type DesktopCollaborationConversationMessage = {
   outreach?: DesktopCollaborationOutreachMetadata | null;
   attachments?: MessageAttachment[];
   messageAction?: MessageActionMetadata | null;
+  messageKind?: string | null;
   localTurn?: DesktopChatTurnSnapshot | null;
 };
 

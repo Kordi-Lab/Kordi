@@ -217,3 +217,49 @@ test('canonical runtime messages remain visible when the legacy canonical snapsh
   );
   assert.equal(conversation?.subtitle, 'Newest chat message');
 });
+
+test('canonical read model hides accidentally persisted local draft sessions', () => {
+  const state = canonicalState() as ReturnType<typeof canonicalState> & {
+    sessions: Array<Record<string, unknown>>;
+    messages: Array<Record<string, unknown>>;
+  };
+  state.sessions.push({
+    id: 'draft:local-chat',
+    kind: 'self-agent',
+    title: 'New chat',
+    status: 'active',
+    createdByIdentityId: 'human:me',
+    primaryIdentityId: 'agent:local',
+    relationshipIdentityId: null,
+    metadata: { cloudSelfAgentSession: true },
+    createdAtMs: 4,
+    updatedAtMs: 4,
+    lastMessageAtMs: 4,
+  });
+  state.messages.push({
+    id: 'msg:draft-model-change',
+    sessionId: 'draft:local-chat',
+    senderIdentityId: 'agent:local',
+    senderRole: 'system',
+    messageKind: 'agent-model-change',
+    contentText: 'Switched model to openai/gpt-5.6-luna',
+    content: null,
+    status: 'sent',
+    sequenceNum: 1,
+    createdAtMs: 4,
+    updatedAtMs: 4,
+    contentHash: null,
+    sourceTransport: 'cloud-self-agent',
+    sourceEventId: 'cloud:model-change',
+  });
+
+  const conversations = createCanonicalSessionReadModel(state as never)
+    ?.buildChatConversations([], () => '') ?? [];
+
+  assert.equal(
+    conversations.some((conversation) => (
+      conversation.canonicalSessionId === 'draft:local-chat'
+    )),
+    false,
+  );
+});

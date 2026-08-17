@@ -1,4 +1,4 @@
-import type { DesktopChatContextMessage } from '@/lib/desktop';
+import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 
 export type EditDiffLine = {
   kind: 'context' | 'add' | 'remove';
@@ -221,6 +221,7 @@ export type QueuedDesktopChatMessage = {
   time: string;
   attachments: (MessageAttachment & { id: string; path: string })[];
   contextMessages?: DesktopChatContextMessage[];
+  runtimeRoute?: DesktopChatMessageRoute | null;
 };
 
 export type CollaborationAgentRequestControl = {

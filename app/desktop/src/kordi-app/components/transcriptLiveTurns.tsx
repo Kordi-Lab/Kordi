@@ -24,6 +24,7 @@ import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
+import { AgentWaitingWave } from './AgentWaitingWave';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { SourceMessageQuote } from './transcriptReplyAttribution';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
@@ -149,19 +150,6 @@ function ToolTranscriptBlock({
         }
       />
     </div>
-  );
-}
-
-function ProcessingStatusCircle({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex h-3.5 w-3.5 shrink-0 rounded-full border-[1.5px] border-current/25 border-t-current text-white/75',
-        'animate-spin motion-reduce:animate-none',
-        className,
-      )}
-      aria-hidden="true"
-    />
   );
 }
 
@@ -810,8 +798,14 @@ function LiveChatTurnCardView({
           ) : null}
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-              <ProcessingStatusCircle className="h-3.5 w-3.5" />
-              <span className="text-slate-300">{liveStatusText}</span>
+              {visibleTurn.status === 'cancelling' || visibleTurn.status === 'retrying' ? (
+                <>
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  <span className="text-slate-300">{liveStatusText}</span>
+                </>
+              ) : (
+                <AgentWaitingWave label="Waiting for agent response" />
+              )}
               {pendingCollaborationAgentRequest ? (
                 <CollaborationAgentStopButton
                   request={pendingCollaborationAgentRequest}
@@ -851,7 +845,7 @@ function LiveChatTurnCardView({
               key="activity"
               tools={visibleTurn.tools}
               thinkingText={visibleTurn.thinkingText}
-              active={liveTurnActive && (visibleTurn.status === 'thinking' || visibleTurn.tools.some(isRunningTool))}
+              active={liveTurnActive}
               completed={visibleTurn.completed}
               summaryOverride={visibleTurn.tools.some(isFailedTool) ? null : desktopTurnWorkDurationLabel(visibleTurn)}
               separatesAnswer={hasAssistant}

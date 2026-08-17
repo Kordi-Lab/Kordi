@@ -18,25 +18,14 @@ import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } f
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
 import { isKordiSupportConversation, KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
+import {
+  collaborationHostLabel,
+  collaborationOutboundStatusChip,
+} from './transcriptStatus';
 
 type CollaborationConversationViewModel = Conversation & {
   _updatedAtMs?: number;
 };
-function collaborationHostLabel(host?: DesktopCollaborationHost | null) {
-  return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Cloud';
-}
-
-function collaborationOutboundStatusChip(deliveryState: string | null | undefined, agentHasBegunReply: boolean) {
-  const normalized = deliveryState?.trim().toLowerCase();
-  if (agentHasBegunReply && (!normalized || normalized === 'sent' || normalized === 'delivered' || normalized === 'processing')) {
-    return 'read';
-  }
-  if (normalized === 'processing' || normalized === 'handed_off_direct' || normalized === 'handed_off_mailbox') {
-    return 'read';
-  }
-  return deliveryState || 'sent';
-}
-
 function isImplicitDirectPersonSessionMessage(outreach: DesktopCollaborationOutreachMetadata) {
   return outreach.targetKind === 'person'
     && (
@@ -337,6 +326,15 @@ export function mapCollaborationConversationToViewModel(
     const mentions = collaborationMessageMentions(conversation, message);
     const attachments = collaborationMessageAttachments(message);
     const normalizedDeliveryState = normalizeDeliveryState(message.deliveryState);
+    if (message.messageKind === 'agent-model-change') {
+      return [{
+        id: messageId,
+        role: 'system' as const,
+        text: rawDisplayText,
+        time: message.timeLabel,
+        timestampMs: message.timestampMs,
+      }];
+    }
     const isProcessingAgentPlaceholder = normalizedDeliveryState === 'processing'
       && isProcessingPlaceholderText(rawDisplayText)
       && isCollaborationAgentResponseDirection(message);

@@ -85,7 +85,9 @@ export function useKordiAppRuntimeActions({
       recordCloudSessionFork,
       cancelCloudAgentRequest,
       unsupportedLegacyCollaborationAction,
-      setCloudAgentRuntimeRoutesBySessionId,
+      resolveChatRuntimeRoute,
+      inheritCloudAgentRuntimeRoute,
+      publishCloudAgentRuntimeRouteChange,
     },
   } = foundation;
   const {
@@ -124,7 +126,7 @@ export function useKordiAppRuntimeActions({
     setActiveConversationId: setActiveConvId,
     setActiveNav,
     setDesktopChatError,
-    setRuntimeRoutesBySessionId: setCloudAgentRuntimeRoutesBySessionId,
+    publishCloudAgentRuntimeRouteChange,
     unsupportedAction: unsupportedLegacyCollaborationAction,
   });
 
@@ -164,6 +166,10 @@ export function useKordiAppRuntimeActions({
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
     setDesktopSessionRenameDraft: sessionUi.setDesktopSessionRenameDraft,
     setIsEditingDesktopSessionTitle: sessionUi.setIsEditingDesktopSessionTitle,
+    onPrepareChatDraftSession: () => inheritCloudAgentRuntimeRoute(
+      activeConv.canonicalSessionId || activeConvId,
+      'draft:local-chat',
+    ),
     onForkCreated: syncCloudGroupFork,
   });
 
@@ -221,6 +227,7 @@ export function useKordiAppRuntimeActions({
       canonicalHumanIdentityId: canonicalSessionState?.profile.humanIdentityId,
       setCanonicalSessionState,
       desktopLiveTurn: activeDesktopLiveTurn,
+      resolveChatRuntimeRoute,
     },
     draft: {
       composerSelections: composerUi.composerSelections,
@@ -260,6 +267,7 @@ export function useKordiAppRuntimeActions({
       setCloudCollaborationState,
       sendCloudCollaborationMessage,
       sendCloudGroupControl,
+      publishCloudAgentRuntimeRouteChange,
       cancelCloudAgentRequest,
       watchDesktopLiveTurn,
       shouldAutoFollowChatRef,

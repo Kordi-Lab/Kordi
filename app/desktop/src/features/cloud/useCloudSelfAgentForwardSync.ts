@@ -43,6 +43,7 @@ import {
   publishCloudSelfAgentHeartbeat,
   publishCloudSelfAgentOperations,
 } from './cloudSelfAgentForwardExecution';
+import { useCloudSelfAgentExecutionStreaming } from './useCloudSelfAgentExecutionStreaming';
 import { loadSession } from './session';
 
 async function loadCanonicalRecoveryMessages(
@@ -140,12 +141,21 @@ export function useCloudSelfAgentForwardSync({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const syncFlightRef = useRef(createSingleFlightState());
+  const executionBySessionIdRef = useCloudSelfAgentExecutionStreaming({
+    account,
+    canonicalStateRef,
+    cancelledRef,
+    client,
+    localTurnsBySessionId,
+    mergeMessage,
+    reportWarning,
+    syncMessages: syncCloudCollaborationDiff,
+  });
   const activeLocalTurnSessionKey = Array.from(new Set(
     Object.values(localTurnsBySessionId)
       .filter((turn) => !turn.completed)
       .map((turn) => turn.sessionId),
   )).sort().join('\u0000');
-
   useEffect(() => {
     if (!account || !activeLocalTurnSessionKey) return;
     const activeSessionIds = activeLocalTurnSessionKey.split('\u0000');
@@ -179,6 +189,7 @@ export function useCloudSelfAgentForwardSync({
             accountId: account.accountId,
             client,
             cloudRequestMessageId,
+            execution: executionBySessionIdRef.current[sessionId],
             localRequestMessageId: localRequest.id,
             nowMs: heartbeatAtMs,
             sessionId,
@@ -209,6 +220,7 @@ export function useCloudSelfAgentForwardSync({
     activeLocalTurnSessionKey,
     canonicalStateRef,
     client,
+    executionBySessionIdRef,
     mergeMessage,
     reportWarning,
     syncCloudCollaborationDiff,
@@ -416,6 +428,11 @@ export function useCloudSelfAgentForwardSync({
             shouldPublishProcessing: (operation) => (
               !recoverySessionIds.has(operation.sessionId)
             ),
+            executionSnapshotForOperation: (operation) => (
+              recoverySessionIds.has(operation.sessionId)
+                ? undefined
+                : executionBySessionIdRef.current[operation.sessionId]
+            ),
             token: session.token,
           });
         }
@@ -440,6 +457,7 @@ export function useCloudSelfAgentForwardSync({
     canonicalState,
     canonicalStateRef,
     client,
+    executionBySessionIdRef,
     initialMessagesSettled,
     mergeMessage,
     processedRequestIdsRef,

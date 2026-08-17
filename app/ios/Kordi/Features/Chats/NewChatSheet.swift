@@ -298,8 +298,7 @@ struct NewChatSheet: View {
             showsProviderAuthentication = true
             return
         }
-        let accountId = model.account?.accountId ?? template.peerAccountId
-        select(AgentSessionFactory.make(from: template, ownAccountId: accountId))
+        select(model.makeAgentSession(from: template))
     }
 
     private func toggleGroupContact(_ contact: CloudContact) {

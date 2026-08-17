@@ -19,5 +19,5 @@ pub use models::{
 };
 pub use oauth_refresh::{
     ResolvedProviderAuth, resolve_provider_auth, resolve_provider_auth_choice,
-    save_oauth_credentials,
+    resolve_provider_runtime_auth_choice, save_oauth_credentials,
 };

@@ -292,6 +292,7 @@ export class ChatSyncSyncClient {
     if ([
       'agent.definition.upserted',
       'agent.definition.archived',
+      'provider-auth.updated',
       'task.upsert',
       'artifact.upsert',
       'artifact.archived',

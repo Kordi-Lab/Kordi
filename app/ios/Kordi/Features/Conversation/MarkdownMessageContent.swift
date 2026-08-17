@@ -345,14 +345,33 @@ enum KordiMarkdownParser {
 }
 
 struct MarkdownMessageContent: View {
+    enum Density: Equatable {
+        case standard
+        case compact
+    }
+
     let text: String
+    let density: Density
+
+    init(text: String, density: Density = .standard) {
+        self.text = text
+        self.density = density
+    }
 
     private var blocks: [KordiMarkdownBlock] {
         KordiMarkdownParser.parse(text)
     }
 
+    private var bodyFont: Font {
+        density == .compact ? .caption : .body
+    }
+
+    private var blockSpacing: CGFloat {
+        density == .compact ? 5 : 9
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: blockSpacing) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 blockView(block)
             }
@@ -369,13 +388,13 @@ struct MarkdownMessageContent: View {
                 .fontWeight(.bold)
                 .accessibilityAddTraits(.isHeader)
         case let .paragraph(text):
-            InlineMarkdownText(text: text, font: .body)
+            InlineMarkdownText(text: text, font: bodyFont)
         case let .code(language, source):
             MarkdownCodeBlock(language: language, source: source)
         case let .list(items):
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: density == .compact ? 4 : 6) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    MarkdownListRow(item: item)
+                    MarkdownListRow(item: item, font: bodyFont)
                 }
             }
         case let .blockquote(text):
@@ -383,7 +402,7 @@ struct MarkdownMessageContent: View {
                 Capsule()
                     .fill(Color.secondary.opacity(0.45))
                     .frame(width: 3)
-                InlineMarkdownText(text: text, font: .body)
+                InlineMarkdownText(text: text, font: bodyFont)
                     .italic()
                     .foregroundStyle(.secondary)
             }
@@ -394,10 +413,13 @@ struct MarkdownMessageContent: View {
     }
 
     private func headingFont(_ level: Int) -> Font {
+        if density == .compact {
+            return level == 1 ? .subheadline : .caption
+        }
         switch level {
-        case 1: .title3
-        case 2: .headline
-        default: .subheadline
+        case 1: return .title3
+        case 2: return .headline
+        default: return .subheadline
         }
     }
 }
@@ -443,12 +465,13 @@ private struct InlineMarkdownText: View {
 
 private struct MarkdownListRow: View {
     let item: KordiMarkdownListItem
+    let font: Font
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             marker
                 .frame(width: 20, alignment: .trailing)
-            InlineMarkdownText(text: item.text, font: .body)
+            InlineMarkdownText(text: item.text, font: font)
         }
         .padding(.leading, CGFloat(item.depth) * 17)
     }
@@ -457,16 +480,16 @@ private struct MarkdownListRow: View {
     private var marker: some View {
         if let checked = item.checked {
             Image(systemName: checked ? "checkmark.square.fill" : "square")
-                .font(.subheadline)
+                .font(font)
                 .foregroundStyle(checked ? KordiTheme.signalBlue : .secondary)
                 .accessibilityLabel(checked ? "Completed" : "Not completed")
         } else if item.ordered {
             Text("\(item.ordinal).")
-                .font(.body.monospacedDigit())
+                .font(font.monospacedDigit())
                 .foregroundStyle(.secondary)
         } else {
             Text("•")
-                .font(.body.weight(.semibold))
+                .font(font.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
     }

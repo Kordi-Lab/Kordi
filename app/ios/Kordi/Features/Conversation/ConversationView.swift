@@ -4,10 +4,17 @@ import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
+private struct ConversationTimelineRow: Identifiable {
+    let id: String
+    let offset: Int
+    let message: ChatMessage
+}
+
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
     private let companionContext: CompanionChatContext?
@@ -86,6 +93,14 @@ struct ConversationView: View {
             in: timeline,
             limit: visibleMessageLimit
         )
+        let visibleTimelineRows = visibleTimeline.enumerated().map { offset, message in
+            ConversationTimelineRow(
+                id: model.timelineIdentity(for: message),
+                offset: offset,
+                message: message
+            )
+        }
+        let firstVisibleTimelineIdentity = visibleTimelineRows.first?.id
         let visibleStartIndex = timeline.count - visibleTimeline.count
         let messagesById = Dictionary(uniqueKeysWithValues: timeline.map { ($0.id, $0) })
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
@@ -149,19 +164,20 @@ struct ConversationView: View {
                                     } else {
                                         if visibleStartIndex > 0 {
                                             EarlierMessagesLoader(remainingCount: visibleStartIndex)
-                                                .id("earlier:\(visibleTimeline.first?.id ?? conversation.id)")
+                                                .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
                                                 .onAppear {
                                                     guard hasPositionedInitialTimeline else { return }
                                                     loadEarlierMessages(
-                                                        preserving: visibleTimeline.first?.id,
+                                                        preserving: firstVisibleTimelineIdentity,
                                                         totalCount: timeline.count,
                                                         proxy: proxy
                                                     )
                                                 }
                                         }
 
-                                        ForEach(Array(visibleTimeline.enumerated()), id: \.element.id) { offset, message in
-                                            let index = visibleStartIndex + offset
+                                        ForEach(visibleTimelineRows) { row in
+                                            let message = row.message
+                                            let index = visibleStartIndex + row.offset
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
                                             let readers = readReceiptParticipants(for: message)
@@ -172,8 +188,12 @@ struct ConversationView: View {
                                                     ConversationTimestampDivider(date: message.createdAt)
                                                 }
 
-                                                MessageBubble(
-                                                    message: message,
+                                                if message.isAgentModelChangeNotice {
+                                                    AgentModelChangeNoticeRow(text: message.text)
+                                                        .padding(.vertical, 8)
+                                                } else {
+                                                    MessageBubble(
+                                                        message: message,
                                                     showAuthor: message.author == .agent,
                                                     showAvatar: presentation.showsAvatar,
                                                     replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
@@ -236,13 +256,21 @@ struct ConversationView: View {
                                                     },
                                                     onShareAttachment: { attachment in
                                                         prepare(attachment, forSharing: true)
+                                                    },
+                                                    onAgentExecutionExpansionChange: { expanded in
+                                                        guard expanded else { return }
+                                                        revealExpandedAgentExecution(
+                                                            row.id,
+                                                            using: proxy
+                                                        )
                                                     }
-                                                )
-                                                .equatable()
-                                                .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
-                                                .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                                                    )
+                                                    .equatable()
+                                                    .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
+                                                    .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                                                }
                                             }
-                                            .id(message.id)
+                                            .id(row.id)
                                         }
                                     }
 
@@ -316,7 +344,9 @@ struct ConversationView: View {
                     isInitialViewportRevealed: hasRevealedInitialViewport
                 )
             }
-            .onChange(of: timeline.last?.id) { previousLatestMessageID, currentLatestMessageID in
+            .onChange(of: timeline.last.map(model.timelineIdentity(for:))) {
+                previousLatestMessageID,
+                currentLatestMessageID in
                 if ConversationTimelineScrollBehavior.shouldFollowLatest(
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
                     isAtBottom: isAtBottom,
@@ -556,12 +586,13 @@ struct ConversationView: View {
         proxy: ScrollViewProxy
     ) {
         guard let sourceIndex = timeline.firstIndex(where: { $0.id == messageID }) else { return }
+        let targetIdentity = model.timelineIdentity(for: timeline[sourceIndex])
         visibleMessageLimit = max(visibleMessageLimit, timeline.count - sourceIndex)
         Task { @MainActor in
             await Task.yield()
             await Task.yield()
             withAnimation(.easeInOut(duration: 0.24)) {
-                proxy.scrollTo(messageID, anchor: .center)
+                proxy.scrollTo(targetIdentity, anchor: .center)
             }
             withAnimation(.snappy(duration: 0.2)) {
                 highlightedMessageID = messageID
@@ -570,6 +601,23 @@ struct ConversationView: View {
             guard highlightedMessageID == messageID else { return }
             withAnimation(.easeOut(duration: 0.25)) {
                 highlightedMessageID = nil
+            }
+        }
+    }
+
+    private func revealExpandedAgentExecution(
+        _ messageID: String,
+        using proxy: ScrollViewProxy
+    ) {
+        Task { @MainActor in
+            await Task.yield()
+            await Task.yield()
+            if reduceMotion {
+                proxy.scrollTo(messageID, anchor: .bottom)
+            } else {
+                withAnimation(.easeInOut(duration: 0.24)) {
+                    proxy.scrollTo(messageID, anchor: .bottom)
+                }
             }
         }
     }
@@ -658,7 +706,8 @@ struct ConversationView: View {
             case .latest:
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             case let .resumed(messageID):
-                proxy.scrollTo(messageID, anchor: .center)
+                let targetIdentity = timelineIdentity(for: messageID, in: messages)
+                proxy.scrollTo(targetIdentity, anchor: .center)
             }
         }
 
@@ -738,7 +787,7 @@ struct ConversationView: View {
                     ConversationTimelineWindow.initialLimit,
                     timeline.count - contextStartIndex
                 )
-                trackedMessageID = resumedMessageID
+                trackedMessageID = model.timelineIdentity(for: timeline[resumeIndex])
                 isAtBottom = false
                 hasPositionedInitialTimeline = false
                 initialViewport = .resumed(messageID: resumedMessageID)
@@ -757,7 +806,7 @@ struct ConversationView: View {
         let visibleMessageID = isAtBottom
             ? nil
             : trackedMessageID.flatMap { candidate in
-                timeline.contains(where: { $0.id == candidate }) ? candidate : nil
+                timeline.first(where: { model.timelineIdentity(for: $0) == candidate })?.id
             }
         model.conversationViewportMemory.remember(
             key: viewportMemoryKey,
@@ -769,6 +818,11 @@ struct ConversationView: View {
 
     private var viewportMemoryKey: String {
         "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id)"
+    }
+
+    private func timelineIdentity(for messageID: String, in timeline: [ChatMessage]) -> String {
+        guard let message = timeline.first(where: { $0.id == messageID }) else { return messageID }
+        return model.timelineIdentity(for: message)
     }
 
     private func highlightReferencedMessage(_ messageID: String) {
@@ -816,11 +870,33 @@ struct ConversationView: View {
                 .font(.headline)
                 .lineLimit(1)
 
-            Text(conversationHeaderStatus)
-                .font(.caption2)
-                .foregroundStyle(conversation.kind == .agent ? KordiTheme.agentViolet : .secondary)
-                .lineLimit(1)
+            if conversation.kind == .agent, agentActivity == .replying {
+                HStack(spacing: 5) {
+                    if let agentName = conversation.agentDisplayName?.nonEmpty,
+                       agentName != conversation.displayName {
+                        Text(agentName)
+                            .font(.caption2)
+                            .foregroundStyle(KordiTheme.agentViolet)
+                            .lineLimit(1)
+                    }
+                    Circle()
+                        .fill(KordiTheme.agentViolet)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Agent is working")
+            } else {
+                Text(conversationHeaderStatus)
+                    .font(.caption2)
+                    .foregroundStyle(conversation.kind == .agent ? KordiTheme.agentViolet : .secondary)
+                    .lineLimit(1)
+            }
         }
+    }
+
+    private var agentActivity: AgentActivity {
+        model.conversations.first(where: { $0.id == conversation.id })?.agentActivity ?? .ready
     }
 
     private var sessionActionsButton: some View {
@@ -918,10 +994,11 @@ struct ConversationView: View {
     private func send() async {
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!message.isEmpty || !attachments.isEmpty), !isSending else { return }
+        let outgoingMention = resolvedMentionTarget(in: message)
+        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
         let outgoingAttachments = attachments
         let outgoingGrouping = conversation.kind == .agent ? .combined : photoGrouping
         let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
-        let outgoingMention = resolvedMentionTarget(in: message)
         draft = ""
         attachments = []
         photoGrouping = .combined
@@ -944,8 +1021,9 @@ struct ConversationView: View {
     ) async {
         guard !selectedAttachments.isEmpty, !isSending else { return }
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         let outgoingMention = resolvedMentionTarget(in: message)
+        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
+        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         draft = ""
         replySource = nil
         selectedMention = nil
@@ -958,6 +1036,23 @@ struct ConversationView: View {
             mention: outgoingMention
         )
         isSending = false
+    }
+
+    private func canSendWithCurrentAuthentication(
+        mention: ComposerMentionTarget?
+    ) -> Bool {
+        let invokesOwnedAgent = ProviderAuthenticationPolicy.requiresAuthentication(
+            isAgentConversation: conversation.kind == .agent,
+            mentionedAgentOwnerAccountID: mention?.kind == .agent
+                ? mention?.accountId
+                : nil,
+            ownAccountID: model.account?.accountId
+        )
+        guard invokesOwnedAgent, !model.hasConfiguredProviderAuthentication else {
+            return true
+        }
+        showsProviderAuthentication = true
+        return false
     }
 
     private func sendOutgoingMessages(
@@ -1377,6 +1472,20 @@ private struct ConversationAvatarIdentity {
     let name: String
     let source: String?
     let seed: String?
+}
+
+private struct AgentModelChangeNoticeRow: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 24)
+            .accessibilityLabel(text)
+    }
 }
 
 private struct ConversationTimestampDivider: View {

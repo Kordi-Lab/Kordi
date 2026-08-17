@@ -37,7 +37,7 @@ const message: CloudMessage = {
   direction: 'incoming',
 };
 
-test('cloud direct hosted-agent requests hide duplicate owner responses for the same request', () => {
+test('cloud direct hosted-agent requests keep only the latest owner response for the same request', () => {
   const request: CloudMessage = {
     ...message,
     messageId: 'msg_direct_hosted_duplicate_request',
@@ -81,7 +81,7 @@ test('cloud direct hosted-agent requests hide duplicate owner responses for the 
 
   const responses = state.conversations[0].messages.filter((candidate) => candidate.requestId === request.messageId && candidate.id !== request.messageId);
   assert.equal(responses.length, 1);
-  assert.equal(responses[0].id, firstResponse.messageId);
+  assert.equal(responses[0].id, secondResponse.messageId);
   assert.equal(responses[0].sender, 'Kordi Project Driver');
 });
 

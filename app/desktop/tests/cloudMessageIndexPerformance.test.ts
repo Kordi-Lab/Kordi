@@ -72,6 +72,26 @@ test('Cloud message index parses each unique wire row once and builds constant-t
   assert.equal(index.deliveryByMessageId.get(scaleMessageId(0, 100))?.readers.length, 7);
 });
 
+test('a less complete duplicate cannot erase a semantic message kind', () => {
+  const template = buildScaleCloudMessagesByPeer().acct_scale_0[0]!;
+  const semantic = {
+    ...template,
+    messageId: 'wire:semantic-kind',
+    messageKind: 'agent-model-change',
+  };
+  const compatibilityDuplicate = {
+    ...semantic,
+    messageKind: undefined,
+    deliveredAt: '2026-01-01T00:00:03.000Z',
+  };
+  const index = buildCloudMessageIndex(SCALE_ACCOUNT_ID, {
+    acct_scale_0: [semantic],
+    acct_scale_1: [compatibilityDuplicate],
+  });
+
+  assert.equal(index.byMessageId.get(semantic.messageId)?.messageKind, 'agent-model-change');
+});
+
 test('a one-row Cloud delta reuses parsed envelopes from the 20,000-row index', () => {
   const messagesByPeer = buildScaleCloudMessagesByPeer();
   const previousIndex = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer);
