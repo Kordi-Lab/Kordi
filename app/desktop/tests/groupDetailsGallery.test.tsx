@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { cloudCallTargetForConversation } from '../src/features/cloud/cloudCalls';
 import { filterGroupManagementMembers, GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
 import { groupManagementGeometry } from '../src/pages/groupManagementGeometry';
 import {
@@ -15,6 +16,7 @@ import {
   contactForGroupMember,
   contactProfileGeometry,
   contactProfileSharedSummary,
+  directCallConversationForMember,
   groupMemberAccountId,
 } from '../src/pages/memberContactProfileModel';
 import { conversation, contact } from './helpers/workspaceSidebarParticipantSpacesFixtures';
@@ -338,6 +340,7 @@ test('contact profile summarizes supported shared content without exposing messa
         time: '10:00',
         attachments: [
           { kind: 'image', name: 'wireframe.png' },
+          { kind: 'file', name: 'walkthrough.mov', mimeType: 'video/quicktime' },
           { kind: 'file', name: 'brief.pdf' },
         ],
       },
@@ -352,9 +355,38 @@ test('contact profile summarizes supported shared content without exposing messa
 
   assert.deepEqual(summary, {
     photos: 2,
+    videos: 1,
     files: 1,
     links: 2,
     commonGroups: 2,
+  });
+});
+
+test('member profile builds a stable direct Cloud call target inside a group conversation', () => {
+  const member = {
+    id: 'human:maya',
+    humanId: 'acct_maya',
+    name: 'Maya Chen',
+    kind: 'human' as const,
+    role: 'person',
+    source: 'cloud',
+  };
+  const account = {
+    accountId: 'acct_me',
+    displayName: 'Me',
+    avatarUrl: null,
+  };
+  const callConversation = directCallConversationForMember(account, member, null);
+
+  assert.ok(callConversation);
+  assert.equal(callConversation.canonicalSessionId, 'session:direct-person:acct_maya:acct_me');
+  assert.equal(callConversation.participantSpaceId, undefined);
+  assert.deepEqual(cloudCallTargetForConversation(account, callConversation), {
+    sessionId: 'session:direct-person:acct_maya:acct_me',
+    peerAccountId: 'acct_maya',
+    kind: 'direct',
+    memberAccountIds: ['acct_maya'],
+    sharedTitle: null,
   });
 });
 

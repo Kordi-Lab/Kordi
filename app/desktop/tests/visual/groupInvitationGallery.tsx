@@ -1,6 +1,9 @@
 import { createRoot } from 'react-dom/client';
 
 import { buildParticipantSpaces } from '../../src/features/chat/participantSpaces';
+import { CloudCallProvider } from '../../src/features/cloud/CloudCallProvider';
+import type { CloudCallsController } from '../../src/features/cloud/cloudCallController';
+import { cloudCallTargetForConversation } from '../../src/features/cloud/cloudCalls';
 import { GroupDetailsDialog } from '../../src/pages/GroupDetailsDialog';
 import { GroupInvitationDialog } from '../../src/pages/GroupInvitationDialog';
 import { ContactInfoPopover } from '../../src/pages/ContactInfoPopover';
@@ -16,6 +19,50 @@ const mode = requestedMode === 'recipient'
   || requestedMode === 'contact'
   ? requestedMode
   : 'admin';
+const visualAccount = {
+  accountId: 'acct_visual_self',
+  displayName: 'Me',
+  primaryEmail: 'visual@example.com',
+  avatarUrl: null,
+  nodeId: null,
+  passwordSet: true,
+};
+const visualCallController: CloudCallsController = {
+  account: visualAccount,
+  callsBySessionId: {},
+  currentCall: null,
+  incomingCall: null,
+  handoffCall: null,
+  phase: 'idle',
+  error: null,
+  isPresented: false,
+  isMicrophoneEnabled: true,
+  isCameraEnabled: false,
+  isAudioPlaybackBlocked: false,
+  connectedAtMs: null,
+  mediaParticipants: [],
+  mediaDevices: [],
+  activeDeviceIds: {},
+  canSelectAudioOutput: false,
+  targetForConversation: (targetConversation) => (
+    cloudCallTargetForConversation(visualAccount, targetConversation)
+  ),
+  callForConversation: () => null,
+  start: async () => undefined,
+  join: async () => undefined,
+  decline: async () => undefined,
+  leave: async () => undefined,
+  end: async () => undefined,
+  invite: async () => undefined,
+  toggleMicrophone: async () => undefined,
+  toggleCamera: async () => undefined,
+  resumeAudio: async () => undefined,
+  refreshMediaDevices: async () => undefined,
+  switchMediaDevice: async () => undefined,
+  show: () => undefined,
+  minimize: () => undefined,
+  dismissError: () => undefined,
+};
 const [space] = buildParticipantSpaces([conversation({
   id: 'session:group:invitation-visual',
   canonicalSessionId: 'session:group:invitation-visual',
@@ -28,11 +75,11 @@ const [space] = buildParticipantSpaces([conversation({
   },
   participants: ['Me', 'Maya Chen', 'Ethan Park', 'Research Agent', 'Tom Cohen'],
   canonicalParticipants: [
-    { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-    { id: 'human:maya', name: 'Maya Chen', kind: 'human', role: mode === 'nonadmin' ? 'admin' : 'person', source: 'bridge', avatarKey: 'maya' },
-    { id: 'human:ethan', name: 'Ethan Park', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'ethan' },
-    { id: 'human:research', name: 'Research Agent', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'research' },
-    { id: 'human:tom', name: 'Tom Cohen', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'tom' },
+    { id: 'human:me', humanId: 'acct_visual_self', name: 'Me', kind: 'human', role: 'self', source: 'cloud', avatarKey: 'me' },
+    { id: 'human:maya', humanId: 'acct_maya', name: 'Maya Chen', kind: 'human', role: mode === 'nonadmin' ? 'admin' : 'person', source: 'cloud', avatarKey: 'maya' },
+    { id: 'human:ethan', humanId: 'acct_ethan', name: 'Ethan Park', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'ethan' },
+    { id: 'human:research', humanId: 'acct_research', name: 'Research Agent', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'research' },
+    { id: 'human:tom', humanId: 'acct_tom', name: 'Tom Cohen', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'tom' },
   ],
 })]);
 
@@ -40,7 +87,8 @@ document.body.classList.add(`theme-${theme}`);
 document.documentElement.style.colorScheme = theme;
 
 createRoot(document.querySelector('#root')!).render(
-  <main className={`kordi-app theme-${theme} group-invitation-visual-shell`}>
+  <CloudCallProvider controller={visualCallController}>
+    <main className={`kordi-app theme-${theme} group-invitation-visual-shell`}>
     <aside className="group-invitation-visual-sidebar" aria-hidden="true" />
     <section className="group-invitation-visual-workspace" aria-hidden="true" />
     {mode === 'contact' ? (
@@ -67,10 +115,14 @@ createRoot(document.querySelector('#root')!).render(
           presenceStatus: 'online',
         })]}
         conversation={conversation({
-          id: 'session:direct:maya',
-          canonicalSessionId: 'session:direct:maya',
+          id: 'session:direct-person:acct_maya:acct_visual_self',
+          canonicalSessionId: 'session:direct-person:acct_maya:acct_visual_self',
           name: 'Maya Chen',
           participants: ['Me', 'Maya Chen'],
+          canonicalParticipants: [
+            { id: 'human:me', humanId: 'acct_visual_self', name: 'Me', kind: 'human', role: 'self', source: 'cloud' },
+            { id: 'human:maya', humanId: 'acct_maya', name: 'Maya Chen', kind: 'human', role: 'person', source: 'cloud' },
+          ],
           messages: [
             {
               role: 'person',
@@ -87,7 +139,10 @@ createRoot(document.querySelector('#root')!).render(
               sender: 'Me',
               text: 'I also attached the notes.',
               time: '10:28',
-              attachments: [{ kind: 'file', name: 'notes.pdf' }],
+              attachments: [
+                { kind: 'file', name: 'demo.mov', mimeType: 'video/quicktime' },
+                { kind: 'file', name: 'notes.pdf', mimeType: 'application/pdf' },
+              ],
             },
           ],
         })}
@@ -126,7 +181,8 @@ createRoot(document.querySelector('#root')!).render(
         onJoined={() => undefined}
       />
     )}
-  </main>,
+    </main>
+  </CloudCallProvider>,
 );
 
 document.body.dataset.visualReady = 'true';

@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react';
 
+import type { CloudAccount } from '@/features/cloud/authClient';
+import { directSessionId } from '@/features/cloud/chatSyncMapping';
 import type {
   Contact,
   Conversation,
@@ -57,21 +59,31 @@ export function groupMemberAccountId(
 
 export type ContactProfileSharedSummary = {
   photos: number;
+  videos: number;
   files: number;
   links: number;
   commonGroups: number;
 };
+
+const VIDEO_FILE_EXTENSION = /\.(?:avi|m4v|mkv|mov|mp4|webm)$/iu;
+
+function attachmentIsVideo(attachment: NonNullable<Conversation['messages'][number]['attachments']>[number]) {
+  return attachment.mimeType?.trim().toLowerCase().startsWith('video/') === true
+    || VIDEO_FILE_EXTENSION.test(attachment.name.trim());
+}
 
 export function contactProfileSharedSummary(
   conversation?: Conversation | null,
   commonGroupCount = 0,
 ): ContactProfileSharedSummary {
   let photos = 0;
+  let videos = 0;
   let files = 0;
   const links = new Set<string>();
   for (const message of conversation?.messages ?? []) {
     for (const attachment of message.attachments ?? []) {
       if (attachment.kind === 'image') photos += 1;
+      else if (attachmentIsVideo(attachment)) videos += 1;
       else files += 1;
     }
     for (const match of message.text.matchAll(/https?:\/\/[^\s<>()]+/giu)) {
@@ -80,9 +92,69 @@ export function contactProfileSharedSummary(
   }
   return {
     photos,
+    videos,
     files,
     links: links.size,
     commonGroups: Math.max(0, commonGroupCount),
+  };
+}
+
+export function directCallConversationForMember(
+  account: Pick<CloudAccount, 'accountId' | 'displayName' | 'avatarUrl'> | null,
+  member: ConversationParticipant,
+  contact: Contact | null,
+): Conversation | null {
+  const localAccountId = account?.accountId.trim() ?? '';
+  const remoteAccountId = groupMemberAccountId(member, contact);
+  if (
+    !localAccountId.startsWith('acct_')
+    || !remoteAccountId.startsWith('acct_')
+    || localAccountId === remoteAccountId
+  ) return null;
+
+  const sessionId = directSessionId(localAccountId, remoteAccountId);
+  const localName = account?.displayName?.trim() || 'Me';
+  const remoteName = member.name.trim() || contact?.name.trim() || 'Kordi contact';
+  return {
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    name: remoteName,
+    type: 'person',
+    subtitle: '',
+    unread: 0,
+    collaborationSources: ['cloud'],
+    trust: 'Cloud',
+    directness: 'Direct chat',
+    participants: [localName, remoteName],
+    canonicalParticipants: [
+      {
+        id: `human:${localAccountId}`,
+        humanId: localAccountId,
+        name: localName,
+        kind: 'human',
+        role: 'self',
+        source: 'cloud',
+        profileImageUrl: account?.avatarUrl ?? null,
+      },
+      {
+        ...member,
+        id: member.id.trim() || `human:${remoteAccountId}`,
+        humanId: remoteAccountId,
+        name: remoteName,
+        kind: 'human',
+        role: 'person',
+        source: 'cloud',
+        profileImageUrl: member.profileImageUrl ?? contact?.profileImageUrl ?? null,
+      },
+    ],
+    messages: [],
+    identity: {
+      sourceHostId: 'cloud',
+      localHumanId: localAccountId,
+      localHumanName: localName,
+      remoteHumanId: remoteAccountId,
+      remoteHumanName: remoteName,
+    },
   };
 }
 

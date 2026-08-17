@@ -466,7 +466,7 @@ export function GroupDetailsDialog({
         data-popover-placement={placement}
         data-member-count={members.length}
         data-filtered-member-count={filteredMembers.length}
-        className="app-transient-surface app-frosted-popover app-group-management-popover app-group-management-popover-enter fixed z-[60] overflow-hidden rounded-[20px]"
+        className="app-transient-surface app-frosted-popover app-group-management-popover app-group-management-popover-enter fixed z-[60] overflow-hidden rounded-[16px]"
         style={style}
         onMouseDown={(event) => event.stopPropagation()}
       >

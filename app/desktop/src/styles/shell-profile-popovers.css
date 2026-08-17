@@ -1,13 +1,20 @@
 .app-group-profile-actions,
 .app-contact-profile-actions {
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .app-group-profile-action,
 .app-contact-profile-action {
-  min-height: 54px;
+  min-height: 50px;
   background: var(--app-transient-raised-bg);
   color: var(--app-transient-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-transient-divider) 72%, transparent);
+}
+
+.app-group-profile-action:disabled,
+.app-contact-profile-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .app-contact-profile-popover {
@@ -17,7 +24,7 @@
 }
 
 .app-contact-profile-hero {
-  background: color-mix(in oklab, var(--app-transient-raised-bg) 52%, transparent);
+  background: color-mix(in oklab, var(--app-transient-raised-bg) 40%, transparent);
 }
 
 .app-contact-profile-close {
@@ -31,15 +38,21 @@
 }
 
 .app-contact-profile-summary-row {
+  position: relative;
   color: var(--app-transient-text);
 }
 
-.app-contact-profile-summary-row + .app-contact-profile-summary-row {
-  border-top: 1px solid var(--app-transient-divider);
+.app-contact-profile-summary-row + .app-contact-profile-summary-row::before {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  left: 42px;
+  height: 1px;
+  background: color-mix(in srgb, var(--app-transient-divider) 70%, transparent);
+  content: '';
 }
 
 .app-contact-profile-summary-icon {
-  background: var(--app-transient-icon-bg);
   color: var(--app-transient-muted-text);
 }
 
@@ -67,6 +80,7 @@
   .app-contact-profile-actions,
   .app-group-profile-actions {
     gap: 4px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .app-contact-profile-action,

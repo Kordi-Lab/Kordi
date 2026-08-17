@@ -3,9 +3,11 @@ import {
   Settings2,
   UserPlus,
   Users,
+  Video,
   X,
 } from 'lucide-react';
 
+import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { formatDesktopDate } from '@/lib/time';
@@ -61,16 +63,22 @@ function GroupProfileAction({
   icon,
   label,
   onClick,
+  disabled = false,
+  title,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       className="app-transient-flat-action app-group-profile-action flex min-w-0 flex-col items-center gap-1.5 rounded-[12px] px-2 py-2"
       onClick={onClick}
+      disabled={disabled}
+      title={title ?? label}
     >
       {icon}
       <span className="truncate text-[10px] font-medium">{label}</span>
@@ -99,6 +107,29 @@ export function GroupProfileHeader({
   onAddPeople: () => void;
   onManage: () => void;
 }) {
+  const calls = useCloudCallContext();
+  const callConversation = space.sessions.find((session) => (
+    Boolean(calls?.callForConversation(session.conversation))
+  ))?.conversation ?? space.sessions[0]?.conversation ?? null;
+  const callTarget = callConversation
+    ? calls?.targetForConversation(callConversation) ?? null
+    : null;
+  const activeCall = callConversation
+    ? calls?.callForConversation(callConversation) ?? null
+    : null;
+  const callIsCurrent = Boolean(activeCall && calls?.currentCall?.call.id === activeCall.id);
+  const callBusyElsewhere = Boolean(calls?.currentCall && !callIsCurrent);
+  const openVideoChat = () => {
+    if (!calls || !callConversation || callTarget?.kind !== 'group' || callBusyElsewhere) return;
+    onClose();
+    if (!activeCall) {
+      void calls.start(callConversation, 'video');
+      return;
+    }
+    if (callIsCurrent) calls.show();
+    else void calls.join(activeCall, callTarget.sessionId);
+  };
+
   return (
     <header className="app-group-management-header relative shrink-0 px-3 pb-3 pt-4 text-center">
       <h2 className="sr-only">Group management</h2>
@@ -135,6 +166,15 @@ export function GroupProfileHeader({
             icon={<UserPlus className="h-4 w-4" aria-hidden="true" />}
             label="Add people"
             onClick={onAddPeople}
+          />
+        ) : null}
+        {calls && callTarget?.kind === 'group' ? (
+          <GroupProfileAction
+            icon={<Video className="h-4 w-4" aria-hidden="true" />}
+            label={activeCall ? callIsCurrent ? 'Return' : 'Join' : 'Video chat'}
+            onClick={openVideoChat}
+            disabled={callBusyElsewhere}
+            title={callBusyElsewhere ? 'Finish your current call first' : undefined}
           />
         ) : null}
         {canManageGroup ? (

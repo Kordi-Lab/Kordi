@@ -5,17 +5,21 @@ import {
   Check,
   Copy,
   FileText,
+  Film,
   Images,
   Link,
   LoaderCircle,
   MessageCircle,
+  Phone,
   UserPlus,
   Users,
+  Video,
   X,
 } from 'lucide-react';
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type {
   Contact,
@@ -26,6 +30,7 @@ import {
   contactForGroupMember,
   contactProfileGeometry,
   contactProfileSharedSummary,
+  directCallConversationForMember,
   groupMemberAccountId,
   type ContactProfileAnchorRect,
 } from '@/pages/memberContactProfileModel';
@@ -59,11 +64,13 @@ function ProfileAction({
   label,
   onClick,
   disabled = false,
+  title,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
@@ -71,6 +78,7 @@ function ProfileAction({
       className="app-contact-profile-action app-transient-flat-action flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-[13px] px-2 py-2.5 text-center"
       onClick={onClick}
       disabled={disabled}
+      title={title ?? label}
     >
       {icon}
       <span className="truncate text-[10.5px] font-medium">{label}</span>
@@ -91,7 +99,7 @@ function SharedProfileRow({
 }) {
   return (
     <div className="app-contact-profile-summary-row flex min-h-10 items-center gap-3 px-2.5 py-2">
-      <span className="app-contact-profile-summary-icon grid h-7 w-7 shrink-0 place-items-center rounded-[9px]">
+      <span className="app-contact-profile-summary-icon grid h-7 w-7 shrink-0 place-items-center">
         {icon}
       </span>
       <span className="min-w-0 flex-1 text-[11.5px] font-medium">
@@ -112,6 +120,7 @@ export function ContactInfoPopover({
   onAddContact,
   onMessageContact,
 }: ContactInfoPopoverProps) {
+  const calls = useCloudCallContext();
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
@@ -128,6 +137,24 @@ export function ContactInfoPopover({
     [contacts, participant],
   );
   const accountId = groupMemberAccountId(participant, contact);
+  const directCallConversation = useMemo(() => {
+    if (!calls?.account) return null;
+    if (conversation) {
+      const existingTarget = calls.targetForConversation(conversation);
+      if (existingTarget?.kind === 'direct' && existingTarget.peerAccountId === accountId) {
+        return conversation;
+      }
+    }
+    return directCallConversationForMember(calls.account, participant, contact);
+  }, [accountId, calls, contact, conversation, participant]);
+  const callTarget = directCallConversation
+    ? calls?.targetForConversation(directCallConversation) ?? null
+    : null;
+  const activeCall = directCallConversation
+    ? calls?.callForConversation(directCallConversation) ?? null
+    : null;
+  const callIsCurrent = Boolean(activeCall && calls?.currentCall?.call.id === activeCall.id);
+  const callBusyElsewhere = Boolean(calls?.currentCall && !callIsCurrent);
   const isExistingContact = Boolean(contact && isApprovedCollaborationContact(contact));
   const contactStatus = contact?.contactStatus?.trim().toLowerCase() ?? '';
   const requestPending = contactStatus === 'pending' || requestState === 'sent';
@@ -146,6 +173,7 @@ export function ContactInfoPopover({
   );
   const summaryRows = [
     { key: 'photos', icon: <Images className="h-3.5 w-3.5" />, count: summary.photos, singular: 'photo', plural: 'photos' },
+    { key: 'videos', icon: <Film className="h-3.5 w-3.5" />, count: summary.videos, singular: 'video', plural: 'videos' },
     { key: 'files', icon: <FileText className="h-3.5 w-3.5" />, count: summary.files, singular: 'file', plural: 'files' },
     { key: 'links', icon: <Link className="h-3.5 w-3.5" />, count: summary.links, singular: 'shared link', plural: 'shared links' },
     { key: 'groups', icon: <Users className="h-3.5 w-3.5" />, count: summary.commonGroups, singular: 'group in common', plural: 'groups in common' },
@@ -229,6 +257,17 @@ export function ContactInfoPopover({
     }
   };
 
+  const openCall = (kind: 'voice' | 'video') => {
+    if (!calls || !directCallConversation || !callTarget || callBusyElsewhere) return;
+    onClose();
+    if (!activeCall) {
+      void calls.start(directCallConversation, kind);
+      return;
+    }
+    if (callIsCurrent) calls.show();
+    else void calls.join(activeCall, callTarget.sessionId);
+  };
+
   if (typeof document === 'undefined') return null;
 
   return createPortal(
@@ -246,7 +285,7 @@ export function ContactInfoPopover({
         aria-label={`${participant.name} contact info`}
         data-contact-profile-surface="true"
         data-popover-placement={placement}
-        className="app-transient-surface app-frosted-popover app-contact-profile-popover fixed z-[80] flex flex-col overflow-hidden rounded-[20px] shadow-[var(--app-shadow-float)]"
+        className="app-transient-surface app-frosted-popover app-contact-profile-popover fixed z-[80] flex flex-col overflow-hidden rounded-[16px] shadow-[var(--app-shadow-float)]"
         style={style}
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -254,7 +293,7 @@ export function ContactInfoPopover({
           <button
             ref={closeButtonRef}
             type="button"
-            className="app-contact-profile-close app-transient-flat-action absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-[10px]"
+            className="app-contact-profile-close app-transient-flat-action absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-[8px]"
             onClick={onClose}
             aria-label="Close contact info"
           >
@@ -293,6 +332,36 @@ export function ContactInfoPopover({
               disabled={messageState === 'opening'}
             />
           ) : null}
+          {calls && callTarget ? (
+            activeCall ? (
+              <ProfileAction
+                icon={activeCall.kind === 'voice'
+                  ? <Phone className="h-4 w-4" />
+                  : <Video className="h-4 w-4" />}
+                label={callIsCurrent ? 'Return' : 'Join call'}
+                onClick={() => openCall(activeCall.kind === 'voice' ? 'voice' : 'video')}
+                disabled={callBusyElsewhere}
+                title={callBusyElsewhere ? 'Finish your current call first' : undefined}
+              />
+            ) : (
+              <>
+                <ProfileAction
+                  icon={<Phone className="h-4 w-4" />}
+                  label="Call"
+                  onClick={() => openCall('voice')}
+                  disabled={callBusyElsewhere}
+                  title={callBusyElsewhere ? 'Finish your current call first' : undefined}
+                />
+                <ProfileAction
+                  icon={<Video className="h-4 w-4" />}
+                  label="Video"
+                  onClick={() => openCall('video')}
+                  disabled={callBusyElsewhere}
+                  title={callBusyElsewhere ? 'Finish your current call first' : undefined}
+                />
+              </>
+            )
+          ) : null}
           {canAddContact || requestPending ? (
             <ProfileAction
               icon={requestState === 'sending'
@@ -329,7 +398,7 @@ export function ContactInfoPopover({
             </section>
           ) : (
             <div className="app-contact-profile-empty rounded-[14px] px-4 py-4 text-center text-[11px] leading-4">
-              Shared photos, files, and links will appear here.
+              Shared photos, videos, files, and links will appear here.
             </div>
           )}
           {requestState === 'error' || messageState === 'error' || copyState === 'error' ? (
