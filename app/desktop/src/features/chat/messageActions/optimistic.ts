@@ -21,6 +21,10 @@ import { optimisticSessionTitle } from '../sessionTitlePolicy';
 export function toOptimisticAttachments(attachments: AttachmentItem[]) {
   return attachments.map((attachment) => ({
     kind: attachment.kind,
+    ...(attachment.subtype === 'meme' ? {
+      subtype: 'meme' as const,
+      altText: attachment.altText ?? null,
+    } : {}),
     name: attachment.name,
     formatLabel: attachment.formatLabel,
     previewUrl: attachment.previewUrl,

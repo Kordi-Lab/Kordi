@@ -1,3 +1,4 @@
+use super::meme_validation::{meme_attachment_metadata, validate_meme_attachment_bytes};
 use super::support::*;
 use super::*;
 
@@ -43,6 +44,7 @@ pub(crate) async fn send_message_in_transaction(
         }
         attachment_ids.push(attachment_id.to_string());
     }
+    let meme_attachments = meme_attachment_metadata(&request.content, &attachment_ids)?;
     let request_fingerprint = fingerprint(&MessageIntent {
         conversation_id,
         kind: message_kind,
@@ -102,6 +104,7 @@ pub(crate) async fn send_message_in_transaction(
             ));
         }
     }
+    validate_meme_attachment_bytes(transaction, account_id, &meme_attachments).await?;
 
     let allocation: Option<(i64, i32)> = query_as(
         "UPDATE cloud_chat_conversations \
@@ -246,6 +249,7 @@ pub async fn replace_message_snapshot(
         }
         normalized_attachments.push(attachment_id.to_string());
     }
+    let meme_attachments = meme_attachment_metadata(&content, &normalized_attachments)?;
 
     let mut transaction = pool.begin().await?;
     let row: Option<(Uuid, String)> = query_as(
@@ -277,6 +281,7 @@ pub async fn replace_message_snapshot(
             ));
         }
     }
+    validate_meme_attachment_bytes(&mut transaction, sender_account_id, &meme_attachments).await?;
 
     let current = load_message(&mut transaction, message_id).await?;
     if current.content == content && current.attachment_ids == normalized_attachments {

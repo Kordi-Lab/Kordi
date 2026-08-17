@@ -40,7 +40,10 @@ fn retired_chat_implementation_files_stay_removed() {
 
 #[test]
 fn cloud_attachment_preview_recovery_only_updates_caller_visible_links() {
-    let source = include_str!("../src/attachments/routes.rs");
+    let source = concat!(
+        include_str!("../src/attachments/access.rs"),
+        include_str!("../src/attachments/routes.rs")
+    );
     assert!(source.contains("cloud_chat_message_attachments attachment"));
     assert!(source.contains("cloud_chat_conversation_members member"));
     assert!(source.contains("member.account_id = $2"));

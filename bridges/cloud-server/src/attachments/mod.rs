@@ -29,6 +29,8 @@
 //! the client a direct path while keeping access control, since each
 //! URL is scoped to one object key + one verb + a short TTL.
 
+pub(crate) mod access;
+mod content_type;
 mod response;
 pub mod routes;
 

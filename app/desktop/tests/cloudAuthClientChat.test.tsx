@@ -43,6 +43,41 @@ function chatConversation(overrides: Record<string, unknown> = {}) {
   };
 }
 
+test('expressive media client lists and saves account-owned library items', async () => {
+  const mediaItem = {
+    itemId: 'media-1',
+    attachmentId: 'attachment-1',
+    kind: 'sticker' as const,
+    name: 'wave.webp',
+    mimeType: 'image/webp',
+    sizeBytes: 128,
+    createdAt: '2026-08-17T10:00:00Z',
+    updatedAt: '2026-08-17T10:00:00Z',
+  };
+  const { calls, fetchImpl } = recordingFetch((call) => (
+    call.init?.method === 'POST'
+      ? jsonResponse(200, { item: mediaItem })
+      : jsonResponse(200, { items: [mediaItem] })
+  ));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  assert.deepEqual(await client.listExpressiveMedia('token-a'), [mediaItem]);
+  assert.deepEqual(await client.saveExpressiveMedia('token-a', {
+    attachmentId: 'attachment-1',
+    kind: 'sticker',
+    name: 'wave.webp',
+  }), mediaItem);
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/expressive-media');
+  assert.equal(calls[0].init?.method, 'GET');
+  assert.equal(calls[1].init?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(calls[1].init?.body)), {
+    attachmentId: 'attachment-1',
+    kind: 'sticker',
+    name: 'wave.webp',
+  });
+});
+
 test('sendMessage uses canonical conversation identity and canonical idempotent message writes', async () => {
   const { calls, fetchImpl } = recordingFetch((call) => {
     if (call.url.endsWith('/v2/chat/conversations')) {
@@ -102,6 +137,58 @@ test('sendMessage uses canonical conversation identity and canonical idempotent 
   assert.equal(sent.messageId, '019cb2c9-0a77-7d84-b81b-97042279ad3d');
   assert.equal(sent.conversationSequence, 1);
   assert.equal(sent.attachments?.[0]?.attachmentId, 'att_1');
+});
+
+test('sendMessage round-trips meme subtype and alt text in canonical attachment metadata', async () => {
+  let sentContent: Record<string, unknown> | null = null;
+  const { fetchImpl } = recordingFetch((call) => {
+    if (call.url.endsWith('/v2/chat/conversations')) {
+      return jsonResponse(201, { conversation: chatConversation() });
+    }
+    const body = JSON.parse(String(call.init?.body)) as Record<string, unknown>;
+    sentContent = body.content as Record<string, unknown>;
+    return jsonResponse(201, {
+      message: {
+        id: '019cb2c9-0a77-7d84-b81b-97042279ad3e',
+        client_message_id: body.client_message_id,
+        conversation_id: '019cb111-8ecc-7181-8266-8986d950169b',
+        conversation_sequence: 1,
+        sender_account_id: 'acct_me',
+        kind: 'text',
+        content: sentContent,
+        reply_to_message_id: null,
+        attachment_ids: ['att_meme'],
+        version: 1,
+        generation_status: null,
+        provider_response_id: null,
+        created_at: '2026-05-12T00:00:00Z',
+        edited_at: null,
+        deleted_at: null,
+      },
+    });
+  });
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const sent = await client.sendMessage('kordi_cs_xyz', 'acct_peer', '', {
+    sessionId: 'session-meme',
+    accountId: 'acct_me',
+    clientMessageId: 'msg:canonical:meme:acct_peer',
+    attachments: [{
+      attachmentId: 'att_meme',
+      name: 'reaction.webp',
+      kind: 'image',
+      subtype: 'meme',
+      altText: 'A character celebrates when the build turns green.',
+      mimeType: 'image/webp',
+      sizeBytes: 1_024,
+    }],
+  });
+
+  const metadata = (sentContent?.legacy_attachments as Array<Record<string, unknown>>)[0];
+  assert.equal(metadata?.subtype, 'meme');
+  assert.equal(metadata?.altText, 'A character celebrates when the build turns green.');
+  assert.equal(sent.attachments?.[0]?.subtype, 'meme');
+  assert.equal(sent.attachments?.[0]?.altText, 'A character celebrates when the build turns green.');
 });
 
 test('markMessagesRead advances the monotonic canonical conversation cursor', async () => {

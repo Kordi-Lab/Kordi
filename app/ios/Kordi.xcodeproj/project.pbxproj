@@ -66,6 +66,8 @@
 		C8BD24AA4D691A02181E4FB4 /* CloudMessageCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CAA0002D51BCCCF6B07B66 /* CloudMessageCodecTests.swift */; };
 		CE3B28D7B1662C11FCB93086 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4021DE92BF82560F7905E214 /* ConversationView.swift */; };
 		D4B22EFD2E1B14A28811D742 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 07939B8DB3FE481325EF13B3 /* LiveKit */; };
+		E8B3CAD4501967D2C536A615 /* EmojiKit in Frameworks */ = {isa = PBXBuildFile; productRef = D7A2B9E34F0856C1B425F514 /* EmojiKit */; };
+		B4D7E2A91C6F4385A920D312 /* ExpressiveMediaPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C1F02D9347B6A410C211 /* ExpressiveMediaPicker.swift */; };
 		D6E3FF1559CAAAE57EDC446B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A3A55FE7BDA62F4175A28D2 /* Assets.xcassets */; };
 		D8DBAE5BA9E4237E34169C64 /* GroupManagementSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7E8E86F8830C031FE1EC87 /* GroupManagementSheet.swift */; };
 		D9428E4F1B6772EBB490EFC9 /* CloudMessageCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B208AC082D8D2E3AC98654A /* CloudMessageCodec.swift */; };
@@ -167,6 +169,7 @@
 		F07103152F3015F0B24FEE45 /* CloudGroupMessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGroupMessageCodec.swift; sourceTree = "<group>"; };
 		F1271CBD683255CC53FD1A07 /* MessageSyncStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSyncStatusView.swift; sourceTree = "<group>"; };
 		F12ADFCB554A69C285C7F753 /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
+		E5A8C1F02D9347B6A410C211 /* ExpressiveMediaPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpressiveMediaPicker.swift; sourceTree = "<group>"; };
 		F5F1853F7027097BBC718478 /* CloudModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudModels.swift; sourceTree = "<group>"; };
 		F7F1BB7067E03988558968A0 /* CameraImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraImagePicker.swift; sourceTree = "<group>"; };
 		FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiAppEnvironment.swift; sourceTree = "<group>"; };
@@ -178,6 +181,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E8B3CAD4501967D2C536A615 /* EmojiKit in Frameworks */,
 				D4B22EFD2E1B14A28811D742 /* LiveKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -260,6 +264,7 @@
 				F7F1BB7067E03988558968A0 /* CameraImagePicker.swift */,
 				57000316D6B453E1690DA350 /* CompanionChatPanel.swift */,
 				F12ADFCB554A69C285C7F753 /* ComposerView.swift */,
+				E5A8C1F02D9347B6A410C211 /* ExpressiveMediaPicker.swift */,
 				4021DE92BF82560F7905E214 /* ConversationView.swift */,
 				C89A8FB63D5B1DFD7576809C /* MarkdownMessageContent.swift */,
 				B05863F065BA138C9337DF7F /* MediaPreviewView.swift */,
@@ -472,6 +477,7 @@
 			name = Kordi;
 			packageProductDependencies = (
 				07939B8DB3FE481325EF13B3 /* LiveKit */,
+				D7A2B9E34F0856C1B425F514 /* EmojiKit */,
 			);
 			productName = Kordi;
 			productReference = E89F1206EB556B444390594D /* Kordi.app */;
@@ -505,6 +511,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				721E797C5107E9715EF6D3A6 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+				C6F1A8D23E9745B0A314E413 /* XCRemoteSwiftPackageReference "EmojiKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E6FFCF72758CFAD295AF15BA /* Products */;
@@ -580,6 +587,7 @@
 				715CD4AE535A1B1B2B6D4973 /* CloudWireCache.swift in Sources */,
 				7DFA4853671269DDB4276A23 /* CompanionChatPanel.swift in Sources */,
 				6F2D0803E1F21DA091A51FF8 /* ComposerView.swift in Sources */,
+				B4D7E2A91C6F4385A920D312 /* ExpressiveMediaPicker.swift in Sources */,
 				EB453D88857B3296BE127B94 /* ContactsView.swift in Sources */,
 				E209B4E4DD968CF6AD4028E2 /* Conversation.swift in Sources */,
 				BE344377783EEB4A688EECBF /* ConversationRow.swift in Sources */,
@@ -997,6 +1005,14 @@
 				minimumVersion = 2.16.0;
 			};
 		};
+		C6F1A8D23E9745B0A314E413 /* XCRemoteSwiftPackageReference "EmojiKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/danielsaidi/EmojiKit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.5.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1004,6 +1020,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 721E797C5107E9715EF6D3A6 /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
 			productName = LiveKit;
+		};
+		D7A2B9E34F0856C1B425F514 /* EmojiKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C6F1A8D23E9745B0A314E413 /* XCRemoteSwiftPackageReference "EmojiKit" */;
+			productName = EmojiKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -8,6 +8,7 @@ import type {
   ComposerEnvironmentContext,
   ComposerMessageRuntimeContext,
   ComposerRuntimeContext,
+  AttachmentItem,
 } from '../composerController.types';
 
 export type ResolvedMentionedCollaborationTarget = {
@@ -81,7 +82,7 @@ export type UseChatMessageActionsArgs = Pick<
   ComposerAuthNavigationContext,
   'refreshDesktopChat'
 > & {
-  attachmentSummaryText: (text: string) => string;
+  attachmentSummaryText: (text: string, attachments?: AttachmentItem[]) => string;
   handleLocalSlashCommand: (
     rawText: string,
     scope?: ComposerScope,

@@ -714,6 +714,8 @@ private struct MessageImageAttachment: View {
     @State private var isLoading = true
     @State private var loadFailed = false
     @State private var reloadToken = 0
+    @State private var addedMediaKind: ExpressiveMediaLibraryKind?
+    @State private var isAddingToMediaLibrary = false
 
     var body: some View {
         Button {
@@ -739,17 +741,37 @@ private struct MessageImageAttachment: View {
             Button(action: onShare) {
                 Label("Download / Save to Files", systemImage: "arrow.down.circle")
             }
+            if let mediaKind {
+                Button(action: addToMediaLibrary) {
+                    Label(
+                        addedMediaKind == mediaKind
+                            ? "Added to \(mediaKind.libraryName)"
+                            : "Add to \(mediaKind.libraryName)",
+                        systemImage: addedMediaKind == mediaKind ? "checkmark.circle" : "square.stack.3d.up"
+                    )
+                }
+                .disabled(isAddingToMediaLibrary || addedMediaKind == mediaKind)
+            }
         }
         .task(id: "\(attachment.id):\(reloadToken)") {
             await loadImage()
         }
-        .accessibilityLabel(image == nil ? "Image attachment" : "Review image attachment")
+        .accessibilityLabel(
+            attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                ?? (image == nil ? "Image attachment" : "Review image attachment")
+        )
         .accessibilityHint(
             loadFailed
                 ? "Double tap to retry loading"
                 : "\(attachment.name). Touch and hold for image actions."
         )
         .accessibilityAction(named: "Download or save to Files", onShare)
+        .accessibilityActions {
+            if mediaKind != nil {
+                Button(mediaLibraryActionLabel, action: addToMediaLibrary)
+            }
+        }
+        .sensoryFeedback(.success, trigger: addedMediaKind)
     }
 
     @ViewBuilder
@@ -838,6 +860,27 @@ private struct MessageImageAttachment: View {
         }
         let height = min(presentation.maximumHeight, maximumWidth / ratio)
         return CGSize(width: height * ratio, height: height)
+    }
+
+    private var mediaKind: ExpressiveMediaLibraryKind? {
+        ExpressiveMediaLibraryKind.supportedKind(
+            name: attachment.name,
+            mimeType: attachment.mimeType
+        )
+    }
+
+    private var mediaLibraryActionLabel: String {
+        guard let mediaKind else { return "Add to media library" }
+        return "Add to \(mediaKind.libraryName)"
+    }
+
+    private func addToMediaLibrary() {
+        guard mediaKind != nil, !isAddingToMediaLibrary, addedMediaKind == nil else { return }
+        isAddingToMediaLibrary = true
+        Task {
+            addedMediaKind = await model.addAttachmentToExpressiveMediaLibrary(attachment)
+            isAddingToMediaLibrary = false
+        }
     }
 }
 

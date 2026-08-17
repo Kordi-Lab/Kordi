@@ -21,7 +21,7 @@ import {
 
 type UseComposerMessageActionsArgs = UseComposerControllerArgs & {
   derived: {
-    attachmentSummaryText: (text: string) => string;
+    attachmentSummaryText: (text: string, attachments?: UseComposerControllerArgs['draft']['chatComposerAttachments']) => string;
     selectComposerValue: (
       scope: ComposerScope,
       type: 'model',

@@ -23,6 +23,7 @@ export function useComposerController(args: UseComposerControllerArgs) {
     saveDesktopAttachments: inputActions.saveDesktopAttachments,
     saveDesktopAttachmentPaths: inputActions.saveDesktopAttachmentPaths,
     removeChatComposerAttachment: inputActions.removeChatComposerAttachment,
+    updateChatComposerAttachment: inputActions.updateChatComposerAttachment,
     setChatComposerText: inputActions.setChatComposerText,
     setProjectComposerText: inputActions.setProjectComposerText,
     acceptChatSlashCommand: messageActions.acceptChatSlashCommand,

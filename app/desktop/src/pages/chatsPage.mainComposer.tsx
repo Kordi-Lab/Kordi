@@ -1,14 +1,18 @@
+import { useId, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
+import type { AttachmentItem, ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
+import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
+import { MEME_IMAGE_ACCEPT, memeAttachmentDraftError } from '@/features/chat/memeAttachments';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -26,6 +30,7 @@ import type {
   DesktopChatContextWindowStatus,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { ComposerDropSurface } from './chatsPage.composerDropSurface';
 import {
   CollaborationRoutingControls,
   type CollaborationRoutingControlsModel,
@@ -79,7 +84,8 @@ export type MainComposerProps = {
     prefersReducedMotion: boolean | null;
     placeholder: string;
   };
-  onSend: (draftOverride?: string) => void;
+  onSend: (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
+  cloudAccountId?: string | null;
 };
 
 export function MainComposer({
@@ -90,6 +96,7 @@ export function MainComposer({
   collaborationRouting,
   display,
   onSend,
+  cloudAccountId = null,
 }: MainComposerProps) {
   const {
     filteredChatSlashCommands,
@@ -103,6 +110,7 @@ export function MainComposer({
     saveDesktopAttachments,
     saveDesktopAttachmentPaths,
     removeChatComposerAttachment,
+    updateChatComposerAttachment,
     chatComposerText,
     updateChatComposerDraft,
     setChatComposerText,
@@ -128,6 +136,10 @@ export function MainComposer({
     chatModelOptions,
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const memeValidationMessageId = useId();
+  const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
   const useCompactRouteMenu = canConfigureModelRoute
     && shouldUseCompactModelRouteMenu(conversation);
@@ -165,7 +177,7 @@ export function MainComposer({
           </motion.div>
         ) : null}
       </AnimatePresence>
-      <div className="app-composer-shell rounded-[26px] p-3">
+      <ComposerDropSurface saveDesktopAttachments={saveDesktopAttachments}>
         <div className="relative">
           {filteredChatSlashCommands.length > 0 ? (
             <ComposerSlashMenu
@@ -197,133 +209,162 @@ export function MainComposer({
                 event.currentTarget.value = '';
               }}
             />
+            <input
+              ref={memeAttachmentInputRef}
+              type="file"
+              multiple
+              accept={MEME_IMAGE_ACCEPT}
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                if (files.length > 0) void saveDesktopAttachments(files, { subtype: 'meme' });
+                event.currentTarget.value = '';
+              }}
+            />
             {activeChatQuote ? (
               <ComposerQuotePreview quote={activeChatQuote} onClear={onClearChatQuote} />
             ) : null}
             <ComposerAttachmentList
               attachments={chatComposerAttachments}
               onRemove={removeChatComposerAttachment}
+              onUpdate={updateChatComposerAttachment}
             />
-            <textarea
-              rows={1}
-              value={chatComposerText}
-              onPointerDownCapture={() => {
-                focusComposerTextareaForNativeInput(
-                  CHAT_COMPOSER_TEXTAREA_SELECTOR,
-                  display.isNativeShell,
-                );
-              }}
-              onFocus={() => {
-                focusComposerTextareaForNativeInput(
-                  CHAT_COMPOSER_TEXTAREA_SELECTOR,
-                  display.isNativeShell,
-                );
-              }}
-              onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
-              onPaste={(event) => {
-                const files = extractClipboardFiles(event.clipboardData);
-                if (files.length > 0) {
-                  event.preventDefault();
-                  void saveDesktopAttachments(files);
-                  return;
-                }
-                const pastedPaths = extractPastedLocalFilePaths(
-                  event.clipboardData.getData('text/plain'),
-                  event.clipboardData.getData('text/uri-list'),
-                );
-                if (pastedPaths.length > 0) {
-                  event.preventDefault();
-                  void saveDesktopAttachmentPaths(pastedPaths);
-                }
-              }}
-              onCompositionStart={imeCompositionGuard.onCompositionStart}
-              onCompositionEnd={imeCompositionGuard.onCompositionEnd}
-              onKeyDown={(event) => {
-                if (imeCompositionGuard.isComposingKeyDown(event)) return;
-                if (filteredChatSlashCommands.length > 0) {
-                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            {memeValidationError ? (
+              <p
+                id={memeValidationMessageId}
+                className="px-0.5 pb-1 text-[10.5px] leading-4 text-amber-500"
+                role="status"
+              >
+                {memeValidationError}
+              </p>
+            ) : null}
+            <div className="flex min-w-0">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={chatComposerText}
+                onPointerDownCapture={() => {
+                  focusComposerTextareaForNativeInput(
+                    CHAT_COMPOSER_TEXTAREA_SELECTOR,
+                    display.isNativeShell,
+                  );
+                }}
+                onFocus={() => {
+                  focusComposerTextareaForNativeInput(
+                    CHAT_COMPOSER_TEXTAREA_SELECTOR,
+                    display.isNativeShell,
+                  );
+                }}
+                onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
+                onPaste={(event) => {
+                  const files = extractClipboardFiles(event.clipboardData);
+                  if (files.length > 0) {
                     event.preventDefault();
-                    const delta = event.key === 'ArrowDown' ? 1 : -1;
-                    setChatSlashMenuIndex((current) => (
-                      current + delta + filteredChatSlashCommands.length
-                    ) % filteredChatSlashCommands.length);
+                    void saveDesktopAttachments(files);
+                    return;
+                  }
+                  const pastedPaths = extractPastedLocalFilePaths(
+                    event.clipboardData.getData('text/plain'),
+                    event.clipboardData.getData('text/uri-list'),
+                  );
+                  if (pastedPaths.length > 0) {
+                    event.preventDefault();
+                    void saveDesktopAttachmentPaths(pastedPaths);
+                  }
+                }}
+                onCompositionStart={imeCompositionGuard.onCompositionStart}
+                onCompositionEnd={imeCompositionGuard.onCompositionEnd}
+                onKeyDown={(event) => {
+                  if (imeCompositionGuard.isComposingKeyDown(event)) return;
+                  if (filteredChatSlashCommands.length > 0) {
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      const delta = event.key === 'ArrowDown' ? 1 : -1;
+                      setChatSlashMenuIndex((current) => (
+                        current + delta + filteredChatSlashCommands.length
+                      ) % filteredChatSlashCommands.length);
+                      return;
+                    }
+                    if (
+                      (event.key === 'Enter'
+                        && !event.metaKey
+                        && !event.ctrlKey
+                        && !event.shiftKey)
+                      || event.key === 'Tab'
+                    ) {
+                      event.preventDefault();
+                      acceptChatSlashCommand(
+                        filteredChatSlashCommands[
+                          Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)
+                        ]?.value ?? filteredChatSlashCommands[0].value,
+                      );
+                      return;
+                    }
+                  }
+                  if (filteredChatMentionTargets.length > 0) {
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const delta = event.key === 'ArrowDown' ? 1 : -1;
+                      setChatSlashMenuIndex((current) => (
+                        current + delta + filteredChatMentionTargets.length
+                      ) % filteredChatMentionTargets.length);
+                      return;
+                    }
+                    if (
+                      ((event.key === 'Enter'
+                        && !event.metaKey
+                        && !event.ctrlKey
+                        && !event.shiftKey)
+                        || event.key === 'Tab')
+                      && !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      acceptChatMentionTarget(
+                        filteredChatMentionTargets[
+                          Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)
+                        ]?.value ?? filteredChatMentionTargets[0].value,
+                      );
+                      return;
+                    }
+                  }
+                  if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
+                    event.preventDefault();
+                    setChatComposerText('/');
+                    return;
+                  }
+                  if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
+                    event.preventDefault();
+                    setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                     return;
                   }
                   if (
-                    (event.key === 'Enter'
-                      && !event.metaKey
-                      && !event.ctrlKey
-                      && !event.shiftKey)
-                    || event.key === 'Tab'
+                    event.key === 'Enter'
+                    && !event.metaKey
+                    && !event.ctrlKey
+                    && !event.shiftKey
                   ) {
                     event.preventDefault();
-                    acceptChatSlashCommand(
-                      filteredChatSlashCommands[
-                        Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)
-                      ]?.value ?? filteredChatSlashCommands[0].value,
-                    );
-                    return;
+                    void onSend(event.currentTarget.value);
                   }
-                }
-                if (filteredChatMentionTargets.length > 0) {
-                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const delta = event.key === 'ArrowDown' ? 1 : -1;
-                    setChatSlashMenuIndex((current) => (
-                      current + delta + filteredChatMentionTargets.length
-                    ) % filteredChatMentionTargets.length);
-                    return;
-                  }
-                  if (
-                    ((event.key === 'Enter'
-                      && !event.metaKey
-                      && !event.ctrlKey
-                      && !event.shiftKey)
-                      || event.key === 'Tab')
-                    && !event.nativeEvent.isComposing
-                  ) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    acceptChatMentionTarget(
-                      filteredChatMentionTargets[
-                        Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)
-                      ]?.value ?? filteredChatMentionTargets[0].value,
-                    );
-                    return;
-                  }
-                }
-                if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
-                  event.preventDefault();
-                  setChatComposerText('/');
-                  return;
-                }
-                if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
-                  event.preventDefault();
-                  setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
-                  return;
-                }
-                if (
-                  event.key === 'Enter'
-                  && !event.metaKey
-                  && !event.ctrlKey
-                  && !event.shiftKey
-                ) {
-                  event.preventDefault();
-                  onSend(event.currentTarget.value);
-                }
-              }}
-              className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              data-composer-scope="chat"
-              placeholder={display.placeholder}
-            />
+                }}
+                className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+                data-composer-scope="chat"
+                aria-describedby={memeValidationError ? memeValidationMessageId : undefined}
+                placeholder={display.placeholder}
+              />
+            </div>
           </div>
         </div>
         <div
           ref={composerControlsRef}
           className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5"
         >
-          <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
+          <div
+            className="flex shrink-0 items-center gap-2 overflow-visible pr-1"
+            data-composer-left-actions="true"
+          >
             {useCompactRouteMenu ? (
               <CompactComposerModelMenu
                 scope="chat"
@@ -339,7 +380,32 @@ export function MainComposer({
                 onSave={collaborationRouting.onSaveCompact}
               />
             ) : null}
-            <ComposerAttachmentAddMenu inputRef={chatAttachmentInputRef} />
+            <ComposerAttachmentAddMenu
+              inputRef={chatAttachmentInputRef}
+              memeInputRef={memeAttachmentInputRef}
+            />
+            <ComposerExpressivePicker
+              key={cloudAccountId?.trim() || 'local'}
+              accountId={cloudAccountId}
+              captureSelection={() => ({
+                start: textareaRef.current?.selectionStart ?? chatComposerText.length,
+                end: textareaRef.current?.selectionEnd ?? chatComposerText.length,
+              })}
+              onSelectText={(value, selection) => {
+                const insertion = insertEmojiAtSelection(chatComposerText, value, selection);
+                setChatComposerText(insertion.value);
+                window.requestAnimationFrame(() => {
+                  const textarea = textareaRef.current;
+                  if (!textarea) return;
+                  textarea.focus();
+                  textarea.setSelectionRange(
+                    insertion.selection.start,
+                    insertion.selection.end,
+                  );
+                });
+              }}
+              onSendMedia={(attachment) => onSend('', [attachment])}
+            />
           </div>
           <div
             className={cn(
@@ -413,18 +479,18 @@ export function MainComposer({
                 ) : null}
             <Button
               className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-              onClick={() => onSend()}
-              disabled={false}
-              title={display.activeLiveTurnIsRunning
+              onClick={() => void onSend()}
+              disabled={Boolean(memeValidationError)}
+              title={memeValidationError ?? (display.activeLiveTurnIsRunning
                 ? 'Queue message for this session'
-                : 'Send message'}
+                : 'Send message')}
               aria-label="Send message"
             >
               <Send className="h-4 w-4" />
             </Button>
           </div>
         </div>
-      </div>
+      </ComposerDropSurface>
     </div>
   );
 }

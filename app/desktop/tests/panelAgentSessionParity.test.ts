@@ -347,7 +347,9 @@ test('sending from main or side-panel chat schedules a jump to the sent message'
   );
 
   assert.match(source, /scheduleTranscriptScrollToBottom/, 'ChatsPage workspaces should use the transcript bottom-scroll helper after sends');
-  const mainSendStart = mainWorkspace.indexOf('const handleSend = (draftOverride?: string) => {');
+  const mainSendStart = mainWorkspace.indexOf(
+    'const handleSend = (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => {',
+  );
   const splitStart = mainWorkspace.indexOf('\n\n  return (', mainSendStart);
   assert.notEqual(mainSendStart, -1, 'main chat send handler should exist');
   assert.notEqual(splitStart, -1, 'main chat send block should have an end boundary');

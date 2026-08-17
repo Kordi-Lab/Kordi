@@ -5,7 +5,6 @@ import type {
   DesktopChatToolSnapshot,
   Message,
   MessageActionMetadata,
-  MessageAttachment,
   MessageMention,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
@@ -19,9 +18,11 @@ import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessag
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 import { canonicalCallActivity } from './callActivity';
+import { canonicalAttachments } from './attachmentMapping';
 import { isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
+export { canonicalAttachments } from './attachmentMapping';
 
 export function contentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -53,35 +54,6 @@ export function canonicalMentions(value: unknown): MessageMention[] | undefined 
   });
 
   return mentions.length > 0 ? mentions : undefined;
-}
-
-export function canonicalAttachments(value: unknown): MessageAttachment[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-
-  const attachments = value.flatMap((item) => {
-    const record = contentRecord(item);
-    const name = stringValue(record.name);
-    const rawKind = stringValue(record.kind);
-    if (!name || (rawKind !== 'image' && rawKind !== 'file')) return [];
-
-    const kind: MessageAttachment['kind'] = rawKind;
-    const attachment: MessageAttachment = {
-      kind,
-      name,
-      formatLabel: stringValue(record.formatLabel) ?? null,
-      previewUrl: stringValue(record.previewUrl) ?? null,
-      mimeType: stringValue(record.mimeType) ?? null,
-      localPath: stringValue(record.localPath) ?? null,
-      sizeBytes: numberValue(record.sizeBytes) ?? null,
-    };
-    const downloadUrl = stringValue(record.downloadUrl);
-    const attachmentId = stringValue(record.attachmentId);
-    if (downloadUrl) attachment.downloadUrl = downloadUrl;
-    if (attachmentId) attachment.attachmentId = attachmentId;
-    return [attachment];
-  });
-
-  return attachments.length > 0 ? attachments : undefined;
 }
 
 function canonicalMessageAction(value: unknown): MessageActionMetadata | null {

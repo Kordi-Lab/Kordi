@@ -1,12 +1,19 @@
 import { useCallback } from 'react';
 
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
-import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
-import { readDesktopChatAttachment, storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig, type DesktopStoredChatAttachment } from '@/lib/desktop';
+import { storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
-import { friendlyAttachmentName } from './composerAttachments';
+import {
+  composerAttachmentItemFromFile,
+  composerAttachmentItemFromStoredPath,
+  composerAttachmentKindFromName,
+  composerAttachmentNameFromPath,
+  friendlyAttachmentName,
+  updatedComposerAttachmentMetadata,
+} from './composerAttachments';
+export { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
 import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotices';
 
@@ -31,6 +38,7 @@ import type {
   ComposerSelectorState,
   MinimalModelOption,
   MinimalProviderOption,
+  SaveDesktopAttachmentOptions,
   UseComposerInputActionsArgs,
 } from './composerController.types';
 
@@ -136,82 +144,6 @@ function appendOptimisticSessionConfigMessage({
       messageCount: current.activeSession.messageCount + messageCountDelta,
       messages: nextMessages.messages,
     },
-  };
-}
-
-function attachmentFormatLabel(name: string, mimeType?: string) {
-  const extension = name.split('.').pop()?.trim();
-  if (extension) {
-    return extension.toUpperCase();
-  }
-
-  const subtype = mimeType?.split('/').pop()?.trim();
-  if (subtype) {
-    return subtype.toUpperCase();
-  }
-
-  return 'FILE';
-}
-
-function attachmentNameFromPath(path: string) {
-  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
-  return normalized.split('/').pop()?.trim() || 'attachment';
-}
-
-function attachmentKindFromName(name: string): AttachmentItem['kind'] {
-  const extension = name.split('.').pop()?.trim().toLowerCase();
-  return extension && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(extension)
-    ? 'image'
-    : 'file';
-}
-
-type ComposerPathPreviewMetadata = Pick<AttachmentItem, 'name' | 'kind' | 'mimeType' | 'sizeBytes'>;
-
-type ComposerPathPreviewGenerator = (storedPath: string, metadata: ComposerPathPreviewMetadata) => Promise<string | null | undefined>;
-
-async function createComposerAttachmentPathPreviewUrl(storedPath: string, metadata: ComposerPathPreviewMetadata) {
-  if (metadata.kind !== 'image') return null;
-  try {
-    const bytes = await readDesktopChatAttachment(storedPath);
-    const mimeType = metadata.mimeType?.trim() || null;
-    const blob = new Blob([new Uint8Array(bytes)], mimeType ? { type: mimeType } : undefined);
-    return await createCompressedImagePreviewDataUrl(blob);
-  } catch {
-    return null;
-  }
-}
-
-export async function composerAttachmentItemFromStoredPath({
-  sourcePath,
-  stored,
-  displayName: preferredDisplayName,
-  createPreviewUrl = createComposerAttachmentPathPreviewUrl,
-}: {
-  sourcePath: string;
-  stored: Pick<DesktopStoredChatAttachment, 'path' | 'kind' | 'mimeType' | 'formatLabel' | 'sizeBytes'> & { name?: string | null };
-  displayName?: string;
-  createPreviewUrl?: ComposerPathPreviewGenerator;
-}): Promise<AttachmentItem> {
-  const rawName = attachmentNameFromPath(sourcePath);
-  const kindFromName = attachmentKindFromName(rawName);
-  const displayName = preferredDisplayName?.trim() || stored.name?.trim() || friendlyAttachmentName(rawName, kindFromName);
-  const storedKind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
-  const metadata: ComposerPathPreviewMetadata = {
-    name: displayName,
-    kind: storedKind,
-    mimeType: stored.mimeType ?? undefined,
-    sizeBytes: stored.sizeBytes ?? undefined,
-  };
-  const previewUrl = storedKind === 'image' ? await createPreviewUrl(stored.path, metadata) : null;
-  return {
-    id: `${displayName}-${stored.path}`,
-    name: displayName,
-    path: stored.path,
-    kind: storedKind,
-    mimeType: stored.mimeType ?? undefined,
-    formatLabel: stored.formatLabel ?? attachmentFormatLabel(displayName, stored.mimeType ?? undefined),
-    sizeBytes: stored.sizeBytes ?? undefined,
-    ...(previewUrl ? { previewUrl } : {}),
   };
 }
 
@@ -444,11 +376,14 @@ export function useComposerInputActions({
     target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, [activeConvId, activeProjectSessionId, setComposerDrafts]);
 
-  const attachmentSummaryText = useCallback((text: string) => (
-    attachmentSummaryTextValue(text, chatComposerAttachments)
+  const attachmentSummaryText = useCallback((text: string, attachments = chatComposerAttachments) => (
+    attachmentSummaryTextValue(text, attachments)
   ), [chatComposerAttachments]);
 
-  const saveDesktopAttachments = useCallback(async (files: File[]) => {
+  const saveDesktopAttachments = useCallback(async (
+    files: File[],
+    options: SaveDesktopAttachmentOptions = {},
+  ) => {
     if (!isNativeShell || files.length === 0) {
       return [] as AttachmentItem[];
     }
@@ -456,23 +391,7 @@ export function useComposerInputActions({
     try {
       setDesktopChatError(null);
       const saved = await Promise.all(
-        files.map(async (file) => {
-          const mimeType = file.type || undefined;
-          const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
-          const displayName = friendlyAttachmentName(file.name || 'attachment.bin', kind);
-          const data = Array.from(new Uint8Array(await file.arrayBuffer()));
-          const path = await storeDesktopChatAttachment(displayName, data);
-          return {
-            id: `${displayName}-${path}`,
-            name: displayName,
-            path,
-            kind,
-            mimeType,
-            formatLabel: attachmentFormatLabel(displayName, mimeType),
-            previewUrl: kind === 'image' ? URL.createObjectURL(file) : undefined,
-            sizeBytes: file.size,
-          };
-        }),
+        files.map((file) => composerAttachmentItemFromFile(file, options)),
       );
 
       setChatComposerAttachments((current) => {
@@ -494,8 +413,8 @@ export function useComposerInputActions({
     try {
       setDesktopChatError(null);
       const saved = await Promise.all(paths.map(async (sourcePath) => {
-        const rawName = attachmentNameFromPath(sourcePath);
-        const kind = attachmentKindFromName(rawName);
+        const rawName = composerAttachmentNameFromPath(sourcePath);
+        const kind = composerAttachmentKindFromName(rawName);
         const displayName = friendlyAttachmentName(rawName, kind);
         const stored = await storeDesktopChatAttachmentPath(sourcePath, displayName);
         return composerAttachmentItemFromStoredPath({ sourcePath, stored, displayName });
@@ -520,6 +439,15 @@ export function useComposerInputActions({
       }
       return current.filter((item) => item.id !== id);
     });
+  }, [setChatComposerAttachments]);
+
+  const updateChatComposerAttachment = useCallback((
+    id: string,
+    update: Pick<AttachmentItem, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+  ) => {
+    setChatComposerAttachments((current) => current.map((attachment) => (
+      attachment.id === id ? updatedComposerAttachmentMetadata(attachment, update) : attachment
+    )));
   }, [setChatComposerAttachments]);
 
   const setChatComposerText = useCallback((value: string) => {
@@ -550,6 +478,7 @@ export function useComposerInputActions({
     saveDesktopAttachments,
     saveDesktopAttachmentPaths,
     removeChatComposerAttachment,
+    updateChatComposerAttachment,
     setChatComposerText,
     setProjectComposerText,
     acceptChatSlashCommand,

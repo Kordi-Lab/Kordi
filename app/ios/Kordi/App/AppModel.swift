@@ -83,11 +83,14 @@ final class AppModel: ObservableObject {
     private let wireCache: CloudWireCache
     private let sessionRuntimeRouteStore: SessionRuntimeRouteStore
     private let attachmentFileStore = AttachmentFileStore()
+    private let expressiveMediaLibrary = ExpressiveMediaLibraryStore()
     let conversationViewportMemory = ConversationViewportMemory()
     private var token: String?
     private var currentDeviceId: String?
     private var deviceOperationIds: [String: String] = [:]
     private var cloudSyncTask: Task<Void, Never>?
+    private var expressiveMediaSyncTask: Task<Void, Never>?
+    private var expressiveMediaSyncTaskID: UUID?
     private var cloudSyncCursor = "0"
     private var hasHydratedWireSnapshot = false
     private var hasHydratedForkLineage = false
@@ -162,6 +165,7 @@ final class AppModel: ObservableObject {
 
     deinit {
         cloudSyncTask?.cancel()
+        expressiveMediaSyncTask?.cancel()
     }
 
     func start() async {
@@ -192,6 +196,7 @@ final class AppModel: ObservableObject {
                 hasHydratedWireSnapshot: hasHydratedWireSnapshot,
                 hasHydratedForkLineage: hasHydratedForkLineage
             ))
+            scheduleExpressiveMediaLibrarySync()
             await refreshWorkspace()
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
@@ -273,6 +278,9 @@ final class AppModel: ObservableObject {
         let oldAccountId = account?.accountId
         cloudSyncTask?.cancel()
         cloudSyncTask = nil
+        expressiveMediaSyncTask?.cancel()
+        expressiveMediaSyncTask = nil
+        expressiveMediaSyncTaskID = nil
         cloudSyncCursor = "0"
         hasHydratedWireSnapshot = false
         hasHydratedForkLineage = false
@@ -974,6 +982,10 @@ final class AppModel: ObservableObject {
     ) async {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!text.isEmpty || !attachments.isEmpty), let token, let account else { return }
+        if let error = MemeAttachmentPolicy.draftError(for: attachments) {
+            errorMessage = error
+            return
+        }
         let localId = "ios_\(UUID().uuidString.lowercased())"
         let messageAction = actionOverride ?? replySource.map(MessageActionMetadata.quote)
         let optimistic = ChatMessage(
@@ -1163,9 +1175,18 @@ final class AppModel: ObservableObject {
             urls.append(url)
         }
         do {
-            return try await Task.detached(priority: .userInitiated) {
+            let loaded = try await Task.detached(priority: .userInitiated) {
                 try PendingAttachmentLoader.load(urls: urls)
             }.value
+            return loaded.enumerated().map { index, pending in
+                guard attachments.indices.contains(index) else { return pending }
+                let source = attachments[index]
+                var forwarded = pending
+                forwarded.subtype = source.subtype
+                forwarded.altText = source.altText
+                forwarded.memeRightsConfirmed = source.subtype == .meme
+                return forwarded
+            }
         } catch {
             errorMessage = error.localizedDescription
             return nil
@@ -1455,6 +1476,204 @@ final class AppModel: ObservableObject {
 
     func prepareAttachmentForSharing(_ attachment: ChatAttachment) async -> URL? {
         await prepareAttachment(attachment, allowsPreviewFallback: true)
+    }
+
+    func addAttachmentToExpressiveMediaLibrary(
+        _ attachment: ChatAttachment
+    ) async -> ExpressiveMediaLibraryKind? {
+        guard let accountId = account?.accountId else { return nil }
+        guard !attachment.attachmentId.hasPrefix("pending:") else {
+            errorMessage = "Wait for this media to finish sending before adding it to your library."
+            return nil
+        }
+        guard let kind = ExpressiveMediaLibraryKind.supportedKind(
+            name: attachment.name,
+            mimeType: attachment.mimeType
+        ) else {
+            errorMessage = ExpressiveMediaLibraryError.unsupportedFile.localizedDescription
+            return nil
+        }
+        guard let sourceURL = await prepareAttachmentForPresentation(attachment) else { return nil }
+        do {
+            _ = try await expressiveMediaLibrary.add(
+                accountId: accountId,
+                fileAt: sourceURL,
+                attachment: attachment
+            )
+            scheduleExpressiveMediaLibrarySync()
+            return kind
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not add this media to \(kind.libraryName).")
+            return nil
+        }
+    }
+
+    func expressiveMediaLibraryEntries(
+        kind: ExpressiveMediaLibraryKind
+    ) async -> [ExpressiveMediaLibraryEntry] {
+        guard let accountId = account?.accountId else { return [] }
+        return await expressiveMediaLibrary.entries(accountId: accountId, kind: kind)
+    }
+
+    func synchronizeExpressiveMediaLibrary() async {
+        if let expressiveMediaSyncTask {
+            await expressiveMediaSyncTask.value
+            return
+        }
+        guard let token, let accountId = account?.accountId else { return }
+        let taskID = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performExpressiveMediaLibrarySync(token: token, accountId: accountId)
+        }
+        expressiveMediaSyncTask = task
+        expressiveMediaSyncTaskID = taskID
+        await task.value
+        if expressiveMediaSyncTaskID == taskID {
+            expressiveMediaSyncTask = nil
+            expressiveMediaSyncTaskID = nil
+        }
+    }
+
+    func addExpressiveMediaFiles(
+        _ urls: [URL],
+        kind: ExpressiveMediaLibraryKind
+    ) async -> Bool {
+        guard let accountId = account?.accountId else { return false }
+        do {
+            for url in urls {
+                _ = try await expressiveMediaLibrary.add(
+                    accountId: accountId,
+                    fileAt: url,
+                    expectedKind: kind
+                )
+            }
+            scheduleExpressiveMediaLibrarySync()
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not add this media to \(kind.libraryName).")
+            return false
+        }
+    }
+
+    func addExpressiveMediaAttachment(
+        _ attachment: PendingAttachment,
+        kind: ExpressiveMediaLibraryKind
+    ) async -> Bool {
+        guard let accountId = account?.accountId else { return false }
+        do {
+            _ = try await expressiveMediaLibrary.add(
+                accountId: accountId,
+                attachment: attachment,
+                expectedKind: kind
+            )
+            scheduleExpressiveMediaLibrarySync()
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not add this media to \(kind.libraryName).")
+            return false
+        }
+    }
+
+    func pendingAttachment(
+        for entry: ExpressiveMediaLibraryEntry
+    ) async -> PendingAttachment? {
+        guard let accountId = account?.accountId else { return nil }
+        do {
+            return try await expressiveMediaLibrary.pendingAttachment(
+                accountId: accountId,
+                for: entry.item
+            )
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not open \(entry.item.name).")
+            return nil
+        }
+    }
+
+    private func scheduleExpressiveMediaLibrarySync() {
+        guard expressiveMediaSyncTask == nil else { return }
+        Task { [weak self] in
+            await self?.synchronizeExpressiveMediaLibrary()
+        }
+    }
+
+    private func performExpressiveMediaLibrarySync(token: String, accountId: String) async {
+        let remoteItems: [CloudExpressiveMediaItem]
+        do {
+            remoteItems = try await api.listExpressiveMedia(token: token)
+        } catch {
+            return
+        }
+        guard !Task.isCancelled, account?.accountId == accountId else { return }
+
+        var cloudByAttachmentId = Dictionary(
+            uniqueKeysWithValues: remoteItems.map { ($0.attachmentId, $0) }
+        )
+        let localItems = await expressiveMediaLibrary.items(accountId: accountId)
+        for local in localItems {
+            guard !Task.isCancelled, account?.accountId == accountId else { return }
+            do {
+                if let attachmentId = local.attachmentId,
+                   let cloudItem = cloudByAttachmentId[attachmentId] {
+                    try await expressiveMediaLibrary.markSynced(
+                        accountId: accountId,
+                        itemId: local.id,
+                        cloudItem: cloudItem
+                    )
+                    continue
+                }
+
+                let attachmentId: String
+                if let existingAttachmentId = local.attachmentId {
+                    attachmentId = existingAttachmentId
+                } else {
+                    let attachment = try await expressiveMediaLibrary.pendingAttachment(
+                        accountId: accountId,
+                        for: local
+                    )
+                    let uploaded = try await api.uploadAttachment(token: token, attachment: attachment)
+                    attachmentId = uploaded.attachmentId
+                    try await expressiveMediaLibrary.markUploaded(
+                        accountId: accountId,
+                        itemId: local.id,
+                        attachmentId: attachmentId
+                    )
+                }
+                let cloudItem = try await api.saveExpressiveMedia(
+                    token: token,
+                    attachmentId: attachmentId,
+                    kind: local.kind,
+                    name: local.name
+                )
+                cloudByAttachmentId[cloudItem.attachmentId] = cloudItem
+                try await expressiveMediaLibrary.markSynced(
+                    accountId: accountId,
+                    itemId: local.id,
+                    cloudItem: cloudItem
+                )
+            } catch {
+                if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+            }
+        }
+
+        let synchronizedLocalItems = await expressiveMediaLibrary.items(accountId: accountId)
+        let localAttachmentIds = Set(synchronizedLocalItems.compactMap(\.attachmentId))
+        for cloudItem in cloudByAttachmentId.values where !localAttachmentIds.contains(cloudItem.attachmentId) {
+            guard !Task.isCancelled, account?.accountId == accountId else { return }
+            do {
+                let data = try await api.downloadAttachmentContent(
+                    token: token,
+                    attachmentId: cloudItem.attachmentId
+                )
+                try await expressiveMediaLibrary.importCloudItem(
+                    accountId: accountId,
+                    cloudItem: cloudItem,
+                    data: data
+                )
+            } catch {
+                if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+            }
+        }
     }
 
     private func prepareAttachment(
@@ -3142,6 +3361,7 @@ final class AppModel: ObservableObject {
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage
         ))
+        scheduleExpressiveMediaLibrarySync()
         await refreshWorkspace()
     }
 

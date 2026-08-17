@@ -13,6 +13,7 @@ import { useKordiParticipantSpaceContinuation } from '@/app/useKordiParticipantS
 import { useKordiProjectActions } from '@/app/useKordiProjectActions';
 import type { KordiWorkspaceState } from '@/app/useKordiWorkspaceState';
 import { buildChatCreatePeopleContactLookup } from '@/features/chat/chatCreateFlows';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
@@ -240,10 +241,12 @@ export function useKordiAppMutationActions({
     draftOverride?: string,
     targetSessionId?: string,
     contextMessages?: DesktopChatContextMessage[],
+    attachmentOverride?: AttachmentItem[],
   ) => sendChatMessageWithImmediateQuoteClear({
     draftOverride,
     targetSessionId,
     contextMessages,
+    attachmentOverride,
     currentDraft: composerDraftsView.chat,
     attachmentCount: composerUi.chatComposerAttachments.length,
     activeChatQuote,

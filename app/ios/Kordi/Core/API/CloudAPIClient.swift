@@ -879,6 +879,8 @@ actor CloudAPIClient {
                 attachmentId: uploaded.attachmentId,
                 name: attachment.name,
                 kind: attachment.kind.rawValue,
+                subtype: attachment.subtype,
+                altText: attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
                 mimeType: uploaded.contentType?.nonEmpty ?? attachment.mimeType,
                 sizeBytes: uploaded.sizeBytes ?? attachment.sizeBytes,
                 downloadUrl: nil,
@@ -919,6 +921,36 @@ actor CloudAPIClient {
                 statusCode: 0
             )
         }
+    }
+
+    func listExpressiveMedia(token: String) async throws -> [CloudExpressiveMediaItem] {
+        let response: CloudExpressiveMediaListResponse = try await send(
+            path: "/v1/cloud/expressive-media",
+            method: "GET",
+            token: token,
+            fallback: "Could not synchronize your saved stickers and GIFs."
+        )
+        return response.items
+    }
+
+    func saveExpressiveMedia(
+        token: String,
+        attachmentId: String,
+        kind: ExpressiveMediaLibraryKind,
+        name: String
+    ) async throws -> CloudExpressiveMediaItem {
+        let response: CloudExpressiveMediaMutationResponse = try await send(
+            path: "/v1/cloud/expressive-media",
+            method: "POST",
+            token: token,
+            body: SaveExpressiveMediaRequest(
+                attachmentId: attachmentId,
+                kind: kind.rawValue,
+                name: name
+            ),
+            fallback: "Could not synchronize this saved media."
+        )
+        return response.item
     }
 
     func markMessagesRead(token: String, peerAccountId: String) async throws {
@@ -1561,6 +1593,11 @@ private struct DeviceOperationRequest: Encodable { let clientOperationId: String
 private struct RenameDeviceRequest: Encodable {
     let clientOperationId: String
     let displayName: String
+}
+private struct SaveExpressiveMediaRequest: Encodable {
+    let attachmentId: String
+    let kind: String
+    let name: String
 }
 private struct ContactsResponse: Decodable { let contacts: [CloudContact] }
 private struct ContactRequestsResponse: Decodable { let requests: [CloudContactRequest] }

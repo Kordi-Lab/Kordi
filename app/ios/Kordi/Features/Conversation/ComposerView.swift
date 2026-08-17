@@ -6,6 +6,7 @@ struct ComposerView: View {
     @Binding var photoGrouping: PhotoSendGrouping
     @Binding var replySource: MessageActionSource?
     @Binding var selectedMention: ComposerMentionTarget?
+    @Binding var isExpressivePickerPresented: Bool
     let mentionTargets: [ComposerMentionTarget]
     let isSending: Bool
     let isPreparingAttachments: Bool
@@ -13,8 +14,10 @@ struct ComposerView: View {
     let cameraAvailable: Bool
     let onTakePhoto: () -> Void
     let onChoosePhotos: () -> Void
+    let onChooseMeme: () -> Void
     let onChooseFiles: () -> Void
     let onOpenAgentModel: () -> Void
+    let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
     @FocusState private var isFocused: Bool
 
@@ -35,6 +38,15 @@ struct ComposerView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            if isExpressivePickerPresented {
+                ExpressiveMediaPicker(
+                    isSending: isSending,
+                    onInsertEmoji: insertEmoji,
+                    onSendMedia: onSendExpressiveMedia
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             inputSurface
         }
         .padding(.horizontal, 10)
@@ -43,11 +55,15 @@ struct ComposerView: View {
         .animation(.snappy(duration: 0.2), value: filteredMentionTargets.isEmpty)
         .animation(.snappy(duration: 0.2), value: attachments.count)
         .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
+        .animation(.snappy(duration: 0.22), value: isExpressivePickerPresented)
     }
 
     private var inputSurface: some View {
         HStack(alignment: .bottom, spacing: 0) {
-            Button(action: onOpenAgentModel) {
+            Button {
+                dismissExpressivePicker()
+                onOpenAgentModel()
+            } label: {
                 Image(systemName: "line.3.horizontal")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -61,12 +77,17 @@ struct ComposerView: View {
 
             attachmentMenu
 
+            expressivePickerButton
+
             TextField("Message \(destinationName)", text: $text, axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.plain)
                 .focused($isFocused)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 11)
+                .onChange(of: isFocused) { _, isFocused in
+                    if isFocused { isExpressivePickerPresented = false }
+                }
                 .onChange(of: text) { _, newValue in
                     if let selectedMention,
                        !newValue.localizedCaseInsensitiveContains(selectedMention.mentionText) {
@@ -88,6 +109,31 @@ struct ComposerView: View {
         }
     }
 
+    private var expressivePickerButton: some View {
+        Button {
+            isFocused = false
+            isExpressivePickerPresented.toggle()
+        } label: {
+            Image(systemName: isExpressivePickerPresented ? "keyboard" : "face.smiling")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(isExpressivePickerPresented ? KordiTheme.agentViolet : .secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isPreparingAttachments)
+        .accessibilityLabel(isExpressivePickerPresented ? "Hide emoji and media picker" : "Open emoji and media picker")
+        .accessibilityHint("Shows emoji, stickers, and GIFs")
+    }
+
+    private func insertEmoji(_ emoji: String) {
+        text.append(emoji)
+    }
+
+    private func dismissExpressivePicker() {
+        isExpressivePickerPresented = false
+    }
+
     private var attachmentMenu: some View {
         Menu {
             Button(action: onTakePhoto) {
@@ -96,6 +142,9 @@ struct ComposerView: View {
             .disabled(!cameraAvailable)
             Button(action: onChoosePhotos) {
                 Label("Photo Library", systemImage: "photo.on.rectangle")
+            }
+            Button(action: onChooseMeme) {
+                Label("Meme from Photos", systemImage: "text.bubble")
             }
             Button(action: onChooseFiles) {
                 Label("Files", systemImage: "doc")
@@ -115,12 +164,20 @@ struct ComposerView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                dismissExpressivePicker()
+            }
+        )
         .disabled(isSending || isPreparingAttachments)
         .accessibilityLabel("Add photo or file")
     }
 
     private var sendButton: some View {
-        Button(action: onSend) {
+        Button {
+            dismissExpressivePicker()
+            onSend()
+        } label: {
             ZStack {
                 Circle().fill(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
                 if isSending {
@@ -135,6 +192,7 @@ struct ComposerView: View {
         }
         .disabled(!canSend || isSending || isPreparingAttachments)
         .accessibilityLabel("Send message")
+        .accessibilityHint(memeValidationError ?? "Sends the message")
     }
 
     private var mentionPicker: some View {
@@ -232,6 +290,29 @@ struct ComposerView: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
+                            if attachment.kind == .image {
+                                Button {
+                                    toggleMeme(attachment.id)
+                                } label: {
+                                    Text(attachment.subtype == .meme ? "Meme" : "Mark meme")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(attachment.subtype == .meme ? KordiTheme.signalBlue : .secondary)
+                                        .padding(.horizontal, 7)
+                                        .frame(minHeight: 28)
+                                        .background(
+                                            attachment.subtype == .meme
+                                                ? KordiTheme.signalBlue.opacity(0.12)
+                                                : Color(uiColor: .tertiarySystemFill),
+                                            in: Capsule()
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(
+                                    attachment.subtype == .meme
+                                        ? "Remove meme details from \(attachment.name)"
+                                        : "Mark \(attachment.name) as a meme"
+                                )
+                            }
                             Button {
                                 attachments.removeAll { $0.id == attachment.id }
                                 if photoAttachmentCount < 2 {
@@ -251,6 +332,19 @@ struct ComposerView: View {
                         .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
                     }
                 }
+            }
+
+            ForEach($attachments) { $attachment in
+                if attachment.subtype == .meme {
+                    memeEditor(attachment: $attachment)
+                }
+            }
+
+            if let memeValidationError {
+                Text(memeValidationError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Meme attachment error: \(memeValidationError)")
             }
 
             if photoAttachmentCount > 1 {
@@ -279,7 +373,62 @@ struct ComposerView: View {
     }
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+        (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
+            && memeValidationError == nil
+    }
+
+    private var memeValidationError: String? {
+        MemeAttachmentPolicy.draftError(for: attachments)
+    }
+
+    private func toggleMeme(_ id: String) {
+        guard let index = attachments.firstIndex(where: { $0.id == id }) else { return }
+        if attachments[index].subtype == .meme {
+            attachments[index].subtype = nil
+            attachments[index].altText = nil
+            attachments[index].memeRightsConfirmed = false
+        } else {
+            attachments[index].subtype = .meme
+            attachments[index].altText = ""
+            attachments[index].memeRightsConfirmed = false
+        }
+    }
+
+    private func memeEditor(attachment: Binding<PendingAttachment>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Meme details")
+                .font(.caption.weight(.semibold))
+            TextField(
+                "Describe visible text and the joke",
+                text: Binding(
+                    get: { attachment.wrappedValue.altText ?? "" },
+                    set: { value in
+                        attachment.wrappedValue.altText = String(
+                            value.prefix(MemeAttachmentPolicy.maximumAltTextCharacters)
+                        )
+                    }
+                ),
+                axis: .vertical
+            )
+            .lineLimit(2...4)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("Alt text for \(attachment.wrappedValue.name)")
+
+            Toggle(
+                "I confirm I have permission or another legal right to share this meme.",
+                isOn: Binding(
+                    get: { attachment.wrappedValue.memeRightsConfirmed },
+                    set: { attachment.wrappedValue.memeRightsConfirmed = $0 }
+                )
+            )
+            .font(.caption)
+        }
+        .padding(12)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 0.5)
+        }
     }
 
     private var mentionQuery: String? {

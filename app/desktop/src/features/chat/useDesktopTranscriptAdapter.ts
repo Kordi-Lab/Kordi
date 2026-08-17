@@ -145,6 +145,10 @@ export function mapDesktopMessagesForTranscript(
       attachments: message.attachments?.map((attachment) => {
         const mapped = {
           kind: attachment.kind,
+          ...(attachment.subtype === 'meme' ? {
+            subtype: 'meme' as const,
+            altText: attachment.altText ?? null,
+          } : {}),
           name: attachment.name,
           formatLabel: attachment.formatLabel,
           previewUrl: attachment.previewUrl,

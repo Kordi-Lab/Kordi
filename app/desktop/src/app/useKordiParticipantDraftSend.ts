@@ -5,6 +5,7 @@ import {
 } from 'react';
 
 import type { CanonicalSessionState } from '@/kordi-app/types';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { openOrCreateCanonicalSessionFast } from '@/lib/desktop';
 
@@ -20,6 +21,7 @@ type SendChatMessage = (
   draftOverride?: string,
   targetSessionId?: string,
   contextMessages?: DesktopChatContextMessage[],
+  attachmentOverride?: AttachmentItem[],
 ) => Promise<void>;
 
 type UseKordiParticipantDraftSendArgs = {
@@ -128,10 +130,11 @@ export function useKordiParticipantDraftSend({
     draftOverride?: string,
     targetSessionId?: string,
     contextMessages?: DesktopChatContextMessage[],
+    attachmentOverride?: AttachmentItem[],
   ) => {
     const hasSendableContent =
       (draftOverride ?? currentDraft).trim().length > 0
-      || attachmentCount > 0;
+      || (attachmentOverride?.length ?? attachmentCount) > 0;
     const candidateSessionId =
       targetSessionId || activeConversationId;
     if (
@@ -149,7 +152,7 @@ export function useKordiParticipantDraftSend({
         return;
       }
     }
-    await sendMessage(draftOverride, targetSessionId, contextMessages);
+    await sendMessage(draftOverride, targetSessionId, contextMessages, attachmentOverride);
   }, [
     activeConversationId,
     attachmentCount,

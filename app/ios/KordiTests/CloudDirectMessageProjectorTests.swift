@@ -50,9 +50,11 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             sessionId: conversation.sessionId,
             attachments: [CloudMessageAttachment(
                 attachmentId: "att_1",
-                name: "review.pdf",
-                kind: "file",
-                mimeType: "application/pdf",
+                name: "review.png",
+                kind: "image",
+                subtype: .meme,
+                altText: "A reviewer approves the final change.",
+                mimeType: "image/png",
                 sizeBytes: 2_048,
                 downloadUrl: nil,
                 previewUrl: nil
@@ -65,7 +67,9 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             ownAccountId: "acct_me"
         )
 
-        XCTAssertEqual(projected.first?.attachments.first?.name, "review.pdf")
+        XCTAssertEqual(projected.first?.attachments.first?.name, "review.png")
+        XCTAssertEqual(projected.first?.attachments.first?.subtype, .meme)
+        XCTAssertEqual(projected.first?.attachments.first?.altText, "A reviewer approves the final change.")
         XCTAssertEqual(projected.first?.replyToMessageId, "msg_source")
         XCTAssertEqual(projected.first?.messageAction?.source.senderLabel, "Maya")
     }

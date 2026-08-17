@@ -21,6 +21,11 @@ export function cloudGroupOutboxAttachmentSources(
     path: attachment.path,
     name: attachment.name,
     kind: attachment.kind,
+    ...(attachment.subtype === 'meme' ? {
+      subtype: 'meme' as const,
+      altText: attachment.altText ?? null,
+      memeRightsConfirmed: attachment.memeRightsConfirmed === true,
+    } : {}),
     formatLabel: attachment.formatLabel ?? null,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
