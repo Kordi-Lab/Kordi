@@ -38,6 +38,7 @@ struct ConversationView: View {
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
     @State private var showSessionDetails = false
+    @State private var authorProfileConversation: ConversationSummary?
     @State private var showAgentModel = false
     @State private var highlightedMessageID: String?
     @State private var selectedMessageIDs = Set<String>()
@@ -190,7 +191,15 @@ struct ConversationView: View {
                                                     isCallActive: callActivity?.matchesActiveCall(
                                                         activeConversationCall
                                                     ) == true,
-                                                    onOpenConversationInfo: openSessionDetails,
+                                                    onOpenAuthorProfile: {
+                                                        authorProfileConversation = ConversationAuthorProfileResolver.destination(
+                                                            currentConversation: conversation,
+                                                            message: message,
+                                                            selfAccountID: model.account?.accountId,
+                                                            contacts: model.contacts,
+                                                            conversations: model.conversations
+                                                        )
+                                                    },
                                                     onJoinCall: {
                                                         guard callActivity?.matchesActiveCall(
                                                             activeConversationCall
@@ -503,6 +512,9 @@ struct ConversationView: View {
         }
         .navigationDestination(isPresented: $showSessionDetails) {
             SessionDetailView(conversation: conversation)
+        }
+        .navigationDestination(item: $authorProfileConversation) { destination in
+            SessionDetailView(conversation: destination)
         }
         .sheet(isPresented: $showAgentModel) {
             AgentModelSheet(conversation: conversation)

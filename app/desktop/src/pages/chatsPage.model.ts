@@ -71,11 +71,46 @@ export function transcriptHumanParticipant(
     if (exact) return exact;
   }
   const senderName = message.sender?.trim().toLocaleLowerCase();
-  if (!senderName) return null;
-  const nameMatches = humanParticipants.filter((participant) => (
-    participant.name.trim().toLocaleLowerCase() === senderName
-  ));
-  return nameMatches.length === 1 ? nameMatches[0] : null;
+  const nameMatches = senderName
+    ? humanParticipants.filter((participant) => (
+        participant.name.trim().toLocaleLowerCase() === senderName
+      ))
+    : [];
+  if (nameMatches.length === 1) return nameMatches[0];
+  if (conversationIsGroupChat(conversation) || conversation.type !== 'person') return null;
+
+  const remoteHumanId = conversation.identity?.remoteHumanId?.trim()
+    || conversation.collaborationTarget?.humanId?.trim()
+    || conversation.collaborationTarget?.nodeId?.trim();
+  if (!remoteHumanId) return null;
+  const remoteName = conversation.identity?.remoteHumanName?.trim()
+    || conversation.collaborationTarget?.ownerName?.trim()
+    || conversation.collaborationTarget?.displayName?.trim()
+    || message.sender?.trim()
+    || conversation.name.trim();
+  if (!remoteName) return null;
+
+  return {
+    id: `human:${remoteHumanId}`,
+    humanId: conversation.identity?.remoteHumanId?.trim()
+      || conversation.collaborationTarget?.humanId?.trim()
+      || remoteHumanId,
+    sourceIdentityId: conversation.collaborationTarget?.nodeId?.trim()
+      || remoteHumanId,
+    sourceHostId: conversation.collaborationTarget?.hostId?.trim()
+      || conversation.identity?.sourceHostId?.trim()
+      || null,
+    name: remoteName,
+    kind: 'human',
+    role: 'person',
+    source: conversation.collaborationTarget?.hostId === 'cloud' ? 'cloud' : 'bridge',
+    avatarKey: message.senderAvatarSeed?.trim()
+      || conversation.avatarSeed?.trim()
+      || remoteHumanId,
+    profileImageUrl: message.senderProfileImageUrl
+      ?? conversation.profileImageUrl
+      ?? null,
+  };
 }
 
 function addScopedKey(keys: Set<string>, scope: string, value?: string | null) {

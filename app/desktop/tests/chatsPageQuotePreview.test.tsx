@@ -149,6 +149,66 @@ test('transcript sender profile uses only an unambiguous human display-name fall
   }, message), null);
 });
 
+test('transcript sender profile resolves a direct contact before canonical participants hydrate', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Maya Chen',
+    senderType: 'human',
+    senderAvatarSeed: 'acct_maya',
+    senderProfileImageUrl: 'https://example.com/maya.png',
+    text: 'Hello',
+    time: '10:42',
+  };
+  const conversation: Conversation = {
+    ...activeConv,
+    type: 'person',
+    name: 'Maya Chen',
+    canonicalParticipants: undefined,
+    collaborationTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_maya',
+      humanId: 'acct_maya',
+      ownerName: 'Maya Chen',
+    },
+  };
+
+  assert.deepEqual(transcriptHumanParticipant(conversation, message), {
+    id: 'human:acct_maya',
+    humanId: 'acct_maya',
+    sourceIdentityId: 'acct_maya',
+    sourceHostId: 'cloud',
+    name: 'Maya Chen',
+    kind: 'human',
+    role: 'person',
+    source: 'cloud',
+    avatarKey: 'acct_maya',
+    profileImageUrl: 'https://example.com/maya.png',
+  });
+});
+
+test('transcript sender profile never synthesizes a group member from the group target', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Maya Chen',
+    senderType: 'human',
+    text: 'Hello',
+    time: '10:42',
+  };
+
+  assert.equal(transcriptHumanParticipant({
+    ...activeConv,
+    type: 'person',
+    canonicalSessionId: 'session:group:release',
+    directness: 'Group chat',
+    canonicalParticipants: undefined,
+    collaborationTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_group_owner',
+      humanId: 'acct_group_owner',
+    },
+  }, message), null);
+});
+
 test('desktop runtime chats skip canonical history pagination while canonical-only chats retain it', () => {
   assert.equal(canonicalHistorySessionIdForConversation({
     id: 'local-runtime-session',

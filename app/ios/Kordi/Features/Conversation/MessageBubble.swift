@@ -18,7 +18,7 @@ struct MessageBubble: View, Equatable {
     let authorAvatarSeed: String?
     let readByNames: [String]
     let isCallActive: Bool
-    let onOpenConversationInfo: () -> Void
+    let onOpenAuthorProfile: () -> Void
     let onJoinCall: () -> Void
     let onRetry: () -> Void
     let onReply: () -> Void
@@ -63,7 +63,7 @@ struct MessageBubble: View, Equatable {
 
             if showsAvatarSlot && message.author != .me {
                 if showAvatar {
-                    Button(action: onOpenConversationInfo) {
+                    Button(action: onOpenAuthorProfile) {
                         Color.clear
                             .frame(width: 44, height: 44)
                             .overlay(alignment: .bottom) {
@@ -79,8 +79,7 @@ struct MessageBubble: View, Equatable {
                     }
                     .buttonStyle(.plain)
                     .disabled(selectionMode)
-                    .accessibilityLabel("Open conversation info")
-                    .accessibilityValue(authorAvatarName)
+                    .accessibilityLabel("Open profile for \(authorAvatarName)")
                     .padding(.bottom, 2)
                 } else {
                     Color.clear
