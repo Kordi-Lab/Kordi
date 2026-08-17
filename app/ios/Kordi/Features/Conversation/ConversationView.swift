@@ -120,6 +120,7 @@ struct ConversationView: View {
         let pinnedMessage = model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId
             .flatMap { messagesById[$0] }
         let activeConversationCall = model.activeCall(for: conversation)
+        let mentionTargets = model.mentionTargets(for: conversation)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if let activeCall = activeConversationCall,
@@ -202,28 +203,29 @@ struct ConversationView: View {
                                                 } else {
                                                     MessageBubble(
                                                         message: message,
-                                                    showAuthor: message.author == .agent,
-                                                    showAvatar: presentation.showsAvatar,
-                                                    replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
-                                                    isHighlighted: highlightedMessageID == message.id,
-                                                    isPinned: pinnedMessage?.id == message.id,
-                                                    selectionMode: !selectedMessageIDs.isEmpty,
-                                                    isSelected: selectedMessageIDs.contains(message.id),
-                                                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
-                                                    showsAvatarSlot: message.author != .agent,
-                                                    authorAvatarName: avatar.name,
-                                                    authorAvatarSource: avatar.source,
-                                                    authorAvatarSeed: avatar.seed,
-                                                    readByNames: readers.map(\.displayName),
-                                                    isCallActive: callActivity?.matchesActiveCall(
-                                                        activeConversationCall
-                                                    ) == true,
-                                                    onOpenConversationInfo: openSessionDetails,
-                                                    onJoinCall: {
-                                                        guard callActivity?.matchesActiveCall(
+                                                        mentionTargets: mentionTargets,
+                                                        showAuthor: message.author == .agent,
+                                                        showAvatar: presentation.showsAvatar,
+                                                        replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
+                                                        isHighlighted: highlightedMessageID == message.id,
+                                                        isPinned: pinnedMessage?.id == message.id,
+                                                        selectionMode: !selectedMessageIDs.isEmpty,
+                                                        isSelected: selectedMessageIDs.contains(message.id),
+                                                        allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                                                        showsAvatarSlot: message.author != .agent,
+                                                        authorAvatarName: avatar.name,
+                                                        authorAvatarSource: avatar.source,
+                                                        authorAvatarSeed: avatar.seed,
+                                                        readByNames: readers.map(\.displayName),
+                                                        isCallActive: callActivity?.matchesActiveCall(
                                                             activeConversationCall
                                                         ) == true,
-                                                        let activeConversationCall else { return }
+                                                        onOpenConversationInfo: openSessionDetails,
+                                                        onJoinCall: {
+                                                            guard callActivity?.matchesActiveCall(
+                                                                activeConversationCall
+                                                            ) == true,
+                                                                  let activeConversationCall else { return }
                                                         Task {
                                                             await callCoordinator.join(
                                                                 activeConversationCall,
@@ -414,7 +416,7 @@ struct ConversationView: View {
                     replySource: $replySource,
                     selectedMention: $selectedMention,
                     isExpressivePickerPresented: $isExpressivePickerPresented,
-                    mentionTargets: model.mentionTargets(for: conversation),
+                    mentionTargets: mentionTargets,
                     isSending: isSending,
                     isPreparingAttachments: isPreparingAttachments,
                     destinationName: conversation.displayName,

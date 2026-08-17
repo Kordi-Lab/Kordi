@@ -131,6 +131,32 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         ))
     }
 
+    func testHighlightSegmentsStyleMentionsWithoutStylingEmailAddresses() {
+        let agentTarget = ComposerMentionTarget(
+            id: "agent:project_driver",
+            displayName: "Project Driver",
+            kind: .agent,
+            accountId: "acct_peer",
+            agentId: "project_driver",
+            ownerName: "Peer",
+            avatarSource: nil
+        )
+
+        let segments = ComposerMentionTargetCatalog.highlightedSegments(
+            in: "Email test@example.com. @Shutestbeta1 ask @Project Driver.",
+            targets: [agentTarget]
+        )
+
+        XCTAssertEqual(
+            segments.filter { $0.kind != nil },
+            [
+                ComposerMentionTextSegment(text: "@Shutestbeta1", kind: .person),
+                ComposerMentionTextSegment(text: "@Project Driver", kind: .agent),
+            ]
+        )
+        XCTAssertFalse(segments.contains { $0.text == "@example.com" && $0.kind != nil })
+    }
+
     func testOwnerIDsIncludeGroupOnlyParticipantsAndRemoveDuplicates() {
         let conversation = conversation(
             kind: .group,

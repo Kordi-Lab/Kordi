@@ -1,5 +1,10 @@
 import Foundation
 
+struct ComposerMentionTextSegment: Equatable {
+    let text: String
+    let kind: ComposerMentionKind?
+}
+
 enum ComposerMentionTargetCatalog {
     static func ownerAccountIDs(
         for conversation: ConversationSummary,
@@ -99,6 +104,79 @@ enum ComposerMentionTargetCatalog {
         return equallySpecificMatches.count == 1 ? mostSpecificTarget : nil
     }
 
+    static func highlightedSegments(
+        in text: String,
+        targets: [ComposerMentionTarget]
+    ) -> [ComposerMentionTextSegment] {
+        guard !text.isEmpty, text.contains("@") else {
+            return text.isEmpty ? [] : [ComposerMentionTextSegment(text: text, kind: nil)]
+        }
+
+        let exactTargets = targets.sorted { $0.mentionText.count > $1.mentionText.count }
+        var segments: [ComposerMentionTextSegment] = []
+        var plainStart = text.startIndex
+        var cursor = text.startIndex
+
+        while cursor < text.endIndex {
+            guard text[cursor] == "@", hasLeadingBoundary(in: text, at: cursor) else {
+                cursor = text.index(after: cursor)
+                continue
+            }
+
+            var match: (range: Range<String.Index>, kind: ComposerMentionKind)?
+            for target in exactTargets where !target.displayName.isEmpty {
+                if let range = text.range(
+                    of: target.mentionText,
+                    options: [.anchored, .caseInsensitive, .diacriticInsensitive],
+                    range: cursor..<text.endIndex,
+                    locale: .current
+                ), hasTrailingBoundary(in: text, at: range.upperBound) {
+                    match = (range, target.kind)
+                    break
+                }
+            }
+
+            if match == nil {
+                let labelStart = text.index(after: cursor)
+                if labelStart < text.endIndex,
+                   text[labelStart].isLetter || text[labelStart].isNumber {
+                    var labelEnd = text.index(after: labelStart)
+                    while labelEnd < text.endIndex,
+                          isMentionContinuation(text[labelEnd]) {
+                        labelEnd = text.index(after: labelEnd)
+                    }
+                    let range = cursor..<labelEnd
+                    match = (range, inferredKind(for: String(text[range])))
+                }
+            }
+
+            guard let match else {
+                cursor = text.index(after: cursor)
+                continue
+            }
+            if plainStart < match.range.lowerBound {
+                segments.append(ComposerMentionTextSegment(
+                    text: String(text[plainStart..<match.range.lowerBound]),
+                    kind: nil
+                ))
+            }
+            segments.append(ComposerMentionTextSegment(
+                text: String(text[match.range]),
+                kind: match.kind
+            ))
+            plainStart = match.range.upperBound
+            cursor = match.range.upperBound
+        }
+
+        if plainStart < text.endIndex {
+            segments.append(ComposerMentionTextSegment(
+                text: String(text[plainStart...]),
+                kind: nil
+            ))
+        }
+        return segments
+    }
+
     private static func isMentionable(_ agent: CloudAgent) -> Bool {
         agent.accessScope == CloudAgentAccessScope.participantConversations.rawValue
             && (agent.status == nil || agent.status == "active")
@@ -115,5 +193,28 @@ enum ComposerMentionTargetCatalog {
         let ownerComparison = (lhs.ownerName ?? "").localizedCaseInsensitiveCompare(rhs.ownerName ?? "")
         if ownerComparison != .orderedSame { return ownerComparison == .orderedAscending }
         return lhs.id < rhs.id
+    }
+
+    private static func hasLeadingBoundary(in text: String, at index: String.Index) -> Bool {
+        index == text.startIndex
+            || !isMentionLeadingCharacter(text[text.index(before: index)])
+    }
+
+    private static func hasTrailingBoundary(in text: String, at index: String.Index) -> Bool {
+        index == text.endIndex
+            || !(text[index].isLetter || text[index].isNumber || "_'-’".contains(text[index]))
+    }
+
+    private static func isMentionLeadingCharacter(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || "._%+-".contains(character)
+    }
+
+    private static func isMentionContinuation(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || "._'-’".contains(character)
+    }
+
+    private static func inferredKind(for label: String) -> ComposerMentionKind {
+        let normalized = String(label.dropFirst()).lowercased()
+        return normalized == "kordi" || normalized.hasSuffix("kordi") ? .agent : .person
     }
 }
