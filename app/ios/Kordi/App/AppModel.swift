@@ -102,7 +102,7 @@ final class AppModel: ObservableObject {
     private var sessionForksById: [String: CloudSessionForkSummary] = [:]
     private var canonicalConversationIDBySessionID: [String: String] = [:]
     @Published private var ownedCloudAgents: [CloudAgent] = []
-    private var sharedCloudAgents: [CloudAgent] = []
+    @Published private var sharedCloudAgents: [CloudAgent] = []
     private var hiddenCloudSessionIds = Set<String>()
     private var deletedCloudSessionIds = Set<String>()
     private var pendingAgentRequestIds: [String: String] = [:]
@@ -392,7 +392,7 @@ final class AppModel: ObservableObject {
             if let authSnapshot {
                 providerAuthSnapshots[ProviderAuthenticationDefinition.canonicalID(authSnapshot.provider)] = authSnapshot
             }
-            sharedCloudAgents = shared
+            sharedCloudAgents = normalizedSharedCloudAgents(shared)
             hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
             deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
             for message in latestCanonical { mergeCloudMessage(message, peerHint: nil) }
@@ -423,9 +423,7 @@ final class AppModel: ObservableObject {
                     token: token,
                     ownerAccountIds: Array(additionalOwners)
                 )
-                var byId = Dictionary(uniqueKeysWithValues: shared.map { ($0.agentId, $0) })
-                additional.forEach { byId[$0.agentId] = $0 }
-                shared = Array(byId.values)
+                shared = normalizedSharedCloudAgents(shared + additional)
                 sharedCloudAgents = shared
             }
             mergeMessageHistories(history.messagesByPeer)
@@ -1668,48 +1666,63 @@ final class AppModel: ObservableObject {
 
     func mentionTargets(for conversation: ConversationSummary) -> [ComposerMentionTarget] {
         guard let account else { return [] }
-        var targets: [ComposerMentionTarget] = []
-        let participantIds: Set<String>
-        switch conversation.kind {
-        case .group:
-            participantIds = Set(conversation.groupParticipants.map(\.accountId))
-            for participant in conversation.groupParticipants where participant.accountId != account.accountId {
-                targets.append(ComposerMentionTarget(
-                    id: "person:\(participant.accountId)",
-                    displayName: participant.displayName.nonEmpty ?? "Participant",
-                    kind: .person,
-                    accountId: participant.accountId,
-                    agentId: nil,
-                    ownerName: participant.displayName,
-                    avatarSource: participant.avatarUrl
-                ))
-            }
-        case .person:
-            participantIds = [account.accountId, conversation.peerAccountId]
-        case .agent:
-            participantIds = [conversation.peerAccountId]
-        }
+        return ComposerMentionTargetCatalog.targets(
+            account: account,
+            conversation: conversation,
+            ownedAgents: ownedCloudAgents,
+            sharedAgents: sharedCloudAgents
+        )
+    }
 
-        let agentPool = ownedCloudAgents + sharedCloudAgents
-        for agent in agentPool where participantIds.contains(agent.ownerAccountId) {
-            targets.append(ComposerMentionTarget(
-                id: "agent:\(agent.agentId)",
-                displayName: agent.name,
-                kind: .agent,
-                accountId: agent.ownerAccountId,
-                agentId: agent.agentId,
-                ownerName: agent.ownerDisplayName ?? (agent.ownerAccountId == account.accountId ? account.preferredName : nil),
-                avatarSource: agent.avatarUrl
-            ))
-        }
+    func refreshMentionTargets(for conversation: ConversationSummary) async {
+        guard !previewMode, let token, let account else { return }
+        let accountID = account.accountId
+        let ownerAccountIDs = ComposerMentionTargetCatalog.ownerAccountIDs(
+            for: conversation,
+            currentAccountID: accountID
+        ).filter { $0 != accountID }
+        guard !ownerAccountIDs.isEmpty else { return }
 
-        var seen = Set<String>()
-        return targets
-            .filter { seen.insert($0.id).inserted }
-            .sorted {
-                if $0.kind != $1.kind { return $0.kind == .agent }
-                return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        do {
+            let refreshedAgents = try await api.listSharedAgents(
+                token: token,
+                ownerAccountIds: ownerAccountIDs
+            )
+            guard !Task.isCancelled,
+                  self.token == token,
+                  self.account?.accountId == accountID else { return }
+            replaceSharedCloudAgents(refreshedAgents, forOwnerAccountIDs: ownerAccountIDs)
+        } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+            // Mention refresh is best effort. Keep the last usable catalog and
+            // let the workspace sync surface connection failures centrally.
+        }
+    }
+
+    private func replaceSharedCloudAgents(
+        _ refreshedAgents: [CloudAgent],
+        forOwnerAccountIDs ownerAccountIDs: [String]
+    ) {
+        sharedCloudAgents = normalizedSharedCloudAgents(
+            ComposerMentionTargetCatalog.replacingSharedAgents(
+                sharedCloudAgents,
+                with: refreshedAgents,
+                forOwnerAccountIDs: ownerAccountIDs
+            )
+        )
+    }
+
+    private func normalizedSharedCloudAgents(_ agents: [CloudAgent]) -> [CloudAgent] {
+        var agentsByID: [String: CloudAgent] = [:]
+        agents.forEach { agentsByID[$0.agentId] = $0 }
+        return agentsByID.values.sorted {
+            if $0.ownerAccountId != $1.ownerAccountId {
+                return $0.ownerAccountId < $1.ownerAccountId
             }
+            let nameComparison = $0.name.localizedCaseInsensitiveCompare($1.name)
+            if nameComparison != .orderedSame { return nameComparison == .orderedAscending }
+            return $0.agentId < $1.agentId
+        }
     }
 
     func prepareAttachmentForPresentation(_ attachment: ChatAttachment) async -> URL? {
@@ -4084,14 +4097,28 @@ final class AppModel: ObservableObject {
             CloudAgent(
                 agentId: "cloud_agent_research",
                 ownerAccountId: fixture.account.accountId,
-                accessScope: "owner",
-                status: "ready",
+                accessScope: "participant_conversations",
+                status: "active",
                 name: "Research Agent",
                 role: "assistant",
                 description: "Plans and reviews product work.",
                 updatedAt: ISO8601DateFormatter().string(from: Date()),
                 ownerDisplayName: fixture.account.preferredName,
                 modelRouting: previewRouting
+            )
+        ]
+        sharedCloudAgents = [
+            CloudAgent(
+                agentId: "cloud_agent_support",
+                ownerAccountId: "acct_maya",
+                accessScope: "participant_conversations",
+                status: nil,
+                name: "Support Agent",
+                role: "assistant",
+                description: "Helps Maya answer support questions.",
+                updatedAt: ISO8601DateFormatter().string(from: Date()),
+                ownerDisplayName: "Maya Chen",
+                avatarUrl: fixture.contacts.first(where: { $0.accountId == "acct_maya" })?.avatarUrl
             )
         ]
         providerAuthSnapshot = CloudProviderAuthSnapshot(

@@ -86,6 +86,12 @@ struct ConversationView: View {
     private var messages: [ChatMessage] {
         ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
     }
+    private var mentionTargetRefreshID: [String] {
+        [conversation.id] + ComposerMentionTargetCatalog.ownerAccountIDs(
+            for: conversation,
+            currentAccountID: model.account?.accountId ?? ""
+        )
+    }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14
 
@@ -441,6 +447,9 @@ struct ConversationView: View {
                     }
                 )
             }
+        }
+        .task(id: mentionTargetRefreshID) {
+            await model.refreshMentionTargets(for: conversation)
         }
         .onDisappear {
             isReadPresentationVisible = false
@@ -1122,13 +1131,11 @@ struct ConversationView: View {
     }
 
     private func resolvedMentionTarget(in text: String) -> ComposerMentionTarget? {
-        if let selectedMention,
-           text.localizedCaseInsensitiveContains(selectedMention.mentionText) {
-            return selectedMention
-        }
-        return model.mentionTargets(for: conversation)
-            .sorted { $0.displayName.count > $1.displayName.count }
-            .first { text.localizedCaseInsensitiveContains($0.mentionText) }
+        ComposerMentionTargetCatalog.resolvedTarget(
+            in: text,
+            selectedTarget: selectedMention,
+            targets: model.mentionTargets(for: conversation)
+        )
     }
 
     private func importFiles(_ result: Result<[URL], Error>) {

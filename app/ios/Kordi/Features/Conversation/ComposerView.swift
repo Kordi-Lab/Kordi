@@ -53,6 +53,7 @@ struct ComposerView: View {
     let onSend: () -> Void
     @State private var isFocused = false
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
+    @ScaledMetric(relativeTo: .body) private var mentionPickerMaxHeight: CGFloat = 264
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -254,37 +255,48 @@ struct ComposerView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
 
-            ForEach(filteredMentionTargets.prefix(5)) { target in
-                Button {
-                    insertMention(target)
-                } label: {
-                    HStack(spacing: 10) {
-                        IdentityAvatar(
-                            name: target.displayName,
-                            imageSource: target.avatarSource,
-                            kind: target.kind == .agent ? .agent : .person,
-                            size: 30,
-                            seed: target.agentId ?? target.accountId
-                        )
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(target.displayName)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text(target.kind == .agent ? agentMentionSubtitle(target) : "Person")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(filteredMentionTargets) { target in
+                        Button {
+                            insertMention(target)
+                        } label: {
+                            HStack(spacing: 10) {
+                                IdentityAvatar(
+                                    name: target.displayName,
+                                    imageSource: target.avatarSource,
+                                    kind: target.kind == .agent ? .agent : .person,
+                                    size: 30,
+                                    seed: target.agentId ?? target.accountId
+                                )
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(target.displayName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Text(target.kind == .agent ? agentMentionSubtitle(target) : "Person")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Image(systemName: target.kind == .agent ? "sparkles" : "at")
+                                    .foregroundStyle(target.kind == .agent ? KordiTheme.agentViolet : KordiTheme.signalBlue)
+                                    .accessibilityHidden(true)
+                            }
+                            .frame(minHeight: 44)
+                            .padding(.horizontal, 12)
+                            .contentShape(Rectangle())
                         }
-                        Spacer(minLength: 8)
-                        Image(systemName: target.kind == .agent ? "sparkles" : "at")
-                            .foregroundStyle(target.kind == .agent ? KordiTheme.agentViolet : KordiTheme.signalBlue)
+                        .buttonStyle(.plain)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(mentionAccessibilityLabel(target))
+                        .accessibilityHint("Inserts this mention")
                     }
-                    .frame(minHeight: 44)
-                    .padding(.horizontal, 12)
                 }
-                .buttonStyle(.plain)
             }
+            .frame(maxHeight: mentionPickerMaxHeight)
+            .scrollIndicators(filteredMentionTargets.count > 5 ? .visible : .hidden)
         }
         .padding(.bottom, 6)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -521,6 +533,13 @@ struct ComposerView: View {
     private func agentMentionSubtitle(_ target: ComposerMentionTarget) -> String {
         guard let ownerName = target.ownerName?.nonEmpty else { return "Cloud agent" }
         return "\(ownerName)’s agent · Cloud or Mac"
+    }
+
+    private func mentionAccessibilityLabel(_ target: ComposerMentionTarget) -> String {
+        if target.kind == .agent {
+            return "\(target.displayName), \(agentMentionSubtitle(target))"
+        }
+        return "\(target.displayName), person"
     }
 
     private func attachmentCountText(_ count: Int) -> String {
