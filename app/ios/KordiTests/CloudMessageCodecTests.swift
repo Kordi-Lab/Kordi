@@ -2,6 +2,23 @@ import XCTest
 @testable import Kordi
 
 final class CloudMessageCodecTests: XCTestCase {
+    func testDirectEnvelopeDecodesMacRuntimeRouteFieldNames() throws {
+        let json = #"{"schemaVersion":1,"kind":"message","text":"Switched model to openai/gpt-5.6-luna","agentRuntimeRoute":{"model":"openai/gpt-5.6-luna","authProvider":"openai-codex","authChoice":"local-active-oauth","thinking":"max"}}"#
+        let encoded = Data(json.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let body = CloudMessageCodec.directPrefix + encoded
+
+        let routing = try XCTUnwrap(
+            CloudMessageCodec.directEnvelope(body)?.agentRuntimeRoute
+        )
+        XCTAssertEqual(routing.defaultModel, "openai/gpt-5.6-luna")
+        XCTAssertEqual(routing.defaultAuthProvider, "openai-codex")
+        XCTAssertEqual(routing.defaultAuthChoice, "local-active-oauth")
+        XCTAssertEqual(routing.thinking, "max")
+    }
+
     func testDirectAgentEnvelopeRoundTripsDisplayTextAndTarget() throws {
         var runtimeRoute = CloudModelRouting.empty
         runtimeRoute.defaultModel = "openai-codex/gpt-5.6-sol"
@@ -113,6 +130,263 @@ final class CloudMessageCodecTests: XCTestCase {
 
         XCTAssertEqual(CloudMessageCodec.agentResponseRequestId(body), "msg_request")
         XCTAssertEqual(CloudMessageCodec.displayText(body), "Done")
+    }
+
+    func testAgentResponseDecodesOwnerExecutionSnapshot() throws {
+        let payload = try XCTUnwrap(
+            #"{"text":"processing...","requestId":"msg_request","deliveryState":"processing","execution":{"phase":"using-tool","summary":"Using Search","steps":[{"id":"tool:search","label":"Using Search","state":"running"}],"thinkingText":"I need to search the index.","tools":[{"id":"search","name":"Search","status":"running","arguments":"{\"query\":\"status\"}","liveOutput":"Searching","isError":false}],"startedAtMs":1000,"updatedAtMs":2000,"completed":false}}"#
+                .data(using: .utf8)
+        )
+        let encoded = payload.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let execution = try XCTUnwrap(
+            CloudMessageCodec.agentExecution(
+                CloudMessageCodec.agentResponsePrefix + encoded
+            )
+        )
+
+        XCTAssertEqual(execution.phase, .usingTool)
+        XCTAssertEqual(execution.summary, "Using Search")
+        XCTAssertEqual(execution.steps.first?.state, .running)
+        XCTAssertEqual(execution.thinkingText, "I need to search the index.")
+        XCTAssertEqual(execution.tools?.first?.arguments, #"{"query":"status"}"#)
+        XCTAssertEqual(execution.tools?.first?.liveOutput, "Searching")
+        XCTAssertFalse(execution.completed)
+    }
+
+    func testExecutionTimelinePresentationMatchesDesktopHierarchy() {
+        let execution = AgentExecutionSnapshot(
+            phase: .failed,
+            summary: "Execution needs attention",
+            steps: [
+                AgentExecutionStep(
+                    id: "analysis",
+                    label: "Analyzing the request",
+                    state: .complete
+                ),
+                AgentExecutionStep(
+                    id: "tool:shell-1",
+                    label: "Using Bash",
+                    state: .complete
+                ),
+                AgentExecutionStep(
+                    id: "tool:shell-2",
+                    label: "Using Bash",
+                    state: .failed
+                ),
+                AgentExecutionStep(
+                    id: "response",
+                    label: "Writing the response",
+                    state: .failed
+                )
+            ],
+            startedAtMs: 1_000,
+            updatedAtMs: 6_000,
+            completed: true
+        )
+
+        let presentation = AgentExecutionTimelinePresentation(
+            execution: execution
+        )
+
+        XCTAssertEqual(presentation.planningStep?.label, "Analyzing the request")
+        XCTAssertEqual(presentation.toolSteps.count, 2)
+        XCTAssertEqual(presentation.failedToolCount, 1)
+        XCTAssertEqual(presentation.responseStep?.label, "Writing the response")
+        XCTAssertEqual(presentation.completionLabel, "Worked for 5s")
+    }
+
+    func testWaitingExecutionTimelineHasNoRedundantExpandablePlanningContent() {
+        let execution = AgentExecutionSnapshot(
+            phase: .preparing,
+            summary: "Preparing the response",
+            steps: [],
+            startedAtMs: 1_000,
+            updatedAtMs: 1_000,
+            completed: false
+        )
+
+        let presentation = AgentExecutionTimelinePresentation(execution: execution)
+
+        XCTAssertFalse(presentation.hasExpandableContent)
+        XCTAssertNil(presentation.planningStep)
+        XCTAssertTrue(presentation.toolSteps.isEmpty)
+        XCTAssertNil(presentation.responseStep)
+    }
+
+    @MainActor
+    func testAgentExecutionSnapshotsForOneRequestKeepOneTimelineIdentity() {
+        let model = AppModel(previewMode: true)
+        let first = ChatMessage(
+            id: "wire-snapshot-1",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "processing...",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: "request-1"
+        )
+        let second = ChatMessage(
+            id: "wire-snapshot-2",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "Done",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: "request-1"
+        )
+
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(model.timelineIdentity(for: first), model.timelineIdentity(for: second))
+    }
+
+    @MainActor
+    func testOptimisticAgentRequestKeepsItsTimelineIdentityAfterServerPromotion() {
+        let local = ChatMessage(
+            id: "ios-local-request",
+            conversationId: "agent-session",
+            author: .me,
+            authorName: "You",
+            text: "Hello",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .sending,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+        let server = ChatMessage(
+            id: "server-request",
+            conversationId: "agent-session",
+            author: .me,
+            authorName: "You",
+            text: "Hello",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+        let presentationIds = [
+            local.id: local.id,
+            server.id: local.id,
+        ]
+
+        XCTAssertEqual(
+            AppModel.timelineIdentity(for: local, requestPresentationIds: presentationIds),
+            AppModel.timelineIdentity(for: server, requestPresentationIds: presentationIds)
+        )
+    }
+
+    @MainActor
+    func testProjectedMessagesPreserveLocalModelChangeNoticesWithoutCloudMatch() {
+        let modelChange = ChatMessage(
+            id: "model-change",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "Switched model to openai/gpt-5.6-sol",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatMessage.agentModelChangeMessageKind
+        )
+        let staleLocalReply = ChatMessage(
+            id: "stale-local-reply",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "Stale",
+            createdAt: Date(timeIntervalSince1970: 3),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+        let projectedReply = ChatMessage(
+            id: "projected-reply",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "Current",
+            createdAt: Date(timeIntervalSince1970: 4),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+
+        let merged = AppModel.mergeProjectedMessages(
+            [projectedReply],
+            preservingLocalMessagesFrom: [modelChange, staleLocalReply]
+        )
+
+        XCTAssertEqual(merged.map(\.id), [modelChange.id, projectedReply.id])
+        XCTAssertTrue(merged[0].isAgentModelChangeNotice)
+    }
+
+    @MainActor
+    func testProjectedCloudModelChangeReplacesMatchingLocalNotice() {
+        let local = ChatMessage(
+            id: "local-model-change",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "Switched model to openai/gpt-5.6-sol",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatMessage.agentModelChangeMessageKind
+        )
+        let cloud = ChatMessage(
+            id: "cloud-model-change",
+            conversationId: "agent-session",
+            author: .me,
+            authorName: "You",
+            text: local.text,
+            createdAt: local.createdAt.addingTimeInterval(1),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatMessage.agentModelChangeMessageKind
+        )
+
+        let merged = AppModel.mergeProjectedMessages(
+            [cloud],
+            preservingLocalMessagesFrom: [local]
+        )
+
+        XCTAssertEqual(merged.map(\.id), [cloud.id])
+    }
+
+    func testAgentModelChangeNoticeParsesQualifiedModel() {
+        XCTAssertEqual(
+            ChatMessage.modelFromAgentModelChangeNotice(
+                "  Switched model to anthropic/claude-opus-4-1  "
+            ),
+            "anthropic/claude-opus-4-1"
+        )
+        XCTAssertNil(ChatMessage.modelFromAgentModelChangeNotice("Model updated"))
+        XCTAssertNil(ChatMessage.modelFromAgentModelChangeNotice("Switched model to   "))
+    }
+
+    func testRuntimeRouteNoticeUsesTheSharedThinkingDisplayLabel() {
+        XCTAssertEqual(
+            ChatMessage.runtimeRouteChangeNotice(
+                model: "openai/gpt-5.6-sol",
+                thinking: "xhigh"
+            ),
+            "Model: openai/gpt-5.6-sol · Thinking effort: Extra High"
+        )
+        XCTAssertEqual(
+            ChatMessage.modelFromAgentModelChangeNotice(
+                "Model: openai/gpt-5.6-sol · Thinking effort: Extra High"
+            ),
+            "openai/gpt-5.6-sol"
+        )
     }
 
     func testAgentCancelControlDecodesAndIsNeverClassifiedAsContent() {

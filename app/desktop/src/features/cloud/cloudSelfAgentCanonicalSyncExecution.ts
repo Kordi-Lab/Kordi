@@ -68,21 +68,32 @@ export async function persistCloudSelfAgentCanonicalSyncPlan(
     if (!shouldContinue()) return null;
     sessions.push(await persistence.openSession(request));
   }
+  const reconciledMessageMirrors: CloudSelfAgentCanonicalSyncPlan['mirrorReconciliations'] = [];
+  for (const reconciliation of plan.mirrorReconciliations) {
+    if (!shouldContinue()) return null;
+    let reconciled: boolean;
+    try {
+      reconciled = await persistence.reconcileMessageMirror(
+        reconciliation.preferredMessageId,
+        reconciliation.duplicateMessageId,
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Unable to reconcile canonical mirror ${reconciliation.preferredMessageId} -> ${reconciliation.duplicateMessageId}: ${detail}`,
+      );
+    }
+    if (reconciled) {
+      reconciledMessageMirrors.push(reconciliation);
+    }
+  }
+  // Reconcile while the preferred row still has its local provenance. The
+  // terminal Cloud upsert below may intentionally attach the Cloud source
+  // event to that same row after the processing mirror has been removed.
   const messages: CanonicalSessionMessage[] = [];
   for (const request of plan.messageRequests) {
     if (!shouldContinue()) return null;
     messages.push(await persistence.upsertMessage(request));
-  }
-  const reconciledMessageMirrors: CloudSelfAgentCanonicalSyncPlan['mirrorReconciliations'] = [];
-  for (const reconciliation of plan.mirrorReconciliations) {
-    if (!shouldContinue()) return null;
-    const reconciled = await persistence.reconcileMessageMirror(
-      reconciliation.preferredMessageId,
-      reconciliation.duplicateMessageId,
-    );
-    if (reconciled) {
-      reconciledMessageMirrors.push(reconciliation);
-    }
   }
   return {
     identity,

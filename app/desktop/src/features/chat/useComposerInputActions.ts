@@ -1,23 +1,27 @@
 import { useCallback } from 'react';
 
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
-import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
-import { readDesktopChatAttachment, storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig, type DesktopStoredChatAttachment } from '@/lib/desktop';
+import { storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
-import { friendlyAttachmentName } from './composerAttachments';
+import {
+  composerAttachmentItemFromFile,
+  composerAttachmentItemFromStoredPath,
+  composerAttachmentKindFromName,
+  composerAttachmentNameFromPath,
+  friendlyAttachmentName,
+  updatedComposerAttachmentMetadata,
+} from './composerAttachments';
+export { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
-import { appendOrReplaceTrailingSessionConfigNotice } from './sessionConfigNotices';
+import { appendOptimisticSessionConfigMessage } from './composerSessionConfigState';
 
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
 
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
-  formatDesktopEventTime,
-  formatThinkingSelectionLabel,
-  parseModelSelection,
   resizeComposerTextarea,
 } from './composerController.shared';
 import type { ComposerScope, ComposerSelectorType } from '@/kordi-app/types';
@@ -25,12 +29,11 @@ import type {
   AttachmentItem,
   ComposerConfigTargetOverride,
   ComposerDraftState,
-  ComposerRuntimeContext,
   ComposerSelection,
   ComposerSelectionState,
   ComposerSelectorState,
-  MinimalModelOption,
   MinimalProviderOption,
+  SaveDesktopAttachmentOptions,
   UseComposerInputActionsArgs,
 } from './composerController.types';
 
@@ -40,18 +43,21 @@ export function desktopChatStateAfterConfigUpdate<T>(current: T, next: T, isolat
 
 export function composerConfigTargetSessionId({
   scope,
+  activeConversationUsesCollaboration = false,
   activeConvId,
   activeConvCanonicalSessionId,
   activeProjectSessionId,
   desktopActiveSessionId,
 }: {
   scope: ComposerScope;
+  activeConversationUsesCollaboration?: boolean;
   activeConvId: string;
   activeConvCanonicalSessionId?: string | null;
   activeProjectSessionId: string;
   desktopActiveSessionId?: string | null;
 }) {
   if (scope === 'project') return activeProjectSessionId;
+  if (activeConversationUsesCollaboration) return null;
   if (isLocalDraftChatConversationId(activeConvId)) return activeConvId;
 
   const sessionId = activeConvCanonicalSessionId?.trim() || activeConvId.trim();
@@ -60,159 +66,6 @@ export function composerConfigTargetSessionId({
     return null;
   }
   return activeConvId;
-}
-
-function appendOptimisticSessionConfigMessage({
-  current,
-  targetSessionId,
-  nextModelValue,
-  nextThinkingValue,
-  chatModelOptions,
-}: {
-  current: NonNullable<ComposerRuntimeContext['desktopChatState']>;
-  targetSessionId: string;
-  nextModelValue?: string;
-  nextThinkingValue?: string;
-  chatModelOptions: MinimalModelOption[];
-}) {
-  const selectedModelOption = nextModelValue
-    ? chatModelOptions.find((option) => option.value === nextModelValue)
-    : null;
-  const parsedModel = nextModelValue ? parseModelSelection(nextModelValue) : null;
-  const timeLabel = formatDesktopEventTime();
-  const timestampMs = Date.now();
-  const modelChanged = Boolean(
-    parsedModel
-      && (parsedModel.provider !== current.activeSession.provider
-        || parsedModel.modelId !== current.activeSession.model),
-  );
-  const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== current.activeSession.thinking);
-  const systemMessage = {
-    role: 'system' as const,
-    text: modelChanged
-      ? `Switched model to ${nextModelValue}`
-      : `Thinking set to ${formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)}`,
-    detail: modelChanged ? 'Model updated' : 'Thinking updated',
-    timeLabel,
-    timestampMs,
-  };
-  const nextMessages = appendOrReplaceTrailingSessionConfigNotice(current.activeSession.messages, systemMessage);
-  const messageCountDelta = nextMessages.appended ? 1 : 0;
-
-  return {
-    ...current,
-    sessions: current.sessions.map((session) => (
-      session.id === targetSessionId
-        ? {
-            ...session,
-            updatedAtLabel: timeLabel,
-            updatedAtMs: timestampMs,
-            messageCount: session.messageCount + messageCountDelta,
-          }
-        : session
-    )),
-    activeSession: {
-      ...current.activeSession,
-      provider: modelChanged
-        ? (selectedModelOption?.provider ?? parsedModel?.provider ?? current.activeSession.provider)
-        : current.activeSession.provider,
-      providerLabel: modelChanged
-        ? (selectedModelOption?.providerLabel ?? current.activeSession.providerLabel)
-        : current.activeSession.providerLabel,
-      model: modelChanged
-        ? (selectedModelOption?.label ?? parsedModel?.modelId ?? current.activeSession.model)
-        : current.activeSession.model,
-      modelLabel: modelChanged
-        ? (selectedModelOption?.label ?? parsedModel?.modelId ?? current.activeSession.modelLabel)
-        : current.activeSession.modelLabel,
-      thinking: thinkingChanged
-        ? (nextThinkingValue ?? current.activeSession.thinking)
-        : current.activeSession.thinking,
-      thinkingLabel: thinkingChanged
-        ? formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)
-        : current.activeSession.thinkingLabel,
-      updatedAtLabel: timeLabel,
-      updatedAtMs: timestampMs,
-      messageCount: current.activeSession.messageCount + messageCountDelta,
-      messages: nextMessages.messages,
-    },
-  };
-}
-
-function attachmentFormatLabel(name: string, mimeType?: string) {
-  const extension = name.split('.').pop()?.trim();
-  if (extension) {
-    return extension.toUpperCase();
-  }
-
-  const subtype = mimeType?.split('/').pop()?.trim();
-  if (subtype) {
-    return subtype.toUpperCase();
-  }
-
-  return 'FILE';
-}
-
-function attachmentNameFromPath(path: string) {
-  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
-  return normalized.split('/').pop()?.trim() || 'attachment';
-}
-
-function attachmentKindFromName(name: string): AttachmentItem['kind'] {
-  const extension = name.split('.').pop()?.trim().toLowerCase();
-  return extension && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(extension)
-    ? 'image'
-    : 'file';
-}
-
-type ComposerPathPreviewMetadata = Pick<AttachmentItem, 'name' | 'kind' | 'mimeType' | 'sizeBytes'>;
-
-type ComposerPathPreviewGenerator = (storedPath: string, metadata: ComposerPathPreviewMetadata) => Promise<string | null | undefined>;
-
-async function createComposerAttachmentPathPreviewUrl(storedPath: string, metadata: ComposerPathPreviewMetadata) {
-  if (metadata.kind !== 'image') return null;
-  try {
-    const bytes = await readDesktopChatAttachment(storedPath);
-    const mimeType = metadata.mimeType?.trim() || null;
-    const blob = new Blob([new Uint8Array(bytes)], mimeType ? { type: mimeType } : undefined);
-    return await createCompressedImagePreviewDataUrl(blob);
-  } catch {
-    return null;
-  }
-}
-
-export async function composerAttachmentItemFromStoredPath({
-  sourcePath,
-  stored,
-  displayName: preferredDisplayName,
-  createPreviewUrl = createComposerAttachmentPathPreviewUrl,
-}: {
-  sourcePath: string;
-  stored: Pick<DesktopStoredChatAttachment, 'path' | 'kind' | 'mimeType' | 'formatLabel' | 'sizeBytes'> & { name?: string | null };
-  displayName?: string;
-  createPreviewUrl?: ComposerPathPreviewGenerator;
-}): Promise<AttachmentItem> {
-  const rawName = attachmentNameFromPath(sourcePath);
-  const kindFromName = attachmentKindFromName(rawName);
-  const displayName = preferredDisplayName?.trim() || stored.name?.trim() || friendlyAttachmentName(rawName, kindFromName);
-  const storedKind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
-  const metadata: ComposerPathPreviewMetadata = {
-    name: displayName,
-    kind: storedKind,
-    mimeType: stored.mimeType ?? undefined,
-    sizeBytes: stored.sizeBytes ?? undefined,
-  };
-  const previewUrl = storedKind === 'image' ? await createPreviewUrl(stored.path, metadata) : null;
-  return {
-    id: `${displayName}-${stored.path}`,
-    name: displayName,
-    path: stored.path,
-    kind: storedKind,
-    mimeType: stored.mimeType ?? undefined,
-    formatLabel: stored.formatLabel ?? attachmentFormatLabel(displayName, stored.mimeType ?? undefined),
-    sizeBytes: stored.sizeBytes ?? undefined,
-    ...(previewUrl ? { previewUrl } : {}),
-  };
 }
 
 function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[]) {
@@ -242,7 +95,11 @@ export function useComposerInputActions({
   messageRuntime,
 }: UseComposerInputActionsArgs) {
   const { isNativeShell } = environment;
-  const { activeConvId, activeConvCanonicalSessionId } = conversation;
+  const {
+    activeConversationUsesCollaboration,
+    activeConvId,
+    activeConvCanonicalSessionId,
+  } = conversation;
   const { activeProjectSessionId } = project;
   const { desktopChatState } = runtime;
   const {
@@ -261,6 +118,7 @@ export function useComposerInputActions({
     setDesktopChatState,
     setDesktopChatError,
     shouldAutoFollowChatRef,
+    publishCloudAgentRuntimeRouteChange,
   } = messageRuntime;
   const toggleComposerSelector = useCallback((scope: ComposerScope, type: ComposerSelectorType) => {
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
@@ -321,8 +179,43 @@ export function useComposerInputActions({
     const overrideSessionId = typeof configTargetOverride === 'string'
       ? configTargetOverride
       : isolatedTarget?.sessionId;
+    const cloudRuntimeSessionId = activeConvCanonicalSessionId?.trim()
+      || activeConvId.trim();
+    if (
+      isNativeShell
+      && scope === 'chat'
+      && activeConversationUsesCollaboration
+      && !isolatedTarget
+      && (modelChanged || thinkingChanged)
+      && nextSelection.model
+      && cloudRuntimeSessionId
+      && publishCloudAgentRuntimeRouteChange
+    ) {
+      try {
+        setDesktopChatError(null);
+        await publishCloudAgentRuntimeRouteChange({
+          sessionId: cloudRuntimeSessionId,
+          model: nextSelection.model,
+          thinking: nextThinkingValue ?? nextSelection.thinking,
+        });
+      } catch (error) {
+        setComposerSelections((current: ComposerSelectionState) => ({
+          ...current,
+          [scope]: current[scope].model === nextSelection.model
+            ? currentSelection
+            : current[scope],
+        }));
+        setDesktopChatError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to synchronize the session model',
+        );
+      }
+      return;
+    }
     const targetSessionId = overrideSessionId?.trim() || composerConfigTargetSessionId({
       scope,
+      activeConversationUsesCollaboration,
       activeConvId,
       activeConvCanonicalSessionId,
       activeProjectSessionId,
@@ -377,12 +270,14 @@ export function useComposerInputActions({
   }, [
     activeConvId,
     activeConvCanonicalSessionId,
+    activeConversationUsesCollaboration,
     activeProjectSessionId,
     chatModelOptions,
     composerSelections,
     desktopChatState?.activeSessionId,
     isNativeShell,
     preferredModelValueForProvider,
+    publishCloudAgentRuntimeRouteChange,
     refreshDesktopChat,
     setComposerSelections,
     setDesktopChatError,
@@ -444,11 +339,14 @@ export function useComposerInputActions({
     target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, [activeConvId, activeProjectSessionId, setComposerDrafts]);
 
-  const attachmentSummaryText = useCallback((text: string) => (
-    attachmentSummaryTextValue(text, chatComposerAttachments)
+  const attachmentSummaryText = useCallback((text: string, attachments = chatComposerAttachments) => (
+    attachmentSummaryTextValue(text, attachments)
   ), [chatComposerAttachments]);
 
-  const saveDesktopAttachments = useCallback(async (files: File[]) => {
+  const saveDesktopAttachments = useCallback(async (
+    files: File[],
+    options: SaveDesktopAttachmentOptions = {},
+  ) => {
     if (!isNativeShell || files.length === 0) {
       return [] as AttachmentItem[];
     }
@@ -456,23 +354,7 @@ export function useComposerInputActions({
     try {
       setDesktopChatError(null);
       const saved = await Promise.all(
-        files.map(async (file) => {
-          const mimeType = file.type || undefined;
-          const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
-          const displayName = friendlyAttachmentName(file.name || 'attachment.bin', kind);
-          const data = Array.from(new Uint8Array(await file.arrayBuffer()));
-          const path = await storeDesktopChatAttachment(displayName, data);
-          return {
-            id: `${displayName}-${path}`,
-            name: displayName,
-            path,
-            kind,
-            mimeType,
-            formatLabel: attachmentFormatLabel(displayName, mimeType),
-            previewUrl: kind === 'image' ? URL.createObjectURL(file) : undefined,
-            sizeBytes: file.size,
-          };
-        }),
+        files.map((file) => composerAttachmentItemFromFile(file, options)),
       );
 
       setChatComposerAttachments((current) => {
@@ -494,8 +376,8 @@ export function useComposerInputActions({
     try {
       setDesktopChatError(null);
       const saved = await Promise.all(paths.map(async (sourcePath) => {
-        const rawName = attachmentNameFromPath(sourcePath);
-        const kind = attachmentKindFromName(rawName);
+        const rawName = composerAttachmentNameFromPath(sourcePath);
+        const kind = composerAttachmentKindFromName(rawName);
         const displayName = friendlyAttachmentName(rawName, kind);
         const stored = await storeDesktopChatAttachmentPath(sourcePath, displayName);
         return composerAttachmentItemFromStoredPath({ sourcePath, stored, displayName });
@@ -520,6 +402,15 @@ export function useComposerInputActions({
       }
       return current.filter((item) => item.id !== id);
     });
+  }, [setChatComposerAttachments]);
+
+  const updateChatComposerAttachment = useCallback((
+    id: string,
+    update: Pick<AttachmentItem, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+  ) => {
+    setChatComposerAttachments((current) => current.map((attachment) => (
+      attachment.id === id ? updatedComposerAttachmentMetadata(attachment, update) : attachment
+    )));
   }, [setChatComposerAttachments]);
 
   const setChatComposerText = useCallback((value: string) => {
@@ -550,6 +441,7 @@ export function useComposerInputActions({
     saveDesktopAttachments,
     saveDesktopAttachmentPaths,
     removeChatComposerAttachment,
+    updateChatComposerAttachment,
     setChatComposerText,
     setProjectComposerText,
     acceptChatSlashCommand,

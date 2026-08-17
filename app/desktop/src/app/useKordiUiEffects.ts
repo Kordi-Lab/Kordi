@@ -203,8 +203,10 @@ export function useKordiUiEffects({
       setDesktopSessionRenameDraft(desktopChatState.activeSession.title);
       setIsEditingDesktopSessionTitle(false);
     }
-    const shouldSyncChatSelection = !isLocalDraftChatConversationId(activeConvId)
-      || isLocalDraftChatConversationId(desktopChatState.activeSessionId);
+    const shouldSyncChatSelection = !activeConversationUsesCollaboration && (
+      !isLocalDraftChatConversationId(activeConvId)
+      || isLocalDraftChatConversationId(desktopChatState.activeSessionId)
+    );
     setComposerSelections((current) => ({
       ...current,
       chat: shouldSyncChatSelection

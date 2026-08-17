@@ -6,7 +6,8 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-
+mod runtime_choice;
+pub use runtime_choice::resolve_provider_runtime_auth_choice;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedProviderAuth {
     pub source: AuthSource,
@@ -17,7 +18,6 @@ pub struct ResolvedProviderAuth {
     pub account_label: Option<String>,
     pub authority: Option<String>,
 }
-
 impl ResolvedProviderAuth {
     pub fn footer_badge(&self, provider: &str) -> String {
         let method = self.method.footer_label();

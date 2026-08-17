@@ -303,7 +303,7 @@
 }
 
 .app-group-management-header {
-  border-bottom: 1px solid var(--app-transient-divider);
+  background: color-mix(in oklab, var(--app-transient-raised-bg) 52%, transparent);
 }
 
 .app-group-management-popover-enter {

@@ -1,14 +1,20 @@
 import { useCallback, useState } from 'react';
 
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
+import type { CloudPresenceStore } from '@/features/cloud/presence';
 import type { CloudSupportTicketInput } from '@/features/cloud/supportClient';
 import type {
   Contact,
   Conversation,
   ConversationParticipant,
   Message,
+  ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
-import { transcriptHumanParticipant } from '@/pages/chatsPage.model';
+import { transcriptHumanParticipant } from '@/pages/chatSenderProfileModel';
+import {
+  contactForGroupMember,
+  groupMemberAccountId,
+} from '@/pages/memberContactProfileModel';
 import type {
   ChatsPageRuntime,
   ChatsPageSession,
@@ -16,6 +22,7 @@ import type {
 
 type SenderProfileTarget = {
   participant: ConversationParticipant;
+  conversation: Conversation;
   anchorRect: DOMRect;
 };
 
@@ -27,15 +34,41 @@ type SenderProfileState = {
 type UseChatSenderProfilesInput = {
   activeConversation: Conversation;
   companionConversation: Conversation | null;
+  participantSpaces: ParticipantSpaceViewModel[];
   cloudAccount: ChatsPageSession['cloudAccount'];
+  presenceSnapshot: CloudPresenceStore;
   onMessageContact: ChatsPageRuntime['onMessageContact'];
+  onSelectSession: ChatsPageRuntime['onSelectSession'];
 };
+
+function participantIdentityKeys(participant: ConversationParticipant) {
+  return new Set([
+    participant.id,
+    participant.humanId,
+    participant.sourceIdentityId,
+  ].map((value) => value?.trim()).filter(Boolean));
+}
+
+function groupContainsParticipant(
+  space: ParticipantSpaceViewModel,
+  participant: ConversationParticipant,
+) {
+  const keys = participantIdentityKeys(participant);
+  return space.kind === 'group' && space.participants.some((member) => [
+    member.id,
+    member.humanId,
+    member.sourceIdentityId,
+  ].some((value) => Boolean(value?.trim() && keys.has(value.trim()))));
+}
 
 export function useChatSenderProfiles({
   activeConversation,
   companionConversation,
+  participantSpaces,
   cloudAccount,
+  presenceSnapshot,
   onMessageContact,
+  onSelectSession,
 }: UseChatSenderProfilesInput) {
   const normalizedCloudAccount = cloudAccount ?? null;
   const cloudContacts = useCloudContacts(normalizedCloudAccount);
@@ -64,7 +97,7 @@ export function useChatSenderProfiles({
     if (!participant || participant.role === 'self') return;
     setStoredState({
       pageConversationId: activeConversation.id,
-      target: { participant, anchorRect },
+      target: { participant, conversation, anchorRect },
     });
   }, [activeConversation.id]);
   const openActive = useCallback(
@@ -96,9 +129,38 @@ export function useChatSenderProfiles({
     (clientSubmissionId: string) => getCloudSupportRequest(clientSubmissionId),
     [getCloudSupportRequest],
   );
+  const close = useCallback(() => setStoredState({
+    pageConversationId: activeConversation.id,
+    target: null,
+  }), [activeConversation.id]);
+  const commonGroups = state.target
+    ? participantSpaces.filter((space) => (
+        groupContainsParticipant(space, state.target!.participant)
+      ))
+    : [];
+  const targetContact = state.target
+    ? contactForGroupMember(cloudContacts.contacts, state.target.participant)
+    : null;
+  const targetAccountId = state.target
+    ? groupMemberAccountId(state.target.participant, targetContact)
+    : '';
+  const targetPresence = state.target && targetAccountId
+    ? presenceSnapshot[targetAccountId] ?? null
+    : undefined;
+  const openCommonGroup = useCallback((space: ParticipantSpaceViewModel) => {
+    const sessionId = space.sessions[0]?.id;
+    if (!sessionId || !onSelectSession) return;
+    setStoredState({
+      pageConversationId: activeConversation.id,
+      target: null,
+    });
+    onSelectSession(sessionId);
+  }, [activeConversation.id, onSelectSession]);
 
   return {
     target: state.target,
+    presence: targetPresence,
+    commonGroups,
     contacts: cloudContacts.contacts,
     sendRequest: normalizedCloudAccount
       ? (peerAccountId: string, message?: string) => (
@@ -115,9 +177,7 @@ export function useChatSenderProfiles({
     supportAccountId: normalizedCloudAccount?.accountId,
     openActive,
     openCompanion,
-    close: () => setStoredState({
-      pageConversationId: activeConversation.id,
-      target: null,
-    }),
+    openCommonGroup: onSelectSession ? openCommonGroup : undefined,
+    close,
   };
 }

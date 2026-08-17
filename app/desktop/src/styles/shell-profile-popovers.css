@@ -1,0 +1,117 @@
+.app-group-profile-actions,
+.app-contact-profile-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.app-group-profile-action,
+.app-contact-profile-action {
+  min-height: 50px;
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-transient-divider) 72%, transparent);
+}
+
+.app-group-profile-action:disabled,
+.app-contact-profile-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.app-contact-profile-popover {
+  container-type: inline-size;
+  color: var(--app-transient-text);
+  animation: app-contact-profile-popover-enter 180ms var(--app-motion-ease) both;
+}
+
+.app-contact-profile-hero {
+  background: color-mix(in oklab, var(--app-transient-raised-bg) 40%, transparent);
+}
+
+.app-contact-profile-close {
+  color: var(--app-transient-muted-text);
+}
+
+.app-contact-profile-summary,
+.app-contact-profile-empty {
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-muted-text);
+}
+
+.app-contact-profile-summary-row {
+  position: relative;
+  color: var(--app-transient-text);
+}
+
+.app-contact-profile-summary-trigger {
+  border: 0;
+  background: transparent;
+}
+
+.app-contact-profile-summary-trigger:hover,
+.app-contact-profile-summary-trigger:focus-visible,
+.app-contact-profile-group-row:hover,
+.app-contact-profile-group-row:focus-visible {
+  background: var(--app-transient-hover-bg);
+}
+
+.app-contact-profile-summary-trigger:focus-visible,
+.app-contact-profile-group-row:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--app-transient-focus-ring) 72%, transparent);
+  outline-offset: -2px;
+}
+
+.app-contact-profile-summary-row + .app-contact-profile-summary-row::before {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  left: 42px;
+  height: 1px;
+  background: color-mix(in srgb, var(--app-transient-divider) 70%, transparent);
+  content: '';
+}
+
+.app-contact-profile-summary-icon {
+  color: var(--app-transient-muted-text);
+}
+
+.app-contact-profile-group-list {
+  border-top: 1px solid color-mix(in srgb, var(--app-transient-divider) 70%, transparent);
+}
+
+.app-contact-profile-group-row {
+  color: var(--app-transient-text);
+}
+
+@keyframes app-contact-profile-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0) scale(0.98);
+    filter: blur(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-contact-profile-popover {
+    animation: none;
+  }
+}
+
+@container (max-width: 280px) {
+  .app-contact-profile-actions,
+  .app-group-profile-actions {
+    gap: 4px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-contact-profile-action,
+  .app-group-profile-action {
+    min-height: 50px;
+    padding-inline: 4px;
+  }
+}

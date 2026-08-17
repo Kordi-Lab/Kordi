@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   applyPresenceSnapshot,
   cloudPresenceChangedFromWsPayload,
+  contactPresenceLabel,
   mergePresenceEvent,
   presenceStatusForAccount,
   shouldRefreshPresenceForWsSubject,
@@ -33,6 +34,23 @@ test('presence websocket event updates a single account', () => {
     lastSeenAt: null,
   });
   assert.equal(next.acct_1?.status, 'online');
+});
+
+test('contact presence labels cover online and locale-aware last-seen tiers', () => {
+  const now = new Date('2026-08-17T13:00:00Z');
+  const label = (status: 'online' | 'offline', lastSeenAt: string | null) => contactPresenceLabel({
+    accountId: 'acct_1',
+    status,
+    updatedAt: now.toISOString(),
+    lastSeenAt,
+  }, { now, locales: 'en-GB', timeZone: 'UTC' });
+
+  assert.equal(label('online', null), 'online');
+  assert.equal(label('offline', null), 'last seen recently');
+  assert.equal(label('offline', '2026-08-17T12:59:30Z'), 'last seen just now');
+  assert.equal(label('offline', '2026-08-17T12:55:00Z'), 'last seen today at 12:55');
+  assert.equal(label('offline', '2026-08-16T12:55:00Z'), 'last seen yesterday at 12:55');
+  assert.equal(label('offline', '2026-08-10T12:55:00Z'), 'last seen 10 Aug at 12:55');
 });
 
 test('unchanged presence data preserves store identity', () => {
@@ -100,6 +118,12 @@ test('presence subject and payload parser recognize account changes', () => {
     updatedAt: 'now',
     lastSeenAt: null,
   });
+  assert.equal(cloudPresenceChangedFromWsPayload({
+    account_id: 'acct_1',
+    status: 'offline',
+    occurred_at: 'now',
+    last_seen_at: '2026-05-23T00:00:00Z',
+  })?.lastSeenAt, '2026-05-23T00:00:00Z');
 });
 
 test('IdentityAvatar can render an online presence light without visible status text', () => {

@@ -3,6 +3,7 @@ import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { isEmptyChatSelectionId } from '@/features/chat/draftSessions';
 import {
   shouldInferLatestHumanReplyTarget,
@@ -12,7 +13,7 @@ import type {
   DesktopChatTurnSnapshot,
   Message,
 } from '@/kordi-app/types';
-import { MemberContactProfilePopover } from '@/pages/MemberContactProfilePopover';
+import { ContactInfoPopover } from '@/pages/ContactInfoPopover';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
 import {
@@ -129,13 +130,14 @@ export function ChatMainWorkspace({
   const shouldRenderLiveTurn = Boolean(
     presentation.liveTurn && !presentation.liveTurn.completed,
   );
-  const handleSend = (draftOverride?: string) => {
+  const handleSend = (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => {
     const draft = draftOverride ?? composer.chatComposerText;
+    const attachmentCount = attachmentOverride?.length ?? composer.chatComposerAttachments.length;
     if (
       needsProvider
       && (
         draft.trim().length > 0
-        || composer.chatComposerAttachments.length > 0
+        || attachmentCount > 0
       )
     ) {
       openAuthentication?.();
@@ -148,12 +150,17 @@ export function ChatMainWorkspace({
       });
       return;
     }
-    const shouldJump = draft.trim().length > 0
-      || composer.chatComposerAttachments.length > 0;
-    runtime.onSendChatMessage(draftOverride);
+    const shouldJump = draft.trim().length > 0 || attachmentCount > 0;
+    const sendResult = runtime.onSendChatMessage(
+      draftOverride,
+      undefined,
+      undefined,
+      attachmentOverride,
+    );
     if (shouldJump) {
       scheduleTranscriptScrollToBottom(transcript.chatTranscriptScrollRef);
     }
+    return sendResult;
   };
 
   return (
@@ -344,6 +351,7 @@ export function ChatMainWorkspace({
                   >
                     <MainComposer
                       conversation={activeConv}
+                      cloudAccountId={session.cloudAccount?.accountId}
                       composer={composer}
                       runtime={runtime}
                       localRouting={{
@@ -353,7 +361,7 @@ export function ChatMainWorkspace({
                         cacheText: runtime.activeRuntimeCacheText,
                       }}
                       collaborationRouting={{
-                        enabled: session.activeConversationUsesCollaboration,
+                        enabled: models.routing.enabled,
                         notice: models.routing.notice,
                         model: models.routing.selectedAgent ? {
                           agents: models.routing.agents,
@@ -404,15 +412,20 @@ export function ChatMainWorkspace({
       </section>
 
       {models.senderProfiles.target ? (
-        <MemberContactProfilePopover
+        <ContactInfoPopover
+          key={models.senderProfiles.target.participant.id}
           participant={models.senderProfiles.target.participant}
+          conversation={models.senderProfiles.target.conversation}
+          commonGroups={models.senderProfiles.commonGroups}
           contacts={models.senderProfiles.contacts}
+          presence={models.senderProfiles.presence}
           presenceStatus={
             models.senderProfiles.target.participant.presenceStatus
           }
           anchorRect={models.senderProfiles.target.anchorRect}
           onAddContact={models.senderProfiles.sendRequest}
           onMessageContact={models.senderProfiles.messageContact}
+          onOpenCommonGroup={models.senderProfiles.openCommonGroup}
           onClose={models.senderProfiles.close}
         />
       ) : null}

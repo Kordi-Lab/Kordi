@@ -19,15 +19,21 @@ import {
   type CloudAttachmentPreviewLease,
 } from '@/features/cloud/cloudAttachments';
 import { loadSession } from '@/features/cloud/session';
-import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
+import {
+  downloadDesktopAttachment,
+  openDesktopExternalUrl,
+  storeDesktopChatAttachment,
+} from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { TranscriptImageGroup } from './transcriptImageGroup';
+import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
+import type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
-
+export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 const ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS = 30_000;
 const recoveredAttachmentPreviewUrls = new Map<string, string>();
 const recoveringAttachmentPreviewPromises = new Map<string, Promise<string | null>>();
@@ -317,6 +323,7 @@ export function AttachmentContextMenu({ state, onClose }: { state: AttachmentCon
         style={{ left: state.x, top: state.y }}
         onContextMenu={(event) => event.preventDefault()}
       >
+        <AddAttachmentToMediaLibraryAction attachment={state.attachment} onAdded={onClose} />
         <AttachmentActions attachment={state.attachment} variant="menu" />
       </div>
     </PortalLayer>
@@ -329,13 +336,6 @@ function isAttachmentSending(msg: Message) {
     return normalized === 'sending' || normalized === 'pending';
   });
 }
-
-export type AttachmentImageDeliveryVisual = {
-  kind: 'uploading' | 'delivering' | 'sent' | 'delivered' | 'partial' | 'failed';
-  label: string;
-};
-
-export type AttachmentImageForegroundTone = 'light' | 'dark';
 
 function linearSrgbChannel(channel: number) {
   const value = Math.min(255, Math.max(0, channel)) / 255;
@@ -640,7 +640,7 @@ function AttachmentImageCard({
           ) : null}
           <img
             src={previewUrl}
-            alt={attachment.name || 'Attached image'}
+            alt={attachment.altText?.trim() || attachment.name || 'Attached image'}
             className={cn(
               'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
               imageLoaded ? 'opacity-100' : 'opacity-0',

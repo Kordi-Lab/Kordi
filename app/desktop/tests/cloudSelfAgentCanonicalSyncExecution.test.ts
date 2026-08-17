@@ -351,8 +351,8 @@ test('self-agent canonical persistence removes a proven mirror after repairing m
   });
 
   assert.deepEqual(calls, [
-    'message',
     'message:local->message:cloud',
+    'message',
   ]);
   assert.deepEqual(batch?.reconciledMessageMirrors, [{
     preferredMessageId: 'message:local',

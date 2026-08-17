@@ -272,6 +272,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "durable per-device message notification delivery",
         sql: include_str!("../../migrations/0057_message_notification_deliveries.sql"),
     },
+    EmbeddedMigration {
+        version: 58,
+        description: "verified meme media metadata",
+        sql: include_str!("../../migrations/0058_meme_media_metadata.sql"),
+    },
+    EmbeddedMigration {
+        version: 59,
+        description: "account expressive media library",
+        sql: include_str!("../../migrations/0059_expressive_media_library.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

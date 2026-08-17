@@ -92,6 +92,30 @@ pub(super) fn cloud_agent_response_text(body: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+pub(crate) fn cloud_agent_response_is_processing_for_request(
+    body: &str,
+    request_message_id: &str,
+) -> bool {
+    let Some(encoded) = body.trim().strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX) else {
+        return false;
+    };
+    let Ok(bytes) = URL_SAFE_NO_PAD.decode(encoded) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return false;
+    };
+    value.get("kind").and_then(serde_json::Value::as_str) == Some("agent-response")
+        && value
+            .get("requestId")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value.trim() == request_message_id.trim())
+        && value
+            .get("deliveryState")
+            .and_then(serde_json::Value::as_str)
+            == Some("processing")
+}
+
 pub(super) fn parse_cloud_group_envelope(body: &str) -> Option<CloudGroupEnvelope> {
     let encoded = body.trim().strip_prefix(CLOUD_GROUP_PREFIX)?;
     let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
@@ -347,6 +371,41 @@ mod tests {
             "{CLOUD_DIRECT_MESSAGE_PREFIX}{}",
             URL_SAFE_NO_PAD.encode(value.to_string())
         )
+    }
+
+    fn agent_response_body(value: serde_json::Value) -> String {
+        format!(
+            "{CLOUD_AGENT_RESPONSE_PREFIX}{}",
+            URL_SAFE_NO_PAD.encode(value.to_string())
+        )
+    }
+
+    #[test]
+    fn processing_claim_matches_only_the_exact_request() {
+        let body = agent_response_body(serde_json::json!({
+            "kind": "agent-response",
+            "requestId": "request-1",
+            "deliveryState": "processing",
+        }));
+
+        assert!(cloud_agent_response_is_processing_for_request(
+            &body,
+            "request-1"
+        ));
+        assert!(!cloud_agent_response_is_processing_for_request(
+            &body,
+            "request-2"
+        ));
+
+        let complete = agent_response_body(serde_json::json!({
+            "kind": "agent-response",
+            "requestId": "request-1",
+            "deliveryState": "complete",
+        }));
+        assert!(!cloud_agent_response_is_processing_for_request(
+            &complete,
+            "request-1"
+        ));
     }
 
     #[test]

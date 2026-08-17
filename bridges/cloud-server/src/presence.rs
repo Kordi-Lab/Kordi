@@ -122,6 +122,33 @@ pub async fn account_presence_status(
     })
 }
 
+pub async fn account_has_online_desktop(
+    pool: &PgPool,
+    account_id: &str,
+    now: DateTime<Utc>,
+    timeout: ChronoDuration,
+) -> Result<bool, sqlx_core::Error> {
+    let rows: Vec<(String, Option<String>, Option<String>)> = query_as(
+        "SELECT p.state, p.last_heartbeat_at, d.device_platform
+         FROM cloud_device_presence p
+         JOIN cloud_devices d ON d.device_id = p.device_id
+         WHERE p.account_id = $1 AND d.revoked_at IS NULL",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().any(|(state, heartbeat, platform)| {
+        matches!(
+            platform
+                .as_deref()
+                .map(str::trim)
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("macos" | "desktop")
+        ) && device_presence_is_currently_online(&state, parse_rfc3339(heartbeat), now, timeout)
+    }))
+}
+
 pub async fn mark_device_online(
     pool: &PgPool,
     account_id: &str,
@@ -229,11 +256,16 @@ pub async fn publish_presence_to_observers(
     pool: &PgPool,
     events: &crate::events::EventBus,
     account_id: &str,
-    status: AccountPresenceStatus,
+    presence: &AccountPresenceSummary,
 ) -> Result<(), sqlx_core::Error> {
     for observer in presence_observer_account_ids(pool, account_id).await? {
         events
-            .publish_presence_account_changed(account_id, &observer, status.as_str())
+            .publish_presence_account_changed(
+                account_id,
+                &observer,
+                presence.status.as_str(),
+                presence.last_seen_at.as_deref(),
+            )
             .await;
     }
     Ok(())
@@ -290,7 +322,7 @@ pub async fn sweep_stale_presence(
         .await?;
         let after = account_presence_status(pool, &account_id, now, timeout).await?;
         if before.status != after.status {
-            publish_presence_to_observers(pool, events, &account_id, after.status).await?;
+            publish_presence_to_observers(pool, events, &account_id, &after).await?;
             changed.push(after);
         }
     }

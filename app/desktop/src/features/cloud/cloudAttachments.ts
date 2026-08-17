@@ -6,15 +6,17 @@ import type {
   CloudMessageAttachment,
   SendCloudMessageAttachmentInput,
 } from './authClient';
+import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
+import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
+
+export { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
+export { CLOUD_ATTACHMENT_PREVIEW_MAX_DATA_URL_LENGTH, safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 
 export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 // Transcript virtualization mounts a viewport plus 12 rows of overscan on each side.
 // This bounds reusable idle cache entries. Active card and lightbox leases can keep
 // evicted Blob URLs alive beyond this count until those consumers release them.
 export const CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY = 128;
-export const CLOUD_ATTACHMENT_PREVIEW_MAX_DATA_URL_LENGTH = 360_000;
-
-const COMPRESSED_IMAGE_PREVIEW_TYPES = ['image/webp', 'image/jpeg'] as const;
 const cloudAttachmentLocalPathCache = new Map<string, string>();
 
 type CloudAttachmentPreviewResource = {
@@ -216,79 +218,6 @@ export function clearCloudAttachmentLocalPathCacheForTests() {
   resetCloudAttachmentPreviewLoader();
 }
 
-function isInternalObjectStoreUrl(value?: string | null) {
-  if (!value) return false;
-  try {
-    return new URL(value).hostname === 'minio.kordi-cloud.svc.cluster.local';
-  } catch {
-    return value.includes('minio.kordi-cloud.svc.cluster.local');
-  }
-}
-
-export function safeCloudAttachmentPreviewUrl(value?: string | null) {
-  const trimmed = value?.trim() ?? '';
-  if (!trimmed || trimmed.length > CLOUD_ATTACHMENT_PREVIEW_MAX_DATA_URL_LENGTH) return null;
-  if (/^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(trimmed)) return trimmed;
-  if (isInternalObjectStoreUrl(trimmed)) return null;
-  try {
-    const url = new URL(trimmed);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? trimmed : null;
-  } catch {
-    return null;
-  }
-}
-
-async function blobToDataUrl(blob: Blob): Promise<string | null> {
-  if (typeof FileReader === 'undefined') return null;
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), type, quality));
-}
-
-async function renderCompressedPreview(blob: Blob, maxDimension: number, quality: number): Promise<string | null> {
-  if (typeof document === 'undefined' || typeof Image === 'undefined' || typeof URL === 'undefined') return null;
-  const objectUrl = URL.createObjectURL(blob);
-  try {
-    const image = await new Promise<HTMLImageElement | null>((resolve) => {
-      const nextImage = new Image();
-      nextImage.onload = () => resolve(nextImage);
-      nextImage.onerror = () => resolve(null);
-      nextImage.src = objectUrl;
-    });
-    if (!image?.naturalWidth || !image.naturalHeight) return null;
-    const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    for (const type of COMPRESSED_IMAGE_PREVIEW_TYPES) {
-      const previewBlob = await canvasToBlob(canvas, type, quality);
-      if (!previewBlob) continue;
-      const dataUrl = await blobToDataUrl(previewBlob);
-      const safe = safeCloudAttachmentPreviewUrl(dataUrl);
-      if (safe) return safe;
-    }
-    return null;
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-export async function createCompressedImagePreviewDataUrl(blob: Blob): Promise<string | null> {
-  if (!blob.type.startsWith('image/')) return null;
-  return await renderCompressedPreview(blob, 960, 0.72)
-    ?? await renderCompressedPreview(blob, 640, 0.58);
-}
-
 export async function recoverCloudAttachmentPreview({
   token,
   client,
@@ -321,6 +250,10 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
   const localPath = attachment.localPath ?? cachedCloudAttachmentLocalPath(attachment.attachmentId);
   return {
     kind: attachment.kind,
+    ...(attachment.subtype === 'meme' ? {
+      subtype: 'meme' as const,
+      altText: attachment.altText ?? null,
+    } : {}),
     name: attachment.name,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
@@ -456,6 +389,10 @@ export async function resolveForwardAttachmentItems({
       previewAttachmentId: attachment.previewAttachmentId ?? null,
       name: attachment.name,
       kind: attachment.kind,
+      ...(attachment.subtype === 'meme' ? {
+        subtype: 'meme' as const,
+        altText: attachment.altText ?? null,
+      } : {}),
       mimeType: attachment.mimeType ?? null,
       sizeBytes: attachment.sizeBytes ?? null,
       downloadUrl: attachment.downloadUrl ?? null,
@@ -579,6 +516,10 @@ export async function uploadComposerAttachments({
       attachmentId: summary.attachmentId,
       name: attachment.name,
       kind,
+      ...(attachment.subtype === 'meme' ? {
+        subtype: 'meme' as const,
+        altText: attachment.altText?.trim() || null,
+      } : {}),
       mimeType,
       sizeBytes: attachment.sizeBytes ?? blob.size,
       ...(previewUrl ? { previewUrl } : {}),

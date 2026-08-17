@@ -496,14 +496,13 @@ export function createCanonicalSessionReadModel(
     indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
     || sessionChatActivityAtMs(session)
   );
-  const latestActivityMessages = (sessionId: string) => {
-    const latest = indexes.latestActivityMessageBySessionId.get(sessionId);
-    return latest ? [latest] : [];
-  };
+  const latestActivityMessages = (sessionId: string) => indexes.latestActivityMessageBySessionId.has(sessionId)
+    ? [indexes.latestActivityMessageBySessionId.get(sessionId)!]
+    : [];
   const chatSessions = canonicalState.sessions
-    .filter((session) => session.kind !== 'project' && session.status !== 'archived' && !isCloudAgentRuntimeSessionId(session.id))
+    .filter((session) => session.kind !== 'project' && session.status !== 'archived'
+      && !isCloudAgentRuntimeSessionId(session.id) && !session.id.startsWith('draft:'))
     .sort((left, right) => sessionActivityAtMs(right) - sessionActivityAtMs(left));
-
   const hasSelfReadLatestMessage = (sessionId: string) => {
     const latestMessage = indexes.latestReadableMessageBySessionId.get(sessionId);
     if (!latestMessage) return false;

@@ -200,6 +200,10 @@ function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] 
       attachmentId,
       name,
       kind,
+      ...(record.subtype === 'meme' && kind === 'image' ? {
+        subtype: 'meme' as const,
+        altText: typeof record.altText === 'string' ? record.altText : null,
+      } : {}),
       mimeType: typeof record.mimeType === 'string' ? record.mimeType : null,
       sizeBytes: typeof record.sizeBytes === 'number' ? record.sizeBytes : null,
       previewUrl: typeof record.previewUrl === 'string' ? record.previewUrl : null,

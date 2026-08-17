@@ -395,10 +395,10 @@ test('ask agent slash trigger opens the side session instead of sending slash te
     'utf8',
   );
 
-  assert.match(source, /const handleSend = \(draftOverride\?: string\) =>/);
+  assert.match(source, /const handleSend = \(draftOverride\?: string, attachmentOverride\?: AttachmentItem\[\]\) =>/);
   assert.match(source, /parseAskAgentTriggerCommand\(draft\)/);
   assert.match(source, /void companion\.open\(trigger\.prompt\)\.then/);
-  assert.match(source, /runtime\.onSendChatMessage\(draftOverride\)/);
+  assert.match(source, /runtime\.onSendChatMessage\(\s*draftOverride,\s*undefined,\s*undefined,\s*attachmentOverride,\s*\)/);
 });
 
 test('ask agent from an active agent chat creates a fresh side session instead of switching the main agent session', () => {

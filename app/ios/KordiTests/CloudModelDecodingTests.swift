@@ -59,6 +59,16 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(visibility.deletedSessionIds, ["session:deleted"])
     }
 
+    func testExpressiveMediaLibraryResponseDecodesCrossDeviceItems() throws {
+        let payload = Data(
+            #"{"items":[{"itemId":"media-1","attachmentId":"attachment-1","kind":"sticker","name":"wave.webp","mimeType":"image/webp","sizeBytes":128,"createdAt":"2026-08-17T10:00:00Z","updatedAt":"2026-08-17T10:00:00Z"}]}"#.utf8
+        )
+        let response = try JSONDecoder().decode(CloudExpressiveMediaListResponse.self, from: payload)
+
+        XCTAssertEqual(response.items.first?.attachmentId, "attachment-1")
+        XCTAssertEqual(response.items.first?.kind, .sticker)
+    }
+
     func testCloudSessionPinDecodesSharedAndPrivateMacShape() throws {
         let payload = Data(#"{"sessionId":"session:group","sharedMessageId":"msg_shared","privateMessageId":"msg_private","effectiveMessageId":"msg_private","updatedAt":"2026-08-09T10:00:00Z"}"#.utf8)
         let pin = try JSONDecoder().decode(CloudSessionPin.self, from: payload)
@@ -145,6 +155,58 @@ final class CloudModelDecodingTests: XCTestCase {
         )
         XCTAssertEqual(
             ContactPresencePresentation.label(
+                for: CloudPresenceAccount(
+                    accountId: "acct_maya",
+                    status: .offline,
+                    lastSeenAt: "2026-08-17T12:59:30Z"
+                ),
+                now: now,
+                calendar: calendar,
+                locale: locale
+            ),
+            "last seen just now"
+        )
+        XCTAssertEqual(
+            ContactPresencePresentation.label(
+                for: CloudPresenceAccount(
+                    accountId: "acct_maya",
+                    status: .offline,
+                    lastSeenAt: "2026-08-17T12:59:30Z"
+                ),
+                now: parseCloudDate("2026-08-17T13:01:00Z"),
+                calendar: calendar,
+                locale: locale
+            ),
+            "last seen today at 12:59\u{202F}PM"
+        )
+        XCTAssertEqual(
+            ContactPresencePresentation.label(
+                for: CloudPresenceAccount(
+                    accountId: "acct_maya",
+                    status: .offline,
+                    lastSeenAt: "2026-08-16T12:55:00Z"
+                ),
+                now: now,
+                calendar: calendar,
+                locale: locale
+            ),
+            "last seen yesterday at 12:55\u{202F}PM"
+        )
+        XCTAssertEqual(
+            ContactPresencePresentation.label(
+                for: CloudPresenceAccount(
+                    accountId: "acct_maya",
+                    status: .offline,
+                    lastSeenAt: "2026-08-10T12:55:00Z"
+                ),
+                now: now,
+                calendar: calendar,
+                locale: locale
+            ),
+            "last seen Aug 10 at 12:55\u{202F}PM"
+        )
+        XCTAssertEqual(
+            ContactPresencePresentation.label(
                 for: nil,
                 now: now,
                 calendar: calendar,
@@ -161,6 +223,48 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(message.direction, "outgoing")
         XCTAssertEqual(message.attachments, [])
         XCTAssertNil(message.messageKind)
+    }
+
+    func testCloudMessageAttachmentDecodesMemeMetadataAndLegacyFallback() throws {
+        let decoder = JSONDecoder()
+        let memePayload = Data(#"{"attachmentId":"att_meme","name":"reaction.webp","kind":"image","subtype":"meme","altText":"A character celebrates a successful deployment.","mimeType":"image/webp","sizeBytes":42,"downloadUrl":null,"previewUrl":null}"#.utf8)
+        let legacyPayload = Data(#"{"attachmentId":"att_legacy","name":"photo.jpg","kind":"image","mimeType":"image/jpeg","sizeBytes":42,"downloadUrl":null,"previewUrl":null}"#.utf8)
+
+        let meme = try decoder.decode(CloudMessageAttachment.self, from: memePayload)
+        let legacy = try decoder.decode(CloudMessageAttachment.self, from: legacyPayload)
+
+        XCTAssertEqual(meme.subtype, .meme)
+        XCTAssertEqual(meme.altText, "A character celebrates a successful deployment.")
+        XCTAssertEqual(meme.chatAttachment.kind, .image)
+        XCTAssertNil(legacy.subtype)
+        XCTAssertNil(legacy.altText)
+        XCTAssertEqual(legacy.chatAttachment.kind, .image)
+    }
+
+    func testCanonicalChatContentEncodesMemeMetadataForOtherClients() throws {
+        let content = CloudChatContent(
+            body: "",
+            attachments: [CloudMessageAttachment(
+                attachmentId: "att_meme",
+                name: "reaction.gif",
+                kind: "image",
+                subtype: .meme,
+                altText: "A developer celebrates after the final test passes.",
+                mimeType: "image/gif",
+                sizeBytes: 1_024,
+                downloadUrl: nil,
+                previewUrl: nil
+            )]
+        )
+        let encoded = try JSONEncoder().encode(content)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let attachments = try XCTUnwrap(object["legacy_attachments"] as? [[String: Any]])
+
+        XCTAssertEqual(attachments.first?["subtype"] as? String, "meme")
+        XCTAssertEqual(
+            attachments.first?["altText"] as? String,
+            "A developer celebrates after the final test passes."
+        )
     }
 
     func testCloudCallActivityMessageKeepsItsWireKind() throws {

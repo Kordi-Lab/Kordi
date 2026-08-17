@@ -39,6 +39,23 @@ test('calling media is split before the generic vendor chunk', async () => {
   );
 });
 
+test('the emoji picker SDK is split before the generic vendor chunk', async () => {
+  const resolvedConfig = typeof config === 'function'
+    ? await config({ command: 'build', mode: 'production' })
+    : config;
+  const groups = resolvedConfig.build?.rolldownOptions?.output?.codeSplitting?.groups ?? [];
+  const names = groups.map((group) => group.name);
+
+  const expressiveMediaIndex = names.indexOf('expressive-media');
+  const vendorIndex = names.indexOf('vendor');
+
+  assert.notEqual(expressiveMediaIndex, -1, 'expected a dedicated expressive-media chunk group');
+  assert.ok(
+    expressiveMediaIndex < vendorIndex,
+    'the emoji picker SDK must be matched before the generic vendor chunk',
+  );
+});
+
 test('Vite development serves only with an explicit non-production API origin', async () => {
   const previous = process.env.VITE_KORDI_CLOUD_API_BASE;
   const previousProfile = process.env.VITE_KORDI_DEV_PROFILE;

@@ -14,6 +14,8 @@ import {
   siteIconDescriptorForHref,
   siteIconRequestUrl,
 } from '../src/kordi-app/components/messageLinks';
+import { canonicalMentions } from '../src/features/canonical/readModel/mentionMapping';
+import { mentionForCollaborationTarget } from '../src/features/chat/messageActions/mentions';
 import {
   clearRemoteAvatarImageCacheForTests,
   loadAvatarThroughNativeProxy,
@@ -92,6 +94,36 @@ test('plain message content emphasizes every textual mention alongside a structu
     parts.some((part) => part.type === 'mention' && part.label === '@example'),
     false,
   );
+});
+
+test('structured mentions preserve and highlight the complete display label', () => {
+  const mentions = canonicalMentions([{
+    label: 'MyKordi',
+    displayLabel: 'My Kordi',
+    targetKind: 'agent',
+  }]);
+  const parts = parseMessageInlineParts('@My Kordi hello', mentions);
+
+  assert.deepEqual(
+    parts.map((part) => part.type === 'text' ? part.value : part.label),
+    ['@My Kordi', ' hello'],
+  );
+  assert.equal(parts[0]?.type, 'mention');
+  assert.equal(parts[0]?.type === 'mention' ? parts[0].targetKind : null, 'agent');
+});
+
+test('collaboration mention metadata keeps the complete display label', () => {
+  const mention = mentionForCollaborationTarget({
+    host: { id: 'cloud' } as never,
+    peer: { nodeId: 'acct_alice', agentId: 'cloud-agent:acct_alice' } as never,
+    label: 'AlicesKordi',
+    displayLabel: "Alice's Kordi",
+    targetKind: 'agent',
+    requestText: 'hello',
+  })[0];
+
+  assert.equal(mention?.label, 'AlicesKordi');
+  assert.equal(mention?.displayLabel, "Alice's Kordi");
 });
 
 test('shared inline renderer gives human and agent mentions distinct semantic colors', () => {

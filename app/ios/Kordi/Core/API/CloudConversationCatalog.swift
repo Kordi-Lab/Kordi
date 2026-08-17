@@ -327,6 +327,7 @@ enum CloudConversationCatalog {
     ) -> [ConversationSummary] {
         let candidateRows = messages.filter { message in
             guard let sessionId = message.sessionId?.nonEmpty,
+                  !sessionId.hasPrefix("draft:"),
                   !sessionId.hasPrefix("session:direct-person:"),
                   !sessionId.hasPrefix("cloud-agent:"),
                   !groupSessionIds.contains(sessionId),
@@ -344,7 +345,11 @@ enum CloudConversationCatalog {
 
         return grouped.compactMap { sessionId, rows in
             guard !sessionId.isEmpty else { return nil }
-            let sorted = rows.sorted { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+            let sorted = CloudAgentLifecycleProjector.visibleRows(rows)
+            let conversationalRows = sorted.filter {
+                !CloudMessageCodec.isAgentModelChange($0)
+            }
+            guard !conversationalRows.isEmpty else { return nil }
             let requests = sorted.compactMap { message -> (CloudMessageDTO, CloudMessageCodec.DirectEnvelope)? in
                 guard let envelope = CloudMessageCodec.directEnvelope(message.body) else { return nil }
                 return (message, envelope)
@@ -362,9 +367,9 @@ enum CloudConversationCatalog {
             guard !KordiSupportIdentity.matches(name: agentName, seed: targetId) else { return nil }
             let ownerName = requests.compactMap { $0.1.targetCloudAgentOwnerName?.nonEmpty }.last
                 ?? (peerAccountId == account.accountId ? account.preferredName : contactsById[peerAccountId]?.preferredName)
-            let firstPrompt = sorted.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
+            let firstPrompt = conversationalRows.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
                 .map { CloudMessageCodec.displayText($0.body) }
-            let latest = sorted.last
+            let latest = conversationalRows.last
             return ConversationSummary(
                 id: "agent-session:\(sessionId)",
                 kind: .agent,
@@ -375,12 +380,12 @@ enum CloudConversationCatalog {
                 lastMessage: latest.map { CloudMessageCodec.displayText($0.body) } ?? definition?.description?.nonEmpty ?? "No messages yet",
                 lastActivityAt: latest.map { parseCloudDate($0.createdAt) } ?? definition.map { parseCloudDate($0.updatedAt) } ?? .distantPast,
                 unreadCount: unreadAgentResponseCount(
-                    sorted,
+                    conversationalRows,
                     conversation: canonicalConversationsBySessionId[sessionId],
                     accountId: account.accountId
                 ),
                 avatarSource: definition?.avatarUrl?.nonEmpty,
-                agentActivity: .ready,
+                agentActivity: CloudAgentLifecycleProjector.activity(in: conversationalRows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
                 forkedFromSessionId: sessionForksById[sessionId]?.parentSessionId.nonEmpty
@@ -441,11 +446,14 @@ enum CloudConversationCatalog {
                 || sessionId.hasPrefix("session:direct-agent:")
                 || sessionId.hasPrefix("session:fork:")
             )
-            guard isAgentSession else { return nil }
+            guard isAgentSession, !sessionId.hasPrefix("draft:") else { return nil }
 
-            let rows = messages
-                .filter { ($0.sessionId?.nonEmpty ?? "") == sessionId }
-                .sorted { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+            let rows = CloudAgentLifecycleProjector.visibleRows(
+                messages.filter { ($0.sessionId?.nonEmpty ?? "") == sessionId }
+            )
+            let conversationalRows = rows.filter {
+                !CloudMessageCodec.isAgentModelChange($0)
+            }
             let requests = rows.compactMap { message -> CloudMessageCodec.DirectEnvelope? in
                 CloudMessageCodec.directEnvelope(message.body)
             }
@@ -467,9 +475,9 @@ enum CloudConversationCatalog {
                 ?? (peerAccountId == account.accountId
                     ? account.preferredName
                     : contactsById[peerAccountId]?.preferredName ?? otherMember?.displayName)
-            let firstPrompt = rows.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
+            let firstPrompt = conversationalRows.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
                 .map { CloudMessageCodec.displayText($0.body) }
-            let latest = rows.last
+            let latest = conversationalRows.last
             let title = nonGenericTitle(conversation.preferences.personalTitle)
                 ?? nonGenericTitle(conversation.sharedTitle)
                 ?? sessionTitle(firstPrompt)
@@ -489,12 +497,12 @@ enum CloudConversationCatalog {
                     parseCloudDate(conversation.updatedAt)
                 ),
                 unreadCount: unreadAgentResponseCount(
-                    rows,
+                    conversationalRows,
                     conversation: conversation,
                     accountId: account.accountId
                 ),
                 avatarSource: definition?.avatarUrl?.nonEmpty,
-                agentActivity: .ready,
+                agentActivity: CloudAgentLifecycleProjector.activity(in: conversationalRows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
                 messageCount: Int(clamping: conversation.latestMessageSequence),

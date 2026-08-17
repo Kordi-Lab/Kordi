@@ -9,14 +9,28 @@ struct AgentModelSheet: View {
     @State private var selectedThinking = "medium"
     @State private var isSaving = false
 
-    private let modelNames = [
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-        "gpt-5.5",
-        "gpt-5.4-mini",
-        "gpt-5.4",
-        "gpt-5.3-codex-spark",
+    private let modelNamesByProvider = [
+        "openai": [
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.3-codex-spark",
+        ],
+        "anthropic": [
+            "claude-sonnet-5",
+            "claude-opus-4-8",
+            "claude-opus-4-7",
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+        ],
+        "google": ["gemini-3.1-pro"],
+        "groq": ["llama-3.3-70b-versatile"],
+        "openrouter": ["openai/gpt-5"],
+        "xai": ["grok-4"],
     ]
     private let thinkingLevels = ["off", "default", "minimal", "low", "medium", "high", "xhigh", "max"]
 
@@ -29,9 +43,10 @@ struct AgentModelSheet: View {
                 Section {
                     AgentModelMenuRow(
                         title: "Provider",
-                        options: [providerSummary],
+                        options: providers,
                         selection: $selectedProvider,
-                        isEnabled: model.providerAuthSnapshot != nil
+                        isEnabled: canEdit && !providers.isEmpty,
+                        optionLabel: providerLabel
                     )
 
                     AgentModelMenuRow(
@@ -98,36 +113,109 @@ struct AgentModelSheet: View {
         }
         .interactiveDismissDisabled(isSaving)
         .onAppear { loadSelection() }
+        .onChange(of: selectedProvider) { _, provider in
+            selectCompatibleModel(for: provider)
+        }
+        .onChange(of: routing) { _, _ in
+            guard !isSaving else { return }
+            loadSelection()
+        }
+        .onChange(of: model.sessionRuntimeRouteRevision) { _, _ in
+            guard !isSaving else { return }
+            loadSelection()
+        }
+    }
+
+    private var providers: [String] {
+        let available = model.providerAuthSnapshots.keys.sorted { left, right in
+            let leftCreatedAt = model.providerAuthSnapshots[left]?.createdAt ?? ""
+            let rightCreatedAt = model.providerAuthSnapshots[right]?.createdAt ?? ""
+            if leftCreatedAt == rightCreatedAt { return left < right }
+            return leftCreatedAt > rightCreatedAt
+        }
+        guard let routeProvider = routing.defaultAuthProvider?.nonEmpty.map(
+            ProviderAuthenticationDefinition.canonicalID
+        ), let index = available.firstIndex(of: routeProvider) else {
+            return available
+        }
+        return [available[index]] + available.enumerated().compactMap {
+            $0.offset == index ? nil : $0.element
+        }
     }
 
     private var routes: [String] {
-        let provider = model.providerAuthSnapshot?.provider.nonEmpty
-        let suggested = modelNames.map { name in
+        let provider = selectedProvider.nonEmpty
+            ?? routing.defaultAuthProvider?.nonEmpty
+            ?? providers.first
+        let canonicalProvider = provider.map(ProviderAuthenticationDefinition.canonicalID)
+        let names = canonicalProvider.flatMap { modelNamesByProvider[$0] }
+            ?? ProviderAuthenticationDefinition.all
+                .first(where: { $0.id == canonicalProvider })?
+                .defaultModel.map { [$0] }
+            ?? []
+        let suggested = names.map { name in
             provider.map { "\($0)/\(name)" } ?? name
         }
-        return ([routing.defaultModel].compactMap { $0?.nonEmpty } + suggested)
+        let current = routing.defaultModel?.nonEmpty.flatMap { currentModel in
+            guard let provider else { return currentModel }
+            let currentProvider = currentModel.split(separator: "/", maxSplits: 1)
+                .first.map(String.init)
+            return ProviderAuthenticationDefinition.canonicalID(currentProvider ?? "")
+                == ProviderAuthenticationDefinition.canonicalID(provider)
+                ? currentModel
+                : nil
+        }
+        return ([current].compactMap { $0 } + suggested)
             .reduce(into: []) { options, option in
                 if !options.contains(option) { options.append(option) }
             }
     }
 
-    private var providerSummary: String {
-        if let snapshot = model.providerAuthSnapshot {
-            let provider = snapshot.provider.replacingOccurrences(of: "_", with: " ").capitalized
-            let choice = snapshot.authChoice.replacingOccurrences(of: "_", with: " ")
-            let suffix = String(snapshot.snapshotId.suffix(6))
-            return "\(provider) · \(choice) · \(suffix)"
+    private func providerLabel(_ providerID: String) -> String {
+        let canonicalID = ProviderAuthenticationDefinition.canonicalID(providerID)
+        let provider = ProviderAuthenticationDefinition.all
+            .first(where: { $0.id == canonicalID })?
+            .name
+            ?? providerID.replacingOccurrences(of: "_", with: " ").capitalized
+        let routeChoice = ProviderAuthenticationDefinition.canonicalID(
+            routing.defaultAuthProvider ?? ""
+        ) == canonicalID ? routing.defaultAuthChoice?.nonEmpty : nil
+        let choice = routeChoice
+            ?? model.authenticationSnapshot(for: providerID)?.authChoice.nonEmpty
+        if let choice {
+            let choice = choice.replacingOccurrences(of: "_", with: " ")
+            return "\(provider) · \(choice)"
         }
-        if let provider = routing.defaultAuthProvider?.nonEmpty {
-            return provider.capitalized
-        }
-        return "Not connected"
+        return provider
     }
 
     private func loadSelection() {
-        selectedProvider = providerSummary
-        selectedModel = routing.defaultModel?.nonEmpty ?? routes.first ?? "gpt-5.6-sol"
+        let routeProvider = routing.defaultAuthProvider?.nonEmpty.map(
+            ProviderAuthenticationDefinition.canonicalID
+        )
+        selectedProvider = routeProvider.flatMap { providers.contains($0) ? $0 : nil }
+            ?? providers.first
+            ?? ""
+        let routeModel = routing.defaultModel?.nonEmpty
+        let routeModelProvider = routeModel.flatMap { value in
+            value.firstIndex(of: "/").map {
+                ProviderAuthenticationDefinition.canonicalID(String(value[..<$0]))
+            }
+        }
+        selectedModel = routeModelProvider == selectedProvider
+            ? routeModel ?? ""
+            : routes.first ?? ""
+        selectCompatibleModel(for: selectedProvider)
         selectedThinking = routing.thinking?.nonEmpty ?? "medium"
+    }
+
+    private func selectCompatibleModel(for provider: String) {
+        guard let provider = provider.nonEmpty else { return }
+        let currentProvider = selectedModel.split(separator: "/", maxSplits: 1)
+            .first.map(String.init)
+        guard ProviderAuthenticationDefinition.canonicalID(currentProvider ?? "")
+            != ProviderAuthenticationDefinition.canonicalID(provider) else { return }
+        selectedModel = routes.first ?? ""
     }
 
     private func save() {
@@ -136,6 +224,7 @@ struct AgentModelSheet: View {
         Task {
             let saved = await model.updateRuntimeRouting(
                 for: conversation,
+                provider: selectedProvider,
                 model: selectedModel,
                 thinking: selectedThinking
             )
@@ -145,7 +234,8 @@ struct AgentModelSheet: View {
     }
 
     private func modelLabel(_ value: String) -> String {
-        value.split(separator: "/").last.map(String.init) ?? value
+        guard let separator = value.firstIndex(of: "/") else { return value }
+        return String(value[value.index(after: separator)...])
     }
 
     private func thinkingLabel(_ value: String) -> String {

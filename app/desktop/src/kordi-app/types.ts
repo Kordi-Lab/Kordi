@@ -2,6 +2,7 @@ import type { CollaborationMessageDirection } from '@/features/collaboration/mes
 
 import type {
   ComposerQuoteState,
+  DesktopChatAttachment,
   DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   Message,
@@ -14,12 +15,12 @@ import type {
   SessionArtifact,
   SessionStatusIndicator,
 } from './types/message';
-
 export type { Contact, ContactClass } from './types/contact';
 
 export type {
   CollaborationAgentRequestControl,
   ComposerQuoteState,
+  DesktopChatAttachment,
   DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
   DesktopArtifactPreview,
@@ -766,18 +767,6 @@ export type DesktopChatSlashCommand = {
   value: string;
 };
 
-export type DesktopChatAttachment = {
-  kind: 'image' | 'file';
-  name: string;
-  formatLabel?: string | null;
-  previewUrl?: string | null;
-  downloadUrl?: string | null;
-  mimeType?: string | null;
-  localPath?: string | null;
-  sizeBytes?: number | null;
-  attachmentId?: string | null;
-};
-
 export type DesktopChatMessage = {
   role: string;
   sender?: string | null;
@@ -932,6 +921,7 @@ export type DesktopCollaborationConversationMessage = {
   outreach?: DesktopCollaborationOutreachMetadata | null;
   attachments?: MessageAttachment[];
   messageAction?: MessageActionMetadata | null;
+  messageKind?: string | null;
   localTurn?: DesktopChatTurnSnapshot | null;
 };
 

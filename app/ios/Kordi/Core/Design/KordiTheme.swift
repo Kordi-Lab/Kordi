@@ -3,6 +3,20 @@ import SwiftUI
 enum KordiTheme {
     static let signalBlue = Color(red: 37 / 255, green: 99 / 255, blue: 235 / 255)
     static let agentViolet = Color(red: 132 / 255, green: 122 / 255, blue: 196 / 255)
+    static let agentMention = Color(
+        uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 96 / 255, green: 165 / 255, blue: 250 / 255, alpha: 1)
+                : UIColor(red: 37 / 255, green: 99 / 255, blue: 235 / 255, alpha: 1)
+        }
+    )
+    static let personMention = Color(
+        uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 80 / 255, green: 210 / 255, blue: 154 / 255, alpha: 1)
+                : UIColor(red: 28 / 255, green: 122 / 255, blue: 82 / 255, alpha: 1)
+        }
+    )
     static let brandPink = Color(red: 248 / 255, green: 62 / 255, blue: 156 / 255)
     static let brandCyan = Color(red: 39 / 255, green: 185 / 255, blue: 209 / 255)
     static let brandAmber = Color(red: 252 / 255, green: 181 / 255, blue: 38 / 255)

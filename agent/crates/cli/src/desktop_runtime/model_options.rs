@@ -342,6 +342,6 @@ pub(super) fn resolve_auth_choice_override_for_model(
     let model_provider = login::normalize_provider_for_model_selection(model_provider);
     let auth_provider = login::normalize_provider_for_model_selection(&choice.provider);
     (model_provider == auth_provider)
-        .then(|| login::resolve_provider_auth_choice(&choice.provider, &choice.choice))
+        .then(|| login::resolve_provider_runtime_auth_choice(&choice.provider, &choice.choice))
         .flatten()
 }

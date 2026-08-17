@@ -78,6 +78,13 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
                     .filter(|value| !value.is_empty())
                     .unwrap_or(&input.owner_account_id)
                     .to_string();
+                if is_default_kordi_target(
+                    &agent_id,
+                    &owner_account_id,
+                    &input.requester_account_id,
+                ) {
+                    return Ok(None);
+                }
                 return Ok(Some(SharedCloudAgentTarget {
                     agent_id,
                     owner_account_id,
@@ -108,11 +115,27 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
     let Some(target) = row.and_then(|(body,)| direct_cloud_agent_target(&body)) else {
         return Ok(None);
     };
+    if is_default_kordi_target(
+        &target.agent_id,
+        &target.owner_account_id,
+        &input.requester_account_id,
+    ) {
+        return Ok(None);
+    }
     Ok(Some(SharedCloudAgentTarget {
         agent_id: target.agent_id,
         owner_account_id: target.owner_account_id,
         owner_name: target.owner_name,
     }))
+}
+
+fn is_default_kordi_target(
+    agent_id: &str,
+    owner_account_id: &str,
+    requester_account_id: &str,
+) -> bool {
+    agent_id == format!("cloud-agent:{owner_account_id}")
+        || (agent_id == "cloud-local-agent" && owner_account_id == requester_account_id)
 }
 
 pub async fn claim_has_shared_cloud_agent_target(
@@ -155,4 +178,28 @@ pub async fn validate_shared_cloud_agent_claim(
         && (target.owner_account_id == input.requester_account_id
             || access_scope == "participant_conversations")),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_default_kordi_target;
+
+    #[test]
+    fn default_kordi_targets_are_not_shared_agent_definitions() {
+        assert!(is_default_kordi_target(
+            "cloud-agent:acct_owner",
+            "acct_owner",
+            "acct_requester"
+        ));
+        assert!(is_default_kordi_target(
+            "cloud-local-agent",
+            "acct_owner",
+            "acct_owner"
+        ));
+        assert!(!is_default_kordi_target(
+            "cloud-local-agent",
+            "acct_owner",
+            "acct_requester"
+        ));
+    }
 }

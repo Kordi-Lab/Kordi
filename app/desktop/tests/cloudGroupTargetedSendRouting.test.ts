@@ -57,7 +57,7 @@ test('direct cloud first sends and retries share the same idempotency key', () =
   );
   assert.match(
     source,
-    /sendCloudCollaborationMessage\(\s*activeCloudConversationId,\s*cloudBody,\s*chatComposerAttachments,\s*\{ clientMessageId: optimisticMessageId \},/,
+    /sendCloudCollaborationMessage\(\s*activeCloudConversationId,\s*cloudBody,\s*attachmentsToSend,\s*\{ clientMessageId: optimisticMessageId \},/,
   );
 
   const directMessagingSource = cloudDirectMessagingSource();

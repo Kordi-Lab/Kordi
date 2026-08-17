@@ -5,8 +5,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
-import { CompactComposerModelMenu } from '../src/kordi-app/components/composer';
-import { shouldUseCompactModelRouteMenu } from '../src/pages/ChatsPage';
+import {
+  CompactComposerModelMenu,
+} from '../src/kordi-app/components/composer';
+import {
+  shouldUseCompactModelRouteMenu,
+} from '../src/pages/ChatsPage';
+import { shouldSynchronizeConversationModelRoute } from '../src/pages/chatsPage.model';
 import { canConfigureConversationModelRoute } from '../src/pages/chatsPage.header';
 import type { Conversation } from '../src/kordi-app/types';
 
@@ -91,6 +96,25 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.doesNotMatch(markup, />Save</);
 });
 
+test('the composer preserves an authoritative session thinking level when capabilities are stale', () => {
+  const markup = renderToStaticMarkup(createElement(CompactComposerModelMenu, {
+    scope: 'chat',
+    selection: { mode: 'chat', model: 'openai/gpt-5.6-luna', thinking: 'max' },
+    providerOptions,
+    modelOptions: [{
+      value: 'openai/gpt-5.6-luna',
+      label: 'gpt-5.6-luna',
+      provider: 'openai',
+      thinkingLevels: ['minimal', 'medium'],
+    }],
+    defaultOpen: true,
+    onSave: () => {},
+  }));
+
+  assert.match(markup, />max</);
+  assert.doesNotMatch(markup, /data-compact-model-trigger="bare"[\s\S]{0,400}>medium</);
+});
+
 test('compact model route menu uses light-theme tokenized popover colors', () => {
   const css = readDesktopShellCss();
 
@@ -144,6 +168,58 @@ test('compact model route menu is scoped to group and human contact chats', () =
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'group' as Conversation['type'], directness: 'group chat', id: 'session:group:one' })), true);
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'owned-agent', directness: 'direct chat' })), false);
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'external-agent', directness: 'agent thread' })), false);
+});
+
+test('agent model routes synchronize independently from message execution transport', () => {
+  const ownedAgent = conversation({
+    type: 'owned-agent',
+    directness: 'direct agent chat',
+  });
+  const externalAgent = conversation({
+    type: 'external-agent',
+    directness: 'direct agent chat',
+  });
+  const person = conversation({
+    type: 'person',
+    directness: 'direct person chat',
+  });
+
+  assert.equal(shouldSynchronizeConversationModelRoute({
+    conversation: ownedAgent,
+    usesCollaborationTransport: false,
+    hasCloudAccount: true,
+    hasModelHost: true,
+  }), true, 'Mac-executed owned Agent sessions still synchronize their model route');
+  assert.equal(shouldSynchronizeConversationModelRoute({
+    conversation: externalAgent,
+    usesCollaborationTransport: false,
+    hasCloudAccount: true,
+    hasModelHost: true,
+  }), true, 'external Agent sessions use the same session-owned route');
+  assert.equal(shouldSynchronizeConversationModelRoute({
+    conversation: person,
+    usesCollaborationTransport: false,
+    hasCloudAccount: true,
+    hasModelHost: true,
+  }), false, 'local human message transport does not implicitly become collaboration transport');
+  assert.equal(shouldSynchronizeConversationModelRoute({
+    conversation: person,
+    usesCollaborationTransport: true,
+    hasCloudAccount: false,
+    hasModelHost: false,
+  }), true, 'existing collaboration conversations retain their route controls');
+  assert.equal(shouldSynchronizeConversationModelRoute({
+    conversation: ownedAgent,
+    usesCollaborationTransport: false,
+    hasCloudAccount: false,
+    hasModelHost: true,
+  }), false, 'a local-only Agent session cannot publish a cloud route without an account');
+  assert.equal(shouldSynchronizeConversationModelRoute({
+    conversation: ownedAgent,
+    usesCollaborationTransport: false,
+    hasCloudAccount: true,
+    hasModelHost: false,
+  }), false, 'a route needs a model host before synchronization is enabled');
 });
 
 test('Kordi Support keeps its server-owned model route locked', () => {

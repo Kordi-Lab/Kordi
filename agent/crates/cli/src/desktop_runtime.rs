@@ -403,7 +403,7 @@ impl DesktopRuntimeSession {
                 self.setup.model.provider
             );
         }
-        if login::resolve_provider_auth_choice(provider, choice).is_none() {
+        if login::resolve_provider_runtime_auth_choice(provider, choice).is_none() {
             bail!("Unknown auth choice for {provider}: {choice}");
         }
 

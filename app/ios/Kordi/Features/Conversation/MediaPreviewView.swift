@@ -362,7 +362,10 @@ private struct MediaPreviewPage: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
-                    .accessibilityLabel(item.attachment.name)
+                    .accessibilityLabel(
+                        item.attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                            ?? item.attachment.name
+                    )
             } else if loadFailed {
                 ContentUnavailableView {
                     Label("Image unavailable", systemImage: "photo.badge.exclamationmark")

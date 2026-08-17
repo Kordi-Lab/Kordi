@@ -426,4 +426,38 @@ mod tests {
         })))
         .is_err());
     }
+
+    #[test]
+    fn meme_attachments_require_accessible_supported_image_metadata() {
+        let attachment_id = "att_meme".to_string();
+        let request = |attachment| SendMessageRequest {
+            client_message_id: Uuid::now_v7(),
+            kind: "text".to_string(),
+            content: json!({
+                "schema": 1,
+                "blocks": [],
+                "legacy_attachments": [attachment]
+            }),
+            reply_to_message_id: None,
+            attachment_ids: vec![attachment_id.clone()],
+        };
+        let valid = json!({
+            "attachmentId": attachment_id,
+            "name": "reaction.png",
+            "kind": "image",
+            "subtype": "meme",
+            "altText": "Surprised cat says: when the tests pass on the first try.",
+            "mimeType": "image/png"
+        });
+
+        assert!(validate_message_request(&request(valid.clone())).is_ok());
+
+        let mut missing_alt = valid.clone();
+        missing_alt["altText"] = json!("  ");
+        assert!(validate_message_request(&request(missing_alt)).is_err());
+
+        let mut unsupported_type = valid;
+        unsupported_type["mimeType"] = json!("image/svg+xml");
+        assert!(validate_message_request(&request(unsupported_type)).is_err());
+    }
 }

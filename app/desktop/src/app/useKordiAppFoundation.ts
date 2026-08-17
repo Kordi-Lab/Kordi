@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -8,6 +7,7 @@ import {
 
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useActiveConversationReadPresentation } from '@/app/useActiveConversationReadPresentation';
+import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavigation';
 import { projects } from '@/kordi-app/data';
 import { useKordiAuthNavigationState } from '@/app/useKordiAuthNavigationState';
 import {
@@ -16,6 +16,10 @@ import {
 } from '@/app/useKordiCanonicalSessionStore';
 import { useKordiCloudAgentActions } from '@/app/useKordiCloudAgentActions';
 import { useKordiDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
+import { useCloudAgentRuntimeRouteSync } from '@/app/useCloudAgentRuntimeRouteSync';
+import { useClearChatQuote } from '@/app/useClearChatQuote';
+import { assignLocalAvatarSeeds, type LocalAvatarSeeds } from '@/app/foundationHelpers';
+import { useUnsupportedCollaborationAction } from '@/app/useUnsupportedCollaborationAction';
 import {
   isNativeDesktopShell,
 } from '@/app/useKordiAppModelHelpers';
@@ -35,16 +39,11 @@ import {
   type UseCloudSessionResult,
 } from '@/features/cloud/useCloudSession';
 import { useCloudCollaborationState } from '@/features/cloud/useCloudCollaborationState';
-import {
-  CLOUD_GROUP_INVITATION_ACCEPTED_EVENT,
-  type CloudGroupInvitationAcceptedDetail,
-} from '@/features/cloud/groupInvitationDeepLink';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { ComposerScope } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
-
 export function useKordiAppFoundation({
   cloudSessionOverride,
 }: {
@@ -83,13 +82,7 @@ export function useKordiAppFoundation({
   });
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] =
     useState<Set<string>>(() => new Set());
-  const localAvatarSeedsRef = useRef<{
-    human?: string | null;
-    humanDisplayName?: string | null;
-    humanProfileImageUrl?: string | null;
-    agent?: string | null;
-    agentDisplayName?: string | null;
-  }>({});
+  const localAvatarSeedsRef = useRef<LocalAvatarSeeds>({});
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
   const participantSpaceDraftByKeyRef =
     useRef<Map<string, ParticipantSpaceDraft>>(new Map());
@@ -128,6 +121,7 @@ export function useKordiAppFoundation({
   });
 
   const { mapDesktopMessages } = useDesktopTranscriptAdapter({ localAvatarSeedsRef });
+
   const refreshCompletedCanonicalSession = useCallback(
     (sessionId: string) => hydrateCanonicalSessionPage(
       sessionId,
@@ -165,7 +159,6 @@ export function useKordiAppFoundation({
     mapDesktopMessages,
     refreshCanonicalSession: refreshCompletedCanonicalSession,
   });
-
   const projectRoutingGroups = useMemo(
     () => buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState),
     [canonicalSessionState, desktopChatState?.projects],
@@ -219,12 +212,10 @@ export function useKordiAppFoundation({
   const chatDraftSessionId = activeConvId || LOCAL_DRAFT_CHAT_CONVERSATION_ID;
   const activeChatQuote = composerUi.chatQuoteBySessionId[chatDraftSessionId] ?? null;
   const setChatQuoteBySessionId = composerUi.setChatQuoteBySessionId;
-  const onClearChatQuote = useCallback(() => {
-    setChatQuoteBySessionId((current) => ({
-      ...current,
-      [chatDraftSessionId]: null,
-    }));
-  }, [chatDraftSessionId, setChatQuoteBySessionId]);
+  const onClearChatQuote = useClearChatQuote(
+    chatDraftSessionId,
+    setChatQuoteBySessionId,
+  );
   const composerDraftsView = useMemo<Record<ComposerScope, string>>(() => ({
     chat: composerUi.composerDrafts.chat[chatDraftSessionId]?.text ?? '',
     project:
@@ -286,10 +277,12 @@ export function useKordiAppFoundation({
   });
 
   const {
+    cloudAgentRuntimeRouteMessages,
     setCloudCollaborationState,
     mergedCollaborationState: desktopCollaborationState,
     prepareCloudForwardAttachments,
     sendCloudCollaborationMessage,
+    updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
     recordCloudSessionFork,
     updateCloudSessionPin,
@@ -322,37 +315,48 @@ export function useKordiAppFoundation({
     localTurnsBySessionId: desktopLiveTurnsBySession,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
+    defaultCloudAgentRuntimeReady:
+      !isDesktopAuthLoading && Boolean(defaultCloudAgentRuntimeRoute),
+    desktopAuthState,
   });
 
-  useEffect(() => {
-    const openAcceptedGroup = (event: Event) => {
-      const detail = (event as CustomEvent<CloudGroupInvitationAcceptedDetail>).detail;
-      const groupSpaceId = detail?.groupSpaceId?.trim();
-      if (!groupSpaceId) return;
-      void refreshCloudMessages()
-        .then(() => {
-          setActiveNav('chats');
-          setActiveConvId(`group:${groupSpaceId}`);
-        })
-        .catch((error) => {
-          setDesktopChatError(error instanceof Error ? error.message : 'The group joined, but Kordi could not open it yet.');
-        });
-    };
-    window.addEventListener(CLOUD_GROUP_INVITATION_ACCEPTED_EVENT, openAcceptedGroup);
-    return () => window.removeEventListener(CLOUD_GROUP_INVITATION_ACCEPTED_EVENT, openAcceptedGroup);
-  }, [refreshCloudMessages, setActiveConvId, setActiveNav, setDesktopChatError]);
+  const {
+    inheritCloudAgentRuntimeRoute,
+    publishCloudAgentRuntimeRouteChange,
+    resolveChatRuntimeRoute,
+  } = useCloudAgentRuntimeRouteSync({
+    accountId: cloudSession.account?.accountId,
+    activeConversationId: activeConvId,
+    activeLoginProviderId,
+    canonicalSessionState,
+    chatModelOptions,
+    cloudAgentRuntimeRouteMessages,
+    composerAuthByScope,
+    composerUi,
+    defaultCloudAgentRuntimeRoute,
+    desktopAuthState,
+    isNativeShell,
+    preferredModelValueForProvider,
+    resolveComposerProviderId,
+    routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
+    sendCloudCollaborationMessage,
+    setRoutesBySessionId: setCloudAgentRuntimeRoutesBySessionId,
+    updateCloudCollaborationSessionTitle,
+  });
+
+  useAcceptedCloudGroupNavigation({
+    refreshCloudMessages,
+    setActiveConversationId: setActiveConvId,
+    setActiveNavigation: setActiveNav,
+    setDesktopChatError,
+  });
 
   // The desktop collaboration read model is derived only from hosted Cloud data.
   const isCollaborationSyncing = false;
   const lastCollaborationSyncAt = null;
 
-  const unsupportedLegacyCollaborationAction = useCallback(
-    (..._args: unknown[]) => {
-      const message = 'This connection action is unavailable.';
-      setDesktopChatError(message);
-      return Promise.reject(new Error(message));
-    },
-    [setDesktopChatError],
+  const unsupportedLegacyCollaborationAction = useUnsupportedCollaborationAction(
+    setDesktopChatError,
   );
 
   const {
@@ -366,16 +370,8 @@ export function useKordiAppFoundation({
     canonicalState: canonicalSessionState,
     collaborationState: desktopCollaborationState,
   });
-  const syncLocalAvatarSeeds = (
-    seeds: typeof localAvatarSeedsRef.current,
-  ) => {
-    localAvatarSeedsRef.current.human = seeds.human;
-    localAvatarSeedsRef.current.humanDisplayName = seeds.humanDisplayName;
-    localAvatarSeedsRef.current.humanProfileImageUrl =
-      seeds.humanProfileImageUrl;
-    localAvatarSeedsRef.current.agent = seeds.agent;
-    localAvatarSeedsRef.current.agentDisplayName = seeds.agentDisplayName;
-  };
+  const syncLocalAvatarSeeds = (seeds: LocalAvatarSeeds) =>
+    assignLocalAvatarSeeds(localAvatarSeedsRef, seeds);
   useKordiCanonicalPageHydration({
     activeConversationId: activeConvId,
     activeProjectSessionId,
@@ -484,6 +480,9 @@ export function useKordiAppFoundation({
       isCollaborationSyncing, lastCollaborationSyncAt,
       unsupportedLegacyCollaborationAction,
       setCloudAgentRuntimeRoutesBySessionId,
+      resolveChatRuntimeRoute,
+      inheritCloudAgentRuntimeRoute,
+      publishCloudAgentRuntimeRouteChange,
     },
     profile: {
       localProfileAvatarSeed, localProfileDisplayName, localProfileImageUrl,

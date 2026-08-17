@@ -13,6 +13,7 @@ import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { cloudGroupMessageRuntimeFields, integerMilliseconds } from './cloudGroupDecoding';
+import { cloudMessageAttachmentsFromRecord } from './cloudGroupAttachmentCodec';
 import { cloudGroupMessageIsUnreadForAccount } from './cloudGroupUnreadPolicy';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
@@ -99,7 +100,7 @@ export type CloudGroupControlEnvelope = {
 };
 type CloudGroupAttachmentReferenceInput = Pick<
   CloudMessageAttachment,
-  'attachmentId' | 'name' | 'kind'
+  'attachmentId' | 'name' | 'kind' | 'subtype' | 'altText'
 > & {
   mimeType?: string | null;
   sizeBytes?: number | null;
@@ -112,6 +113,10 @@ export function cloudGroupAttachmentReferences(
     attachmentId: attachment.attachmentId,
     name: attachment.name,
     kind: attachment.kind,
+    ...(attachment.subtype === 'meme' ? {
+      subtype: 'meme' as const,
+      altText: attachment.altText ?? null,
+    } : {}),
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
   }));
@@ -286,24 +291,6 @@ export function cloudGroupIdFromAgentConversationId(conversationId: string | nul
 
 export function isCloudGroupAgentConversationId(conversationId: string | null | undefined): boolean {
   return Boolean(cloudGroupIdFromAgentConversationId(conversationId));
-}
-
-function cloudMessageAttachmentFromRecord(value: unknown): CloudMessageAttachment | null {
-  const record = objectRecord(value);
-  const attachmentId = typeof record.attachmentId === 'string' ? record.attachmentId.trim() : '';
-  const name = typeof record.name === 'string' ? record.name.trim() : '';
-  const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
-  if (!attachmentId || !name || !kind) return null;
-  const mimeType = typeof record.mimeType === 'string' && record.mimeType.trim() ? record.mimeType.trim() : null;
-  const sizeBytes = typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) && record.sizeBytes >= 0 ? record.sizeBytes : null;
-  const downloadUrl = typeof record.downloadUrl === 'string' && record.downloadUrl.trim() ? record.downloadUrl.trim() : null;
-  const previewUrl = typeof record.previewUrl === 'string' && record.previewUrl.trim() ? record.previewUrl.trim() : null;
-  return { attachmentId, name, kind, mimeType, sizeBytes, downloadUrl, previewUrl };
-}
-
-function cloudMessageAttachments(value: unknown): CloudMessageAttachment[] {
-  if (!Array.isArray(value)) return [];
-  return value.map(cloudMessageAttachmentFromRecord).filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
 }
 
 function cloudMessageActionFromRecord(value: unknown): MessageActionMetadata | null {
@@ -669,7 +656,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
         forkSnapshot: candidate.forkSnapshot === true,
-        attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
+        attachments: cloudMessageAttachmentsFromRecord((candidate as { attachments?: unknown }).attachments),
         messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
         targetCloudAgentId: cleanText(typeof candidate.targetCloudAgentId === 'string' ? candidate.targetCloudAgentId : null) || null,
         targetCloudAgentName: cleanText(typeof candidate.targetCloudAgentName === 'string' ? candidate.targetCloudAgentName : null) || null,

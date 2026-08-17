@@ -96,6 +96,55 @@ test('stored composer attachments persist durable local paths but drop stale blo
   }]);
 });
 
+test('stored composer attachments round-trip meme accessibility and rights state', () => {
+  const serialized = serializeStoredComposerAttachments([{
+    id: 'meme-1',
+    name: 'reaction.webp',
+    path: '/tmp/reaction.webp',
+    kind: 'image',
+    mimeType: 'image/webp',
+    subtype: 'meme',
+    altText: 'Two buttons labeled deploy and sleep; the character chooses deploy.',
+    memeRightsConfirmed: true,
+  }]);
+
+  assert.deepEqual(parseStoredComposerAttachments(serialized)[0], {
+    id: 'meme-1',
+    name: 'reaction.webp',
+    path: '/tmp/reaction.webp',
+    kind: 'image',
+    formatLabel: null,
+    mimeType: 'image/webp',
+    localPath: '/tmp/reaction.webp',
+    previewUrl: null,
+    sizeBytes: null,
+    subtype: 'meme',
+    altText: 'Two buttons labeled deploy and sleep; the character chooses deploy.',
+    memeRightsConfirmed: true,
+  });
+});
+
+test('meme attachment editor exposes alt text, rights confirmation, and ordinary-image fallback', () => {
+  const markup = renderToStaticMarkup(createElement(ComposerAttachmentList, {
+    attachments: [{
+      id: 'meme-1',
+      name: 'reaction.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      subtype: 'meme',
+      altText: '',
+      memeRightsConfirmed: false,
+    }],
+    onRemove: () => undefined,
+    onUpdate: () => undefined,
+  }));
+
+  assert.match(markup, /data-composer-meme-attachment="true"/);
+  assert.match(markup, /aria-label="Treat reaction\.png as an ordinary image"/);
+  assert.match(markup, /placeholder="Describe the visible text and joke"/);
+  assert.match(markup, /permission or another legal right to share this meme/);
+});
+
 test('composer attachment tiles keep the filename and remove control on one compact line', () => {
   const attachments = [{
     id: 'pdf-1',

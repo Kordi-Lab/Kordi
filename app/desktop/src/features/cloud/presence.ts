@@ -1,9 +1,73 @@
-import type { CloudPresenceAccount, CloudPresenceContactsResponse, CloudPresenceStatus } from './authClient';
+export type CloudPresenceStatus = 'online' | 'offline';
+
+export type CloudPresenceAccount = {
+  accountId: string;
+  status: CloudPresenceStatus;
+  updatedAt: string;
+  lastSeenAt: string | null;
+};
+
+export type CloudPresenceContactsResponse = {
+  accounts: CloudPresenceAccount[];
+};
 
 export type CloudPresenceStore = Record<string, CloudPresenceAccount>;
 
 function cleanText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+const presenceFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function presenceFormatter(
+  kind: 'time' | 'date' | 'date-year',
+  locales?: Intl.LocalesArgument,
+  timeZone?: string,
+) {
+  const key = `${kind}|${String(locales ?? '')}|${timeZone ?? ''}`;
+  const existing = presenceFormatters.get(key);
+  if (existing) return existing;
+  const formatter = new Intl.DateTimeFormat(locales, {
+    ...(kind === 'time'
+      ? { hour: '2-digit', minute: '2-digit' }
+      : { month: 'short', day: 'numeric', ...(kind === 'date-year' ? { year: 'numeric' } : {}) }),
+    ...(timeZone ? { timeZone } : {}),
+  });
+  presenceFormatters.set(key, formatter);
+  return formatter;
+}
+
+function calendarDay(value: Date, timeZone?: string) {
+  const [year, month, day] = formatDesktopDate(value, { timeZone }).split('-').map(Number);
+  return Date.UTC(year, month - 1, day) / 86_400_000;
+}
+
+export function contactPresenceLabel(
+  presence: CloudPresenceAccount | null,
+  options: { now?: Date | number; locales?: Intl.LocalesArgument; timeZone?: string } = {},
+) {
+  if (presence?.status === 'online') return 'online';
+  const timestampMs = Date.parse(presence?.lastSeenAt ?? '');
+  if (!Number.isFinite(timestampMs)) return 'last seen recently';
+  const date = new Date(timestampMs);
+  const now = options.now instanceof Date ? options.now : new Date(options.now ?? Date.now());
+  const time = presenceFormatter('time', options.locales, options.timeZone).format(date);
+  const elapsedMs = now.getTime() - timestampMs;
+  const dayDifference = calendarDay(now, options.timeZone) - calendarDay(date, options.timeZone);
+  if (dayDifference === 0) {
+    return elapsedMs >= -60_000 && elapsedMs < 60_000
+      ? 'last seen just now'
+      : `last seen today at ${time}`;
+  }
+  if (dayDifference === 1) return `last seen yesterday at ${time}`;
+  const sameYear = formatDesktopDate(date, { timeZone: options.timeZone }).slice(0, 4)
+    === formatDesktopDate(now, { timeZone: options.timeZone }).slice(0, 4);
+  const calendarDate = presenceFormatter(
+    sameYear ? 'date' : 'date-year',
+    options.locales,
+    options.timeZone,
+  ).format(date);
+  return `last seen ${calendarDate} at ${time}`;
 }
 
 export function normalizePresenceStatus(value: unknown): CloudPresenceStatus {
@@ -38,13 +102,16 @@ export function mergePresenceEvent(current: CloudPresenceStore, event: CloudPres
   const accountId = cleanText(event.accountId);
   if (!accountId) return current;
   const previous = current[accountId];
+  const status = normalizePresenceStatus(event.status);
   const normalized = {
     accountId,
-    status: normalizePresenceStatus(event.status),
+    status,
     updatedAt: cleanText(event.updatedAt)
       || previous?.updatedAt
       || new Date().toISOString(),
-    lastSeenAt: cleanText(event.lastSeenAt) || null,
+    lastSeenAt: status === 'online'
+      ? null
+      : cleanText(event.lastSeenAt) || previous?.lastSeenAt || null,
   };
   if (previous?.status === normalized.status
     && (normalized.status === 'online' || previous.lastSeenAt === normalized.lastSeenAt)) return current;
@@ -76,3 +143,4 @@ export function cloudPresenceChangedFromWsPayload(payload: unknown): CloudPresen
     lastSeenAt: cleanText(record.last_seen_at ?? record.lastSeenAt) || null,
   };
 }
+import { formatDesktopDate } from '@/lib/time';

@@ -75,4 +75,131 @@ final class AvatarIdentityTests: XCTestCase {
 
         XCTAssertEqual(catalog.first { $0.kind == .person }?.avatarSource, avatar)
     }
+
+    func testDirectContactMessageAvatarOpensTheCurrentContactProfile() throws {
+        let conversation = makePersonConversation(accountId: "acct_maya", displayName: "Maya")
+        let message = makePersonMessage(authorName: "Maya", conversationId: conversation.sessionId)
+
+        let destination = try XCTUnwrap(ConversationAuthorProfileResolver.destination(
+            currentConversation: conversation,
+            message: message,
+            selfAccountID: "acct_me",
+            contacts: [],
+            conversations: [conversation]
+        ))
+
+        XCTAssertEqual(destination, conversation)
+    }
+
+    func testGroupMemberMessageAvatarOpensTheMemberProfileInsteadOfGroupDetails() throws {
+        let conversation = makeGroupConversation(participants: [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(
+                accountId: "acct_maya",
+                displayName: "Maya",
+                avatarUrl: "https://example.com/maya.png",
+                role: "member"
+            )
+        ])
+        let message = makePersonMessage(authorName: "Maya", conversationId: conversation.sessionId)
+
+        let destination = try XCTUnwrap(ConversationAuthorProfileResolver.destination(
+            currentConversation: conversation,
+            message: message,
+            selfAccountID: "acct_me",
+            contacts: [],
+            conversations: [conversation]
+        ))
+
+        XCTAssertEqual(destination.kind, .person)
+        XCTAssertEqual(destination.peerAccountId, "acct_maya")
+        XCTAssertEqual(destination.displayName, "Maya")
+        XCTAssertEqual(destination.avatarSource, "https://example.com/maya.png")
+        XCTAssertEqual(destination.sessionId, directPersonSessionId("acct_me", "acct_maya"))
+        XCTAssertNotEqual(destination.id, conversation.id)
+    }
+
+    func testGroupMemberMessageAvatarReusesAnExistingDirectConversation() throws {
+        let group = makeGroupConversation(participants: [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "member")
+        ])
+        let direct = makePersonConversation(accountId: "acct_maya", displayName: "Maya Chen")
+        let message = makePersonMessage(authorName: "Maya", conversationId: group.sessionId)
+
+        let destination = try XCTUnwrap(ConversationAuthorProfileResolver.destination(
+            currentConversation: group,
+            message: message,
+            selfAccountID: "acct_me",
+            contacts: [],
+            conversations: [group, direct]
+        ))
+
+        XCTAssertEqual(destination, direct)
+    }
+
+    func testGroupMemberMessageAvatarDoesNotGuessBetweenDuplicateNames() {
+        let conversation = makeGroupConversation(participants: [
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "member"),
+            CloudGroupParticipant(accountId: "acct_maya_2", displayName: "Maya", avatarUrl: nil, role: "member")
+        ])
+        let message = makePersonMessage(authorName: "Maya", conversationId: conversation.sessionId)
+
+        XCTAssertNil(ConversationAuthorProfileResolver.destination(
+            currentConversation: conversation,
+            message: message,
+            selfAccountID: "acct_me",
+            contacts: [],
+            conversations: [conversation]
+        ))
+    }
+
+    private func makePersonConversation(accountId: String, displayName: String) -> ConversationSummary {
+        ConversationSummary(
+            id: "person:\(accountId)",
+            kind: .person,
+            peerAccountId: accountId,
+            agentId: nil,
+            ownerDisplayName: displayName,
+            displayName: displayName,
+            lastMessage: "Hello",
+            lastActivityAt: Date(timeIntervalSince1970: 1_700_000_000),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: directPersonSessionId("acct_me", accountId)
+        )
+    }
+
+    private func makeGroupConversation(participants: [CloudGroupParticipant]) -> ConversationSummary {
+        ConversationSummary(
+            id: "group:design",
+            kind: .group,
+            peerAccountId: "",
+            agentId: nil,
+            ownerDisplayName: "Me",
+            displayName: "Design group",
+            lastMessage: "Hello",
+            lastActivityAt: Date(timeIntervalSince1970: 1_700_000_000),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: "session:group:design",
+            groupParticipants: participants
+        )
+    }
+
+    private func makePersonMessage(authorName: String, conversationId: String) -> ChatMessage {
+        ChatMessage(
+            id: "message-1",
+            conversationId: conversationId,
+            author: .person,
+            authorName: authorName,
+            text: "Hello",
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+    }
 }

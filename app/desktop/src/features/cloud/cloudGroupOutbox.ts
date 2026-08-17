@@ -1,5 +1,12 @@
 import type { SendCloudMessageAttachmentInput } from './authClient';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '@/kordi-app/types';
+import {
+  normalizedCloudGroupOutboxAttachments,
+  normalizedCloudGroupOutboxPendingAttachments,
+  type CloudGroupOutboxAttachmentSource,
+} from './cloudGroupOutboxAttachmentCodec';
+
+export type { CloudGroupOutboxAttachmentSource } from './cloudGroupOutboxAttachmentCodec';
 
 export const CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 15_000, 30_000] as const;
 export const CLOUD_GROUP_OUTBOX_MAX_ATTEMPTS = CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS.length + 1;
@@ -27,16 +34,6 @@ export type CloudGroupOutboxEntry = {
   exhaustedRecipientIds?: string[];
   attemptsByRecipientId: Record<string, number>;
   nextAttemptAtMs: number;
-};
-
-export type CloudGroupOutboxAttachmentSource = {
-  id: string;
-  path: string;
-  name: string;
-  kind: 'image' | 'file';
-  formatLabel?: string | null;
-  mimeType?: string | null;
-  sizeBytes?: number | null;
 };
 
 export type CloudGroupOutboxPersistedState = {
@@ -148,55 +145,6 @@ function normalizedAttempts(value: unknown, recipientIds: Set<string>) {
   return result;
 }
 
-function normalizedAttachments(value: unknown): SendCloudMessageAttachmentInput[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const attachments = value.flatMap((candidate): SendCloudMessageAttachmentInput[] => {
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
-    const record = candidate as Record<string, unknown>;
-    const attachmentId = cleanText(record.attachmentId);
-    const name = cleanText(record.name);
-    const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
-    const previewUrl = cleanText(record.previewUrl);
-    if (!attachmentId || !name || !kind) return [];
-    return [{
-      attachmentId,
-      name,
-      kind,
-      mimeType: cleanText(record.mimeType) || null,
-      sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes)
-        ? record.sizeBytes
-        : null,
-      ...(previewUrl ? { previewUrl } : {}),
-    }];
-  });
-  return attachments.length > 0 ? attachments : undefined;
-}
-
-function normalizedPendingAttachments(value: unknown): CloudGroupOutboxAttachmentSource[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const attachments = value.flatMap((candidate, index): CloudGroupOutboxAttachmentSource[] => {
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
-    const record = candidate as Record<string, unknown>;
-    const path = cleanText(record.path);
-    const name = cleanText(record.name);
-    const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
-    if (!path || !name || !kind) return [];
-    const id = cleanText(record.id) || `pending-attachment:${index}:${path}`;
-    return [{
-      id,
-      path,
-      name,
-      kind,
-      formatLabel: cleanText(record.formatLabel) || null,
-      mimeType: cleanText(record.mimeType) || null,
-      sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes)
-        ? record.sizeBytes
-        : null,
-    }];
-  });
-  return attachments.length > 0 ? attachments : undefined;
-}
-
 function normalizeEntry(value: unknown): CloudGroupOutboxEntry | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -216,8 +164,8 @@ function normalizeEntry(value: unknown): CloudGroupOutboxEntry | null {
     && deliveredRecipientIds.length > 0
     && exhaustedRecipientIds.length === 0;
   const clientCreatedAt = cleanText(record.clientCreatedAt);
-  const attachments = normalizedAttachments(record.attachments);
-  const pendingAttachments = normalizedPendingAttachments(record.pendingAttachments);
+  const attachments = normalizedCloudGroupOutboxAttachments(record.attachments);
+  const pendingAttachments = normalizedCloudGroupOutboxPendingAttachments(record.pendingAttachments);
   const payloadVersion = typeof record.payloadVersion === 'number' && Number.isFinite(record.payloadVersion)
     ? Math.max(0, Math.floor(record.payloadVersion))
     : 0;
@@ -563,7 +511,7 @@ export class CloudGroupOutbox {
     await this.ensureRestored();
     const normalizedId = canonicalMessageId.trim();
     const envelope = payload.envelope.trim();
-    const attachments = normalizedAttachments(payload.attachments);
+    const attachments = normalizedCloudGroupOutboxAttachments(payload.attachments);
     if (!normalizedId || !envelope || !attachments) {
       throw new Error('Cloud group outbox attachment payload is invalid.');
     }

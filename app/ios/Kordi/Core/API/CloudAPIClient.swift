@@ -22,6 +22,7 @@ enum CloudTransportErrorPolicy {
 actor CloudAPIClient {
     static let productionBaseURL = KordiAppEnvironment.productionBaseURL
     static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
+    private static let sharedAgentOwnerBatchSize = 50
 
     static let reliableSession: URLSession = {
         let configuration = URLSessionConfiguration.default
@@ -422,14 +423,24 @@ actor CloudAPIClient {
     func listSharedAgents(token: String, ownerAccountIds: [String]) async throws -> [CloudAgent] {
         let owners = Array(Set(ownerAccountIds.filter { !$0.isEmpty })).sorted()
         guard !owners.isEmpty else { return [] }
-        let response: AgentsResponse = try await send(
-            path: "/v1/cloud/agents/shared",
-            method: "GET",
-            token: token,
-            query: [URLQueryItem(name: "ownerAccountIds", value: owners.joined(separator: ","))],
-            fallback: "Could not load shared agents."
-        )
-        return response.agents
+        var agentsByID: [String: CloudAgent] = [:]
+        for startIndex in stride(
+            from: owners.startIndex,
+            to: owners.endIndex,
+            by: Self.sharedAgentOwnerBatchSize
+        ) {
+            let endIndex = min(startIndex + Self.sharedAgentOwnerBatchSize, owners.endIndex)
+            let ownerBatch = owners[startIndex..<endIndex]
+            let response: AgentsResponse = try await send(
+                path: "/v1/cloud/agents/shared",
+                method: "GET",
+                token: token,
+                query: [URLQueryItem(name: "ownerAccountIds", value: ownerBatch.joined(separator: ","))],
+                fallback: "Could not load shared agents."
+            )
+            response.agents.forEach { agentsByID[$0.agentId] = $0 }
+        }
+        return Array(agentsByID.values)
     }
 
     func createAgent(token: String, draft: CloudAgentDraft) async throws -> CloudAgent {
@@ -681,6 +692,7 @@ actor CloudAPIClient {
         sessionId: String,
         clientMessageId: String,
         attachments: [CloudMessageAttachment] = [],
+        messageKind: String = "text",
         conversationKind: String? = nil,
         memberAccountIds: [String]? = nil,
         sharedTitle: String? = nil
@@ -705,7 +717,7 @@ actor CloudAPIClient {
             token: token,
             body: ChatSendMessageRequest(
                 clientMessageId: operationUUID(clientMessageId),
-                kind: "text",
+                kind: messageKind.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "text",
                 content: CloudChatContent(body: body, attachments: attachments),
                 replyToMessageId: nil,
                 attachmentIds: attachments.map(\.attachmentId)
@@ -889,6 +901,8 @@ actor CloudAPIClient {
                 attachmentId: uploaded.attachmentId,
                 name: attachment.name,
                 kind: attachment.kind.rawValue,
+                subtype: attachment.subtype,
+                altText: attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
                 mimeType: uploaded.contentType?.nonEmpty ?? attachment.mimeType,
                 sizeBytes: uploaded.sizeBytes ?? attachment.sizeBytes,
                 downloadUrl: nil,
@@ -929,6 +943,36 @@ actor CloudAPIClient {
                 statusCode: 0
             )
         }
+    }
+
+    func listExpressiveMedia(token: String) async throws -> [CloudExpressiveMediaItem] {
+        let response: CloudExpressiveMediaListResponse = try await send(
+            path: "/v1/cloud/expressive-media",
+            method: "GET",
+            token: token,
+            fallback: "Could not synchronize your saved stickers and GIFs."
+        )
+        return response.items
+    }
+
+    func saveExpressiveMedia(
+        token: String,
+        attachmentId: String,
+        kind: ExpressiveMediaLibraryKind,
+        name: String
+    ) async throws -> CloudExpressiveMediaItem {
+        let response: CloudExpressiveMediaMutationResponse = try await send(
+            path: "/v1/cloud/expressive-media",
+            method: "POST",
+            token: token,
+            body: SaveExpressiveMediaRequest(
+                attachmentId: attachmentId,
+                kind: kind.rawValue,
+                name: name
+            ),
+            fallback: "Could not synchronize this saved media."
+        )
+        return response.item
     }
 
     func markMessagesRead(token: String, peerAccountId: String) async throws {
@@ -1289,9 +1333,29 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
+        if ["agent.definition.upserted", "agent.definition.archived"]
+            .contains(event.eventType) {
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: nil,
+                occurredAt: event.occurredAt
+            )]
+        }
+        if event.eventType == "provider-auth.updated" {
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: nil,
+                occurredAt: event.occurredAt
+            )]
+        }
         let knownNonChatEvents: Set<String> = [
-            "agent.definition.upserted", "agent.definition.archived", "task.upsert",
-            "artifact.upsert", "artifact.archived", "session.pin.updated", "session.hidden",
+            "task.upsert", "artifact.upsert", "artifact.archived", "session.pin.updated", "session.hidden",
             "session.unhidden", "session.deleted", "session-forked"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
@@ -1571,6 +1635,11 @@ private struct DeviceOperationRequest: Encodable { let clientOperationId: String
 private struct RenameDeviceRequest: Encodable {
     let clientOperationId: String
     let displayName: String
+}
+private struct SaveExpressiveMediaRequest: Encodable {
+    let attachmentId: String
+    let kind: String
+    let name: String
 }
 private struct ContactsResponse: Decodable { let contacts: [CloudContact] }
 private struct ContactPresenceResponse: Decodable { let accounts: [CloudPresenceAccount] }

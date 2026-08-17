@@ -192,6 +192,7 @@ type SyncEventRow = (
 mod conversation;
 mod cursors;
 mod members;
+mod meme_validation;
 mod message;
 mod support;
 mod titles;

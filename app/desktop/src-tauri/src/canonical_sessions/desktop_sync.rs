@@ -11,6 +11,9 @@ use super::{
     similar_agent_message_text,
 };
 
+mod cloud_reconcile;
+mod message_role;
+
 fn canonical_desktop_message_source_event_id(
     session_id: &str,
     index: usize,
@@ -29,24 +32,6 @@ fn canonical_desktop_message_source_event_id(
         role,
         hash_hex(&message.text, 8)
     )
-}
-
-fn should_skip_desktop_runtime_status_message(
-    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
-) -> bool {
-    let role = message.role.trim().to_lowercase();
-    if role != "system" {
-        return false;
-    }
-    let text = message.text.trim();
-    text.starts_with("Switched model to ") || text.starts_with("Thinking set to ")
-}
-
-fn desktop_runtime_message_is_agent(
-    message: &kordi_cli::desktop_runtime::DesktopChatMessage,
-) -> bool {
-    let role = message.role.trim().to_lowercase();
-    role != "user" && role != "system"
 }
 
 pub(super) fn should_skip_shared_local_agent_runtime_prompt(
@@ -292,7 +277,7 @@ pub(crate) fn sync_desktop_chat_message(
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
     reply_to_message_id: Option<&str>,
 ) -> Result<Option<String>, String> {
-    if should_skip_desktop_runtime_status_message(message)
+    if message_role::should_skip_status_message(message)
         || should_skip_shared_local_agent_runtime_prompt(session_id, message)
     {
         return Ok(None);
@@ -313,7 +298,9 @@ pub(crate) fn sync_desktop_chat_message(
     } else {
         "owned-agent"
     };
-    let message_kind = if is_system {
+    let message_kind = if is_system && message.text.trim().starts_with("Switched model to ") {
+        "agent-model-change"
+    } else if is_system {
         "system"
     } else if is_agent || message.thinking_text.is_some() || !message.tools.is_empty() {
         "agent-turn"
@@ -326,6 +313,15 @@ pub(crate) fn sync_desktop_chat_message(
     } else {
         message.text.clone()
     };
+
+    let canonical_reply_to_message_id = is_agent
+        .then(|| {
+            reply_to_message_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+        .flatten();
 
     if let Some(snapshot_message_id) = matching_fork_snapshot_message_id(
         conn,
@@ -340,6 +336,18 @@ pub(crate) fn sync_desktop_chat_message(
     }
 
     if is_agent {
+        if let Some(cloud_message_id) =
+            cloud_reconcile::reconcile_cloud_self_agent_message_with_desktop_runtime(
+                conn,
+                session_id,
+                canonical_reply_to_message_id.as_deref(),
+                &content_text,
+                message,
+            )?
+        {
+            return Ok(Some(cloud_message_id));
+        }
+
         if reconcile_processing_bridge_agent_placeholder_with_desktop_runtime(
             conn,
             session_id,
@@ -370,15 +378,6 @@ pub(crate) fn sync_desktop_chat_message(
             return Ok(None);
         }
     }
-
-    let canonical_reply_to_message_id = is_agent
-        .then(|| {
-            reply_to_message_id
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        })
-        .flatten();
 
     let request = AppendCanonicalMessageRequest {
         id: None,
@@ -921,7 +920,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
 
         let mut latest_user_message_id: Option<String> = None;
         for (index, message) in active.messages.iter().enumerate() {
-            let is_agent_message = desktop_runtime_message_is_agent(message);
+            let is_agent_message = message_role::is_agent(message);
             let synced_message_id = sync_desktop_chat_message(
                 &conn,
                 &active.id,

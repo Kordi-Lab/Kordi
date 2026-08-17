@@ -6,7 +6,9 @@ enum CloudDirectMessageProjector {
         conversation: ConversationSummary,
         ownAccountId: String
     ) -> [ChatMessage] {
-        let sorted = messages.sorted { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+        let sorted = CloudAgentLifecycleProjector.visibleRows(messages)
+        let executionByResponseKey = CloudAgentLifecycleProjector
+            .executionByResponseKey(in: messages)
         let cancellations = Dictionary(
             sorted.compactMap { message -> (String, CloudMessageDTO)? in
                 guard let requestId = CloudMessageCodec.agentCancelEnvelope(message.body)?.requestId.nonEmpty else {
@@ -17,19 +19,39 @@ enum CloudDirectMessageProjector {
             uniquingKeysWith: { first, _ in first }
         )
         let responseRequestIds = Set(sorted.compactMap { CloudMessageCodec.agentResponseRequestId($0.body)?.nonEmpty })
-        var visibleResponseKeys = Set<String>()
+        let requestCreatedAtById = Dictionary(
+            uniqueKeysWithValues: sorted.compactMap { message -> (String, Date)? in
+                guard !CloudMessageCodec.isAgentResponse(message.body) else { return nil }
+                return (message.messageId, parseCloudDate(message.createdAt))
+            }
+        )
         var result: [ChatMessage] = []
 
         for wire in sorted {
             if CloudMessageCodec.isAgentControl(wire.body) || CloudGroupMessageCodec.parse(wire.body) != nil {
                 continue
             }
-            if let requestId = CloudMessageCodec.agentResponseRequestId(wire.body)?.nonEmpty {
-                let responseKey = "\(requestId):\(wire.fromAccountId)"
-                guard visibleResponseKeys.insert(responseKey).inserted else { continue }
-            }
 
-            result.append(map(wire, conversation: conversation, ownAccountId: ownAccountId))
+            let responseRequestId = CloudMessageCodec.agentResponseRequestId(wire.body)?.nonEmpty
+            let anchoredCreatedAt = responseRequestId
+                .flatMap { requestCreatedAtById[$0] }
+                .map { $0.addingTimeInterval(0.001) }
+            let ownerExecution = CloudAgentLifecycleProjector
+                .responseKey(for: wire)
+                .flatMap { executionByResponseKey[$0] }
+                .map {
+                    CloudAgentLifecycleProjector.execution(
+                        $0,
+                        finalizedFor: wire
+                    )
+                }
+            result.append(map(
+                wire,
+                conversation: conversation,
+                ownAccountId: ownAccountId,
+                createdAt: anchoredCreatedAt,
+                ownerExecution: ownerExecution
+            ))
 
             guard let cancel = cancellations[wire.messageId],
                   !responseRequestIds.contains(wire.messageId) else { continue }
@@ -65,7 +87,9 @@ enum CloudDirectMessageProjector {
     private static func map(
         _ message: CloudMessageDTO,
         conversation: ConversationSummary,
-        ownAccountId: String
+        ownAccountId: String,
+        createdAt: Date? = nil,
+        ownerExecution: AgentExecutionSnapshot? = nil
     ) -> ChatMessage {
         let isAgentResponse = CloudMessageCodec.isAgentResponse(message.body)
         let responseRequestId = isAgentResponse ? CloudMessageCodec.agentResponseRequestId(message.body) : nil
@@ -81,20 +105,26 @@ enum CloudDirectMessageProjector {
             authorName = conversation.ownerDisplayName?.nonEmpty ?? conversation.displayName
         }
         let messageAction = CloudMessageCodec.directEnvelope(message.body)?.messageAction
+        let visibleOwnerExecution = isAgentResponse
+            && message.fromAccountId == ownAccountId
+            && message.toAccountId == ownAccountId
+            ? ownerExecution ?? CloudMessageCodec.agentExecution(message.body)
+            : nil
         return ChatMessage(
             id: message.messageId,
             conversationId: conversation.id,
             author: author,
             authorName: authorName,
             text: CloudMessageCodec.displayText(message.body),
-            createdAt: parseCloudDate(message.createdAt),
+            createdAt: createdAt ?? parseCloudDate(message.createdAt),
             deliveryState: state,
             errorMessage: nil,
             requestMessageId: responseRequestId,
             attachments: message.attachments.map(\.chatAttachment),
             replyToMessageId: messageAction?.replyToMessageId ?? responseRequestId,
             messageAction: messageAction,
-            messageKind: message.messageKind
+            messageKind: CloudMessageCodec.canonicalMessageKind(message),
+            agentExecution: visibleOwnerExecution
         )
     }
 }
@@ -105,6 +135,8 @@ extension CloudMessageAttachment {
             attachmentId: attachmentId,
             name: name,
             kind: inferredChatAttachmentKind,
+            subtype: subtype,
+            altText: altText,
             mimeType: mimeType,
             sizeBytes: sizeBytes,
             previewURL: previewUrl

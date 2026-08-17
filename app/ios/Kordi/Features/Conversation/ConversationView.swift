@@ -4,10 +4,17 @@ import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
+private struct ConversationTimelineRow: Identifiable {
+    let id: String
+    let offset: Int
+    let message: ChatMessage
+}
+
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
     private let companionContext: CompanionChatContext?
@@ -29,15 +36,18 @@ struct ConversationView: View {
     @State private var photoSelectionReview: PhotoSelectionReview?
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
+    @State private var isExpressivePickerPresented = false
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
     @State private var showSessionDetails = false
+    @State private var authorProfileConversation: ConversationSummary?
     @State private var showAgentModel = false
     @State private var highlightedMessageID: String?
     @State private var selectedMessageIDs = Set<String>()
@@ -77,6 +87,12 @@ struct ConversationView: View {
     private var messages: [ChatMessage] {
         ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
     }
+    private var mentionTargetRefreshID: [String] {
+        [conversation.id] + ComposerMentionTargetCatalog.ownerAccountIDs(
+            for: conversation,
+            currentAccountID: model.account?.accountId ?? ""
+        )
+    }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14
 
@@ -86,6 +102,14 @@ struct ConversationView: View {
             in: timeline,
             limit: visibleMessageLimit
         )
+        let visibleTimelineRows = visibleTimeline.enumerated().map { offset, message in
+            ConversationTimelineRow(
+                id: model.timelineIdentity(for: message),
+                offset: offset,
+                message: message
+            )
+        }
+        let firstVisibleTimelineIdentity = visibleTimelineRows.first?.id
         let visibleStartIndex = timeline.count - visibleTimeline.count
         let messagesById = Dictionary(uniqueKeysWithValues: timeline.map { ($0.id, $0) })
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
@@ -97,6 +121,7 @@ struct ConversationView: View {
         let pinnedMessage = model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId
             .flatMap { messagesById[$0] }
         let activeConversationCall = model.activeCall(for: conversation)
+        let mentionTargets = model.mentionTargets(for: conversation)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if let activeCall = activeConversationCall,
@@ -149,19 +174,20 @@ struct ConversationView: View {
                                     } else {
                                         if visibleStartIndex > 0 {
                                             EarlierMessagesLoader(remainingCount: visibleStartIndex)
-                                                .id("earlier:\(visibleTimeline.first?.id ?? conversation.id)")
+                                                .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
                                                 .onAppear {
                                                     guard hasPositionedInitialTimeline else { return }
                                                     loadEarlierMessages(
-                                                        preserving: visibleTimeline.first?.id,
+                                                        preserving: firstVisibleTimelineIdentity,
                                                         totalCount: timeline.count,
                                                         proxy: proxy
                                                     )
                                                 }
                                         }
 
-                                        ForEach(Array(visibleTimeline.enumerated()), id: \.element.id) { offset, message in
-                                            let index = visibleStartIndex + offset
+                                        ForEach(visibleTimelineRows) { row in
+                                            let message = row.message
+                                            let index = visibleStartIndex + row.offset
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
                                             let readers = readReceiptParticipants(for: message)
@@ -172,30 +198,43 @@ struct ConversationView: View {
                                                     ConversationTimestampDivider(date: message.createdAt)
                                                 }
 
-                                                MessageBubble(
-                                                    message: message,
-                                                    showAuthor: message.author == .agent,
-                                                    showAvatar: presentation.showsAvatar,
-                                                    replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
-                                                    isHighlighted: highlightedMessageID == message.id,
-                                                    isPinned: pinnedMessage?.id == message.id,
-                                                    selectionMode: !selectedMessageIDs.isEmpty,
-                                                    isSelected: selectedMessageIDs.contains(message.id),
-                                                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
-                                                    showsAvatarSlot: message.author != .agent,
-                                                    authorAvatarName: avatar.name,
-                                                    authorAvatarSource: avatar.source,
-                                                    authorAvatarSeed: avatar.seed,
-                                                    readByNames: readers.map(\.displayName),
-                                                    isCallActive: callActivity?.matchesActiveCall(
-                                                        activeConversationCall
-                                                    ) == true,
-                                                    onOpenConversationInfo: openSessionDetails,
-                                                    onJoinCall: {
-                                                        guard callActivity?.matchesActiveCall(
+                                                if message.isAgentModelChangeNotice {
+                                                    AgentModelChangeNoticeRow(text: message.text)
+                                                        .padding(.vertical, 8)
+                                                } else {
+                                                    MessageBubble(
+                                                        message: message,
+                                                        mentionTargets: mentionTargets,
+                                                        showAuthor: message.author == .agent,
+                                                        showAvatar: presentation.showsAvatar,
+                                                        replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
+                                                        isHighlighted: highlightedMessageID == message.id,
+                                                        isPinned: pinnedMessage?.id == message.id,
+                                                        selectionMode: !selectedMessageIDs.isEmpty,
+                                                        isSelected: selectedMessageIDs.contains(message.id),
+                                                        allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                                                        showsAvatarSlot: message.author != .agent,
+                                                        authorAvatarName: avatar.name,
+                                                        authorAvatarSource: avatar.source,
+                                                        authorAvatarSeed: avatar.seed,
+                                                        readByNames: readers.map(\.displayName),
+                                                        isCallActive: callActivity?.matchesActiveCall(
                                                             activeConversationCall
                                                         ) == true,
-                                                        let activeConversationCall else { return }
+                                                        onOpenAuthorProfile: {
+                                                            authorProfileConversation = ConversationAuthorProfileResolver.destination(
+                                                                currentConversation: conversation,
+                                                                message: message,
+                                                                selfAccountID: model.account?.accountId,
+                                                                contacts: model.contacts,
+                                                                conversations: model.conversations
+                                                            )
+                                                        },
+                                                        onJoinCall: {
+                                                            guard callActivity?.matchesActiveCall(
+                                                                activeConversationCall
+                                                            ) == true,
+                                                                  let activeConversationCall else { return }
                                                         Task {
                                                             await callCoordinator.join(
                                                                 activeConversationCall,
@@ -236,13 +275,21 @@ struct ConversationView: View {
                                                     },
                                                     onShareAttachment: { attachment in
                                                         prepare(attachment, forSharing: true)
+                                                    },
+                                                    onAgentExecutionExpansionChange: { expanded in
+                                                        guard expanded else { return }
+                                                        revealExpandedAgentExecution(
+                                                            row.id,
+                                                            using: proxy
+                                                        )
                                                     }
-                                                )
-                                                .equatable()
-                                                .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
-                                                .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                                                    )
+                                                    .equatable()
+                                                    .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
+                                                    .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                                                }
                                             }
-                                            .id(message.id)
+                                            .id(row.id)
                                         }
                                     }
 
@@ -316,7 +363,9 @@ struct ConversationView: View {
                     isInitialViewportRevealed: hasRevealedInitialViewport
                 )
             }
-            .onChange(of: timeline.last?.id) { previousLatestMessageID, currentLatestMessageID in
+            .onChange(of: timeline.last.map(model.timelineIdentity(for:))) {
+                previousLatestMessageID,
+                currentLatestMessageID in
                 if ConversationTimelineScrollBehavior.shouldFollowLatest(
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
                     isAtBottom: isAtBottom,
@@ -335,6 +384,18 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if showsNavigationChrome {
+                if canOpenCompanionPanel {
+                    if #available(iOS 26.0, *) {
+                        ToolbarItem(placement: .topBarLeading) {
+                            headerBalanceSpacer
+                        }
+                        .sharedBackgroundVisibility(.hidden)
+                    } else {
+                        ToolbarItem(placement: .topBarLeading) {
+                            headerBalanceSpacer
+                        }
+                    }
+                }
                 ToolbarItem(placement: .principal) {
                     conversationHeader
                         .accessibilityElement(children: .combine)
@@ -362,6 +423,11 @@ struct ConversationView: View {
                 }
             }
         }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                dismissExpressivePicker()
+            }
+        )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selectedMessageIDs.isEmpty {
                 ComposerView(
@@ -370,15 +436,24 @@ struct ConversationView: View {
                     photoGrouping: $photoGrouping,
                     replySource: $replySource,
                     selectedMention: $selectedMention,
-                    mentionTargets: model.mentionTargets(for: conversation),
+                    isExpressivePickerPresented: $isExpressivePickerPresented,
+                    mentionTargets: mentionTargets,
                     isSending: isSending,
                     isPreparingAttachments: isPreparingAttachments,
                     destinationName: conversation.displayName,
                     cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
                     onTakePhoto: { showCamera = true },
-                    onChoosePhotos: { showPhotoPicker = true },
+                    onChoosePhotos: {
+                        selectedPhotoSubtype = nil
+                        showPhotoPicker = true
+                    },
+                    onChooseMeme: {
+                        selectedPhotoSubtype = .meme
+                        showPhotoPicker = true
+                    },
                     onChooseFiles: { showFileImporter = true },
                     onOpenAgentModel: { showAgentModel = true },
+                    onSendExpressiveMedia: sendExpressiveMedia,
                     onSend: { Task { await send() } }
                 )
             } else {
@@ -395,6 +470,9 @@ struct ConversationView: View {
                     }
                 )
             }
+        }
+        .task(id: mentionTargetRefreshID) {
+            await model.refreshMentionTargets(for: conversation)
         }
         .onDisappear {
             isReadPresentationVisible = false
@@ -504,6 +582,9 @@ struct ConversationView: View {
         .navigationDestination(isPresented: $showSessionDetails) {
             SessionDetailView(conversation: conversation)
         }
+        .navigationDestination(item: $authorProfileConversation) { destination in
+            SessionDetailView(conversation: destination)
+        }
         .sheet(isPresented: $showAgentModel) {
             AgentModelSheet(conversation: conversation)
                 .presentationDetents([.height(380)])
@@ -556,12 +637,13 @@ struct ConversationView: View {
         proxy: ScrollViewProxy
     ) {
         guard let sourceIndex = timeline.firstIndex(where: { $0.id == messageID }) else { return }
+        let targetIdentity = model.timelineIdentity(for: timeline[sourceIndex])
         visibleMessageLimit = max(visibleMessageLimit, timeline.count - sourceIndex)
         Task { @MainActor in
             await Task.yield()
             await Task.yield()
             withAnimation(.easeInOut(duration: 0.24)) {
-                proxy.scrollTo(messageID, anchor: .center)
+                proxy.scrollTo(targetIdentity, anchor: .center)
             }
             withAnimation(.snappy(duration: 0.2)) {
                 highlightedMessageID = messageID
@@ -570,6 +652,23 @@ struct ConversationView: View {
             guard highlightedMessageID == messageID else { return }
             withAnimation(.easeOut(duration: 0.25)) {
                 highlightedMessageID = nil
+            }
+        }
+    }
+
+    private func revealExpandedAgentExecution(
+        _ messageID: String,
+        using proxy: ScrollViewProxy
+    ) {
+        Task { @MainActor in
+            await Task.yield()
+            await Task.yield()
+            if reduceMotion {
+                proxy.scrollTo(messageID, anchor: .bottom)
+            } else {
+                withAnimation(.easeInOut(duration: 0.24)) {
+                    proxy.scrollTo(messageID, anchor: .bottom)
+                }
             }
         }
     }
@@ -658,7 +757,8 @@ struct ConversationView: View {
             case .latest:
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             case let .resumed(messageID):
-                proxy.scrollTo(messageID, anchor: .center)
+                let targetIdentity = timelineIdentity(for: messageID, in: messages)
+                proxy.scrollTo(targetIdentity, anchor: .center)
             }
         }
 
@@ -738,7 +838,7 @@ struct ConversationView: View {
                     ConversationTimelineWindow.initialLimit,
                     timeline.count - contextStartIndex
                 )
-                trackedMessageID = resumedMessageID
+                trackedMessageID = model.timelineIdentity(for: timeline[resumeIndex])
                 isAtBottom = false
                 hasPositionedInitialTimeline = false
                 initialViewport = .resumed(messageID: resumedMessageID)
@@ -757,7 +857,7 @@ struct ConversationView: View {
         let visibleMessageID = isAtBottom
             ? nil
             : trackedMessageID.flatMap { candidate in
-                timeline.contains(where: { $0.id == candidate }) ? candidate : nil
+                timeline.first(where: { model.timelineIdentity(for: $0) == candidate })?.id
             }
         model.conversationViewportMemory.remember(
             key: viewportMemoryKey,
@@ -769,6 +869,11 @@ struct ConversationView: View {
 
     private var viewportMemoryKey: String {
         "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id)"
+    }
+
+    private func timelineIdentity(for messageID: String, in timeline: [ChatMessage]) -> String {
+        guard let message = timeline.first(where: { $0.id == messageID }) else { return messageID }
+        return model.timelineIdentity(for: message)
     }
 
     private func highlightReferencedMessage(_ messageID: String) {
@@ -816,11 +921,43 @@ struct ConversationView: View {
                 .font(.headline)
                 .lineLimit(1)
 
-            Text(conversationHeaderStatus)
-                .font(.caption2)
-                .foregroundStyle(conversationHeaderStatusColor)
-                .lineLimit(1)
+            if conversation.kind == .agent, agentActivity == .replying {
+                HStack(spacing: 5) {
+                    if let agentName = conversation.agentDisplayName?.nonEmpty,
+                       agentName != conversation.displayName {
+                        Text(agentName)
+                            .font(.caption2)
+                            .foregroundStyle(KordiTheme.agentViolet)
+                            .lineLimit(1)
+                    }
+                    Circle()
+                        .fill(KordiTheme.agentViolet)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Agent is working")
+            } else if conversation.kind == .person, !conversation.representsKordiSupport {
+                ContactPresenceStatusText(
+                    presence: model.contactPresenceByAccountID[conversation.peerAccountId]
+                )
+            } else {
+                Text(conversationHeaderStatus)
+                    .font(.caption2)
+                    .foregroundStyle(conversation.kind == .agent ? KordiTheme.agentViolet : .secondary)
+                    .lineLimit(1)
+            }
         }
+    }
+
+    private var headerBalanceSpacer: some View {
+        Color.clear
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
+    }
+
+    private var agentActivity: AgentActivity {
+        model.conversations.first(where: { $0.id == conversation.id })?.agentActivity ?? .ready
     }
 
     private var sessionActionsButton: some View {
@@ -853,18 +990,8 @@ struct ConversationView: View {
         }
     }
 
-    private var conversationHeaderStatusColor: Color {
-        if conversation.kind == .agent {
-            return KordiTheme.agentViolet
-        }
-        if conversation.kind == .person,
-           model.contactPresenceByAccountID[conversation.peerAccountId]?.status == .online {
-            return KordiTheme.signalBlue
-        }
-        return .secondary
-    }
-
     private func openSessionDetails() {
+        dismissExpressivePicker()
         showSessionDetails = true
     }
 
@@ -892,6 +1019,7 @@ struct ConversationView: View {
     }
 
     private func openCompanionPanel() {
+        dismissExpressivePicker()
         guard allowsCompanionPanel else { return }
         guard model.hasConfiguredProviderAuthentication else {
             showsProviderAuthentication = true
@@ -906,6 +1034,10 @@ struct ConversationView: View {
             )
         }
         showsCompanionPanel = selectedCompanionConversation != nil
+    }
+
+    private func dismissExpressivePicker() {
+        isExpressivePickerPresented = false
     }
 
     private func openCompanionPreviewIfReady() {
@@ -935,10 +1067,15 @@ struct ConversationView: View {
     private func send() async {
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!message.isEmpty || !attachments.isEmpty), !isSending else { return }
+        if let error = MemeAttachmentPolicy.draftError(for: attachments) {
+            model.errorMessage = error
+            return
+        }
+        let outgoingMention = resolvedMentionTarget(in: message)
+        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
         let outgoingAttachments = attachments
         let outgoingGrouping = conversation.kind == .agent ? .combined : photoGrouping
         let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
-        let outgoingMention = resolvedMentionTarget(in: message)
         draft = ""
         attachments = []
         photoGrouping = .combined
@@ -955,14 +1092,30 @@ struct ConversationView: View {
         isSending = false
     }
 
+    private func sendExpressiveMedia(_ attachment: PendingAttachment) async {
+        guard !isSending else { return }
+        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
+        replySource = nil
+        isSending = true
+        await sendOutgoingMessages(
+            text: "",
+            attachments: [attachment],
+            grouping: .combined,
+            reply: outgoingReply,
+            mention: nil
+        )
+        isSending = false
+    }
+
     private func sendPhotoSelection(
         _ selectedAttachments: [PendingAttachment],
         grouping: PhotoSendGrouping
     ) async {
         guard !selectedAttachments.isEmpty, !isSending else { return }
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         let outgoingMention = resolvedMentionTarget(in: message)
+        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
+        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         draft = ""
         replySource = nil
         selectedMention = nil
@@ -975,6 +1128,23 @@ struct ConversationView: View {
             mention: outgoingMention
         )
         isSending = false
+    }
+
+    private func canSendWithCurrentAuthentication(
+        mention: ComposerMentionTarget?
+    ) -> Bool {
+        let invokesOwnedAgent = ProviderAuthenticationPolicy.requiresAuthentication(
+            isAgentConversation: conversation.kind == .agent,
+            mentionedAgentOwnerAccountID: mention?.kind == .agent
+                ? mention?.accountId
+                : nil,
+            ownAccountID: model.account?.accountId
+        )
+        guard invokesOwnedAgent, !model.hasConfiguredProviderAuthentication else {
+            return true
+        }
+        showsProviderAuthentication = true
+        return false
     }
 
     private func sendOutgoingMessages(
@@ -1003,13 +1173,11 @@ struct ConversationView: View {
     }
 
     private func resolvedMentionTarget(in text: String) -> ComposerMentionTarget? {
-        if let selectedMention,
-           text.localizedCaseInsensitiveContains(selectedMention.mentionText) {
-            return selectedMention
-        }
-        return model.mentionTargets(for: conversation)
-            .sorted { $0.displayName.count > $1.displayName.count }
-            .first { text.localizedCaseInsensitiveContains($0.mentionText) }
+        ComposerMentionTargetCatalog.resolvedTarget(
+            in: text,
+            selectedTarget: selectedMention,
+            targets: model.mentionTargets(for: conversation)
+        )
     }
 
     private func importFiles(_ result: Result<[URL], Error>) {
@@ -1035,6 +1203,8 @@ struct ConversationView: View {
 
     private func importPhotos(_ items: [PhotosPickerItem]) {
         guard !isPreparingAttachments else { return }
+        let importedSubtype = selectedPhotoSubtype
+        selectedPhotoSubtype = nil
         isPreparingAttachments = true
         selectedPhotos = []
         Task {
@@ -1050,15 +1220,20 @@ struct ConversationView: View {
                         throw AttachmentTransferError.invalidImage
                     }
                     let preferredExtension = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-                    let attachment = try await Task.detached(priority: .userInitiated) {
+                    var attachment = try await Task.detached(priority: .userInitiated) {
                         try PendingAttachmentLoader.loadImage(
                             data: data,
                             suggestedName: "Photo-\(index + 1).\(preferredExtension)"
                         )
                     }.value
+                    attachment.subtype = importedSubtype
+                    if importedSubtype == .meme {
+                        attachment.altText = ""
+                        attachment.memeRightsConfirmed = false
+                    }
                     loaded.append(attachment)
                 }
-                if loaded.count > 1, attachments.isEmpty {
+                if importedSubtype == nil, loaded.count > 1, attachments.isEmpty {
                     photoSelectionReview = PhotoSelectionReview(attachments: loaded)
                 } else {
                     attachments.append(contentsOf: loaded)
@@ -1118,6 +1293,38 @@ struct ConversationView: View {
     }
 }
 
+private struct ContactPresenceStatusText: View {
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+
+    let presence: CloudPresenceAccount?
+
+    var body: some View {
+        if presence?.status == .online {
+            statusText("online")
+                .foregroundStyle(KordiTheme.signalBlue)
+        } else {
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                statusText(
+                    ContactPresencePresentation.label(
+                        for: presence,
+                        now: context.date,
+                        calendar: calendar,
+                        locale: locale
+                    )
+                )
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func statusText(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2)
+            .lineLimit(1)
+    }
+}
+
 enum ContactPresencePresentation {
     static func label(
         for presence: CloudPresenceAccount?,
@@ -1135,7 +1342,7 @@ enum ContactPresencePresentation {
         let time = formattedTime(lastSeen, calendar: calendar, locale: locale)
         if calendar.isDate(lastSeen, inSameDayAs: now) {
             let elapsed = now.timeIntervalSince(lastSeen)
-            return elapsed >= 0 && elapsed < 60
+            return elapsed >= -60 && elapsed < 60
                 ? "last seen just now"
                 : "last seen today at \(time)"
         }
@@ -1449,6 +1656,20 @@ private struct ConversationAvatarIdentity {
     let name: String
     let source: String?
     let seed: String?
+}
+
+private struct AgentModelChangeNoticeRow: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 24)
+            .accessibilityLabel(text)
+    }
 }
 
 private struct ConversationTimestampDivider: View {

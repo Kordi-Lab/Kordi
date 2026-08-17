@@ -158,6 +158,7 @@ pub(super) fn apply_event(
             | "generation.failed"
             | "agent.definition.upserted"
             | "agent.definition.archived"
+            | "provider-auth.updated"
             | "task.upsert"
             | "artifact.upsert"
             | "artifact.archived"
@@ -168,6 +169,10 @@ pub(super) fn apply_event(
             | "session-forked"
             | "call.created"
             | "call.updated"
+            | "device.added"
+            | "device.confirmed"
+            | "device.revoked"
+            | "device.renamed"
     );
     if !supported {
         return if critical {

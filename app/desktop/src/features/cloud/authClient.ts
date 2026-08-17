@@ -7,6 +7,8 @@
 // available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
 import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
+import type { CloudPresenceAccount, CloudPresenceContactsResponse } from './presence';
+import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
 import { CloudDeviceClient } from './cloudDeviceClient';
@@ -43,6 +45,8 @@ import {
 } from './deviceIdentity';
 
 export type { CloudContactSummary } from './cloudContactTypes';
+export type { CloudPresenceAccount, CloudPresenceContactsResponse, CloudPresenceStatus } from './presence';
+export type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 export type {
   CloudDeviceAuthorization,
   CloudDeviceAuthorizationState,
@@ -133,27 +137,6 @@ export type CloudContactAcceptResult = {
 
 export type CloudMessageDirection = 'incoming' | 'outgoing';
 
-export type CloudMessageAttachment = {
-  attachmentId: string;
-  previewAttachmentId?: string | null;
-  name: string;
-  kind: 'image' | 'file';
-  mimeType: string | null;
-  sizeBytes: number | null;
-  downloadUrl?: string | null;
-  previewUrl?: string | null;
-  localPath?: string | null;
-};
-
-export type SendCloudMessageAttachmentInput = {
-  attachmentId: string;
-  name: string;
-  kind: 'image' | 'file';
-  mimeType?: string | null;
-  sizeBytes?: number | null;
-  previewUrl?: string | null;
-};
-
 export type SendCloudMessageOptions = {
   sessionId?: string | null;
   attachments?: SendCloudMessageAttachmentInput[];
@@ -165,34 +148,6 @@ export type SendCloudMessageOptions = {
   conversationKind?: ChatSyncConversation['kind'];
   memberAccountIds?: string[];
   sharedTitle?: string | null;
-};
-
-export type CloudAttachmentInitiateResult = {
-  attachmentId: string;
-  objectKey: string;
-  uploadUrl: string;
-  expiresAt: string;
-};
-
-export type CloudAttachmentFinalizeResult = {
-  attachmentId: string;
-  objectKey: string;
-  sizeBytes: number | null;
-  contentType: string | null;
-  sha256Hex: string | null;
-  finalizedAt: string | null;
-};
-
-export type CloudAttachmentDownloadUrlResult = {
-  attachmentId: string;
-  downloadUrl: string;
-  expiresAt: string;
-};
-
-export type CloudAttachmentPreviewUpdateResult = {
-  attachmentId: string;
-  previewUrl: string;
-  updatedLinks: number;
 };
 
 export type CloudMessage = {
@@ -328,19 +283,6 @@ export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivity
 export type UpsertCloudArtifactActivityInput = Omit<CloudArtifactActivity, 'artifactActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
-};
-
-export type CloudPresenceStatus = 'online' | 'offline';
-
-export type CloudPresenceAccount = {
-  accountId: string;
-  status: CloudPresenceStatus;
-  updatedAt: string;
-  lastSeenAt: string | null;
-};
-
-export type CloudPresenceContactsResponse = {
-  accounts: CloudPresenceAccount[];
 };
 
 export type CloudProviderAuthSnapshotInput = {
@@ -893,6 +835,37 @@ export class CloudAuthClient {
       throw buildCloudAuthError(response.status, body, 'Could not download attachment.');
     }
     return response.blob();
+  }
+
+  async listExpressiveMedia(token: string): Promise<CloudExpressiveMediaItem[]> {
+    const response = await this.send<CloudExpressiveMediaListResponse>(
+      '/v1/cloud/expressive-media',
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not synchronize your saved stickers and GIFs.',
+    );
+    return response.items;
+  }
+
+  async saveExpressiveMedia(
+    token: string,
+    input: Pick<CloudExpressiveMediaItem, 'attachmentId' | 'kind' | 'name'>,
+  ): Promise<CloudExpressiveMediaItem> {
+    const response = await this.send<CloudExpressiveMediaMutationResponse>(
+      '/v1/cloud/expressive-media',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(input),
+      },
+      'Could not synchronize this saved media.',
+    );
+    return response.item;
   }
 
   async markMessagesRead(token: string, peerAccountId: string): Promise<void> { return this.chat.markMessagesRead(token, peerAccountId); }

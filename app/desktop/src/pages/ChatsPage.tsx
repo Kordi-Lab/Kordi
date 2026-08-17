@@ -5,6 +5,8 @@ import { suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Message } from '@/kordi-app/types';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
+import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
+import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cn } from '@/lib/utils';
 import type { ChatsPageProps } from '@/pages/chatsPage.types';
 import {
@@ -21,7 +23,10 @@ import { useChatHeaderModel } from '@/pages/useChatHeaderModel';
 import { useChatPins } from '@/pages/useChatPins';
 import { useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
 import { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
-import { conversationPaneKind } from '@/pages/chatsPage.model';
+import {
+  conversationPaneKind,
+  shouldSynchronizeConversationModelRoute,
+} from '@/pages/chatsPage.model';
 
 export {
   chatHeaderSubtitle,
@@ -48,8 +53,8 @@ export {
   humanSideForCompanionSide,
   pairedCompanionConversation,
   parseAskAgentTriggerCommand,
-  transcriptHumanParticipant,
 } from '@/pages/chatsPage.model';
+export { transcriptHumanParticipant } from '@/pages/chatSenderProfileModel';
 
 export {
   COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS,
@@ -100,6 +105,7 @@ export function ChatsPage({
     chatModelOptions,
     isDesktopChatSending,
     onMessageContact,
+    onSelectSession,
     onForkChatMessage,
     onPrefetchChatSession,
     onSendChatMessage,
@@ -112,7 +118,15 @@ export function ChatsPage({
   const activeLiveTurnIsRunning = Boolean(
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
+  const cloudPresence = useCloudPresence(cloudAccount);
+  const activePresenceTarget = cloudAccount
+    ? cloudCallTargetForConversation(cloudAccount, activeConv)
+    : null;
+  const activeContactPresence = activePresenceTarget?.kind === 'direct'
+    ? cloudPresence.snapshot[activePresenceTarget.peerAccountId] ?? null
+    : undefined;
   const chatHeader = useChatHeaderModel({
+    contactPresence: activeContactPresence,
     isNativeShell,
     isSending: isDesktopChatSending,
     session,
@@ -123,6 +137,12 @@ export function ChatsPage({
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
   const activeConversationIsGroupFork = isGroupForkSession(activeConv);
   const activePaneKind = conversationPaneKind(activeConv);
+  const sessionRouteSyncEnabled = shouldSynchronizeConversationModelRoute({
+    conversation: activeConv,
+    usesCollaborationTransport: activeConversationUsesCollaboration,
+    hasCloudAccount: Boolean(cloudAccount),
+    hasModelHost: Boolean(activeCollaborationModelHost),
+  });
   const companionSession = useChatCompanionSession({
     activeConversation: activeConv,
     conversations: chatConversations,
@@ -140,8 +160,11 @@ export function ChatsPage({
   const senderProfiles = useChatSenderProfiles({
     activeConversation: activeConv,
     companionConversation,
+    participantSpaces: session.participantSpaces,
     cloudAccount,
+    presenceSnapshot: cloudPresence.snapshot,
     onMessageContact,
+    onSelectSession,
   });
   const destinations = useChatDestinations({
     main: {
@@ -195,7 +218,7 @@ export function ChatsPage({
     main: {
       conversation: activeConv,
       host: activeCollaborationModelHost,
-      enabled: activeConversationUsesCollaboration,
+      enabled: sessionRouteSyncEnabled,
       isBusy: isDesktopChatSending || activeLiveTurnIsRunning,
       openSelector: openComposerSelector,
       toggleSelector: toggleComposerSelector,

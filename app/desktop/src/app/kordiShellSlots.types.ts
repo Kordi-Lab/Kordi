@@ -3,7 +3,11 @@ import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, Co
 import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { CloudSessionPin } from '@/features/cloud/authClient';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
-import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
+import type {
+  AttachmentItem as ComposerAttachmentItem,
+  ComposerConfigTargetOverride,
+} from '@/features/chat/composerController.types';
+import type { KordiShellAttachmentArgs } from './kordiShellAttachment.types';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
@@ -38,12 +42,12 @@ import type {
 
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
-export type AttachmentItem = { id: string; name: string; path: string; kind: 'image' | 'file' };
+export type AttachmentItem = ComposerAttachmentItem;
 export type CreateChatGroupRequest = {
   name?: string | null;
   contactIds: string[];
 };
-export type AssembleKordiShellSlotsArgs = {
+export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
@@ -235,11 +239,6 @@ export type AssembleKordiShellSlotsArgs = {
   acceptChatSlashCommand: (value: string) => void;
   acceptProjectMentionTarget: (value: string) => void;
   acceptChatMentionTarget: (value: string) => void;
-  chatAttachmentInputRef: MutableRefObject<HTMLInputElement | null>;
-  chatComposerAttachments: AttachmentItem[];
-  saveDesktopAttachments: (files: File[]) => Promise<AttachmentItem[]>;
-  saveDesktopAttachmentPaths: (paths: string[]) => Promise<AttachmentItem[]>;
-  removeChatComposerAttachment: (id: string) => void;
   projectComposerText: string;
   chatComposerText: string;
   updateProjectComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
@@ -285,7 +284,7 @@ export type AssembleKordiShellSlotsArgs = {
   handleStopDesktopChatTurn: () => void;
   handleStopCollaborationAgentRequest: (request: CollaborationAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
-  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
   handleRetryChatMessage: (message: Message) => void;
   handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
@@ -400,7 +399,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
   | 'setActiveNav'
   | 'cloudSession'
-  | 'chatConversations'
+  | 'chatConversations' | 'participantSpaces'
   | 'handleCreateChatSession'
   | 'handleCreateSideAgentSession' | 'handlePrefetchChatSession'
   | 'handleSelectChatSession'
@@ -510,6 +509,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'saveDesktopAttachments'
   | 'saveDesktopAttachmentPaths'
   | 'removeChatComposerAttachment'
+  | 'updateChatComposerAttachment'
   | 'projectComposerText'
   | 'updateProjectComposerDraft'
   | 'setProjectComposerText'
@@ -534,7 +534,6 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showChatDetailRail'
   | 'activeConv'
   | 'activeConversationUsesCollaboration'
-  | 'chatTranscriptScrollRef'
   | 'onChatTranscriptScroll'
   | 'filteredChatSlashCommands'
   | 'filteredChatMentionTargets'

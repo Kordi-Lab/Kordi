@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   FileText,
   FolderOpen,
+  ImagePlus,
   Plus,
   X,
   type LucideIcon,
@@ -27,6 +28,9 @@ export type ComposerAttachmentPresentation = {
   name: string;
   kind: 'image' | 'file';
   mimeType?: string | null;
+  subtype?: 'meme' | null;
+  altText?: string | null;
+  memeRightsConfirmed?: boolean;
 };
 
 type AttachmentVisual = {
@@ -105,9 +109,14 @@ function attachmentVisual(attachment: ComposerAttachmentPresentation): Attachmen
 export function ComposerAttachmentList({
   attachments,
   onRemove,
+  onUpdate,
 }: {
   attachments: ComposerAttachmentPresentation[];
   onRemove: (id: string) => void;
+  onUpdate?: (
+    id: string,
+    update: Pick<ComposerAttachmentPresentation, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+  ) => void;
 }) {
   if (attachments.length === 0) return null;
 
@@ -119,33 +128,92 @@ export function ComposerAttachmentList({
       {attachments.map((attachment) => {
         const visual = attachmentVisual(attachment);
         const Icon = visual.Icon;
+        const isMeme = attachment.subtype === 'meme';
         return (
           <div
             key={attachment.id}
             data-composer-attachment-tile="true"
-            className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-[10px] bg-[color:var(--app-control-bg)] px-1.5 text-[color:var(--utility-foreground)]"
+            data-composer-meme-attachment={isMeme ? 'true' : undefined}
+            className={cn(
+              'max-w-full rounded-[10px] bg-[color:var(--app-control-bg)] text-[color:var(--utility-foreground)]',
+              isMeme
+                ? 'flex w-full max-w-[420px] flex-col items-stretch gap-2 rounded-[14px] p-2'
+                : 'inline-flex h-8 items-center gap-1.5 px-1.5',
+            )}
             title={attachment.name}
           >
-            <span
-              className={cn(
-                'grid h-6 w-6 shrink-0 place-items-center rounded-[7px]',
-                visual.iconClassName,
-              )}
-              aria-hidden="true"
-            >
-              <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-            </span>
-            <span className="min-w-0 max-w-[220px] flex-1 truncate text-[11.5px] font-medium leading-none">
-              {attachment.name}
-            </span>
-            <button
-              type="button"
-              onClick={() => onRemove(attachment.id)}
-              className="app-button-quiet grid h-5 w-5 shrink-0 place-items-center rounded-full p-0"
-              aria-label={`Remove ${attachment.name}`}
-            >
-              <X className="h-3 w-3" aria-hidden="true" />
-            </button>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span
+                className={cn(
+                  'grid h-6 w-6 shrink-0 place-items-center rounded-[7px]',
+                  visual.iconClassName,
+                )}
+                aria-hidden="true"
+              >
+                <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+              </span>
+              <span className="min-w-0 max-w-[220px] flex-1 truncate text-[11.5px] font-medium leading-none">
+                {attachment.name}
+              </span>
+              {onUpdate && attachment.kind === 'image' ? (
+                <button
+                  type="button"
+                  onClick={() => onUpdate(attachment.id, {
+                    subtype: isMeme ? null : 'meme',
+                    altText: isMeme ? null : '',
+                    memeRightsConfirmed: false,
+                  })}
+                  className="app-button-quiet min-h-6 shrink-0 rounded-full px-2 text-[10px] font-medium"
+                  aria-pressed={isMeme}
+                  aria-label={isMeme
+                    ? `Treat ${attachment.name} as an ordinary image`
+                    : `Mark ${attachment.name} as a meme`}
+                >
+                  {isMeme ? 'Meme' : 'Mark as meme'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => onRemove(attachment.id)}
+                className="app-button-quiet grid h-5 w-5 shrink-0 place-items-center rounded-full p-0"
+                aria-label={`Remove ${attachment.name}`}
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </div>
+            {isMeme && onUpdate ? (
+              <div className="flex flex-col gap-1.5 px-0.5 pb-0.5">
+                <label className="flex flex-col gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]">
+                  Alt text <span className="sr-only">for {attachment.name}</span>
+                  <input
+                    type="text"
+                    value={attachment.altText ?? ''}
+                    maxLength={500}
+                    onChange={(event) => onUpdate(attachment.id, {
+                      subtype: 'meme',
+                      altText: event.currentTarget.value,
+                      memeRightsConfirmed: attachment.memeRightsConfirmed,
+                    })}
+                    className="h-8 min-w-0 rounded-[9px] border border-[color:var(--app-control-border)] bg-transparent px-2.5 text-[12px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)] focus-visible:ring-2 focus-visible:ring-sky-400/55"
+                    placeholder="Describe the visible text and joke"
+                    aria-required="true"
+                  />
+                </label>
+                <label className="flex min-h-8 cursor-pointer items-start gap-2 rounded-[9px] px-1 py-1 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
+                  <input
+                    type="checkbox"
+                    checked={attachment.memeRightsConfirmed === true}
+                    onChange={(event) => onUpdate(attachment.id, {
+                      subtype: 'meme',
+                      altText: attachment.altText,
+                      memeRightsConfirmed: event.currentTarget.checked,
+                    })}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-sky-500"
+                  />
+                  <span>I confirm I have permission or another legal right to share this meme.</span>
+                </label>
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -155,6 +223,7 @@ export function ComposerAttachmentList({
 
 type ComposerAttachmentAddMenuProps = {
   inputRef: RefObject<HTMLInputElement | null>;
+  memeInputRef?: RefObject<HTMLInputElement | null>;
   className?: string;
   disabled?: boolean;
   'data-companion-attachment-control'?: string;
@@ -162,6 +231,7 @@ type ComposerAttachmentAddMenuProps = {
 
 export function ComposerAttachmentAddMenu({
   inputRef,
+  memeInputRef,
   className,
   disabled = false,
   'data-companion-attachment-control': companionAttachmentControl,
@@ -240,6 +310,12 @@ export function ComposerAttachmentAddMenu({
     queueMicrotask(() => triggerRef.current?.focus());
   }
 
+  function openMemePicker() {
+    setIsOpen(false);
+    memeInputRef?.current?.click();
+    queueMicrotask(() => triggerRef.current?.focus());
+  }
+
   const renderMenu = () => (
     <div
       ref={menuRef}
@@ -266,6 +342,22 @@ export function ComposerAttachmentAddMenu({
         <FolderOpen className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
         <span className="app-transient-action-label">Files and folders</span>
       </button>
+      {memeInputRef ? (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={openMemePicker}
+            className="app-composer-attachment-add-menu-action app-transient-flat-action app-transient-action-row flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left"
+          >
+            <ImagePlus className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
+            <span className="app-transient-action-label">Meme image</span>
+          </button>
+          <p className="app-transient-muted px-1.5 pb-0.5 pt-1 text-[9.5px] leading-3.5">
+            You will add alt text and confirm your right to share it before sending.
+          </p>
+        </>
+      ) : null}
     </div>
   );
 
