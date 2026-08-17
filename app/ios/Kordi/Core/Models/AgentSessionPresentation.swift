@@ -33,7 +33,9 @@ enum AgentSessionPresentationCatalog {
         return grouped.compactMap { key, candidates -> AgentSessionSection? in
             guard let template = candidates.first(where: \.isAgentLaunchTemplate)
                     ?? candidates.max(by: { $0.lastActivityAt < $1.lastActivityAt }) else { return nil }
-            let sessions = candidates.filter { !$0.isAgentLaunchTemplate }
+            let sessions = candidates.filter {
+                !$0.isAgentLaunchTemplate && !isEmptyAgentSessionPlaceholder($0)
+            }
             let agentName = template.agentDisplayName?.nonEmpty ?? "My Kordi"
             let agentMatches = !query.isEmpty && agentName.localizedCaseInsensitiveContains(query)
             let visibleSessions = query.isEmpty || agentMatches
@@ -85,7 +87,7 @@ enum AgentSessionTimelineCatalog {
                 $0.kind == .agent
                     && !$0.representsKordiSupport
                     && !$0.isAgentLaunchTemplate
-                    && !isEmptyCanonicalPlaceholder($0)
+                    && !isEmptyAgentSessionPlaceholder($0)
             }
             .sorted(by: sessionSort)
         let bySessionId = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.sessionId, $0) })
@@ -147,11 +149,6 @@ enum AgentSessionTimelineCatalog {
         return output
     }
 
-    private static func isEmptyCanonicalPlaceholder(_ conversation: ConversationSummary) -> Bool {
-        conversation.messageCount == 0
-            && conversation.lastMessage.trimmingCharacters(in: .whitespacesAndNewlines) == "No messages yet"
-    }
-
     private static func matches(_ conversation: ConversationSummary, query: String) -> Bool {
         conversation.displayName.localizedCaseInsensitiveContains(query)
             || conversation.lastMessage.localizedCaseInsensitiveContains(query)
@@ -165,6 +162,11 @@ enum AgentSessionTimelineCatalog {
                 && left.displayName.localizedCaseInsensitiveCompare(right.displayName) == .orderedAscending
         )
     }
+}
+
+private func isEmptyAgentSessionPlaceholder(_ conversation: ConversationSummary) -> Bool {
+    conversation.messageCount == 0
+        && conversation.lastMessage.trimmingCharacters(in: .whitespacesAndNewlines) == "No messages yet"
 }
 
 enum AgentSessionFactory {

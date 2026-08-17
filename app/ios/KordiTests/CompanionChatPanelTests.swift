@@ -167,6 +167,39 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertEqual(sessions.map(\.id), [newerAgent.id, olderAgent.id])
     }
 
+    func testExistingSessionMenuExcludesEmptyCanonicalAgentPlaceholder() {
+        let source = conversation(
+            id: "source",
+            kind: .person,
+            date: Date(timeIntervalSince1970: 30)
+        )
+        let placeholder = ConversationSummary(
+            id: "agent-session:session:self-agent:empty",
+            kind: .agent,
+            peerAccountId: "acct_me",
+            agentId: nil,
+            ownerDisplayName: "Alex",
+            displayName: "My Kordi",
+            lastMessage: "No messages yet",
+            lastActivityAt: Date(timeIntervalSince1970: 20),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: "session:self-agent:empty",
+            agentDisplayName: "My Kordi",
+            messageCount: 0
+        )
+
+        XCTAssertEqual(
+            CompanionPanelCatalog.existingSessions(
+                excluding: source,
+                conversations: [source, placeholder],
+                ownAccountID: "acct_me"
+            ),
+            []
+        )
+    }
+
     func testContextIncludesOnlyTheSixMostRecentReferenceLines() {
         let source = conversation(
             id: "contact",
