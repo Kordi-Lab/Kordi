@@ -176,20 +176,33 @@ function inferredMentionTargetKind(label: string): 'agent' | 'person' {
     : 'person';
 }
 
+function structuredMentionAliases(mention: MessageMention) {
+  const aliases = new Set([
+    mention.label.trim(),
+    mention.displayLabel?.trim() ?? '',
+  ]);
+  if (
+    mention.targetKind === 'agent'
+    && mention.label.replace(/\s+/g, '').toLowerCase() === 'mykordi'
+  ) {
+    aliases.add('My Kordi');
+  }
+  aliases.delete('');
+  return [...aliases];
+}
+
 function structuredMentionRanges(text: string, mentions: MessageMention[], reserved: InlineRange[]) {
   const ranges: InlineRange[] = [];
-  const labels = mentions
-    .map((mention) => mention.label.trim())
-    .filter(Boolean)
-    .sort((left, right) => right.length - left.length);
+  const candidates = mentions.flatMap((mention) => {
+    const targetKind = mention.targetKind === 'agent' || mention.targetKind === 'person'
+      ? mention.targetKind
+      : inferredMentionTargetKind(mention.label);
+    return structuredMentionAliases(mention).map((label) => ({ label, targetKind }));
+  }).sort((left, right) => right.label.length - left.label.length);
   const normalizedText = text.toLowerCase();
 
-  for (const label of labels) {
+  for (const { label, targetKind } of candidates) {
     const needle = `@${label}`;
-    const structuredMention = mentions.find((mention) => mention.label.trim().toLowerCase() === label.toLowerCase());
-    const targetKind = structuredMention?.targetKind === 'agent' || structuredMention?.targetKind === 'person'
-      ? structuredMention.targetKind
-      : inferredMentionTargetKind(needle);
     const normalizedNeedle = needle.toLowerCase();
     let searchFrom = 0;
     while (searchFrom < text.length) {
@@ -197,7 +210,7 @@ function structuredMentionRanges(text: string, mentions: MessageMention[], reser
       if (start === -1) break;
       const candidate: InlineRange = {
         type: 'mention',
-        label: needle,
+        label: text.slice(start, start + needle.length),
         targetKind,
         start,
         end: start + needle.length,
