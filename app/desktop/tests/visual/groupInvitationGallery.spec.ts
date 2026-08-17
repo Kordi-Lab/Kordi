@@ -71,7 +71,17 @@ test('contact info sheet preview', async ({ page }, testInfo) => {
   await expect(profile.getByText('2 photos')).toBeVisible();
   await expect(profile.getByText('1 video')).toBeVisible();
   await expect(profile.getByText('1 file')).toBeVisible();
-  await expect(profile.getByText('2 groups in common')).toBeVisible();
+  const commonGroups = profile.getByRole('button', { name: '1 group in common' });
+  await expect(commonGroups).toBeVisible();
+  await commonGroups.click();
+  const groupRow = profile.getByRole('button', { name: /Product Team/ });
+  await expect(groupRow).toBeVisible();
+  await expect(profile.getByText('5 members')).toBeVisible();
+  await groupRow.click();
+  await expect(page.locator('body')).toHaveAttribute(
+    'data-opened-common-group',
+    'group:session:group:invitation-visual',
+  );
   await page.screenshot({ path: testInfo.outputPath('contact-info-sheet-desktop.png') });
 
   await page.setViewportSize({ width: 430, height: 760 });

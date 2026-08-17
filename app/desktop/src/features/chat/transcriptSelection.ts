@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useRef,
   type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
@@ -31,8 +30,6 @@ export function useTranscriptSelectionViewportProps({
   onSelectAllMessages,
   onCancelMessageSelection,
 }: UseTranscriptSelectionViewportPropsArgs) {
-  const pointerFocusPendingRef = useRef(false);
-
   const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
       event.currentTarget.dataset.transcriptKeyboardFocus = 'true';
@@ -56,21 +53,18 @@ export function useTranscriptSelectionViewportProps({
     if (event.button !== 0 || isEditableSelectionTarget(event.target)) return;
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest('button, a, select, [role="button"]')) return;
-    pointerFocusPendingRef.current = true;
-    try {
-      viewportRef.current?.focus({ preventScroll: true });
-    } finally {
-      pointerFocusPendingRef.current = false;
-    }
+    viewportRef.current?.focus({ preventScroll: true });
   }, [cancelTailAlignment, viewportRef]);
 
   const onFocus = useCallback((event: FocusEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
-    if (pointerFocusPendingRef.current) {
-      delete event.currentTarget.dataset.transcriptKeyboardFocus;
-      return;
+    delete event.currentTarget.dataset.transcriptKeyboardFocus;
+  }, []);
+
+  const onKeyUp = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget && event.key === 'Tab') {
+      event.currentTarget.dataset.transcriptKeyboardFocus = 'true';
     }
-    event.currentTarget.dataset.transcriptKeyboardFocus = 'true';
   }, []);
 
   const onBlur = useCallback((event: FocusEvent<HTMLDivElement>) => {
@@ -82,6 +76,7 @@ export function useTranscriptSelectionViewportProps({
     onBlur,
     onFocus,
     onKeyDown,
+    onKeyUp,
     onPointerDownCapture,
     tabIndex: 0,
     role: 'region',

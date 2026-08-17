@@ -309,7 +309,7 @@ test('member profile popover uses a full identity sheet and dismisses outside', 
     onAddContact: () => undefined,
   }));
 
-  assert.match(modelSource, /const width = Math\.min\(344, Math\.max\(0, viewport\.width - margin \* 2\)\);/);
+  assert.match(modelSource, /const width = Math\.min\(304, Math\.max\(0, viewport\.width - margin \* 2\)\);/);
   assert.match(source, /fixed inset-0 z-\[75\][\s\S]*aria-label="Close member profile"[\s\S]*onClick=\{onClose\}/);
   assert.match(source, /data-contact-profile-surface="true"/);
   assert.match(source, /aria-label="Close contact info"/);
@@ -396,7 +396,7 @@ test('contact profile geometry stays beside its avatar and falls back inside com
     { width: 1280, height: 800 },
   );
   assert.equal(desktop.placement, 'right');
-  assert.equal(desktop.style.width, 344);
+  assert.equal(desktop.style.width, 304);
   assert.equal(desktop.style.maxHeight, 640);
 
   const compact = contactProfileGeometry(

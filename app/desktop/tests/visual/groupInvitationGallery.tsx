@@ -146,11 +146,14 @@ createRoot(document.querySelector('#root')!).render(
             },
           ],
         })}
-        commonGroupCount={2}
+        commonGroups={[space]}
         presenceStatus="online"
         anchorRect={{ left: 220, right: 256, top: 120, bottom: 156, width: 36, height: 36 }}
         onClose={() => undefined}
         onMessageContact={() => undefined}
+        onOpenCommonGroup={(commonGroup) => {
+          document.body.dataset.openedCommonGroup = commonGroup.id;
+        }}
       />
     ) : mode !== 'recipient' ? (
       <GroupDetailsDialog

@@ -408,7 +408,7 @@ export function ChatMainWorkspace({
           key={models.senderProfiles.target.participant.id}
           participant={models.senderProfiles.target.participant}
           conversation={models.senderProfiles.target.conversation}
-          commonGroupCount={models.senderProfiles.commonGroupCount}
+          commonGroups={models.senderProfiles.commonGroups}
           contacts={models.senderProfiles.contacts}
           presenceStatus={
             models.senderProfiles.target.participant.presenceStatus
@@ -416,6 +416,7 @@ export function ChatMainWorkspace({
           anchorRect={models.senderProfiles.target.anchorRect}
           onAddContact={models.senderProfiles.sendRequest}
           onMessageContact={models.senderProfiles.messageContact}
+          onOpenCommonGroup={models.senderProfiles.openCommonGroup}
           onClose={models.senderProfiles.close}
         />
       ) : null}

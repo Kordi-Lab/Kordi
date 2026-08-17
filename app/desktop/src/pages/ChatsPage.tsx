@@ -100,6 +100,7 @@ export function ChatsPage({
     chatModelOptions,
     isDesktopChatSending,
     onMessageContact,
+    onSelectSession,
     onForkChatMessage,
     onPrefetchChatSession,
     onSendChatMessage,
@@ -143,6 +144,7 @@ export function ChatsPage({
     participantSpaces: session.participantSpaces,
     cloudAccount,
     onMessageContact,
+    onSelectSession,
   });
   const destinations = useChatDestinations({
     main: {

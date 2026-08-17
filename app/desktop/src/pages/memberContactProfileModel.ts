@@ -185,7 +185,7 @@ export function contactProfileGeometry(
 ): ContactProfileGeometry {
   const margin = 12;
   const gap = 10;
-  const width = Math.min(344, Math.max(0, viewport.width - margin * 2));
+  const width = Math.min(304, Math.max(0, viewport.width - margin * 2));
   const maxHeight = Math.min(640, Math.max(0, viewport.height - margin * 2));
   const right = anchorRect.right + gap;
   const left = anchorRect.left - width - gap;

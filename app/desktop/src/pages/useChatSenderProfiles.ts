@@ -32,6 +32,7 @@ type UseChatSenderProfilesInput = {
   participantSpaces: ParticipantSpaceViewModel[];
   cloudAccount: ChatsPageSession['cloudAccount'];
   onMessageContact: ChatsPageRuntime['onMessageContact'];
+  onSelectSession: ChatsPageRuntime['onSelectSession'];
 };
 
 function participantIdentityKeys(participant: ConversationParticipant) {
@@ -60,6 +61,7 @@ export function useChatSenderProfiles({
   participantSpaces,
   cloudAccount,
   onMessageContact,
+  onSelectSession,
 }: UseChatSenderProfilesInput) {
   const normalizedCloudAccount = cloudAccount ?? null;
   const cloudContacts = useCloudContacts(normalizedCloudAccount);
@@ -124,15 +126,24 @@ export function useChatSenderProfiles({
     pageConversationId: activeConversation.id,
     target: null,
   }), [activeConversation.id]);
-  const commonGroupCount = state.target
+  const commonGroups = state.target
     ? participantSpaces.filter((space) => (
         groupContainsParticipant(space, state.target!.participant)
-      )).length
-    : 0;
+      ))
+    : [];
+  const openCommonGroup = useCallback((space: ParticipantSpaceViewModel) => {
+    const sessionId = space.sessions[0]?.id;
+    if (!sessionId || !onSelectSession) return;
+    setStoredState({
+      pageConversationId: activeConversation.id,
+      target: null,
+    });
+    onSelectSession(sessionId);
+  }, [activeConversation.id, onSelectSession]);
 
   return {
     target: state.target,
-    commonGroupCount,
+    commonGroups,
     contacts: cloudContacts.contacts,
     sendRequest: normalizedCloudAccount
       ? (peerAccountId: string, message?: string) => (
@@ -149,6 +160,7 @@ export function useChatSenderProfiles({
     supportAccountId: normalizedCloudAccount?.accountId,
     openActive,
     openCompanion,
+    openCommonGroup: onSelectSession ? openCommonGroup : undefined,
     close,
   };
 }

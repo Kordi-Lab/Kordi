@@ -59,7 +59,7 @@ test('transcript owns Cmd+A and Escape for semantic message selection', async ()
   assert.equal(cancelCount, 1);
 });
 
-test('transcript only exposes its focus ring for non-pointer focus', async () => {
+test('transcript only exposes its focus ring after keyboard input', async () => {
   const view = await render(transcript({
     items: rows('focus-', 0, 3),
     sessionKey: 'focus-origin',
@@ -68,6 +68,14 @@ test('transcript only exposes its focus ring for non-pointer focus', async () =>
   assert.ok(viewport);
 
   await act(async () => viewport.focus());
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined);
+
+  await act(async () => {
+    viewport.dispatchEvent(new window.KeyboardEvent('keyup', {
+      key: 'Tab',
+      bubbles: true,
+    }));
+  });
   assert.equal(viewport.dataset.transcriptKeyboardFocus, 'true');
 
   await act(async () => {
@@ -99,6 +107,14 @@ test('transcript only exposes its focus ring for non-pointer focus', async () =>
 
   await act(async () => viewport.blur());
   await act(async () => viewport.focus());
+  assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined);
+
+  await act(async () => {
+    viewport.dispatchEvent(new window.KeyboardEvent('keyup', {
+      key: 'Tab',
+      bubbles: true,
+    }));
+  });
   assert.equal(viewport.dataset.transcriptKeyboardFocus, 'true');
 
   await act(async () => viewport.blur());
