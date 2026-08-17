@@ -53,7 +53,10 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             sharedAgents: sharedAgents
         )
 
-        XCTAssertEqual(Set(targets.map(\.id)), ["agent:agent_owned", "agent:agent_peer"])
+        XCTAssertEqual(
+            Set(targets.map(\.id)),
+            ["agent:cloud-local-agent", "agent:agent_owned", "agent:agent_peer"]
+        )
     }
 
     func testGroupIncludesEveryMembersAgentsWithoutFiveResultCap() {
@@ -84,7 +87,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             sharedAgents: sharedAgents
         )
 
-        XCTAssertEqual(targets.filter { $0.kind == .agent }.count, 7)
+        XCTAssertEqual(targets.filter { $0.kind == .agent }.count, 8)
         XCTAssertEqual(targets.filter { $0.kind == .person }.map(\.accountId), ["acct_group_only"])
         XCTAssertFalse(targets.contains { $0.accountId == "acct_outside" })
     }
@@ -109,7 +112,10 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         )
         let agents = targets.filter { $0.kind == .agent }
 
-        XCTAssertEqual(Set(agents.map(\.id)), ["agent:agent_one", "agent:agent_two"])
+        XCTAssertEqual(
+            Set(agents.filter { $0.displayName == "Research" }.map(\.id)),
+            ["agent:agent_one", "agent:agent_two"]
+        )
         XCTAssertNil(ComposerMentionTargetCatalog.resolvedTarget(
             in: "@Research check this",
             selectedTarget: nil,
@@ -155,6 +161,31 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             ]
         )
         XCTAssertFalse(segments.contains { $0.text == "@example.com" && $0.kind != nil })
+    }
+
+    func testDefaultKordiTargetsMatchMacContactReachability() {
+        let conversation = conversation(
+            kind: .group,
+            peerAccountID: "acct_contact",
+            participants: [
+                CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "self"),
+                CloudGroupParticipant(accountId: "acct_contact", displayName: "Contact", avatarUrl: nil, role: "member"),
+                CloudGroupParticipant(accountId: "acct_group_only", displayName: "Group Only", avatarUrl: nil, role: "member"),
+            ]
+        )
+        let targets = ComposerMentionTargetCatalog.targets(
+            account: account,
+            conversation: conversation,
+            ownedAgents: [],
+            sharedAgents: [],
+            contacts: [contact(accountID: "acct_contact", name: "Contact")]
+        )
+
+        XCTAssertEqual(
+            Set(targets.filter { $0.kind == .agent }.map(\.id)),
+            ["agent:cloud-local-agent", "agent:cloud-agent:acct_contact"]
+        )
+        XCTAssertFalse(targets.contains { $0.agentId == "cloud-agent:acct_group_only" })
     }
 
     func testOwnerIDsIncludeGroupOnlyParticipantsAndRemoveDuplicates() {
@@ -248,6 +279,17 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             updatedAt: "2026-08-17T00:00:00Z",
             archivedAt: archivedAt,
             ownerDisplayName: ownerName
+        )
+    }
+
+    private func contact(accountID: String, name: String) -> CloudContact {
+        CloudContact(
+            accountId: accountID,
+            kordiId: nil,
+            displayName: name,
+            avatarUrl: nil,
+            nodeId: nil,
+            createdAt: "2026-08-17T00:00:00Z"
         )
     }
 }

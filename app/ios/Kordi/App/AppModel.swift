@@ -1670,7 +1670,8 @@ final class AppModel: ObservableObject {
             account: account,
             conversation: conversation,
             ownedAgents: ownedCloudAgents,
-            sharedAgents: sharedCloudAgents
+            sharedAgents: sharedCloudAgents,
+            contacts: contacts
         )
     }
 

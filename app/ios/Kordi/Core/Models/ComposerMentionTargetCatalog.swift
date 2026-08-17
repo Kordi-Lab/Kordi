@@ -27,7 +27,8 @@ enum ComposerMentionTargetCatalog {
         account: CloudAccount,
         conversation: ConversationSummary,
         ownedAgents: [CloudAgent],
-        sharedAgents: [CloudAgent]
+        sharedAgents: [CloudAgent],
+        contacts: [CloudContact] = []
     ) -> [ComposerMentionTarget] {
         let ownerAccountIDs = Set(ownerAccountIDs(
             for: conversation,
@@ -52,6 +53,28 @@ enum ComposerMentionTargetCatalog {
             }
         }
 
+        if conversation.kind != .agent {
+            targets.append(defaultAgentTarget(
+                ownerAccountID: account.accountId,
+                ownerName: account.preferredName,
+                avatarSource: account.avatarUrl,
+                isCurrentAccount: true
+            ))
+            for contact in contacts
+                where ownerAccountIDs.contains(contact.accountId)
+                    && !KordiSupportIdentity.matches(
+                        name: contact.preferredName,
+                        seed: contact.accountId
+                    ) {
+                targets.append(defaultAgentTarget(
+                    ownerAccountID: contact.accountId,
+                    ownerName: contact.preferredName,
+                    avatarSource: contact.avatarUrl,
+                    isCurrentAccount: false
+                ))
+            }
+        }
+
         var seenAgentIDs = Set<String>()
         for agent in ownedAgents + sharedAgents
             where ownerAccountIDs.contains(agent.ownerAccountId)
@@ -70,6 +93,26 @@ enum ComposerMentionTargetCatalog {
         }
 
         return targets.sorted(by: precedes)
+    }
+
+    private static func defaultAgentTarget(
+        ownerAccountID: String,
+        ownerName: String,
+        avatarSource: String?,
+        isCurrentAccount: Bool
+    ) -> ComposerMentionTarget {
+        let agentID = isCurrentAccount
+            ? "cloud-local-agent"
+            : "cloud-agent:\(ownerAccountID)"
+        return ComposerMentionTarget(
+            id: "agent:\(agentID)",
+            displayName: isCurrentAccount ? "My Kordi" : "\(ownerName)’s Kordi",
+            kind: .agent,
+            accountId: ownerAccountID,
+            agentId: agentID,
+            ownerName: ownerName,
+            avatarSource: avatarSource
+        )
     }
 
     static func replacingSharedAgents(
