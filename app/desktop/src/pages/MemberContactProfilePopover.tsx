@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useMemo, useState } from 'react';
 import { Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
@@ -7,46 +6,15 @@ import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Contact, ConversationParticipant } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import {
+  contactForGroupMember,
+  groupMemberAccountId,
+} from '@/pages/memberContactProfileModel';
 
 function memberStableId(member: ConversationParticipant) {
   return member.humanId?.trim()
     || member.sourceIdentityId?.trim()
     || member.id.trim();
-}
-
-function contactStableId(contact: Contact) {
-  return contact.sourceHumanId?.trim()
-    || contact.sourceParticipantId?.trim()
-    || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '')
-    || contact.id.trim();
-}
-
-export function contactForGroupMember(contacts: Contact[], member: ConversationParticipant) {
-  const memberIds = new Set([
-    member.id,
-    memberStableId(member),
-    member.humanId?.trim(),
-    member.sourceIdentityId?.trim(),
-    member.id.startsWith('human:') ? member.id.slice('human:'.length).trim() : '',
-  ].filter(Boolean));
-  return contacts.find((contact) => [
-    contact.id,
-    contactStableId(contact),
-    contact.sourceParticipantId?.trim(),
-    contact.sourceHumanId?.trim(),
-    contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '',
-  ].some((identityId) => Boolean(identityId && memberIds.has(identityId)))) ?? null;
-}
-
-export function groupMemberAccountId(member: ConversationParticipant, contact: Contact | null) {
-  const candidates = [
-    contact?.sourceParticipantId,
-    contact?.sourceHumanId,
-    member.humanId,
-    member.sourceIdentityId,
-    member.id.startsWith('human:') ? member.id.slice('human:'.length) : '',
-  ];
-  return candidates.map((value) => value?.trim() ?? '').find((value) => value.startsWith('acct_')) ?? '';
 }
 
 function readableContactDetail(contact: Contact | null, accountId: string) {
@@ -112,12 +80,6 @@ export function MemberContactProfileContent({
   const secondaryLine = metadataMode === 'kordi-handle'
     ? kordiHandle
     : [roleLabel, relationshipLabel].filter(Boolean).join(' · ');
-
-  useEffect(() => {
-    setRequestState('idle');
-    setIsOpeningMessage(false);
-    setRequestError('');
-  }, [participant.id]);
 
   const requestContact = async () => {
     if (!onAddContact || !accountId || requestState === 'sending' || requestPending) return;
@@ -215,61 +177,5 @@ export function MemberContactProfileContent({
         <p role="alert" className="app-transient-status mt-2 text-rose-500">{requestError}</p>
       ) : null}
     </div>
-  );
-}
-
-type MemberContactProfilePopoverProps = MemberContactProfileContentProps & {
-  anchorRect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
-  onClose: () => void;
-};
-
-export function MemberContactProfilePopover({
-  anchorRect,
-  onClose,
-  ...contentProps
-}: MemberContactProfilePopoverProps) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      onClose();
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [onClose]);
-
-  if (typeof document === 'undefined') return null;
-  const margin = 12;
-  const gap = 8;
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const width = Math.min(256, viewportWidth - margin * 2);
-  const left = anchorRect.right + gap + width <= viewportWidth - margin
-    ? anchorRect.right + gap
-    : Math.max(margin, anchorRect.left - width - gap);
-  const top = Math.min(
-    Math.max(margin, anchorRect.top - 22),
-    Math.max(margin, viewportHeight - 230 - margin),
-  );
-
-  return createPortal(
-    <>
-      <button
-        type="button"
-        className="fixed inset-0 z-[75] cursor-default bg-transparent"
-        aria-label="Close member profile"
-        onClick={onClose}
-      />
-      <section
-        role="dialog"
-        aria-label={`${contentProps.participant.name} profile`}
-        className="app-transient-surface app-frosted-popover fixed z-[80] rounded-[16px] p-2.5 shadow-[var(--app-shadow-float)]"
-        style={{ left, top, width }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <MemberContactProfileContent {...contentProps} metadataMode="kordi-handle" />
-      </section>
-    </>,
-    document.body,
   );
 }

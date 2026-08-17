@@ -31,11 +31,6 @@
       "count": 1
     }
   },
-  "src/app/kordiShellSlots.types.ts": {
-    "@typescript-eslint/no-duplicate-type-constituents": {
-      "count": 1
-    }
-  },
   "src/app/mainContentShellBuilders.ts": {
     "@typescript-eslint/no-misused-promises": {
       "count": 2
@@ -663,14 +658,6 @@
     },
     "react-refresh/only-export-components": {
       "count": 1
-    }
-  },
-  "src/pages/MemberContactProfilePopover.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
-    "react-refresh/only-export-components": {
-      "count": 2
     }
   },
   "src/pages/SettingsPage.tsx": {

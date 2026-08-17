@@ -33,6 +33,7 @@ import type {
   EditFilePreview,
   Message,
   MessageSourceReference,
+  ParticipantSpaceViewModel,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
@@ -61,6 +62,7 @@ export type ChatsPageLayout = {
 export type ChatsPageSession = {
   activeConv: Conversation;
   chatConversations: Conversation[];
+  participantSpaces: ParticipantSpaceViewModel[];
   activeConversationUsesCollaboration: boolean;
   activeCollaborationModelHost: DesktopCollaborationHost | null;
   desktopChatState: DesktopChatState | null;

@@ -17,7 +17,7 @@ function participantIsSelf(participant: ConversationParticipant) {
   return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
 }
 
-function conversationIsGroupChat(conversation: Conversation) {
+export function conversationIsGroupChat(conversation: Conversation) {
   return conversation.canonicalSessionId?.startsWith('session:group:') === true
     || conversation.participantSpaceId?.startsWith('group:') === true
     || /\bgroup\b/i.test(conversation.directness ?? '');
@@ -52,30 +52,6 @@ export function chatTranscriptDensityMode(conversation: Conversation): Transcrip
   if (conversationIsGroupChat(conversation)) return 'group-compact';
   if (conversationUsesCompactHumanTranscriptDensity(conversation)) return 'contact-compact';
   return 'default';
-}
-
-export function transcriptHumanParticipant(
-  conversation: Conversation,
-  message: Message,
-): ConversationParticipant | null {
-  if (message.isOwnMessage || message.senderType === 'agent') return null;
-  const humanParticipants = (conversation.canonicalParticipants ?? [])
-    .filter((participant) => participant.kind === 'human');
-  const senderIdentityId = message.senderIdentityId?.trim();
-  if (senderIdentityId) {
-    const exact = humanParticipants.find((participant) => (
-      participant.id === senderIdentityId
-      || participant.humanId?.trim() === senderIdentityId
-      || participant.sourceIdentityId?.trim() === senderIdentityId
-    ));
-    if (exact) return exact;
-  }
-  const senderName = message.sender?.trim().toLocaleLowerCase();
-  if (!senderName) return null;
-  const nameMatches = humanParticipants.filter((participant) => (
-    participant.name.trim().toLocaleLowerCase() === senderName
-  ));
-  return nameMatches.length === 1 ? nameMatches[0] : null;
 }
 
 function addScopedKey(keys: Set<string>, scope: string, value?: string | null) {

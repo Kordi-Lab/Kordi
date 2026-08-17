@@ -51,8 +51,8 @@ export {
   humanSideForCompanionSide,
   pairedCompanionConversation,
   parseAskAgentTriggerCommand,
-  transcriptHumanParticipant,
 } from '@/pages/chatsPage.model';
+export { transcriptHumanParticipant } from '@/pages/chatSenderProfileModel';
 
 export {
   COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS,
@@ -103,6 +103,7 @@ export function ChatsPage({
     chatModelOptions,
     isDesktopChatSending,
     onMessageContact,
+    onSelectSession,
     onForkChatMessage,
     onPrefetchChatSession,
     onSendChatMessage,
@@ -149,8 +150,10 @@ export function ChatsPage({
   const senderProfiles = useChatSenderProfiles({
     activeConversation: activeConv,
     companionConversation,
+    participantSpaces: session.participantSpaces,
     cloudAccount,
     onMessageContact,
+    onSelectSession,
   });
   const destinations = useChatDestinations({
     main: {

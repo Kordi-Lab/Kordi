@@ -127,3 +127,48 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
         kind == .agent && id.hasPrefix("agent-template:")
     }
 }
+
+enum ConversationAuthorProfileResolver {
+    static func destination(
+        currentConversation: ConversationSummary,
+        message: ChatMessage,
+        selfAccountID: String?,
+        contacts: [CloudContact],
+        conversations: [ConversationSummary]
+    ) -> ConversationSummary? {
+        guard message.author == .person else { return nil }
+        if currentConversation.kind == .person { return currentConversation }
+        guard currentConversation.kind == .group else { return nil }
+
+        let matches = currentConversation.groupParticipants.filter { participant in
+            participant.accountId != selfAccountID
+                && participant.displayName.localizedCaseInsensitiveCompare(message.authorName) == .orderedSame
+        }
+        guard matches.count == 1, let participant = matches.first else { return nil }
+        if let existing = conversations.first(where: { conversation in
+            conversation.kind == .person && conversation.peerAccountId == participant.accountId
+        }) {
+            return existing
+        }
+        guard let selfAccountID = selfAccountID?.nonEmpty else { return nil }
+
+        let contact = contacts.first { $0.accountId == participant.accountId }
+        let displayName = contact?.preferredName.nonEmpty
+            ?? participant.displayName.nonEmpty
+            ?? message.authorName
+        return ConversationSummary(
+            id: "person:\(participant.accountId)",
+            kind: .person,
+            peerAccountId: participant.accountId,
+            agentId: nil,
+            ownerDisplayName: displayName,
+            displayName: displayName,
+            lastMessage: "Start a conversation",
+            lastActivityAt: currentConversation.lastActivityAt,
+            unreadCount: 0,
+            avatarSource: contact?.avatarUrl.nonEmpty ?? participant.avatarUrl?.nonEmpty,
+            agentActivity: nil,
+            sessionId: directPersonSessionId(selfAccountID, participant.accountId)
+        )
+    }
+}
