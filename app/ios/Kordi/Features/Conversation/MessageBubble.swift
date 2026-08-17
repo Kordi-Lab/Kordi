@@ -4,6 +4,7 @@ import UIKit
 
 struct MessageBubble: View, Equatable {
     let message: ChatMessage
+    let mentionTargets: [ComposerMentionTarget]
     let showAuthor: Bool
     let showAvatar: Bool
     let replySourceMessage: ChatMessage?
@@ -33,6 +34,7 @@ struct MessageBubble: View, Equatable {
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message
+            && lhs.mentionTargets == rhs.mentionTargets
             && lhs.showAuthor == rhs.showAuthor
             && lhs.showAvatar == rhs.showAvatar
             && lhs.replySourceMessage == rhs.replySourceMessage
@@ -267,7 +269,10 @@ struct MessageBubble: View, Equatable {
 
             if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                !(message.agentExecution != nil && message.text == "processing...") {
-                MarkdownMessageContent(text: message.text)
+                MarkdownMessageContent(
+                    text: message.text,
+                    mentionTargets: mentionTargets
+                )
                     .foregroundStyle(Color.primary)
             }
 

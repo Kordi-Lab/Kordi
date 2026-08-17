@@ -86,6 +86,12 @@ struct ConversationView: View {
     private var messages: [ChatMessage] {
         ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
     }
+    private var mentionTargetRefreshID: [String] {
+        [conversation.id] + ComposerMentionTargetCatalog.ownerAccountIDs(
+            for: conversation,
+            currentAccountID: model.account?.accountId ?? ""
+        )
+    }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14
 
@@ -114,6 +120,7 @@ struct ConversationView: View {
         let pinnedMessage = model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId
             .flatMap { messagesById[$0] }
         let activeConversationCall = model.activeCall(for: conversation)
+        let mentionTargets = model.mentionTargets(for: conversation)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if let activeCall = activeConversationCall,
@@ -196,28 +203,29 @@ struct ConversationView: View {
                                                 } else {
                                                     MessageBubble(
                                                         message: message,
-                                                    showAuthor: message.author == .agent,
-                                                    showAvatar: presentation.showsAvatar,
-                                                    replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
-                                                    isHighlighted: highlightedMessageID == message.id,
-                                                    isPinned: pinnedMessage?.id == message.id,
-                                                    selectionMode: !selectedMessageIDs.isEmpty,
-                                                    isSelected: selectedMessageIDs.contains(message.id),
-                                                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
-                                                    showsAvatarSlot: message.author != .agent,
-                                                    authorAvatarName: avatar.name,
-                                                    authorAvatarSource: avatar.source,
-                                                    authorAvatarSeed: avatar.seed,
-                                                    readByNames: readers.map(\.displayName),
-                                                    isCallActive: callActivity?.matchesActiveCall(
-                                                        activeConversationCall
-                                                    ) == true,
-                                                    onOpenConversationInfo: openSessionDetails,
-                                                    onJoinCall: {
-                                                        guard callActivity?.matchesActiveCall(
+                                                        mentionTargets: mentionTargets,
+                                                        showAuthor: message.author == .agent,
+                                                        showAvatar: presentation.showsAvatar,
+                                                        replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
+                                                        isHighlighted: highlightedMessageID == message.id,
+                                                        isPinned: pinnedMessage?.id == message.id,
+                                                        selectionMode: !selectedMessageIDs.isEmpty,
+                                                        isSelected: selectedMessageIDs.contains(message.id),
+                                                        allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                                                        showsAvatarSlot: message.author != .agent,
+                                                        authorAvatarName: avatar.name,
+                                                        authorAvatarSource: avatar.source,
+                                                        authorAvatarSeed: avatar.seed,
+                                                        readByNames: readers.map(\.displayName),
+                                                        isCallActive: callActivity?.matchesActiveCall(
                                                             activeConversationCall
                                                         ) == true,
-                                                        let activeConversationCall else { return }
+                                                        onOpenConversationInfo: openSessionDetails,
+                                                        onJoinCall: {
+                                                            guard callActivity?.matchesActiveCall(
+                                                                activeConversationCall
+                                                            ) == true,
+                                                                  let activeConversationCall else { return }
                                                         Task {
                                                             await callCoordinator.join(
                                                                 activeConversationCall,
@@ -408,7 +416,7 @@ struct ConversationView: View {
                     replySource: $replySource,
                     selectedMention: $selectedMention,
                     isExpressivePickerPresented: $isExpressivePickerPresented,
-                    mentionTargets: model.mentionTargets(for: conversation),
+                    mentionTargets: mentionTargets,
                     isSending: isSending,
                     isPreparingAttachments: isPreparingAttachments,
                     destinationName: conversation.displayName,
@@ -441,6 +449,9 @@ struct ConversationView: View {
                     }
                 )
             }
+        }
+        .task(id: mentionTargetRefreshID) {
+            await model.refreshMentionTargets(for: conversation)
         }
         .onDisappear {
             isReadPresentationVisible = false
@@ -1122,13 +1133,11 @@ struct ConversationView: View {
     }
 
     private func resolvedMentionTarget(in text: String) -> ComposerMentionTarget? {
-        if let selectedMention,
-           text.localizedCaseInsensitiveContains(selectedMention.mentionText) {
-            return selectedMention
-        }
-        return model.mentionTargets(for: conversation)
-            .sorted { $0.displayName.count > $1.displayName.count }
-            .first { text.localizedCaseInsensitiveContains($0.mentionText) }
+        ComposerMentionTargetCatalog.resolvedTarget(
+            in: text,
+            selectedTarget: selectedMention,
+            targets: model.mentionTargets(for: conversation)
+        )
     }
 
     private func importFiles(_ result: Result<[URL], Error>) {

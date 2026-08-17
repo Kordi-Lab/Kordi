@@ -352,10 +352,16 @@ struct MarkdownMessageContent: View {
 
     let text: String
     let density: Density
+    let mentionTargets: [ComposerMentionTarget]
 
-    init(text: String, density: Density = .standard) {
+    init(
+        text: String,
+        density: Density = .standard,
+        mentionTargets: [ComposerMentionTarget] = []
+    ) {
         self.text = text
         self.density = density
+        self.mentionTargets = mentionTargets
     }
 
     private var blocks: [KordiMarkdownBlock] {
@@ -378,6 +384,7 @@ struct MarkdownMessageContent: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
+        .environment(\.composerMentionTargets, mentionTargets)
     }
 
     @ViewBuilder
@@ -427,6 +434,7 @@ struct MarkdownMessageContent: View {
 private struct InlineMarkdownText: View {
     let text: String
     let font: Font
+    @Environment(\.composerMentionTargets) private var mentionTargets
 
     var body: some View {
         Text(attributedText)
@@ -440,17 +448,15 @@ private struct InlineMarkdownText: View {
             var fragment: AttributedString
             switch part {
             case let .text(value):
-                fragment = AttributedString(value)
+                fragment = styledText(value)
             case let .code(value):
                 fragment = AttributedString(value)
                 fragment.font = .system(.body, design: .monospaced)
                 fragment.foregroundColor = .secondary
             case let .strong(value):
-                fragment = AttributedString(value)
-                fragment.font = font.bold()
+                fragment = styledText(value, baseFont: font.bold())
             case let .emphasis(value):
-                fragment = AttributedString(value)
-                fragment.font = font.italic()
+                fragment = styledText(value, baseFont: font.italic())
             case let .link(label, url):
                 fragment = AttributedString(label)
                 fragment.link = url
@@ -461,6 +467,33 @@ private struct InlineMarkdownText: View {
         }
         return result
     }
+
+    private func styledText(
+        _ value: String,
+        baseFont: Font? = nil
+    ) -> AttributedString {
+        var result = AttributedString()
+        for segment in ComposerMentionTargetCatalog.highlightedSegments(
+            in: value,
+            targets: mentionTargets
+        ) {
+            var fragment = AttributedString(segment.text)
+            if let kind = segment.kind {
+                fragment.font = font.weight(.semibold)
+                fragment.foregroundColor = kind == .agent
+                    ? KordiTheme.agentMention
+                    : KordiTheme.personMention
+            } else if let baseFont {
+                fragment.font = baseFont
+            }
+            result.append(fragment)
+        }
+        return result
+    }
+}
+
+private extension EnvironmentValues {
+    @Entry var composerMentionTargets: [ComposerMentionTarget] = []
 }
 
 private struct MarkdownListRow: View {

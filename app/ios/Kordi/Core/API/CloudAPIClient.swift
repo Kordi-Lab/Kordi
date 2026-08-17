@@ -22,6 +22,7 @@ enum CloudTransportErrorPolicy {
 actor CloudAPIClient {
     static let productionBaseURL = KordiAppEnvironment.productionBaseURL
     static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
+    private static let sharedAgentOwnerBatchSize = 50
 
     static let reliableSession: URLSession = {
         let configuration = URLSessionConfiguration.default
@@ -412,14 +413,24 @@ actor CloudAPIClient {
     func listSharedAgents(token: String, ownerAccountIds: [String]) async throws -> [CloudAgent] {
         let owners = Array(Set(ownerAccountIds.filter { !$0.isEmpty })).sorted()
         guard !owners.isEmpty else { return [] }
-        let response: AgentsResponse = try await send(
-            path: "/v1/cloud/agents/shared",
-            method: "GET",
-            token: token,
-            query: [URLQueryItem(name: "ownerAccountIds", value: owners.joined(separator: ","))],
-            fallback: "Could not load shared agents."
-        )
-        return response.agents
+        var agentsByID: [String: CloudAgent] = [:]
+        for startIndex in stride(
+            from: owners.startIndex,
+            to: owners.endIndex,
+            by: Self.sharedAgentOwnerBatchSize
+        ) {
+            let endIndex = min(startIndex + Self.sharedAgentOwnerBatchSize, owners.endIndex)
+            let ownerBatch = owners[startIndex..<endIndex]
+            let response: AgentsResponse = try await send(
+                path: "/v1/cloud/agents/shared",
+                method: "GET",
+                token: token,
+                query: [URLQueryItem(name: "ownerAccountIds", value: ownerBatch.joined(separator: ","))],
+                fallback: "Could not load shared agents."
+            )
+            response.agents.forEach { agentsByID[$0.agentId] = $0 }
+        }
+        return Array(agentsByID.values)
     }
 
     func createAgent(token: String, draft: CloudAgentDraft) async throws -> CloudAgent {

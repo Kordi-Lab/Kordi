@@ -5,14 +5,9 @@ import type {
   DesktopChatToolSnapshot,
   Message,
   MessageActionMetadata,
-  MessageMention,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
-import {
-  compatibleSourceConversationId,
-  compatibleSourceHostId,
-  normalizeCollaborationTargetKind,
-} from '@/features/collaboration/legacyBridgeCompatibility';
+import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
@@ -20,6 +15,7 @@ import { formatDesktopClockTime } from '@/lib/time';
 import { canonicalCallActivity } from './callActivity';
 import { canonicalAttachments } from './attachmentMapping';
 import { isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { canonicalMentions } from './mentionMapping';
 
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 export { canonicalAttachments } from './attachmentMapping';
@@ -34,26 +30,6 @@ export function stringValue(value: unknown) {
 
 export function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-export function canonicalMentions(value: unknown): MessageMention[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-
-  const mentions = value.flatMap((item) => {
-    const record = contentRecord(item);
-    const label = stringValue(record.label)?.trim();
-    if (!label) return [];
-    return [{
-      label,
-      targetKind: normalizeCollaborationTargetKind(record.targetKind),
-      sourceHostId: compatibleSourceHostId(record) ?? null,
-      nodeId: stringValue(record.nodeId) ?? null,
-      humanId: stringValue(record.humanId) ?? null,
-      agentId: stringValue(record.agentId) ?? null,
-    }];
-  });
-
-  return mentions.length > 0 ? mentions : undefined;
 }
 
 function canonicalMessageAction(value: unknown): MessageActionMetadata | null {
