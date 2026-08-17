@@ -273,6 +273,38 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(rows.map(\.depth), [0, 1])
     }
 
+    func testTimelineHidesPersistedEmptyCanonicalPlaceholder() {
+        let placeholder = ConversationSummary(
+            id: "agent-session:session:empty",
+            kind: .agent,
+            peerAccountId: "acct_me",
+            agentId: nil,
+            ownerDisplayName: "Alex",
+            displayName: "My Kordi",
+            lastMessage: "No messages yet",
+            lastActivityAt: Date(timeIntervalSince1970: 10),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: "session:empty",
+            agentDisplayName: "My Kordi",
+            messageCount: 0
+        )
+        let actual = conversation(
+            id: "actual",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Current work",
+            preview: "A real response",
+            date: Date(timeIntervalSince1970: 20)
+        )
+
+        let rows = AgentSessionTimelineCatalog.build(conversations: [placeholder, actual])
+
+        XCTAssertEqual(rows.map(\.conversation.sessionId), [actual.sessionId])
+    }
+
     private func conversation(
         id: String,
         peerAccountId: String,

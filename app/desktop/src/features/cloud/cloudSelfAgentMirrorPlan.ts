@@ -6,7 +6,10 @@ import type {
 import {
   findExistingCanonicalCloudSelfAgentMessage,
 } from './cloudSelfAgentResponseLifecycle';
-import { cloudSelfAgentRequestClientMessageId } from './cloudSelfAgentIdentity';
+import {
+  cloudSelfAgentRequestClientMessageId,
+  cloudSelfAgentResponseClientMessageId,
+} from './cloudSelfAgentIdentity';
 
 export type CloudSelfAgentMirrorReconciliation = {
   preferredMessageId: string;
@@ -21,13 +24,33 @@ export function indexLocalSelfAgentMessagesByClientMessageId(
   messages: readonly CanonicalSessionMessage[],
 ): Map<string, CanonicalSessionMessage> {
   return new Map(messages.flatMap((candidate) => {
+    const sourceTransport = candidate.sourceTransport ?? '';
     if (
-      candidate.senderRole !== 'user'
-      || !cleanText(candidate.contentText)
-      || !['desktop-chat-ui', 'desktop-chat'].includes(
-        candidate.sourceTransport ?? '',
-      )
+      !cleanText(candidate.contentText)
+      || !['desktop-chat-ui', 'desktop-chat'].includes(sourceTransport)
     ) return [];
+    if (candidate.senderRole.includes('agent')) {
+      const content = candidate.content && typeof candidate.content === 'object'
+        && !Array.isArray(candidate.content)
+        ? candidate.content as Record<string, unknown>
+        : {};
+      const localRequestMessageId = cleanText(candidate.parentMessageId)
+        || cleanText(typeof content.replyToMessageId === 'string'
+          ? content.replyToMessageId
+          : null)
+        || cleanText(typeof content.requestId === 'string'
+          ? content.requestId
+          : null);
+      if (!localRequestMessageId) return [];
+      return [[
+        cloudSelfAgentResponseClientMessageId(
+          candidate.sessionId,
+          localRequestMessageId,
+        ),
+        candidate,
+      ] as const];
+    }
+    if (candidate.senderRole !== 'user') return [];
     return [[
       cloudSelfAgentRequestClientMessageId(
         candidate.sessionId,
@@ -50,7 +73,7 @@ export function resolveCloudSelfAgentMirror({
 }: {
   message: CloudMessage;
   sessionId: string;
-  role: 'user' | 'agent';
+  role: 'user' | 'agent' | 'system';
   text: string;
   createdAtMs: number;
   stableCanonicalMessageId: string;
@@ -71,13 +94,18 @@ export function resolveCloudSelfAgentMirror({
       canonicalMessageId: stableCanonicalMessageId,
     },
   );
-  const deterministicClientMatch = role === 'user'
-    && message.clientMessageId
+  const deterministicClientMatch = message.clientMessageId
     ? localUserMessageByClientMessageId.get(message.clientMessageId) ?? null
     : null;
   const exactLocalMatch = deterministicClientMatch
     && deterministicClientMatch.sessionId === sessionId
-    && deterministicClientMatch.senderRole === 'user'
+    && (
+      role === 'user'
+        ? deterministicClientMatch.senderRole === 'user'
+        : role === 'system'
+          ? deterministicClientMatch.senderRole === 'system'
+          : deterministicClientMatch.senderRole.includes('agent')
+    )
     && cleanText(deterministicClientMatch.contentText) === text
     ? deterministicClientMatch
     : null;

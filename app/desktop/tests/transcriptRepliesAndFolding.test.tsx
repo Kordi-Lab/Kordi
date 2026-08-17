@@ -7,7 +7,7 @@ import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/tra
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
-test('renders agent source quote and processing status without an output block before text exists', () => {
+test('renders agent source quote and waiting waveform without an output block before text exists', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-processing-with-source',
     sessionId: 'session-1',
@@ -39,7 +39,8 @@ test('renders agent source quote and processing status without an output block b
   assert.doesNotMatch(markup, /app-source-message-quote-label block truncate/);
   assert.doesNotMatch(markup, /Replying to/);
   assert.match(markup, /review the copy/);
-  assert.match(markup, /Processing/);
+  assert.match(markup, /app-agent-waiting-wave/);
+  assert.doesNotMatch(markup, /Processing/);
   assert.doesNotMatch(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /checking auth screenshots/);
 });

@@ -32,6 +32,10 @@ import {
 
 export type SendCloudCollaborationMessageOptions = {
   clientMessageId?: string | null;
+  messageKind?: string | null;
+  sharedTitle?: string | null;
+  conversationKind?: 'ai' | 'direct' | 'group';
+  memberAccountIds?: string[];
 };
 
 export function useCloudDirectMessaging({
@@ -107,16 +111,46 @@ export function useCloudDirectMessaging({
         sessionId: cloudSessionId,
         attachments: uploadedAttachments,
         clientMessageId: options.clientMessageId,
+        messageKind: options.messageKind,
         accountId: account?.accountId,
+        sharedTitle: options.sharedTitle,
+        conversationKind: options.conversationKind,
+        memberAccountIds: options.memberAccountIds,
       },
     );
     mergeMessage(message);
     return message;
   }, [account?.accountId, client, mergeMessage]);
 
+  const updateSessionTitle = useCallback(async (
+    sessionId: string,
+    title: string,
+  ) => {
+    const normalizedSessionId = sessionId.trim();
+    const normalizedTitle = title.trim();
+    if (!normalizedSessionId || !normalizedTitle) {
+      throw new Error('A session and title are required.');
+    }
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    return client.updateCloudSessionTitle(
+      session.token,
+      normalizedSessionId,
+      {
+        title: normalizedTitle,
+        titleSource: 'auto',
+        titleRevision: 1,
+        titlePolicyVersion: 1,
+        titleGeneratedFromMessageId: null,
+        updatedAtMs: Date.now(),
+      },
+    );
+  }, [client]);
+
   return {
     mergeMessage,
     prepareForwardAttachments,
     sendMessage,
+    updateSessionTitle,
   };
 }

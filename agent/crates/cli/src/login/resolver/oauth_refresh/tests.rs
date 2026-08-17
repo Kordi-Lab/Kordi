@@ -1,6 +1,9 @@
 //! OAuth resolution, precedence, expiry, and persisted-choice regressions.
 
-use super::{ResolvedProviderAuth, resolve_provider_auth, resolve_provider_auth_choice};
+use super::{
+    ResolvedProviderAuth, resolve_provider_auth, resolve_provider_auth_choice,
+    resolve_provider_runtime_auth_choice,
+};
 use crate::login::ProviderAuthMethod;
 use crate::login::store::{AuthEntry, AuthProfile, AuthStore, save_auth};
 use std::collections::HashMap;
@@ -242,6 +245,44 @@ fn resolve_provider_auth_choice_can_pick_environment_api_key_over_saved_oauth() 
     assert_eq!(resolved.method, ProviderAuthMethod::ApiKey);
     assert_eq!(resolved.credential, "env-openai-key");
     unsafe { std::env::remove_var("OPENAI_API_KEY") };
+}
+
+#[test]
+fn runtime_cloud_alias_resolves_matching_local_oauth_without_becoming_a_global_choice() {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let _home = EnvVarGuard::set("HOME", home.path());
+    let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
+    let _storage_root = EnvVarGuard::unset("KORDI_STORAGE_ROOT");
+    let _app_data_dir = EnvVarGuard::unset("APP_DATA_DIR");
+
+    let oauth_profile = AuthProfile {
+        id: "saved-codex-oauth".to_string(),
+        method: ProviderAuthMethod::OAuth,
+        created_at_ms: Some(20),
+        updated_at_ms: Some(20),
+        entry: AuthEntry::OAuth {
+            access: "saved-codex-token".to_string(),
+            refresh: String::new(),
+            expires: i64::MAX,
+            extra: serde_json::json!({"accountId": "acct_test123"}),
+        },
+    };
+    save_auth(&AuthStore {
+        last_provider: Some("openai".to_string()),
+        active_auth_methods: HashMap::from([("openai".to_string(), ProviderAuthMethod::OAuth)]),
+        active_auth_profiles: HashMap::from([("openai".to_string(), oauth_profile.id.clone())]),
+        profiles: HashMap::from([("openai".to_string(), vec![oauth_profile])]),
+        ..AuthStore::default()
+    })
+    .expect("save Codex OAuth profile");
+
+    let resolved = resolve_provider_runtime_auth_choice("openai-codex", "local-active-oauth")
+        .expect("resolve cloud runtime OAuth alias");
+    assert_eq!(resolved.method, ProviderAuthMethod::OAuth);
+    assert_eq!(resolved.credential_provider, "openai-codex");
+    assert_eq!(resolved.credential, "saved-codex-token");
+    assert!(resolve_provider_auth_choice("openai-codex", "local-active-oauth").is_none());
 }
 
 #[test]

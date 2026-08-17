@@ -10,6 +10,11 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
+use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
+
+mod provider_family;
+use provider_family::{canonical_provider_id, equivalent_provider_ids};
+
 const NONCE_LEN: usize = 12;
 
 #[derive(Debug, thiserror::Error)]
@@ -170,25 +175,32 @@ pub async fn publish_snapshot(
     account_id: &str,
     device_id: &str,
     input: NormalizedProviderAuthSnapshotInput,
-) -> Result<ProviderAuthSnapshotResponse, sqlx_core::Error> {
+) -> Result<ProviderAuthSnapshotResponse, StoreError> {
     let now = Utc::now().to_rfc3339();
     let snapshot_id = format!("snap_{}", Uuid::new_v4().simple());
     let payload_bytes = serde_json::to_vec(&input.payload)
-        .map_err(|err| sqlx_core::Error::Encode(Box::new(err)))?;
+        .map_err(|err| StoreError::Database(sqlx_core::Error::Encode(Box::new(err))))?;
     let encrypted_payload = cipher
         .encrypt(&payload_bytes)
-        .map_err(|err| sqlx_core::Error::Protocol(err.to_string()))?;
+        .map_err(|err| StoreError::Database(sqlx_core::Error::Protocol(err.to_string())))?;
 
     let mut tx = pool.begin().await?;
+    let canonical_provider = canonical_provider_id(&input.provider);
+    let provider_ids = equivalent_provider_ids(Some(&input.provider))
+        .unwrap_or_else(|| vec![input.provider.clone()]);
+    let route_lock_key = format!("{}\u{1f}{}", account_id, canonical_provider);
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(route_lock_key)
+        .execute(&mut *tx)
+        .await?;
     let revoked_rows: Vec<(String,)> = query_as(
         "UPDATE cloud_agent_provider_auth_snapshots \
-         SET revoked_at = $4 \
-         WHERE account_id = $1 AND provider = $2 AND auth_choice = $3 AND revoked_at IS NULL \
+         SET revoked_at = $3 \
+         WHERE account_id = $1 AND provider = ANY($2) AND revoked_at IS NULL \
          RETURNING snapshot_id",
     )
     .bind(account_id)
-    .bind(&input.provider)
-    .bind(&input.auth_choice)
+    .bind(&provider_ids)
     .bind(&now)
     .fetch_all(&mut *tx)
     .await?;
@@ -222,6 +234,18 @@ pub async fn publish_snapshot(
     .fetch_one(&mut *tx)
     .await?;
     insert_audit_in_tx(&mut tx, &snapshot_id, account_id, None, "created", &now).await?;
+    append_user_sync_events_in_transaction(
+        &mut tx,
+        &[account_id.to_string()],
+        "provider-auth.updated",
+        None,
+        &serde_json::json!({
+            "action": "published",
+            "provider": &row.1,
+            "snapshotId": &row.0,
+        }),
+    )
+    .await?;
     tx.commit().await?;
 
     Ok(snapshot_response_from_row(row))
@@ -232,12 +256,7 @@ pub async fn current_snapshot(
     account_id: &str,
     query: &CurrentProviderAuthSnapshotQuery,
 ) -> Result<Option<ProviderAuthSnapshotResponse>, sqlx_core::Error> {
-    let provider = query
-        .provider
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_ascii_lowercase);
+    let provider_ids = equivalent_provider_ids(query.provider.as_deref());
     let auth_choice = query
         .auth_choice
         .as_deref()
@@ -248,12 +267,12 @@ pub async fn current_snapshot(
         "SELECT snapshot_id, provider, auth_choice, created_at, revoked_at \
          FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL \
-           AND ($2::TEXT IS NULL OR provider = $2) \
+           AND ($2::TEXT[] IS NULL OR provider = ANY($2)) \
            AND ($3::TEXT IS NULL OR auth_choice = $3) \
          ORDER BY created_at DESC LIMIT 1",
     )
     .bind(account_id)
-    .bind(provider.as_deref())
+    .bind(provider_ids.as_deref())
     .bind(auth_choice.as_deref())
     .fetch_optional(pool)
     .await?;
@@ -264,7 +283,7 @@ pub async fn revoke_snapshot(
     pool: &PgPool,
     account_id: &str,
     snapshot_id: &str,
-) -> Result<Option<ProviderAuthSnapshotResponse>, sqlx_core::Error> {
+) -> Result<Option<ProviderAuthSnapshotResponse>, StoreError> {
     let now = Utc::now().to_rfc3339();
     let mut tx = pool.begin().await?;
     let row: Option<(String, String, String, String, Option<String>)> = query_as(
@@ -280,6 +299,20 @@ pub async fn revoke_snapshot(
     .await?;
     if row.is_some() {
         insert_audit_in_tx(&mut tx, snapshot_id, account_id, None, "revoked", &now).await?;
+    }
+    if let Some(snapshot) = row.as_ref() {
+        append_user_sync_events_in_transaction(
+            &mut tx,
+            &[account_id.to_string()],
+            "provider-auth.updated",
+            None,
+            &serde_json::json!({
+                "action": "revoked",
+                "provider": &snapshot.1,
+                "snapshotId": &snapshot.0,
+            }),
+        )
+        .await?;
     }
     tx.commit().await?;
     Ok(row.map(snapshot_response_from_row))
@@ -303,12 +336,13 @@ pub async fn provider_auth_for_run(
         return Ok(ProviderAuthForRunResult::RunNotFound);
     };
 
-    let routed_provider = runtime_route
-        .get("defaultAuthProvider")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_ascii_lowercase);
+    let routed_provider_ids = equivalent_provider_ids(
+        runtime_route
+            .get("defaultAuthProvider")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+    );
     let routed_auth_choice = runtime_route
         .get("defaultAuthChoice")
         .and_then(Value::as_str)
@@ -320,12 +354,12 @@ pub async fn provider_auth_for_run(
         "SELECT snapshot_id, provider, auth_choice, encrypted_payload \
          FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL \
-           AND ($2::TEXT IS NULL OR provider = $2) \
+           AND ($2::TEXT[] IS NULL OR provider = ANY($2)) \
            AND ($3::TEXT IS NULL OR auth_choice = $3) \
          ORDER BY created_at DESC LIMIT 1",
     )
     .bind(&owner_account_id)
-    .bind(routed_provider.as_deref())
+    .bind(routed_provider_ids.as_deref())
     .bind(routed_auth_choice.as_deref())
     .fetch_optional(pool)
     .await?;
@@ -435,5 +469,28 @@ mod tests {
             payload: serde_json::json!({"token":"x"}),
         };
         assert!(request.normalized().is_none());
+    }
+
+    #[test]
+    fn provider_aliases_share_one_authentication_family() {
+        let openai = vec![
+            "openai".to_string(),
+            "openai-codex".to_string(),
+            "codex".to_string(),
+        ];
+        assert_eq!(
+            equivalent_provider_ids(Some("OpenAI")),
+            Some(openai.clone())
+        );
+        assert_eq!(equivalent_provider_ids(Some("openai-codex")), Some(openai));
+        assert_eq!(
+            equivalent_provider_ids(Some("google-gemini")),
+            Some(vec!["google".to_string(), "google-gemini".to_string()])
+        );
+        assert_eq!(
+            equivalent_provider_ids(Some("anthropic")),
+            Some(vec!["anthropic".to_string()])
+        );
+        assert_eq!(equivalent_provider_ids(Some("  ")), None);
     }
 }

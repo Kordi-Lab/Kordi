@@ -32,6 +32,7 @@ pub use resolver::{
     preferred_available_model_for_provider, preferred_startup_provider_and_model,
     provider_auth_option_summaries, provider_auth_status_summary, provider_configured_for_settings,
     provider_model_selection_detail, resolve_provider_auth, resolve_provider_auth_choice,
+    resolve_provider_runtime_auth_choice,
 };
 
 #[cfg(test)]

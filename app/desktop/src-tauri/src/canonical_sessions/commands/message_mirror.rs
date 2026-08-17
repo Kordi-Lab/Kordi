@@ -1,6 +1,6 @@
 //! Atomic convergence of a local-first message and its delayed Cloud mirror.
 
-use rusqlite::{params, Connection, TransactionBehavior};
+use rusqlite::{params, Connection};
 use serde_json::Value;
 
 use super::super::{hash_hex, now_ms, open_db, select_message};
@@ -66,8 +66,8 @@ fn replace_json_message_reference(
     }
 }
 
-pub(super) fn reconcile_canonical_message_mirror_in_db(
-    conn: &mut Connection,
+pub(crate) fn reconcile_canonical_message_mirror_in_db(
+    conn: &Connection,
     preferred_message_id: &str,
     duplicate_message_id: &str,
 ) -> Result<bool, String> {
@@ -81,30 +81,60 @@ pub(super) fn reconcile_canonical_message_mirror_in_db(
     }
 
     let transaction = conn
-        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     let Some(preferred) = select_message(&transaction, preferred_message_id)? else {
         return Ok(false);
+    };
+    let Some(duplicate) = select_message(&transaction, duplicate_message_id)? else {
+        // The database merge can commit before the IPC response reaches the
+        // webview. Treat the missing duplicate as an idempotent success even
+        // when the retained row has already adopted its Cloud provenance so
+        // the caller can remove the stale mirror from in-memory state.
+        return Ok(true);
     };
     let preferred_is_local = matches!(
         preferred.source_transport.as_deref(),
         Some("desktop-chat-ui" | "desktop-chat")
     );
-    if !preferred_is_local || preferred.sender_role != "user" {
-        return Err("Canonical mirror reconciliation requires a local user message".to_string());
-    }
-    let Some(duplicate) = select_message(&transaction, duplicate_message_id)? else {
-        // A command can commit while its IPC response is lost. A missing
-        // duplicate is therefore an idempotent success on retry.
-        return Ok(true);
-    };
+    let duplicate_is_local = matches!(
+        duplicate.source_transport.as_deref(),
+        Some("desktop-chat-ui" | "desktop-chat")
+    );
+    let preferred_is_cloud = preferred.source_transport.as_deref() == Some("cloud-self-agent");
     let duplicate_is_cloud = duplicate.source_transport.as_deref() == Some("cloud-self-agent");
-    if !duplicate_is_cloud
-        || preferred.session_id != duplicate.session_id
-        || preferred.sender_identity_id != duplicate.sender_identity_id
-        || duplicate.sender_role != "user"
-        || preferred.message_kind != duplicate.message_kind
-        || preferred.content_text.trim() != duplicate.content_text.trim()
+    let (local, cloud) = if preferred_is_local && duplicate_is_cloud {
+        (&preferred, &duplicate)
+    } else if preferred_is_cloud && duplicate_is_local {
+        (&duplicate, &preferred)
+    } else {
+        return Err(
+            "Canonical mirror reconciliation requires one local and one Cloud self-agent message"
+                .to_string(),
+        );
+    };
+    let local_is_user = local.sender_role == "user";
+    let local_is_owned_agent =
+        local.sender_role == "owned-agent" && local.message_kind == "agent-turn";
+    if !local_is_user && !local_is_owned_agent {
+        return Err(
+            "Canonical mirror reconciliation requires a local self-agent message".to_string(),
+        );
+    }
+    let sender_matches = if local_is_user {
+        cloud.sender_role == "user" && local.sender_identity_id == cloud.sender_identity_id
+    } else {
+        cloud.sender_role == "owned-agent" && cloud.message_kind == "agent-turn"
+    };
+    let payload_matches = if local_is_user {
+        local.content_text.trim() == cloud.content_text.trim()
+    } else {
+        local.parent_message_id.is_some() && local.parent_message_id == cloud.parent_message_id
+    };
+    if local.session_id != cloud.session_id
+        || !sender_matches
+        || local.message_kind != cloud.message_kind
+        || !payload_matches
     {
         return Err("Canonical mirror reconciliation did not match one user intent".to_string());
     }
@@ -253,10 +283,6 @@ pub(in crate::canonical_sessions) fn desktop_canonical_reconcile_message_mirror(
     preferred_message_id: String,
     duplicate_message_id: String,
 ) -> Result<bool, String> {
-    let mut conn = open_db()?;
-    reconcile_canonical_message_mirror_in_db(
-        &mut conn,
-        &preferred_message_id,
-        &duplicate_message_id,
-    )
+    let conn = open_db()?;
+    reconcile_canonical_message_mirror_in_db(&conn, &preferred_message_id, &duplicate_message_id)
 }

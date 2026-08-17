@@ -5,23 +5,20 @@ import type {
   DesktopChatToolSnapshot,
   Message,
   MessageActionMetadata,
-  MessageAttachment,
-  MessageMention,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
-import {
-  compatibleSourceConversationId,
-  compatibleSourceHostId,
-  normalizeCollaborationTargetKind,
-} from '@/features/collaboration/legacyBridgeCompatibility';
+import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 import { canonicalCallActivity } from './callActivity';
+import { canonicalAttachments } from './attachmentMapping';
 import { isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { canonicalMentions } from './mentionMapping';
 
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
+export { canonicalAttachments } from './attachmentMapping';
 
 export function contentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -33,55 +30,6 @@ export function stringValue(value: unknown) {
 
 export function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-export function canonicalMentions(value: unknown): MessageMention[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-
-  const mentions = value.flatMap((item) => {
-    const record = contentRecord(item);
-    const label = stringValue(record.label)?.trim();
-    if (!label) return [];
-    return [{
-      label,
-      targetKind: normalizeCollaborationTargetKind(record.targetKind),
-      sourceHostId: compatibleSourceHostId(record) ?? null,
-      nodeId: stringValue(record.nodeId) ?? null,
-      humanId: stringValue(record.humanId) ?? null,
-      agentId: stringValue(record.agentId) ?? null,
-    }];
-  });
-
-  return mentions.length > 0 ? mentions : undefined;
-}
-
-export function canonicalAttachments(value: unknown): MessageAttachment[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-
-  const attachments = value.flatMap((item) => {
-    const record = contentRecord(item);
-    const name = stringValue(record.name);
-    const rawKind = stringValue(record.kind);
-    if (!name || (rawKind !== 'image' && rawKind !== 'file')) return [];
-
-    const kind: MessageAttachment['kind'] = rawKind;
-    const attachment: MessageAttachment = {
-      kind,
-      name,
-      formatLabel: stringValue(record.formatLabel) ?? null,
-      previewUrl: stringValue(record.previewUrl) ?? null,
-      mimeType: stringValue(record.mimeType) ?? null,
-      localPath: stringValue(record.localPath) ?? null,
-      sizeBytes: numberValue(record.sizeBytes) ?? null,
-    };
-    const downloadUrl = stringValue(record.downloadUrl);
-    const attachmentId = stringValue(record.attachmentId);
-    if (downloadUrl) attachment.downloadUrl = downloadUrl;
-    if (attachmentId) attachment.attachmentId = attachmentId;
-    return [attachment];
-  });
-
-  return attachments.length > 0 ? attachments : undefined;
 }
 
 function canonicalMessageAction(value: unknown): MessageActionMetadata | null {
@@ -282,8 +230,8 @@ function agentLabelForHumanIdentity(
     .find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity.id)
     ?.displayName ?? 'Kordi';
 }
-
 export function canonicalMessageRole(message: CanonicalSessionMessage, identity?: CanonicalIdentity): Message['role'] {
+  if (message.messageKind === 'agent-model-change') return 'system';
   if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(message.senderRole)) {
     return message.senderRole as Message['role'];
   }

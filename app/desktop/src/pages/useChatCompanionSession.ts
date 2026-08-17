@@ -244,7 +244,7 @@ export function useChatCompanionSession({
           state.referenceContext,
         )
       : null;
-    onSendChatMessage(
+    void onSendChatMessage(
       draft,
       targetConversation.id,
       referenceMessage ? [referenceMessage] : [],

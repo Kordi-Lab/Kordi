@@ -53,6 +53,7 @@ mod device_handlers;
 mod device_operation_support;
 mod device_query_handlers;
 mod device_types;
+mod expressive_media;
 mod group_invitation_handlers;
 mod identity_handlers;
 mod middleware;
@@ -72,6 +73,7 @@ use contact_request_handlers::*;
 use device_handlers::*;
 use device_query_handlers::*;
 use device_types::*;
+use expressive_media::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
 use password_handlers::*;
@@ -234,6 +236,10 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/attachments/:attachment_id/content",
             get(crate::attachments::routes::content),
+        )
+        .route(
+            "/v1/cloud/expressive-media",
+            get(list_expressive_media).post(save_expressive_media),
         )
         .route(
             "/v1/cloud/sessions/:source_session_id/forks",

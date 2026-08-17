@@ -221,6 +221,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         saveDesktopAttachments: args.saveDesktopAttachments,
         saveDesktopAttachmentPaths: args.saveDesktopAttachmentPaths,
         removeChatComposerAttachment: args.removeChatComposerAttachment,
+        updateChatComposerAttachment: args.updateChatComposerAttachment,
         projectComposerText: args.projectComposerText,
         updateProjectComposerDraft: args.updateProjectComposerDraft,
         setProjectComposerText: args.setProjectComposerText,

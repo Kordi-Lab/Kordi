@@ -318,6 +318,22 @@ fn encode_test_cloud_group_envelope(envelope: Value) -> String {
     )
 }
 
+fn encode_test_cloud_agent_processing_response(request_message_id: &str) -> String {
+    format!(
+        "kordi-cloud-agent-response:{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+            json!({
+                "kind": "agent-response",
+                "requestId": request_message_id,
+                "text": "processing...",
+                "deliveryState": "processing",
+                "executionClaimId": uuid::Uuid::new_v4().to_string(),
+            })
+            .to_string()
+        )
+    )
+}
+
 fn decode_test_cloud_group_envelope(body: &str) -> Value {
     let encoded = body
         .trim()

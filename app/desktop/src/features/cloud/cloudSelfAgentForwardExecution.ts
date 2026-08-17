@@ -2,7 +2,12 @@ import type {
   CloudAuthClient,
   CloudMessage,
 } from './authClient';
-import { encodeCloudAgentResponse } from './cloudAgentMessages';
+import {
+  encodeCloudAgentResponse,
+  parseCloudAgentResponse,
+  type CloudAgentExecutionSnapshot,
+} from './cloudAgentMessages';
+import { finalizeCloudAgentExecutionSnapshot } from './cloudAgentExecutionTrace';
 import {
   cloudSelfAgentOperationClientMessageId,
   type CloudSelfAgentSyncLedger,
@@ -11,6 +16,51 @@ import {
 
 const PROCESSING_LEDGER_PREFIX = 'processing:';
 export const CLOUD_SELF_AGENT_HEARTBEAT_MS = 30_000;
+export const CLOUD_SELF_AGENT_EXECUTION_STREAM_MS = 1_000;
+
+export async function publishCloudSelfAgentExecutionClaim({
+  accountId,
+  claimId,
+  client,
+  cloudRequestMessageId,
+  execution,
+  nowMs = Date.now(),
+  sessionId,
+  token,
+}: {
+  accountId: string;
+  claimId: string;
+  client: Pick<CloudAuthClient, 'sendMessage'>;
+  cloudRequestMessageId: string;
+  execution: CloudAgentExecutionSnapshot;
+  nowMs?: number;
+  sessionId: string;
+  token: string;
+}): Promise<{ acquired: boolean; message: CloudMessage }> {
+  const message = await client.sendMessage(
+    token,
+    accountId,
+    encodeCloudAgentResponse({
+      requestId: cloudRequestMessageId,
+      text: 'processing...',
+      deliveryState: 'processing',
+      execution,
+      executionClaimId: claimId,
+    }),
+    {
+      sessionId,
+      clientCreatedAt: new Date(nowMs).toISOString(),
+      clientMessageId:
+        `self-agent:${sessionId}:${cloudRequestMessageId}`
+        + ':desktop-execution-claim',
+    },
+  );
+  return {
+    acquired:
+      parseCloudAgentResponse(message.body)?.executionClaimId === claimId,
+    message,
+  };
+}
 
 function stableClientMessageId(
   operation: CloudSelfAgentSyncOperation,
@@ -34,6 +84,7 @@ export async function publishCloudSelfAgentHeartbeat({
   accountId,
   client,
   cloudRequestMessageId,
+  execution,
   localRequestMessageId,
   nowMs = Date.now(),
   sessionId,
@@ -42,6 +93,7 @@ export async function publishCloudSelfAgentHeartbeat({
   accountId: string;
   client: Pick<CloudAuthClient, 'sendMessage'>;
   cloudRequestMessageId: string;
+  execution?: CloudAgentExecutionSnapshot;
   localRequestMessageId: string;
   nowMs?: number;
   sessionId: string;
@@ -57,6 +109,7 @@ export async function publishCloudSelfAgentHeartbeat({
       requestId: cloudRequestMessageId,
       text: 'processing...',
       deliveryState: 'processing',
+      execution,
     }),
     {
       sessionId,
@@ -64,6 +117,44 @@ export async function publishCloudSelfAgentHeartbeat({
       clientMessageId:
         `self-agent:${sessionId}:${localRequestMessageId}`
         + `:processing:${heartbeatBucket}`,
+    },
+  );
+}
+
+export async function publishCloudSelfAgentExecutionSnapshot({
+  accountId,
+  client,
+  cloudRequestMessageId,
+  execution,
+  localRequestMessageId,
+  revision,
+  sessionId,
+  token,
+}: {
+  accountId: string;
+  client: Pick<CloudAuthClient, 'sendMessage'>;
+  cloudRequestMessageId: string;
+  execution: CloudAgentExecutionSnapshot;
+  localRequestMessageId: string;
+  revision: number;
+  sessionId: string;
+  token: string;
+}): Promise<CloudMessage> {
+  return client.sendMessage(
+    token,
+    accountId,
+    encodeCloudAgentResponse({
+      requestId: cloudRequestMessageId,
+      text: 'processing...',
+      deliveryState: 'processing',
+      execution,
+    }),
+    {
+      sessionId,
+      clientCreatedAt: new Date(execution.updatedAtMs).toISOString(),
+      clientMessageId:
+        `self-agent:${sessionId}:${localRequestMessageId}`
+        + `:execution:${revision}`,
     },
   );
 }
@@ -80,6 +171,7 @@ export async function publishCloudSelfAgentOperations({
   shouldMergeMessage = () => true,
   messageKindForOperation = () => null,
   shouldPublishProcessing = () => true,
+  executionSnapshotForOperation = () => undefined,
   token,
 }: {
   accountId: string;
@@ -102,6 +194,9 @@ export async function publishCloudSelfAgentOperations({
   shouldPublishProcessing?: (
     operation: CloudSelfAgentSyncOperation,
   ) => boolean;
+  executionSnapshotForOperation?: (
+    operation: CloudSelfAgentSyncOperation,
+  ) => CloudAgentExecutionSnapshot | undefined;
   token: string;
 }): Promise<void> {
   for (const operation of operations) {
@@ -182,6 +277,13 @@ export async function publishCloudSelfAgentOperations({
         deliveryState: operation.deliveryState === 'sent'
           ? 'complete'
           : operation.deliveryState,
+        execution: finalizeCloudAgentExecutionSnapshot(
+          executionSnapshotForOperation(operation),
+          operation.deliveryState === 'sent'
+            ? 'complete'
+            : operation.deliveryState,
+          operation.createdAtMs,
+        ),
       }),
       {
         sessionId: operation.sessionId,

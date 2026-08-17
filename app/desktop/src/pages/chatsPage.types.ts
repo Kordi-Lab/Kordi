@@ -8,7 +8,11 @@ import type {
 } from 'react';
 
 import type { CloudAccount, CloudSessionPin } from '@/features/cloud/authClient';
-import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
+import type {
+  AttachmentItem,
+  ComposerConfigTargetOverride,
+  SaveDesktopAttachmentOptions,
+} from '@/features/chat/composerController.types';
 import type {
   ComposerAuthOption,
   ComposerMentionOption,
@@ -36,12 +40,7 @@ import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import type { VirtualTranscriptNavigationRequest } from '@/features/chat/VirtualTranscript';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
-export type ChatAttachment = {
-  id: string;
-  name: string;
-  path: string;
-  kind: 'image' | 'file';
-};
+export type ChatAttachment = AttachmentItem;
 
 export type ChatsPageLayout = {
   isNativeShell: boolean;
@@ -118,9 +117,16 @@ export type ChatsPageComposer = {
   acceptChatMentionTarget: (value: string) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: ChatAttachment[];
-  saveDesktopAttachments: (files: File[]) => Promise<ChatAttachment[]>;
+  saveDesktopAttachments: (
+    files: File[],
+    options?: SaveDesktopAttachmentOptions,
+  ) => Promise<ChatAttachment[]>;
   saveDesktopAttachmentPaths: (paths: string[]) => Promise<ChatAttachment[]>;
   removeChatComposerAttachment: (id: string) => void;
+  updateChatComposerAttachment: (
+    id: string,
+    update: Pick<ChatAttachment, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+  ) => void;
   chatComposerText: string;
   updateChatComposerDraft: (
     value: string,
@@ -201,7 +207,8 @@ export type ChatsPageRuntime = {
     draftOverride?: string,
     targetSessionId?: string,
     contextMessages?: DesktopChatContextMessage[],
-  ) => void;
+    attachmentOverride?: AttachmentItem[],
+  ) => Promise<void> | void;
   onCreateAgentSession?: () => string | null | Promise<string | null>;
 };
 

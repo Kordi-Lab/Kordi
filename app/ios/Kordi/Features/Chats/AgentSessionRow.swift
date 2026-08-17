@@ -126,16 +126,19 @@ private struct AgentSessionActivityLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             if activity == .replying {
-                ProgressView()
-                    .controlSize(.mini)
+                Circle()
+                    .fill(KordiTheme.agentViolet)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
             } else {
                 Image(systemName: "exclamationmark.circle.fill")
                     .accessibilityHidden(true)
+                Text(activity.label)
+                    .font(compact ? .caption2.weight(.semibold) : .caption.weight(.medium))
             }
-            Text(activity.label)
-                .font(compact ? .caption2.weight(.semibold) : .caption.weight(.medium))
         }
         .foregroundStyle(activity == .failed ? Color.red : KordiTheme.agentViolet)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(activity.label)
     }
 }

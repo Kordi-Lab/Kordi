@@ -3,7 +3,6 @@ import { cloudMessageActionAllowsAgentContext } from './cloudAgentTriggerPolicy'
 import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
-
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
 const CLOUD_AGENT_CANCEL_PREFIX = 'kordi-cloud-agent-cancel:';
 const CLOUD_AGENT_NATIVE_CONTEXT_MESSAGE_LIMIT = 40;
@@ -18,6 +17,46 @@ export type CloudAgentResponseEnvelope = {
   requestId: string;
   text: string;
   deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
+  execution?: CloudAgentExecutionSnapshot;
+  /**
+   * Ephemeral owner-runtime claim used only to arbitrate which signed-in Mac
+   * executes a self-agent request. It is never rendered or forwarded to a
+   * different account.
+   */
+  executionClaimId?: string;
+};
+
+export type CloudAgentExecutionStep = {
+  id: string;
+  label: string;
+  state: 'pending' | 'running' | 'complete' | 'failed';
+};
+
+export type CloudAgentExecutionTool = {
+  id: string;
+  name: string;
+  status: string;
+  arguments: string;
+  liveOutput: string;
+  resultText?: string | null;
+  detail?: string | null;
+  toolLayer?: string | null;
+  isError: boolean;
+};
+
+/**
+ * Owner-visible execution state shared only between devices signed in to the
+ * same account. Credential-shaped values are redacted before publication.
+ */
+export type CloudAgentExecutionSnapshot = {
+  phase: 'preparing' | 'analyzing' | 'using-tool' | 'writing' | 'complete' | 'failed' | 'cancelled';
+  summary: string;
+  steps: CloudAgentExecutionStep[];
+  thinkingText?: string;
+  tools?: CloudAgentExecutionTool[];
+  startedAtMs?: number;
+  updatedAtMs: number;
+  completed: boolean;
 };
 
 export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
@@ -117,12 +156,18 @@ export function encodeCloudAgentResponse(input: {
   requestId: string;
   text: string;
   deliveryState?: CloudAgentResponseEnvelope['deliveryState'];
+  execution?: CloudAgentExecutionSnapshot;
+  executionClaimId?: string;
 }): string {
   const envelope: CloudAgentResponseEnvelope = {
     kind: 'agent-response',
     requestId: input.requestId,
     text: input.text,
     ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
+    ...(input.execution ? { execution: input.execution } : {}),
+    ...(input.executionClaimId
+      ? { executionClaimId: input.executionClaimId }
+      : {}),
   };
   return `${CLOUD_AGENT_RESPONSE_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
 }
@@ -139,15 +184,115 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       || parsed.deliveryState === 'cancelled'
       ? parsed.deliveryState
       : undefined;
+    const execution = parseCloudAgentExecutionSnapshot(parsed.execution);
+    const executionClaimId = typeof parsed.executionClaimId === 'string'
+      ? parsed.executionClaimId.trim().slice(0, 160)
+      : '';
     return {
       kind: 'agent-response',
       requestId: parsed.requestId,
       text: parsed.text,
       ...(deliveryState ? { deliveryState } : {}),
+      ...(execution ? { execution } : {}),
+      ...(executionClaimId ? { executionClaimId } : {}),
     };
   } catch {
     return null;
   }
+}
+
+function parseCloudAgentExecutionSnapshot(
+  value: unknown,
+): CloudAgentExecutionSnapshot | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const phases: CloudAgentExecutionSnapshot['phase'][] = [
+    'preparing',
+    'analyzing',
+    'using-tool',
+    'writing',
+    'complete',
+    'failed',
+    'cancelled',
+  ];
+  const phase = typeof record.phase === 'string'
+    && phases.includes(record.phase as CloudAgentExecutionSnapshot['phase'])
+    ? record.phase as CloudAgentExecutionSnapshot['phase']
+    : null;
+  const summary = typeof record.summary === 'string'
+    ? record.summary.trim().slice(0, 160)
+    : '';
+  const updatedAtMs = typeof record.updatedAtMs === 'number'
+    && Number.isFinite(record.updatedAtMs)
+    ? record.updatedAtMs
+    : null;
+  if (!phase || !summary || updatedAtMs === null) return null;
+  const states: CloudAgentExecutionStep['state'][] = [
+    'pending',
+    'running',
+    'complete',
+    'failed',
+  ];
+  const steps = Array.isArray(record.steps)
+    ? record.steps.flatMap((step): CloudAgentExecutionStep[] => {
+      if (!step || typeof step !== 'object' || Array.isArray(step)) return [];
+      const item = step as Record<string, unknown>;
+      const id = typeof item.id === 'string' ? item.id.trim().slice(0, 160) : '';
+      const label = typeof item.label === 'string' ? item.label.trim().slice(0, 160) : '';
+      const state = typeof item.state === 'string'
+        && states.includes(item.state as CloudAgentExecutionStep['state'])
+        ? item.state as CloudAgentExecutionStep['state']
+        : null;
+      return id && label && state ? [{ id, label, state }] : [];
+    }).slice(0, 12)
+    : [];
+  const startedAtMs = typeof record.startedAtMs === 'number'
+    && Number.isFinite(record.startedAtMs)
+    ? record.startedAtMs
+    : undefined;
+  const thinkingText = typeof record.thinkingText === 'string'
+    ? record.thinkingText.slice(0, 64 * 1_024)
+    : undefined;
+  const tools = Array.isArray(record.tools)
+    ? record.tools.flatMap((tool): CloudAgentExecutionTool[] => {
+      if (!tool || typeof tool !== 'object' || Array.isArray(tool)) return [];
+      const item = tool as Record<string, unknown>;
+      const id = typeof item.id === 'string' ? item.id.trim().slice(0, 160) : '';
+      const name = typeof item.name === 'string' ? item.name.trim().slice(0, 160) : '';
+      const status = typeof item.status === 'string' ? item.status.trim().slice(0, 80) : '';
+      if (!id || !name || !status) return [];
+      const optionalText = (key: string, limit: number) => {
+        const value = item[key];
+        return typeof value === 'string'
+          ? value.slice(0, limit)
+          : undefined;
+      };
+      const resultText = optionalText('resultText', 64 * 1_024);
+      const detail = optionalText('detail', 8 * 1_024);
+      const toolLayer = optionalText('toolLayer', 160);
+      return [{
+        id,
+        name,
+        status,
+        arguments: optionalText('arguments', 64 * 1_024) ?? '',
+        liveOutput: optionalText('liveOutput', 64 * 1_024) ?? '',
+        ...(resultText !== undefined ? { resultText } : {}),
+        ...(detail !== undefined ? { detail } : {}),
+        ...(toolLayer !== undefined ? { toolLayer } : {}),
+        isError: item.isError === true,
+      }];
+    }).slice(-10)
+    : undefined;
+  return {
+    phase,
+    summary,
+    steps,
+    ...(thinkingText ? { thinkingText } : {}),
+    ...(tools?.length ? { tools } : {}),
+    ...(startedAtMs !== undefined ? { startedAtMs } : {}),
+    updatedAtMs,
+    completed: record.completed === true,
+  };
 }
 
 export function isTerminalCloudAgentResponse(body: string) {
@@ -248,6 +393,7 @@ export function cloudMessageMentionsLocalAgent(
 export function cloudMessageIsSelfAgentRequest(message: CloudMessage, account: CloudAccount): boolean {
   if (message.fromAccountId !== account.accountId || message.toAccountId !== account.accountId) return false;
   if (!message.body.trim()) return false;
+  if (message.messageKind === 'agent-model-change') return false;
   if (isCloudGroupControlMessage(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
   return true;
 }
@@ -273,6 +419,7 @@ function cloudMessageCreatedAtMs(message: CloudMessage): number {
 }
 
 function cloudContextMessageText(message: CloudMessage): string | null {
+  if (message.messageKind === 'agent-model-change') return null;
   if (parseCloudAgentCancel(message.body) || isCloudGroupControlMessage(message.body)) return null;
   const response = parseCloudAgentResponse(message.body);
   return (response?.text ?? message.body).trim() || null;

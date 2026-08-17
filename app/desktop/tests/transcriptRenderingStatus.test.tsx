@@ -45,7 +45,7 @@ test('code blocks remove the header bar and reveal copy controls on hover', () =
   const codeBlockStart = markdownSource.indexOf('function MarkdownCodeBlock');
   const codeBlockEnd = markdownSource.indexOf('function MarkdownListView', codeBlockStart);
   const transcriptBlockStart = liveTurnsSource.indexOf('function ToolTranscriptBlock');
-  const transcriptBlockEnd = liveTurnsSource.indexOf('function ProcessingStatusCircle', transcriptBlockStart);
+  const transcriptBlockEnd = liveTurnsSource.indexOf('function toolDisplayConfig', transcriptBlockStart);
   assert.ok(codeBlockStart >= 0 && codeBlockEnd > codeBlockStart, 'expected MarkdownCodeBlock source block');
   assert.ok(transcriptBlockStart >= 0 && transcriptBlockEnd > transcriptBlockStart, 'expected ToolTranscriptBlock source block');
   const codeBlock = markdownSource.slice(codeBlockStart, codeBlockEnd);
@@ -66,6 +66,36 @@ test('code blocks remove the header bar and reveal copy controls on hover', () =
   assert.match(transcriptBlock, /aria-label=\{isWrapped \? 'Disable line wrapping' : 'Wrap long lines'\}/);
   assert.match(transcriptBlock, /app-transcript-wrap-toggle[^"']*h-6 w-6/);
   assert.doesNotMatch(transcriptBlock, />\{isWrapped \? 'No wrap' : 'Wrap'\}</);
+});
+
+test('agent waiting state uses a waveform only until the first response content arrives', () => {
+  const waitingTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-waiting-first-token',
+    sessionId: 'session-1',
+    prompt: 'hello',
+    status: 'starting',
+    message: 'Thinking…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+  };
+  const waitingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn: waitingTurn,
+    onStopActiveTurn: () => undefined,
+  }));
+
+  assert.match(waitingMarkup, /app-agent-waiting-wave/);
+  assert.match(waitingMarkup, /aria-label="Waiting for agent response"/);
+  assert.doesNotMatch(waitingMarkup, />Thinking…</);
+
+  const streamingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn: { ...waitingTurn, status: 'writing', assistantText: 'H' },
+    onStopActiveTurn: () => undefined,
+  }));
+  assert.doesNotMatch(streamingMarkup, /app-agent-waiting-wave/);
 });
 
 test('renders live turn errors as raw red inline text instead of a popped bubble', () => {
@@ -275,7 +305,7 @@ test('contact request row formats transport timestamps for people', () => {
   assert.doesNotMatch(markup, />2026-08-13T10:22:12/);
 });
 
-test('renders bridge agent stop control beside pending processing text', () => {
+test('renders bridge agent stop control beside the first-response waveform', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-pending-bridge-agent',
     sessionId: 'session-1',
@@ -305,10 +335,11 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /h-\[18px\] w-\[18px\]/);
   assert.match(markup, /text-slate-400/);
   assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
-  assert.match(markup, /Processing/);
+  assert.match(markup, /app-agent-waiting-wave/);
+  assert.doesNotMatch(markup, />Processing…</);
 });
 
-test('empty pending agent turn renders processing with its source quote', () => {
+test('empty pending agent turn renders the waiting waveform with its source quote', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-pending-source-delay',
     sessionId: 'session-1',
@@ -334,10 +365,11 @@ test('empty pending agent turn renders processing with its source quote', () => 
   assert.match(markup, /app-source-message-quote/);
   assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
   assert.match(markup, /what are you doing/);
-  assert.match(markup, /Starting…/);
+  assert.match(markup, /app-agent-waiting-wave/);
+  assert.doesNotMatch(markup, />Starting…</);
 });
 
-test('renders initial generic working status as starting until a real tool phase appears', () => {
+test('renders initial generic working status as a waveform until real content appears', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-starting-work',
     sessionId: 'session-1',
@@ -360,9 +392,10 @@ test('renders initial generic working status as starting until a real tool phase
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
-  assert.match(markup, /Starting…/);
+  assert.match(markup, /app-agent-waiting-wave/);
+  assert.doesNotMatch(markup, />Starting…</);
   assert.doesNotMatch(markup, /Planning…/);
-  assert.doesNotMatch(markup, /Working…/);
+  assert.doesNotMatch(markup, />Working…</);
 });
 
 test('image-only human messages use compact frosted attachment padding', () => {

@@ -207,6 +207,7 @@ export async function respondToCloudGroupAgentMention(
         routesByRuntimeSessionId: runtime.routesBySessionId,
         runtimeSessionId,
         fallbackRoute: runtime.defaultRoute,
+        requestRoute: message.agentRuntimeRoute,
       }),
       contextMessages,
       cloudVisibleTaskRecordsForSession(

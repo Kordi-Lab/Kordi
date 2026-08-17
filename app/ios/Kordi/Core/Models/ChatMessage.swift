@@ -26,20 +26,161 @@ enum MessageDeliveryState: String, Codable, Hashable {
     }
 }
 
+struct AgentExecutionStep: Identifiable, Codable, Hashable {
+    enum State: String, Codable, Hashable {
+        case pending
+        case running
+        case complete
+        case failed
+    }
+
+    let id: String
+    let label: String
+    let state: State
+}
+
+struct AgentExecutionTool: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let status: String
+    let arguments: String
+    let liveOutput: String
+    let resultText: String?
+    let detail: String?
+    let toolLayer: String?
+    let isError: Bool
+
+    var state: AgentExecutionStep.State {
+        if isError { return .failed }
+        switch status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "complete", "completed", "success", "succeeded", "done": return .complete
+        case "failed", "error", "cancelled", "canceled": return .failed
+        case "queued", "pending": return .pending
+        default: return .running
+        }
+    }
+}
+
+struct AgentExecutionSnapshot: Codable, Hashable {
+    enum Phase: String, Codable, Hashable {
+        case preparing
+        case analyzing
+        case usingTool = "using-tool"
+        case writing
+        case complete
+        case failed
+        case cancelled
+    }
+
+    let phase: Phase
+    let summary: String
+    let steps: [AgentExecutionStep]
+    let thinkingText: String?
+    let tools: [AgentExecutionTool]?
+    let startedAtMs: Double?
+    let updatedAtMs: Double
+    let completed: Bool
+
+    init(
+        phase: Phase,
+        summary: String,
+        steps: [AgentExecutionStep],
+        thinkingText: String? = nil,
+        tools: [AgentExecutionTool]? = nil,
+        startedAtMs: Double?,
+        updatedAtMs: Double,
+        completed: Bool
+    ) {
+        self.phase = phase
+        self.summary = summary
+        self.steps = steps
+        self.thinkingText = thinkingText
+        self.tools = tools
+        self.startedAtMs = startedAtMs
+        self.updatedAtMs = updatedAtMs
+        self.completed = completed
+    }
+}
+
+struct AgentExecutionTimelinePresentation: Equatable {
+    let planningStep: AgentExecutionStep?
+    let toolSteps: [AgentExecutionStep]
+    let responseStep: AgentExecutionStep?
+    let thinkingText: String?
+    let tools: [AgentExecutionTool]
+    let failedToolCount: Int
+    let headline: String
+    let completionLabel: String?
+
+    var hasExpandableContent: Bool {
+        planningStep != nil
+            || !toolSteps.isEmpty
+            || thinkingText != nil
+            || !tools.isEmpty
+            || responseStep != nil
+            || failedToolCount > 0
+    }
+
+    init(execution: AgentExecutionSnapshot) {
+        planningStep = execution.steps.first { $0.id == "analysis" }
+        toolSteps = execution.steps.filter { $0.id.hasPrefix("tool:") }
+        responseStep = execution.steps.first { $0.id == "response" }
+        thinkingText = execution.thinkingText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        tools = execution.tools ?? []
+        failedToolCount = toolSteps.filter { $0.state == .failed }.count
+        headline = execution.summary
+        if execution.completed, let startedAtMs = execution.startedAtMs {
+            let elapsedSeconds = max(
+                0,
+                Int((execution.updatedAtMs - startedAtMs) / 1_000)
+            )
+            completionLabel = "Worked for \(elapsedSeconds)s"
+        } else {
+            completionLabel = nil
+        }
+    }
+}
+
 enum ChatAttachmentKind: String, Codable, Hashable {
     case image
     case file
+}
+
+enum ChatAttachmentSubtype: String, Codable, Hashable {
+    case meme
 }
 
 struct ChatAttachment: Identifiable, Codable, Hashable {
     let attachmentId: String
     let name: String
     let kind: ChatAttachmentKind
+    let subtype: ChatAttachmentSubtype?
+    let altText: String?
     let mimeType: String?
     let sizeBytes: Int64?
     let previewURL: String?
 
     var id: String { attachmentId }
+
+    init(
+        attachmentId: String,
+        name: String,
+        kind: ChatAttachmentKind,
+        subtype: ChatAttachmentSubtype? = nil,
+        altText: String? = nil,
+        mimeType: String?,
+        sizeBytes: Int64?,
+        previewURL: String?
+    ) {
+        self.attachmentId = attachmentId
+        self.name = name
+        self.kind = kind
+        self.subtype = subtype
+        self.altText = altText
+        self.mimeType = mimeType
+        self.sizeBytes = sizeBytes
+        self.previewURL = previewURL
+    }
 
     var formatLabel: String {
         if let extensionName = URL(fileURLWithPath: name).pathExtension.nonEmpty {
@@ -113,9 +254,34 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     let id: String
     let name: String
     let kind: ChatAttachmentKind
+    var subtype: ChatAttachmentSubtype?
+    var altText: String?
+    var memeRightsConfirmed: Bool
     let mimeType: String?
     let data: Data
     let previewURL: String?
+
+    init(
+        id: String,
+        name: String,
+        kind: ChatAttachmentKind,
+        subtype: ChatAttachmentSubtype? = nil,
+        altText: String? = nil,
+        memeRightsConfirmed: Bool = false,
+        mimeType: String?,
+        data: Data,
+        previewURL: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.subtype = subtype
+        self.altText = altText
+        self.memeRightsConfirmed = memeRightsConfirmed
+        self.mimeType = mimeType
+        self.data = data
+        self.previewURL = previewURL
+    }
 
     var sizeBytes: Int64 { Int64(data.count) }
 
@@ -124,10 +290,55 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
             attachmentId: "pending:\(id)",
             name: name,
             kind: kind,
+            subtype: subtype,
+            altText: altText,
             mimeType: mimeType,
             sizeBytes: sizeBytes,
             previewURL: previewURL
         )
+    }
+}
+
+enum MemeAttachmentPolicy {
+    static let maximumAltTextCharacters = 500
+    static let imageMIMETypes: Set<String> = [
+        "image/gif",
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+    ]
+    static let imageExtensions: Set<String> = ["gif", "jpeg", "jpg", "png", "webp"]
+
+    static func isSupportedImage(_ attachment: PendingAttachment) -> Bool {
+        guard attachment.kind == .image else { return false }
+        if let mimeType = attachment.mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !mimeType.isEmpty {
+            return imageMIMETypes.contains(mimeType)
+        }
+        return imageExtensions.contains(URL(fileURLWithPath: attachment.name).pathExtension.lowercased())
+    }
+
+    static func draftError(
+        for attachments: [PendingAttachment],
+        requiresRightsConfirmation: Bool = true
+    ) -> String? {
+        for attachment in attachments where attachment.subtype == .meme {
+            guard isSupportedImage(attachment) else {
+                return "Choose a PNG, JPEG, GIF, or WebP image for \(attachment.name)."
+            }
+            let altText = attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !altText.isEmpty else {
+                return "Add alt text for \(attachment.name) before sending."
+            }
+            guard altText.count <= maximumAltTextCharacters else {
+                return "Shorten the alt text for \(attachment.name) to \(maximumAltTextCharacters) characters or fewer."
+            }
+            if requiresRightsConfirmation, !attachment.memeRightsConfirmed {
+                return "Confirm that you have permission or another legal right to share \(attachment.name)."
+            }
+        }
+        return nil
     }
 }
 
@@ -258,6 +469,46 @@ enum ChatCallActivityTimeline {
 }
 
 struct ChatMessage: Identifiable, Codable, Hashable {
+    static let agentModelChangeMessageKind = "agent-model-change"
+    private static let agentModelChangePrefix = "Switched model to "
+    private static let agentRuntimeRouteNoticePrefix = "Model: "
+    private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
+
+    static func modelFromAgentModelChangeNotice(_ text: String) -> String? {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.hasPrefix(agentModelChangePrefix) {
+            return String(normalized.dropFirst(agentModelChangePrefix.count)).nonEmpty
+        }
+        guard normalized.hasPrefix(agentRuntimeRouteNoticePrefix) else { return nil }
+        let summary = String(normalized.dropFirst(agentRuntimeRouteNoticePrefix.count))
+        return summary.components(separatedBy: agentRuntimeRouteNoticeSeparator).first?.nonEmpty
+    }
+
+    static func runtimeRouteChangeNotice(model: String, thinking: String?) -> String {
+        "\(agentRuntimeRouteNoticePrefix)\(model)\(agentRuntimeRouteNoticeSeparator)\(thinkingEffortLabel(thinking))"
+    }
+
+    private static func thinkingEffortLabel(_ thinking: String?) -> String {
+        let value = thinking?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "default"
+        let normalized = value
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: " ", with: "")
+        let label = switch normalized {
+        case "off": "Off"
+        case "default", "auto", "thinking": "Default"
+        case "minimal": "Minimal"
+        case "low": "Low"
+        case "medium": "Medium"
+        case "high": "High"
+        case "xhigh", "extrahigh": "Extra High"
+        case "max", "maximum": "Max"
+        default: value
+        }
+        return label
+    }
+
     let id: String
     let conversationId: String
     let author: MessageAuthor
@@ -273,9 +524,14 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var replyToMessageId: String?
     var messageAction: MessageActionMetadata?
     var messageKind: String?
+    var agentExecution: AgentExecutionSnapshot?
 
     var callActivity: ChatCallActivity? {
         ChatCallActivity(messageKind: messageKind)
+    }
+
+    var isAgentModelChangeNotice: Bool {
+        messageKind == Self.agentModelChangeMessageKind
     }
 
     init(
@@ -293,7 +549,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         attachments: [ChatAttachment] = [],
         replyToMessageId: String? = nil,
         messageAction: MessageActionMetadata? = nil,
-        messageKind: String? = nil
+        messageKind: String? = nil,
+        agentExecution: AgentExecutionSnapshot? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -310,6 +567,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.replyToMessageId = replyToMessageId
         self.messageAction = messageAction
         self.messageKind = messageKind
+        self.agentExecution = agentExecution
     }
 
     var actionSource: MessageActionSource {
@@ -346,6 +604,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case id, conversationId, author, authorName, text, createdAt, deliveryState, errorMessage
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, messageAction
         case messageKind
+        case agentExecution
     }
 
     init(from decoder: Decoder) throws {
@@ -365,5 +624,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         replyToMessageId = try container.decodeIfPresent(String.self, forKey: .replyToMessageId)
         messageAction = try container.decodeIfPresent(MessageActionMetadata.self, forKey: .messageAction)
         messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
+        agentExecution = try container.decodeIfPresent(
+            AgentExecutionSnapshot.self,
+            forKey: .agentExecution
+        )
     }
 }

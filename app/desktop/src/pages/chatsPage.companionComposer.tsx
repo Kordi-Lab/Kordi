@@ -1,5 +1,4 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -27,9 +26,6 @@ import {
   CollaborationRoutingControls,
   type CollaborationRoutingPatch,
 } from '@/pages/chatsPage.collaborationRoutingControls';
-import {
-  COLLABORATION_ROUTING_NOTICE_EXIT_MS,
-} from '@/pages/chatsPage.constants';
 import type {
   ChatsPageComposer,
   ChatsPageRuntime,
@@ -125,7 +121,6 @@ export function CompanionComposer({
     openSelector,
     setOpenSelector,
     toggleSelector,
-    prefersReducedMotion,
   } = ui;
   const selectedAgent = collaborationRouting.selectedAgent;
 
@@ -187,27 +182,6 @@ export function CompanionComposer({
             />
           </div>
         </div>
-        <AnimatePresence initial={false}>
-          {collaborationRouting.enabled && collaborationRouting.notice ? (
-            <motion.div
-              key={collaborationRouting.notice}
-              className="mb-2 flex justify-center"
-              role="status"
-              aria-live="polite"
-              initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
-              transition={{
-                duration: prefersReducedMotion ? 0.01 : COLLABORATION_ROUTING_NOTICE_EXIT_MS / 1000,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-            >
-              <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
-                Private · {collaborationRouting.notice}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
         <div data-companion-send-row="true" className="app-composer-meta mt-2 flex flex-nowrap items-center justify-between gap-3 pt-2.5">
           <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
             <ComposerAttachmentAddMenu

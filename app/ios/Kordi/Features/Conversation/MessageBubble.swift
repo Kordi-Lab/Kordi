@@ -4,6 +4,7 @@ import UIKit
 
 struct MessageBubble: View, Equatable {
     let message: ChatMessage
+    let mentionTargets: [ComposerMentionTarget]
     let showAuthor: Bool
     let showAvatar: Bool
     let replySourceMessage: ChatMessage?
@@ -29,9 +30,11 @@ struct MessageBubble: View, Equatable {
     let onNavigateToReply: (String) -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
+    let onAgentExecutionExpansionChange: (Bool) -> Void
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message
+            && lhs.mentionTargets == rhs.mentionTargets
             && lhs.showAuthor == rhs.showAuthor
             && lhs.showAvatar == rhs.showAvatar
             && lhs.replySourceMessage == rhs.replySourceMessage
@@ -215,7 +218,10 @@ struct MessageBubble: View, Equatable {
                 onShare: onShareAttachment
             )
         } else {
-            AdaptiveBubbleLayout(maximumWidth: 360) {
+            AdaptiveBubbleLayout(
+                maximumWidth: 360,
+                minimumWidth: agentExecutionMinimumWidth
+            ) {
                 bubbleContents
                     .padding(.leading, 12)
                     .padding(.trailing, message.author == .me ? 30 : 12)
@@ -223,6 +229,15 @@ struct MessageBubble: View, Equatable {
             }
             .background(bubbleColor, in: bubbleShape)
         }
+    }
+
+    private var agentExecutionMinimumWidth: CGFloat {
+        guard let execution = message.agentExecution else { return 0 }
+        let presentation = AgentExecutionTimelinePresentation(execution: execution)
+        if !execution.completed, !presentation.hasExpandableContent {
+            return 0
+        }
+        return 248
     }
 
     @ViewBuilder
@@ -243,8 +258,20 @@ struct MessageBubble: View, Equatable {
                 replyPreview(source)
             }
 
-            if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                MarkdownMessageContent(text: message.text)
+            if let execution = message.agentExecution {
+                AgentExecutionTimeline(
+                    execution: execution,
+                    showsWaitingIndicator: !execution.completed,
+                    onExpansionChange: onAgentExecutionExpansionChange
+                )
+            }
+
+            if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !(message.agentExecution != nil && message.text == "processing...") {
+                MarkdownMessageContent(
+                    text: message.text,
+                    mentionTargets: mentionTargets
+                )
                     .foregroundStyle(Color.primary)
             }
 
@@ -372,6 +399,289 @@ struct MessageBubble: View, Equatable {
     }
 }
 
+private struct AgentExecutionTimeline: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let execution: AgentExecutionSnapshot
+    let showsWaitingIndicator: Bool
+    let onExpansionChange: (Bool) -> Void
+    @State private var isExpanded: Bool
+
+    private var presentation: AgentExecutionTimelinePresentation {
+        AgentExecutionTimelinePresentation(execution: execution)
+    }
+
+    init(
+        execution: AgentExecutionSnapshot,
+        showsWaitingIndicator: Bool,
+        onExpansionChange: @escaping (Bool) -> Void
+    ) {
+        self.execution = execution
+        self.showsWaitingIndicator = showsWaitingIndicator
+        self.onExpansionChange = onExpansionChange
+        _isExpanded = State(initialValue: !execution.completed)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if showsWaitingIndicator && !presentation.hasExpandableContent {
+                AgentExecutionActivityIndicator(
+                    accessibilityStatus: presentation.headline
+                )
+                .frame(minHeight: 24, alignment: .leading)
+            } else {
+                Button(action: toggleExpansion) {
+                    HStack(spacing: 8) {
+                        if let completionLabel = presentation.completionLabel {
+                            Text(completionLabel)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        } else if showsWaitingIndicator {
+                            AgentExecutionActivityIndicator(
+                                accessibilityStatus: presentation.headline
+                            )
+                        } else {
+                            Image(systemName: "ellipsis")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, height: 16, alignment: .leading)
+                                .accessibilityHidden(true)
+                        }
+                        Spacer(minLength: 4)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(presentation.completionLabel ?? presentation.headline)
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            }
+
+            if isExpanded && presentation.hasExpandableContent {
+                VStack(alignment: .leading, spacing: 5) {
+                    if let thinkingText = presentation.thinkingText {
+                        reasoningSection(thinkingText)
+                    } else if let planningStep = presentation.planningStep {
+                        planningSection(planningStep)
+                    }
+
+                    if !presentation.tools.isEmpty || !presentation.toolSteps.isEmpty {
+                        executionSection
+                    }
+
+                    if let responseStep = presentation.responseStep {
+                        timelineRow(
+                            title: "Response",
+                            detail: responseStep.label,
+                            state: responseStep.state
+                        )
+                    }
+
+                    if presentation.failedToolCount > 0 {
+                        Label(
+                            "\(presentation.failedToolCount) \(presentation.failedToolCount == 1 ? "tool failed" : "tools failed")",
+                            systemImage: "exclamationmark.circle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: isExpanded)
+        .onChange(of: execution.completed) { wasCompleted, isCompleted in
+            if !wasCompleted && isCompleted {
+                isExpanded = false
+            }
+        }
+    }
+
+    private func planningSection(_ step: AgentExecutionStep) -> some View {
+        timelineRow(
+            title: "Planning",
+            detail: step.label,
+            state: step.state
+        )
+    }
+
+    private func reasoningSection(_ thinkingText: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Reasoning")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+            MarkdownMessageContent(text: thinkingText, density: .compact)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var executionSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Execution × \(max(presentation.tools.count, presentation.toolSteps.count))")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+            if !presentation.tools.isEmpty {
+                ForEach(presentation.tools) { tool in
+                    toolRow(tool)
+                }
+            } else {
+                ForEach(presentation.toolSteps) { step in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(step.label)
+                            .font(.caption)
+                            .foregroundStyle(step.state == .failed ? Color.red : Color.secondary)
+                            .lineLimit(2)
+                        Spacer(minLength: 4)
+                        stepStatusSymbol(step.state)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(step.label)
+                    .accessibilityValue(accessibilityStatusLabel(for: step.state))
+                }
+            }
+        }
+    }
+
+    private func toolRow(_ tool: AgentExecutionTool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(tool.detail?.nonEmpty ?? tool.name)
+                    .font(.caption)
+                    .foregroundStyle(tool.state == .failed ? Color.red : Color.secondary)
+                    .lineLimit(2)
+                Spacer(minLength: 4)
+                stepStatusSymbol(tool.state)
+            }
+            if let details = toolDetails(tool) {
+                Text(details)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .lineLimit(8)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func toolDetails(_ tool: AgentExecutionTool) -> String? {
+        [tool.arguments, tool.liveOutput, tool.resultText ?? ""]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+            .nonEmpty
+    }
+
+    private func timelineRow(
+        title: String,
+        detail: String,
+        state: AgentExecutionStep.State
+    ) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(state == .failed ? Color.red : Color.secondary)
+                    .lineLimit(3)
+            }
+            Spacer(minLength: 4)
+            stepStatusSymbol(state)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(detail)")
+        .accessibilityValue(accessibilityStatusLabel(for: state))
+    }
+
+    @ViewBuilder
+    private func stepStatusSymbol(_ state: AgentExecutionStep.State) -> some View {
+        Group {
+            switch state {
+            case .pending:
+                Image(systemName: "circle")
+                    .foregroundStyle(.tertiary)
+            case .running:
+                Circle()
+                    .fill(KordiTheme.signalBlue)
+                    .frame(width: 7, height: 7)
+            case .complete:
+                Image(systemName: "checkmark")
+                    .foregroundStyle(.secondary)
+            case .failed:
+                Image(systemName: "exclamationmark")
+                    .foregroundStyle(.red)
+            }
+        }
+        .font(.caption2.weight(.semibold))
+        .frame(width: 16, height: 16)
+        .accessibilityHidden(true)
+    }
+
+    private func accessibilityStatusLabel(for state: AgentExecutionStep.State) -> String {
+        switch state {
+        case .pending:
+            "Pending"
+        case .running:
+            "Running"
+        case .complete:
+            "Complete"
+        case .failed:
+            "Failed"
+        }
+    }
+
+    private func toggleExpansion() {
+        let nextValue = !isExpanded
+        if reduceMotion {
+            isExpanded = nextValue
+        } else {
+            withAnimation(.snappy(duration: 0.24)) {
+                isExpanded = nextValue
+            }
+        }
+        onExpansionChange(nextValue)
+    }
+}
+
+struct AgentExecutionActivityIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let accessibilityStatus: String
+    var color: Color = .secondary
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion)) { context in
+            HStack(spacing: 3) {
+                ForEach(0..<3, id: \.self) { index in
+                    Capsule(style: .continuous)
+                        .fill(color)
+                        .frame(width: 3, height: 12)
+                        .scaleEffect(
+                            x: 1,
+                            y: reduceMotion ? 0.34 : scale(for: index, at: context.date),
+                            anchor: .center
+                        )
+                }
+            }
+            .frame(width: 24, height: 16, alignment: .leading)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityStatus)
+        .accessibilityValue("In progress")
+    }
+
+    private func scale(for index: Int, at date: Date) -> CGFloat {
+        let elapsed = date.timeIntervalSinceReferenceDate
+        let phase = elapsed * 5.4 - Double(index) * 0.9
+        return 0.34 + 0.66 * CGFloat((sin(phase) + 1) / 2)
+    }
+}
+
 private struct ConversationCallActivityCard: View {
     let message: ChatMessage
     let isActive: Bool
@@ -474,6 +784,7 @@ enum MessageAttachmentPresentation {
 /// to the readable chat column. A fixed `maxWidth` alone expands every bubble.
 private struct AdaptiveBubbleLayout: Layout {
     let maximumWidth: CGFloat
+    let minimumWidth: CGFloat
 
     func sizeThatFits(
         proposal: ProposedViewSize,
@@ -483,7 +794,7 @@ private struct AdaptiveBubbleLayout: Layout {
         guard let subview = subviews.first else { return .zero }
         let availableWidth = min(maximumWidth, proposal.width ?? maximumWidth)
         let ideal = subview.sizeThatFits(.unspecified)
-        let width = min(availableWidth, ideal.width)
+        let width = min(availableWidth, max(minimumWidth, ideal.width))
         let fitted = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
         return CGSize(width: ceil(width), height: ceil(fitted.height))
     }
@@ -713,6 +1024,8 @@ private struct MessageImageAttachment: View {
     @State private var isLoading = true
     @State private var loadFailed = false
     @State private var reloadToken = 0
+    @State private var addedMediaKind: ExpressiveMediaLibraryKind?
+    @State private var isAddingToMediaLibrary = false
 
     var body: some View {
         Button {
@@ -738,17 +1051,37 @@ private struct MessageImageAttachment: View {
             Button(action: onShare) {
                 Label("Download / Save to Files", systemImage: "arrow.down.circle")
             }
+            if let mediaKind {
+                Button(action: addToMediaLibrary) {
+                    Label(
+                        addedMediaKind == mediaKind
+                            ? "Added to \(mediaKind.libraryName)"
+                            : "Add to \(mediaKind.libraryName)",
+                        systemImage: addedMediaKind == mediaKind ? "checkmark.circle" : "square.stack.3d.up"
+                    )
+                }
+                .disabled(isAddingToMediaLibrary || addedMediaKind == mediaKind)
+            }
         }
         .task(id: "\(attachment.id):\(reloadToken)") {
             await loadImage()
         }
-        .accessibilityLabel(image == nil ? "Image attachment" : "Review image attachment")
+        .accessibilityLabel(
+            attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                ?? (image == nil ? "Image attachment" : "Review image attachment")
+        )
         .accessibilityHint(
             loadFailed
                 ? "Double tap to retry loading"
                 : "\(attachment.name). Touch and hold for image actions."
         )
         .accessibilityAction(named: "Download or save to Files", onShare)
+        .accessibilityActions {
+            if mediaKind != nil {
+                Button(mediaLibraryActionLabel, action: addToMediaLibrary)
+            }
+        }
+        .sensoryFeedback(.success, trigger: addedMediaKind)
     }
 
     @ViewBuilder
@@ -837,6 +1170,27 @@ private struct MessageImageAttachment: View {
         }
         let height = min(presentation.maximumHeight, maximumWidth / ratio)
         return CGSize(width: height * ratio, height: height)
+    }
+
+    private var mediaKind: ExpressiveMediaLibraryKind? {
+        ExpressiveMediaLibraryKind.supportedKind(
+            name: attachment.name,
+            mimeType: attachment.mimeType
+        )
+    }
+
+    private var mediaLibraryActionLabel: String {
+        guard let mediaKind else { return "Add to media library" }
+        return "Add to \(mediaKind.libraryName)"
+    }
+
+    private func addToMediaLibrary() {
+        guard mediaKind != nil, !isAddingToMediaLibrary, addedMediaKind == nil else { return }
+        isAddingToMediaLibrary = true
+        Task {
+            addedMediaKind = await model.addAttachmentToExpressiveMediaLibrary(attachment)
+            isAddingToMediaLibrary = false
+        }
     }
 }
 

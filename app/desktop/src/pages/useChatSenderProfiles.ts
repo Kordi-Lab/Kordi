@@ -9,7 +9,7 @@ import type {
   Message,
   ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
-import { transcriptHumanParticipant } from '@/pages/chatsPage.model';
+import { transcriptHumanParticipant } from '@/pages/chatSenderProfileModel';
 import type {
   ChatsPageRuntime,
   ChatsPageSession,

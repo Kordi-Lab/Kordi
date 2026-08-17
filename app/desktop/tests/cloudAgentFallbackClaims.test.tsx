@@ -4,6 +4,10 @@ import { test } from 'node:test';
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import { cloudDirectPersonSessionId } from '../src/features/cloud/cloudCollaborationState';
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import {
+  CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND,
+  encodeCloudAgentRuntimeRouteChange,
+} from '../src/features/cloud/cloudAgentRuntime';
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
@@ -306,6 +310,50 @@ test('stale self-agent processing produces one durable Cloud fallback claim', ()
     },
     selfAgentFallbackBeforeMs: now,
   }), []);
+});
+
+test('runtime route events never become self-agent fallback prompts or history', () => {
+  const now = Date.now();
+  const routeChange: CloudMessage = {
+    ...message,
+    messageId: 'msg_runtime_route_change',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: encodeCloudAgentRuntimeRouteChange({
+      model: 'openai/gpt-5.6-sol',
+      authProvider: 'openai',
+      authChoice: 'local-active-oauth',
+      thinking: 'high',
+    }),
+    direction: 'outgoing',
+    sessionId: 'session:self-agent:runtime-route',
+    messageKind: CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND,
+    createdAt: new Date(now - 140_000).toISOString(),
+  };
+  const request: CloudMessage = {
+    ...routeChange,
+    messageId: 'msg_after_runtime_route_change',
+    body: 'answer this request once',
+    messageKind: null,
+    createdAt: new Date(now - 130_000).toISOString(),
+  };
+
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [],
+    messagesByPeer: { [account.accountId]: [routeChange] },
+    selfAgentFallbackBeforeMs: now - 120_000,
+  }), []);
+
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [],
+    messagesByPeer: { [account.accountId]: [routeChange, request] },
+    selfAgentFallbackBeforeMs: now - 120_000,
+  });
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.requestMessageId, request.messageId);
+  assert.equal(claims[0]?.prompt, 'answer this request once');
 });
 
 test('self-agent fallback age uses server delivery time instead of client display time', () => {

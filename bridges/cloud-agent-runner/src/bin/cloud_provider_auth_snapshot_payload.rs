@@ -34,14 +34,8 @@ fn main() -> Result<()> {
                 "model": model,
             }),
         ),
-        ProviderAuthMethod::OAuth => {
-            if auth.credential_provider != "openai-codex" {
-                bail!(
-                    "real-provider canary only supports OpenAI OAuth right now; resolved {}",
-                    auth.credential_provider
-                );
-            }
-            (
+        ProviderAuthMethod::OAuth => match auth.credential_provider.as_str() {
+            "openai-codex" => (
                 "openai-codex".to_string(),
                 "local-active-oauth".to_string(),
                 json!({
@@ -50,8 +44,18 @@ fn main() -> Result<()> {
                     "accountId": auth.account_id,
                     "model": model,
                 }),
-            )
-        }
+            ),
+            "anthropic-oauth" => (
+                "anthropic".to_string(),
+                "local-active-oauth".to_string(),
+                json!({
+                    "apiMode": "anthropic-oauth",
+                    "accessToken": auth.credential,
+                    "model": model,
+                }),
+            ),
+            other => bail!("real-provider canary does not support OAuth credentials from {other}"),
+        },
     };
 
     let body = json!({

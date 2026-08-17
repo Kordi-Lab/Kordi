@@ -12,6 +12,30 @@ enum CloudReadScope: Equatable {
 }
 
 enum CloudMessageStateProjector {
+    static func latestAgentModelChanges(
+        in messagesByPeer: [String: [CloudMessageDTO]],
+        sessionIds: Set<String>? = nil,
+        ownAccountId: String? = nil
+    ) -> [CloudMessageDTO] {
+        var latestBySessionID: [String: CloudMessageDTO] = [:]
+        for message in messagesByPeer.values.flatMap({ $0 }) {
+            guard CloudMessageCodec.isAgentModelChange(message),
+                  let sessionID = message.sessionId?.nonEmpty,
+                  ownAccountId.map({ message.fromAccountId == $0 }) ?? true,
+                  sessionIds?.contains(sessionID) ?? true else {
+                continue
+            }
+            if let current = latestBySessionID[sessionID],
+               !synchronizationOrder(current, precedes: message) {
+                continue
+            }
+            latestBySessionID[sessionID] = message
+        }
+        return latestBySessionID
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+    }
+
     static func deliveryState(for message: CloudMessageDTO, ownAccountId: String) -> MessageDeliveryState {
         if message.readAt != nil { return .read }
         // Kordi Cloud accepts and durably records the message before returning
@@ -88,5 +112,20 @@ enum CloudMessageStateProjector {
         case let .sessions(sessionIds):
             return !sessionKeys(for: message).isDisjoint(with: sessionIds)
         }
+    }
+
+    private static func synchronizationOrder(
+        _ left: CloudMessageDTO,
+        precedes right: CloudMessageDTO
+    ) -> Bool {
+        if let leftSequence = left.conversationSequence,
+           let rightSequence = right.conversationSequence,
+           leftSequence != rightSequence {
+            return leftSequence < rightSequence
+        }
+        if left.createdAt != right.createdAt {
+            return left.createdAt < right.createdAt
+        }
+        return left.messageId < right.messageId
     }
 }

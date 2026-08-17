@@ -300,6 +300,8 @@ export function useKordiAppShellComposition({
       saveDesktopAttachmentPaths: composerActions.saveDesktopAttachmentPaths,
       removeChatComposerAttachment:
         composerActions.removeChatComposerAttachment,
+      updateChatComposerAttachment:
+        composerActions.updateChatComposerAttachment,
     },
     composerDrafts: {
       projectComposerText: composer.composerDraftsView.project,

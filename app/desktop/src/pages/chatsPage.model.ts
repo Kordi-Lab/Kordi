@@ -17,7 +17,7 @@ function participantIsSelf(participant: ConversationParticipant) {
   return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
 }
 
-function conversationIsGroupChat(conversation: Conversation) {
+export function conversationIsGroupChat(conversation: Conversation) {
   return conversation.canonicalSessionId?.startsWith('session:group:') === true
     || conversation.participantSpaceId?.startsWith('group:') === true
     || /\bgroup\b/i.test(conversation.directness ?? '');
@@ -52,65 +52,6 @@ export function chatTranscriptDensityMode(conversation: Conversation): Transcrip
   if (conversationIsGroupChat(conversation)) return 'group-compact';
   if (conversationUsesCompactHumanTranscriptDensity(conversation)) return 'contact-compact';
   return 'default';
-}
-
-export function transcriptHumanParticipant(
-  conversation: Conversation,
-  message: Message,
-): ConversationParticipant | null {
-  if (message.isOwnMessage || message.senderType === 'agent') return null;
-  const humanParticipants = (conversation.canonicalParticipants ?? [])
-    .filter((participant) => participant.kind === 'human');
-  const senderIdentityId = message.senderIdentityId?.trim();
-  if (senderIdentityId) {
-    const exact = humanParticipants.find((participant) => (
-      participant.id === senderIdentityId
-      || participant.humanId?.trim() === senderIdentityId
-      || participant.sourceIdentityId?.trim() === senderIdentityId
-    ));
-    if (exact) return exact;
-  }
-  const senderName = message.sender?.trim().toLocaleLowerCase();
-  const nameMatches = senderName
-    ? humanParticipants.filter((participant) => (
-        participant.name.trim().toLocaleLowerCase() === senderName
-      ))
-    : [];
-  if (nameMatches.length === 1) return nameMatches[0];
-  if (conversationIsGroupChat(conversation) || conversation.type !== 'person') return null;
-
-  const remoteHumanId = conversation.identity?.remoteHumanId?.trim()
-    || conversation.collaborationTarget?.humanId?.trim()
-    || conversation.collaborationTarget?.nodeId?.trim();
-  if (!remoteHumanId) return null;
-  const remoteName = conversation.identity?.remoteHumanName?.trim()
-    || conversation.collaborationTarget?.ownerName?.trim()
-    || conversation.collaborationTarget?.displayName?.trim()
-    || message.sender?.trim()
-    || conversation.name.trim();
-  if (!remoteName) return null;
-
-  return {
-    id: `human:${remoteHumanId}`,
-    humanId: conversation.identity?.remoteHumanId?.trim()
-      || conversation.collaborationTarget?.humanId?.trim()
-      || remoteHumanId,
-    sourceIdentityId: conversation.collaborationTarget?.nodeId?.trim()
-      || remoteHumanId,
-    sourceHostId: conversation.collaborationTarget?.hostId?.trim()
-      || conversation.identity?.sourceHostId?.trim()
-      || null,
-    name: remoteName,
-    kind: 'human',
-    role: 'person',
-    source: conversation.collaborationTarget?.hostId === 'cloud' ? 'cloud' : 'bridge',
-    avatarKey: message.senderAvatarSeed?.trim()
-      || conversation.avatarSeed?.trim()
-      || remoteHumanId,
-    profileImageUrl: message.senderProfileImageUrl
-      ?? conversation.profileImageUrl
-      ?? null,
-  };
 }
 
 function addScopedKey(keys: Set<string>, scope: string, value?: string | null) {
@@ -385,9 +326,26 @@ export function conversationPaneKind(conversation: Conversation): 'human' | 'age
   return null;
 }
 
+export function shouldSynchronizeConversationModelRoute({
+  conversation,
+  usesCollaborationTransport,
+  hasCloudAccount,
+  hasModelHost,
+}: {
+  conversation: Conversation;
+  usesCollaborationTransport: boolean;
+  hasCloudAccount: boolean;
+  hasModelHost: boolean;
+}) {
+  if (usesCollaborationTransport) return true;
+  return conversationPaneKind(conversation) === 'agent'
+    && hasCloudAccount
+    && hasModelHost;
+}
+
 export function localAgentConversationNeedsProvider({
   activePaneKind,
-  activeConversationUsesCollaboration,
+  activeConversationUsesCollaboration: _activeConversationUsesCollaboration,
   hasAnyAuth,
 }: {
   activePaneKind: 'human' | 'agent' | null;
@@ -395,7 +353,6 @@ export function localAgentConversationNeedsProvider({
   hasAnyAuth: boolean;
 }) {
   return activePaneKind === 'agent'
-    && !activeConversationUsesCollaboration
     && !hasAnyAuth;
 }
 

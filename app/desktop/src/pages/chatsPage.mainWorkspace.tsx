@@ -3,6 +3,7 @@ import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { isEmptyChatSelectionId } from '@/features/chat/draftSessions';
 import {
   shouldInferLatestHumanReplyTarget,
@@ -129,13 +130,14 @@ export function ChatMainWorkspace({
   const shouldRenderLiveTurn = Boolean(
     presentation.liveTurn && !presentation.liveTurn.completed,
   );
-  const handleSend = (draftOverride?: string) => {
+  const handleSend = (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => {
     const draft = draftOverride ?? composer.chatComposerText;
+    const attachmentCount = attachmentOverride?.length ?? composer.chatComposerAttachments.length;
     if (
       needsProvider
       && (
         draft.trim().length > 0
-        || composer.chatComposerAttachments.length > 0
+        || attachmentCount > 0
       )
     ) {
       openAuthentication?.();
@@ -148,12 +150,17 @@ export function ChatMainWorkspace({
       });
       return;
     }
-    const shouldJump = draft.trim().length > 0
-      || composer.chatComposerAttachments.length > 0;
-    runtime.onSendChatMessage(draftOverride);
+    const shouldJump = draft.trim().length > 0 || attachmentCount > 0;
+    const sendResult = runtime.onSendChatMessage(
+      draftOverride,
+      undefined,
+      undefined,
+      attachmentOverride,
+    );
     if (shouldJump) {
       scheduleTranscriptScrollToBottom(transcript.chatTranscriptScrollRef);
     }
+    return sendResult;
   };
 
   return (
@@ -344,6 +351,7 @@ export function ChatMainWorkspace({
                   >
                     <MainComposer
                       conversation={activeConv}
+                      cloudAccountId={session.cloudAccount?.accountId}
                       composer={composer}
                       runtime={runtime}
                       localRouting={{
@@ -353,7 +361,7 @@ export function ChatMainWorkspace({
                         cacheText: runtime.activeRuntimeCacheText,
                       }}
                       collaborationRouting={{
-                        enabled: session.activeConversationUsesCollaboration,
+                        enabled: models.routing.enabled,
                         notice: models.routing.notice,
                         model: models.routing.selectedAgent ? {
                           agents: models.routing.agents,

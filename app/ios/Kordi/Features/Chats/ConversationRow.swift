@@ -192,18 +192,20 @@ private struct AgentActivityLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             if activity == .replying {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(KordiTheme.agentViolet)
+                Circle()
+                    .fill(KordiTheme.agentViolet)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
             } else {
                 Circle()
                     .fill(activity == .failed ? Color.red : Color.green)
                     .frame(width: 7, height: 7)
+                Text(activity.label)
+                    .font(.subheadline)
+                    .foregroundStyle(activity == .failed ? Color.red : KordiTheme.agentViolet)
             }
-            Text(activity.label)
-                .font(.subheadline)
-                .foregroundStyle(activity == .failed ? Color.red : KordiTheme.agentViolet)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(activity.label)
     }
 }

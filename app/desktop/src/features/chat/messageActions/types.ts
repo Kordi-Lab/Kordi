@@ -8,6 +8,7 @@ import type {
   ComposerEnvironmentContext,
   ComposerMessageRuntimeContext,
   ComposerRuntimeContext,
+  AttachmentItem,
 } from '../composerController.types';
 
 export type ResolvedMentionedCollaborationTarget = {
@@ -48,6 +49,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'desktopChatState'
   | 'canonicalSessionState'
   | 'desktopLiveTurn'
+  | 'resolveChatRuntimeRoute'
   | 'setCanonicalSessionState'
 > & Pick<
   ComposerDraftContext,
@@ -69,6 +71,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'setCloudCollaborationState'
   | 'sendCloudCollaborationMessage'
   | 'sendCloudGroupControl'
+  | 'publishCloudAgentRuntimeRouteChange'
   | 'setDesktopChatError'
   | 'setDesktopChatState'
   | 'setDesktopLiveTurnsBySession'
@@ -81,7 +84,7 @@ export type UseChatMessageActionsArgs = Pick<
   ComposerAuthNavigationContext,
   'refreshDesktopChat'
 > & {
-  attachmentSummaryText: (text: string) => string;
+  attachmentSummaryText: (text: string, attachments?: AttachmentItem[]) => string;
   handleLocalSlashCommand: (
     rawText: string,
     scope?: ComposerScope,
