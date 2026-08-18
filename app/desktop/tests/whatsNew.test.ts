@@ -11,7 +11,7 @@ import {
   whatsNewRequestUrl,
 } from '../src/features/updates/whatsNew';
 
-const VERSION = '0.0.1-beta.12';
+const VERSION = '0.0.1-beta.13';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -31,7 +31,7 @@ function releaseMetadata(version = VERSION) {
     version,
     notes: '### Added\n\n- Added a first-launch summary. ([#893])',
     pubDate: '2026-08-08T00:00:00Z',
-    changelogUrl: 'https://github.com/Kordi-AI/Kordi/releases/tag/V0.0.1.beta12',
+    changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta13',
   };
 }
 
@@ -158,28 +158,40 @@ test('release metadata and highlights stay safe and readable', () => {
   );
 });
 
-test('beta.12 uses the two customer-facing release highlights', () => {
+test('beta.13 uses the four customer-facing release highlights', () => {
   const release = parseWhatsNewRelease(releaseMetadata(), VERSION);
   assert.ok(release);
   assert.deepEqual(releaseHighlights(release), [
     {
-      category: 'Sign in',
-      title: 'Social sign-in stays available in packaged Cloud builds',
-      detail: 'Google and GitHub sign-in remain available when capability discovery is unavailable. Debug-only server guidance no longer leaks into the user build.',
-      kind: 'sign-in',
+      category: 'iPhone companion',
+      title: 'Your chats, agents, calls, and media now travel with you',
+      detail: 'The native iPhone app now includes Contact and Agent conversations, Digest, Ask Agent, calls, session details, expressive media, profiles, and presence.',
+      kind: 'general',
     },
     {
-      category: 'Group collaboration',
-      title: 'Group agents can mention people and their Kordi agents',
-      detail: 'Mentions now carry authorization, attribution, and reply-history handling across the shared conversation.',
+      category: 'Reliable collaboration',
+      title: 'Chats and agent work converge cleanly across devices',
+      detail: 'Reliable sync v2 keeps messages, group handoffs, agent replies, read state, and runtime routes consistent without duplicate execution.',
       kind: 'collaboration',
+    },
+    {
+      category: 'Calls and devices',
+      title: 'Review active devices and start native calls',
+      detail: 'Manage signed-in installations and use synchronized audio, video, and group-call history across macOS and iOS.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Chat polish',
+      title: 'Messages stay compact, readable, and correctly delivered',
+      detail: 'Refined composer behavior, mentions, partial agent output, receipts, media previews, scrolling, timestamps, and expandable tool activity.',
+      kind: 'general',
     },
   ]);
 });
 
 test('other releases fall back to clean, bounded Markdown highlights', () => {
   assert.deepEqual(releaseHighlights({
-    version: '0.0.1-beta.13',
+    version: '0.0.1-beta.99',
     notes: '### Added\n\n- Added **What’s New** after upgrades. ([#893])\n- Kept `startup` available when metadata fails.',
     publishedAt: '2026-08-09T00:00:00Z',
   }), [

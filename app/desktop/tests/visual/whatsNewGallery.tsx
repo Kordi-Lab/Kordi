@@ -26,7 +26,7 @@ createRoot(document.querySelector('#root')!).render(
     </section>
     <WhatsNewDialog
       release={{
-        version: '0.0.1-beta.12',
+        version: '0.0.1-beta.13',
         notes: [
           '### What changed',
           '',

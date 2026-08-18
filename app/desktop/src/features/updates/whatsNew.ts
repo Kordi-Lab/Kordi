@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.1-beta.13': [
+    {
+      category: 'iPhone companion',
+      title: 'Your chats, agents, calls, and media now travel with you',
+      detail: 'The native iPhone app now includes Contact and Agent conversations, Digest, Ask Agent, calls, session details, expressive media, profiles, and presence.',
+      kind: 'general',
+    },
+    {
+      category: 'Reliable collaboration',
+      title: 'Chats and agent work converge cleanly across devices',
+      detail: 'Reliable sync v2 keeps messages, group handoffs, agent replies, read state, and runtime routes consistent without duplicate execution.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Calls and devices',
+      title: 'Review active devices and start native calls',
+      detail: 'Manage signed-in installations and use synchronized audio, video, and group-call history across macOS and iOS.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Chat polish',
+      title: 'Messages stay compact, readable, and correctly delivered',
+      detail: 'Refined composer behavior, mentions, partial agent output, receipts, media previews, scrolling, timestamps, and expandable tool activity.',
+      kind: 'general',
+    },
+  ],
   '0.0.1-beta.12': [
     {
       category: 'Sign in',
