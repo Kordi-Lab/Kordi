@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit
+  namespace: kordi-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: livekit
+  ports:
+    - name: signal
+      port: 7880
+      targetPort: signal
+      protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livekit
+  namespace: kordi-cloud
+data:
+  livekit.yaml: |
+    port: 7880
+    rtc:
+      tcp_port: 7881
+      udp_port: 7882
+      use_external_ip: true
+    turn:
+      enabled: true
+      tls_port: 0
+      udp_port: 3478
+      relay_range_start: 30000
+      relay_range_end: 30100
+    logging:
+      level: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: livekit
+    app.kubernetes.io/component: media
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livekit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: livekit
+        app.kubernetes.io/component: media
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: livekit
+          image: livekit/livekit-server:v1.12.0
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/livekit/livekit.yaml"]
+          env:
+            - name: LIVEKIT_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-livekit
+                  key: keys
+          ports:
+            - name: signal
+              containerPort: 7880
+              protocol: TCP
+            - name: ice-tcp
+              containerPort: 7881
+              protocol: TCP
+            - name: ice-udp
+              containerPort: 7882
+              protocol: UDP
+            - name: turn-udp
+              containerPort: 3478
+              protocol: UDP
+          readinessProbe:
+            tcpSocket:
+              port: signal
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: signal
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: livekit

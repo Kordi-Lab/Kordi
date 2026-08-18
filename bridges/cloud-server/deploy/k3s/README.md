@@ -142,22 +142,57 @@ unset KORDI_SUPPORT_OWNER_EMAIL KORDI_SUPPORT_INBOX
 unset KORDI_SUPPORT_SMTP_USERNAME KORDI_SUPPORT_SMTP_FROM KORDI_SUPPORT_SMTP_PASSWORD
 ```
 
-The hosted support chat also requires the configured support-owner account to
-have a current provider-auth snapshot. Sign in to Kordi with that account,
-connect the intended model provider, and confirm the snapshot reaches the
-hosted server before enabling live support traffic. The system agent is
-created and locked by the server; it is intentionally hidden from normal
-Factory edit/archive routes.
+The hosted support chat uses a dedicated OpenAI API key owned by the service.
+It never borrows a provider-auth snapshot from the support owner or the person
+asking for help. Store the key only in the `kordi-support-openai` Secret:
+
+```bash
+read -s -p "Kordi Support OpenAI API key: " KORDI_SUPPORT_OPENAI_API_KEY
+echo
+kubectl -n kordi-cloud create secret generic kordi-support-openai \
+  --from-literal=api-key="$KORDI_SUPPORT_OPENAI_API_KEY" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset KORDI_SUPPORT_OPENAI_API_KEY
+```
+
+The system agent is created and locked by the server; it is intentionally
+hidden from normal Factory edit/archive routes.
 
 Verify without printing any secret values:
 
 ```bash
 kubectl -n kordi-cloud get secret kordi-support-smtp
 kubectl -n kordi-cloud get secret kordi-support-config
+kubectl -n kordi-cloud get secret kordi-support-openai
 kubectl -n kordi-cloud rollout status deployment/kordi-cloud-server --timeout=180s
 kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m \
   | grep -E 'Kordi support|support tickets'
 ```
+
+## Voice and video media
+
+Production calls use the single-node LiveKit deployment in `manifests/livekit.yaml`.
+Create one API key and a secret of at least 32 random bytes, then store the
+client URL and the LiveKit `key: secret` pair without printing either value:
+
+```bash
+read -s -p "LiveKit API key: " KORDI_LIVEKIT_API_KEY
+echo
+read -s -p "LiveKit API secret: " KORDI_LIVEKIT_API_SECRET
+echo
+kubectl -n kordi-cloud create secret generic kordi-livekit \
+  --from-literal=url=wss://media.kordi.ai \
+  --from-literal=api-key="$KORDI_LIVEKIT_API_KEY" \
+  --from-literal=api-secret="$KORDI_LIVEKIT_API_SECRET" \
+  --from-literal=keys="$KORDI_LIVEKIT_API_KEY: $KORDI_LIVEKIT_API_SECRET" \
+  --dry-run=client -o yaml | kubectl apply -f -
+unset KORDI_LIVEKIT_API_KEY KORDI_LIVEKIT_API_SECRET
+```
+
+Point `media.kordi.ai` at the product edge, install the reviewed Caddy file,
+and run `configure-product-firewall.sh` before deploying. The firewall exposes
+only LiveKit signal TLS through Caddy, ICE TCP/UDP, TURN/UDP, and the bounded
+TURN relay range; database and application ports stay private.
 
 The production origin is a compatibility contract with released desktop
 clients. Both `kordi.ai` and the legacy `coordinar.io` origin must serve

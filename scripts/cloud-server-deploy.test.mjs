@@ -17,6 +17,7 @@ const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-clou
 const runnerDeployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh', import.meta.url);
 const releaseCredentialsScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const cloudServerManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml', import.meta.url);
+const livekitManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/livekit.yaml', import.meta.url);
 const legacyInstallScriptPath = new URL('../bridges/cloud-server/deploy/install.sh', import.meta.url);
 const legacyServicePath = new URL('../bridges/cloud-server/deploy/kordi-cloud-server.service', import.meta.url);
 const dockerignorePath = new URL('../.dockerignore', import.meta.url);
@@ -93,6 +94,7 @@ test('product firewall overrides broad shared-network ingress rules', async () =
   const script = await readFile(firewallScriptPath, 'utf8');
 
   assert.match(script, /--rules=tcp:22,tcp:80,tcp:443/);
+  assert.match(script, /--rules=tcp:7881,udp:3478,udp:7882,udp:30000-30100/);
   assert.match(script, /--source-ranges=0\.0\.0\.0\/0/);
   assert.match(script, /--source-ranges="\$\{PRIVATE_SOURCE_RANGE\}"/);
   assert.match(script, /--priority=900[\s\S]*--action=DENY[\s\S]*--rules=all/);
@@ -113,6 +115,22 @@ test('cloud server manifest targets the hosted product public base', async () =>
     assert.match(manifest, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
   }
   assert.doesNotMatch(manifest, /https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io/);
+  assert.match(manifest, /KORDI_LIVEKIT_URL[\s\S]*name: kordi-livekit[\s\S]*key: url/);
+  assert.match(manifest, /KORDI_SUPPORT_OPENAI_API_KEY[\s\S]*name: kordi-support-openai/);
+});
+
+test('product media uses pinned host networking and secret-backed credentials', async () => {
+  const manifest = await readFile(livekitManifestPath, 'utf8');
+
+  assert.match(manifest, /image: livekit\/livekit-server:v1\.12\.0/);
+  assert.match(manifest, /hostNetwork: true/);
+  assert.match(manifest, /tcp_port: 7881/);
+  assert.match(manifest, /udp_port: 7882/);
+  assert.match(manifest, /udp_port: 3478/);
+  assert.match(manifest, /relay_range_start: 30000/);
+  assert.match(manifest, /relay_range_end: 30100/);
+  assert.match(manifest, /name: kordi-livekit[\s\S]*key: keys/);
+  assert.doesNotMatch(manifest, /api-secret:|api-key:/);
 });
 
 test('product origin serves desktop compatibility routes without redirects', async () => {
@@ -142,6 +160,7 @@ test('product origin serves desktop compatibility routes without redirects', asy
     'legacy product routes must be handled before the marketing redirect',
   );
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:17081/);
+  assert.match(caddyfile, /media\.kordi\.ai[\s\S]*reverse_proxy 127\.0\.0\.1:7880/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 10\.\d+\.\d+\.\d+:17081/);
   assert.match(portForwardService, /service\/kordi-cloud-server 17081:17081/);
   assert.match(portForwardService, /--address=127\.0\.0\.1/);
@@ -160,4 +179,6 @@ test('product origin serves desktop compatibility routes without redirects', asy
   assert.match(deploy, /Access-Control-Request-Method: POST/);
   assert.match(deploy, /access-control-allow-origin/);
   assert.match(deploy, /expected direct updater metadata status 200/);
+  assert.match(deploy, /kubectl apply -f .*manifests\/livekit\.yaml/);
+  assert.match(deploy, /rollout status deployment\/livekit/);
 });
