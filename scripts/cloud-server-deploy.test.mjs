@@ -124,6 +124,7 @@ test('product media uses pinned host networking and secret-backed credentials', 
 
   assert.match(manifest, /image: livekit\/livekit-server:v1\.12\.0/);
   assert.match(manifest, /hostNetwork: true/);
+  assert.match(manifest, /enableServiceLinks: false/);
   assert.match(manifest, /tcp_port: 7881/);
   assert.match(manifest, /udp_port: 7882/);
   assert.match(manifest, /udp_port: 3478/);

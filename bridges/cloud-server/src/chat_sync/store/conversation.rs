@@ -6,8 +6,23 @@ pub async fn create_conversation(
     account_id: &str,
     request: CreateConversationRequest,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    create_conversation_with_trusted_peer(pool, account_id, request, None).await
+}
+
+pub async fn create_conversation_with_trusted_peer(
+    pool: &PgPool,
+    account_id: &str,
+    request: CreateConversationRequest,
+    trusted_peer_account_id: Option<&str>,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let mut transaction = pool.begin().await?;
-    let outcome = create_conversation_in_transaction(&mut transaction, account_id, request).await?;
+    let outcome = create_conversation_in_transaction_with_trusted_peer(
+        &mut transaction,
+        account_id,
+        request,
+        trusted_peer_account_id,
+    )
+    .await?;
     transaction.commit().await?;
     Ok(outcome)
 }
@@ -16,6 +31,16 @@ pub(crate) async fn create_conversation_in_transaction(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     request: CreateConversationRequest,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    create_conversation_in_transaction_with_trusted_peer(transaction, account_id, request, None)
+        .await
+}
+
+async fn create_conversation_in_transaction_with_trusted_peer(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    request: CreateConversationRequest,
+    trusted_peer_account_id: Option<&str>,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let shared_title = normalize_title(request.shared_title.as_deref())?;
     let client_session_id = normalize_client_session_id(Some(&request.client_session_id))?
@@ -110,15 +135,19 @@ pub(crate) async fn create_conversation_in_transaction(
         .cloned()
         .collect::<Vec<_>>();
     if !peers.is_empty() {
-        let contact_count: (i64,) = query_as(
-            "SELECT COUNT(*) FROM cloud_contacts \
-             WHERE account_id = $1 AND peer_account_id = ANY($2)",
+        let authorized_count: (i64,) = query_as(
+            "SELECT COUNT(*) FROM unnest($2::TEXT[]) AS peer(account_id) \
+             WHERE peer.account_id = $3 OR EXISTS ( \
+               SELECT 1 FROM cloud_contacts contact \
+               WHERE contact.account_id = $1 AND contact.peer_account_id = peer.account_id \
+             )",
         )
         .bind(account_id)
         .bind(&peers)
+        .bind(trusted_peer_account_id)
         .fetch_one(&mut **transaction)
         .await?;
-        if contact_count.0 != peers.len() as i64 {
+        if authorized_count.0 != peers.len() as i64 {
             return Err(StoreError::Forbidden);
         }
     }
