@@ -14,9 +14,10 @@ import {
 } from './test_support/publishDesktopReleaseFixtures.mjs';
 
 test('acceptance cleanup conditionally writes an unpublished tombstone and verifies 204', async (t) => {
-  const fixture = await makeFixture();
+  const version = '0.0.1-beta.13-preview.1';
+  const fixture = await makeFixture(version);
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
-  const prepared = await preparedFixture(fixture, { channel: 'acceptance' });
+  const prepared = await preparedFixture(fixture, { channel: 'acceptance', version });
   const store = new MemoryStore(storedReleaseEntries(prepared));
   const priorEtag = (await store.getObject(prepared.pointerKey)).etag;
   store.actions.length = 0;

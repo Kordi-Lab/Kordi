@@ -573,7 +573,7 @@ async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDA
     throw new Error('Prior channel pointer is invalid');
   }
   assertDigest(pointer.releaseManifestSha256, 'Prior channel pointer manifest');
-  if (!/^desktop\/releases\/(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-beta\.(?:0|[1-9]\d*)\/release\.json$/.test(pointer.releaseManifestKey)) {
+  if (!/^desktop\/releases\/(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-beta\.(?:0|[1-9]\d*)(?:-preview\.(?:0|[1-9]\d*))?\/release\.json$/.test(pointer.releaseManifestKey)) {
     throw new Error('Prior channel pointer manifest key is invalid');
   }
 
