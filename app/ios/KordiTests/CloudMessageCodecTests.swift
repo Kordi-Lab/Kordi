@@ -256,6 +256,60 @@ final class CloudMessageCodecTests: XCTestCase {
                 responseText: "The rollout is nearly ready."
             )
         )
+
+        let thinkingExecution = AgentExecutionSnapshot(
+            phase: .analyzing,
+            summary: "Analyzing the request",
+            steps: [],
+            thinkingText: "Inspect the conversation state.",
+            startedAtMs: 1_000,
+            updatedAtMs: 2_000,
+            completed: false
+        )
+        XCTAssertFalse(MessageBubble.showsAgentWaitingIndicator(
+            execution: thinkingExecution,
+            responseText: "processing..."
+        ))
+        XCTAssertEqual(
+            AgentExecutionTimelinePresentation(execution: thinkingExecution).activeOutputStatus,
+            "Inspect the conversation state."
+        )
+
+        let toolExecution = AgentExecutionSnapshot(
+            phase: .usingTool,
+            summary: "Using Search",
+            steps: [
+                AgentExecutionStep(
+                    id: "tool:search",
+                    label: "Using Search",
+                    state: .running
+                )
+            ],
+            tools: [
+                AgentExecutionTool(
+                    id: "search",
+                    name: "Search",
+                    status: "running",
+                    arguments: #"{"query":"conversation state"}"#,
+                    liveOutput: "",
+                    resultText: nil,
+                    detail: "Searching the conversation state",
+                    toolLayer: "observation",
+                    isError: false
+                )
+            ],
+            startedAtMs: 1_000,
+            updatedAtMs: 2_000,
+            completed: false
+        )
+        XCTAssertFalse(MessageBubble.showsAgentWaitingIndicator(
+            execution: toolExecution,
+            responseText: "processing..."
+        ))
+        XCTAssertEqual(
+            AgentExecutionTimelinePresentation(execution: toolExecution).activeOutputStatus,
+            "Searching the conversation state"
+        )
     }
 
     @MainActor
@@ -402,6 +456,26 @@ final class CloudMessageCodecTests: XCTestCase {
         )
 
         XCTAssertEqual(merged.map(\.id), [cloud.id])
+    }
+
+    @MainActor
+    func testEmptyProjectionPreservesLoadedConversationHistory() {
+        let cached = ChatMessage(
+            id: "cached-message",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "Cached response",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+
+        XCTAssertEqual(
+            AppModel.mergeProjectedMessages([], preservingLocalMessagesFrom: [cached]),
+            [cached]
+        )
     }
 
     func testAgentModelChangeNoticeParsesQualifiedModel() {

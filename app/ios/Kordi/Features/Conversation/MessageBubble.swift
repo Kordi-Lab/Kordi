@@ -236,6 +236,8 @@ struct MessageBubble: View, Equatable {
                     .padding(.vertical, 8)
             }
             .background(bubbleColor, in: bubbleShape)
+            .compositingGroup()
+            .clipShape(bubbleShape)
         }
     }
 
@@ -335,7 +337,9 @@ struct MessageBubble: View, Equatable {
         execution: AgentExecutionSnapshot,
         responseText: String
     ) -> Bool {
-        !execution.completed && !hasVisibleAgentResponseText(responseText)
+        !execution.completed
+            && !hasVisibleAgentResponseText(responseText)
+            && !AgentExecutionTimelinePresentation(execution: execution).hasExpandableContent
     }
 
     private var isCallActivity: Bool {
@@ -455,12 +459,12 @@ private struct AgentExecutionTimeline: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if showsWaitingIndicator && !presentation.hasExpandableContent {
+            if showsWaitingIndicator {
                 AgentExecutionActivityIndicator(
                     accessibilityStatus: presentation.headline
                 )
                 .frame(minHeight: 24, alignment: .leading)
-            } else {
+            } else if let activeOutputStatus = presentation.activeOutputStatus {
                 Button(action: toggleExpansion) {
                     HStack(spacing: 8) {
                         if let completionLabel = presentation.completionLabel {
@@ -468,16 +472,17 @@ private struct AgentExecutionTimeline: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                        } else if showsWaitingIndicator {
-                            AgentExecutionActivityIndicator(
-                                accessibilityStatus: presentation.headline
-                            )
                         } else {
-                            Image(systemName: "ellipsis")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 24, height: 16, alignment: .leading)
-                                .accessibilityHidden(true)
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(KordiTheme.signalBlue)
+                                    .frame(width: 7, height: 7)
+                                    .accessibilityHidden(true)
+                                Text(activeOutputStatus)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
                         Spacer(minLength: 4)
                         Image(systemName: "chevron.down")
@@ -489,7 +494,7 @@ private struct AgentExecutionTimeline: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(presentation.completionLabel ?? presentation.headline)
+                .accessibilityLabel(presentation.completionLabel ?? activeOutputStatus)
                 .accessibilityValue(expansion.isExpanded ? "Expanded" : "Collapsed")
             }
 
@@ -593,6 +598,8 @@ private struct AgentExecutionTimeline: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .lineLimit(8)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .accessibilityElement(children: .combine)

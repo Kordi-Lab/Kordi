@@ -121,6 +121,28 @@ struct AgentExecutionTimelinePresentation: Equatable {
             || failedToolCount > 0
     }
 
+    var activeOutputStatus: String? {
+        if let tool = tools.last(where: { $0.state == .running }) {
+            return tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                ?? tool.name.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        }
+        if let step = toolSteps.last(where: { $0.state == .running }) {
+            return step.label.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        }
+        if let thinking = Self.firstOutputLine(thinkingText) {
+            return thinking
+        }
+        if let tool = tools.last {
+            return tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                ?? tool.name.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        }
+        if let step = toolSteps.last {
+            return step.label.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        }
+        return planningStep?.label.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+            ?? responseStep?.label.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+    }
+
     init(execution: AgentExecutionSnapshot) {
         planningStep = execution.steps.first { $0.id == "analysis" }
         toolSteps = execution.steps.filter { $0.id.hasPrefix("tool:") }
@@ -138,6 +160,17 @@ struct AgentExecutionTimelinePresentation: Equatable {
         } else {
             completionLabel = nil
         }
+    }
+
+    private static func firstOutputLine(_ text: String?) -> String? {
+        guard var line = text?
+            .split(whereSeparator: \.isNewline)
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) else { return nil }
+        if line.hasPrefix("- ") || line.hasPrefix("* ") {
+            line.removeFirst(2)
+        }
+        return line.nonEmpty
     }
 }
 

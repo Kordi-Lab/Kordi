@@ -270,32 +270,22 @@ struct ComposerView: View {
     }
 
     private var messageEditor: some View {
-        ZStack(alignment: .leading) {
-            if text.isEmpty {
-                Text("Message \(destinationName)")
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 13)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-
-            ComposerTextView(
-                text: $text,
-                selection: $textSelection,
-                isFocused: $isFocused,
-                accessibilityLabel: "Message \(destinationName)"
-            )
-            .frame(minHeight: 44)
-            .padding(.horizontal, 8)
-            .accessibilityHidden(isExpressivePickerPresented)
-            .onChange(of: isFocused) { _, isFocused in
-                if isFocused { dismissExpressivePicker() }
-            }
-            .onChange(of: text) { _, newValue in
-                if let selectedMention,
-                   !newValue.localizedCaseInsensitiveContains(selectedMention.mentionText) {
-                    self.selectedMention = nil
-                }
+        ComposerTextView(
+            text: $text,
+            selection: $textSelection,
+            isFocused: $isFocused,
+            accessibilityLabel: "Message \(destinationName)"
+        )
+        .frame(minHeight: 44)
+        .padding(.horizontal, 8)
+        .accessibilityHidden(isExpressivePickerPresented)
+        .onChange(of: isFocused) { _, isFocused in
+            if isFocused { dismissExpressivePicker() }
+        }
+        .onChange(of: text) { _, newValue in
+            if let selectedMention,
+               !newValue.localizedCaseInsensitiveContains(selectedMention.mentionText) {
+                self.selectedMention = nil
             }
         }
         .overlay {

@@ -1465,6 +1465,7 @@ final class AppModel: ObservableObject {
         _ projected: [ChatMessage],
         preservingLocalMessagesFrom existing: [ChatMessage]
     ) -> [ChatMessage] {
+        guard !projected.isEmpty else { return existing }
         var messagesByID = Dictionary(uniqueKeysWithValues: projected.map { ($0.id, $0) })
         for localMessage in existing where localMessage.isAgentModelChangeNotice {
             let hasMatchingCloudNotice = projected.contains { cloudMessage in
