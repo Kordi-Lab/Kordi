@@ -46,6 +46,7 @@ async fn authoritative_group_membership_removal_stops_future_delivery() {
             client_session_id: format!("session:group:{}", Uuid::now_v7()),
             member_account_ids: vec![kept.clone(), removed.clone()],
         },
+        None,
     )
     .await
     .expect("create group");
@@ -160,7 +161,7 @@ async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
         client_session_id: format!("session:direct-person:{owner}:{peer}"),
         member_account_ids: vec![peer.clone()],
     };
-    let created = store::create_conversation(&pool, &owner, create_request.clone())
+    let created = store::create_conversation(&pool, &owner, create_request.clone(), None)
         .await
         .expect("create direct conversation");
     assert!(created.inserted);
@@ -207,7 +208,7 @@ async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
         fork_snapshot.forked_from_message_id.as_deref(),
         Some("msg:parent")
     );
-    let duplicate = store::create_conversation(&pool, &owner, create_request)
+    let duplicate = store::create_conversation(&pool, &owner, create_request, None)
         .await
         .expect("retry conversation creation");
     assert!(!duplicate.inserted);
@@ -222,6 +223,7 @@ async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
             client_session_id: created.value.legacy_session_id.clone().unwrap(),
             member_account_ids: vec![owner.clone()],
         },
+        None,
     )
     .await
     .expect("other member opens the same direct session");
@@ -453,6 +455,7 @@ async fn retention_advances_the_cursor_floor_before_replay_rows_are_deleted() {
             client_session_id: format!("session:retention:{}", Uuid::now_v7()),
             member_account_ids: vec![peer.clone()],
         },
+        None,
     )
     .await
     .expect("create retained conversation")

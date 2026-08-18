@@ -394,14 +394,44 @@ async fn support_runs_use_the_dedicated_service_api_key_without_an_owner_snapsho
         "session:direct-system-agent:{}:{support_agent_id}",
         requester.account_id
     );
-    let conversation_id = create_test_conversation(
-        &pool,
-        &requester.account_id,
-        &session_id,
-        ConversationKind::Direct,
-        vec![support_owner.account_id.clone()],
+    let ordinary_chat = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v2/chat/conversations",
+            &requester.token,
+            json!({
+                "client_operation_id": uuid::Uuid::now_v7(),
+                "kind": "direct",
+                "shared_title": null,
+                "client_session_id": format!("session:direct-person:{}:{}", requester.account_id, support_owner.account_id),
+                "member_account_ids": [support_owner.account_id.clone()],
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(ordinary_chat.status(), StatusCode::FORBIDDEN);
+    let conversation = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v2/chat/conversations",
+            &requester.token,
+            json!({
+                "client_operation_id": uuid::Uuid::now_v7(),
+                "kind": "direct",
+                "shared_title": null,
+                "client_session_id": session_id.clone(),
+                "member_account_ids": [support_owner.account_id.clone()],
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(conversation.status(), StatusCode::CREATED);
+    let conversation_id = uuid::Uuid::parse_str(
+        read_json(conversation).await["conversation"]["id"]
+            .as_str()
+            .unwrap(),
     )
-    .await;
+    .unwrap();
     let request_message_id = insert_test_message(
         &pool,
         &requester.account_id,

@@ -89,7 +89,28 @@ async fn create_conversation(
     Extension(session): Extension<CloudSession>,
     Json(request): Json<CreateConversationRequest>,
 ) -> Response {
-    match store::create_conversation(state.db_pool(), &session.account_id, request).await {
+    let trusted_support_owner = state.support().and_then(|support| {
+        let config = support.config();
+        let expected_session_id = format!(
+            "session:direct-system-agent:{}:{}",
+            session.account_id, config.agent_id,
+        );
+        (request.kind == crate::chat_sync::models::ConversationKind::Direct
+            && request.client_session_id.trim() == expected_session_id
+            && request
+                .member_account_ids
+                .iter()
+                .any(|member| member.trim() == config.owner_account_id))
+        .then_some(config.owner_account_id.as_str())
+    });
+    match store::create_conversation(
+        state.db_pool(),
+        &session.account_id,
+        request,
+        trusted_support_owner,
+    )
+    .await
+    {
         Ok(outcome) => (
             if outcome.inserted {
                 StatusCode::CREATED

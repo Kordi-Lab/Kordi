@@ -111,6 +111,7 @@ pub(super) async fn finalize_request_acceptance(
             client_session_id: hello_session_id.clone(),
             member_account_ids: vec![from_id.to_string()],
         },
+        None,
     )
     .await
     {
