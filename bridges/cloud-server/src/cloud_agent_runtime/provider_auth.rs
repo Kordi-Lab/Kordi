@@ -14,6 +14,11 @@ use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError
 
 mod provider_family;
 use provider_family::{canonical_provider_id, equivalent_provider_ids};
+mod service;
+use service::service_provider_auth_for_run;
+pub use service::{
+    RunnerProviderAuthMaterial, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
+};
 
 const NONCE_LEN: usize = 12;
 
@@ -139,27 +144,12 @@ pub struct CurrentProviderAuthSnapshotResponse {
     pub snapshot: Option<ProviderAuthSnapshotResponse>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct RunnerProviderAuthMaterialEnvelope {
-    #[serde(rename = "providerAuth")]
-    pub provider_auth: RunnerProviderAuthMaterial,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RunnerProviderAuthMaterial {
-    #[serde(rename = "snapshotId")]
-    pub snapshot_id: String,
-    pub provider: String,
-    #[serde(rename = "authChoice")]
-    pub auth_choice: String,
-    pub payload: Value,
-}
-
 #[derive(Debug)]
 pub enum ProviderAuthForRunResult {
     Found(RunnerProviderAuthMaterial),
     RunNotFound,
     ProviderAuthNotFound,
+    ProviderAuthCipherUnavailable,
 }
 
 #[derive(Debug, Deserialize)]
@@ -320,7 +310,8 @@ pub async fn revoke_snapshot(
 
 pub async fn provider_auth_for_run(
     pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
+    cipher: Option<&dyn ProviderAuthCipher>,
+    service_auth: Option<ServiceProviderAuth<'_>>,
     run_id: &str,
     runner_id: &str,
 ) -> Result<ProviderAuthForRunResult, sqlx_core::Error> {
@@ -336,6 +327,12 @@ pub async fn provider_auth_for_run(
         return Ok(ProviderAuthForRunResult::RunNotFound);
     };
 
+    if let Some(provider_auth) =
+        service_provider_auth_for_run(&owner_account_id, &runtime_route, service_auth)
+    {
+        return Ok(ProviderAuthForRunResult::Found(provider_auth));
+    }
+
     let routed_provider_ids = equivalent_provider_ids(
         runtime_route
             .get("defaultAuthProvider")
@@ -349,6 +346,10 @@ pub async fn provider_auth_for_run(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
+
+    let Some(cipher) = cipher else {
+        return Ok(ProviderAuthForRunResult::ProviderAuthCipherUnavailable);
+    };
 
     let row: Option<(String, String, String, Vec<u8>)> = query_as(
         "SELECT snapshot_id, provider, auth_choice, encrypted_payload \

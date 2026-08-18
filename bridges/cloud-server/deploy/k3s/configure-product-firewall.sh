@@ -36,6 +36,16 @@ ensure_rule "${RULE_PREFIX}-public-ingress" \
 	--target-tags="${TARGET_TAG}" \
 	--description="Kordi product edge: public SSH and HTTPS entry points only"
 
+ensure_rule "${RULE_PREFIX}-media-ingress" \
+	--network="${NETWORK}" \
+	--direction=INGRESS \
+	--priority=705 \
+	--action=ALLOW \
+	--rules=tcp:7881,udp:3478,udp:7882,udp:30000-30100 \
+	--source-ranges=0.0.0.0/0 \
+	--target-tags="${TARGET_TAG}" \
+	--description="Kordi product media: encrypted WebRTC and TURN/UDP"
+
 ensure_rule "${RULE_PREFIX}-internal-ingress" \
 	--network="${NETWORK}" \
 	--direction=INGRESS \

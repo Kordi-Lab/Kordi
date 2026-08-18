@@ -162,6 +162,21 @@ spec:
                   key: KORDI_CHAT_SYNC_CURSOR_SECRET
             - name: KORDI_CHAT_REALTIME_ALLOWED_ORIGINS
               value: "https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420,http://127.0.0.1:1422,http://127.0.0.1:1482,http://127.0.0.1:1484,http://127.0.0.1:1486"
+            - name: KORDI_LIVEKIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-livekit
+                  key: url
+            - name: KORDI_LIVEKIT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-livekit
+                  key: api-key
+            - name: KORDI_LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-livekit
+                  key: api-secret
             - name: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
@@ -202,6 +217,13 @@ spec:
               value: "Kordi Support"
             - name: KORDI_SUPPORT_AGENT_SUBTITLE
               value: "Ask questions or suggest improvements"
+            - name: KORDI_SUPPORT_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-support-openai
+                  key: api-key
+            - name: KORDI_SUPPORT_OPENAI_MODEL
+              value: "gpt-5.6-luna"
             - name: KORDI_SUPPORT_SMTP_HOST
               value: "smtp.gmail.com"
             - name: KORDI_SUPPORT_SMTP_PORT

@@ -19,6 +19,11 @@ kordi.ai, www.kordi.ai {
 		}
 	}
 
+	@call_media path /rtc /rtc/*
+	handle @call_media {
+		reverse_proxy 127.0.0.1:7880
+	}
+
 	handle /beta-api/* {
 		reverse_proxy 127.0.0.1:17181
 	}

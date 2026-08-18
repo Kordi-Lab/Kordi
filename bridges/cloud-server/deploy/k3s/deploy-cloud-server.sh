@@ -39,6 +39,7 @@ echo "[deploy] syncing Dockerfile.runtime + manifest to VM"
 tar -C "${REPO_ROOT}" -czf - \
         bridges/cloud-server/Dockerfile.runtime \
         bridges/cloud-server/deploy/k3s/manifests/minio.yaml \
+        bridges/cloud-server/deploy/k3s/manifests/livekit.yaml \
         bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml \
     | "${GCLOUD_SSH[@]}" \
         --command "cd ${REMOTE_DEPLOY} && tar -xzf -"
@@ -101,6 +102,15 @@ YAML
 kubectl -n kordi-cloud wait --for=jsonpath='{.status.phase}'=Succeeded pod/release-store-check --timeout=120s >/dev/null
 kubectl -n kordi-cloud logs pod/release-store-check
 kubectl -n kordi-cloud delete pod/release-store-check --wait=true >/dev/null"
+
+echo "[deploy] reconciling call media"
+"${GCLOUD_SSH[@]}" --command "set -e
+kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.url}' | grep -q .
+kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.api-key}' | grep -q .
+kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.api-secret}' | grep -q .
+kubectl -n kordi-cloud get secret kordi-livekit -o jsonpath='{.data.keys}' | grep -q .
+kubectl apply -f ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests/livekit.yaml >/dev/null
+kubectl -n kordi-cloud rollout status deployment/livekit --timeout=180s"
 
 echo "[deploy] applying manifest with image=${IMAGE}"
 "${GCLOUD_SSH[@]}" --command "set -e

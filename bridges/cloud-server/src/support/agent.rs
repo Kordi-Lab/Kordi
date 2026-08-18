@@ -70,9 +70,7 @@ pub async fn bootstrap_support_agent(
         subtitle: pending.subtitle,
         inbox: pending.inbox,
         contact_created_at,
-        default_model: pending.default_model,
-        default_auth_provider: pending.default_auth_provider,
-        default_auth_choice: pending.default_auth_choice,
+        provider_auth: pending.provider_auth,
     };
 
     let result = query(
@@ -186,9 +184,11 @@ mod tests {
             subtitle: "Ask questions".into(),
             inbox: "support@example.com".into(),
             contact_created_at: "2026-08-04T00:00:00Z".into(),
-            default_model: None,
-            default_auth_provider: None,
-            default_auth_choice: None,
+            provider_auth: super::super::config::SupportProviderAuth::openai_api_key(
+                "test-key",
+                "gpt-5.6-luna",
+            )
+            .unwrap(),
         };
         let payload = serde_json::json!({
             "schemaVersion": 1,
