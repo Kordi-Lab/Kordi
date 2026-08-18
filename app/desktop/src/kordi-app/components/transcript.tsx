@@ -1278,8 +1278,8 @@ function MessageBubbleView({
             ? hasOnlyImageAttachments
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
-                ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[52rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
-                : cn('w-fit min-w-[6.75rem] max-w-[52rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
+                ? cn('app-message-bubble-contact-compact w-fit max-w-[52rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
+                : cn('w-fit max-w-[52rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'

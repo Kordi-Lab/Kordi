@@ -255,7 +255,7 @@ export function canonicalUserStatusChip(message: CanonicalSessionMessage, conten
     return deliveryState;
   }
 
-  return message.status !== 'sent' ? message.status : undefined;
+  return message.status;
 }
 
 export function restoreMentionTriggerText(text: string, content: Record<string, unknown>) {
@@ -544,7 +544,7 @@ export function mapCanonicalMessage(
     readReceiptSummary: isOwnMessage && role === 'user' ? canonicalReadReceiptSummary(content, identityById) : null,
     messageAction,
     sourceMessage,
-    statusChips: role === 'user' && canonicalUserStatusChip(message, content) ? [canonicalUserStatusChip(message, content)!] : undefined,
+    statusChips: role === 'user' ? [canonicalUserStatusChip(message, content)] : undefined,
     turn: isAgentTurn
       ? {
           id: `canonical-turn:${message.id}`,

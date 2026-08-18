@@ -3,7 +3,7 @@ import { Check, CheckCheck, LoaderCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type DeliveryVisual = {
-  kind: 'uploading' | 'delivering' | 'sent' | 'delivered' | 'partial' | 'failed';
+  kind: 'uploading' | 'delivering' | 'sent' | 'delivered' | 'read' | 'partial' | 'failed';
   label: string;
 };
 
@@ -111,7 +111,7 @@ export function TranscriptImageDeliveryOverlay({
     >
       <div className="app-attachment-image-delivery-meta">
         {time ? <span>{time}</span> : null}
-        {visual.kind === 'delivered'
+        {visual.kind === 'read'
           ? <CheckCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
           : <Check className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />}
       </div>

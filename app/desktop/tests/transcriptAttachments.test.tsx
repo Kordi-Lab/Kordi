@@ -268,6 +268,9 @@ test('image delivery states keep status inside the image', () => {
   const delivered = renderToStaticMarkup(createElement(AttachmentPreview, {
     msg: { ...imageMessage, statusChips: ['delivered'] },
   }));
+  const read = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, statusChips: ['read'] },
+  }));
   const failed = renderToStaticMarkup(createElement(AttachmentPreview, {
     msg: { ...imageMessage, statusChips: ['failed'] },
   }));
@@ -280,7 +283,10 @@ test('image delivery states keep status inside the image', () => {
     /data-attachment-image-delivery-status="delivered" class="app-attachment-image-delivery-overlay app-attachment-image-delivery-adaptive"/,
   );
   assert.match(delivered, />19:45</);
-  assert.match(delivered, /lucide-check-check/);
+  assert.match(delivered, /lucide-check h-3\.5/);
+  assert.doesNotMatch(delivered, /lucide-check-check/);
+  assert.match(read, /data-attachment-image-delivery-status="read"/);
+  assert.match(read, /lucide-check-check/);
   assert.match(failed, /data-attachment-image-delivery-status="failed"/);
   assert.match(failed, /app-attachment-image-delivery-error/);
   assert.match(failed, />Failed</);
@@ -353,8 +359,12 @@ test('image delivery status mapping preserves upload, partial, and terminal sema
     label: 'Partially delivered',
   });
   assert.deepEqual(attachmentImageDeliveryVisual('read'), {
-    kind: 'delivered',
+    kind: 'read',
     label: 'Read',
+  });
+  assert.deepEqual(attachmentImageDeliveryVisual('delivered'), {
+    kind: 'delivered',
+    label: 'Delivered',
   });
   assert.deepEqual(attachmentImageDeliveryVisual('processing_failed'), {
     kind: 'failed',

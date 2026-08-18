@@ -580,6 +580,41 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
+    func testConversationFollowsViewportResizeOnlyWhileAlreadyAtLatest() {
+        let fullViewport = CGSize(width: 390, height: 700)
+        let reducedViewport = CGSize(width: 390, height: 380)
+
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: true,
+            previousViewportSize: fullViewport,
+            currentViewportSize: reducedViewport
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: false,
+            previousViewportSize: fullViewport,
+            currentViewportSize: reducedViewport
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
+            hasRevealedInitialViewport: false,
+            wasAtLatest: true,
+            previousViewportSize: .zero,
+            currentViewportSize: fullViewport
+        ))
+
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestWhenPresentingInputSurface(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: true,
+            isPresented: true
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatestWhenPresentingInputSurface(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: false,
+            isPresented: true
+        ))
+    }
+
     func testConversationRestoresPositionForAQuickReturnWithoutNewMessages() {
         let memory = ConversationViewportMemory()
         let leftAt = Date(timeIntervalSince1970: 1_000)

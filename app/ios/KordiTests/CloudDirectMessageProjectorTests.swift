@@ -315,6 +315,7 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
 
         XCTAssertEqual(projected.count, 2)
+        XCTAssertEqual(projected.first?.deliveryState, .read)
         XCTAssertEqual(projected.last?.text, "The disk has 218 GiB available.")
         XCTAssertEqual(projected.last?.agentExecution?.phase, .complete)
         XCTAssertEqual(projected.last?.agentExecution?.summary, "Running the disk usage command")
@@ -454,6 +455,51 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.count, 1)
         XCTAssertEqual(projected.first?.id, "msg_execution_2")
         XCTAssertEqual(projected.first?.agentExecution?.summary, "Using Web Search")
+    }
+
+    func testLateShorterProcessingSnapshotCannotRegressPartialResponse() throws {
+        let growing = try agentResponse(
+            requestId: "msg_request",
+            text: "The rollout is nearly ready.",
+            deliveryState: "processing",
+            execution: [
+                "phase": "writing",
+                "summary": "Writing the response",
+                "steps": [[
+                    "id": "response",
+                    "label": "Writing the response",
+                    "state": "running"
+                ]],
+                "updatedAtMs": 2_000,
+                "completed": false
+            ]
+        )
+        let lateShorter = try agentResponse(
+            requestId: "msg_request",
+            text: "The rollout",
+            deliveryState: "processing",
+            execution: [
+                "phase": "writing",
+                "summary": "Writing the response",
+                "steps": [],
+                "updatedAtMs": 1_000,
+                "completed": false
+            ]
+        )
+
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(id: "msg_partial", body: growing, createdAt: "2026-08-08T10:00:01Z"),
+                wire(id: "msg_late_short", body: lateShorter, createdAt: "2026-08-08T10:00:02Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.count, 1)
+        XCTAssertEqual(projected.first?.text, "The rollout is nearly ready.")
+        XCTAssertEqual(projected.first?.agentExecution?.updatedAtMs, 2_000)
+        XCTAssertFalse(projected.first?.agentExecution?.completed ?? true)
     }
 
     func testLateProcessingHeartbeatCannotRegressTerminalResponse() throws {

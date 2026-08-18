@@ -1091,6 +1091,22 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const rawMessageCountBySessionId = new Map<string, number>();
   for (const [sessionId, messages] of rawMessagesBySessionId) {
     const sortedMessages = [...messages].sort((left, right) => left.createdAtMs - right.createdAtMs || left.sequenceNum - right.sequenceNum);
+    const readAgentRequestIds = new Set(sortedMessages.flatMap((message) => {
+      const content = contentRecord(message.content);
+      const identity = identityById.get(message.senderIdentityId);
+      const isAgentTurn = message.messageKind === 'agent-turn'
+        || message.senderRole === 'owned-agent'
+        || message.senderRole === 'external-agent'
+        || identity?.kind === 'agent';
+      if (!isAgentTurn || stringValue(content.deliveryState)?.trim().toLowerCase() === 'queued') {
+        return [];
+      }
+      return [
+        message.parentMessageId?.trim(),
+        stringValue(content.requestId)?.trim(),
+        stringValue(content.replyToMessageId)?.trim(),
+      ].filter((value): value is string => Boolean(value));
+    }));
     const directLegacyCollaborationSourceEvents = new Set(
       sortedMessages
         .filter((message) => message.sourceTransport === 'desktop-bridge' && message.sourceEventId)
@@ -1203,11 +1219,15 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       const mappedWithRuntimeAliases = runtimeReplyAliasIds.length > 0
         ? { ...mapped, replyAliasIds: [...new Set([...(mapped.replyAliasIds ?? []), ...runtimeReplyAliasIds])] }
         : mapped;
-      const displayMessage = mappedWithRuntimeAliases.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
-        ? { ...mappedWithRuntimeAliases, statusChips: ['failed'] }
+      const mappedWithReadStatus = mappedWithRuntimeAliases.role === 'user'
+        && readAgentRequestIds.has(message.id)
+        ? { ...mappedWithRuntimeAliases, statusChips: ['read'] }
+        : mappedWithRuntimeAliases;
+      const displayMessage = mappedWithReadStatus.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
+        ? { ...mappedWithReadStatus, statusChips: ['failed'] }
         : inheritedDesktopForkSnapshot(sessionById.get(sessionId), displaySourceMessage)
-          ? { ...mappedWithRuntimeAliases, isForkSnapshot: true }
-          : mappedWithRuntimeAliases;
+          ? { ...mappedWithReadStatus, isForkSnapshot: true }
+          : mappedWithReadStatus;
       return [{
         message: displayMessage,
         ...(messageSortById.get(message.id) ?? messageSortPosition(message)),

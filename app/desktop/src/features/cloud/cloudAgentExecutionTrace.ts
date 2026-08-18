@@ -221,6 +221,7 @@ export function finalizeCloudAgentExecutionSnapshot(
 
 export function cloudAgentExecutionFingerprint(
   snapshot: CloudAgentExecutionSnapshot,
+  assistantText = '',
 ): string {
   return [
     snapshot.phase,
@@ -238,6 +239,7 @@ export function cloudAgentExecutionFingerprint(
       tool.isError ? '1' : '0',
     ].join(':')),
     ...snapshot.steps.map((step) => `${step.id}:${step.label}:${step.state}`),
+    assistantText,
   ].join('\u0000');
 }
 
@@ -272,6 +274,7 @@ export function cloudAgentExecutionTurnSnapshot({
     status: execution.phase,
     message: execution.summary,
     assistantText: response.deliveryState === 'processing'
+      && response.text.trim() === 'processing...'
       ? ''
       : response.text,
     thinkingText: execution.thinkingText ?? '',

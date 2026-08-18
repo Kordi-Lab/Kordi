@@ -186,6 +186,74 @@ test('canonical materialization hydrates the runtime Cloud direct conversation w
   );
 });
 
+test('canonical agent requests use one check until read and two after an agent reply starts', () => {
+  const state = canonicalState() as ReturnType<typeof canonicalState> & {
+    messages: Array<Record<string, unknown>>;
+  };
+  const sessionId = 'session:self-agent:existing';
+  state.messages.push(
+    {
+      id: 'request:sent',
+      sessionId,
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'Waiting for the agent',
+      content: { sender: 'Me' },
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 10,
+      updatedAtMs: 10,
+      contentHash: null,
+      sourceTransport: 'cloud-self-agent',
+      sourceEventId: 'request:sent',
+    },
+    {
+      id: 'request:read',
+      sessionId,
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'The agent has started',
+      content: { sender: 'Me' },
+      status: 'sent',
+      sequenceNum: 2,
+      createdAtMs: 20,
+      updatedAtMs: 20,
+      contentHash: null,
+      sourceTransport: 'cloud-self-agent',
+      sourceEventId: 'request:read',
+    },
+    {
+      id: 'response:processing',
+      sessionId,
+      senderIdentityId: 'agent:local',
+      senderRole: 'owned-agent',
+      messageKind: 'agent-turn',
+      contentText: 'processing...',
+      content: {
+        sender: 'My Kordi',
+        deliveryState: 'processing',
+        requestId: 'request:read',
+        replyToMessageId: 'request:read',
+      },
+      parentMessageId: 'request:read',
+      status: 'processing',
+      sequenceNum: 3,
+      createdAtMs: 21,
+      updatedAtMs: 21,
+      contentHash: null,
+      sourceTransport: 'cloud-self-agent',
+      sourceEventId: 'response:processing',
+    },
+  );
+
+  const messages = createCanonicalSessionReadModel(state as never)?.messages(sessionId) ?? [];
+
+  assert.deepEqual(messages.find((message) => message.id === 'request:sent')?.statusChips, ['sent']);
+  assert.deepEqual(messages.find((message) => message.id === 'request:read')?.statusChips, ['read']);
+});
+
 test('canonical runtime messages remain visible when the legacy canonical snapshot is behind', () => {
   const readModel = createCanonicalSessionReadModel(
     canonicalState({ materializeDirectSession: true }) as never,

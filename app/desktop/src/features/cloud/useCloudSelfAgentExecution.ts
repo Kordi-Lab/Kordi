@@ -291,7 +291,10 @@ export function useCloudSelfAgentExecution({
           rememberLocalTurn(turn);
           if (turn.completed || isInactive()) return;
           const execution = cloudAgentExecutionSnapshotFromTurn(turn);
-          const fingerprint = cloudAgentExecutionFingerprint(execution);
+          const fingerprint = cloudAgentExecutionFingerprint(
+            execution,
+            turn.assistantText,
+          );
           const nowMs = Date.now();
           const changed = fingerprint !== lastFingerprint;
           const publishAfterMs = changed
@@ -307,6 +310,7 @@ export function useCloudSelfAgentExecution({
             const progress = changed
               ? await publishCloudSelfAgentExecutionSnapshot({
                   accountId: account.accountId,
+                  assistantText: turn.assistantText,
                   client,
                   cloudRequestMessageId: request.messageId,
                   execution,
@@ -317,6 +321,7 @@ export function useCloudSelfAgentExecution({
                 })
               : await publishCloudSelfAgentHeartbeat({
                   accountId: account.accountId,
+                  assistantText: turn.assistantText,
                   client,
                   cloudRequestMessageId: request.messageId,
                   execution,

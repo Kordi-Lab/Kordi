@@ -22,6 +22,17 @@ function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
 
+export function cloudSelfAgentProcessingTextWouldRegress(
+  existingText: string,
+  nextText: string,
+): boolean {
+  const visibleLength = (text: string) => {
+    const trimmed = text.trim();
+    return trimmed === 'processing...' ? 0 : trimmed.length;
+  };
+  return visibleLength(nextText) < visibleLength(existingText);
+}
+
 type CloudSelfAgentCanonicalMatchInput = {
   sessionId: string;
   role: 'user' | 'agent' | 'system';
@@ -222,16 +233,25 @@ function normalizedDeliveryState(
 export function cloudSelfAgentResponseWouldDowngrade(
   existingStatus: string | null | undefined,
   nextDeliveryState: CloudSelfAgentResponseDeliveryState | null,
+  existingText = '',
+  nextText = '',
 ): boolean {
   const existingDeliveryState = normalizedDeliveryState(existingStatus);
   if (!existingDeliveryState || !nextDeliveryState) return false;
-  return DELIVERY_STATE_PRIORITY[nextDeliveryState]
-    < DELIVERY_STATE_PRIORITY[existingDeliveryState];
+  const existingPriority = DELIVERY_STATE_PRIORITY[existingDeliveryState];
+  const nextPriority = DELIVERY_STATE_PRIORITY[nextDeliveryState];
+  return nextPriority < existingPriority || (
+    nextPriority === existingPriority
+    && nextDeliveryState === 'processing'
+    && cloudSelfAgentProcessingTextWouldRegress(existingText, nextText)
+  );
 }
 
 export function shouldReplacePlannedCloudSelfAgentResponse(
   currentStatus: string | null | undefined,
   nextDeliveryState: CloudSelfAgentResponseDeliveryState,
+  currentText = '',
+  nextText = '',
 ): boolean {
   const currentDeliveryState = normalizedDeliveryState(currentStatus);
   if (!currentDeliveryState) return true;
@@ -240,5 +260,11 @@ export function shouldReplacePlannedCloudSelfAgentResponse(
   // Cloud lifecycle rows are append-only. Equal-priority rows replace older
   // snapshots so owner-visible execution progress updates in place; terminal
   // rows remain protected from processing rows by their higher priority.
-  return nextPriority >= currentPriority;
+  return nextPriority > currentPriority || (
+    nextPriority === currentPriority
+    && (
+      nextDeliveryState !== 'processing'
+      || !cloudSelfAgentProcessingTextWouldRegress(currentText, nextText)
+    )
+  );
 }
