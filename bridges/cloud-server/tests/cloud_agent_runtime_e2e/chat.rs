@@ -17,7 +17,6 @@ pub(super) async fn create_test_conversation(
             client_session_id: session_id.to_string(),
             member_account_ids,
         },
-        None,
     )
     .await
     .expect("create test conversation")

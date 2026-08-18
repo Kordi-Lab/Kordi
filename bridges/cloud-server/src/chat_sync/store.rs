@@ -197,8 +197,8 @@ mod message;
 mod support;
 mod titles;
 
-pub use conversation::create_conversation;
 pub(crate) use conversation::create_conversation_in_transaction;
+pub use conversation::{create_conversation, create_conversation_with_trusted_peer};
 pub use cursors::{advance_delivery_cursor, advance_read_cursor, bootstrap, history, sync_batch};
 pub use members::{accept_invited_conversation_member, add_conversation_members};
 pub use message::{

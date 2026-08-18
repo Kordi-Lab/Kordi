@@ -5,10 +5,18 @@ pub async fn create_conversation(
     pool: &PgPool,
     account_id: &str,
     request: CreateConversationRequest,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    create_conversation_with_trusted_peer(pool, account_id, request, None).await
+}
+
+pub async fn create_conversation_with_trusted_peer(
+    pool: &PgPool,
+    account_id: &str,
+    request: CreateConversationRequest,
     trusted_peer_account_id: Option<&str>,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let mut transaction = pool.begin().await?;
-    let outcome = create_conversation_in_transaction(
+    let outcome = create_conversation_in_transaction_with_trusted_peer(
         &mut transaction,
         account_id,
         request,
@@ -20,6 +28,15 @@ pub async fn create_conversation(
 }
 
 pub(crate) async fn create_conversation_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    request: CreateConversationRequest,
+) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
+    create_conversation_in_transaction_with_trusted_peer(transaction, account_id, request, None)
+        .await
+}
+
+async fn create_conversation_in_transaction_with_trusted_peer(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     request: CreateConversationRequest,

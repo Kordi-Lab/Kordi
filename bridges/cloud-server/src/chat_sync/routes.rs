@@ -103,7 +103,7 @@ async fn create_conversation(
                 .any(|member| member.trim() == config.owner_account_id))
         .then_some(config.owner_account_id.as_str())
     });
-    match store::create_conversation(
+    match store::create_conversation_with_trusted_peer(
         state.db_pool(),
         &session.account_id,
         request,

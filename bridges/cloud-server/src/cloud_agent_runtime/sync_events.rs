@@ -119,7 +119,7 @@ async fn ensure_response_conversation(
         client_session_id: event.session_id.to_string(),
         member_account_ids: members,
     };
-    store::create_conversation(pool, event.from_account_id, request, None)
+    store::create_conversation(pool, event.from_account_id, request)
         .await
         .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
     Ok(())
