@@ -235,6 +235,42 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(model.messages(for: conversation), messagesBeforeLoad)
     }
 
+    func testConversationIdentityResolverFallsBackToStableSessionID() {
+        let cached = ConversationSummary(
+            id: "cached-agent-session",
+            kind: .agent,
+            peerAccountId: "acct_me",
+            agentId: nil,
+            ownerDisplayName: "Shu Yang",
+            displayName: "Hello",
+            lastMessage: "Cached",
+            lastActivityAt: Date(timeIntervalSince1970: 1),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: "session:self-agent:hello"
+        )
+        let refreshed = ConversationSummary(
+            id: "refreshed-agent-session",
+            kind: .agent,
+            peerAccountId: "acct_me",
+            agentId: nil,
+            ownerDisplayName: "Shu Yang",
+            displayName: "Hello",
+            lastMessage: "Refreshed",
+            lastActivityAt: Date(timeIntervalSince1970: 2),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: cached.sessionId
+        )
+
+        XCTAssertEqual(
+            ConversationIdentityResolver.current(cached, in: [refreshed]),
+            refreshed
+        )
+    }
+
     @MainActor
     func testPreviewCallUpdatesOneActivityFromStartedToEnded() throws {
         let model = AppModel(previewMode: true)

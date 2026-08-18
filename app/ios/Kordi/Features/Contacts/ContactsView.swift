@@ -323,11 +323,12 @@ struct AddContactSearchView: View {
 
             if !profile.isSelf && !profile.isContact {
                 Divider()
-                TextField("Message (optional)", text: $message, axis: .vertical)
+                TextField("", text: $message, axis: .vertical)
                     .lineLimit(1...2)
                     .padding(.horizontal, 10)
                     .frame(minHeight: 42)
                     .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityLabel("Optional contact request message")
 
                 Button(action: sendRequest) {
                     HStack(spacing: 8) {

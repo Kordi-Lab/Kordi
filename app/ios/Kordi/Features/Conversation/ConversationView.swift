@@ -10,6 +10,17 @@ private struct ConversationTimelineRow: Identifiable {
     let message: ChatMessage
 }
 
+enum ConversationIdentityResolver {
+    static func current(
+        _ initial: ConversationSummary,
+        in conversations: [ConversationSummary]
+    ) -> ConversationSummary {
+        conversations.first(where: { $0.id == initial.id })
+            ?? conversations.first(where: { $0.sessionId == initial.sessionId })
+            ?? initial
+    }
+}
+
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -81,8 +92,10 @@ struct ConversationView: View {
     /// stable id so title, participant names, and avatars update while the
     /// conversation is already open instead of requiring a back/reopen cycle.
     private var conversation: ConversationSummary {
-        model.conversations.first(where: { $0.id == initialConversation.id })
-            ?? initialConversation
+        ConversationIdentityResolver.current(
+            initialConversation,
+            in: model.conversations
+        )
     }
 
     private var messages: [ChatMessage] {
