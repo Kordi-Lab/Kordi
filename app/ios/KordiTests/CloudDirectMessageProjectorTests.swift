@@ -315,6 +315,7 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
 
         XCTAssertEqual(projected.count, 2)
+        XCTAssertEqual(projected.first?.deliveryState, .read)
         XCTAssertEqual(projected.last?.text, "The disk has 218 GiB available.")
         XCTAssertEqual(projected.last?.agentExecution?.phase, .complete)
         XCTAssertEqual(projected.last?.agentExecution?.summary, "Running the disk usage command")

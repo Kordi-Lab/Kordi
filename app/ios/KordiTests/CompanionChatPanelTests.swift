@@ -2,6 +2,82 @@ import XCTest
 @testable import Kordi
 
 final class CompanionChatPanelTests: XCTestCase {
+    func testWrappedComposerTextUsesTheExpandedControlLayout() {
+        XCTAssertTrue(ComposerTextFieldLayout.usesExpandedLayout(
+            hasLineBreak: false,
+            textWidth: 220,
+            compactTextWidth: 180
+        ))
+        XCTAssertTrue(ComposerTextFieldLayout.usesExpandedLayout(
+            hasLineBreak: true,
+            textWidth: 40,
+            compactTextWidth: 180
+        ))
+        XCTAssertFalse(ComposerTextFieldLayout.usesExpandedLayout(
+            hasLineBreak: false,
+            textWidth: 120,
+            compactTextWidth: 180
+        ))
+    }
+
+    func testEmojiPickerWaitsForTheSoftwareKeyboardToFold() {
+        XCTAssertEqual(
+            ComposerInputSurfaceMotion.delayBeforePresentingPicker(
+                keyboardIsFocused: true,
+                reduceMotion: false
+            ),
+            ComposerInputSurfaceMotion.duration
+        )
+        XCTAssertEqual(
+            ComposerInputSurfaceMotion.delayBeforePresentingPicker(
+                keyboardIsFocused: false,
+                reduceMotion: false
+            ),
+            .zero
+        )
+        XCTAssertEqual(
+            ComposerInputSurfaceMotion.delayBeforePresentingPicker(
+                keyboardIsFocused: true,
+                reduceMotion: true
+            ),
+            .zero
+        )
+    }
+
+    func testStaleEndEditingCallbackCannotCancelRestoredKeyboardFocus() {
+        XCTAssertFalse(ComposerFocusReconciliation.shouldApply(
+            focused: false,
+            textViewIsFirstResponder: true,
+            currentFocus: true
+        ))
+        XCTAssertTrue(ComposerFocusReconciliation.shouldApply(
+            focused: false,
+            textViewIsFirstResponder: false,
+            currentFocus: true
+        ))
+    }
+
+    func testMentionPickerGrowsWithResultsUntilItsMaximumHeight() {
+        XCTAssertEqual(
+            ComposerMentionPickerLayout.height(
+                targetCount: 3,
+                rowHeight: 46,
+                chromeHeight: 36,
+                maximumHeight: 264
+            ),
+            174
+        )
+        XCTAssertEqual(
+            ComposerMentionPickerLayout.height(
+                targetCount: 20,
+                rowHeight: 46,
+                chromeHeight: 36,
+                maximumHeight: 264
+            ),
+            264
+        )
+    }
+
     func testEmojiInsertionUsesTheCurrentUTF16Caret() {
         let replacement = replacingComposerText(
             "Hi world",

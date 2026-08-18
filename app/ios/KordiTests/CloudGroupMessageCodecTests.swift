@@ -146,4 +146,64 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         XCTAssertNil(decoded.message?.replyToMessageId)
         XCTAssertNil(decoded.message?.messageAction?.replyToMessageId)
     }
+
+    func testAgentLifecycleProjectsOneMonotonicMessagePerRequest() {
+        let processing = agentPayload(
+            id: "processing",
+            text: "processing...",
+            state: "processing",
+            createdAtMs: 1_000
+        )
+        let partial = agentPayload(
+            id: "partial",
+            text: "The response is growing.",
+            state: "processing",
+            createdAtMs: 2_000
+        )
+        let lateShorterPartial = agentPayload(
+            id: "late-shorter",
+            text: "The response",
+            state: "processing",
+            createdAtMs: 3_000
+        )
+        let complete = agentPayload(
+            id: "complete",
+            text: "The response is complete.",
+            state: "complete",
+            createdAtMs: 4_000
+        )
+
+        let processingIds = CloudGroupAgentLifecycleProjector.visibleMessageIds(
+            in: [processing, partial, lateShorterPartial]
+        )
+        let completeIds = CloudGroupAgentLifecycleProjector.visibleMessageIds(
+            in: [processing, partial, lateShorterPartial, complete]
+        )
+
+        XCTAssertEqual(processingIds, Set(["partial"]))
+        XCTAssertEqual(completeIds, Set(["complete"]))
+        XCTAssertEqual(
+            CloudGroupAgentLifecycleProjector.readRequestIds(in: [processing]),
+            Set(["request"])
+        )
+    }
+
+    private func agentPayload(
+        id: String,
+        text: String,
+        state: String,
+        createdAtMs: Double
+    ) -> CloudGroupMessagePayload {
+        CloudGroupMessagePayload(
+            id: id,
+            senderAccountId: "acct_owner",
+            text: text,
+            createdAtMs: createdAtMs,
+            senderKind: "agent",
+            senderDisplayName: "Owner's Kordi",
+            deliveryState: state,
+            replyToMessageId: "request",
+            requestId: "request"
+        )
+    }
 }

@@ -79,6 +79,10 @@ enum CloudDirectMessageProjector {
             ))
         }
 
+        for index in result.indices where result[index].author == .me
+            && responseRequestIds.contains(result[index].id) {
+            result[index].deliveryState = .read
+        }
         return result.sorted {
             $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
         }

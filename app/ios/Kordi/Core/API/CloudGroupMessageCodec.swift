@@ -185,3 +185,73 @@ enum CloudGroupMessageCodec {
         return Data(base64Encoded: normalized)
     }
 }
+
+enum CloudGroupAgentLifecycleProjector {
+    private struct ResponseKey: Hashable {
+        let requestId: String
+        let senderAccountId: String
+    }
+
+    static func visibleMessageIds(in payloads: [CloudGroupMessagePayload]) -> Set<String> {
+        var visibleIds = Set<String>()
+        var preferredByKey: [ResponseKey: CloudGroupMessagePayload] = [:]
+
+        for payload in payloads.sorted(by: messagePrecedes) {
+            guard payload.senderKind == "agent",
+                  let requestId = payload.requestId?.nonEmpty else {
+                visibleIds.insert(payload.id)
+                continue
+            }
+            let key = ResponseKey(
+                requestId: requestId,
+                senderAccountId: payload.senderAccountId
+            )
+            preferredByKey[key] = preferredByKey[key]
+                .map { preferredResponse($0, payload) }
+                ?? payload
+        }
+
+        visibleIds.formUnion(preferredByKey.values.map(\.id))
+        return visibleIds
+    }
+
+    static func readRequestIds(in payloads: [CloudGroupMessagePayload]) -> Set<String> {
+        Set(payloads.compactMap { payload in
+            payload.senderKind == "agent" && payload.deliveryState != "queued"
+                ? payload.requestId?.nonEmpty
+                : nil
+        })
+    }
+
+    private static func preferredResponse(
+        _ existing: CloudGroupMessagePayload,
+        _ candidate: CloudGroupMessagePayload
+    ) -> CloudGroupMessagePayload {
+        let existingIsProcessing = existing.deliveryState == "processing"
+        let candidateIsProcessing = candidate.deliveryState == "processing"
+        if existingIsProcessing != candidateIsProcessing {
+            return existingIsProcessing ? candidate : existing
+        }
+        if existingIsProcessing {
+            let existingLength = visibleTextLength(existing.text)
+            let candidateLength = visibleTextLength(candidate.text)
+            if existingLength != candidateLength {
+                return candidateLength > existingLength ? candidate : existing
+            }
+        }
+        return messagePrecedes(existing, candidate) ? candidate : existing
+    }
+
+    private static func visibleTextLength(_ text: String) -> Int {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "processing..." ? 0 : trimmed.count
+    }
+
+    private static func messagePrecedes(
+        _ left: CloudGroupMessagePayload,
+        _ right: CloudGroupMessagePayload
+    ) -> Bool {
+        left.createdAtMs < right.createdAtMs
+            || (left.createdAtMs == right.createdAtMs && left.id < right.id)
+    }
+}

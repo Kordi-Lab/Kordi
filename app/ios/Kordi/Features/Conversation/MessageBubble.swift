@@ -112,6 +112,7 @@ struct MessageBubble: View, Equatable {
                             readByCount: message.readByCount
                         )
                         .font(.caption2)
+                        .foregroundStyle(.secondary)
                         .padding(.trailing, 8)
                         .padding(.bottom, 2)
                     }
@@ -180,6 +181,7 @@ struct MessageBubble: View, Equatable {
                         readByCount: message.readByCount
                     )
                     .font(.caption2)
+                    .foregroundStyle(.secondary)
                     .padding(.bottom, 2)
                 }
             }
@@ -1328,18 +1330,8 @@ private struct MessageDeliveryGlyph: View {
             }
         }
         .font(.caption2.weight(.semibold))
-        .foregroundStyle(tint)
         .frame(width: 16, height: 14)
         .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var tint: Color {
-        switch state {
-        case .sent, .delivered, .read:
-            KordiTheme.signalBlue
-        case .sending, .cancelled, .failed:
-            .secondary
-        }
     }
 
     private var accessibilityLabel: String {

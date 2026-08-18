@@ -445,8 +445,11 @@ export function attachmentImageDeliveryVisual(status?: string | null): Attachmen
   if (normalized === 'sent') {
     return { kind: 'sent', label: 'Sent' };
   }
-  if (normalized === 'delivered' || normalized === 'read' || normalized === 'responded') {
-    return { kind: 'delivered', label: normalized === 'delivered' ? 'Delivered' : 'Read' };
+  if (normalized === 'delivered') {
+    return { kind: 'delivered', label: 'Delivered' };
+  }
+  if (normalized === 'read' || normalized === 'responded') {
+    return { kind: 'read', label: 'Read' };
   }
   if (normalized === 'partial') {
     return { kind: 'partial', label: 'Partially delivered' };

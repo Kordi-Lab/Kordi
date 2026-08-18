@@ -316,11 +316,31 @@ struct ExpressiveMediaPicker: View {
     @State private var selectedTab = ExpressivePickerTab.emoji
     @State private var emojiCategoryID = EmojiCategory.smileysAndPeople.id
     @State private var emojiQuery = ""
+    private let bottomExtensionHeight: CGFloat = 80
     let isSending: Bool
     let onInsertEmoji: (String) -> Void
     let onSendMedia: (PendingAttachment) async -> Void
 
     var body: some View {
+        pickerContent
+            .background(keyboardSurfaceColor)
+            .background(alignment: .bottom) {
+                Rectangle()
+                    .fill(keyboardSurfaceColor)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: bottomExtensionHeight)
+                    .offset(y: bottomExtensionHeight)
+                    .ignoresSafeArea(.container, edges: .bottom)
+                    .allowsHitTesting(false)
+            }
+            .accessibilityElement(children: .contain)
+    }
+
+    private var keyboardSurfaceColor: Color {
+        Color(uiColor: .systemGray6)
+    }
+
+    private var pickerContent: some View {
         VStack(spacing: 0) {
             tabBar
             Divider()
@@ -346,13 +366,6 @@ struct ExpressiveMediaPicker: View {
             }
         }
         .frame(height: panelHeight)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.28), lineWidth: 0.5)
-        }
-        .accessibilityElement(children: .contain)
     }
 
     private var panelHeight: CGFloat {

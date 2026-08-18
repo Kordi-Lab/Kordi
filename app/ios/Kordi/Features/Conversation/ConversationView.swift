@@ -37,6 +37,7 @@ struct ConversationView: View {
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
     @State private var isExpressivePickerPresented = false
+    @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
     @State private var showCamera = false
@@ -326,6 +327,11 @@ struct ConversationView: View {
                             )
                             .background(Color(uiColor: .systemGroupedBackground))
                             .scrollDismissesKeyboard(.interactively)
+                            .simultaneousGesture(
+                                TapGesture().onEnded {
+                                    dismissExpressivePicker()
+                                }
+                            )
 
                             if ConversationTimelineScrollBehavior.shouldShowLatestButton(
                                 isAtBottom: isAtBottom,
@@ -383,6 +389,24 @@ struct ConversationView: View {
                     scrollToBottom(animated: true)
                 }
             }
+            .onChange(of: isExpressivePickerPresented) { _, isPresented in
+                guard isPresented, shouldFollowLatestAfterInputSurfaceChange else {
+                    if !isPresented { shouldFollowLatestAfterInputSurfaceChange = false }
+                    return
+                }
+                Task { @MainActor in
+                    let transitionDuration = reduceMotion
+                        ? Duration.zero
+                        : ComposerInputSurfaceMotion.duration
+                    try? await Task.sleep(for: transitionDuration)
+                    guard isExpressivePickerPresented,
+                          shouldFollowLatestAfterInputSurfaceChange else { return }
+                    isAtBottom = true
+                    trackedMessageID = bottomAnchorID
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                    shouldFollowLatestAfterInputSurfaceChange = false
+                }
+            }
             .task(id: conversation.id) {
                 await loadAndRevealInitialConversation(using: proxy)
                 await model.refreshActiveCall(in: conversation)
@@ -431,11 +455,6 @@ struct ConversationView: View {
                 }
             }
         }
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                dismissExpressivePicker()
-            }
-        )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selectedMessageIDs.isEmpty {
                 ComposerView(
@@ -444,7 +463,21 @@ struct ConversationView: View {
                     photoGrouping: $photoGrouping,
                     replySource: $replySource,
                     selectedMention: $selectedMention,
-                    isExpressivePickerPresented: $isExpressivePickerPresented,
+                    isExpressivePickerPresented: Binding(
+                        get: { isExpressivePickerPresented },
+                        set: { isPresented in
+                            if isPresented {
+                                shouldFollowLatestAfterInputSurfaceChange =
+                                    ConversationTimelineScrollBehavior
+                                        .shouldFollowLatestWhenPresentingInputSurface(
+                                            hasRevealedInitialViewport: hasRevealedInitialViewport,
+                                            wasAtLatest: isAtBottom || trackedMessageID == bottomAnchorID,
+                                            isPresented: true
+                                        )
+                            }
+                            isExpressivePickerPresented = isPresented
+                        }
+                    ),
                     mentionTargets: mentionTargets,
                     isSending: isSending,
                     isPreparingAttachments: isPreparingAttachments,
@@ -1553,6 +1586,14 @@ enum ConversationTimelineScrollBehavior {
             && wasAtLatest
             && previousViewportSize != .zero
             && previousViewportSize != currentViewportSize
+    }
+
+    static func shouldFollowLatestWhenPresentingInputSurface(
+        hasRevealedInitialViewport: Bool,
+        wasAtLatest: Bool,
+        isPresented: Bool
+    ) -> Bool {
+        hasRevealedInitialViewport && wasAtLatest && isPresented
     }
 }
 

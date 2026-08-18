@@ -32,7 +32,55 @@ func replacingComposerText(
     )
 }
 
+enum ComposerMentionPickerLayout {
+    static func height(
+        targetCount: Int,
+        rowHeight: CGFloat,
+        chromeHeight: CGFloat,
+        maximumHeight: CGFloat
+    ) -> CGFloat {
+        min(
+            maximumHeight,
+            chromeHeight + CGFloat(max(0, targetCount)) * rowHeight
+        )
+    }
+}
+
+enum ComposerFocusReconciliation {
+    static func shouldApply(
+        focused: Bool,
+        textViewIsFirstResponder: Bool,
+        currentFocus: Bool
+    ) -> Bool {
+        (focused || !textViewIsFirstResponder) && currentFocus != focused
+    }
+}
+
+enum ComposerInputSurfaceMotion {
+    static let duration = Duration.milliseconds(280)
+    static let animation = Animation.smooth(duration: 0.28)
+
+    static func delayBeforePresentingPicker(
+        keyboardIsFocused: Bool,
+        reduceMotion: Bool
+    ) -> Duration {
+        keyboardIsFocused && !reduceMotion ? duration : .zero
+    }
+}
+
+enum ComposerTextFieldLayout {
+    static func usesExpandedLayout(
+        hasLineBreak: Bool,
+        textWidth: CGFloat,
+        compactTextWidth: CGFloat
+    ) -> Bool {
+        hasLineBreak || (compactTextWidth > 0 && textWidth > compactTextWidth)
+    }
+}
+
 struct ComposerView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Binding var text: String
     @Binding var attachments: [PendingAttachment]
     @Binding var photoGrouping: PhotoSendGrouping
@@ -53,24 +101,76 @@ struct ComposerView: View {
     let onSend: () -> Void
     @State private var isFocused = false
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
+    @State private var composerContentHeight: CGFloat = 0
+    @State private var messageFieldWidth: CGFloat = 0
+    @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
     @ScaledMetric(relativeTo: .body) private var mentionPickerMaxHeight: CGFloat = 264
+    @ScaledMetric(relativeTo: .body) private var mentionPickerRowHeight: CGFloat = 46
+    @ScaledMetric(relativeTo: .caption) private var mentionPickerChromeHeight: CGFloat = 36
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !filteredMentionTargets.isEmpty {
-                mentionPicker
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+        composerContainer
+            .padding(.top, 9)
+            .padding(.bottom, isExpressivePickerPresented ? 0 : 9)
+            .background {
+                if #available(iOS 26.0, *) {
+                    Color.clear
+                } else {
+                    Rectangle().fill(.bar)
+                }
             }
+            .animation(inputSurfaceAnimation, value: showsMentionPicker)
+            .animation(.snappy(duration: 0.2), value: attachments.count)
+            .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
+    }
 
+    @ViewBuilder
+    private var composerContainer: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 8) {
+                composerContent
+            }
+        } else {
+            composerContent
+        }
+    }
+
+    private var composerContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let replySource {
                 replyPreview(replySource)
+                    .padding(.horizontal, 10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if !attachments.isEmpty {
                 attachmentTray
+                    .padding(.horizontal, 10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            inputSurfaceAssembly
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            composerContentHeight = height
+        }
+        .overlay(alignment: .bottom) {
+            if showsMentionPicker {
+                mentionPicker
+                    .padding(.horizontal, 10)
+                    .offset(y: -composerContentHeight - 8)
+                    .transition(mentionPickerTransition)
+                    .zIndex(10)
+            }
+        }
+    }
+
+    private var inputSurfaceAssembly: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            inputSurface
+                .padding(.horizontal, 10)
 
             if isExpressivePickerPresented {
                 ExpressiveMediaPicker(
@@ -78,87 +178,159 @@ struct ComposerView: View {
                     onInsertEmoji: insertEmoji,
                     onSendMedia: onSendExpressiveMedia
                 )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(expressivePickerTransition)
             }
-
-            inputSurface
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(.bar)
-        .animation(.snappy(duration: 0.2), value: filteredMentionTargets.isEmpty)
-        .animation(.snappy(duration: 0.2), value: attachments.count)
-        .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
-        .animation(.snappy(duration: 0.22), value: isExpressivePickerPresented)
+        .animation(inputSurfaceAnimation, value: isExpressivePickerPresented)
     }
 
     private var inputSurface: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            Button {
-                dismissExpressivePicker()
-                onOpenAgentModel()
-            } label: {
-                Image(systemName: "line.3.horizontal")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .accessibilityLabel("Change session model")
-            .accessibilityHint("Opens provider, model, and thinking level settings for this session")
-
+        HStack(alignment: .bottom, spacing: 8) {
             attachmentMenu
-
-            expressivePickerButton
-
-            ZStack(alignment: .leading) {
-                if text.isEmpty {
-                    Text("Message \(destinationName)")
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 13)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-
-                ComposerTextView(
-                    text: $text,
-                    selection: $textSelection,
-                    isFocused: $isFocused,
-                    accessibilityLabel: "Message \(destinationName)"
-                )
-                .frame(minHeight: 44)
-                .padding(.horizontal, 8)
-                .onChange(of: isFocused) { _, isFocused in
-                    if isFocused { isExpressivePickerPresented = false }
-                }
-                .onChange(of: text) { _, newValue in
-                    if let selectedMention,
-                       !newValue.localizedCaseInsensitiveContains(selectedMention.mentionText) {
-                        self.selectedMention = nil
-                    }
-                }
-            }
-
+            messageFieldSurface
+                .layoutPriority(1)
             sendButton
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 3)
-        .background(
-            Color(uiColor: .secondarySystemGroupedBackground),
-            in: RoundedRectangle(cornerRadius: 17, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.32), lineWidth: 0.5)
+    }
+
+    @ViewBuilder
+    private var messageFieldSurface: some View {
+        if #available(iOS 26.0, *) {
+            messageFieldContent
+                .glassEffect(.regular, in: .rect(cornerRadius: messageFieldCornerRadius))
+        } else {
+            messageFieldContent
+                .background(
+                    .ultraThinMaterial,
+                    in: RoundedRectangle(
+                        cornerRadius: messageFieldCornerRadius,
+                        style: .continuous
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: messageFieldCornerRadius,
+                        style: .continuous
+                    )
+                        .stroke(Color(uiColor: .separator).opacity(0.32), lineWidth: 0.5)
+                }
         }
+    }
+
+    private var messageFieldContent: some View {
+        messageFieldLayout
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .frame(minHeight: composerControlHeight)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                messageFieldWidth = width
+            }
+            .animation(.snappy(duration: 0.2), value: usesExpandedMessageFieldLayout)
+    }
+
+    @ViewBuilder
+    private var messageFieldLayout: some View {
+        if usesExpandedMessageFieldLayout {
+            VStack(spacing: 0) {
+                messageEditor
+                HStack(spacing: 0) {
+                    modelMenuButton
+                    Spacer(minLength: 0)
+                    expressivePickerButton
+                }
+                .frame(height: 44)
+            }
+        } else {
+            HStack(alignment: .bottom, spacing: 0) {
+                modelMenuButton
+                messageEditor
+                expressivePickerButton
+            }
+        }
+    }
+
+    private var modelMenuButton: some View {
+        Button {
+            dismissExpressivePicker()
+            onOpenAgentModel()
+        } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .padding(.trailing, -8)
+        .accessibilityLabel("Change session model")
+        .accessibilityHint("Opens provider, model, and thinking level settings for this session")
+    }
+
+    private var messageEditor: some View {
+        ZStack(alignment: .leading) {
+            if text.isEmpty {
+                Text("Message \(destinationName)")
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 13)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
+            ComposerTextView(
+                text: $text,
+                selection: $textSelection,
+                isFocused: $isFocused,
+                accessibilityLabel: "Message \(destinationName)"
+            )
+            .frame(minHeight: 44)
+            .padding(.horizontal, 8)
+            .accessibilityHidden(isExpressivePickerPresented)
+            .onChange(of: isFocused) { _, isFocused in
+                if isFocused { dismissExpressivePicker() }
+            }
+            .onChange(of: text) { _, newValue in
+                if let selectedMention,
+                   !newValue.localizedCaseInsensitiveContains(selectedMention.mentionText) {
+                    self.selectedMention = nil
+                }
+            }
+        }
+        .overlay {
+            if isExpressivePickerPresented {
+                Button(action: showKeyboard) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show keyboard")
+            }
+        }
+    }
+
+    private var usesExpandedMessageFieldLayout: Bool {
+        ComposerTextFieldLayout.usesExpandedLayout(
+            hasLineBreak: text.contains("\n"),
+            textWidth: (text as NSString).size(withAttributes: [
+                .font: UIFont.preferredFont(forTextStyle: .body)
+            ]).width,
+            compactTextWidth: messageFieldWidth - 96
+        )
+    }
+
+    private var messageFieldCornerRadius: CGFloat {
+        usesExpandedMessageFieldLayout ? 28 : composerControlHeight / 2
     }
 
     private var expressivePickerButton: some View {
         Button {
-            isFocused = false
-            isExpressivePickerPresented.toggle()
+            if isExpressivePickerPresented {
+                showKeyboard()
+            } else {
+                showExpressivePicker()
+            }
         } label: {
             Image(systemName: isExpressivePickerPresented ? "keyboard" : "face.smiling")
                 .font(.body.weight(.semibold))
@@ -183,10 +355,72 @@ struct ComposerView: View {
     }
 
     private func dismissExpressivePicker() {
-        isExpressivePickerPresented = false
+        withAnimation(inputSurfaceAnimation) {
+            isExpressivePickerPresented = false
+        }
     }
 
+    private func showExpressivePicker() {
+        let transitionDuration = ComposerInputSurfaceMotion.delayBeforePresentingPicker(
+            keyboardIsFocused: isFocused,
+            reduceMotion: reduceMotion
+        )
+        isFocused = false
+        Task { @MainActor in
+            try? await Task.sleep(for: transitionDuration)
+            guard !isFocused, !isExpressivePickerPresented else { return }
+            withAnimation(inputSurfaceAnimation) {
+                isExpressivePickerPresented = true
+            }
+        }
+    }
+
+    private func showKeyboard() {
+        dismissExpressivePicker()
+        let transitionDuration = reduceMotion ? Duration.zero : ComposerInputSurfaceMotion.duration
+        Task { @MainActor in
+            try? await Task.sleep(for: transitionDuration)
+            guard !isExpressivePickerPresented else { return }
+            isFocused = true
+        }
+    }
+
+    private var inputSurfaceAnimation: Animation? {
+        reduceMotion ? nil : ComposerInputSurfaceMotion.animation
+    }
+
+    private var expressivePickerTransition: AnyTransition {
+        reduceMotion
+            ? .identity
+            : .move(edge: .bottom)
+    }
+
+    private var mentionPickerTransition: AnyTransition {
+        reduceMotion
+            ? .identity
+            : .scale(scale: 0.92, anchor: .bottom)
+                .combined(with: .move(edge: .bottom))
+                .combined(with: .opacity)
+    }
+
+    @ViewBuilder
     private var attachmentMenu: some View {
+        if #available(iOS 26.0, *) {
+            attachmentMenuContent
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            attachmentMenuContent
+                .buttonStyle(.plain)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 0.5)
+                }
+        }
+    }
+
+    private var attachmentMenuContent: some View {
         Menu {
             Button(action: onTakePhoto) {
                 Label("Camera", systemImage: "camera")
@@ -206,15 +440,14 @@ struct ComposerView: View {
                 if isPreparingAttachments {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: "plus")
+                    Image(systemName: "paperclip")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 44, height: 44)
+            .frame(width: composerControlHeight, height: composerControlHeight)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .contentShape(Rectangle())
         .simultaneousGesture(
             TapGesture().onEnded {
@@ -225,13 +458,33 @@ struct ComposerView: View {
         .accessibilityLabel("Add photo or file")
     }
 
+    @ViewBuilder
     private var sendButton: some View {
+        if #available(iOS 26.0, *) {
+            sendButtonContent
+                .buttonStyle(.plain)
+                .glassEffect(
+                    .regular
+                        .tint(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
+                        .interactive(),
+                    in: .circle
+                )
+        } else {
+            sendButtonContent
+                .buttonStyle(.plain)
+                .background(
+                    canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill),
+                    in: Circle()
+                )
+        }
+    }
+
+    private var sendButtonContent: some View {
         Button {
             dismissExpressivePicker()
             onSend()
         } label: {
-            ZStack {
-                Circle().fill(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
+            Group {
                 if isSending {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {
@@ -240,7 +493,8 @@ struct ComposerView: View {
                         .foregroundStyle(canSend ? .white : .secondary)
                 }
             }
-            .frame(width: 44, height: 44)
+            .frame(width: composerControlHeight, height: composerControlHeight)
+            .contentShape(Circle())
         }
         .disabled(!canSend || isSending || isPreparingAttachments)
         .accessibilityLabel("Send message")
@@ -295,14 +549,46 @@ struct ComposerView: View {
                     }
                 }
             }
-            .frame(maxHeight: mentionPickerMaxHeight)
             .scrollIndicators(filteredMentionTargets.count > 5 ? .visible : .hidden)
         }
         .padding(.bottom, 6)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 0.5)
+        .frame(height: mentionPickerHeight)
+        .frame(maxWidth: .infinity)
+        .modifier(MentionPickerSurfaceModifier())
+    }
+
+    private var showsMentionPicker: Bool {
+        isFocused && !isExpressivePickerPresented && !filteredMentionTargets.isEmpty
+    }
+
+    private var mentionPickerHeight: CGFloat {
+        ComposerMentionPickerLayout.height(
+            targetCount: filteredMentionTargets.count,
+            rowHeight: mentionPickerRowHeight,
+            chromeHeight: mentionPickerChromeHeight,
+            maximumHeight: verticalSizeClass == .compact
+                ? min(mentionPickerMaxHeight, 188)
+                : mentionPickerMaxHeight
+        )
+    }
+
+    private struct MentionPickerSurfaceModifier: ViewModifier {
+        @ViewBuilder
+        func body(content: Content) -> some View {
+            if #available(iOS 26.0, *) {
+                content
+                    .glassEffect(.regular, in: .rect(cornerRadius: 22))
+            } else {
+                content
+                    .background(
+                        .regularMaterial,
+                        in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 0.5)
+                    }
+            }
         }
     }
 
@@ -564,6 +850,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.font = .preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = false
+        textView.showsVerticalScrollIndicator = false
         textView.textContainerInset = UIEdgeInsets(top: 11, left: 5, bottom: 11, right: 5)
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -607,7 +894,8 @@ private struct ComposerTextView: UIViewRepresentable {
         let lineHeight = uiView.font?.lineHeight ?? UIFont.preferredFont(forTextStyle: .body).lineHeight
         let insets = uiView.textContainerInset.top + uiView.textContainerInset.bottom
         let minimumHeight = lineHeight + insets
-        let maximumHeight = lineHeight * 6 + insets
+        let maximumHeight = lineHeight * 4 + insets
+        uiView.isScrollEnabled = fittingSize.height > maximumHeight
         return CGSize(
             width: width,
             height: min(max(fittingSize.height, minimumHeight), maximumHeight)
@@ -622,11 +910,11 @@ private struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
-            updateFocus(true)
+            updateFocus(true, textView: textView)
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
-            updateFocus(false)
+            updateFocus(false, textView: textView)
         }
 
         func textViewDidChange(_ textView: UITextView) {
@@ -659,9 +947,14 @@ private struct ComposerTextView: UIViewRepresentable {
             }
         }
 
-        private func updateFocus(_ focused: Bool) {
+        private func updateFocus(_ focused: Bool, textView: UITextView) {
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.parent.isFocused != focused else { return }
+                guard let self,
+                      ComposerFocusReconciliation.shouldApply(
+                        focused: focused,
+                        textViewIsFirstResponder: textView.isFirstResponder,
+                        currentFocus: self.parent.isFocused
+                      ) else { return }
                 self.parent.isFocused = focused
             }
         }

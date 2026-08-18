@@ -602,6 +602,17 @@ final class KordiMarkdownParserTests: XCTestCase {
             previousViewportSize: .zero,
             currentViewportSize: fullViewport
         ))
+
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestWhenPresentingInputSurface(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: true,
+            isPresented: true
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatestWhenPresentingInputSurface(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: false,
+            isPresented: true
+        ))
     }
 
     func testConversationRestoresPositionForAQuickReturnWithoutNewMessages() {

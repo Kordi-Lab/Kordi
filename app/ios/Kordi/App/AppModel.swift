@@ -3224,7 +3224,17 @@ final class AppModel: ObservableObject {
                   let payload = envelope.message else { continue }
             rowsByMessageId[payload.id, default: []].append((wire, payload))
         }
-        let chatMessages = rowsByMessageId.compactMap { messageId, rows -> ChatMessage? in
+        let representativePayloads = rowsByMessageId.values.compactMap { rows in
+            rows.max(by: { $0.1.createdAtMs < $1.1.createdAtMs })?.1
+        }
+        let visibleMessageIds = CloudGroupAgentLifecycleProjector.visibleMessageIds(
+            in: representativePayloads
+        )
+        let createdAtByMessageId = Dictionary(
+            uniqueKeysWithValues: representativePayloads.map { ($0.id, $0.createdAtMs) }
+        )
+        var chatMessages = rowsByMessageId.compactMap { messageId, rows -> ChatMessage? in
+            guard visibleMessageIds.contains(messageId) else { return nil }
             guard let (wire, payload) = rows.max(by: { $0.1.createdAtMs < $1.1.createdAtMs }) else { return nil }
             let author: MessageAuthor = payload.senderKind == "agent"
                 ? .agent
@@ -3244,7 +3254,13 @@ final class AppModel: ObservableObject {
                     ? "You"
                     : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
                 text: payload.text,
-                createdAt: Date(timeIntervalSince1970: payload.createdAtMs / 1_000),
+                createdAt: Date(
+                    timeIntervalSince1970: (
+                        payload.requestId.flatMap { createdAtByMessageId[$0] }
+                            .map { $0 + 1 }
+                            ?? payload.createdAtMs
+                    ) / 1_000
+                ),
                 deliveryState: delivery?.state ?? CloudMessageStateProjector.deliveryState(for: wire, ownAccountId: ownAccountId),
                 errorMessage: nil,
                 requestMessageId: payload.requestId,
@@ -3254,6 +3270,13 @@ final class AppModel: ObservableObject {
                 replyToMessageId: payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
                 messageAction: payload.messageAction
             )
+        }
+        let readAgentRequestIds = CloudGroupAgentLifecycleProjector.readRequestIds(
+            in: representativePayloads
+        )
+        for index in chatMessages.indices where chatMessages[index].author == .me
+            && readAgentRequestIds.contains(chatMessages[index].id) {
+            chatMessages[index].deliveryState = .read
         }
         let callMessages = Dictionary(
             grouping: messages.filter {
