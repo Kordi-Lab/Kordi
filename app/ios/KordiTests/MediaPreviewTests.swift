@@ -119,6 +119,33 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
     }
 
+    func testEverySingleAndGroupedImageDeliveryStatePlacesReceiptBelowMedia() {
+        for attachmentCount in [1, 2] {
+            for state in [
+                MessageDeliveryState.sending,
+                .sent,
+                .delivered,
+                .read,
+                .failed,
+                .cancelled,
+            ] {
+                var imageMessage = message(
+                    id: "image-\(state.rawValue)",
+                    author: .me,
+                    attachments: (0..<attachmentCount).map {
+                        attachment(id: "image-\($0)", kind: .image)
+                    }
+                )
+                imageMessage.deliveryState = state
+
+                XCTAssertEqual(
+                    MessageAttachmentPresentation.deliveryGlyphPlacement(for: imageMessage),
+                    .belowSurface
+                )
+            }
+        }
+    }
+
     private func attachment(id: String, kind: ChatAttachmentKind) -> ChatAttachment {
         ChatAttachment(
             attachmentId: id,

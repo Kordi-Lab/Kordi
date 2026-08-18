@@ -311,17 +311,10 @@ struct ConversationView: View {
                                         }
                                 }
                                 .scrollTargetLayout()
-                                .frame(
-                                    minHeight: max(
-                                        0,
-                                        viewport.size.height - timelineVerticalInset * 2
-                                    ),
-                                    alignment: timeline.isEmpty ? .top : .bottom
-                                )
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, timelineVerticalInset)
                             }
-                            .defaultScrollAnchor(.bottom)
+                            .modifier(ConversationScrollAlignmentModifier())
                             .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
                             .modifier(
                                 ConversationBottomTrackingModifier(
@@ -344,6 +337,21 @@ struct ConversationView: View {
                                 .padding(.trailing, 18)
                                 .padding(.bottom, 16)
                                 .transition(.scale(scale: 0.82).combined(with: .opacity))
+                            }
+                        }
+                        .onChange(of: viewport.size) { previousViewportSize, currentViewportSize in
+                            let wasAtLatest = isAtBottom || trackedMessageID == bottomAnchorID
+                            guard ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
+                                hasRevealedInitialViewport: hasRevealedInitialViewport,
+                                wasAtLatest: wasAtLatest,
+                                previousViewportSize: previousViewportSize,
+                                currentViewportSize: currentViewportSize
+                            ) else { return }
+                            isAtBottom = true
+                            trackedMessageID = bottomAnchorID
+                            Task { @MainActor in
+                                await Task.yield()
+                                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
                         }
                         .animation(.snappy(duration: 0.2), value: isAtBottom)
@@ -1293,6 +1301,17 @@ struct ConversationView: View {
     }
 }
 
+private struct ConversationScrollAlignmentModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.defaultScrollAnchor(.bottom, for: .alignment)
+        } else {
+            content
+        }
+    }
+}
+
 private struct ContactPresenceStatusText: View {
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
@@ -1522,6 +1541,18 @@ enum ConversationTimelineScrollBehavior {
     ) -> Bool {
         contentHeight <= containerHeight
             || visibleMaxY >= contentHeight - tolerance
+    }
+
+    static func shouldKeepLatestVisibleAfterViewportChange(
+        hasRevealedInitialViewport: Bool,
+        wasAtLatest: Bool,
+        previousViewportSize: CGSize,
+        currentViewportSize: CGSize
+    ) -> Bool {
+        hasRevealedInitialViewport
+            && wasAtLatest
+            && previousViewportSize != .zero
+            && previousViewportSize != currentViewportSize
     }
 }
 

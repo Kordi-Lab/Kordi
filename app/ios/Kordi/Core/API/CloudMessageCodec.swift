@@ -343,7 +343,18 @@ enum CloudAgentLifecycleProjector {
         if existingState == .processing, candidateState?.isTerminal == true {
             return candidate
         }
+        if existingState == .processing,
+           candidateState == .processing,
+           processingTextLength(candidate) < processingTextLength(existing) {
+            return existing
+        }
         return messagePrecedes(existing, candidate) ? candidate : existing
+    }
+
+    private static func processingTextLength(_ message: CloudMessageDTO) -> Int {
+        let text = CloudMessageCodec.displayText(message.body)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text == "processing..." ? 0 : text.count
     }
 
     private static func messagePrecedes(_ lhs: CloudMessageDTO, _ rhs: CloudMessageDTO) -> Bool {

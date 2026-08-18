@@ -138,6 +138,47 @@ test('new owner execution snapshots replace older processing content in the stab
   assert.equal(content.tools?.[0]?.name, 'Web Search');
 });
 
+test('late shorter processing snapshots cannot regress canonical partial output', () => {
+  const request = requestMessage(
+    'msg_self_request_partial',
+    'prepare the rollout',
+    '2026-08-08T09:49:00.000Z',
+  );
+  const partial = (id: string, at: string, text: string): CloudMessage => ({
+    ...request,
+    messageId: id,
+    createdAt: at,
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text,
+      deliveryState: 'processing',
+    }),
+  });
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [
+      request,
+      partial(
+        'msg_self_partial_long',
+        '2026-08-08T09:49:01.000Z',
+        'The rollout is nearly ready.',
+      ),
+      partial(
+        'msg_self_partial_late_short',
+        '2026-08-08T09:49:02.000Z',
+        'The rollout',
+      ),
+    ],
+    state: emptyState(),
+  });
+
+  const response = plan.messageRequests.find(
+    (message) => message.senderRole === 'owned-agent',
+  );
+  assert.equal(response?.contentText, 'The rollout is nearly ready.');
+  assert.equal(response?.status, 'processing');
+});
+
 test('cloud self-agent canonical sync reuses the local runtime response on the executing Mac', () => {
   const sessionId = 'local-self-session';
   const localRequestId = 'local-u1';

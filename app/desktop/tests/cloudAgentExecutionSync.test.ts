@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
-import { cloudAgentExecutionSnapshotFromTurn } from '../src/features/cloud/cloudAgentExecutionTrace';
+import {
+  cloudAgentExecutionFingerprint,
+  cloudAgentExecutionSnapshotFromTurn,
+} from '../src/features/cloud/cloudAgentExecutionTrace';
 import { encodeCloudAgentResponse, parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import {
   buildCloudDesktopCollaborationState,
@@ -52,6 +55,19 @@ test('owner execution snapshots include a redacted command summary', () => {
   assert.equal(JSON.stringify(execution).includes('top-secret'), false);
 });
 
+test('owner execution progress changes when partial assistant output grows', () => {
+  const execution = cloudAgentExecutionSnapshotFromTurn({
+    id: 'turn_writing', sessionId: 'session:self', prompt: '', status: 'writing',
+    message: '', assistantText: 'First', thinkingText: '', tools: [],
+    completed: false, succeeded: false, startedAtMs: 1_000,
+  }, 2_000);
+
+  assert.notEqual(
+    cloudAgentExecutionFingerprint(execution, 'First'),
+    cloudAgentExecutionFingerprint(execution, 'First and second'),
+  );
+});
+
 test('synced execution timeline renders only for the owning self-agent account', () => {
   const execution = cloudAgentExecutionSnapshotFromTurn({
     id: 'turn_1', sessionId: 'session:self', prompt: '', status: 'thinking', message: '',
@@ -77,10 +93,11 @@ test('desktop owner view replaces earlier processing rows with the latest stream
   };
   const response = (
     messageId: string, createdAt: string, summary: string, phase: 'analyzing' | 'using-tool',
+    text = 'processing...',
   ): CloudMessage => ({
     ...request, messageId, createdAt,
     body: encodeCloudAgentResponse({
-      requestId: request.messageId, text: 'processing...', deliveryState: 'processing',
+      requestId: request.messageId, text, deliveryState: 'processing',
       execution: {
         phase, summary, steps: [{
           id: phase === 'analyzing' ? 'analysis' : 'tool:web-search', label: summary, state: 'running',
@@ -93,7 +110,20 @@ test('desktop owner view replaces earlier processing rows with the latest stream
     account, contacts: [], messagesByPeer: { [account.accountId]: [
       request,
       response('msg_execution_1', '2026-05-11T10:00:01Z', 'Analyzing the request', 'analyzing'),
-      response('msg_execution_2', '2026-05-11T10:00:02Z', 'Using Web Search', 'using-tool'),
+      response(
+        'msg_execution_2',
+        '2026-05-11T10:00:02Z',
+        'Using Web Search',
+        'using-tool',
+        'The rollout is nearly ready.',
+      ),
+      response(
+        'msg_execution_3',
+        '2026-05-11T10:00:03Z',
+        'Using Web Search',
+        'using-tool',
+        'The rollout',
+      ),
     ] },
   });
   const executionRows = state.conversations[0]?.messages.filter(
@@ -101,5 +131,10 @@ test('desktop owner view replaces earlier processing rows with the latest stream
   ) ?? [];
   assert.equal(executionRows.length, 1);
   assert.equal(executionRows[0]?.id, 'msg_execution_2');
+  assert.equal(executionRows[0]?.text, 'The rollout is nearly ready.');
+  assert.equal(
+    executionRows[0]?.localTurn?.assistantText,
+    'The rollout is nearly ready.',
+  );
   assert.equal(executionRows[0]?.localTurn?.message, 'Using Web Search');
 });

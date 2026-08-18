@@ -395,6 +395,8 @@ export function planCloudSelfAgentCanonicalSync({
       && cloudSelfAgentResponseWouldDowngrade(
         existingMatch.status,
         deliveryState,
+        existingMatch.contentText,
+        text,
       )
     ) {
       continue;
@@ -454,6 +456,8 @@ export function planCloudSelfAgentCanonicalSync({
         && shouldReplacePlannedCloudSelfAgentResponse(
           planned.status,
           deliveryState,
+          planned.contentText,
+          text,
         )
       ) {
         messageRequests[plannedIndex] = request;

@@ -52,7 +52,7 @@ export function useCloudSelfAgentExecutionStreaming({
     .filter((turn) => !turn.completed)
     .map((turn) => {
       const execution = cloudAgentExecutionSnapshotFromTurn(turn, 0);
-      return `${turn.sessionId}\u0001${cloudAgentExecutionFingerprint(execution)}`;
+      return `${turn.sessionId}\u0001${cloudAgentExecutionFingerprint(execution, turn.assistantText)}`;
     })
     .sort()
     .join('\u0000');
@@ -112,7 +112,10 @@ export function useCloudSelfAgentExecutionStreaming({
             : null;
           if (!localRequest || !cloudRequestMessageId) continue;
           const execution = cloudAgentExecutionSnapshotFromTurn(turn);
-          const fingerprint = cloudAgentExecutionFingerprint(execution);
+          const fingerprint = cloudAgentExecutionFingerprint(
+            execution,
+            turn.assistantText,
+          );
           if (
             publishedFingerprintBySessionRef.current[turn.sessionId]
             === fingerprint
@@ -121,6 +124,7 @@ export function useCloudSelfAgentExecutionStreaming({
           publishRevisionRef.current += 1;
           const message = await publishCloudSelfAgentExecutionSnapshot({
             accountId: account.accountId,
+            assistantText: turn.assistantText,
             client,
             cloudRequestMessageId,
             execution,

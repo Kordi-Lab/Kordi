@@ -3,6 +3,7 @@ import {
   isCloudAgentControlMessage,
   parseCloudAgentResponse,
 } from './cloudAgentMessages';
+import { cloudSelfAgentProcessingTextWouldRegress } from './cloudSelfAgentResponseLifecycle';
 import { compareCloudMessages } from './cloudMessageMerge';
 
 export function visibleCloudAgentResponseMessages(
@@ -25,10 +26,19 @@ export function visibleCloudAgentResponseMessages(
       preferredResponseByKey.set(responseKey, message);
       continue;
     }
-    const existingIsTerminal = parseCloudAgentResponse(existing.body)
+    const existingResponse = parseCloudAgentResponse(existing.body);
+    const existingIsTerminal = existingResponse
       ?.deliveryState !== 'processing';
     const candidateIsTerminal = response.deliveryState !== 'processing';
     if (existingIsTerminal && !candidateIsTerminal) continue;
+    if (
+      !existingIsTerminal
+      && !candidateIsTerminal
+      && cloudSelfAgentProcessingTextWouldRegress(
+        existingResponse?.text ?? '',
+        response.text,
+      )
+    ) continue;
     if (
       (!existingIsTerminal && candidateIsTerminal)
       || compareCloudMessages(existing, message) <= 0

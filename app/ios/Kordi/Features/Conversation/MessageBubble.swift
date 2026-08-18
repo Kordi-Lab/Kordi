@@ -104,21 +104,16 @@ struct MessageBubble: View, Equatable {
 
                 messageSurface
                 .overlay(alignment: .bottomTrailing) {
-                    if message.author == .me && !isCallActivity {
+                    if message.author == .me,
+                       !isCallActivity,
+                       deliveryGlyphPlacement == .overlay {
                         MessageDeliveryGlyph(
                             state: message.deliveryState,
                             readByCount: message.readByCount
                         )
                         .font(.caption2)
-                        .foregroundStyle(usesBorderlessImageSurface ? .white : .secondary)
-                        .padding(.horizontal, usesBorderlessImageSurface ? 6 : 0)
-                        .padding(.vertical, usesBorderlessImageSurface ? 4 : 0)
-                        .background(
-                            usesBorderlessImageSurface ? Color.black.opacity(0.48) : Color.clear,
-                            in: Capsule()
-                        )
-                        .padding(.trailing, usesBorderlessImageSurface ? 7 : 8)
-                        .padding(.bottom, usesBorderlessImageSurface ? 7 : 6)
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 2)
                     }
                 }
                 .overlay {
@@ -175,6 +170,17 @@ struct MessageBubble: View, Equatable {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.red)
                         .padding(.horizontal, 4)
+                }
+
+                if message.author == .me,
+                   !isCallActivity,
+                   deliveryGlyphPlacement == .belowSurface {
+                    MessageDeliveryGlyph(
+                        state: message.deliveryState,
+                        readByCount: message.readByCount
+                    )
+                    .font(.caption2)
+                    .padding(.bottom, 2)
                 }
             }
 
@@ -261,13 +267,15 @@ struct MessageBubble: View, Equatable {
             if let execution = message.agentExecution {
                 AgentExecutionTimeline(
                     execution: execution,
-                    showsWaitingIndicator: !execution.completed,
+                    showsWaitingIndicator: Self.showsAgentWaitingIndicator(
+                        execution: execution,
+                        responseText: message.text
+                    ),
                     onExpansionChange: onAgentExecutionExpansionChange
                 )
             }
 
-            if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               !(message.agentExecution != nil && message.text == "processing...") {
+            if hasVisibleMessageText {
                 MarkdownMessageContent(
                     text: message.text,
                     mentionTargets: mentionTargets
@@ -302,6 +310,30 @@ struct MessageBubble: View, Equatable {
 
     private var usesBorderlessImageSurface: Bool {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
+    }
+
+    private var deliveryGlyphPlacement: MessageAttachmentPresentation.DeliveryGlyphPlacement {
+        MessageAttachmentPresentation.deliveryGlyphPlacement(for: message)
+    }
+
+    private var hasVisibleMessageText: Bool {
+        let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !text.isEmpty && (
+            message.agentExecution == nil
+                || Self.hasVisibleAgentResponseText(text)
+        )
+    }
+
+    static func hasVisibleAgentResponseText(_ responseText: String) -> Bool {
+        let text = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !text.isEmpty && text != "processing..."
+    }
+
+    static func showsAgentWaitingIndicator(
+        execution: AgentExecutionSnapshot,
+        responseText: String
+    ) -> Bool {
+        !execution.completed && !hasVisibleAgentResponseText(responseText)
     }
 
     private var isCallActivity: Bool {
@@ -399,26 +431,24 @@ struct MessageBubble: View, Equatable {
     }
 }
 
+struct AgentExecutionTimelineExpansion {
+    var isExpanded = false
+
+    mutating func updateCompletion(from wasCompleted: Bool, to isCompleted: Bool) {
+        guard !wasCompleted, isCompleted else { return }
+        isExpanded = false
+    }
+}
+
 private struct AgentExecutionTimeline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let execution: AgentExecutionSnapshot
     let showsWaitingIndicator: Bool
     let onExpansionChange: (Bool) -> Void
-    @State private var isExpanded: Bool
+    @State private var expansion = AgentExecutionTimelineExpansion()
 
     private var presentation: AgentExecutionTimelinePresentation {
         AgentExecutionTimelinePresentation(execution: execution)
-    }
-
-    init(
-        execution: AgentExecutionSnapshot,
-        showsWaitingIndicator: Bool,
-        onExpansionChange: @escaping (Bool) -> Void
-    ) {
-        self.execution = execution
-        self.showsWaitingIndicator = showsWaitingIndicator
-        self.onExpansionChange = onExpansionChange
-        _isExpanded = State(initialValue: !execution.completed)
     }
 
     var body: some View {
@@ -451,17 +481,17 @@ private struct AgentExecutionTimeline: View {
                         Image(systemName: "chevron.down")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                            .rotationEffect(.degrees(expansion.isExpanded ? 180 : 0))
                     }
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(presentation.completionLabel ?? presentation.headline)
-                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .accessibilityValue(expansion.isExpanded ? "Expanded" : "Collapsed")
             }
 
-            if isExpanded && presentation.hasExpandableContent {
+            if expansion.isExpanded && presentation.hasExpandableContent {
                 VStack(alignment: .leading, spacing: 5) {
                     if let thinkingText = presentation.thinkingText {
                         reasoningSection(thinkingText)
@@ -494,11 +524,9 @@ private struct AgentExecutionTimeline: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: isExpanded)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: expansion.isExpanded)
         .onChange(of: execution.completed) { wasCompleted, isCompleted in
-            if !wasCompleted && isCompleted {
-                isExpanded = false
-            }
+            expansion.updateCompletion(from: wasCompleted, to: isCompleted)
         }
     }
 
@@ -637,15 +665,14 @@ private struct AgentExecutionTimeline: View {
     }
 
     private func toggleExpansion() {
-        let nextValue = !isExpanded
         if reduceMotion {
-            isExpanded = nextValue
+            expansion.isExpanded.toggle()
         } else {
             withAnimation(.snappy(duration: 0.24)) {
-                isExpanded = nextValue
+                expansion.isExpanded.toggle()
             }
         }
-        onExpansionChange(nextValue)
+        onExpansionChange(expansion.isExpanded)
     }
 }
 
@@ -771,12 +798,21 @@ private struct ConversationCallActivityCard: View {
 }
 
 enum MessageAttachmentPresentation {
+    enum DeliveryGlyphPlacement: Equatable {
+        case overlay
+        case belowSurface
+    }
+
     static func usesBorderlessImageSurface(for message: ChatMessage) -> Bool {
         !message.attachments.isEmpty
             && message.attachments.allSatisfy { $0.kind == .image }
             && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && message.replyToMessageId == nil
             && message.messageAction == nil
+    }
+
+    static func deliveryGlyphPlacement(for message: ChatMessage) -> DeliveryGlyphPlacement {
+        usesBorderlessImageSurface(for: message) ? .belowSurface : .overlay
     }
 }
 
@@ -1292,8 +1328,18 @@ private struct MessageDeliveryGlyph: View {
             }
         }
         .font(.caption2.weight(.semibold))
+        .foregroundStyle(tint)
         .frame(width: 16, height: 14)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var tint: Color {
+        switch state {
+        case .sent, .delivered, .read:
+            KordiTheme.signalBlue
+        case .sending, .cancelled, .failed:
+            .secondary
+        }
     }
 
     private var accessibilityLabel: String {

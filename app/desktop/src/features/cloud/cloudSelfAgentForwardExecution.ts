@@ -82,6 +82,7 @@ export function cloudSelfAgentProcessingLedgerKey(
 
 export async function publishCloudSelfAgentHeartbeat({
   accountId,
+  assistantText = '',
   client,
   cloudRequestMessageId,
   execution,
@@ -91,6 +92,7 @@ export async function publishCloudSelfAgentHeartbeat({
   token,
 }: {
   accountId: string;
+  assistantText?: string;
   client: Pick<CloudAuthClient, 'sendMessage'>;
   cloudRequestMessageId: string;
   execution?: CloudAgentExecutionSnapshot;
@@ -107,7 +109,7 @@ export async function publishCloudSelfAgentHeartbeat({
     accountId,
     encodeCloudAgentResponse({
       requestId: cloudRequestMessageId,
-      text: 'processing...',
+      text: assistantText.trim() || 'processing...',
       deliveryState: 'processing',
       execution,
     }),
@@ -123,6 +125,7 @@ export async function publishCloudSelfAgentHeartbeat({
 
 export async function publishCloudSelfAgentExecutionSnapshot({
   accountId,
+  assistantText,
   client,
   cloudRequestMessageId,
   execution,
@@ -132,6 +135,7 @@ export async function publishCloudSelfAgentExecutionSnapshot({
   token,
 }: {
   accountId: string;
+  assistantText: string;
   client: Pick<CloudAuthClient, 'sendMessage'>;
   cloudRequestMessageId: string;
   execution: CloudAgentExecutionSnapshot;
@@ -145,7 +149,7 @@ export async function publishCloudSelfAgentExecutionSnapshot({
     accountId,
     encodeCloudAgentResponse({
       requestId: cloudRequestMessageId,
-      text: 'processing...',
+      text: assistantText.trim() || 'processing...',
       deliveryState: 'processing',
       execution,
     }),

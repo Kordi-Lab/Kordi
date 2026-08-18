@@ -140,6 +140,7 @@ test('self-agent execution heartbeats are idempotent within one time bucket', as
   };
   const publish = (nowMs: number) => publishCloudSelfAgentHeartbeat({
     accountId: 'acct_me',
+    assistantText: 'The answer is still growing.',
     client,
     cloudRequestMessageId: 'cloud-request',
     execution: { ...execution, updatedAtMs: nowMs },
@@ -161,6 +162,10 @@ test('self-agent execution heartbeats are idempotent within one time bucket', as
     'Check disk usage',
   );
   assert.equal(parseCloudAgentResponse(retry.body)?.deliveryState, 'processing');
+  assert.equal(
+    parseCloudAgentResponse(retry.body)?.text,
+    'The answer is still growing.',
+  );
   assert.equal(parseCloudAgentResponse(next.body)?.deliveryState, 'processing');
 });
 
@@ -201,6 +206,7 @@ test('self-agent execution stream publishes an owner-only lifecycle update', asy
 
   const message = await publishCloudSelfAgentExecutionSnapshot({
     accountId: 'acct_me',
+    assistantText: 'The rollout is ready so far.',
     client,
     cloudRequestMessageId: 'cloud-request',
     execution,
@@ -212,6 +218,14 @@ test('self-agent execution stream publishes an owner-only lifecycle update', asy
 
   assert.equal(calls[0]?.accountId, 'acct_me');
   assert.match(calls[0]?.clientMessageId ?? '', /:execution:3$/);
+  assert.equal(
+    parseCloudAgentResponse(message.body)?.text,
+    'The rollout is ready so far.',
+  );
+  assert.equal(
+    parseCloudAgentResponse(message.body)?.deliveryState,
+    'processing',
+  );
   assert.deepEqual(parseCloudAgentResponse(message.body)?.execution, execution);
 });
 
