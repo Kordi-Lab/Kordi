@@ -181,7 +181,7 @@ echo
 read -s -p "LiveKit API secret: " KORDI_LIVEKIT_API_SECRET
 echo
 kubectl -n kordi-cloud create secret generic kordi-livekit \
-  --from-literal=url=wss://media.kordi.ai \
+  --from-literal=url=wss://kordi.ai \
   --from-literal=api-key="$KORDI_LIVEKIT_API_KEY" \
   --from-literal=api-secret="$KORDI_LIVEKIT_API_SECRET" \
   --from-literal=keys="$KORDI_LIVEKIT_API_KEY: $KORDI_LIVEKIT_API_SECRET" \
@@ -189,10 +189,10 @@ kubectl -n kordi-cloud create secret generic kordi-livekit \
 unset KORDI_LIVEKIT_API_KEY KORDI_LIVEKIT_API_SECRET
 ```
 
-Point `media.kordi.ai` at the product edge, install the reviewed Caddy file,
-and run `configure-product-firewall.sh` before deploying. The firewall exposes
-only LiveKit signal TLS through Caddy, ICE TCP/UDP, TURN/UDP, and the bounded
-TURN relay range; database and application ports stay private.
+Install the reviewed Caddy file and run `configure-product-firewall.sh` before
+deploying. Caddy sends only `/rtc` to LiveKit on the existing `kordi.ai` TLS
+origin. The firewall exposes ICE TCP/UDP, TURN/UDP, and the bounded TURN relay
+range; database and application ports stay private.
 
 The production origin is a compatibility contract with released desktop
 clients. Both `kordi.ai` and the legacy `coordinar.io` origin must serve

@@ -160,7 +160,7 @@ test('product origin serves desktop compatibility routes without redirects', asy
     'legacy product routes must be handled before the marketing redirect',
   );
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:17081/);
-  assert.match(caddyfile, /media\.kordi\.ai[\s\S]*reverse_proxy 127\.0\.0\.1:7880/);
+  assert.match(caddyfile, /@call_media path \/rtc \/rtc\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:7880/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 10\.\d+\.\d+\.\d+:17081/);
   assert.match(portForwardService, /service\/kordi-cloud-server 17081:17081/);
   assert.match(portForwardService, /--address=127\.0\.0\.1/);
