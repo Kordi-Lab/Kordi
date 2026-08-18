@@ -4,6 +4,50 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1-beta.13] - 2026-08-18
+
+### Added
+
+- Added the native iPhone companion with Contact and Agent chats, Digest,
+  Ask Agent, session details, calls, expressive media, participant profiles,
+  and synchronized presence. ([#957], [#1018], [#1021], [#1025], [#1034],
+  [#1041], [#1043])
+- Added public Kordi IDs, app invitations, and secure group invitation links
+  with explicit membership and authorization handling. ([#923], [#927],
+  [#945])
+- Added active-device review and revocation, plus native macOS and iOS audio,
+  video, and group-call history. ([#1015], [#1025], [#1032])
+- Added version-aware What’s New presentation and native media gallery
+  previews. ([#937], [#1017])
+
+### Changed
+
+- Completed the reliable chat sync v2 cutover and made it the canonical
+  session/message foundation while isolating development OAuth, data, and
+  branding from production. ([#980], [#989], [#991], [#995])
+- Refined desktop chat hierarchy, transcript disclosure, message width and
+  timestamps, split-pane geometry, sidebar status, media previews, selection,
+  focus, transient surfaces, and avatar identity. ([#901], [#903], [#920],
+  [#935], [#939], [#942], [#952], [#955], [#956], [#1013], [#1014], [#1038])
+- Simplified contact requests and aligned contact/group profiles and last-seen
+  status across macOS and iOS. ([#1010], [#1012], [#1034], [#1041])
+- Unified product branding across OAuth, invitation, and hosted entry
+  surfaces. ([#927], [#951])
+
+### Fixed
+
+- Made group handoffs, self-agent replies, terminal state, and selected runtime
+  routes converge across devices without duplicate execution. ([#924], [#936],
+  [#940], [#985], [#1044])
+- Stabilized iOS session history, blank Agent sessions, calls, model controls,
+  mentions, partial streaming, reasoning/tool presentation, composer input,
+  scrolling, delivery receipts, and long-content containment. ([#1016],
+  [#1028], [#1029], [#1033], [#1045], [#1050], [#1051])
+- Made message attention, read state, and sent/read indicators trustworthy
+  across macOS and iOS. ([#1036], [#1050])
+- Restored Kordi Support visibility and consistent support-chat presentation.
+  ([#941])
+
 ## [0.0.1-beta.12] - 2026-08-06
 
 ### Added
@@ -168,7 +212,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta12...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta13...HEAD
+[0.0.1-beta.13]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta12...V0.0.1.beta13
 [0.0.1-beta.12]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta11...V0.0.1.beta12
 [0.0.1-beta.11]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta10...V0.0.1.beta11
 [0.0.1-beta.10]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta9...V0.0.1.beta10
@@ -229,3 +274,50 @@ This release is the comparison baseline for beta.8. See the
 [#891]: https://github.com/Kordi-Lab/Kordi/pull/891
 [#894]: https://github.com/Kordi-Lab/Kordi/pull/894
 [#896]: https://github.com/Kordi-Lab/Kordi/pull/896
+[#901]: https://github.com/Kordi-Lab/Kordi/pull/901
+[#903]: https://github.com/Kordi-Lab/Kordi/pull/903
+[#920]: https://github.com/Kordi-Lab/Kordi/pull/920
+[#923]: https://github.com/Kordi-Lab/Kordi/pull/923
+[#924]: https://github.com/Kordi-Lab/Kordi/pull/924
+[#927]: https://github.com/Kordi-Lab/Kordi/pull/927
+[#935]: https://github.com/Kordi-Lab/Kordi/pull/935
+[#936]: https://github.com/Kordi-Lab/Kordi/pull/936
+[#937]: https://github.com/Kordi-Lab/Kordi/pull/937
+[#939]: https://github.com/Kordi-Lab/Kordi/pull/939
+[#940]: https://github.com/Kordi-Lab/Kordi/pull/940
+[#941]: https://github.com/Kordi-Lab/Kordi/pull/941
+[#942]: https://github.com/Kordi-Lab/Kordi/pull/942
+[#945]: https://github.com/Kordi-Lab/Kordi/pull/945
+[#951]: https://github.com/Kordi-Lab/Kordi/pull/951
+[#952]: https://github.com/Kordi-Lab/Kordi/pull/952
+[#955]: https://github.com/Kordi-Lab/Kordi/pull/955
+[#956]: https://github.com/Kordi-Lab/Kordi/pull/956
+[#957]: https://github.com/Kordi-Lab/Kordi/pull/957
+[#980]: https://github.com/Kordi-Lab/Kordi/pull/980
+[#985]: https://github.com/Kordi-Lab/Kordi/pull/985
+[#989]: https://github.com/Kordi-Lab/Kordi/pull/989
+[#991]: https://github.com/Kordi-Lab/Kordi/pull/991
+[#995]: https://github.com/Kordi-Lab/Kordi/pull/995
+[#1010]: https://github.com/Kordi-Lab/Kordi/pull/1010
+[#1012]: https://github.com/Kordi-Lab/Kordi/pull/1012
+[#1013]: https://github.com/Kordi-Lab/Kordi/pull/1013
+[#1014]: https://github.com/Kordi-Lab/Kordi/pull/1014
+[#1015]: https://github.com/Kordi-Lab/Kordi/pull/1015
+[#1016]: https://github.com/Kordi-Lab/Kordi/pull/1016
+[#1017]: https://github.com/Kordi-Lab/Kordi/pull/1017
+[#1018]: https://github.com/Kordi-Lab/Kordi/pull/1018
+[#1021]: https://github.com/Kordi-Lab/Kordi/pull/1021
+[#1025]: https://github.com/Kordi-Lab/Kordi/pull/1025
+[#1028]: https://github.com/Kordi-Lab/Kordi/pull/1028
+[#1029]: https://github.com/Kordi-Lab/Kordi/pull/1029
+[#1032]: https://github.com/Kordi-Lab/Kordi/pull/1032
+[#1033]: https://github.com/Kordi-Lab/Kordi/pull/1033
+[#1034]: https://github.com/Kordi-Lab/Kordi/pull/1034
+[#1036]: https://github.com/Kordi-Lab/Kordi/pull/1036
+[#1038]: https://github.com/Kordi-Lab/Kordi/pull/1038
+[#1041]: https://github.com/Kordi-Lab/Kordi/pull/1041
+[#1043]: https://github.com/Kordi-Lab/Kordi/pull/1043
+[#1044]: https://github.com/Kordi-Lab/Kordi/pull/1044
+[#1045]: https://github.com/Kordi-Lab/Kordi/pull/1045
+[#1050]: https://github.com/Kordi-Lab/Kordi/pull/1050
+[#1051]: https://github.com/Kordi-Lab/Kordi/pull/1051

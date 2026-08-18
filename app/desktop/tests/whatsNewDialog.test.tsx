@@ -10,7 +10,7 @@ import { WhatsNewDialog } from '../src/features/updates/WhatsNewDialog';
 import type { WhatsNewRelease } from '../src/features/updates/whatsNew';
 
 const release: WhatsNewRelease = {
-  version: '0.0.1-beta.12',
+  version: '0.0.1-beta.13',
   notes: [
     '### Added',
     '',
@@ -20,8 +20,8 @@ const release: WhatsNewRelease = {
     '',
     '- Kept the workspace available when release metadata cannot load.',
   ].join('\n'),
-  publishedAt: '2026-08-08T00:00:00Z',
-  changelogUrl: 'https://github.com/Kordi-AI/Kordi/releases/tag/V0.0.1.beta12',
+  publishedAt: '2026-08-18T00:00:00Z',
+  changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta13',
 };
 
 const whatsNewCss = readFileSync(new URL('../src/styles/whats-new.css', import.meta.url), 'utf8');
@@ -34,9 +34,9 @@ test('What’s New renders concise highlights and both clear actions', () => {
   }));
 
   assert.match(markup, /What’s New in Kordi/);
-  assert.match(markup, /2 product updates in the beta\.12 release/);
-  assert.match(markup, /Social sign-in stays available in packaged Cloud builds/);
-  assert.match(markup, /Group agents can mention people and their Kordi agents/);
+  assert.match(markup, /4 product updates in the beta\.13 release/);
+  assert.match(markup, /Your chats, agents, calls, and media now travel with you/);
+  assert.match(markup, /Messages stay compact, readable, and correctly delivered/);
   assert.match(markup, /View full changelog/);
   assert.match(markup, />Continue</);
   assert.match(markup, /aria-label="Close What’s New"/);
@@ -44,7 +44,7 @@ test('What’s New renders concise highlights and both clear actions', () => {
   assert.match(markup, /aria-modal="true"/);
   assert.doesNotMatch(markup, /#893/);
   assert.doesNotMatch(markup, /release-signal|signal-node|aria-pressed/);
-  assert.equal((markup.match(/role="listitem"/g) ?? []).length, 2);
+  assert.equal((markup.match(/role="listitem"/g) ?? []).length, 4);
   assert.equal((markup.match(/app-whats-new-footer-action/g) ?? []).length, 2);
 });
 

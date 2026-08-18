@@ -11,6 +11,9 @@ configs:
   Debug: debug
   Release: release
 packages:
+  EmojiKit:
+    url: https://github.com/danielsaidi/EmojiKit.git
+    exactVersion: 2.5.0
   LiveKit:
     url: https://github.com/livekit/client-sdk-swift.git
     from: 2.16.0
@@ -20,8 +23,8 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: 17.0
     TARGETED_DEVICE_FAMILY: 1
     SUPPORTS_MACCATALYST: NO
-    MARKETING_VERSION: 0.1.0
-    CURRENT_PROJECT_VERSION: 35
+    MARKETING_VERSION: 0.0.1
+    CURRENT_PROJECT_VERSION: 36
     CODE_SIGN_STYLE: Automatic
 targets:
   Kordi:
@@ -37,6 +40,8 @@ targets:
         optional: true
     entitlements:
       path: Kordi/Supporting/Kordi.entitlements
+      properties:
+        aps-environment: $(APNS_ENVIRONMENT)
     info:
       path: Kordi/Supporting/Info.plist
       properties:
@@ -45,6 +50,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: Kordi uses the camera when you choose to share video in a call or attach a new photo to a message.
+        NSLocalNetworkUsageDescription: Kordi uses the local network to establish audio and video calls when required.
         NSMicrophoneUsageDescription: Kordi uses the microphone when you join an audio or video call.
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
@@ -102,6 +108,7 @@ targets:
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
           APNS_ENVIRONMENT: production
     dependencies:
+      - package: EmojiKit
       - package: LiveKit
   KordiTests:
     type: bundle.unit-test
