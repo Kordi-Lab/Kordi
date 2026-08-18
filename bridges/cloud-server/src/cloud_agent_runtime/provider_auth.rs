@@ -8,13 +8,17 @@ use sha2::{Digest, Sha256};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
-use std::fmt;
 use uuid::Uuid;
 
 use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
 
 mod provider_family;
 use provider_family::{canonical_provider_id, equivalent_provider_ids};
+mod service;
+use service::service_provider_auth_for_run;
+pub use service::{
+    RunnerProviderAuthMaterial, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
+};
 
 const NONCE_LEN: usize = 12;
 
@@ -138,44 +142,6 @@ pub struct ProviderAuthSnapshotResponse {
 #[derive(Debug, Serialize)]
 pub struct CurrentProviderAuthSnapshotResponse {
     pub snapshot: Option<ProviderAuthSnapshotResponse>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RunnerProviderAuthMaterialEnvelope {
-    #[serde(rename = "providerAuth")]
-    pub provider_auth: RunnerProviderAuthMaterial,
-}
-
-#[derive(Serialize)]
-pub struct RunnerProviderAuthMaterial {
-    #[serde(rename = "snapshotId")]
-    pub snapshot_id: String,
-    pub provider: String,
-    #[serde(rename = "authChoice")]
-    pub auth_choice: String,
-    pub payload: Value,
-}
-
-impl fmt::Debug for RunnerProviderAuthMaterial {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("RunnerProviderAuthMaterial")
-            .field("snapshot_id", &self.snapshot_id)
-            .field("provider", &self.provider)
-            .field("auth_choice", &self.auth_choice)
-            .field("payload", &"[REDACTED]")
-            .finish()
-    }
-}
-
-pub struct ServiceProviderAuth<'a> {
-    pub owner_account_id: &'a str,
-    pub snapshot_id: &'a str,
-    pub provider: &'a str,
-    pub auth_choice: &'a str,
-    pub api_key: &'a str,
-    pub base_url: &'a str,
-    pub model: &'a str,
 }
 
 #[derive(Debug)]
@@ -361,41 +327,25 @@ pub async fn provider_auth_for_run(
         return Ok(ProviderAuthForRunResult::RunNotFound);
     };
 
-    let routed_provider = runtime_route
-        .get("defaultAuthProvider")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let routed_provider_ids = equivalent_provider_ids(routed_provider);
+    if let Some(provider_auth) =
+        service_provider_auth_for_run(&owner_account_id, &runtime_route, service_auth)
+    {
+        return Ok(ProviderAuthForRunResult::Found(provider_auth));
+    }
+
+    let routed_provider_ids = equivalent_provider_ids(
+        runtime_route
+            .get("defaultAuthProvider")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+    );
     let routed_auth_choice = runtime_route
         .get("defaultAuthChoice")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-
-    if let Some(service_auth) = service_auth.filter(|service_auth| {
-        service_auth.owner_account_id == owner_account_id
-            && routed_provider_ids.as_ref().is_some_and(|providers| {
-                providers
-                    .iter()
-                    .any(|provider| provider == service_auth.provider)
-            })
-            && routed_auth_choice.as_deref() == Some(service_auth.auth_choice)
-    }) {
-        return Ok(ProviderAuthForRunResult::Found(
-            RunnerProviderAuthMaterial {
-                snapshot_id: service_auth.snapshot_id.to_string(),
-                provider: service_auth.provider.to_string(),
-                auth_choice: service_auth.auth_choice.to_string(),
-                payload: serde_json::json!({
-                    "apiKey": service_auth.api_key,
-                    "baseUrl": service_auth.base_url,
-                    "model": service_auth.model,
-                }),
-            },
-        ));
-    }
 
     let Some(cipher) = cipher else {
         return Ok(ProviderAuthForRunResult::ProviderAuthCipherUnavailable);
@@ -543,19 +493,5 @@ mod tests {
             Some(vec!["anthropic".to_string()])
         );
         assert_eq!(equivalent_provider_ids(Some("  ")), None);
-    }
-
-    #[test]
-    fn runner_provider_auth_debug_redacts_secret_payloads() {
-        let material = RunnerProviderAuthMaterial {
-            snapshot_id: "support-service-openai".to_string(),
-            provider: "openai".to_string(),
-            auth_choice: "support-service-api-key".to_string(),
-            payload: serde_json::json!({"apiKey":"secret-support-key"}),
-        };
-
-        let debug = format!("{material:?}");
-        assert!(debug.contains("[REDACTED]"));
-        assert!(!debug.contains("secret-support-key"));
     }
 }
