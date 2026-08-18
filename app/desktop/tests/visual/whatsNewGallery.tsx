@@ -33,8 +33,8 @@ createRoot(document.querySelector('#root')!).render(
           '- Packaged Cloud builds keep Google and GitHub sign-in available when capability discovery is unavailable.',
           '- Group agents can mention conversation participants and their Kordi agents while preserving relevant reply history.',
         ].join('\n'),
-        publishedAt: '2026-08-06T00:00:00Z',
-        changelogUrl: 'https://kordi.ai/changelog#v0-0-1-beta-12',
+        publishedAt: '2026-08-18T00:00:00Z',
+        changelogUrl: 'https://kordi.ai/changelog#v0-0-1-beta-13',
       }}
       onDismiss={() => undefined}
       onOpenFullReleaseNotes={() => undefined}

@@ -30,7 +30,7 @@ function releaseMetadata(version = VERSION) {
     schemaVersion: 1,
     version,
     notes: '### Added\n\n- Added a first-launch summary. ([#893])',
-    pubDate: '2026-08-08T00:00:00Z',
+    pubDate: '2026-08-18T00:00:00Z',
     changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta13',
   };
 }
