@@ -41,7 +41,7 @@ test('acceptance flavors are ad-hoc, updater-signed, and isolated from beta', ()
   const bootstrap = readJson('src-tauri/tauri.cloud.acceptance-bootstrap.conf.json');
   const pkg = readJson('package.json');
 
-  assert.equal(base.version, '0.0.1-beta.13');
+  assert.equal(base.version, '0.0.1-beta.13-preview.1');
   assert.equal(base.bundle?.macOS?.signingIdentity, undefined);
   assert.deepEqual(base.plugins?.updater?.endpoints, [
     'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}',

@@ -4,6 +4,13 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1-beta.13-preview.1] - 2026-08-18
+
+### Changed
+
+- Added a temporary acceptance-only ad-hoc package for external beta.13
+  testing while Developer ID notarization remains pending.
+
 ## [0.0.1-beta.13] - 2026-08-18
 
 ### Added
@@ -213,6 +220,7 @@ This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
 [Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta13...HEAD
+[0.0.1-beta.13-preview.1]: https://github.com/Kordi-Lab/Kordi/compare/fabdb5e7efdb88dc481f537f56dc266d90841608...V0.0.1.beta13-preview.1
 [0.0.1-beta.13]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta12...V0.0.1.beta13
 [0.0.1-beta.12]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta11...V0.0.1.beta12
 [0.0.1-beta.11]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta10...V0.0.1.beta11

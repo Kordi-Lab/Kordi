@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$/;
+const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)(?:-preview\.(0|[1-9]\d*))?$/;
 const MAX_RELEASE_NOTES_LENGTH = 16_384;
 
 function escapeRegExp(value) {

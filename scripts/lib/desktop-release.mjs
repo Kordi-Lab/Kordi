@@ -45,7 +45,7 @@ export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB
 
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
-const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$/;
+const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)(?:-preview\.(0|[1-9]\d*))?$/;
 const SAFE_CHANNELS = new Set(['beta', 'acceptance']);
 const SENSITIVE_PATTERNS = [
   'pi-clipboard',

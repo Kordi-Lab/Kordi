@@ -75,6 +75,12 @@ test('extracts the exact classified changelog entry and rejects missing release 
     '',
     '- Kept startup available when metadata cannot load.',
     '',
+    '## [1.2.3-beta.4-preview.1] - 2026-08-08',
+    '',
+    '### Changed',
+    '',
+    '- Added an acceptance-only tester package.',
+    '',
     '## [1.2.3-beta.3] - 2026-08-01',
     '',
     '- Older notes.',
@@ -95,6 +101,10 @@ test('extracts the exact classified changelog entry and rejects missing release 
   assert.throws(
     () => releaseNotesFromChangelog(changelog, '1.2.3-beta.5'),
     /does not contain classified release notes/,
+  );
+  assert.equal(
+    releaseNotesFromChangelog(changelog, '1.2.3-beta.4-preview.1'),
+    '### Changed\n\n- Added an acceptance-only tester package.',
   );
 });
 
