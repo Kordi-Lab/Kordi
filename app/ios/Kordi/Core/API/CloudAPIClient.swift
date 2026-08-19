@@ -1223,6 +1223,7 @@ actor CloudAPIClient {
             }
         return CloudMessageDTO(
             messageId: message.id,
+            clientMessageId: message.clientMessageId,
             fromAccountId: message.senderAccountId,
             toAccountId: outgoing ? peerAccountId : viewerAccountId,
             body: message.deletedAt == nil ? message.content.body : "",
@@ -1442,6 +1443,10 @@ actor CloudAPIClient {
     }
 
     private func operationUUID(_ value: String) -> String {
+        Self.stableOperationUUID(value)
+    }
+
+    nonisolated static func stableOperationUUID(_ value: String) -> String {
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if UUID(uuidString: normalized) != nil { return normalized.lowercased() }
         var bytes = Array(SHA256.hash(data: Data(normalized.utf8)).prefix(16))

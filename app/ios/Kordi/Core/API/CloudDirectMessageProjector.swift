@@ -116,6 +116,7 @@ enum CloudDirectMessageProjector {
             : nil
         return ChatMessage(
             id: message.messageId,
+            clientMessageId: message.clientMessageId,
             conversationId: conversation.id,
             author: author,
             authorName: authorName,

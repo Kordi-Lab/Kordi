@@ -121,7 +121,7 @@ export type ChatsPageComposer = {
     files: File[],
     options?: SaveDesktopAttachmentOptions,
   ) => Promise<ChatAttachment[]>;
-  saveDesktopAttachmentPaths: (paths: string[]) => Promise<ChatAttachment[]>;
+  saveDesktopAttachmentPaths: (paths?: string[]) => Promise<ChatAttachment[]>;
   removeChatComposerAttachment: (id: string) => void;
   updateChatComposerAttachment: (
     id: string,

@@ -4,16 +4,12 @@
 //! surface against real Postgres migrations so idempotency and presence
 //! gating match production behavior.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::{to_bytes, Body};
-use axum::extract::OriginalUri;
-use axum::http::{Method, Request, StatusCode};
-use axum::response::IntoResponse;
+use axum::http::{Request, StatusCode};
 use base64::Engine as _;
-use kordi_cloud_server::attachments::S3Config;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
 use kordi_cloud_server::chat_sync::models::{
     ConversationKind, CreateConversationRequest, SendMessageRequest,
@@ -23,10 +19,7 @@ use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
 use kordi_cloud_server::server::{router_with_rate_limiter, ServerState};
 use serde_json::{json, Value};
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 use tower::util::ServiceExt;
-use url::Url;
 
 static INIT_POOL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -56,72 +49,6 @@ fn test_router(state: Arc<ServerState>) -> axum::Router {
         per_email_lockout: Duration::from_secs(900),
     });
     router_with_rate_limiter(state, limiter)
-}
-
-#[derive(Clone)]
-struct TestObjectStore {
-    endpoint: String,
-}
-
-impl TestObjectStore {
-    async fn spawn() -> Self {
-        Self::spawn_with_put_status(StatusCode::OK).await
-    }
-
-    async fn spawn_rejecting_puts() -> Self {
-        Self::spawn_with_put_status(StatusCode::BAD_GATEWAY).await
-    }
-
-    async fn spawn_with_put_status(put_status: StatusCode) -> Self {
-        let objects = Arc::new(Mutex::new(HashMap::<String, Vec<u8>>::new()));
-        let app_objects = objects.clone();
-        let app =
-            axum::Router::new().fallback(move |method: Method, uri: OriginalUri, body: Body| {
-                let objects = app_objects.clone();
-                async move {
-                    let key = uri.0.path().trim_start_matches('/').to_string();
-                    match method {
-                        Method::PUT => {
-                            if !put_status.is_success() {
-                                return put_status.into_response();
-                            }
-                            let bytes = to_bytes(body, 8 * 1024 * 1024).await.unwrap();
-                            objects.lock().await.insert(key, bytes.to_vec());
-                            StatusCode::OK.into_response()
-                        }
-                        Method::GET => {
-                            let value = objects.lock().await.get(&key).cloned();
-                            match value {
-                                Some(bytes) => bytes.into_response(),
-                                None => StatusCode::NOT_FOUND.into_response(),
-                            }
-                        }
-                        _ => StatusCode::METHOD_NOT_ALLOWED.into_response(),
-                    }
-                }
-            });
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        Self {
-            endpoint: format!("http://{}", addr),
-        }
-    }
-
-    fn s3_config(&self) -> S3Config {
-        S3Config {
-            endpoint: Url::parse(&self.endpoint).unwrap(),
-            region: "us-east-1".to_string(),
-            bucket: "kordi-test".to_string(),
-            access_key: "test-access".to_string(),
-            secret_key: "test-secret".to_string(),
-        }
-    }
-}
-
-fn test_router_with_s3(pool: sqlx_postgres::PgPool, store: &TestObjectStore) -> axum::Router {
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()).with_s3(store.s3_config()));
-    test_router(state)
 }
 
 fn unique_email(prefix: &str) -> String {
@@ -447,9 +374,14 @@ async fn lease_claimed_run_for_export(
 #[path = "cloud_agent_runtime_e2e/chat.rs"]
 mod chat;
 use chat::*;
+#[path = "cloud_agent_runtime_e2e/object_store.rs"]
+mod object_store;
+use object_store::*;
 
 #[path = "cloud_agent_runtime_e2e/artifacts.rs"]
 mod artifacts;
+#[path = "cloud_agent_runtime_e2e/attachments.rs"]
+mod attachments;
 #[path = "cloud_agent_runtime_e2e/claims.rs"]
 mod claims;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]

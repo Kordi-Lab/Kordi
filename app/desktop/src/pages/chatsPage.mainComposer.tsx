@@ -358,6 +358,9 @@ export function MainComposer({
             <ComposerAttachmentAddMenu
               inputRef={chatAttachmentInputRef}
               memeInputRef={memeAttachmentInputRef}
+              onChooseFiles={display.isNativeShell
+                ? () => { void saveDesktopAttachmentPaths(); }
+                : undefined}
             />
             <ComposerExpressivePicker
               key={cloudAccountId?.trim() || 'local'}

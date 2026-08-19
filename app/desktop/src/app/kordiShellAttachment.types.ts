@@ -12,7 +12,7 @@ export type KordiShellAttachmentArgs = {
     files: File[],
     options?: SaveDesktopAttachmentOptions,
   ) => Promise<AttachmentItem[]>;
-  saveDesktopAttachmentPaths: (paths: string[]) => Promise<AttachmentItem[]>;
+  saveDesktopAttachmentPaths: (paths?: string[]) => Promise<AttachmentItem[]>;
   removeChatComposerAttachment: (id: string) => void;
   updateChatComposerAttachment: (
     id: string,

@@ -608,6 +608,7 @@ struct CloudExpressiveMediaMutationResponse: Codable, Hashable {
 
 struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let messageId: String
+    let clientMessageId: String?
     let fromAccountId: String
     let toAccountId: String
     let body: String
@@ -625,6 +626,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
 
     init(
         messageId: String,
+        clientMessageId: String? = nil,
         fromAccountId: String,
         toAccountId: String,
         body: String,
@@ -639,6 +641,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         conversationSequence: Int64? = nil
     ) {
         self.messageId = messageId
+        self.clientMessageId = clientMessageId
         self.fromAccountId = fromAccountId
         self.toAccountId = toAccountId
         self.body = body
@@ -654,7 +657,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case messageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, direction, sessionId, attachments
+        case messageId, clientMessageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, direction, sessionId, attachments
         case messageKind = "kind"
         case conversationId, conversationSequence
     }
@@ -662,6 +665,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         messageId = try container.decode(String.self, forKey: .messageId)
+        clientMessageId = try container.decodeIfPresent(String.self, forKey: .clientMessageId)
         fromAccountId = try container.decode(String.self, forKey: .fromAccountId)
         toAccountId = try container.decode(String.self, forKey: .toAccountId)
         body = try container.decode(String.self, forKey: .body)

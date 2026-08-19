@@ -9,9 +9,12 @@ import {
 import { isSupportedMemeImage } from './memeAttachments';
 
 export const CHAT_COMPOSER_ATTACHMENTS_STORAGE_KEY = 'kordi.chatComposerAttachments.v1';
+export const MAX_CHAT_ATTACHMENT_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
 
 const GENERIC_IMAGE_NAMES = new Set(['image', 'img', 'clipboard', 'pasted-image', 'pasted image', 'screenshot']);
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
+const MAX_EAGER_IMAGE_PREVIEW_BYTES = 25 * 1024 * 1024;
+const MAX_IN_MEMORY_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 
 type ComposerAttachmentStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -125,7 +128,10 @@ export async function composerAttachmentItemFromStoredPath({
   const displayName = preferredDisplayName?.trim() || stored.name?.trim() || friendlyAttachmentName(rawName, kindFromName);
   const kind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
   const metadata = { name: displayName, kind, mimeType: stored.mimeType ?? undefined, sizeBytes: stored.sizeBytes ?? undefined };
-  const previewUrl = kind === 'image' ? await createPreviewUrl(stored.path, metadata) : null;
+  const previewUrl = kind === 'image'
+    && (metadata.sizeBytes ?? 0) <= MAX_EAGER_IMAGE_PREVIEW_BYTES
+    ? await createPreviewUrl(stored.path, metadata)
+    : null;
   return {
     id: `${displayName}-${stored.path}`,
     name: displayName,
@@ -142,6 +148,12 @@ export async function composerAttachmentItemFromFile(
   file: File,
   options: SaveDesktopAttachmentOptions = {},
 ): Promise<AttachmentItem> {
+  if (file.size > MAX_CHAT_ATTACHMENT_SIZE_BYTES) {
+    throw new Error('Attachments must be 2 GiB or smaller.');
+  }
+  if (file.size > MAX_IN_MEMORY_ATTACHMENT_BYTES) {
+    throw new Error('Use Files and folders to attach files larger than 64 MiB.');
+  }
   const mimeType = file.type || undefined;
   const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
   const name = friendlyAttachmentName(file.name || 'attachment.bin', kind);

@@ -6,9 +6,11 @@
 //! closures, no spawn_blocking — because sqlx is async-native.
 
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::extract::{ConnectInfo, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
@@ -21,7 +23,9 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
+use tower::limit::ConcurrencyLimitLayer;
 
+use crate::attachments::MULTIPART_CHUNK_SIZE;
 use crate::auth::devices::{
     append_device_sync_event, authorize_device, legacy_device_registration,
     normalize_device_metadata, normalize_device_registration, DeviceRegistrationRequest,
@@ -220,6 +224,22 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/attachments/:attachment_id/upload",
             axum::routing::put(crate::attachments::routes::upload),
+        )
+        .route(
+            "/v1/cloud/attachments/multipart/initiate",
+            post(crate::attachments::routes::multipart::initiate_multipart),
+        )
+        .route(
+            "/v1/cloud/attachments/:attachment_id/multipart",
+            get(crate::attachments::routes::multipart::multipart_status)
+                .post(crate::attachments::routes::multipart::complete_multipart)
+                .delete(crate::attachments::routes::multipart::cancel_multipart),
+        )
+        .route(
+            "/v1/cloud/attachments/:attachment_id/parts/:part_number",
+            put(crate::attachments::routes::multipart::upload_multipart_part)
+                .layer::<_, Infallible>(ConcurrencyLimitLayer::new(16))
+                .layer(DefaultBodyLimit::max(MULTIPART_CHUNK_SIZE)),
         )
         .route(
             "/v1/cloud/attachments/:attachment_id/finalize",

@@ -849,11 +849,10 @@ final class AppModel: ObservableObject {
         )
         guard !projected.isEmpty else { return }
         let existing = messagesByConversation[conversation.id, default: []]
-        var byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
-        projected.forEach { byID[$0.id] = $0 }
-        let merged = byID.values.sorted {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
-        }
+        let merged = Self.mergeProjectedMessages(
+            projected,
+            preservingLocalMessagesFrom: existing
+        )
         guard merged != existing else { return }
         messagesByConversation[conversation.id] = merged
         cache?.saveMessages(merged, conversationId: conversation.id)
@@ -1091,7 +1090,8 @@ final class AppModel: ObservableObject {
         mentioning mentionTarget: ComposerMentionTarget? = nil,
         messageAction actionOverride: MessageActionMetadata? = nil,
         agentContext: String? = nil,
-        to conversation: ConversationSummary
+        to conversation: ConversationSummary,
+        retrying retryMessage: ChatMessage? = nil
     ) async {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!text.isEmpty || !attachments.isEmpty), let token, let account else { return }
@@ -1099,7 +1099,9 @@ final class AppModel: ObservableObject {
             errorMessage = error
             return
         }
-        let localId = "ios_\(UUID().uuidString.lowercased())"
+        let localId = retryMessage?.id ?? "ios_\(UUID().uuidString.lowercased())"
+        let clientMessageId = retryMessage?.clientMessageId
+            ?? CloudAPIClient.stableOperationUUID(localId)
         let routedAgent = mentionTarget?.kind == .agent ? mentionTarget : nil
         let routesToSupportAgent = conversation.representsKordiSupport
             && KordiSupportIdentity.isSystemAgentSession(conversation.sessionId)
@@ -1126,11 +1128,12 @@ final class AppModel: ObservableObject {
         let messageAction = actionOverride ?? replySource.map(MessageActionMetadata.quote)
         let optimistic = ChatMessage(
             id: localId,
+            clientMessageId: clientMessageId,
             conversationId: conversation.id,
             author: .me,
             authorName: "You",
             text: text,
-            createdAt: Date(),
+            createdAt: retryMessage?.createdAt ?? Date(),
             deliveryState: .sending,
             errorMessage: nil,
             requestMessageId: nil,
@@ -1145,7 +1148,11 @@ final class AppModel: ObservableObject {
         if let agentContext = agentContext?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
             pendingAgentContextByMessageId[localId] = agentContext
         }
-        messagesByConversation[conversation.id, default: []].append(optimistic)
+        if retryMessage == nil {
+            messagesByConversation[conversation.id, default: []].append(optimistic)
+        } else {
+            replaceMessage(localId, with: optimistic)
+        }
         if requestsAgentRun {
             beginPendingAgentRequest(
                 conversationId: conversation.id,
@@ -1191,6 +1198,7 @@ final class AppModel: ObservableObject {
                 sentRows.forEach { mergeCloudMessage($0, peerHint: nil) }
                 replaceMessage(localId, with: ChatMessage(
                     id: localId,
+                    clientMessageId: clientMessageId,
                     conversationId: conversation.id,
                     author: .me,
                     authorName: "You",
@@ -1244,7 +1252,7 @@ final class AppModel: ObservableObject {
                 peerAccountId: conversation.peerAccountId,
                 body: wireBody,
                 sessionId: conversation.sessionId,
-                clientMessageId: localId,
+                clientMessageId: clientMessageId,
                 attachments: uploadedAttachments,
                 sharedTitle: initialAgentSessionTitle
             )
@@ -1311,7 +1319,6 @@ final class AppModel: ObservableObject {
         let messageAction = pendingMessageActionByMessageId[message.id]
         let mention = pendingMentionByMessageId[message.id]
         let agentContext = pendingAgentContextByMessageId[message.id]
-        removeMessage(message.id, conversationId: conversation.id)
         clearPendingSendMetadata(message.id)
         await send(
             message.text,
@@ -1320,7 +1327,8 @@ final class AppModel: ObservableObject {
             mentioning: mention,
             messageAction: messageAction,
             agentContext: agentContext,
-            to: conversation
+            to: conversation,
+            retrying: message
         )
     }
 
@@ -1467,13 +1475,23 @@ final class AppModel: ObservableObject {
     ) -> [ChatMessage] {
         guard !projected.isEmpty else { return existing }
         var messagesByID = Dictionary(uniqueKeysWithValues: projected.map { ($0.id, $0) })
-        for localMessage in existing where localMessage.isAgentModelChangeNotice {
-            let hasMatchingCloudNotice = projected.contains { cloudMessage in
-                cloudMessage.isAgentModelChangeNotice
-                    && cloudMessage.text == localMessage.text
-                    && abs(cloudMessage.createdAt.timeIntervalSince(localMessage.createdAt)) <= 60
+        let projectedClientMessageIDs = Set(projected.compactMap(\.clientMessageId))
+        for localMessage in existing {
+            if localMessage.isAgentModelChangeNotice {
+                let hasMatchingCloudNotice = projected.contains { cloudMessage in
+                    cloudMessage.isAgentModelChangeNotice
+                        && cloudMessage.text == localMessage.text
+                        && abs(cloudMessage.createdAt.timeIntervalSince(localMessage.createdAt)) <= 60
+                }
+                if !hasMatchingCloudNotice { messagesByID[localMessage.id] = localMessage }
+                continue
             }
-            if hasMatchingCloudNotice { continue }
+
+            guard localMessage.deliveryState == .sending || localMessage.deliveryState == .failed,
+                  messagesByID[localMessage.id] == nil else { continue }
+            let clientMessageId = localMessage.clientMessageId
+                ?? CloudAPIClient.stableOperationUUID(localMessage.id)
+            guard !projectedClientMessageIDs.contains(clientMessageId) else { continue }
             messagesByID[localMessage.id] = localMessage
         }
         return messagesByID.values.sorted {
@@ -3194,6 +3212,7 @@ final class AppModel: ObservableObject {
             : nil
         return ChatMessage(
             id: message.messageId,
+            clientMessageId: message.clientMessageId,
             conversationId: conversation.id,
             author: author,
             authorName: author == .me ? "You" : conversation.displayName,
@@ -3249,6 +3268,7 @@ final class AppModel: ObservableObject {
                 : nil
             return ChatMessage(
                 id: messageId,
+                clientMessageId: wire.clientMessageId,
                 conversationId: conversation.id,
                 author: author,
                 authorName: author == .me
@@ -3292,6 +3312,7 @@ final class AppModel: ObservableObject {
             let author: MessageAuthor = wire.fromAccountId == ownAccountId ? .me : .person
             return ChatMessage(
                 id: messageId,
+                clientMessageId: wire.clientMessageId,
                 conversationId: conversation.id,
                 author: author,
                 authorName: author == .me
@@ -3909,6 +3930,7 @@ final class AppModel: ObservableObject {
                 guard message.readAt != readAt else { continue }
                 messages[index] = CloudMessageDTO(
                     messageId: message.messageId,
+                    clientMessageId: message.clientMessageId,
                     fromAccountId: message.fromAccountId,
                     toAccountId: message.toAccountId,
                     body: message.body,
@@ -3918,7 +3940,9 @@ final class AppModel: ObservableObject {
                     direction: message.direction,
                     sessionId: message.sessionId,
                     attachments: message.attachments,
-                    messageKind: message.messageKind
+                    messageKind: message.messageKind,
+                    conversationId: message.conversationId,
+                    conversationSequence: message.conversationSequence
                 )
                 changed = true
             }
@@ -4072,11 +4096,6 @@ final class AppModel: ObservableObject {
               let index = messages.firstIndex(where: { $0.id == id }) else { return }
         messages[index].deliveryState = state
         messagesByConversation[conversationId] = messages
-        cacheCurrentMessages(conversationId)
-    }
-
-    private func removeMessage(_ id: String, conversationId: String) {
-        messagesByConversation[conversationId]?.removeAll { $0.id == id }
         cacheCurrentMessages(conversationId)
     }
 

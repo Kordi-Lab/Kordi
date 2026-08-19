@@ -259,6 +259,45 @@ test('composer add trigger opens one Files and folders action and dismisses acce
   }
 });
 
+test('composer add menu uses the native path picker without opening the browser file input', async () => {
+  const installed = installDom();
+  const host = installed.dom.window.document.createElement('div');
+  installed.dom.window.document.body.append(host);
+  let inputClicks = 0;
+  let nativePickerCalls = 0;
+  let root: Root | null = createRoot(host);
+
+  function Harness() {
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    return createElement('div', { className: 'app-composer-shell' },
+      createElement('input', {
+        ref: inputRef,
+        type: 'file',
+        onClick: () => { inputClicks += 1; },
+      }),
+      createElement(ComposerAttachmentAddMenu, {
+        inputRef,
+        onChooseFiles: () => { nativePickerCalls += 1; },
+      }),
+    );
+  }
+
+  try {
+    await act(async () => root?.render(createElement(Harness)));
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-composer-attachment-add-trigger="true"]')?.click());
+    const fileAction = installed.dom.window.document.querySelector<HTMLButtonElement>('[data-composer-attachment-add-menu="true"] [role="menuitem"]');
+    await act(async () => fileAction?.click());
+
+    assert.equal(nativePickerCalls, 1);
+    assert.equal(inputClicks, 0);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    installed.restore();
+  }
+});
+
 test('composer add menu stays compact and uses shadow instead of a hard divider', () => {
   const css = readFileSync(new URL('../src/styles/shell-popovers.css', import.meta.url), 'utf8');
   const surfaceRule = css.match(/\.app-transient-surface\.app-composer-attachment-add-menu\s*\{[^}]*\}/s)?.[0] ?? '';

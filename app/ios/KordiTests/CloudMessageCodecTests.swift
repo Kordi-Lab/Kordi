@@ -459,6 +459,83 @@ final class CloudMessageCodecTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectedMessagesKeepOnlyUnresolvedFailedOptimisticRowsInChronologicalOrder() {
+        let unresolved = ChatMessage(
+            id: "ios_unresolved",
+            clientMessageId: CloudAPIClient.stableOperationUUID("ios_unresolved"),
+            conversationId: "person-session",
+            author: .me,
+            authorName: "You",
+            text: "Try again",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .failed,
+            errorMessage: "Message not sent.",
+            requestMessageId: nil
+        )
+        let projected = ChatMessage(
+            id: "server-later",
+            clientMessageId: "server-later-client",
+            conversationId: "person-session",
+            author: .person,
+            authorName: "Maya",
+            text: "Later",
+            createdAt: Date(timeIntervalSince1970: 3),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+
+        let merged = AppModel.mergeProjectedMessages(
+            [projected],
+            preservingLocalMessagesFrom: [unresolved]
+        )
+
+        XCTAssertEqual(merged.map(\.id), [unresolved.id, projected.id])
+    }
+
+    @MainActor
+    func testProjectedCanonicalMessageRemovesMatchingFailedOptimisticRow() {
+        let clientMessageId = CloudAPIClient.stableOperationUUID("ios_accepted")
+        let failed = ChatMessage(
+            id: "ios_accepted",
+            clientMessageId: clientMessageId,
+            conversationId: "person-session",
+            author: .me,
+            authorName: "You",
+            text: "Accepted before the response was lost",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .failed,
+            errorMessage: "Message not sent.",
+            requestMessageId: nil
+        )
+        let canonical = ChatMessage(
+            id: "server-message",
+            clientMessageId: clientMessageId,
+            conversationId: "person-session",
+            author: .me,
+            authorName: "You",
+            text: failed.text,
+            createdAt: failed.createdAt,
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+
+        let merged = AppModel.mergeProjectedMessages(
+            [canonical],
+            preservingLocalMessagesFrom: [failed]
+        )
+
+        XCTAssertEqual(merged.map(\.id), [canonical.id])
+    }
+
+    func testStableOperationUUIDMakesRetriesIdempotent() {
+        let first = CloudAPIClient.stableOperationUUID("ios_retry_message")
+        XCTAssertEqual(first, CloudAPIClient.stableOperationUUID("ios_retry_message"))
+        XCTAssertNotEqual(first, CloudAPIClient.stableOperationUUID("ios_other_message"))
+    }
+
+    @MainActor
     func testEmptyProjectionPreservesLoadedConversationHistory() {
         let cached = ChatMessage(
             id: "cached-message",

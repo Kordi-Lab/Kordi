@@ -39,6 +39,7 @@ import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttributi
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
 import { transcriptMessageIsOwnHuman, transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
+import { MessageDeliveryStatusSlot, TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
@@ -161,58 +162,6 @@ function senderAccentStyle(label?: string | null): CSSProperties {
   return { '--app-message-sender-accent': `oklch(0.72 0.15 ${hue})` } as CSSProperties;
 }
 
-function MessageDeliveryClockGlyph({ className, active }: { className?: string; active: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      className={cn(className, active && 'app-message-delivery-clock-active')}
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle className="app-message-delivery-clock-face" cx="8" cy="8" r="5.7" />
-      <line className="app-message-delivery-clock-hour-hand" x1="8" y1="8" x2="8" y2="5.4" />
-      <line className="app-message-delivery-clock-minute-hand" x1="8" y1="8" x2="8" y2="3.7" />
-      <circle className="app-message-delivery-clock-pin" cx="8" cy="8" r="0.75" />
-    </svg>
-  );
-}
-
-function MessageDeliveryGlyph({ status }: { status?: string | null }) {
-  const normalizedStatus = status?.trim().toLowerCase() || 'none';
-  const visual = messageDeliveryVisual(status);
-  const toneClass = visual?.tone === 'blue'
-    ? 'text-sky-400'
-    : visual?.tone === 'red'
-      ? 'text-rose-400'
-      : 'text-slate-400';
-  const activeGlyph = visual?.glyph ?? 'none';
-  const glyphClass = (glyph: NonNullable<ReturnType<typeof messageDeliveryVisual>>['glyph']) => cn(
-    'absolute inset-0 h-3.5 w-3.5 transition-opacity duration-100',
-    activeGlyph === glyph ? 'opacity-100' : 'opacity-0',
-    toneClass,
-  );
-
-  return (
-    <span
-      className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center"
-      data-message-delivery-status={normalizedStatus}
-      data-message-delivery-glyph={activeGlyph}
-      aria-label={visual?.label}
-      role={visual ? 'img' : undefined}
-      aria-hidden={visual ? undefined : true}
-    >
-      <Check className={glyphClass('single-check')} aria-hidden="true" />
-      <CheckCheck className={glyphClass('double-check')} aria-hidden="true" />
-      <MessageDeliveryClockGlyph className={glyphClass('clock')} active={Boolean(visual?.glyph === 'clock' && visual.motion === 'pulse')} />
-      <LoaderCircle className={cn(glyphClass('spinner'), activeGlyph === 'spinner' && 'animate-spin')} aria-hidden="true" />
-      <span className={cn(glyphClass('exclamation'), 'inline-flex items-center justify-center text-[13px] font-semibold leading-none')} aria-hidden="true">
-        !
-      </span>
-    </span>
-  );
-}
-
 function contactRequestFailureCanBeRetried(detail?: string | null) {
   const normalized = detail?.trim().toLowerCase() ?? '';
   return normalized.includes('contact request')
@@ -270,18 +219,6 @@ function ContactRequestFailureNotice({
         <span className="font-medium text-rose-300">Try again from Contacts.</span>
       ) : null}
     </div>
-  );
-}
-
-function MessageDeliveryStatusSlot({ status }: { status?: string | null }) {
-  return (
-    <span
-      className="inline-flex h-3.5 w-4 shrink-0 justify-center"
-      data-message-delivery-status={status?.trim().toLowerCase() || 'none'}
-      aria-live="off"
-    >
-      <MessageDeliveryGlyph status={status} />
-    </span>
   );
 }
 
@@ -1158,6 +1095,8 @@ function MessageBubbleView({
   const hasText = Boolean(msg.callActivity) || msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
+  const showsExternalRetry = !hasOnlyImageAttachments && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
+  const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
@@ -1343,7 +1282,7 @@ function MessageBubbleView({
                 )}>
                   {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
                   <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
-                  {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={deliveryStatus} /> : null}
+                  {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={bubbleDeliveryStatus} /> : null}
                 </span>
               ) : null}
             </div>
@@ -1370,7 +1309,7 @@ function MessageBubbleView({
               </div>
               {!hasOnlyImageAttachments ? (
                 <MessageFooter
-                  status={isOwnHumanMessage ? deliveryStatus : undefined}
+                  status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
                   detail={footerDetail}
                   isUser={isOwnHumanMessage}
                   replySummary={msg.replySummary}
@@ -1398,6 +1337,7 @@ function MessageBubbleView({
           </>
         )}
         </div>
+        <TranscriptMessageTransferActions message={msg} showUploads={isOwnHumanMessage} retryable={showsExternalRetry} onRetryMessage={onRetryMessage} />
         <MessageHoverTime msg={msg} side={isOwnHumanMessage ? 'own' : 'peer'} />
         {forkButton}
         {forkChip}

@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
+import { pickDesktopChatAttachmentPaths } from '@/lib/cloudAttachmentUpload';
 import { storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import {
@@ -368,14 +369,16 @@ export function useComposerInputActions({
     }
   }, [isNativeShell, setChatComposerAttachments, setDesktopChatError]);
 
-  const saveDesktopAttachmentPaths = useCallback(async (paths: string[]) => {
-    if (!isNativeShell || paths.length === 0) {
+  const saveDesktopAttachmentPaths = useCallback(async (paths?: string[]) => {
+    if (!isNativeShell) {
       return [] as AttachmentItem[];
     }
 
     try {
       setDesktopChatError(null);
-      const saved = await Promise.all(paths.map(async (sourcePath) => {
+      const selectedPaths = paths ?? await pickDesktopChatAttachmentPaths();
+      if (selectedPaths.length === 0) return [] as AttachmentItem[];
+      const saved = await Promise.all(selectedPaths.map(async (sourcePath) => {
         const rawName = composerAttachmentNameFromPath(sourcePath);
         const kind = composerAttachmentKindFromName(rawName);
         const displayName = friendlyAttachmentName(rawName, kind);

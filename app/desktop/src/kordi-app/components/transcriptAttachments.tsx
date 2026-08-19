@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, ExternalLink, Image, LoaderCircle } from 'lucide-react';
 
@@ -14,6 +14,11 @@ import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
+  cancelCloudAttachmentUpload,
+  cloudAttachmentUploadSnapshot,
+  subscribeCloudAttachmentUpload,
+} from '@/features/cloud/cloudAttachmentUpload';
+import {
   loadVisibleCloudAttachmentPreview,
   recoverCloudAttachmentPreview,
   type CloudAttachmentPreviewLease,
@@ -27,12 +32,14 @@ import {
 import { cn } from '@/lib/utils';
 import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
+import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 import { TranscriptImageGroup } from './transcriptImageGroup';
 import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
-import type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
+import type { AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
+export { attachmentImageDeliveryVisual };
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 const ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS = 30_000;
 const recoveredAttachmentPreviewUrls = new Map<string, string>();
@@ -432,34 +439,6 @@ function sampleAttachmentImageForegroundTone(
   }
 }
 
-export function attachmentImageDeliveryVisual(status?: string | null): AttachmentImageDeliveryVisual | null {
-  const normalized = status?.trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (!normalized) return null;
-
-  if (normalized === 'sending' || normalized === 'pending' || normalized === 'pending_send') {
-    return { kind: 'uploading', label: 'Sending image' };
-  }
-  if (normalized === 'processing' || normalized === 'awaiting_reply') {
-    return { kind: 'delivering', label: 'Delivering image' };
-  }
-  if (normalized === 'sent') {
-    return { kind: 'sent', label: 'Sent' };
-  }
-  if (normalized === 'delivered') {
-    return { kind: 'delivered', label: 'Delivered' };
-  }
-  if (normalized === 'read' || normalized === 'responded') {
-    return { kind: 'read', label: 'Read' };
-  }
-  if (normalized === 'partial') {
-    return { kind: 'partial', label: 'Partially delivered' };
-  }
-  if (normalized === 'failed' || normalized === 'processing_failed' || normalized === 'cancelled') {
-    return { kind: 'failed', label: 'Sending failed' };
-  }
-  return null;
-}
-
 function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   return (
     <div
@@ -720,6 +699,17 @@ export function AttachmentPreview({
   const loadingOnlyImageCollage = visibleImageAttachments.length > 0
     && visibleImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
   const deliveryImageAttachment = visibleImageAttachments[visibleImageAttachments.length - 1];
+  const deliveryImagePath = deliveryImageAttachment?.localPath?.trim() ?? '';
+  const deliveryUpload = useSyncExternalStore(
+    (listener) => subscribeCloudAttachmentUpload(deliveryImagePath, listener),
+    () => cloudAttachmentUploadSnapshot(deliveryImagePath),
+    () => null,
+  );
+  const deliveryUploadProgress = deliveryUpload && deliveryUpload.totalBytes > 0
+    ? (deliveryUpload.uploadedBytes / deliveryUpload.totalBytes) * 100
+    : null;
+  const deliveryUploadIsActive = deliveryUpload
+    && ['preparing', 'uploading'].includes(deliveryUpload.phase);
   const deliveryImageIdentity = deliveryImageAttachment
     ? attachmentPreviewIdentity(deliveryImageAttachment)
     : null;
@@ -798,6 +788,10 @@ export function AttachmentPreview({
                 time={msg.time}
                 foregroundTone={deliveryForegroundTone}
                 onRetry={onRetryImage}
+                uploadProgress={deliveryUploadProgress}
+                onCancelUpload={deliveryUploadIsActive
+                  ? () => void cancelCloudAttachmentUpload(deliveryImagePath)
+                  : undefined}
               />
             )}
           >

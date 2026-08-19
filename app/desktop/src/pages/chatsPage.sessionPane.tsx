@@ -29,7 +29,7 @@ export type ChatComposerShellProps = {
   children: ReactNode;
   chatComposerAttachments?: Attachment[];
   saveDesktopAttachments?: (files: File[]) => Promise<Attachment[]>;
-  saveDesktopAttachmentPaths?: (paths: string[]) => Promise<Attachment[]>;
+  saveDesktopAttachmentPaths?: (paths?: string[]) => Promise<Attachment[]>;
   removeChatComposerAttachment?: (id: string) => void;
   activeChatQuote?: ComposerQuoteState | null;
   onForwardMessage?: (message: Message) => void;

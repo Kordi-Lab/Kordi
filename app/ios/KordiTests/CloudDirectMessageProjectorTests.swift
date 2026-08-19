@@ -40,6 +40,7 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
         let message = CloudMessageDTO(
             messageId: "msg_reply",
+            clientMessageId: "client_reply",
             fromAccountId: "acct_me",
             toAccountId: "acct_me",
             body: body,
@@ -72,6 +73,7 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.first?.attachments.first?.altText, "A reviewer approves the final change.")
         XCTAssertEqual(projected.first?.replyToMessageId, "msg_source")
         XCTAssertEqual(projected.first?.messageAction?.source.senderLabel, "Maya")
+        XCTAssertEqual(projected.first?.clientMessageId, "client_reply")
     }
 
     func testProjectorPreservesCallActivityKind() {

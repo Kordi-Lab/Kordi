@@ -3234,6 +3234,7 @@ name = "kordi-desktop"
 version = "0.0.1-beta.13"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "futures-util",
  "hex",
@@ -7264,6 +7265,7 @@ dependencies = [
  "pin-project-lite",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",

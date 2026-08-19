@@ -3,12 +3,13 @@ import { LoaderCircle, Send, StopCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import { friendlyAttachmentName } from '@/features/chat/composerAttachments';
+import { composerAttachmentItemFromFile } from '@/features/chat/composerAttachments';
 import { composerAttachmentItemFromStoredPath } from '@/features/chat/useComposerInputActions';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { mapDesktopMessagesForTranscript } from '@/features/chat/useDesktopTranscriptAdapter';
+import { pickDesktopChatAttachmentPaths } from '@/lib/cloudAttachmentUpload';
 import {
-  storeDesktopChatAttachment,
+  isNativeDesktopShell,
   storeDesktopChatAttachmentPath,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
@@ -66,11 +67,6 @@ function builderRouteFromDetail(
   };
 }
 
-function attachmentFormatLabel(name: string, mimeType?: string) {
-  return name.split('.').pop()?.trim().toUpperCase()
-    || mimeType?.split('/').pop()?.trim().toUpperCase()
-    || 'FILE';
-}
 function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: {
   seed?: string | null;
   displayName?: string | null;
@@ -263,21 +259,7 @@ export function AgentStudioConversation({
     if (files.length === 0) return;
     setAttachmentError(null);
     try {
-      const saved = await Promise.all(files.map(async (file) => {
-        const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
-        const name = friendlyAttachmentName(file.name || 'attachment.bin', kind);
-        const path = await storeDesktopChatAttachment(name, Array.from(new Uint8Array(await file.arrayBuffer())));
-        return {
-          id: `${name}-${path}`,
-          name,
-          path,
-          kind,
-          mimeType: file.type || null,
-          formatLabel: attachmentFormatLabel(name, file.type),
-          previewUrl: kind === 'image' ? URL.createObjectURL(file) : null,
-          sizeBytes: file.size,
-        } satisfies AttachmentItem;
-      }));
+      const saved = await Promise.all(files.map((file) => composerAttachmentItemFromFile(file)));
       setAttachments((current) => {
         const seen = new Set(current.map((attachment) => attachment.path));
         return [...current, ...saved.filter((attachment) => !seen.has(attachment.path))];
@@ -301,6 +283,14 @@ export function AgentStudioConversation({
       });
     } catch (attachError) {
       setAttachmentError(attachError instanceof Error ? attachError.message : 'Unable to attach file.');
+    }
+  };
+
+  const chooseFiles = async () => {
+    try {
+      await addPaths(await pickDesktopChatAttachmentPaths());
+    } catch (attachError) {
+      setAttachmentError(attachError instanceof Error ? attachError.message : 'Unable to choose files.');
     }
   };
 
@@ -506,6 +496,9 @@ export function AgentStudioConversation({
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
               <ComposerAttachmentAddMenu
                 inputRef={attachmentInputRef}
+                onChooseFiles={isNativeDesktopShell()
+                  ? () => { void chooseFiles(); }
+                  : undefined}
                 disabled={busy || opening || !sessionId}
               />
             </div>
