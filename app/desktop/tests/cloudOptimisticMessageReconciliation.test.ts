@@ -143,3 +143,43 @@ test('failed optimistic messages remain retryable until canonical sync confirms 
   assert.equal(afterConfirmation?.conversations[0].messages.length, 2);
   assert.equal(afterConfirmation?.conversations[0].messages.at(-1)?.id, 'message_2');
 });
+
+test('failed optimistic messages keep their chronological position after newer messages sync', () => {
+  const optimisticId = '66666666-6666-4666-8666-666666666666';
+  const initial = authoritativeState([
+    outgoingMessage('message_1', 'first', '11111111-1111-4111-8111-111111111111', 1),
+  ]);
+  const optimistic = appendOptimisticCollaborationMessage(
+    initial,
+    initial.conversations[0].id,
+    'failed second',
+    '00:02',
+    optimisticId,
+  );
+  const failed = markOptimisticCollaborationMessageFailed(
+    optimistic && {
+      ...optimistic,
+      conversations: optimistic.conversations.map((conversation) => ({
+        ...conversation,
+        messages: conversation.messages.map((message) => (
+          message.id === optimisticId
+            ? { ...message, timestampMs: Date.parse('2026-08-11T00:00:02Z') }
+            : message
+        )),
+      })),
+    },
+    initial.conversations[0].id,
+    optimisticId,
+    'network timeout',
+  );
+  const newer = authoritativeState([
+    outgoingMessage('message_1', 'first', '11111111-1111-4111-8111-111111111111', 1),
+    outgoingMessage('message_3', 'third', '33333333-3333-4333-8333-333333333333', 3),
+  ]);
+
+  const merged = mergeCloudCollaborationOptimisticState(newer, failed);
+  assert.deepEqual(
+    merged?.conversations[0].messages.map((message) => message.text),
+    ['first', 'failed second', 'third'],
+  );
+});

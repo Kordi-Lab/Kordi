@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
-use super::ensure_attachment_file_path;
+use super::{attachment_storage_dir, ensure_attachment_file_path, MAX_CHAT_ATTACHMENT_SIZE_BYTES};
 
 mod http;
 
@@ -20,7 +20,6 @@ use http::{
 
 const UPLOAD_PROGRESS_EVENT: &str = "cloud-attachment-upload-progress";
 const MAX_PARALLEL_PARTS: usize = 4;
-const MAX_ATTACHMENT_SIZE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,12 +54,9 @@ fn active_uploads() -> &'static Mutex<HashMap<String, CancellationToken>> {
     UPLOADS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn resume_record_path(path: &Path) -> PathBuf {
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("attachment");
-    path.with_file_name(format!(".{file_name}.kordi-upload.json"))
+fn resume_record_path(path: &Path) -> Result<PathBuf, String> {
+    let path_hash = hex::encode(Sha256::digest(path.as_os_str().as_encoded_bytes()));
+    Ok(attachment_storage_dir()?.join(format!("upload-{path_hash}.json")))
 }
 
 fn modified_at_ms(metadata: &std::fs::Metadata) -> u64 {
@@ -91,20 +87,22 @@ async fn load_resume_record(
     size_bytes: u64,
     modified_at_ms: u64,
 ) -> Option<UploadResumeRecord> {
-    let bytes = tokio::fs::read(resume_record_path(path)).await.ok()?;
+    let bytes = tokio::fs::read(resume_record_path(path).ok()?).await.ok()?;
     let record: UploadResumeRecord = serde_json::from_slice(&bytes).ok()?;
     (record.size_bytes == size_bytes && record.modified_at_ms == modified_at_ms).then_some(record)
 }
 
 async fn save_resume_record(path: &Path, record: &UploadResumeRecord) -> Result<(), String> {
     let bytes = serde_json::to_vec(record).map_err(|error| error.to_string())?;
-    tokio::fs::write(resume_record_path(path), bytes)
+    tokio::fs::write(resume_record_path(path)?, bytes)
         .await
         .map_err(|error| format!("Unable to save attachment upload state: {error}"))
 }
 
 async fn remove_resume_record(path: &Path) {
-    let _ = tokio::fs::remove_file(resume_record_path(path)).await;
+    if let Ok(record_path) = resume_record_path(path) {
+        let _ = tokio::fs::remove_file(record_path).await;
+    }
 }
 
 fn emit_progress(
@@ -278,7 +276,7 @@ pub async fn desktop_cloud_attachment_upload(
     let metadata = std::fs::metadata(&source)
         .map_err(|error| format!("Unable to read attachment metadata: {error}"))?;
     let size_bytes = metadata.len();
-    if size_bytes > MAX_ATTACHMENT_SIZE_BYTES {
+    if size_bytes > MAX_CHAT_ATTACHMENT_SIZE_BYTES {
         return Err("Attachments must be 2 GiB or smaller.".to_string());
     }
     let session = crate::cloud_session::cloud_session_load()?
@@ -368,6 +366,7 @@ mod tests {
         };
 
         save_resume_record(&file, &record).await.unwrap();
+        assert_ne!(resume_record_path(&file).unwrap().parent(), file.parent());
         assert_eq!(
             load_resume_record(&file, 4, 7).await.unwrap().attachment_id,
             "att_test"
@@ -375,7 +374,7 @@ mod tests {
         assert!(load_resume_record(&file, 5, 7).await.is_none());
 
         remove_resume_record(&file).await;
-        assert!(!resume_record_path(&file).exists());
+        assert!(!resume_record_path(&file).unwrap().exists());
         std::fs::remove_dir_all(dir).ok();
     }
 }

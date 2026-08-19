@@ -3,6 +3,10 @@ import { test } from 'node:test';
 
 import { composerAttachmentItemFromStoredPath, composerConfigTargetSessionId } from '../src/features/chat/useComposerInputActions';
 import * as composerInputActions from '../src/features/chat/useComposerInputActions';
+import {
+  composerAttachmentItemFromFile,
+  MAX_CHAT_ATTACHMENT_SIZE_BYTES,
+} from '../src/features/chat/composerAttachments';
 import { localAgentComposerConfigTargetSessionId } from '../src/pages/ChatsPage';
 
 test('isolated companion config updates preserve the active main desktop state', () => {
@@ -68,6 +72,39 @@ test('composer path image attachments include a compressed preview for optimisti
     mimeType: 'image/png',
     sizeBytes: 24 * 1024 * 1024,
   }]);
+});
+
+test('composer path attachments skip eager previews when image decoding could block selection', async () => {
+  let previewCalled = false;
+  const attachment = await composerAttachmentItemFromStoredPath({
+    sourcePath: '/Users/alice/Pictures/very-large.png',
+    stored: {
+      path: '/Users/alice/Pictures/very-large.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      formatLabel: 'PNG',
+      sizeBytes: 26 * 1024 * 1024,
+    },
+    createPreviewUrl: async () => {
+      previewCalled = true;
+      return 'data:image/webp;base64,preview';
+    },
+  });
+
+  assert.equal(previewCalled, false);
+  assert.equal(attachment.previewUrl, undefined);
+  assert.equal(attachment.path, '/Users/alice/Pictures/very-large.png');
+});
+
+test('browser file fallback rejects unsafe in-memory transfers before reading bytes', async () => {
+  await assert.rejects(
+    composerAttachmentItemFromFile({ size: MAX_CHAT_ATTACHMENT_SIZE_BYTES + 1 } as File),
+    /2 GiB or smaller/,
+  );
+  await assert.rejects(
+    composerAttachmentItemFromFile({ size: 65 * 1024 * 1024 } as File),
+    /Use Files and folders/,
+  );
 });
 
 test('composer config routing still targets local chat and project sessions', () => {

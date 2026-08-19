@@ -224,6 +224,7 @@ export function ComposerAttachmentList({
 type ComposerAttachmentAddMenuProps = {
   inputRef: RefObject<HTMLInputElement | null>;
   memeInputRef?: RefObject<HTMLInputElement | null>;
+  onChooseFiles?: () => void;
   className?: string;
   disabled?: boolean;
   'data-companion-attachment-control'?: string;
@@ -232,6 +233,7 @@ type ComposerAttachmentAddMenuProps = {
 export function ComposerAttachmentAddMenu({
   inputRef,
   memeInputRef,
+  onChooseFiles,
   className,
   disabled = false,
   'data-companion-attachment-control': companionAttachmentControl,
@@ -306,7 +308,8 @@ export function ComposerAttachmentAddMenu({
 
   function openFilePicker() {
     setIsOpen(false);
-    inputRef.current?.click();
+    if (onChooseFiles) onChooseFiles();
+    else inputRef.current?.click();
     queueMicrotask(() => triggerRef.current?.focus());
   }
 

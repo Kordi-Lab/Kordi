@@ -186,6 +186,9 @@ export function CompanionComposer({
           <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
             <ComposerAttachmentAddMenu
               inputRef={attachmentInputRef}
+              onChooseFiles={isNativeShell
+                ? () => { void saveDesktopAttachmentPaths(); }
+                : undefined}
               data-companion-attachment-control="true"
             />
           </div>

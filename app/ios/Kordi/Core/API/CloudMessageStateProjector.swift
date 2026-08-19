@@ -81,6 +81,7 @@ enum CloudMessageStateProjector {
                       matches(message, scope: scope) else { return message }
                 return CloudMessageDTO(
                     messageId: message.messageId,
+                    clientMessageId: message.clientMessageId,
                     fromAccountId: message.fromAccountId,
                     toAccountId: message.toAccountId,
                     body: message.body,
@@ -90,7 +91,9 @@ enum CloudMessageStateProjector {
                     direction: message.direction,
                     sessionId: message.sessionId,
                     attachments: message.attachments,
-                    messageKind: message.messageKind
+                    messageKind: message.messageKind,
+                    conversationId: message.conversationId,
+                    conversationSequence: message.conversationSequence
                 )
             }
         }

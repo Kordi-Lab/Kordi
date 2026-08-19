@@ -114,7 +114,15 @@ final class CloudMessageStateProjectorTests: XCTestCase {
     }
 
     func testLocalReadProjectionOnlyMarksTheOpenedSession() {
-        let target = wire(id: "target", from: "acct_peer", to: "acct_me", sessionId: "session:one")
+        let target = wire(
+            id: "target",
+            clientMessageId: "client-target",
+            from: "acct_peer",
+            to: "acct_me",
+            sessionId: "session:one",
+            conversationId: "conversation-one",
+            conversationSequence: 42
+        )
         let other = wire(id: "other", from: "acct_peer", to: "acct_me", sessionId: "session:two")
 
         let projected = CloudMessageStateProjector.markingIncomingRead(
@@ -125,6 +133,9 @@ final class CloudMessageStateProjectorTests: XCTestCase {
         )["acct_peer"]
 
         XCTAssertEqual(projected?.first(where: { $0.messageId == "target" })?.readAt, "2026-08-08T10:02:00Z")
+        XCTAssertEqual(projected?.first(where: { $0.messageId == "target" })?.clientMessageId, "client-target")
+        XCTAssertEqual(projected?.first(where: { $0.messageId == "target" })?.conversationId, "conversation-one")
+        XCTAssertEqual(projected?.first(where: { $0.messageId == "target" })?.conversationSequence, 42)
         XCTAssertNil(projected?.first(where: { $0.messageId == "other" })?.readAt)
     }
 
@@ -173,6 +184,7 @@ final class CloudMessageStateProjectorTests: XCTestCase {
 
     private func wire(
         id: String,
+        clientMessageId: String? = nil,
         from: String,
         to: String,
         body: String = "Hello",
@@ -180,10 +192,12 @@ final class CloudMessageStateProjectorTests: XCTestCase {
         readAt: String? = nil,
         sessionId: String = "session:one",
         messageKind: String? = nil,
+        conversationId: String? = nil,
         conversationSequence: Int64? = nil
     ) -> CloudMessageDTO {
         CloudMessageDTO(
             messageId: id,
+            clientMessageId: clientMessageId,
             fromAccountId: from,
             toAccountId: to,
             body: body,
@@ -193,6 +207,7 @@ final class CloudMessageStateProjectorTests: XCTestCase {
             direction: from == "acct_me" ? "outgoing" : "incoming",
             sessionId: sessionId,
             messageKind: messageKind,
+            conversationId: conversationId,
             conversationSequence: conversationSequence
         )
     }

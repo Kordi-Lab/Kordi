@@ -1,10 +1,14 @@
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 
 use tauri::Manager;
 
 use super::DesktopStoredChatAttachment;
 
 pub(crate) mod cloud_upload;
+
+pub(crate) const MAX_CHAT_ATTACHMENT_SIZE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 fn attachment_storage_dir() -> Result<PathBuf, String> {
     let dir = std::env::var_os("APP_DATA_DIR")
@@ -187,40 +191,6 @@ pub(crate) fn store_chat_attachment_bytes(
     stored_chat_attachment_from_path(&path)
 }
 
-pub(crate) fn store_chat_attachment_file(
-    source: &Path,
-    name: &str,
-) -> Result<DesktopStoredChatAttachment, String> {
-    let canonical_source = std::fs::canonicalize(source)
-        .map_err(|err| format!("Unable to read attachment file {}: {err}", source.display()))?;
-    let metadata = std::fs::metadata(&canonical_source).map_err(|err| {
-        format!(
-            "Unable to read attachment metadata {}: {err}",
-            source.display()
-        )
-    })?;
-    let display_name = safe_attachment_name(name);
-
-    if metadata.is_dir() {
-        let mut stored = stored_chat_attachment_from_path(source)?;
-        stored.name = display_name;
-        return Ok(stored);
-    }
-
-    if !metadata.is_file() {
-        return Err(format!(
-            "Attachment is not a file or folder: {}",
-            source.display()
-        ));
-    }
-
-    let target = unique_attachment_path(&display_name)?;
-    std::fs::copy(&canonical_source, &target).map_err(|err| err.to_string())?;
-    let mut stored = stored_chat_attachment_from_path(&target)?;
-    stored.name = display_name;
-    Ok(stored)
-}
-
 #[tauri::command]
 pub async fn desktop_chat_store_attachment(name: String, data: Vec<u8>) -> Result<String, String> {
     store_chat_attachment_bytes(&name, &data).map(|attachment| attachment.path)
@@ -240,7 +210,56 @@ pub async fn desktop_chat_store_attachment_path(
         .as_deref()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(&fallback_name);
-    store_chat_attachment_file(Path::new(&path), display_name)
+    let mut attachment = stored_chat_attachment_from_path(Path::new(&path))?;
+    if attachment
+        .size_bytes
+        .is_some_and(|size| size > MAX_CHAT_ATTACHMENT_SIZE_BYTES)
+    {
+        return Err("Attachments must be 2 GiB or smaller.".to_string());
+    }
+    attachment.name = safe_attachment_name(display_name);
+    Ok(attachment)
+}
+
+#[tauri::command]
+pub async fn desktop_chat_pick_attachment_paths() -> Result<Vec<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        tokio::task::spawn_blocking(|| {
+            let script = r#"
+set selectedFiles to choose file with prompt "Choose attachments" with multiple selections allowed
+set selectedPaths to ""
+repeat with selectedFile in selectedFiles
+    set selectedPaths to selectedPaths & POSIX path of selectedFile & linefeed
+end repeat
+return selectedPaths
+"#;
+            let output = Command::new("/usr/bin/osascript")
+                .args(["-e", script])
+                .output()
+                .map_err(|error| format!("Unable to open attachment picker: {error}"))?;
+            if !output.status.success() {
+                let error = String::from_utf8_lossy(&output.stderr);
+                if error.contains("(-128)") {
+                    return Ok(Vec::new());
+                }
+                return Err(format!("Unable to choose attachments: {}", error.trim()));
+            }
+            Ok(String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+                .map(str::to_string)
+                .collect())
+        })
+        .await
+        .map_err(|error| format!("Attachment picker stopped unexpectedly: {error}"))?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Native attachment picking is unavailable on this platform.".to_string())
+    }
 }
 
 #[tauri::command]
@@ -327,21 +346,44 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    #[test]
-    fn store_attachment_file_preserves_directory_source_path() {
-        let dir =
-            std::env::temp_dir().join(format!("kordi-attachment-folder-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).expect("create temp attachment folder");
+    #[tokio::test]
+    async fn selected_files_are_referenced_without_copying_and_reject_over_2_gib() {
+        let dir = std::env::temp_dir().join(format!(
+            "kordi-attachment-reference-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp attachment dir");
+        let file = dir.join("archive.zip");
+        std::fs::write(&file, b"small").expect("write temp attachment");
 
-        let attachment =
-            store_chat_attachment_file(&dir, "Project Folder").expect("directory attaches");
+        let stored = desktop_chat_store_attachment_path(
+            file.display().to_string(),
+            Some("release.zip".to_string()),
+        )
+        .await
+        .expect("reference selected attachment");
+        assert_eq!(stored.path, file.display().to_string());
+        assert_eq!(stored.name, "release.zip");
 
-        assert_eq!(attachment.path, dir.display().to_string());
-        assert_eq!(attachment.name, "Project Folder");
-        assert_eq!(attachment.kind, "folder");
-        assert_eq!(attachment.format_label.as_deref(), Some("Folder"));
-        assert_eq!(attachment.size_bytes, None);
+        let near_limit = dir.join("near-limit.bin");
+        std::fs::File::create(&near_limit)
+            .and_then(|file| file.set_len(MAX_CHAT_ATTACHMENT_SIZE_BYTES))
+            .expect("create sparse near-limit attachment");
+        let stored = desktop_chat_store_attachment_path(near_limit.display().to_string(), None)
+            .await
+            .expect("accept attachment at limit");
+        assert_eq!(stored.path, near_limit.display().to_string());
+        assert_eq!(stored.size_bytes, Some(MAX_CHAT_ATTACHMENT_SIZE_BYTES));
 
-        std::fs::remove_dir_all(&dir).ok();
+        let oversized = dir.join("oversized.bin");
+        std::fs::File::create(&oversized)
+            .and_then(|file| file.set_len(MAX_CHAT_ATTACHMENT_SIZE_BYTES + 1))
+            .expect("create sparse oversized attachment");
+        let error = desktop_chat_store_attachment_path(oversized.display().to_string(), None)
+            .await
+            .expect_err("oversized attachment is rejected");
+        assert_eq!(error, "Attachments must be 2 GiB or smaller.");
+
+        std::fs::remove_dir_all(dir).ok();
     }
 }

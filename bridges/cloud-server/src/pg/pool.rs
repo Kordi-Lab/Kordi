@@ -282,6 +282,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "account expressive media library",
         sql: include_str!("../../migrations/0059_expressive_media_library.sql"),
     },
+    EmbeddedMigration {
+        version: 60,
+        description: "resumable attachment uploads",
+        sql: include_str!("../../migrations/0060_resumable_attachment_uploads.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

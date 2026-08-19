@@ -1,6 +1,13 @@
-import { useCallback, useState, useSyncExternalStore } from 'react';
-import { FileText, LoaderCircle } from 'lucide-react';
+import { useCallback, useId, useState, useSyncExternalStore } from 'react';
+import { FileText, LoaderCircle, X } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
+import {
+  AppDialog,
+  AppDialogActions,
+  AppDialogDescription,
+  AppDialogTitle,
+} from '@/components/ui/dialog';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
   cancelCloudAttachmentUpload,
@@ -13,6 +20,82 @@ import type { MessageAttachment } from '../types';
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
+}
+
+function useAttachmentUpload(localPath: string) {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeCloudAttachmentUpload(localPath, listener),
+    [localPath],
+  );
+  const snapshot = useCallback(
+    () => cloudAttachmentUploadSnapshot(localPath),
+    [localPath],
+  );
+  return useSyncExternalStore(subscribe, snapshot, () => null);
+}
+
+function TranscriptFileAttachmentUploadAction({ attachment }: { attachment: MessageAttachment }) {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const titleId = useId();
+  const localPath = attachment.localPath?.trim() ?? '';
+  const upload = useAttachmentUpload(localPath);
+  const canCancel = upload && ['preparing', 'uploading', 'finishing'].includes(upload.phase);
+  if (!canCancel) return null;
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="quiet"
+        size="icon"
+        data-message-upload-cancel-button="true"
+        data-message-transfer-action-side="opposite-avatar"
+        className="app-message-transfer-action mb-0.5 h-7 w-7 shrink-0 self-end rounded-full p-0 text-rose-500"
+        onClick={() => setConfirmingCancel(true)}
+        aria-label={`Cancel upload of ${attachment.name}`}
+        title="Cancel upload"
+      >
+        <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+      </Button>
+      {confirmingCancel ? (
+        <AppDialog titleId={titleId} onDismiss={() => setConfirmingCancel(false)} className="max-w-sm rounded-[20px]">
+          <AppDialogTitle id={titleId}>Cancel upload?</AppDialogTitle>
+          <AppDialogDescription>
+            Uploaded parts will be discarded. You can retry this message later.
+          </AppDialogDescription>
+          <AppDialogActions>
+            <Button variant="quiet" className="rounded-full px-4" autoFocus onClick={() => setConfirmingCancel(false)}>
+              Keep uploading
+            </Button>
+            <Button
+              className="rounded-full bg-rose-600 px-4 text-white hover:bg-rose-500"
+              onClick={() => {
+                setConfirmingCancel(false);
+                void cancelCloudAttachmentUpload(localPath);
+              }}
+            >
+              Cancel upload
+            </Button>
+          </AppDialogActions>
+        </AppDialog>
+      ) : null}
+    </>
+  );
+}
+
+export function TranscriptFileAttachmentUploadActions({
+  attachments,
+}: {
+  attachments: readonly MessageAttachment[];
+}) {
+  return attachments
+    .filter((attachment) => attachment.kind === 'file')
+    .map((attachment, index) => (
+      <TranscriptFileAttachmentUploadAction
+        key={attachment.localPath ?? attachment.attachmentId ?? `${attachment.name}:${index}`}
+        attachment={attachment}
+      />
+    ));
 }
 
 export function TranscriptFileAttachmentLink({
@@ -28,23 +111,16 @@ export function TranscriptFileAttachmentLink({
   const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
   const canOpen = Boolean((downloadedPath ?? attachment.localPath) && isNativeShell());
   const localPath = attachment.localPath?.trim() ?? '';
-  const subscribeToUpload = useCallback(
-    (listener: () => void) => subscribeCloudAttachmentUpload(localPath, listener),
-    [localPath],
-  );
-  const getUploadSnapshot = useCallback(
-    () => cloudAttachmentUploadSnapshot(localPath),
-    [localPath],
-  );
-  const upload = useSyncExternalStore(subscribeToUpload, getUploadSnapshot, () => null);
+  const upload = useAttachmentUpload(localPath);
   const uploadPercent = upload && upload.totalBytes > 0
     ? Math.min(100, Math.floor((upload.uploadedBytes / upload.totalBytes) * 100))
     : null;
-  const uploadIsActive = upload && ['preparing', 'uploading'].includes(upload.phase);
   const sendingLabel = upload?.phase === 'preparing'
     ? 'Preparing…'
     : upload?.phase === 'uploading' && uploadPercent !== null
       ? `Uploading ${uploadPercent}%`
+      : upload?.phase === 'finishing'
+        ? 'Finishing…'
       : 'Sending…';
 
   async function ensureLocalPath() {
@@ -118,20 +194,12 @@ export function TranscriptFileAttachmentLink({
           className="inline-flex items-center gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]"
           aria-label={upload?.phase === 'preparing'
             ? 'Preparing attachment'
-            : uploadPercent === null ? 'Sending attachment' : `Uploading attachment, ${uploadPercent}%`}
+            : upload?.phase === 'finishing'
+              ? 'Finishing attachment upload'
+              : uploadPercent === null ? 'Sending attachment' : `Uploading attachment, ${uploadPercent}%`}
         >
           <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
           <span>{sendingLabel}</span>
-          {uploadIsActive ? (
-            <button
-              type="button"
-              className="ml-0.5 rounded-sm px-1 py-0.5 font-semibold hover:text-[color:var(--utility-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
-              onClick={() => void cancelCloudAttachmentUpload(localPath)}
-              aria-label={`Cancel upload of ${attachment.name}`}
-            >
-              Cancel
-            </button>
-          ) : null}
         </span>
       ) : null}
       {isDownloading ? (

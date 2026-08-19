@@ -18,6 +18,13 @@
   color: rgb(31 49 69);
 }
 
+.app-chat-bubble-user [data-attachment-file-link='true'] {
+  --utility-foreground: var(--app-chat-bubble-user-text);
+  --utility-muted-text: var(--app-chat-meta-own);
+  --app-markdown-link: oklch(45% 0.065 218);
+  --app-markdown-link-hover: oklch(38% 0.075 218);
+}
+
 .app-chat-bubble-peer {
   --app-message-bubble-fill: var(--app-chat-bubble-peer-bg);
   --app-message-bubble-stroke: transparent;

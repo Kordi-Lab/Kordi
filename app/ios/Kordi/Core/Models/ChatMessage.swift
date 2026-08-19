@@ -543,6 +543,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     let id: String
+    let clientMessageId: String?
     let conversationId: String
     let author: MessageAuthor
     let authorName: String
@@ -569,6 +570,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     init(
         id: String,
+        clientMessageId: String? = nil,
         conversationId: String,
         author: MessageAuthor,
         authorName: String,
@@ -586,6 +588,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         agentExecution: AgentExecutionSnapshot? = nil
     ) {
         self.id = id
+        self.clientMessageId = clientMessageId
         self.conversationId = conversationId
         self.author = author
         self.authorName = authorName
@@ -634,7 +637,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, conversationId, author, authorName, text, createdAt, deliveryState, errorMessage
+        case id, clientMessageId, conversationId, author, authorName, text, createdAt, deliveryState, errorMessage
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, messageAction
         case messageKind
         case agentExecution
@@ -643,6 +646,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
+        clientMessageId = try container.decodeIfPresent(String.self, forKey: .clientMessageId)
         conversationId = try container.decode(String.self, forKey: .conversationId)
         author = try container.decode(MessageAuthor.self, forKey: .author)
         authorName = try container.decode(String.self, forKey: .authorName)

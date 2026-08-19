@@ -157,7 +157,8 @@ export function mergeCloudCollaborationOptimisticState(
       updatedAtMs: latest.timestampMs,
       updatedAtLabel: latest.timeLabel,
       awaitingReply: optimisticConversation.awaitingReply,
-      messages: [...conversation.messages, ...pending],
+      messages: [...conversation.messages, ...pending]
+        .sort((left, right) => left.timestampMs - right.timestampMs),
     };
   });
 

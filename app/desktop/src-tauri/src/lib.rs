@@ -296,6 +296,7 @@ pub fn run() {
             auth::ollama::desktop_ollama_delete_model,
             chat::attachments::desktop_chat_store_attachment,
             chat::attachments::desktop_chat_store_attachment_path,
+            chat::attachments::desktop_chat_pick_attachment_paths,
             chat::attachments::desktop_chat_read_attachment,
             chat::attachments::desktop_chat_download_attachment,
             chat::attachments::cloud_upload::desktop_cloud_attachment_upload,

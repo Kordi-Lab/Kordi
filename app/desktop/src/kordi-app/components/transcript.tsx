@@ -16,6 +16,7 @@ import {
   LoaderCircle,
   Pin,
   Reply,
+  RotateCcw,
   Sparkles,
   SquareArrowOutUpRight,
   Undo2,
@@ -33,6 +34,7 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
 import { AttachmentPreview } from './transcriptAttachments';
+import { TranscriptFileAttachmentUploadActions } from './transcriptFileAttachmentLink';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
 import { messageSnapshotKey } from './transcriptMessageSnapshot';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
@@ -184,7 +186,7 @@ function MessageDeliveryGlyph({ status }: { status?: string | null }) {
   const toneClass = visual?.tone === 'blue'
     ? 'text-sky-400'
     : visual?.tone === 'red'
-      ? 'text-rose-400'
+      ? 'text-rose-600'
       : 'text-slate-400';
   const activeGlyph = visual?.glyph ?? 'none';
   const glyphClass = (glyph: NonNullable<ReturnType<typeof messageDeliveryVisual>>['glyph']) => cn(
@@ -1158,6 +1160,10 @@ function MessageBubbleView({
   const hasText = Boolean(msg.callActivity) || msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
+  const retryFailedMessage = !hasOnlyImageAttachments && deliveryVisual?.tone === 'red' && onRetryMessage
+    ? () => onRetryMessage(msg)
+    : undefined;
+  const bubbleDeliveryStatus = retryFailedMessage ? null : deliveryStatus;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
@@ -1343,7 +1349,7 @@ function MessageBubbleView({
                 )}>
                   {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
                   <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
-                  {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={deliveryStatus} /> : null}
+                  {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={bubbleDeliveryStatus} /> : null}
                 </span>
               ) : null}
             </div>
@@ -1370,7 +1376,7 @@ function MessageBubbleView({
               </div>
               {!hasOnlyImageAttachments ? (
                 <MessageFooter
-                  status={isOwnHumanMessage ? deliveryStatus : undefined}
+                  status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
                   detail={footerDetail}
                   isUser={isOwnHumanMessage}
                   replySummary={msg.replySummary}
@@ -1398,6 +1404,22 @@ function MessageBubbleView({
           </>
         )}
         </div>
+        {isOwnHumanMessage ? <TranscriptFileAttachmentUploadActions attachments={msg.attachments ?? []} /> : null}
+        {retryFailedMessage ? (
+          <Button
+            type="button"
+            variant="quiet"
+            size="icon"
+            data-message-retry-button="true"
+            data-message-transfer-action-side="opposite-avatar"
+            className="app-message-transfer-action mb-0.5 h-7 w-7 shrink-0 self-end rounded-full p-0 text-rose-600"
+            onClick={retryFailedMessage}
+            aria-label="Retry sending message"
+            title="Retry sending message"
+          >
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          </Button>
+        ) : null}
         <MessageHoverTime msg={msg} side={isOwnHumanMessage ? 'own' : 'peer'} />
         {forkButton}
         {forkChip}

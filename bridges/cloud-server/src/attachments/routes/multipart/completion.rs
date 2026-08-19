@@ -41,8 +41,10 @@ async fn completed_object_has_size(state: &ServerState, object_key: &str, size_b
     };
     response.status().is_success()
         && response
-            .content_length()
-            .and_then(|value| i64::try_from(value).ok())
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<i64>().ok())
             == Some(size_bytes)
 }
 
