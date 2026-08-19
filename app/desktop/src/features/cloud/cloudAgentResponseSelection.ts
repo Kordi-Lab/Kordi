@@ -6,11 +6,12 @@ import {
 import { cloudSelfAgentProcessingTextWouldRegress } from './cloudSelfAgentResponseLifecycle';
 import { compareCloudMessages } from './cloudMessageMerge';
 
-export function visibleCloudAgentResponseMessages(
+export function selectVisibleCloudAgentResponses(
   messages: readonly CloudMessage[],
   requestTargetAccountIds: ReadonlyMap<string, string>,
   isGroupControlMessage: (message: CloudMessage) => boolean,
-): CloudMessage[] {
+  hasCompletedLocalResponse: (requestId: string) => boolean,
+) {
   const preferredResponseByKey = new Map<string, CloudMessage>();
   for (const message of messages) {
     const response = parseCloudAgentResponse(message.body);
@@ -45,7 +46,7 @@ export function visibleCloudAgentResponseMessages(
     ) preferredResponseByKey.set(responseKey, message);
   }
 
-  return messages.filter((message) => {
+  const selectedMessages = messages.filter((message) => {
     if (isCloudAgentControlMessage(message.body) || isGroupControlMessage(message)) {
       return false;
     }
@@ -60,6 +61,19 @@ export function visibleCloudAgentResponseMessages(
     return preferredResponseByKey.get(responseKey)?.messageId
       === message.messageId;
   });
+  const responseRequestIds = new Set<string>();
+  const terminalResponseRequestIds = new Set<string>();
+  const visibleMessages = selectedMessages.filter((message) => {
+    const response = parseCloudAgentResponse(message.body);
+    if (!response) return true;
+    responseRequestIds.add(response.requestId);
+    if (response.deliveryState !== 'processing') {
+      terminalResponseRequestIds.add(response.requestId);
+      return true;
+    }
+    return !hasCompletedLocalResponse(response.requestId);
+  });
+  return { visibleMessages, responseRequestIds, terminalResponseRequestIds };
 }
 
 export function latestVisibleConversationMessage<T extends {

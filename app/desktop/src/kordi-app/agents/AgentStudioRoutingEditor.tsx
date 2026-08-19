@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { LoaderCircle, X } from 'lucide-react';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
-import type { Agent } from '../types';
+import type { AgentModelRoutingDraft } from './factoryAgentUtils';
 
 function normalizedProvider(value?: string | null) {
   const normalized = value?.trim().toLocaleLowerCase().replace(/[\s_]+/g, '-') ?? '';
@@ -20,32 +20,21 @@ function modelLabel(option: ComposerModelOption) {
 }
 
 export function AgentStudioRoutingEditor({
-  agent,
+  routing,
   modelOptions,
   providerOptions,
   onSave,
   onClose,
 }: {
-  agent: Agent;
+  routing: AgentModelRoutingDraft;
   modelOptions: ComposerModelOption[];
   providerOptions: ComposerProviderOption[];
-  onSave: (
-    agent: Agent,
-    values: {
-      defaultModel?: string | null;
-      defaultAuthProvider?: string | null;
-      defaultAuthChoice?: string | null;
-      fallbackModel?: string | null;
-      fallbackAuthProvider?: string | null;
-      fallbackAuthChoice?: string | null;
-      thinking?: string | null;
-    },
-  ) => Promise<void> | void;
+  onSave: (values: AgentModelRoutingDraft) => Promise<void> | void;
   onClose: () => void;
 }) {
-  const [defaultModel, setDefaultModel] = useState(agent.defaultModel || modelOptions[0]?.value || '');
-  const [fallbackModel, setFallbackModel] = useState(agent.fallbackModel || '');
-  const [thinking, setThinking] = useState(agent.defaultThinking || '');
+  const [defaultModel, setDefaultModel] = useState(routing.defaultModel || modelOptions[0]?.value || '');
+  const [fallbackModel, setFallbackModel] = useState(routing.fallbackModel || '');
+  const [thinking, setThinking] = useState(routing.thinking || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const defaultOption = modelOptions.find((option) => option.value === defaultModel);
@@ -70,10 +59,10 @@ export function AgentStudioRoutingEditor({
     if (!defaultModel || saving) return;
     setSaving(true);
     setError('');
-    const defaultAuth = resolveAuth(defaultModel, agent.defaultAuthProvider, agent.defaultAuthChoice);
-    const fallbackAuth = resolveAuth(fallbackModel, agent.fallbackAuthProvider, agent.fallbackAuthChoice);
+    const defaultAuth = resolveAuth(defaultModel, routing.defaultAuthProvider, routing.defaultAuthChoice);
+    const fallbackAuth = resolveAuth(fallbackModel, routing.fallbackAuthProvider, routing.fallbackAuthChoice);
     try {
-      await onSave(agent, {
+      await onSave({
         defaultModel,
         defaultAuthProvider: defaultAuth.provider,
         defaultAuthChoice: defaultAuth.choice,

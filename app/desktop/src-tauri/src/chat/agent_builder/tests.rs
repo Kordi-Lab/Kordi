@@ -20,6 +20,14 @@ fn factory_prompt_covers_multiple_kordi_resource_types() {
 }
 
 #[test]
+fn agent_creator_preserves_runtime_configuration_instead_of_inventing_it() {
+    assert!(!AGENT_CREATOR_SKILL.contains("gpt-5.2"));
+    assert!(AGENT_CREATOR_SKILL.contains("Preserve the configured model route"));
+    assert!(AGENT_CREATOR_SKILL.contains("web_search"));
+    assert!(BUILDER_SYSTEM_PROMPT.contains("not the candidate agent's runtime tool catalog"));
+}
+
+#[test]
 fn clean_slug_produces_safe_skill_names() {
     assert_eq!(clean_slug(" Repository Review "), "repository-review");
     assert_eq!(clean_slug("../Unsafe Name"), "unsafe-name");

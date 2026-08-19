@@ -239,6 +239,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         selectComposerProviderChoice: args.selectComposerProviderChoice,
         composerProviderOptions: args.composerProviderOptions,
         chatModelOptions: args.chatModelOptions,
+        defaultCloudAgentRuntimeRoute: args.defaultCloudAgentRuntimeRoute,
         isDesktopChatSending: args.isDesktopChatSending,
         handleStopDesktopChatTurn: args.handleStopDesktopChatTurn,
         handleStopCollaborationAgentRequest: args.handleStopCollaborationAgentRequest,

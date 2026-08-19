@@ -2,12 +2,8 @@ import { useState, useSyncExternalStore } from 'react';
 
 import { Avatar } from '@/components/ui/avatar';
 import {
-  cloudSignupAvatarBackground,
-  cloudSignupAvatarInitials,
-  cloudSignupAvatarPalette,
-} from '@/features/cloud/signupAvatar';
-import {
   AGENT_CANONICAL_AVATAR_STYLE,
+  HUMAN_CANONICAL_AVATAR_STYLE,
   canonicalAvatarImageUrl,
   generatedAvatarPreviewUrl,
 } from '@/features/cloud/canonicalAvatar';
@@ -120,19 +116,6 @@ export function useLocalAgentAvatarSeed() {
   return DEFAULT_LOCAL_AGENT_AVATAR_SEED;
 }
 
-function HumanInitialsAvatar({ label, className }: { label: string; className?: string }) {
-  const palette = cloudSignupAvatarPalette(label);
-  return (
-    <span
-      className={cn('grid h-full w-full place-items-center text-[13px] font-bold tracking-[0.03em]', className)}
-      style={{ background: cloudSignupAvatarBackground(palette), color: palette.foreground }}
-      aria-hidden="true"
-    >
-      {cloudSignupAvatarInitials(label)}
-    </span>
-  );
-}
-
 export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, avatarKey?: string | null) {
   const value = avatarKey?.trim() || seed.trim() || 'unknown';
   return kind === 'agent' ? `agent:${value.replace(/^agent:/i, '')}` : avatarKey?.trim() || `human:${value}`;
@@ -150,14 +133,16 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
   });
   const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, isSelf ? null : avatarKey);
   const localOverride = useAvatarOverride(resolvedAvatarKey);
-  const generatedAgentImageUrl = kind === 'agent' && !identityImageUrl && !localOverride
+  const generatedImageUrl = !identityImageUrl && !localOverride
     ? generatedAvatarPreviewUrl(
-        AGENT_CANONICAL_AVATAR_STYLE,
+        kind === 'agent'
+          ? AGENT_CANONICAL_AVATAR_STYLE
+          : HUMAN_CANONICAL_AVATAR_STYLE,
         normalizedSeed,
       )
     : null;
   const originalImageUrl = canonicalAvatarImageUrl(identityImageUrl || localOverride)
-    || generatedAgentImageUrl;
+    || generatedImageUrl;
   const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
   const remoteAvatar = useRemoteAvatarImage(originalImageUrl, needsNativeProxy);
   const resolvedImageUrl = needsNativeProxy
@@ -206,10 +191,8 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
             className="block h-full w-full bg-slate-300/55 dark:bg-slate-700/55"
             aria-hidden="true"
           />
-        ) : kind === 'agent' ? (
-          <span className={cn('block h-full w-full bg-slate-200 dark:bg-slate-700', generatedClassName)} aria-hidden="true" />
         ) : (
-          <HumanInitialsAvatar label={fallbackLabel} className={generatedClassName} />
+          <span className={cn('block h-full w-full bg-slate-200 dark:bg-slate-700', generatedClassName)} aria-hidden="true" />
         )}
         {visibleImageUrl ? (
           <img

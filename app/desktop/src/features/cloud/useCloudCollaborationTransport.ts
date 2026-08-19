@@ -60,6 +60,7 @@ export function useCloudCollaborationTransport({
     syncCoordinator,
     cancelledRef: stores.cancelledRef,
     stores: {
+      definitionsByIdRef: stores.agents.definitionsByIdRef,
       setDefinitionsById: stores.agents.setDefinitionsById,
       sharedByOwner: stores.agents.sharedByOwner,
       setSharedByOwner: stores.agents.setSharedByOwner,

@@ -429,12 +429,12 @@ export class CloudAuthClient {
     password: string;
     displayName?: string;
     avatarSeed: string;
+    avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
   }): Promise<CloudAuthResult> {
     const result = await this.identity.signup(input);
     this.activeAccountId = result.account.accountId;
     return result;
   }
-
   async capabilities(): Promise<CloudAuthCapabilities> {
     return this.identity.capabilities();
   }

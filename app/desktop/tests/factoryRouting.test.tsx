@@ -8,6 +8,12 @@ import { AgentInspectionView } from '../src/kordi-app/agents/AgentInspectionView
 import { AgentStudioWorkspace } from '../src/kordi-app/agents/AgentStudioWorkspace';
 import { CapabilityLibraryView } from '../src/kordi-app/agents/CapabilityLibraryView';
 import {
+  CLOUD_AGENT_TOOL_DESCRIPTIONS,
+  factoryAgentCreateInput,
+  newArtifactSeed,
+  readyFactoryBuildForPublish,
+} from '../src/kordi-app/agents/factoryAgentUtils';
+import {
   createFactoryBuildTargetKey,
   factoryArtifactIdentityFromTarget,
   factoryArtifactTargetKey,
@@ -15,7 +21,8 @@ import {
   type FactoryLibraryArtifact,
 } from '../src/kordi-app/agents/model';
 import type { Agent } from '../src/kordi-app/types';
-import type { DesktopSkillLibraryEntry } from '../src/lib/desktop';
+import { randomFactoryCreationAvatar } from '../src/kordi-app/agents/useFactoryCreationAvatar';
+import type { DesktopAgentBuilderStatus, DesktopSkillLibraryEntry } from '../src/lib/desktop';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 const agent: Agent = {
@@ -38,6 +45,167 @@ const agent: Agent = {
   lastActivities: [],
   isOwned: true,
 };
+
+const creationBuilderStatus: DesktopAgentBuilderStatus = {
+  draftId: 'draft-1',
+  targetKey: 'account:one:create:agent:build-1',
+  sessionId: 'session:agent-builder:draft-1',
+  workspacePath: '/tmp/factory/draft-1',
+  lifecycle: 'draft',
+  draft: {
+    name: 'Research Agent',
+    role: 'Source-backed research',
+    description: 'Research current topics with citations.',
+    systemPrompt: 'Cite the source used for every claim.',
+    sourceSummary: '',
+    boundaries: [],
+    access: 'only-me',
+    provider: 'openai-codex',
+    model: 'openai/gpt-5.6-sol',
+    thinking: 'high',
+    tools: ['web_search', 'web_fetch'],
+    plugins: [],
+    skills: [],
+  },
+  validation: { valid: true, fingerprint: 'fingerprint-1', errors: [], files: [] },
+  testReport: null,
+  publishReady: false,
+};
+
+test('new agent builds inherit the active configured route and expose Cloud tools', () => {
+  const seed = newArtifactSeed('agent', {
+    model: 'openai/gpt-5.6-sol',
+    authProvider: 'openai-codex',
+    authChoice: 'oauth-profile',
+    thinking: 'high',
+  });
+
+  assert.equal(seed.provider, 'openai-codex');
+  assert.equal(seed.model, 'openai/gpt-5.6-sol');
+  assert.equal(seed.thinking, 'high');
+  assert.deepEqual(
+    Object.keys(CLOUD_AGENT_TOOL_DESCRIPTIONS).filter((name) => name.startsWith('web_')),
+    ['web_fetch', 'web_search'],
+  );
+});
+
+test('new agent creation sends its avatar through the canonical Cloud mutation', () => {
+  const input = factoryAgentCreateInput({
+    draft: {
+      name: 'Research Agent', role: 'Research', description: '', systemPrompt: 'Research.',
+      sourceSummary: '', boundaries: [], skills: [],
+    },
+    runtime: creationBuilderStatus.draft,
+    accessScope: 'private',
+    avatarMutation: { action: 'upload', uploadedAsset: 'data:image/png;base64,avatar' },
+  });
+  assert.deepEqual(input.avatarMutation, { action: 'upload', uploadedAsset: 'data:image/png;base64,avatar' });
+
+  const random = randomFactoryCreationAvatar();
+  assert.equal(random?.mutation.action, 'regenerate');
+  assert.match(random?.imageUrl ?? '', /\/v1\/avatars\/preview\/thumbs\//);
+  assert.match(random?.mutation.seed ?? '', /^[A-Za-z0-9_-]+$/);
+});
+
+test('publishing tests an untested draft once and continues only when it passes', async () => {
+  let tests = 0;
+  const tested = { ...creationBuilderStatus, publishReady: true };
+  assert.equal(await readyFactoryBuildForPublish(creationBuilderStatus, async () => {
+    tests += 1;
+    return tested;
+  }), tested);
+  assert.equal(tests, 1);
+  assert.equal(await readyFactoryBuildForPublish(tested, async () => {
+    throw new Error('already tested');
+  }), tested);
+  await assert.rejects(
+    () => readyFactoryBuildForPublish(creationBuilderStatus, async () => null),
+    /agent test did not pass/i,
+  );
+});
+
+test('new agent Blueprint exposes avatar and model setup behind one publish action', () => {
+  const html = renderToStaticMarkup(
+    <AgentStudioWorkspace
+      creating
+      artifactKind="agent"
+      creationDraft={{
+        name: 'Research Agent',
+        role: 'Source-backed research',
+        description: 'Research current topics with citations.',
+        systemPrompt: 'Cite the source used for every claim.',
+        sourceSummary: '',
+        boundaries: [],
+        skills: [],
+      }}
+      creationAccessScope="private"
+      agentAccessScope="private"
+      onCreationAccessScopeChange={() => undefined}
+      config={null}
+      persisted={null}
+      changes={[]}
+      availableSkills={[]}
+      skillDescriptions={{}}
+      availableTools={Object.keys(CLOUD_AGENT_TOOL_DESCRIPTIONS)}
+      availablePlugins={[]}
+      editableCapabilityKinds={new Set(['skill', 'tool', 'plugin'])}
+      allowCapabilityCreation
+      canEditPrompt
+      onPromptChange={() => undefined}
+      onCreationDraftChange={() => undefined}
+      creationAvatarUrl="data:image/png;base64,avatar"
+      onCreationAvatarUpload={() => undefined}
+      onCreationAvatarRandomize={() => undefined}
+      onCreationModelRoutingChange={() => undefined}
+      onToggleCapability={() => undefined}
+      onAddCapability={() => undefined}
+      onRenameCapability={() => undefined}
+      onPublish={() => undefined}
+      onDiscard={() => undefined}
+      publishing={false}
+      publishFeedback={null}
+      publishDisabled={false}
+      draftMutationDisabled={false}
+      chatModelOptions={[{
+        value: 'openai/gpt-5.6-sol',
+        label: 'gpt-5.6-sol',
+        provider: 'openai',
+        providerLabel: 'OpenAI',
+        thinkingLevels: ['high'],
+      }]}
+      composerProviderOptions={[]}
+      activeDetail={null}
+      activeFilePreview={{ status: 'idle', text: '' }}
+      activeFileDraft=""
+      activeFileCanEdit={false}
+      activeFileIsEditing={false}
+      activeFileSaveFeedback={null}
+      onSelectPrompt={() => undefined}
+      onSelectFile={() => undefined}
+      onStartFileEditing={() => undefined}
+      onCancelFileEditing={() => undefined}
+      onSaveFile={() => undefined}
+      onFileDraftChange={() => undefined}
+      builderStatus={creationBuilderStatus}
+      builderTesting={false}
+      onTestBuilderDraft={() => undefined}
+    />,
+  );
+
+  assert.match(html, /aria-label="Upload agent avatar"/);
+  assert.match(html, /aria-label="Generate random agent avatar"/);
+  assert.match(html, /data-cloud-signup-avatar-upload="true"/);
+  assert.match(html, /data-cloud-signup-avatar-reroll="true"/);
+  assert.match(html, /lucide-dice-5/);
+  assert.match(html, /lucide-camera/);
+  assert.ok(html.indexOf('data-cloud-signup-avatar-reroll') < html.indexOf('data-cloud-signup-avatar-upload'));
+  assert.match(html, /flex h-12 w-7 shrink-0 flex-col overflow-hidden rounded-full/);
+  assert.doesNotMatch(html, /Upload a PNG, JPEG, or WebP image/);
+  assert.match(html, /aria-label="Edit model"/);
+  assert.match(html, />Publish agent<\/button>/);
+  assert.doesNotMatch(html, />Test agent<\/button>/);
+  assert.doesNotMatch(html, /disabled="">Publish agent<\/button>/);
+});
 
 test('artifact targets round-trip exact identity without relying on list order', () => {
   for (const kind of ['agent', 'skill', 'tool', 'plugin'] as const) {

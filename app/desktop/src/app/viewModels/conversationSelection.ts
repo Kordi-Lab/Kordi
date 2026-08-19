@@ -129,6 +129,7 @@ export function applyCanonicalHydrationPlaceholder(
     selectedConversation.desktopRuntimeBacked
     && selectedConversation.desktopRuntimeTranscriptLoaded !== true
     && !isLocalDraftChatConversationId(selectedConversation.id)
+    && selectedConversation.messages.every((message) => message.role === 'system')
   ) {
     return {
       ...selectedConversation,

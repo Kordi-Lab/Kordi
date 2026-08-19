@@ -58,6 +58,34 @@ test('desktop runtime selection shows a loading notice until its transcript cach
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
 });
 
+test('desktop runtime hydration keeps a newly sent request ahead of its live response', () => {
+  const selected = {
+    id: 'session:direct-agent:stock-trader',
+    name: 'US Stock Paper Trader',
+    type: 'owned-agent' as const,
+    subtitle: '',
+    unread: 0,
+    collaborationSources: ['Local'],
+    trust: 'Owned',
+    directness: 'Agent chat',
+    participants: ['Me', 'US Stock Paper Trader'],
+    messages: [
+      { role: 'user' as const, isOwnMessage: true, text: 'who are you', time: '13:08', statusChips: ['sending'] },
+      { role: 'owned-agent' as const, sender: 'US Stock Paper Trader', text: 'I am US Stock Paper Trader.', time: '13:08' },
+    ],
+    desktopRuntimeBacked: true,
+    desktopRuntimeTranscriptLoaded: false,
+  };
+
+  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+
+  assert.equal(loading, selected);
+  assert.deepEqual(loading.messages.map((message) => message.text), [
+    'who are you',
+    'I am US Stock Paper Trader.',
+  ]);
+});
+
 test('selected Agent cache is remapped with current identity metadata before native session loading settles', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
 

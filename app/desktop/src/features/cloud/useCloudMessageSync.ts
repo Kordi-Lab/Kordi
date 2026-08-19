@@ -268,6 +268,7 @@ export function useCloudMessageSync({
     setTitles((current) => (
       JSON.stringify(current) === JSON.stringify(sessionTitlesById) ? current : sessionTitlesById
     ));
+    agentsRef.current = cloudAgentsById;
     setAgents((current) => (
       JSON.stringify(current) === JSON.stringify(cloudAgentsById) ? current : cloudAgentsById
     ));
@@ -407,7 +408,7 @@ export function useCloudMessageSync({
       if (request.mode === 'bootstrap') {
         // Render the crash-safe local projection first. Catch-up and history
         // backfill then operate exclusively on the durable cursor stream.
-        await hydrateChatLocalState(generation);
+        await Promise.all([hydrateChatLocalState(generation), refreshCloudAgents(generation).catch(() => {})]);
       }
       await syncDiffOnceForGeneration(generation, request.mode === 'full');
       await hydrateMissingChatHistory(generation);
@@ -423,6 +424,7 @@ export function useCloudMessageSync({
     hydrateMissingChatHistory,
     hydrateChatLocalState,
     markUnreadReadiness,
+    refreshCloudAgents,
     syncDiffOnceForGeneration,
   ]);
   const requestSync = useCallback((request: PendingCloudSyncRequest) => {
@@ -466,7 +468,6 @@ export function useCloudMessageSync({
     if (!account || !contactsSettled || !cloudUnreadContextKey) return;
     if (startupSnapshotContextRef.current !== cloudUnreadContextKey) {
       startupSnapshotContextRef.current = cloudUnreadContextKey;
-      void refreshCloudAgents(coordinator.currentGeneration());
       void bootstrapCloudMessages().catch(() => {
         if (startupSnapshotContextRef.current === cloudUnreadContextKey) {
           startupSnapshotContextRef.current = null;
@@ -487,7 +488,6 @@ export function useCloudMessageSync({
     cloudUnreadContextKey,
     contactsSettled,
     coordinator,
-    refreshCloudAgents,
     syncCloudCollaborationDiff,
   ]);
   return {

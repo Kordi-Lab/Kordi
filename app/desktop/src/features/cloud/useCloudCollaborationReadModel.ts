@@ -102,7 +102,12 @@ function isOptimisticCloudMessage(
   message: DesktopCollaborationConversation['messages'][number],
 ): boolean {
   return message.deliveryState === 'sending'
-    || message.deliveryState === 'failed';
+    || message.deliveryState === 'failed'
+    || Boolean(
+      message.deliveryState === 'delivered'
+      && message.direction === 'outbound'
+      && message.clientMessageId,
+    );
 }
 
 function unresolvedOptimisticMessages(

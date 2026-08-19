@@ -103,6 +103,65 @@ test('cloud direct local-agent completed turn replaces processing while Cloud re
   assert.equal(view.messages.some((candidate) => candidate.turn?.status === 'processing'), false);
 });
 
+test('a completed local response stays visible until its terminal Cloud row replaces it', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_local_agent_response_handoff',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: '@MeCloudKordi who are you?',
+    direction: 'incoming',
+  };
+  const processing: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_local_agent_processing',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'I am',
+      deliveryState: 'processing',
+    }),
+    direction: 'outgoing',
+  };
+  const completedTurn = {
+    id: 'turn_direct_local_response_handoff',
+    assistantText: 'I am your agent.',
+    completed: true,
+    succeeded: true,
+    status: 'succeeded',
+    tools: [],
+  } as DesktopChatTurnSnapshot;
+  const build = (messages: CloudMessage[]) => buildCloudDesktopCollaborationState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: messages },
+    localAgentTurnsByRequestId: { [request.messageId]: completedTurn },
+  }).conversations[0].messages.filter((candidate) => (
+    candidate.requestId === request.messageId
+    && candidate.id !== request.messageId
+  ));
+
+  const beforeTerminalSync = build([request, processing]);
+  assert.deepEqual(beforeTerminalSync.map((candidate) => candidate.text), [
+    'I am your agent.',
+  ]);
+
+  const terminal: CloudMessage = {
+    ...processing,
+    messageId: 'msg_direct_local_agent_terminal',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'I am your agent.',
+      deliveryState: 'complete',
+    }),
+  };
+  const afterTerminalSync = build([request, processing, terminal]);
+  assert.deepEqual(afterTerminalSync.map((candidate) => candidate.id), [
+    terminal.messageId,
+  ]);
+});
+
 test('cloud direct local-agent provider failure replaces processing immediately with an actionable failure', () => {
   const request: CloudMessage = {
     ...message,

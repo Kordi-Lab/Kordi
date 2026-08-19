@@ -1,6 +1,6 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
 import { buildChatsPageProps } from '@/app/mainContentShellBuilders';
-import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
+import { openLocalAgentChatFromArgs, usesDefaultLocalAgentSession } from '@/app/openLocalAgentChat';
 import { collaborationAgentForChatStart } from '@/features/chat/chatCreateFlows';
 import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
@@ -122,6 +122,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         getStatusBadgeClass: args.getStatusBadgeClass,
         chatModelOptions: args.chatModelOptions,
         composerProviderOptions: args.composerProviderOptions,
+        defaultAgentRuntimeRoute: args.defaultCloudAgentRuntimeRoute,
         onUpdateAgentModelRouting: (agent, values) => {
           if (!agent.sourceHostId || !agent.sourceAgentId) {
             return args.handleUpdateLocalAgentModelRouting(
@@ -147,12 +148,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           );
         },
         onMessageAgent: (agent) => {
-          if (agent.cloudAgentId) {
-            void args.handleStartChatWithAgent(agent);
-            return;
-          }
-
-          if (agent.isOwned) {
+          if (usesDefaultLocalAgentSession(agent)) {
             void openLocalAgentChat();
             return;
           }

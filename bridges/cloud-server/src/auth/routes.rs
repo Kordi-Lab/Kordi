@@ -47,8 +47,8 @@ use crate::auth::session::{
     DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
 };
 use crate::avatars::{
-    apply_avatar_mutation, descriptor_from_parts, generated_avatar_marker, is_valid_avatar_seed,
-    new_avatar_seed, parse_generated_avatar_marker, preserve_avatar_render_key, AvatarDescriptor,
+    apply_avatar_mutation, descriptor_from_parts, is_valid_avatar_seed, new_avatar_seed,
+    parse_generated_avatar_marker, preserve_avatar_render_key, AvatarDescriptor,
     AvatarMutationError, AvatarMutationRequest, StoredAvatar, StoredAvatarRow,
     AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
 };

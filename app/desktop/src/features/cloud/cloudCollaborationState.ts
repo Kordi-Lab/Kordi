@@ -66,7 +66,7 @@ import {
 } from './cloudConversationMetadata';
 import {
   latestVisibleConversationMessage,
-  visibleCloudAgentResponseMessages,
+  selectVisibleCloudAgentResponses,
 } from './cloudAgentResponseSelection';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import {
@@ -574,10 +574,14 @@ export function buildCloudCollaborationConversation({
       requestTargetAgentNames.set(message.messageId, 'My Kordi');
     }
   }
-  const visibleCloudMessages = visibleCloudAgentResponseMessages(
+  const {
+    visibleMessages: visibleCloudMessages,
+    responseRequestIds, terminalResponseRequestIds,
+  } = selectVisibleCloudAgentResponses(
     messages,
     requestTargetAccountIds,
     (message) => cloudMessageIsGroupControl(message, groupControlMessageIds),
+    (requestId) => Boolean(localAgentTurnsByRequestId[requestId]?.completed),
   );
   const agentRequests = messages.filter((message) => {
     if (cloudMessageIsGroupControl(message, groupControlMessageIds)) return false;
@@ -585,11 +589,7 @@ export function buildCloudCollaborationConversation({
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
     return Boolean(requestTargetAccountIds.get(message.messageId));
   });
-  const responseRequestIds = new Set(messages
-    .map((message) => parseCloudAgentResponse(message.body)?.requestId)
-    .filter((value): value is string => Boolean(value)));
-  const answeredRequestIds = new Set(responseRequestIds);
-  for (const requestId of cancelledRequestIds) answeredRequestIds.add(requestId);
+  const answeredRequestIds = new Set([...responseRequestIds, ...cancelledRequestIds]);
   // Remote Cloud agents remain reachable through server-side fallback while the
   // owner device is offline. Keep the request in the normal processing slot
   // until a Cloud/local agent response or cancel arrives instead of showing an
@@ -610,7 +610,7 @@ export function buildCloudCollaborationConversation({
     const targetAccountId = requestTargetAccountIds.get(message.messageId);
     if (!targetAccountId) return [mapped];
     const localTurn = localAgentTurnsByRequestId[message.messageId] ?? null;
-    if (localTurn?.completed && !answeredRequestIds.has(message.messageId)) {
+    if (localTurn?.completed && !terminalResponseRequestIds.has(message.messageId)) {
       return [mapped, cloudAgentCompletedLocalTurnCollaborationMessage({
         account,
         request: message,

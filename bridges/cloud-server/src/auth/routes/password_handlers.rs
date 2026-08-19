@@ -1,4 +1,6 @@
 use super::*;
+mod signup_avatar;
+use signup_avatar::signup_avatar;
 
 pub(super) async fn signup(
     State(state): State<Arc<ServerState>>,
@@ -92,7 +94,20 @@ pub(super) async fn signup(
 
     let now = Utc::now().to_rfc3339();
     let account_id = format!("acct_{}", uuid::Uuid::new_v4().simple());
-    let avatar_url = generated_avatar_marker(HUMAN_AVATAR_STYLE, avatar_seed, 1);
+    let avatar = match signup_avatar(&account_id, avatar_seed, req.avatar_mutation.as_ref(), &now) {
+        Ok(value) => value,
+        Err(AvatarMutationError::Conflict) => {
+            return err(
+                "avatar_conflict",
+                "Avatar changed before account creation. Try again.",
+                StatusCode::CONFLICT,
+            )
+        }
+        Err(AvatarMutationError::Invalid(message)) => {
+            return err("invalid_avatar", message, StatusCode::BAD_REQUEST)
+        }
+    };
+    let avatar_url = avatar.image_url();
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(_) => {
@@ -109,7 +124,7 @@ pub(super) async fn signup(
          (account_id, display_name, primary_email, avatar_url, created_at, updated_at, \
           password_hash, password_algorithm, password_updated_at, avatar_source, avatar_style, \
           avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $5, $8, $9, $10, $11, 1, $5)",
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $5, $8, $9, $10, $11, $12, $5)",
     )
     .bind(&account_id)
     .bind(display_name.as_deref())
@@ -118,10 +133,11 @@ pub(super) async fn signup(
     .bind(&now)
     .bind(&password_hash)
     .bind(PASSWORD_ALGORITHM_ID)
-    .bind("generated")
-    .bind(HUMAN_AVATAR_STYLE)
-    .bind(avatar_seed)
-    .bind(AVATAR_RENDERER_VERSION)
+    .bind(&avatar.source)
+    .bind(&avatar.style)
+    .bind(&avatar.seed)
+    .bind(&avatar.renderer_version)
+    .bind(avatar.version)
     .execute(&mut *tx)
     .await
     .is_err()

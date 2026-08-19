@@ -208,8 +208,8 @@ test('canonical read model renders cloud group cancellations as one request-canc
   assert.equal(cancelledTurn?.error, null);
 });
 
-test('canonical read model hides duplicated self-agent cloud echoes when local rows already exist', () => {
-  const sessionId = 'session:self-agent:echo';
+test('created-agent sessions keep their selected identity while hiding My Kordi mirrors', () => {
+  const sessionId = 'session:self-agent:stock-trader';
   const requestAt = 1_000;
   const responseAt = 2_000;
   const canonicalState = {
@@ -218,7 +218,7 @@ test('canonical read model hides duplicated self-agent cloud echoes when local r
       id: 'profile:me',
       displayName: 'Me',
       humanIdentityId: 'human:me',
-      activeAgentIdentityId: 'agent:me',
+      activeAgentIdentityId: 'agent:stock-trader',
       storageRoot: '/tmp',
       createdAtMs: 1,
       updatedAtMs: 1,
@@ -226,28 +226,30 @@ test('canonical read model hides duplicated self-agent cloud echoes when local r
     identities: [
       { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
       { id: 'agent:me', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:stock-trader', kind: 'agent', displayName: 'US Stock Paper Trader', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-stock', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:cloud-self:acct_me', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-cloud', createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [{
       id: sessionId,
       kind: 'self-agent',
-      title: 'New chat',
+      title: 'US Stock Paper Trader',
       status: 'active',
       createdByIdentityId: 'human:me',
-      primaryIdentityId: 'agent:me',
+      primaryIdentityId: 'agent:stock-trader',
       relationshipIdentityId: null,
-      metadata: {},
+      metadata: { createdFrom: 'chat-create-flow', cloudAgentId: 'cloud_agent_stock', cloudAgentName: 'US Stock Paper Trader' },
       createdAtMs: requestAt,
       updatedAtMs: responseAt,
       lastMessageAtMs: responseAt,
     }],
     participants: [
-      { sessionId, identityId: 'agent:me', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:stock-trader', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
     ],
     messages: [
-      { id: 'msg:desktop-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'lallalalal', content: { sender: 'Me' }, status: 'sent', sequenceNum: 1, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-request' },
-      { id: 'msg:desktop-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Lalalalala 🎶\n\nWhat would you like to do?', content: { sender: 'My Kordi' }, parentMessageId: 'msg:desktop-request', status: 'complete', sequenceNum: 2, createdAtMs: responseAt, updatedAtMs: responseAt, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-answer' },
-      { id: 'msg:cloud-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'lallalalal', content: null, status: 'sent', sequenceNum: 3, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-request' },
-      { id: 'msg:cloud-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Lalalalala 🎶\n\nWhat would you like to do?', content: { cloudRequestMessageId: 'cloud-request' }, parentMessageId: 'msg:cloud-request', status: 'complete', sequenceNum: 4, createdAtMs: responseAt, updatedAtMs: responseAt, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-answer' },
+      { id: 'msg:desktop-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'who are you', content: { sender: 'Me' }, status: 'sent', sequenceNum: 1, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-request' },
+      { id: 'msg:desktop-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'I am US Stock Paper Trader.', content: { sender: 'My Kordi' }, parentMessageId: 'msg:desktop-request', status: 'complete', sequenceNum: 2, createdAtMs: responseAt, updatedAtMs: responseAt, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-answer' },
+      { id: 'msg:cloud-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'who are you', content: null, status: 'sent', sequenceNum: 3, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-request' },
+      { id: 'msg:cloud-answer', sessionId, senderIdentityId: 'agent:cloud-self:acct_me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'I am US Stock Paper Trader.', content: { cloudRequestMessageId: 'cloud-request' }, parentMessageId: 'msg:cloud-request', status: 'complete', sequenceNum: 4, createdAtMs: requestAt + 1, updatedAtMs: requestAt + 1, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-answer' },
     ],
     delegatedExchanges: [],
     presence: [],
@@ -258,9 +260,11 @@ test('canonical read model hides duplicated self-agent cloud echoes when local r
   const messages = readModel.messages(sessionId);
 
   assert.deepEqual(messages.map((message) => message.text || message.turn?.assistantText), [
-    'lallalalal',
-    'Lalalalala 🎶\n\nWhat would you like to do?',
+    'who are you',
+    'I am US Stock Paper Trader.',
   ]);
+  assert.equal(messages[1]?.sender, 'My US Stock Paper Trader');
+  assert.notEqual(messages[1]?.sender, 'My Kordi');
 });
 
 test('canonical read model shows one error when local and Cloud self-agent failures repeat for one request', () => {

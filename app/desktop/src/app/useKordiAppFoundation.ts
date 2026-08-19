@@ -454,6 +454,7 @@ export function useKordiAppFoundation({
     composer: {
       chatDraftSessionId, activeChatQuote, onClearChatQuote,
       composerDraftsView, chatModelOptions, composerProviderOptions,
+      defaultCloudAgentRuntimeRoute,
       preferredModelValueForProvider, resolveComposerProviderId,
       composerAuthByScope, chatSlashQuery, projectSlashQuery,
       filteredChatSlashCommands, filteredProjectSlashCommands,

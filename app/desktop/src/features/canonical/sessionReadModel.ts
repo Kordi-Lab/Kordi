@@ -24,6 +24,7 @@ import { formatDesktopLastActiveLabel } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
+  isChatCreatedDirectAgentSession,
   sessionChatActivityAtMs,
   sessionConversationDisplayTitle,
   sessionHasActiveProcessing,
@@ -387,10 +388,6 @@ function shouldKeepRuntimeChatConversationExtra(
     || isCanonicalCloudSessionId(sessionId)
     || conversation.collaborationSources.some((source) => source.trim().toLowerCase() === 'local')
     || !conversation.canonicalSessionId;
-}
-
-function isChatCreatedDirectAgentSession(session: CanonicalSessionState['sessions'][number]) {
-  return session.kind === 'direct-agent' && sessionMetadata(session).createdFrom === 'chat-create-flow';
 }
 
 function visibleParticipantsForSession(

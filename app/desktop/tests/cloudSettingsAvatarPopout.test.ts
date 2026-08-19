@@ -31,6 +31,7 @@ test('cloud avatar opens a small account menu before the centered settings modal
 
 test('cloud settings modal contains profile authentication and theme sections', () => {
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const avatarEditor = readSource('kordi-app/components/EditableIdentityAvatar.tsx');
 
   assert.match(modal, /Profile/);
   assert.match(modal, /Authentication/);
@@ -38,7 +39,7 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /Theme/);
   assert.match(modal, /AuthPage/);
   assert.match(modal, /SettingsValueControl/);
-  assert.match(modal, /fileToAvatarDataUrl/);
+  assert.match(avatarEditor, /fileToAvatarDataUrl/);
   assert.match(modal, /onUpdateProfile\(input\)/);
   assert.match(modal, /initialTab/);
 });
@@ -111,7 +112,7 @@ test('profile modal is distilled to one avatar and no cloud explanation copy', (
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const profileControl = readSource('pages/workspaceSidebar.profile.tsx');
 
-  assert.equal((modal.match(/<IdentityAvatar/g) ?? []).length, 1);
+  assert.equal((modal.match(/<EditableIdentityAvatar/g) ?? []).length, 1);
   assert.doesNotMatch(modal, /Update the name and avatar other Cloud users see/);
   assert.doesNotMatch(modal, /Cloud account/);
   assert.doesNotMatch(modal, /Cloud identity/);
@@ -120,12 +121,14 @@ test('profile modal is distilled to one avatar and no cloud explanation copy', (
 
 test('profile editor groups identity controls without resizing the settings dialog', () => {
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const avatarEditor = readSource('kordi-app/components/EditableIdentityAvatar.tsx');
 
-  assert.match(modal, /grid-cols-\[88px_minmax\(0,1fr\)\]/);
-  assert.match(modal, /<Camera className="h-3\.5 w-3\.5" \/>/);
+  assert.match(modal, /grid-cols-\[96px_minmax\(0,1fr\)\]/);
+  assert.match(modal, /<EditableIdentityAvatar/);
+  assert.match(avatarEditor, /<Dice5 className="h-3\.5 w-3\.5"/);
+  assert.match(avatarEditor, /flex w-7 shrink-0 flex-col overflow-hidden rounded-full/);
   assert.match(modal, /app-cloud-account-settings-dialog[^\n]*h-\[min\(680px,/);
-  assert.doesNotMatch(modal, /h-\[min\(440px,/);
-  assert.doesNotMatch(modal, />\s*Upload avatar\s*</);
+  assert.doesNotMatch(modal, /h-\[min\(440px,|>\s*(?:Upload avatar|Change|Generate another|Use generated)\s*</);
 });
 
 test('profile display name uses the scoped flat form treatment in both themes', () => {
