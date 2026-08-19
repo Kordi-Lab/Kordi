@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import { FileText, LoaderCircle } from 'lucide-react';
 
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import {
+  cancelCloudAttachmentUpload,
+  cloudAttachmentUploadSnapshot,
+  subscribeCloudAttachmentUpload,
+} from '@/features/cloud/cloudAttachmentUpload';
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import type { MessageAttachment } from '../types';
@@ -22,6 +27,25 @@ export function TranscriptFileAttachmentLink({
   const [error, setError] = useState<string | null>(null);
   const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
   const canOpen = Boolean((downloadedPath ?? attachment.localPath) && isNativeShell());
+  const localPath = attachment.localPath?.trim() ?? '';
+  const subscribeToUpload = useCallback(
+    (listener: () => void) => subscribeCloudAttachmentUpload(localPath, listener),
+    [localPath],
+  );
+  const getUploadSnapshot = useCallback(
+    () => cloudAttachmentUploadSnapshot(localPath),
+    [localPath],
+  );
+  const upload = useSyncExternalStore(subscribeToUpload, getUploadSnapshot, () => null);
+  const uploadPercent = upload && upload.totalBytes > 0
+    ? Math.min(100, Math.floor((upload.uploadedBytes / upload.totalBytes) * 100))
+    : null;
+  const uploadIsActive = upload && ['preparing', 'uploading'].includes(upload.phase);
+  const sendingLabel = upload?.phase === 'preparing'
+    ? 'Preparing…'
+    : upload?.phase === 'uploading' && uploadPercent !== null
+      ? `Uploading ${uploadPercent}%`
+      : 'Sending…';
 
   async function ensureLocalPath() {
     if (attachment.localPath) return attachment.localPath;
@@ -91,11 +115,23 @@ export function TranscriptFileAttachmentLink({
       {isSending ? (
         <span
           data-attachment-sending-indicator="true"
-          className="pointer-events-none inline-flex items-center gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]"
-          aria-label="Sending attachment"
+          className="inline-flex items-center gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]"
+          aria-label={upload?.phase === 'preparing'
+            ? 'Preparing attachment'
+            : uploadPercent === null ? 'Sending attachment' : `Uploading attachment, ${uploadPercent}%`}
         >
           <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
-          <span>Sending…</span>
+          <span>{sendingLabel}</span>
+          {uploadIsActive ? (
+            <button
+              type="button"
+              className="ml-0.5 rounded-sm px-1 py-0.5 font-semibold hover:text-[color:var(--utility-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+              onClick={() => void cancelCloudAttachmentUpload(localPath)}
+              aria-label={`Cancel upload of ${attachment.name}`}
+            >
+              Cancel
+            </button>
+          ) : null}
         </span>
       ) : null}
       {isDownloading ? (

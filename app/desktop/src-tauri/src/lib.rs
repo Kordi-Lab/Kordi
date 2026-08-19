@@ -298,6 +298,8 @@ pub fn run() {
             chat::attachments::desktop_chat_store_attachment_path,
             chat::attachments::desktop_chat_read_attachment,
             chat::attachments::desktop_chat_download_attachment,
+            chat::attachments::cloud_upload::desktop_cloud_attachment_upload,
+            chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,
             chat::artifacts::desktop_chat_artifact_preview,
             chat::artifacts::desktop_chat_artifact_directory,
             chat::desktop_chat_state,

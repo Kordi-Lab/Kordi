@@ -1,17 +1,15 @@
 import { Check, CheckCheck, LoaderCircle } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-
-type DeliveryVisual = {
-  kind: 'uploading' | 'delivering' | 'sent' | 'delivered' | 'read' | 'partial' | 'failed';
-  label: string;
-};
+import type { AttachmentImageDeliveryVisual } from './transcriptAttachmentTypes';
 
 type TranscriptImageDeliveryOverlayProps = {
-  visual: DeliveryVisual | null;
+  visual: AttachmentImageDeliveryVisual | null;
   time?: string | null;
   foregroundTone: 'light' | 'dark' | null;
   onRetry?: () => void;
+  uploadProgress?: number | null;
+  onCancelUpload?: () => void;
 };
 
 function adaptiveDeliveryOverlayClassName(foregroundTone: 'light' | 'dark' | null) {
@@ -28,24 +26,55 @@ export function TranscriptImageDeliveryOverlay({
   time,
   foregroundTone,
   onRetry,
+  uploadProgress = null,
+  onCancelUpload,
 }: TranscriptImageDeliveryOverlayProps) {
   if (!visual) return null;
 
   if (visual.kind === 'uploading') {
+    const progress = uploadProgress === null
+      ? null
+      : Math.max(0, Math.min(100, Math.floor(uploadProgress)));
+    const ring = (
+      <div className="app-attachment-image-media-ring-spinner" data-determinate={progress !== null}>
+        <svg viewBox="0 0 32 32" focusable="false" aria-hidden="true">
+          <circle className="app-attachment-image-media-ring-track" cx="16" cy="16" r="12.5" />
+          <circle
+            className="app-attachment-image-media-ring-progress"
+            cx="16"
+            cy="16"
+            r="12.5"
+            style={progress === null ? undefined : {
+              strokeDasharray: 78.54,
+              strokeDashoffset: 78.54 * (1 - progress / 100),
+            }}
+          />
+        </svg>
+        {progress === null ? null : <span className="app-attachment-image-media-ring-label">{progress}%</span>}
+      </div>
+    );
     return (
       <div
         data-attachment-image-delivery-status="uploading"
         className={adaptiveDeliveryOverlayClassName(foregroundTone)}
         role="status"
-        aria-label={visual.label}
+        aria-label={progress === null ? visual.label : `${visual.label}, ${progress}%`}
       >
-        <div className="app-attachment-image-media-ring" aria-hidden="true">
-          <div className="app-attachment-image-media-ring-spinner">
-            <svg viewBox="0 0 32 32" focusable="false">
-              <circle className="app-attachment-image-media-ring-track" cx="16" cy="16" r="12.5" />
-              <circle className="app-attachment-image-media-ring-progress" cx="16" cy="16" r="12.5" />
-            </svg>
-          </div>
+        <div className="app-attachment-image-media-ring">
+          {onCancelUpload ? (
+            <button
+              type="button"
+              className="app-attachment-image-media-ring-cancel"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onCancelUpload();
+              }}
+              aria-label="Cancel image upload"
+            >
+              {ring}
+            </button>
+          ) : ring}
         </div>
       </div>
     );

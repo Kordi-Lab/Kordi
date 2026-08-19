@@ -32,6 +32,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
 futures-util = "0.3"
+bytes = "1"
 hex = "0.4"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
 tauri-plugin-notification = "2.3.3"

@@ -4,6 +4,8 @@ use tauri::Manager;
 
 use super::DesktopStoredChatAttachment;
 
+pub(crate) mod cloud_upload;
+
 fn attachment_storage_dir() -> Result<PathBuf, String> {
     let dir = std::env::var_os("APP_DATA_DIR")
         .map(PathBuf::from)

@@ -1,23 +1,27 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { MessageAttachment } from '@/kordi-app/types';
-import { readDesktopChatAttachment, storeDesktopChatAttachment } from '@/lib/desktop';
+import { storeDesktopChatAttachment } from '@/lib/desktop';
 import type {
   CloudAuthClient,
   CloudMessageAttachment,
-  SendCloudMessageAttachmentInput,
 } from './authClient';
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
+import {
+  cacheCloudAttachmentLocalPath,
+  cachedCloudAttachmentLocalPath as cachedLocalPath,
+  clearCloudAttachmentLocalPathCache,
+} from './cloudAttachmentLocalPathCache';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 
 export { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 export { CLOUD_ATTACHMENT_PREVIEW_MAX_DATA_URL_LENGTH, safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
+export { uploadComposerAttachments } from './cloudComposerAttachments';
 
 export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 // Transcript virtualization mounts a viewport plus 12 rows of overscan on each side.
 // This bounds reusable idle cache entries. Active card and lightbox leases can keep
 // evicted Blob URLs alive beyond this count until those consumers release them.
 export const CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY = 128;
-const cloudAttachmentLocalPathCache = new Map<string, string>();
 
 type CloudAttachmentPreviewResource = {
   previewUrl: string;
@@ -210,11 +214,11 @@ type PreviewRecoveryClient = Pick<CloudAuthClient, 'downloadAttachmentContent' |
 
 export function cachedCloudAttachmentLocalPath(attachmentId: string | null | undefined) {
   const id = attachmentId?.trim();
-  return id ? cloudAttachmentLocalPathCache.get(id) ?? null : null;
+  return id ? cachedLocalPath(id) : null;
 }
 
 export function clearCloudAttachmentLocalPathCacheForTests() {
-  cloudAttachmentLocalPathCache.clear();
+  clearCloudAttachmentLocalPathCache();
   resetCloudAttachmentPreviewLoader();
 }
 
@@ -340,7 +344,7 @@ export async function resolveCloudMessageAttachments({
   const resolved = [];
   for (const attachment of attachments) {
     const mapped = cloudMessageAttachmentToMessageAttachment(attachment);
-    const cachedPath = cloudAttachmentLocalPathCache.get(attachment.attachmentId);
+    const cachedPath = cachedLocalPath(attachment.attachmentId);
     if (cachedPath) {
       resolved.push({ ...mapped, localPath: cachedPath });
       continue;
@@ -360,7 +364,7 @@ export async function resolveCloudMessageAttachments({
       }
       const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
       const localPath = await storeAttachment(attachment.name || 'attachment.bin', bytes);
-      cloudAttachmentLocalPathCache.set(attachment.attachmentId, localPath);
+      cacheCloudAttachmentLocalPath(attachment.attachmentId, localPath);
       resolved.push({ ...mapped, localPath });
     } catch {
       resolved.push(mapped);
@@ -465,7 +469,7 @@ export async function uploadCloudFiles({
     try {
       const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
       localPath = await storeAttachment(file.name || 'attachment.bin', bytes);
-      cloudAttachmentLocalPathCache.set(summary.attachmentId, localPath);
+      cacheCloudAttachmentLocalPath(summary.attachmentId, localPath);
     } catch {
       localPath = null;
     }
@@ -478,51 +482,6 @@ export async function uploadCloudFiles({
       downloadUrl: null,
       previewUrl: safeCloudAttachmentPreviewUrl(previewUrl),
       localPath,
-    });
-  }
-  return uploaded;
-}
-
-export async function uploadComposerAttachments({
-  token,
-  client,
-  attachments,
-  readAttachment = readDesktopChatAttachment,
-  createPreviewDataUrl = createCompressedImagePreviewDataUrl,
-}: {
-  token: string;
-  client: Pick<CloudAuthClient, 'uploadAttachment'>;
-  attachments: AttachmentItem[];
-  readAttachment?: (path: string) => Promise<number[]>;
-  createPreviewDataUrl?: PreviewGenerator;
-}): Promise<SendCloudMessageAttachmentInput[]> {
-  const uploaded: SendCloudMessageAttachmentInput[] = [];
-  for (const attachment of attachments) {
-    const bytes = await readAttachment(attachment.path);
-    const mimeType = attachment.mimeType?.trim() || null;
-    const blob = new Blob([new Uint8Array(bytes)], mimeType ? { type: mimeType } : undefined);
-    const kind = attachment.kind === 'image' ? 'image' : 'file';
-    const previewUrl = kind === 'image'
-      ? safeCloudAttachmentPreviewUrl(await createPreviewDataUrl(blob, {
-        name: attachment.name,
-        kind,
-        mimeType,
-        sizeBytes: attachment.sizeBytes ?? blob.size,
-      }))
-      : null;
-    const summary = await client.uploadAttachment(token, blob);
-    cloudAttachmentLocalPathCache.set(summary.attachmentId, attachment.path);
-    uploaded.push({
-      attachmentId: summary.attachmentId,
-      name: attachment.name,
-      kind,
-      ...(attachment.subtype === 'meme' ? {
-        subtype: 'meme' as const,
-        altText: attachment.altText?.trim() || null,
-      } : {}),
-      mimeType,
-      sizeBytes: attachment.sizeBytes ?? blob.size,
-      ...(previewUrl ? { previewUrl } : {}),
     });
   }
   return uploaded;

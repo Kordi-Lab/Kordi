@@ -1,6 +1,4 @@
-//! HTTP handlers for the attachment lifecycle. Mounted under
-//! `/v1/cloud/attachments/*` by the auth router so the session
-//! middleware authenticates every request.
+pub(crate) mod multipart;
 
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -127,7 +125,7 @@ fn normalize_preview_url(value: Option<&str>) -> Result<String, Box<Response>> {
     Ok(trimmed.to_string())
 }
 
-fn s3_or_503(state: &ServerState) -> Result<&S3Config, Box<Response>> {
+pub(super) fn s3_or_503(state: &ServerState) -> Result<&S3Config, Box<Response>> {
     state.s3().ok_or_else(|| {
         boxed_err(
             "attachments_unavailable",

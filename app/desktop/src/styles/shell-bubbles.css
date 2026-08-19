@@ -292,7 +292,12 @@
 }
 
 .app-attachment-image-media-ring-spinner {
+  position: relative;
   animation: app-attachment-image-status-spin 0.9s linear infinite;
+}
+
+.app-attachment-image-media-ring-spinner[data-determinate="true"] {
+  animation: none;
 }
 
 .app-attachment-image-media-ring-track,
@@ -309,6 +314,45 @@
 .app-attachment-image-media-ring-progress {
   stroke-linecap: round;
   stroke-dasharray: 48 80;
+}
+
+.app-attachment-image-media-ring-spinner[data-determinate="true"] .app-attachment-image-media-ring-progress {
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: stroke-dashoffset 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-attachment-image-media-ring-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-attachment-image-media-ring-cancel {
+  pointer-events: auto;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: -0.425rem;
+  padding: 0.425rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.app-attachment-image-media-ring-cancel:hover {
+  opacity: 0.78;
+}
+
+.app-attachment-image-media-ring-cancel:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 
 .app-attachment-image-delivery-spinner {

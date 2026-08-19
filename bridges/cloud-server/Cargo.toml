@@ -35,6 +35,7 @@ curve25519-dalek = "4"
 axum = { version = "0.7", features = ["ws"] }
 futures-util = { version = "0.3", default-features = false }
 tower-http = { version = "0.5", features = ["cors"] }
+tower = { version = "0.5", features = ["limit"] }
 argon2 = "0.5"
 async-trait = "0.1"
 password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
