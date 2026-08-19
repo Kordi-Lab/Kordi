@@ -38,7 +38,7 @@ enum AgentExecutionLocation: Hashable {
     }
 }
 
-struct ConversationSummary: Identifiable, Codable, Hashable {
+struct ConversationSummary: Identifiable, Hashable {
     let id: String
     let kind: ConversationKind
     let peerAccountId: String
@@ -79,7 +79,9 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
         self.id = id
         self.kind = kind
         self.peerAccountId = peerAccountId
-        self.agentId = agentId
+        self.agentId = kind == .agent
+            ? agentId?.nonEmpty ?? CanonicalAvatarSystem.defaultAgentId
+            : agentId
         self.ownerDisplayName = ownerDisplayName
         self.displayName = displayName
         self.lastMessage = lastMessage

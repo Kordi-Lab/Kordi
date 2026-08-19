@@ -80,8 +80,9 @@ final class CloudModelDecodingTests: XCTestCase {
     }
 
     func testOwnedAndSharedAgentShapesDecodeThroughOneModel() throws {
-        let owned = Data(#"{"agentId":"cloud_agent_owned","ownerAccountId":"acct_me","accessScope":"participant_conversations","status":"active","name":"Research Agent","role":"Researcher","description":null,"systemPrompt":"Help","sourceSummary":null,"boundaries":[],"resources":[],"skills":[{"name":"research","description":"Research sources","content":"Verify every source."}],"modelRouting":{"defaultModel":"codex/gpt-5.6-sol","thinking":"high","tools":["web-search"],"plugins":["citations"]},"createdAt":"2026-08-08T00:00:00Z","updatedAt":"2026-08-08T00:00:00Z","archivedAt":null}"#.utf8)
-        let shared = Data(#"{"agentId":"cloud_agent_shared","ownerAccountId":"acct_maya","ownerDisplayName":"Maya","accessScope":"participant_conversations","name":"Support Agent","role":"Support","description":"Answers product questions","updatedAt":"2026-08-08T00:00:00Z"}"#.utf8)
+        let avatar = #"{"entityType":"agent","entityId":"cloud_agent_owned","source":"generated","style":"thumbs","seed":"cloud_agent_owned","rendererVersion":"dicebear-rust-10.6.0-styles-10.5.0","uploadedAsset":null,"version":1,"updatedAt":"2026-08-08T00:00:00Z"}"#
+        let owned = Data(#"{"agentId":"cloud_agent_owned","ownerAccountId":"acct_me","accessScope":"participant_conversations","status":"active","name":"Research Agent","role":"Researcher","description":null,"systemPrompt":"Help","sourceSummary":null,"boundaries":[],"resources":[],"skills":[{"name":"research","description":"Research sources","content":"Verify every source."}],"modelRouting":{"defaultModel":"codex/gpt-5.6-sol","thinking":"high","tools":["web-search"],"plugins":["citations"]},"createdAt":"2026-08-08T00:00:00Z","updatedAt":"2026-08-08T00:00:00Z","archivedAt":null,"avatar":\#(avatar)}"#.utf8)
+        let shared = Data(#"{"agentId":"cloud_agent_shared","ownerAccountId":"acct_maya","ownerDisplayName":"Maya","accessScope":"participant_conversations","name":"Support Agent","role":"Support","description":"Answers product questions","updatedAt":"2026-08-08T00:00:00Z","avatar":\#(avatar)}"#.utf8)
 
         let decoder = JSONDecoder()
         let ownedAgent = try decoder.decode(CloudAgent.self, from: owned)

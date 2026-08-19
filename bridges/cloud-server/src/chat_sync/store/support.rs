@@ -204,6 +204,35 @@ pub(super) async fn active_member_ids(
     Ok(rows.into_iter().map(|row| row.0).collect())
 }
 
+pub async fn identity_sync_recipient_ids(
+    transaction: &mut Transaction<'_, Postgres>,
+    owner_account_id: &str,
+    include_viewers: bool,
+) -> Result<Vec<String>, StoreError> {
+    if !include_viewers {
+        return Ok(vec![owner_account_id.to_string()]);
+    }
+    let rows: Vec<(String,)> = query_as(
+        "SELECT DISTINCT account_id FROM (
+             SELECT $1::TEXT AS account_id
+             UNION SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1
+             UNION SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1
+             UNION SELECT viewer.account_id
+               FROM cloud_chat_conversation_members owner
+               JOIN cloud_chat_conversation_members viewer
+                 ON viewer.conversation_id = owner.conversation_id
+              WHERE owner.account_id = $1
+                AND owner.membership_state = 'active'
+                AND viewer.membership_state = 'active'
+         ) recipients
+         ORDER BY account_id",
+    )
+    .bind(owner_account_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    Ok(rows.into_iter().map(|row| row.0).collect())
+}
+
 pub(super) async fn require_active_member(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: Uuid,

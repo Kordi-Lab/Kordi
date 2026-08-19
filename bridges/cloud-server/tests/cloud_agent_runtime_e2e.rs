@@ -147,7 +147,7 @@ async fn signup(router: &axum::Router, prefix: &str, display_name: &str) -> Test
                     "email": email,
                     "password": "correct horse",
                     "displayName": display_name,
-                    "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+                    "avatarSeed": "agent_runtime_avatar",
                 })
                 .to_string(),
             ),

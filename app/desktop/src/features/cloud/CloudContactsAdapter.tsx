@@ -18,6 +18,7 @@ import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactRequest } from '@/kordi-app/types';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -226,7 +227,7 @@ function cloudAccountToSelfContact(account: CloudAccount): Contact {
     accountId: account.accountId,
     kordiId: account.kordiId,
     displayName,
-    avatarUrl: account.avatarUrl,
+    avatarUrl: canonicalAvatarImageSource(account.avatar),
     nodeId: account.nodeId,
     createdAt: '',
   });

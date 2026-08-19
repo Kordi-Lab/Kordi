@@ -6,6 +6,14 @@ import {
   cloudSignupAvatarInitials,
   cloudSignupAvatarPalette,
 } from '@/features/cloud/signupAvatar';
+import {
+  AGENT_CANONICAL_AVATAR_STYLE,
+  canonicalAvatarImageUrl,
+  generatedAvatarPreviewUrl,
+} from '@/features/cloud/canonicalAvatar';
+import {
+  DEFAULT_LOCAL_AGENT_AVATAR_SEED,
+} from '@/features/canonical/avatarIdentity';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
 import {
@@ -30,23 +38,11 @@ export type IdentityAvatarProps = {
   presenceLabel?: string | null;
 };
 
-const AGENT_IDENTICON_PALETTES = [
-  { background: '#f6f8fa', foreground: '#0969da', accent: '#2da44e' },
-  { background: '#f6f8fa', foreground: '#8250df', accent: '#bf3989' },
-  { background: '#f6f8fa', foreground: '#1a7f37', accent: '#9a6700' },
-  { background: '#f6f8fa', foreground: '#bc4c00', accent: '#0969da' },
-  { background: '#0d1117', foreground: '#58a6ff', accent: '#3fb950' },
-  { background: '#0d1117', foreground: '#a371f7', accent: '#f778ba' },
-  { background: '#0d1117', foreground: '#7ee787', accent: '#d29922' },
-  { background: '#0d1117', foreground: '#ffa657', accent: '#79c0ff' },
-];
 const LOCAL_PROFILE_AVATAR_SEED_KEY = 'kordi.localProfileAvatarSeed.v1';
 const LOCAL_PROFILE_IDENTITY_SEED_KEY = 'kordi.localProfileIdentitySeed.v1';
-const LOCAL_AGENT_IDENTITY_SEED_KEY = 'kordi.localAgentIdentitySeed.v1';
 const LOCAL_AVATAR_SEEDS_CHANGE_EVENT = 'kordi-local-avatar-seeds-change';
 
 let localProfileAvatarSeedSnapshot: string | null = null;
-let localAgentAvatarSeedSnapshot: string | null = null;
 
 function browserAvatarScope() {
   if (typeof window === 'undefined') return 'desktop';
@@ -116,89 +112,12 @@ export function useLocalProfileAvatarSeed() {
   );
 }
 
-export function getLocalAgentAvatarSeed(label?: string | null) {
-  if (localAgentAvatarSeedSnapshot?.trim()) return localAgentAvatarSeedSnapshot;
-
-  const identitySeed = readLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY);
-  if (identitySeed) return identitySeed;
-
-  return `local-agent:${browserAvatarScope()}:${label?.trim() || 'kordi'}`;
+export function getLocalAgentAvatarSeed() {
+  return DEFAULT_LOCAL_AGENT_AVATAR_SEED;
 }
 
-export function setLocalAgentAvatarSeed(seed?: string | null) {
-  const normalized = seed?.trim();
-  if (!normalized || normalized === localAgentAvatarSeedSnapshot) return;
-  localAgentAvatarSeedSnapshot = normalized;
-  writeLocalStorageValue(LOCAL_AGENT_IDENTITY_SEED_KEY, normalized);
-  emitLocalAvatarSeedsChange();
-}
-
-export function useLocalAgentAvatarSeed(label?: string | null) {
-  return useSyncExternalStore(
-    subscribeLocalAvatarSeeds,
-    () => getLocalAgentAvatarSeed(label),
-    () => `local-agent:desktop:${label?.trim() || 'kordi'}`,
-  );
-}
-
-function hashString(value: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function createRandom(seed: string) {
-  let state = hashString(seed || 'kordi-avatar');
-  return () => {
-    state += 0x6d2b79f5;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pick<T>(random: () => number, values: T[]) {
-  return values[Math.floor(random() * values.length) % values.length];
-}
-
-function agentIdenticonParts(seed: string) {
-  const random = createRandom(`agent-identicon:${seed}`);
-  const palette = pick(random, AGENT_IDENTICON_PALETTES);
-  const cells: Array<{ x: number; y: number; accent: boolean; opacity: number }> = [];
-
-  for (let y = 0; y < 5; y += 1) {
-    for (let x = 0; x < 3; x += 1) {
-      const isActive = random() > 0.42 || (x === 2 && y === 2 && random() > 0.22);
-      if (!isActive) continue;
-
-      const accent = random() > 0.78;
-      const opacity = 0.82 + random() * 0.18;
-      cells.push({ x, y, accent, opacity });
-      const mirrorX = 4 - x;
-      if (mirrorX !== x) {
-        cells.push({ x: mirrorX, y, accent, opacity });
-      }
-    }
-  }
-
-  if (cells.length < 8) {
-    cells.push(
-      { x: 1, y: 1, accent: false, opacity: 0.92 },
-      { x: 3, y: 1, accent: false, opacity: 0.92 },
-      { x: 2, y: 2, accent: true, opacity: 0.96 },
-      { x: 1, y: 3, accent: false, opacity: 0.92 },
-      { x: 3, y: 3, accent: false, opacity: 0.92 },
-    );
-  }
-
-  return {
-    ...palette,
-    cells,
-  };
+export function useLocalAgentAvatarSeed() {
+  return DEFAULT_LOCAL_AGENT_AVATAR_SEED;
 }
 
 function HumanInitialsAvatar({ label, className }: { label: string; className?: string }) {
@@ -214,34 +133,9 @@ function HumanInitialsAvatar({ label, className }: { label: string; className?: 
   );
 }
 
-function AgentIdenticonAvatar({ seed, className }: { seed: string; className?: string }) {
-  const parts = agentIdenticonParts(seed);
-  const cellSize = 8;
-  const gap = 2;
-  const origin = 8;
-
-  return (
-    <svg className={className} viewBox="0 0 64 64" role="img" aria-hidden="true" shapeRendering="crispEdges">
-      <rect width="64" height="64" fill={parts.background} />
-      <rect width="64" height="64" fill="#ffffff" opacity={parts.background === '#0d1117' ? '0.04' : '0.22'} />
-      {parts.cells.map((cell, index) => (
-        <rect
-          key={`${cell.x}-${cell.y}-${index}`}
-          x={origin + cell.x * (cellSize + gap)}
-          y={origin + cell.y * (cellSize + gap)}
-          width={cellSize}
-          height={cellSize}
-          rx="2"
-          fill={cell.accent ? parts.accent : parts.foreground}
-          opacity={cell.opacity}
-        />
-      ))}
-    </svg>
-  );
-}
-
 export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, avatarKey?: string | null) {
-  return avatarKey?.trim() || `${kind}:${seed.trim() || 'unknown'}`;
+  const value = avatarKey?.trim() || seed.trim() || 'unknown';
+  return kind === 'agent' ? `agent:${value.replace(/^agent:/i, '')}` : avatarKey?.trim() || `human:${value}`;
 }
 
 export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, avatarKey, className, generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
@@ -256,7 +150,14 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
   });
   const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, isSelf ? null : avatarKey);
   const localOverride = useAvatarOverride(resolvedAvatarKey);
-  const originalImageUrl = localOverride ?? identityImageUrl;
+  const generatedAgentImageUrl = kind === 'agent' && !identityImageUrl && !localOverride
+    ? generatedAvatarPreviewUrl(
+        AGENT_CANONICAL_AVATAR_STYLE,
+        normalizedSeed,
+      )
+    : null;
+  const originalImageUrl = canonicalAvatarImageUrl(identityImageUrl || localOverride)
+    || generatedAgentImageUrl;
   const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
   const remoteAvatar = useRemoteAvatarImage(originalImageUrl, needsNativeProxy);
   const resolvedImageUrl = needsNativeProxy
@@ -264,10 +165,23 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
     : originalImageUrl;
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const displayImageUrl = resolvedImageUrl && failedImageUrl !== resolvedImageUrl ? resolvedImageUrl : null;
+  const [lastReadyAvatar, setLastReadyAvatar] = useState<{
+    identityKey: string;
+    imageUrl: string;
+  } | null>(null);
   const isRemoteImagePending = needsNativeProxy
     && (remoteAvatar.status === 'idle' || remoteAvatar.status === 'pending');
+  const retainedImageUrl = !displayImageUrl
+    && needsNativeProxy
+    && (isRemoteImagePending || remoteAvatar.status === 'failed')
+    && lastReadyAvatar?.identityKey === resolvedAvatarKey
+    ? lastReadyAvatar.imageUrl
+    : null;
+  const visibleImageUrl = displayImageUrl || retainedImageUrl;
   const avatarState = displayImageUrl
     ? 'ready'
+    : retainedImageUrl
+      ? 'stale'
     : isRemoteImagePending
       ? 'pending'
       : needsNativeProxy && remoteAvatar.status === 'failed'
@@ -287,24 +201,31 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
         data-avatar-kind={kind}
         data-avatar-state={avatarState}
       >
-        {displayImageUrl ? null : isRemoteImagePending ? (
+        {visibleImageUrl ? null : isRemoteImagePending ? (
           <span
             className="block h-full w-full bg-slate-300/55 dark:bg-slate-700/55"
             aria-hidden="true"
           />
         ) : kind === 'agent' ? (
-          <AgentIdenticonAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
+          <span className={cn('block h-full w-full bg-slate-200 dark:bg-slate-700', generatedClassName)} aria-hidden="true" />
         ) : (
           <HumanInitialsAvatar label={fallbackLabel} className={generatedClassName} />
         )}
-        {displayImageUrl ? (
+        {visibleImageUrl ? (
           <img
-            src={displayImageUrl}
+            src={visibleImageUrl}
             alt=""
             className="absolute inset-0 block h-full w-full object-cover"
             draggable={false}
+            onLoad={() => {
+              setLastReadyAvatar((current) => (
+                current?.identityKey === resolvedAvatarKey && current.imageUrl === visibleImageUrl
+                  ? current
+                  : { identityKey: resolvedAvatarKey, imageUrl: visibleImageUrl }
+              ));
+            }}
             onError={() => {
-              setFailedImageUrl(displayImageUrl);
+              setFailedImageUrl(visibleImageUrl);
             }}
           />
         ) : null}

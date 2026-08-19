@@ -205,5 +205,7 @@ pub use message::{
     conversation_id_for_session, load_message_snapshot, replace_message_snapshot, send_message,
 };
 pub(crate) use message::{replace_server_message_in_transaction, send_message_in_transaction};
-pub use support::{append_user_sync_events_in_transaction, publish_user_sync_events};
+pub use support::{
+    append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
+};
 pub use titles::{update_personal_title, update_shared_title};

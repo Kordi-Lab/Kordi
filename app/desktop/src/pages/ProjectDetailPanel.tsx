@@ -146,7 +146,7 @@ export function ProjectDetailPanel({
   onNavigateToResponse,
 }: ProjectDetailPanelProps) {
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
-  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeProject.name);
+  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const projectArtifacts = mergeArtifacts(artifacts, relatedProjectArtifacts(activeProject));
 
   if (activeDetailTab === 'info') {
@@ -219,7 +219,7 @@ export function ProjectDetailPanel({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={/^(you|me)$/i.test(member) ? (currentLocalProfileAvatarSeed || getLocalProfileAvatarSeed()) : isAgent ? (currentLocalAgentAvatarSeed || getLocalAgentAvatarSeed(member)) : member}
+                      seed={/^(you|me)$/i.test(member) ? (currentLocalProfileAvatarSeed || getLocalProfileAvatarSeed()) : isAgent ? (currentLocalAgentAvatarSeed || getLocalAgentAvatarSeed()) : member}
                       isSelf={isSelfHuman}
                       name={member}
                       className="h-7 w-7 border border-white/10"

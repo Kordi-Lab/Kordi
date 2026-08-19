@@ -195,8 +195,11 @@ mod tests {
     fn ancillary_events_are_accepted_by_the_atomic_cursor_applier() {
         let mut conn = test_connection();
         let event_types = [
+            "account.profile.updated",
+            "account.directory.changed",
             "agent.definition.upserted",
             "agent.definition.archived",
+            "agent.directory.changed",
             "provider-auth.updated",
             "task.upsert",
             "artifact.upsert",

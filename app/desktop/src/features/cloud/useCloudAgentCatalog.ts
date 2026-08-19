@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   type Dispatch,
   type MutableRefObject,
@@ -23,6 +24,10 @@ import type {
 import {
   loadSession,
 } from './session';
+import {
+  CLOUD_AGENT_DIRECTORY_SYNC_EVENT,
+  type CloudAgentDirectorySyncDetail,
+} from './cloudDeviceEvents';
 
 type CloudAgentCatalogStores = {
   setDefinitionsById: Dispatch<
@@ -115,18 +120,32 @@ export function useCloudAgentCatalog({
       session.token,
       owners,
     );
-    const next: Record<string, SharedCloudAgentSummary[]> = {};
+    const refreshed: Record<string, SharedCloudAgentSummary[]> = {};
     for (const agent of agents) {
-      next[agent.ownerAccountId] = [
-        ...(next[agent.ownerAccountId] ?? []),
+      refreshed[agent.ownerAccountId] = [
+        ...(refreshed[agent.ownerAccountId] ?? []),
         agent,
       ];
     }
-    setSharedByOwner((current) =>
-      recordEqual(current, next) ? current : next
-    );
+    setSharedByOwner((current) => {
+      const next = { ...current };
+      owners.forEach((owner) => { delete next[owner]; });
+      Object.assign(next, refreshed);
+      return recordEqual(current, next) ? current : next;
+    });
     return agents;
   }, [account, client, setSharedByOwner]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const refreshChangedOwners = (event: Event) => {
+      const ownerAccountIds = (event as CustomEvent<CloudAgentDirectorySyncDetail>)
+        .detail?.ownerAccountIds ?? [];
+      if (ownerAccountIds.length > 0) void refreshShared(ownerAccountIds);
+    };
+    window.addEventListener(CLOUD_AGENT_DIRECTORY_SYNC_EVENT, refreshChangedOwners);
+    return () => window.removeEventListener(CLOUD_AGENT_DIRECTORY_SYNC_EVENT, refreshChangedOwners);
+  }, [refreshShared]);
 
   const createDefinition = useCallback(async (
     input: CreateCloudAgentInput,

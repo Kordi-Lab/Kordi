@@ -1,5 +1,5 @@
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
-
+import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import type {
   CanonicalIdentity,
   CanonicalSessionMessage,
@@ -897,7 +897,7 @@ function taskParticipantFromIdentity(
     sourceIdentityId: identity.sourceIdentityId,
     humanId: identity.humanId,
     agentId: identity.agentId,
-    avatarKey: identity.avatarKey,
+    avatarKey: canonicalIdentityAvatarSeed(identity) ?? identity.avatarKey,
     profileImageUrl: identity.profileImageUrl,
   };
 }
@@ -983,7 +983,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         sourceIdentityId: identity.sourceIdentityId,
         humanId: identity.humanId,
         agentId: identity.agentId,
-        avatarKey: identity.avatarKey,
+        avatarKey: canonicalIdentityAvatarSeed(identity) ?? identity.avatarKey,
         profileImageUrl: identity.profileImageUrl,
         presenceStatus: presence?.status ?? null,
         presenceDetail: presence?.detail ?? null,

@@ -7,9 +7,9 @@ import {
   canonicalProfileImageUrl,
 } from '@/app/useKordiAppModelHelpers';
 import type { CloudAccount } from '@/features/cloud/authClient';
-import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
+import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
+import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
 import {
-  setLocalAgentAvatarSeed,
   setLocalProfileAvatarSeed,
 } from '@/kordi-app/components/IdentityAvatar';
 import { setActiveLocalProfileIdentity } from '@/kordi-app/components/localProfileIdentity';
@@ -49,12 +49,11 @@ export function resolveKordiProfileAvatarState({
     canonicalState?.profile.humanIdentityId,
   ) || host?.profileImageUrl?.trim()
     || null;
-  const cloudProfileAvatar = resolveCloudLocalProfileAvatar({
-    accountId: account?.accountId,
-    avatarUrl: account?.avatarUrl,
-    canonicalAvatarSeed: canonicalProfileAvatarSeed,
-    canonicalProfileImageUrl: canonicalProfileImage,
-  });
+  const cloudProfileAvatar = account ? {
+    seed: account.avatar.seed,
+    imageUrl: cloudAvatarImageUrl(canonicalAvatarImageSource(account.avatar)),
+    shouldPersistSeed: false,
+  } : null;
   const localAgentIdentity = canonicalState?.identities.find((identity) => (
     identity.kind === 'agent'
     && identity.id === canonicalState.profile.activeAgentIdentityId
@@ -118,10 +117,6 @@ export function useKordiProfileAvatarState({
     state.localProfileDisplayName,
     state.localProfileImageUrl,
   ]);
-
-  useEffect(() => {
-    setLocalAgentAvatarSeed(state.localAgentAvatarSeed);
-  }, [state.localAgentAvatarSeed]);
 
   return state;
 }

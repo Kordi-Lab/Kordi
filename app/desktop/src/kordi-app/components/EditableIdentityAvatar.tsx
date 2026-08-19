@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Camera } from 'lucide-react';
+import { Camera, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fileToAvatarDataUrl, setAvatarOverride } from './avatarOverrides';
 import { getIdentityAvatarKey, IdentityAvatar, type IdentityAvatarProps } from './IdentityAvatar';
@@ -8,9 +8,20 @@ type EditableIdentityAvatarProps = IdentityAvatarProps & {
   label?: string;
   compact?: boolean;
   controlsClassName?: string;
+  onUpload?: (dataUrl: string) => Promise<void> | void;
+  onGenerate?: () => Promise<void> | void;
+  generateLabel?: string;
 };
 
-export function EditableIdentityAvatar({ label = 'Avatar', compact = false, controlsClassName, ...avatarProps }: EditableIdentityAvatarProps) {
+export function EditableIdentityAvatar({
+  label = 'Avatar',
+  compact = false,
+  controlsClassName,
+  onUpload,
+  onGenerate,
+  generateLabel = 'Generate another',
+  ...avatarProps
+}: EditableIdentityAvatarProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -19,11 +30,21 @@ export function EditableIdentityAvatar({ label = 'Avatar', compact = false, cont
 
   const handleFileChange = (file?: File) => {
     if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPEG, or WebP image.');
+      return;
+    }
 
     setIsSaving(true);
     setError(null);
     void fileToAvatarDataUrl(file)
-      .then((dataUrl) => setAvatarOverride(avatarKey, dataUrl))
+      .then(async (dataUrl) => {
+        if (onUpload) {
+          await onUpload(dataUrl);
+        } else {
+          setAvatarOverride(avatarKey, dataUrl);
+        }
+      })
       .catch((caught: unknown) => {
         setError(caught instanceof Error ? caught.message : 'Could not use that image.');
       })
@@ -53,11 +74,30 @@ export function EditableIdentityAvatar({ label = 'Avatar', compact = false, cont
           <input
             ref={inputRef}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+            accept="image/png,image/jpeg,image/webp"
             className="hidden"
             onChange={(event) => handleFileChange(event.target.files?.[0])}
           />
           {isSaving ? <div className="text-[11px] leading-4 text-slate-400">Saving…</div> : null}
+          {onGenerate ? (
+            <button
+              type="button"
+              className="app-button-quiet inline-flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-[11px]"
+              disabled={isSaving}
+              onClick={() => {
+                setIsSaving(true);
+                setError(null);
+                void Promise.resolve(onGenerate())
+                  .catch((caught: unknown) => {
+                    setError(caught instanceof Error ? caught.message : 'Could not generate another avatar.');
+                  })
+                  .finally(() => setIsSaving(false));
+              }}
+            >
+              <RefreshCw className="h-3 w-3" aria-hidden="true" />
+              {generateLabel}
+            </button>
+          ) : null}
         </div>
         {error ? <div className="app-error-text max-w-[18rem] text-[11px] leading-4 text-rose-300">{error}</div> : null}
       </div>

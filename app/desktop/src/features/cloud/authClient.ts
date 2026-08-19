@@ -43,7 +43,6 @@ import {
   installationDeviceRegistration,
   type CloudDeviceRegistration,
 } from './deviceIdentity';
-
 export type { CloudContactSummary } from './cloudContactTypes';
 export type { CloudPresenceAccount, CloudPresenceContactsResponse, CloudPresenceStatus } from './presence';
 export type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
@@ -112,7 +111,7 @@ export type CloudOAuthStartResponse = {
 
 export type CloudProfileUpdateInput = {
   displayName?: string;
-  avatarUrl?: string;
+  avatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
 };
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';
@@ -425,12 +424,11 @@ export class CloudAuthClient {
   }
 
   knownChatSessionIds(accountId: string): string[] { return this.chat.knownSessionIds(accountId); }
-
   async signup(input: {
     email: string;
     password: string;
     displayName?: string;
-    avatarUrl?: string;
+    avatarSeed: string;
   }): Promise<CloudAuthResult> {
     const result = await this.identity.signup(input);
     this.activeAccountId = result.account.accountId;

@@ -22,6 +22,7 @@ import {
   resolveProjectSelection,
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
+import { canonicalLocalAgentAvatarSeed } from '@/features/canonical/avatarIdentity';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {
   isLocalDraftChatConversationId,
@@ -87,19 +88,6 @@ function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, id
   const id = identityId?.trim();
   if (!state || !id) return null;
   return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
-}
-
-function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | undefined) {
-  if (!state) return null;
-  const activeAgentSeed = canonicalAvatarSeed(state, state.profile.activeAgentIdentityId);
-  if (activeAgentSeed) return activeAgentSeed;
-  const profileHumanIdentityId = state.profile.humanIdentityId?.trim();
-  if (!profileHumanIdentityId) return null;
-  return state.identities.find((identity) => (
-    identity.kind === 'agent'
-    && identity.source === 'local'
-    && identity.ownerIdentityId === profileHumanIdentityId
-  ))?.avatarKey?.trim() || null;
 }
 
 export { findCollaborationProjectForWorkspace } from './viewModels/helpers';
@@ -273,18 +261,8 @@ export function useWorkspaceViewModels({
     const activeHost = desktopCollaborationState?.hosts.find((host) => host.id === desktopCollaborationState.activeHostId)
       ?? desktopCollaborationState?.hosts[0]
       ?? null;
-    const activeHostAgentId = activeHost?.activeAgentId ?? null;
-    const activeHostAgent = activeHost?.agents.find((agent) => agent.id === activeHostAgentId)
-      ?? activeHost?.agents.find((agent) => agent.isActive)
-      ?? activeHost?.agents.find((agent) => agent.isDefault)
-      ?? activeHost?.agents[0]
-      ?? null;
     const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
-      || activeHostAgent?.id
-      || activeHost?.activeAgentId
-      || activeHostAgent?.nodeId
-      || activeHost?.nodeId
-      || getLocalAgentAvatarSeed(localAgentLabel);
+      || getLocalAgentAvatarSeed();
     const localHumanAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
       || activeHost?.humanId
       || canonicalSessionState?.profile.id
@@ -537,12 +515,6 @@ export function useWorkspaceViewModels({
 
     for (const host of desktopCollaborationState?.hosts ?? []) {
       const label = collaborationLabel(host.serverUrl);
-      const activeHostAgent = host.agents.find((agent) => agent.id === host.activeAgentId)
-        ?? host.agents.find((agent) => agent.isActive)
-        ?? host.agents.find((agent) => agent.isDefault)
-        ?? host.agents[0]
-        ?? null;
-      const localAgentAvatarSeed = activeHostAgent?.id || host.activeAgentId || activeHostAgent?.nodeId || host.nodeId || host.id;
       byId.set(`collaboration-self:${host.id}`, {
         id: `collaboration-self:${host.id}`,
         name: host.displayName,
@@ -560,7 +532,7 @@ export function useWorkspaceViewModels({
         sourceRuntime: 'kordi-desktop',
         sourceHumanId: host.humanId,
         sourceAgentId: host.activeAgentId ?? undefined,
-        avatarSeed: localAgentAvatarSeed,
+        avatarSeed: getLocalAgentAvatarSeed(),
       });
 
       for (const peer of host.visiblePeers) {
@@ -643,7 +615,7 @@ export function useWorkspaceViewModels({
         discoverableOn: ['Local'],
         detail: `Chat directly with my local Kordi agent • ${localAgent.workspaceRoot}`,
         owner: 'Me',
-        avatarSeed: getLocalAgentAvatarSeed(localAgent.label),
+        avatarSeed: getLocalAgentAvatarSeed(),
       });
     }
 
@@ -833,7 +805,7 @@ export function useWorkspaceViewModels({
         exposesLoadedPlugins: true,
         isOwned: true,
         isCollaborationActive: true,
-        avatarSeed: getLocalAgentAvatarSeed(localAgent.label),
+        avatarSeed: getLocalAgentAvatarSeed(),
       });
     }
 

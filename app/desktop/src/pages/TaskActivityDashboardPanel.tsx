@@ -14,12 +14,12 @@ type TaskTargetParticipant = Pick<ConversationParticipant,
   | 'kind'
   | 'role'
   | 'ownerName'
+  | 'agentId'
   | 'avatarKey'
   | 'profileImageUrl'
 > & {
   avatarSeed?: string | null;
 };
-
 type TaskDashboardSubtaskWithOutput = TaskDashboardSubtask & {
   responseMessageId?: string | null;
   outputPreview?: boolean;
@@ -187,7 +187,7 @@ function TaskTargetAvatars({ participants }: { participants: TaskTargetParticipa
         <IdentityAvatar
           key={participant.id}
           kind={participant.kind === 'agent' ? 'agent' : 'human'}
-          seed={participant.avatarKey ?? participant.avatarSeed ?? participant.name} isSelf={participant.kind !== 'agent' && participant.role === 'self'}
+          seed={participant.agentId ?? participant.avatarKey ?? participant.avatarSeed ?? participant.name} isSelf={participant.kind !== 'agent' && participant.role === 'self'}
           avatarKey={participant.avatarKey}
           imageUrl={participant.profileImageUrl}
           name={participant.name}

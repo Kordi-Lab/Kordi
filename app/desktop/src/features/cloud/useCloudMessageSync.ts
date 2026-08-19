@@ -15,12 +15,13 @@ import type {
 } from './authClient';
 import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
-import { publishCloudDeviceEvents } from './cloudDeviceEvents';
+import { chatEventsRequireDirectoryBootstrap, publishCloudDeviceEvents } from './cloudDeviceEvents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { compareCloudMessages } from './cloudMessageMerge';
 import {
   cloudSessionForksByIdEqual,
   cloudMessagesByPeerEqual,
+  cloudSetsEqual,
   cloudUnreadReadinessContextKey,
   mergeCloudMessagesByPeerSnapshot,
   transitionCloudUnreadReadiness,
@@ -91,14 +92,6 @@ export type CloudMessageSyncController = {
     options?: { settleInitialMessages?: boolean },
   ) => Promise<void>;
 };
-
-function setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  if (left.size !== right.size) return false;
-  for (const value of left) {
-    if (!right.has(value)) return false;
-  }
-  return true;
-}
 
 export function useCloudMessageSync({
   account,
@@ -172,6 +165,7 @@ export function useCloudMessageSync({
     let cloudAgentsById = agentsRef.current;
     let hiddenSessionIds = hiddenSessionIdsRef.current;
     let deletedSessionIds = deletedSessionIdsRef.current;
+    let directoryBootstrapPending = false;
     let cursorOverride = forceBootstrap ? '0' : null;
     let bootstrapRecoveryAttempted = forceBootstrap;
     // A bootstrap cursor can be many pages behind the server (especially on a
@@ -213,6 +207,7 @@ export function useCloudMessageSync({
             events: response.chat.events,
           });
           publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId, response.events);
+          directoryBootstrapPending ||= chatEventsRequireDirectoryBootstrap(response.chat.events);
           if (local) {
             await Promise.allSettled(local.conversations.map((conversation) => (
               client.acknowledgeChatDelivery(
@@ -246,6 +241,11 @@ export function useCloudMessageSync({
       cloudAgentsById = result.cloudAgentsById;
       hiddenSessionIds = result.hiddenSessionIds;
       deletedSessionIds = result.deletedSessionIds;
+      if (!result.hasMore && directoryBootstrapPending) {
+        directoryBootstrapPending = false;
+        cursorOverride = '0';
+        continue;
+      }
       if (!result.hasMore) break;
     }
     if (cancelledRef.current || !coordinator.isCurrentGeneration(generation)) return;
@@ -272,10 +272,10 @@ export function useCloudMessageSync({
       JSON.stringify(current) === JSON.stringify(cloudAgentsById) ? current : cloudAgentsById
     ));
     setHiddenSessionIds((current) => (
-      setsEqual(current, hiddenSessionIds) ? current : new Set(hiddenSessionIds)
+      cloudSetsEqual(current, hiddenSessionIds) ? current : new Set(hiddenSessionIds)
     ));
     setDeletedSessionIds((current) => (
-      setsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds)
+      cloudSetsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds)
     ));
   }, [
     account,

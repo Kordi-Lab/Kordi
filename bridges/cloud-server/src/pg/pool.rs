@@ -287,6 +287,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "resumable attachment uploads",
         sql: include_str!("../../migrations/0060_resumable_attachment_uploads.sql"),
     },
+    EmbeddedMigration {
+        version: 61,
+        description: "canonical generated and uploaded avatars",
+        sql: include_str!("../../migrations/0061_canonical_avatars.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

@@ -2,6 +2,17 @@ import XCTest
 @testable import Kordi
 
 final class AgentSessionPresentationTests: XCTestCase {
+    func testDefaultAgentUsesTheCrossDeviceAvatarIdentity() {
+        let conversation = AgentSessionFactory.makeDefault(
+            ownAccountId: "acct_me",
+            randomId: "test",
+            now: Date(timeIntervalSince1970: 1)
+        )
+
+        XCTAssertEqual(conversation.agentId, CanonicalAvatarSystem.defaultAgentId)
+        XCTAssertNil(conversation.avatarSource)
+    }
+
     func testOnlyAgentSessionsDisableQuotedReplies() {
         XCTAssertFalse(ConversationKind.agent.supportsQuotedReplies)
         XCTAssertTrue(ConversationKind.person.supportsQuotedReplies)
@@ -299,6 +310,8 @@ final class AgentSessionPresentationTests: XCTestCase {
             preview: "A real response",
             date: Date(timeIntervalSince1970: 20)
         )
+
+        XCTAssertEqual(placeholder.agentId, CanonicalAvatarSystem.defaultAgentId)
 
         let rows = AgentSessionTimelineCatalog.build(conversations: [placeholder, actual])
 

@@ -384,7 +384,7 @@ enum CloudConversationCatalog {
                     conversation: canonicalConversationsBySessionId[sessionId],
                     accountId: account.accountId
                 ),
-                avatarSource: definition?.avatarUrl?.nonEmpty,
+                avatarSource: definition?.avatar.imageSource,
                 agentActivity: CloudAgentLifecycleProjector.activity(in: conversationalRows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
@@ -501,7 +501,7 @@ enum CloudConversationCatalog {
                     conversation: conversation,
                     accountId: account.accountId
                 ),
-                avatarSource: definition?.avatarUrl?.nonEmpty,
+                avatarSource: definition?.avatar.imageSource,
                 agentActivity: CloudAgentLifecycleProjector.activity(in: conversationalRows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
@@ -522,7 +522,7 @@ enum CloudConversationCatalog {
             id: "agent-template:session:self-agent:default",
             kind: .agent,
             peerAccountId: account.accountId,
-            agentId: nil,
+            agentId: CanonicalAvatarSystem.defaultAgentId,
             ownerDisplayName: account.preferredName,
             displayName: "My Kordi",
             lastMessage: "Your private cloud agent",
@@ -548,7 +548,7 @@ enum CloudConversationCatalog {
             lastMessage: agent.description?.nonEmpty ?? agent.role,
             lastActivityAt: parseCloudDate(agent.updatedAt),
             unreadCount: 0,
-            avatarSource: agent.avatarUrl?.nonEmpty,
+            avatarSource: agent.avatar.imageSource,
             agentActivity: .ready,
             sessionId: "\(sessionPrefix)\(agent.agentId)",
             agentDisplayName: agent.name
@@ -580,7 +580,7 @@ enum CloudConversationCatalog {
                 return CloudGroupParticipant(
                     accountId: participant.accountId,
                     displayName: account.preferredName,
-                    avatarUrl: account.avatarUrl?.nonEmpty ?? participant.avatarUrl,
+                    avatarUrl: account.avatar.imageSource,
                     role: participant.role
                 )
             }

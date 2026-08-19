@@ -39,6 +39,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 test('signup posts JSON to the signup route and parses the response', async () => {
   const avatarUrl = 'data:image/jpeg;base64,abc';
+  const avatarSeed = 'signup_seed';
   const { calls, fetchImpl } = recordingFetch(() =>
     jsonResponse(201, {
       account: {
@@ -61,7 +62,7 @@ test('signup posts JSON to the signup route and parses the response', async () =
     email: 'ada@example.com',
     password: 'correct horse',
     displayName: 'Ada',
-    avatarUrl,
+    avatarSeed,
   });
 
   assert.equal(calls.length, 1);
@@ -72,7 +73,7 @@ test('signup posts JSON to the signup route and parses the response', async () =
     email: 'ada@example.com',
     password: 'correct horse',
     displayName: 'Ada',
-    avatarUrl,
+    avatarSeed,
     device: testDevice,
   });
   assert.equal(result.session.token, 'kordi_cs_abc');
@@ -80,17 +81,21 @@ test('signup posts JSON to the signup route and parses the response', async () =
   assert.equal(result.account.avatarUrl, avatarUrl);
 });
 
-test('signup throws missing_avatar when the server requires an upload', async () => {
+test('signup surfaces an invalid canonical avatar seed', async () => {
   const { fetchImpl } = recordingFetch(() =>
-    jsonResponse(400, { errorCode: 'missing_avatar', message: 'Upload an avatar to sign up.' }),
+    jsonResponse(400, { errorCode: 'invalid_avatar_seed', message: 'Generated avatar seed is invalid.' }),
   );
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+  const client = new CloudAuthClient({
+    baseUrl: 'http://srv',
+    fetchImpl,
+    deviceRegistration: async () => testDevice,
+  });
 
   await assert.rejects(
-    () => client.signup({ email: 'a@b.com', password: 'correct horse' }),
+    () => client.signup({ email: 'a@b.com', password: 'correct horse', avatarSeed: ':' }),
     (caught: unknown) => {
       assert.ok(caught instanceof CloudAuthError);
-      assert.equal((caught as CloudAuthError).code, 'missing_avatar');
+      assert.equal((caught as CloudAuthError).code, 'invalid_avatar_seed');
       assert.equal((caught as CloudAuthError).status, 400);
       return true;
     },
@@ -101,10 +106,14 @@ test('signup throws CloudAuthError with the server-supplied error code on 409', 
   const { fetchImpl } = recordingFetch(() =>
     jsonResponse(409, { errorCode: 'email_in_use', message: 'Already in use.' }),
   );
-  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+  const client = new CloudAuthClient({
+    baseUrl: 'http://srv',
+    fetchImpl,
+    deviceRegistration: async () => testDevice,
+  });
 
   await assert.rejects(
-    () => client.signup({ email: 'a@b.com', password: 'correct horse' }),
+    () => client.signup({ email: 'a@b.com', password: 'correct horse', avatarSeed: 'signup_seed' }),
     (caught: unknown) => {
       assert.ok(caught instanceof CloudAuthError);
       assert.equal((caught as CloudAuthError).code, 'email_in_use');

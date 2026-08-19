@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
 import { KORDI_THEME_MODE_STORAGE_KEY } from '../src/app/themePreference';
-import { CloudLoginPage, cloudSignupAvatarInitials } from '../src/kordi-app/cloud/CloudLoginPage';
+import { CloudLoginPage } from '../src/kordi-app/cloud/CloudLoginPage';
 import { shouldShowCloudLoginGate } from '../src/features/cloud/sessionGate';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -22,18 +22,6 @@ function makeStorageStub(initial: Record<string, string> = {}): Storage {
     removeItem: (key: string) => { map.delete(key); },
     setItem: (key: string, value: string) => { map.set(key, String(value)); },
   };
-}
-
-function withLocalStorage<T>(storage: Storage, run: () => T): T {
-  const target = globalThis as typeof globalThis & { localStorage?: Storage };
-  const previous = target.localStorage;
-  target.localStorage = storage;
-  try {
-    return run();
-  } finally {
-    if (previous) target.localStorage = previous;
-    else delete target.localStorage;
-  }
 }
 
 function withWindowTheme<T>({
@@ -159,25 +147,26 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.doesNotMatch(markup, /Connect one provider before your first chat/);
 });
 
-test('signup mode requires avatar upload and removes random avatar controls', () => {
+test('signup mode previews only the canonical Lorelei avatar', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
 
   assert.match(markup, /Create account/);
   assert.match(markup, /data-cloud-login-mode-copy="signup"/);
   assert.match(markup, /data-cloud-login-mode-form="signup"/);
-  assert.match(markup, /Upload avatar/);
-  assert.match(markup, /data-cloud-signup-avatar-placeholder="true"/);
-  assert.match(markup, />KO<\/span>/);
-  assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
-  assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
-  assert.match(markup, /bottom-0 left-1\/2/);
+  assert.doesNotMatch(markup, /Upload avatar/);
+  assert.match(markup, /\/v1\/avatars\/preview\/lorelei\/[a-z0-9]+\.png/);
+  assert.doesNotMatch(markup, /data-cloud-signup-avatar-placeholder/);
+  assert.doesNotMatch(markup, />KO<\/span>/);
+  assert.doesNotMatch(markup, /data-cloud-signup-avatar-upload/);
   assert.match(markup, /overflow-hidden rounded-full/);
   assert.doesNotMatch(markup, /top-\[46px\]/);
   assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
   assert.doesNotMatch(markup, />Upload<\/span>/);
   assert.doesNotMatch(markup, />\+<\/span>/);
   assert.doesNotMatch(markup, />Change<\/span>/);
-  assert.doesNotMatch(markup, /Random avatar/);
+  assert.match(markup, /Generate another avatar/);
+  assert.match(markup, /data-cloud-signup-avatar-reroll="true"/);
+  assert.doesNotMatch(markup, /Change avatar style/);
   assert.match(markup, /Display name/);
   assert.match(markup, /Confirm Password/);
   assert.doesNotMatch(markup, />Name</);
@@ -185,36 +174,14 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
   assert.doesNotMatch(markup, /Kordi Cloud/);
 });
 
-test('signup uploaded avatar preview keeps the upload affordance in a bottom dock', () => {
-  const storage = makeStorageStub({
-    'kordi.cloud.signupAvatar': JSON.stringify({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }),
-  });
-  const markup = withLocalStorage(storage, () => renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' })));
-
-  assert.match(markup, /src="data:image\/jpeg;base64,abc"/);
-  assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
-  assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
-  assert.match(markup, /bottom-0 left-1\/2/);
-  assert.match(markup, /overflow-hidden rounded-full/);
-  assert.doesNotMatch(markup, /top-\[46px\]/);
-  assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
-  assert.doesNotMatch(markup, />Upload<\/span>/);
-  assert.doesNotMatch(markup, />Change<\/span>/);
-});
-
-test('cloud signup avatar placeholder derives initials from the display name', () => {
-  assert.equal(cloudSignupAvatarInitials('Ada Lovelace'), 'AD');
-  assert.equal(cloudSignupAvatarInitials('Анна'), 'АН');
-  assert.equal(cloudSignupAvatarInitials(''), 'KO');
-});
-
-test('signup mode does not render a generated pixel avatar before upload', () => {
+test('signup mode renders the canonical DiceBear avatar', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
 
   assert.doesNotMatch(markup, /shape-rendering="crispEdges"/);
   assert.doesNotMatch(markup, /viewBox="0 0 64 64"/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.72 0\.16 211\)/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
+  assert.match(markup, /\/v1\/avatars\/preview\/lorelei\//);
 });
 
 test('social buttons surface provider sign-in affordances', () => {
@@ -277,14 +244,13 @@ test('signup-mode submit button is the create-account variant', () => {
   assert.match(markup, />Create account<\/button>/);
 });
 
-test('signup submit falls back to the displayed initials avatar image', () => {
+test('signup submits the required preview seed without an upload path', () => {
   const source = readSource('src/kordi-app/cloud/CloudLoginPage.tsx');
 
-  assert.doesNotMatch(source, /if \(isSignup && !avatarPref\) return false;/);
-  assert.match(source, /cloudSignupDefaultAvatarDataUrl\(trimmedName \|\| displayName\)/);
-  assert.match(source, /return canvas\.toDataURL\('image\/png'\)/);
-  assert.match(source, /avatarUrl,/);
-  assert.doesNotMatch(source, /flashUploadError\('Upload an avatar\.'\)/);
+  assert.doesNotMatch(source, /avatarPref|avatarUrl|Upload avatar/);
+  assert.match(source, /avatarSeed,/);
+  assert.doesNotMatch(source, /avatarStyle/);
+  assert.match(source, /function regenerateAvatar\(\)[\s\S]*setAvatarSeed\(newCanonicalAvatarSeed\(\)\)/);
 });
 
 test('login-mode tab pill announces aria-pressed for accessibility', () => {

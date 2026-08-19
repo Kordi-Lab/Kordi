@@ -1,4 +1,3 @@
-import PhotosUI
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -16,11 +15,7 @@ struct LoginView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var activeSubmission: Submission?
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var avatarImage: UIImage?
-    @State private var avatarDataURL: String?
-    @State private var avatarPalette = 0
-    @State private var avatarError: String?
+    @State private var avatarSeed = CanonicalAvatarSystem.newSeed()
     @FocusState private var focusedField: Field?
 
     private enum AuthMode: String, CaseIterable, Identifiable {
@@ -70,10 +65,6 @@ struct LoginView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .toolbar(.hidden, for: .navigationBar)
         }
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            Task { await loadAvatar(item) }
-        }
     }
 
     private var isSignup: Bool { mode == .signup }
@@ -85,6 +76,12 @@ struct LoginView: View {
     }
     private var canSubmit: Bool {
         !isBusy && emailIsValid && password.count >= 8 && (!isSignup || password == confirmPassword)
+    }
+    private var generatedAvatarPreviewURL: String? {
+        CanonicalAvatarSystem.previewURL(
+            style: CanonicalAvatarSystem.humanStyle,
+            seed: avatarSeed
+        )?.absoluteString
     }
 
     private var header: some View {
@@ -219,7 +216,7 @@ struct LoginView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            if let error = model.errorMessage ?? avatarError {
+            if let error = model.errorMessage {
                 Label {
                     Text(error).fixedSize(horizontal: false, vertical: true)
                 } icon: {
@@ -252,24 +249,13 @@ struct LoginView: View {
 
     private var signupIdentity: some View {
         HStack(spacing: 14) {
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                ZStack(alignment: .bottomTrailing) {
-                    SignupAvatarView(
-                        image: avatarImage,
-                        initials: SignupAvatarRenderer.initials(for: displayName),
-                        paletteIndex: avatarPalette
-                    )
-                    Image(systemName: "camera.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 26, height: 26)
-                        .background(KordiTheme.signalBlue, in: Circle())
-                        .overlay(Circle().stroke(Color(uiColor: .systemGroupedBackground), lineWidth: 2))
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(isBusy)
-            .accessibilityLabel("Choose profile photo")
+            IdentityAvatar(
+                name: displayName.nonEmpty ?? "Kordi account",
+                imageSource: generatedAvatarPreviewURL,
+                kind: .person,
+                size: 68,
+                seed: avatarSeed
+            )
 
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Display name", text: $displayName)
@@ -280,14 +266,11 @@ struct LoginView: View {
                     .kordiLoginField(isFocused: focusedField == .displayName)
 
                 Button {
-                    avatarImage = nil
-                    avatarDataURL = nil
-                    avatarPalette = (avatarPalette + 1) % SignupAvatarRenderer.colors.count
-                    avatarError = nil
+                    avatarSeed = CanonicalAvatarSystem.newSeed()
                 } label: {
-                    Label("New look", systemImage: "shuffle")
-                        .font(.caption.weight(.semibold))
+                    Label("New look", systemImage: "die.face.5.fill")
                 }
+                .font(.caption.weight(.semibold))
                 .disabled(isBusy)
             }
         }
@@ -341,7 +324,6 @@ struct LoginView: View {
         guard mode != nextMode, !isBusy else { return }
         focusedField = nil
         model.errorMessage = nil
-        avatarError = nil
         if reduceMotion { mode = nextMode }
         else {
             withAnimation(.easeOut(duration: 0.20)) { mode = nextMode }
@@ -352,23 +334,15 @@ struct LoginView: View {
         guard canSubmit else { return }
         activeSubmission = .form
         model.errorMessage = nil
-        avatarError = nil
         defer { activeSubmission = nil }
 
         let succeeded: Bool
         if isSignup {
-            guard let avatar = avatarDataURL ?? SignupAvatarRenderer.generatedDataURL(
-                displayName: displayName,
-                paletteIndex: avatarPalette
-            ) else {
-                avatarError = "Could not prepare your profile photo. Try again."
-                return
-            }
             succeeded = await model.signUp(
                 email: email,
                 password: password,
                 displayName: displayName,
-                avatarUrl: avatar
+                avatarSeed: avatarSeed
             )
         } else {
             succeeded = await model.signIn(email: email, password: password)
@@ -384,46 +358,11 @@ struct LoginView: View {
         announceSuccess(await model.signIn(with: provider))
     }
 
-    private func loadAvatar(_ item: PhotosPickerItem) async {
-        avatarError = nil
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let prepared = SignupAvatarRenderer.uploadedImage(from: data) else {
-            avatarError = "Choose a smaller PNG, JPEG, or WebP photo."
-            return
-        }
-        avatarImage = prepared.image
-        avatarDataURL = prepared.dataURL
-    }
-
     private func announceSuccess(_ succeeded: Bool) {
         guard succeeded, !reduceMotion else { return }
 #if canImport(UIKit)
         UIAccessibility.post(notification: .announcement, argument: isSignup ? "Account created" : "Signed in")
 #endif
-    }
-}
-
-private struct SignupAvatarView: View {
-    let image: UIImage?
-    let initials: String
-    let paletteIndex: Int
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                ZStack {
-                    Color(uiColor: SignupAvatarRenderer.colors[abs(paletteIndex) % SignupAvatarRenderer.colors.count].background)
-                    Text(initials)
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(Color(uiColor: SignupAvatarRenderer.colors[abs(paletteIndex) % SignupAvatarRenderer.colors.count].foreground))
-                }
-            }
-        }
-        .frame(width: 68, height: 68)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(Color(uiColor: .separator).opacity(0.35), lineWidth: 0.5))
     }
 }
 

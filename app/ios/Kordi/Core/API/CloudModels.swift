@@ -1,5 +1,109 @@
 import Foundation
 
+struct CanonicalAvatarDescriptor: Codable, Hashable {
+    let entityType: String
+    let entityId: String
+    let source: String
+    let style: String
+    let seed: String
+    let rendererVersion: String
+    let uploadedAsset: String?
+    let version: Int64
+    let updatedAt: String
+
+    var imageSource: String? {
+        source == "uploaded"
+            ? uploadedAsset?.nonEmpty
+            : CanonicalAvatarSystem.marker(style: style, seed: seed, version: version)
+    }
+}
+
+struct CanonicalAvatarMutation: Codable, Hashable {
+    let action: String
+    let uploadedAsset: String?
+    let seed: String?
+    let expectedVersion: Int64?
+
+    static func upload(_ dataURL: String, expectedVersion: Int64?) -> Self {
+        Self(action: "upload", uploadedAsset: dataURL, seed: nil, expectedVersion: expectedVersion)
+    }
+
+    static func regenerate(seed: String, expectedVersion: Int64?) -> Self {
+        Self(action: "regenerate", uploadedAsset: nil, seed: seed, expectedVersion: expectedVersion)
+    }
+
+    static func removeUpload(expectedVersion: Int64?) -> Self {
+        Self(action: "remove_upload", uploadedAsset: nil, seed: nil, expectedVersion: expectedVersion)
+    }
+}
+
+enum CanonicalAvatarSystem {
+    static let rendererVersion = "dicebear-rust-10.6.0-styles-10.5.0"
+    static let humanStyle = "lorelei"
+    static let agentStyle = "thumbs"
+    static let defaultAgentId = "cloud-local-agent"
+    static let markerPrefix = "kordi-avatar://"
+
+    struct Marker: Equatable {
+        let style: String
+        let seed: String
+        let version: Int64
+    }
+
+    static func marker(from value: String?) -> Marker? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.hasPrefix(markerPrefix),
+              let components = URLComponents(string: value),
+              components.host == rendererVersion else { return nil }
+        let path = components.path.split(separator: "/").map(String.init)
+        guard path.count == 2,
+              [humanStyle, agentStyle].contains(path[0]),
+              validSeed(path[1]),
+              let versionText = components.queryItems?.first(where: { $0.name == "version" })?.value,
+              let version = Int64(versionText), version > 0 else { return nil }
+        return Marker(style: path[0], seed: path[1], version: version)
+    }
+
+    static func marker(style: String, seed: String, version: Int64) -> String? {
+        guard [humanStyle, agentStyle].contains(style), validSeed(seed), version > 0 else { return nil }
+        return "\(markerPrefix)\(rendererVersion)/\(style)/\(seed)?version=\(version)"
+    }
+
+    static func renderURL(from value: String?, baseURL: URL = CloudAPIClient.configuredBaseURL) -> URL? {
+        guard let marker = marker(from: value) else { return nil }
+        return baseURL
+            .appendingPathComponent("v1/avatars")
+            .appendingPathComponent(rendererVersion)
+            .appendingPathComponent(marker.style)
+            .appendingPathComponent("\(marker.seed).png")
+            .appending(queryItems: [URLQueryItem(name: "v", value: String(marker.version))])
+    }
+
+    static func previewURL(style: String, seed: String, baseURL: URL = CloudAPIClient.configuredBaseURL) -> URL? {
+        guard [humanStyle, agentStyle].contains(style), validSeed(seed) else { return nil }
+        return baseURL
+            .appendingPathComponent("v1/avatars/preview")
+            .appendingPathComponent(style)
+            .appendingPathComponent("\(seed).png")
+    }
+
+    static func newSeed() -> String {
+        UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    }
+
+    private static func validSeed(_ value: String) -> Bool {
+        !value.isEmpty
+            && value.utf8.count <= 128
+            && value.utf8.allSatisfy {
+                (48...57).contains($0)
+                    || (65...90).contains($0)
+                    || (97...122).contains($0)
+                    || $0 == 45
+                    || $0 == 95
+            }
+    }
+}
+
 enum CloudOAuthProvider: String, CaseIterable, Codable, Hashable, Identifiable {
     case google
     case github
@@ -24,6 +128,7 @@ struct CloudAccount: Codable, Hashable {
     let displayName: String?
     let primaryEmail: String?
     let avatarUrl: String?
+    var avatar: CanonicalAvatarDescriptor
     let nodeId: String?
     let passwordSet: Bool
 
@@ -426,6 +531,7 @@ struct CloudAgent: Codable, Hashable, Identifiable {
     let archivedAt: String?
     let ownerDisplayName: String?
     let avatarUrl: String?
+    let avatar: CanonicalAvatarDescriptor
     let modelRouting: CloudModelRouting
 
     var id: String { agentId }
@@ -433,7 +539,7 @@ struct CloudAgent: Codable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case agentId, ownerAccountId, accessScope, status, name, role, description
         case systemPrompt, sourceSummary, boundaries, resources, skills
-        case createdAt, updatedAt, archivedAt, ownerDisplayName, avatarUrl, modelRouting
+        case createdAt, updatedAt, archivedAt, ownerDisplayName, avatarUrl, avatar, modelRouting
     }
 
     init(
@@ -454,6 +560,7 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         archivedAt: String? = nil,
         ownerDisplayName: String?,
         avatarUrl: String? = nil,
+        avatar: CanonicalAvatarDescriptor,
         modelRouting: CloudModelRouting = .empty
     ) {
         self.agentId = agentId
@@ -473,6 +580,7 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         self.archivedAt = archivedAt
         self.ownerDisplayName = ownerDisplayName
         self.avatarUrl = avatarUrl
+        self.avatar = avatar
         self.modelRouting = modelRouting
     }
 
@@ -495,6 +603,7 @@ struct CloudAgent: Codable, Hashable, Identifiable {
         archivedAt = try container.decodeIfPresent(String.self, forKey: .archivedAt)
         ownerDisplayName = try container.decodeIfPresent(String.self, forKey: .ownerDisplayName)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        avatar = try container.decode(CanonicalAvatarDescriptor.self, forKey: .avatar)
         modelRouting = try container.decodeIfPresent(CloudModelRouting.self, forKey: .modelRouting) ?? .empty
     }
 }

@@ -10,7 +10,12 @@ struct IdentityAvatar: View {
     var seed: String? = nil
 
     private var normalizedImageSource: String? {
-        AvatarImageLoader.normalizedSource(imageSource)
+        if let source = AvatarImageLoader.normalizedSource(imageSource) { return source }
+        guard kind == .agent, !isKordiSupport, let seed = seed?.nonEmpty else { return nil }
+        return CanonicalAvatarSystem.previewURL(
+            style: CanonicalAvatarSystem.agentStyle,
+            seed: seed
+        )?.absoluteString
     }
 
     private var isKordiSupport: Bool {
@@ -27,6 +32,7 @@ struct IdentityAvatar: View {
 
             if let normalizedImageSource {
                 AvatarSourceImage(source: normalizedImageSource)
+                    .id("\(kind):\(seed?.nonEmpty ?? name)")
             }
         }
         .frame(width: size, height: size)
@@ -44,7 +50,7 @@ struct IdentityAvatar: View {
         } else {
             switch kind {
             case .agent:
-                AgentIdenticonAvatar(seed: seed?.nonEmpty ?? name)
+                Circle().fill(Color(uiColor: .secondarySystemFill))
             case .group:
                 Circle().fill(KordiTheme.signalBlue.opacity(0.12))
                 Image(systemName: "person.2.fill")
@@ -61,7 +67,7 @@ struct IdentityAvatar: View {
         if isKordiSupport {
             KordiSupportAvatar()
         } else if kind == .agent {
-            AgentIdenticonAvatar(seed: seed?.nonEmpty ?? name)
+            Circle().fill(Color(uiColor: .secondarySystemFill))
         } else {
             Circle().fill(Color(uiColor: .secondarySystemFill))
             Image(systemName: kind == .group ? "person.2.fill" : "person.crop.circle.fill")
@@ -202,119 +208,6 @@ enum CloudAvatarFallback {
     }
 }
 
-struct AgentIdenticonCell: Equatable {
-    let x: Int
-    let y: Int
-    let accent: Bool
-    let opacity: Double
-}
-
-struct AgentIdenticonParts: Equatable {
-    let paletteIndex: Int
-    let cells: [AgentIdenticonCell]
-}
-
-enum AgentIdenticonGenerator {
-    static func parts(seed: String) -> AgentIdenticonParts {
-        var random = AgentIdenticonRandom(seed: "agent-identicon:\(seed)")
-        let paletteIndex = Int(random.next() * 8) % 8
-        var cells: [AgentIdenticonCell] = []
-
-        for y in 0..<5 {
-            for x in 0..<3 {
-                let active = random.next() > 0.42 || (x == 2 && y == 2 && random.next() > 0.22)
-                if !active { continue }
-                let accent = random.next() > 0.78
-                let opacity = 0.82 + random.next() * 0.18
-                cells.append(AgentIdenticonCell(x: x, y: y, accent: accent, opacity: opacity))
-                let mirrorX = 4 - x
-                if mirrorX != x {
-                    cells.append(AgentIdenticonCell(x: mirrorX, y: y, accent: accent, opacity: opacity))
-                }
-            }
-        }
-
-        if cells.count < 8 {
-            cells += [
-                AgentIdenticonCell(x: 1, y: 1, accent: false, opacity: 0.92),
-                AgentIdenticonCell(x: 3, y: 1, accent: false, opacity: 0.92),
-                AgentIdenticonCell(x: 2, y: 2, accent: true, opacity: 0.96),
-                AgentIdenticonCell(x: 1, y: 3, accent: false, opacity: 0.92),
-                AgentIdenticonCell(x: 3, y: 3, accent: false, opacity: 0.92)
-            ]
-        }
-
-        return AgentIdenticonParts(paletteIndex: paletteIndex, cells: cells)
-    }
-}
-
-private struct AgentIdenticonRandom {
-    private var state: UInt32
-
-    init(seed: String) {
-        var hash: UInt32 = 2_166_136_261
-        for value in seed.utf16 {
-            hash ^= UInt32(value)
-            hash = hash &* 16_777_619
-        }
-        state = hash
-    }
-
-    mutating func next() -> Double {
-        state = state &+ 0x6D2B_79F5
-        var value = state
-        value = (value ^ (value >> 15)) &* (value | 1)
-        value ^= value &+ ((value ^ (value >> 7)) &* (value | 61))
-        return Double(value ^ (value >> 14)) / 4_294_967_296
-    }
-}
-
-private struct AgentIdenticonAvatar: View {
-    let seed: String
-
-    private static let palettes: [(background: Color, foreground: Color, accent: Color)] = [
-        (Color(hex: 0xF6F8FA), Color(hex: 0x0969DA), Color(hex: 0x2DA44E)),
-        (Color(hex: 0xF6F8FA), Color(hex: 0x8250DF), Color(hex: 0xBF3989)),
-        (Color(hex: 0xF6F8FA), Color(hex: 0x1A7F37), Color(hex: 0x9A6700)),
-        (Color(hex: 0xF6F8FA), Color(hex: 0xBC4C00), Color(hex: 0x0969DA)),
-        (Color(hex: 0x0D1117), Color(hex: 0x58A6FF), Color(hex: 0x3FB950)),
-        (Color(hex: 0x0D1117), Color(hex: 0xA371F7), Color(hex: 0xF778BA)),
-        (Color(hex: 0x0D1117), Color(hex: 0x7EE787), Color(hex: 0xD29922)),
-        (Color(hex: 0x0D1117), Color(hex: 0xFFA657), Color(hex: 0x79C0FF))
-    ]
-
-    var body: some View {
-        let parts = AgentIdenticonGenerator.parts(seed: seed)
-        let palette = Self.palettes[parts.paletteIndex]
-        Canvas { context, size in
-            let scale = min(size.width, size.height) / 64
-            let canvas = CGRect(origin: .zero, size: size)
-            context.fill(Path(canvas), with: .color(palette.background))
-            context.fill(
-                Path(canvas),
-                with: .color(Color.white.opacity(parts.paletteIndex >= 4 ? 0.04 : 0.22))
-            )
-
-            for cell in parts.cells {
-                let rect = CGRect(
-                    x: CGFloat(8 + cell.x * 10) * scale,
-                    y: CGFloat(8 + cell.y * 10) * scale,
-                    width: 8 * scale,
-                    height: 8 * scale
-                )
-                context.fill(
-                    Path(roundedRect: rect, cornerRadius: 2 * scale),
-                    with: .color((cell.accent ? palette.accent : palette.foreground).opacity(cell.opacity))
-                )
-            }
-
-            let ring = CGRect(x: 0.5 * scale, y: 0.5 * scale, width: 63 * scale, height: 63 * scale)
-            context.stroke(Path(ellipseIn: ring), with: .color(Color.white.opacity(0.18)), lineWidth: 0.5 * scale)
-            context.stroke(Path(ellipseIn: ring), with: .color(Color(hex: 0x0D1117).opacity(0.16)), lineWidth: 0.5 * scale)
-        }
-    }
-}
-
 private struct AvatarSourceImage: View {
     let source: String
     @State private var image: UIImage?
@@ -330,8 +223,9 @@ private struct AvatarSourceImage: View {
             }
             }
             .task(id: source) {
-                image = nil
-                image = await AvatarImageLoader.image(from: source)
+                guard let loaded = await AvatarImageLoader.image(from: source),
+                      !Task.isCancelled else { return }
+                image = loaded
             }
     }
 }
@@ -348,6 +242,9 @@ enum AvatarImageLoader {
         guard let value = source?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty,
               !value.lowercased().hasPrefix("kordi-pixel-avatar://") else { return nil }
+        if value.lowercased().hasPrefix(CanonicalAvatarSystem.markerPrefix) {
+            return CanonicalAvatarSystem.renderURL(from: value)?.absoluteString
+        }
         if value.lowercased().hasPrefix("data:image/") { return value }
         guard let url = URL(string: value),
               let scheme = url.scheme?.lowercased(),
@@ -387,14 +284,4 @@ enum AvatarImageLoader {
         return data
     }
 
-}
-
-private extension Color {
-    init(hex: UInt32) {
-        self.init(
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255
-        )
-    }
 }

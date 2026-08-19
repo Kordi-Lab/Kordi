@@ -2,6 +2,7 @@ import type { Contact, DesktopCollaborationPeer } from '@/kordi-app/types';
 
 import type { CloudAccount } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 
 export const CLOUD_SERVER_LABEL = 'kordi.cloud';
@@ -97,6 +98,6 @@ export function cloudSelfContact(account: CloudAccount): Contact {
     contactStatus: 'self',
     contactRequestDirection: null,
     avatarSeed: account.accountId,
-    profileImageUrl: cloudAvatarImageUrl(account.avatarUrl),
+    profileImageUrl: cloudAvatarImageUrl(canonicalAvatarImageSource(account.avatar)),
   };
 }

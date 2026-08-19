@@ -1,7 +1,5 @@
 use super::*;
 
-pub(super) const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
-pub(super) const AVATAR_UPLOAD_MAX_BYTES: usize = 200 * 1024;
 pub(super) const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
 
 pub(super) fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Response {
@@ -65,31 +63,41 @@ pub(super) async fn account_response_row(
     account_id: &str,
 ) -> Result<Option<AccountResponse>, sqlx_core::Error> {
     let row: Option<AccountRecordRow> = query_as(
-        "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash \
+        "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
+            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at \
              FROM cloud_accounts WHERE account_id = $1",
     )
     .bind(account_id)
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(
-        |(
-            account_id,
-            public_account_number,
-            display_name,
-            primary_email,
-            avatar_url,
-            password_hash,
-        )| AccountResponse {
-            account_id,
-            kordi_id: public_account_number.to_string(),
-            display_name,
-            primary_email,
-            avatar_url,
-            node_id: None,
-            password_set: password_hash.is_some(),
+    Ok(row.map(account_response_from_row))
+}
+
+pub(super) fn account_response_from_row(row: AccountRecordRow) -> AccountResponse {
+    let avatar = descriptor_from_parts(
+        "human".to_string(),
+        row.0.clone(),
+        StoredAvatar {
+            source: row.6,
+            style: row.7,
+            seed: row.8,
+            renderer_version: row.9,
+            avatar_url: row.4.clone(),
+            version: row.10,
+            updated_at: row.11,
         },
-    ))
+    );
+    AccountResponse {
+        account_id: row.0,
+        kordi_id: row.1.to_string(),
+        display_name: row.2,
+        primary_email: row.3,
+        avatar_url: Some(avatar.image_url()),
+        avatar,
+        node_id: None,
+        password_set: row.5.is_some(),
+    }
 }
 
 pub(super) fn normalize_public_kordi_id(value: &str) -> Option<i64> {

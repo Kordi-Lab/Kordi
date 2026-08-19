@@ -11,6 +11,7 @@ import {
 import { loadSession } from './session';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
 
 function avatarSeedFor(profile: { accountId: string; avatarUrl: string | null }): string {
@@ -157,10 +158,10 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
           <div className="flex items-center gap-3">
             <IdentityAvatar
               kind="human"
-              seed={avatarSeedFor({ accountId: account.accountId, avatarUrl: account.avatarUrl })}
+              seed={account.avatar.seed}
               isSelf
               name={account.displayName ?? account.primaryEmail ?? 'You'}
-              imageUrl={cloudAvatarImageUrl(account.avatarUrl)}
+              imageUrl={cloudAvatarImageUrl(canonicalAvatarImageSource(account.avatar))}
               avatarKey={`cloud-self:${account.accountId}`}
               className="h-10 w-10 shrink-0 rounded-full border border-[color:var(--app-transient-border)]"
             />

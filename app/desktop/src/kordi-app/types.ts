@@ -321,7 +321,7 @@ export type Agent = {
     description: string;
     content?: string | null;
   }>;
-  avatarSeed?: string | null;
+  cloudAgentAvatarVersion?: number; cloudAgentAvatarSource?: 'generated' | 'uploaded'; avatarSeed?: string | null;
   profileImageUrl?: string | null;
   collaborationReachouts?: AgentCollaborationReachout[];
 };

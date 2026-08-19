@@ -8,9 +8,36 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         displayName: "Me",
         primaryEmail: nil,
         avatarUrl: nil,
+        avatar: mentionTestAvatar(entityId: "acct_me"),
         nodeId: nil,
         passwordSet: true
     )
+
+    func testDefaultAgentsNeverReuseTheHumanOwnerAvatar() throws {
+        let account = CloudAccount(
+            accountId: "acct_me",
+            kordiId: nil,
+            displayName: "Me",
+            primaryEmail: nil,
+            avatarUrl: "https://example.com/human.png",
+            avatar: mentionTestAvatar(
+                entityId: "acct_me",
+                source: "uploaded",
+                uploadedAsset: "https://example.com/human.png"
+            ),
+            nodeId: nil,
+            passwordSet: true
+        )
+        let target = try XCTUnwrap(ComposerMentionTargetCatalog.targets(
+            account: account,
+            conversation: conversation(kind: .person, peerAccountID: "acct_peer"),
+            ownedAgents: [],
+            sharedAgents: []
+        ).first { $0.id == "agent:\(CanonicalAvatarSystem.defaultAgentId)" })
+
+        XCTAssertEqual(target.agentId, CanonicalAvatarSystem.defaultAgentId)
+        XCTAssertNil(target.avatarSource)
+    }
 
     func testDirectConversationIncludesOnlyParticipantScopedActiveAgents() {
         let conversation = conversation(
@@ -278,7 +305,8 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             description: nil,
             updatedAt: "2026-08-17T00:00:00Z",
             archivedAt: archivedAt,
-            ownerDisplayName: ownerName
+            ownerDisplayName: ownerName,
+            avatar: mentionTestAgentAvatar(entityId: id)
         )
     }
 
@@ -360,7 +388,18 @@ private final class SharedAgentsURLProtocol: URLProtocol {
                 "accessScope": "participant_conversations",
                 "name": "Helper \(owner)",
                 "role": "assistant",
-                "updatedAt": "2026-08-17T00:00:00Z"
+                "updatedAt": "2026-08-17T00:00:00Z",
+                "avatar": [
+                    "entityType": "agent",
+                    "entityId": "agent_\(owner)",
+                    "source": "generated",
+                    "style": "thumbs",
+                    "seed": "agent_\(owner)",
+                    "rendererVersion": CanonicalAvatarSystem.rendererVersion,
+                    "uploadedAsset": NSNull(),
+                    "version": 1,
+                    "updatedAt": "2026-08-17T00:00:00Z"
+                ]
             ]
         }
         let payload = try! JSONSerialization.data(withJSONObject: ["agents": agents])
@@ -376,4 +415,36 @@ private final class SharedAgentsURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private func mentionTestAvatar(
+    entityId: String,
+    source: String = "generated",
+    uploadedAsset: String? = nil
+) -> CanonicalAvatarDescriptor {
+    CanonicalAvatarDescriptor(
+        entityType: "human",
+        entityId: entityId,
+        source: source,
+        style: CanonicalAvatarSystem.humanStyle,
+        seed: entityId,
+        rendererVersion: CanonicalAvatarSystem.rendererVersion,
+        uploadedAsset: uploadedAsset,
+        version: 1,
+        updatedAt: "2026-08-19T00:00:00Z"
+    )
+}
+
+private func mentionTestAgentAvatar(entityId: String) -> CanonicalAvatarDescriptor {
+    CanonicalAvatarDescriptor(
+        entityType: "agent",
+        entityId: entityId,
+        source: "generated",
+        style: CanonicalAvatarSystem.agentStyle,
+        seed: entityId,
+        rendererVersion: CanonicalAvatarSystem.rendererVersion,
+        uploadedAsset: nil,
+        version: 1,
+        updatedAt: "2026-08-19T00:00:00Z"
+    )
 }

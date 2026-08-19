@@ -256,13 +256,23 @@ mod tests {
         let account_id = format!("acct_support_test_{suffix}");
         let submission_id = format!("desktop:test:{suffix}");
         let now = Utc::now().to_rfc3339();
+        let avatar_url = crate::avatars::generated_avatar_marker(
+            crate::avatars::HUMAN_AVATAR_STYLE,
+            &account_id,
+            1,
+        );
         query(
             "INSERT INTO cloud_accounts (
-                 account_id, display_name, primary_email, created_at, updated_at
-             ) VALUES ($1, 'Support test', NULL, $2, $2)",
+                 account_id, display_name, primary_email, avatar_url, created_at, updated_at,
+                 avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version,
+                 avatar_updated_at
+             ) VALUES ($1, 'Support test', NULL, $2, $3, $3, 'generated', $4, $1, $5, 1, $3)",
         )
         .bind(&account_id)
+        .bind(&avatar_url)
         .bind(&now)
+        .bind(crate::avatars::HUMAN_AVATAR_STYLE)
+        .bind(crate::avatars::AVATAR_RENDERER_VERSION)
         .execute(&pool)
         .await
         .unwrap();

@@ -17,6 +17,14 @@ import { compareCloudMessages, latestCloudReceiptAt } from './cloudMessageMerge'
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
 
+export function cloudSetsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
+  }
+  return true;
+}
+
 export type CloudUnreadReadinessSnapshot = {
   status: CloudUnreadReadinessStatus;
   contextKey: string | null;

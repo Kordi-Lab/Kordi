@@ -20,7 +20,7 @@ import {
   type CloudOAuthProvider,
   type CloudProfileUpdateInput,
 } from './authClient';
-import { applyCloudSessionProfileUpdate, cloudAccountsEqual } from './cloudAccountState';
+import { cloudAccountsEqual } from './cloudAccountState';
 import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
@@ -32,7 +32,7 @@ import {
   type StoredSession,
 } from './session';
 
-export { applyCloudSessionProfileUpdate, cloudAccountsEqual } from './cloudAccountState';
+export { cloudAccountsEqual } from './cloudAccountState';
 
 export type CloudSessionStatus = 'loading' | 'signed-out' | 'authenticated';
 
@@ -46,7 +46,7 @@ export type UseCloudSessionResult = {
     email: string;
     password: string;
     displayName?: string;
-    avatarUrl?: string;
+    avatarSeed: string;
   }): Promise<void>;
   signInWithProvider(provider: CloudOAuthProvider): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
@@ -224,11 +224,6 @@ export function useCloudSession({
             const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
             const subject = typeof frame?.subject === 'string' ? frame.subject : '';
             if (!shouldRefreshCloudSessionProfileForWsSubject(subject, account.accountId)) return;
-            const patched = applyCloudSessionProfileUpdate(accountRef.current, frame?.payload);
-            if (patched) {
-              setAuthenticated(patched);
-              return;
-            }
             void authClient.me(stored.token).then((next) => {
               if (!cancelled && next.accountId === account.accountId) setAuthenticated(next);
             }).catch(() => undefined);
@@ -351,9 +346,9 @@ export function useCloudSession({
   );
 
   const signUp = useCallback<UseCloudSessionResult['signUp']>(
-    async ({ email, password, displayName, avatarUrl }) => {
+    async ({ email, password, displayName, avatarSeed }) => {
       try {
-        const result = await authClient.signup({ email, password, displayName, avatarUrl });
+        const result = await authClient.signup({ email, password, displayName, avatarSeed });
         await completeCloudAuthResult({
           result,
           currentAccountId: accountIdRef.current,

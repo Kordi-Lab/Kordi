@@ -19,6 +19,7 @@ import type {
   CloudMessage,
 } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 import {
   resolveCloudMessageAttachments,
 } from './cloudAttachments';
@@ -295,7 +296,7 @@ export function useCloudDirectAgentExecution({
                       account.displayName
                       || account.primaryEmail
                       || account.accountId,
-                    avatarUrl: account.avatarUrl,
+                    avatarUrl: canonicalAvatarImageSource(account.avatar),
                     role: 'self',
                   },
                   {

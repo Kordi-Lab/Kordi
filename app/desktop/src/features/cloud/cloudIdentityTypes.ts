@@ -1,3 +1,5 @@
+import type { CanonicalAvatarDescriptor } from './canonicalAvatar';
+
 export type CloudAccount = {
   accountId: string;
   /** Public nine-digit identity. Optional while cached pre-migration sessions refresh. */
@@ -5,6 +7,7 @@ export type CloudAccount = {
   displayName: string | null;
   primaryEmail: string | null;
   avatarUrl: string | null;
+  avatar: CanonicalAvatarDescriptor;
   nodeId: string | null;
   passwordSet: boolean;
 };

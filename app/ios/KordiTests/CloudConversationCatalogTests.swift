@@ -2,6 +2,25 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testAgentTemplateUsesTheCanonicalDescriptorAvatar() throws {
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [ownedAgent],
+            sharedAgents: [],
+            messagesByPeer: [:]
+        )
+        let template = try XCTUnwrap(catalog.first { $0.agentId == "agent_research" })
+        XCTAssertEqual(
+            template.avatarSource,
+            CanonicalAvatarSystem.marker(
+                style: CanonicalAvatarSystem.agentStyle,
+                seed: "canonical_agent_seed",
+                version: 1
+            )
+        )
+    }
+
     func testDraftModelChangeDoesNotCreateAgentSession() throws {
         var runtimeRoute = CloudModelRouting.empty
         runtimeRoute.defaultModel = "openai/gpt-5.6-luna"
@@ -394,7 +413,11 @@ final class CloudConversationCatalogTests: XCTestCase {
             role: "Support",
             description: "Kordi Support",
             updatedAt: "2026-08-08T00:00:00Z",
-            ownerDisplayName: KordiSupportIdentity.displayName
+            ownerDisplayName: KordiSupportIdentity.displayName,
+            avatar: avatar(
+                entityId: KordiSupportIdentity.agentId,
+                style: CanonicalAvatarSystem.agentStyle
+            )
         )
         let supportBody = try CloudMessageCodec.encodeDirect(
             text: "Help me",
@@ -765,6 +788,11 @@ final class CloudConversationCatalogTests: XCTestCase {
             displayName: "Alex",
             primaryEmail: "taylor@example.com",
             avatarUrl: "data:image/png;base64,bWU=",
+            avatar: avatar(
+                entityId: "acct_me",
+                source: "uploaded",
+                uploadedAsset: "data:image/png;base64,bWU="
+            ),
             nodeId: nil,
             passwordSet: true
         )
@@ -817,6 +845,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             displayName: "Me",
             primaryEmail: "me@example.com",
             avatarUrl: nil,
+            avatar: avatar(entityId: "acct_me"),
             nodeId: nil,
             passwordSet: true
         )
@@ -914,7 +943,10 @@ final class CloudConversationCatalogTests: XCTestCase {
         )
 
         let participants = try XCTUnwrap(catalog.first { $0.kind == .group }?.groupParticipants)
-        XCTAssertEqual(participants.first { $0.accountId == "acct_me" }?.avatarUrl, "https://cdn.example/me.png")
+        XCTAssertEqual(
+            participants.first { $0.accountId == "acct_me" }?.avatarUrl,
+            account.avatar.imageSource
+        )
         XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.displayName, "Maya")
         XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.avatarUrl, "https://cdn.example/maya.png")
         XCTAssertEqual(participants.first { $0.accountId == "acct_maya" }?.role, "person")
@@ -1146,6 +1178,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             displayName: "Alex",
             primaryEmail: "taylor@example.com",
             avatarUrl: nil,
+            avatar: avatar(entityId: "acct_me"),
             nodeId: nil,
             passwordSet: true
         )
@@ -1172,7 +1205,32 @@ final class CloudConversationCatalogTests: XCTestCase {
             role: "Researcher",
             description: nil,
             updatedAt: "2026-08-08T00:00:00Z",
-            ownerDisplayName: "Alex"
+            ownerDisplayName: "Alex",
+            avatar: avatar(
+                entityId: "agent_research",
+                style: CanonicalAvatarSystem.agentStyle,
+                seed: "canonical_agent_seed"
+            )
+        )
+    }
+
+    private func avatar(
+        entityId: String,
+        source: String = "generated",
+        style: String = CanonicalAvatarSystem.humanStyle,
+        seed: String? = nil,
+        uploadedAsset: String? = nil
+    ) -> CanonicalAvatarDescriptor {
+        CanonicalAvatarDescriptor(
+            entityType: style == CanonicalAvatarSystem.agentStyle ? "agent" : "human",
+            entityId: entityId,
+            source: source,
+            style: style,
+            seed: seed ?? entityId,
+            rendererVersion: CanonicalAvatarSystem.rendererVersion,
+            uploadedAsset: uploadedAsset,
+            version: 1,
+            updatedAt: "2026-08-19T00:00:00Z"
         )
     }
 

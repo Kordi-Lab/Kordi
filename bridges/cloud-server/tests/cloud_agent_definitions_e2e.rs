@@ -75,7 +75,7 @@ async fn signup(router: &axum::Router, prefix: &str) -> (String, String) {
                     "email": email,
                     "password": "correct horse",
                     "displayName": prefix,
-                    "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+                    "avatarSeed": "agent_definition_avatar",
                 })
                 .to_string(),
             ),
@@ -87,6 +87,21 @@ async fn signup(router: &axum::Router, prefix: &str) -> (String, String) {
     assert!(status.is_success(), "signup failed: {body}");
     let token = body["session"]["token"].as_str().unwrap().to_string();
     let account_id = body["account"]["accountId"].as_str().unwrap().to_string();
+    assert_ne!(
+        body["account"]["avatar"]["seed"].as_str(),
+        Some(account_id.as_str())
+    );
+    let avatar = router
+        .clone()
+        .oneshot(request(
+            Method::GET,
+            "/v1/avatars/dicebear-rust-10.6.0-styles-10.5.0/lorelei/agent_definition_avatar.png?v=1",
+            None,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(avatar.status(), StatusCode::OK);
     (account_id, token)
 }
 
@@ -151,7 +166,7 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
     let Some(pool) = try_pool().await else { return };
     let router = test_router(pool.clone());
     let (owner_id, owner_token) = signup(&router, "agent-owner").await;
-    let (_other_id, other_token) = signup(&router, "agent-other").await;
+    let (other_id, other_token) = signup(&router, "agent-other").await;
 
     let create_response = router
         .clone()
@@ -170,6 +185,10 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
     assert_eq!(created["agent"]["ownerAccountId"], owner_id);
     assert_eq!(created["agent"]["accessScope"], "private");
     assert_eq!(created["agent"]["name"], "Docs Helper");
+    assert_ne!(
+        created["agent"]["avatar"]["seed"].as_str(),
+        Some(agent_id.as_str())
+    );
 
     let owner_list = router
         .clone()
@@ -213,6 +232,38 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
         .await
         .unwrap();
     assert_eq!(other_update.status(), StatusCode::NOT_FOUND);
+
+    let unversioned_avatar_update = router
+        .clone()
+        .oneshot(request(
+            Method::PUT,
+            &format!("/v1/cloud/agents/{agent_id}"),
+            Some(&owner_token),
+            Body::from(
+                json!({
+                    "avatarMutation": {
+                        "action": "regenerate",
+                        "seed": "next_agent_avatar"
+                    }
+                })
+                .to_string(),
+            ),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(unversioned_avatar_update.status(), StatusCode::BAD_REQUEST);
+
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx_core::query::query(
+        "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at)
+         VALUES ($1, $2, $3), ($2, $1, $3) ON CONFLICT DO NOTHING",
+    )
+    .bind(&owner_id)
+    .bind(&other_id)
+    .bind(&now)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let owner_update = router
         .clone()
@@ -262,6 +313,20 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
     assert_eq!(events[1].0, "agent.definition.upserted");
     assert_eq!(events[2].0, "agent.definition.archived");
     assert_eq!(events[0].1["agent"]["agentId"], agent_id);
+
+    let viewer_events: Vec<(String, serde_json::Value)> = sqlx_core::query_as::query_as(
+        "SELECT event_type, payload FROM cloud_chat_user_sync_events
+         WHERE account_id = $1 AND event_type = 'agent.directory.changed'
+         ORDER BY stream_seq ASC",
+    )
+    .bind(&other_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(viewer_events.len(), 2);
+    assert_eq!(viewer_events[0].1["agentId"], agent_id);
+    assert!(viewer_events[0].1.get("agent").is_none());
+    assert!(!viewer_events[0].1.to_string().contains("systemPrompt"));
 }
 
 #[tokio::test]

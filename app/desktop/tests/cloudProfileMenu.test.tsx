@@ -1,3 +1,4 @@
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -10,6 +11,7 @@ const account: CloudAccount = {
   displayName: 'MayaTest',
   primaryEmail: 'taylor@example.com',
   avatarUrl: 'data:image/jpeg;base64,profile',
+  avatar: cloudAccountAvatarFixture,
   nodeId: 'node_9c2abc',
   passwordSet: true,
 };

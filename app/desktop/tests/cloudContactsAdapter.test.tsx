@@ -1,3 +1,4 @@
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -15,6 +16,7 @@ const account: CloudAccount = {
   displayName: 'Me',
   primaryEmail: 'me@example.com',
   avatarUrl: null,
+  avatar: cloudAccountAvatarFixture,
   nodeId: 'node_me',
   passwordSet: true,
 };

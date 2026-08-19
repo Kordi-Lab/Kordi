@@ -1,6 +1,12 @@
 import type { Agent } from '@/kordi-app/types';
 import type { CloudSyncEvent } from './authClient';
 import type { CloudAgentAccessScope, CloudAgentResource, CloudAgentSkill, CloudAgentStatus } from './cloudAgentsClient';
+import {
+  canonicalAvatarImageSource,
+  canonicalAvatarImageUrl,
+  normalizeCanonicalAvatarDescriptor,
+  type CanonicalAvatarDescriptor,
+} from './canonicalAvatar';
 
 export type CloudAgentDefinition = {
   agentId: string;
@@ -10,6 +16,8 @@ export type CloudAgentDefinition = {
   name: string;
   role: string;
   description: string | null;
+  avatarUrl: string | null;
+  avatar: CanonicalAvatarDescriptor;
   systemPrompt: string;
   sourceSummary: string | null;
   boundaries: string[];
@@ -84,7 +92,8 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
   const systemPrompt = cleanText(record.systemPrompt);
   const createdAt = cleanText(record.createdAt);
   const updatedAt = cleanText(record.updatedAt);
-  if (!agentId || !ownerAccountId || !['private', 'participant_conversations'].includes(accessScope) || !['active', 'archived'].includes(status) || !name || !role || !systemPrompt || !createdAt || !updatedAt) {
+  const avatar = normalizeCanonicalAvatarDescriptor(record.avatar);
+  if (!agentId || !ownerAccountId || !['private', 'participant_conversations'].includes(accessScope) || !['active', 'archived'].includes(status) || !name || !role || !systemPrompt || !createdAt || !updatedAt || !avatar) {
     return null;
   }
   return {
@@ -95,6 +104,8 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
     name,
     role,
     description: cleanNullableText(record.description),
+    avatarUrl: cleanNullableText(record.avatarUrl),
+    avatar,
     systemPrompt,
     sourceSummary: cleanNullableText(record.sourceSummary),
     boundaries: normalizeStringArray(record.boundaries),
@@ -145,7 +156,8 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     exposesLoadedPlugins: true,
     isOwned: true,
     isCollaborationRegistered: true,
-    avatarSeed: definition.agentId,
+    avatarSeed: definition.avatar.seed,
+    profileImageUrl: canonicalAvatarImageUrl(canonicalAvatarImageSource(definition.avatar)),
     cloudAgentId: definition.agentId,
     cloudAgentAccessScope: definition.accessScope,
     cloudAgentOwnerAccountId: definition.ownerAccountId,
@@ -154,6 +166,8 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     cloudAgentBoundaries: definition.boundaries,
     cloudAgentResources: definition.resources,
     cloudAgentSkills: definition.skills,
+    cloudAgentAvatarVersion: definition.avatar.version,
+    cloudAgentAvatarSource: definition.avatar.source,
   };
 }
 
@@ -165,6 +179,8 @@ export type SharedCloudAgentSummary = {
   name: string;
   role: string;
   description: string | null;
+  avatarUrl: string | null;
+  avatar: CanonicalAvatarDescriptor;
   updatedAt: string;
 };
 
@@ -177,7 +193,8 @@ export function normalizeSharedCloudAgentSummary(value: unknown): SharedCloudAge
   const name = cleanText(record.name);
   const role = cleanText(record.role);
   const updatedAt = cleanText(record.updatedAt);
-  if (!agentId || !ownerAccountId || accessScope !== 'participant_conversations' || !name || !role || !updatedAt) return null;
+  const avatar = normalizeCanonicalAvatarDescriptor(record.avatar);
+  if (!agentId || !ownerAccountId || accessScope !== 'participant_conversations' || !name || !role || !updatedAt || !avatar) return null;
   return {
     agentId,
     ownerAccountId,
@@ -186,6 +203,8 @@ export function normalizeSharedCloudAgentSummary(value: unknown): SharedCloudAge
     name,
     role,
     description: cleanNullableText(record.description),
+    avatarUrl: cleanNullableText(record.avatarUrl),
+    avatar,
     updatedAt,
   };
 }
@@ -203,6 +222,8 @@ export function cloudAgentDefinitionToSharedCloudAgentSummary(
     name: definition.name,
     role: definition.role,
     description: definition.description,
+    avatarUrl: definition.avatarUrl,
+    avatar: definition.avatar,
     updatedAt: definition.updatedAt,
   };
 }

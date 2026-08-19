@@ -6,6 +6,7 @@ import type {
   CloudGroupInvitation,
   CloudGroupInvitationCreateInput,
   CloudGroupInvitationSummary,
+  CloudProfileUpdateInput,
 } from '@/features/cloud/authClient';
 import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
 import type {
@@ -145,7 +146,7 @@ export type WorkspaceSidebarAccount = {
   cloudAccountDialogTab?: CloudAccountSettingsTabId | null;
   setCloudAccountDialogTab?: Dispatch<SetStateAction<CloudAccountSettingsTabId | null>>;
   cloudSettings?: CloudAccountSettingsConfig;
-  onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
+  onUpdateCloudProfile?: (input: CloudProfileUpdateInput) => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
   onCreateAppInvite?: () => Promise<string>;
   onCreateGroupInvite?: (
