@@ -101,3 +101,8 @@ body,
 .whats-new-visual-content div:nth-child(4) {
   width: min(360px, 48%);
 }
+
+/* Keep snapshots independent of the host macOS scrollbar preference. */
+.app-whats-new-content {
+  scrollbar-gutter: auto;
+}

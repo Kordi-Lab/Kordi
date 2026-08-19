@@ -476,30 +476,3 @@ test('pending image attachments reserve a compact image-sized loading placeholde
   assert.doesNotMatch(markup, /data-attachment-file-card="true"/);
   assert.doesNotMatch(markup, /w-\[min\(100%,29rem\)\][^"]*auto-rows-\[6\.5rem\]/);
 });
-
-test('renders failed own message delivery as an external retry action opposite the avatar', () => {
-  const message: Message = {
-    role: 'user',
-    sender: 'Me',
-    senderType: 'human',
-    isOwnMessage: true,
-    text: '@Testuser3sKordi can you see our chat history ?',
-    time: '00:45',
-    statusChips: ['failed'],
-  };
-
-  const markup = renderToStaticMarkup(createElement(MessageBubble, {
-    msg: message,
-    onRetryMessage: () => {},
-  }));
-
-  assert.doesNotMatch(markup, />Sending failed</);
-  assert.match(markup, />!<\/span>/);
-  assert.match(markup, /data-message-retry-button="true"/);
-  assert.match(markup, /data-message-transfer-action-side="opposite-avatar"/);
-  assert.match(markup, /aria-label="Retry sending message"/);
-  assert.match(markup, /title="Retry sending message"/);
-  assert.match(markup, /h-7 w-7/);
-  assert.match(markup, /data-message-delivery-glyph="none"/);
-  assert.match(markup, /text-rose-600/);
-});

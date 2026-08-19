@@ -926,11 +926,6 @@ export async function storeDesktopChatAttachmentPath(path: string, name?: string
   return invokeDesktop<DesktopStoredChatAttachment>('desktop_chat_store_attachment_path', { path, name: name ?? null });
 }
 
-export async function pickDesktopChatAttachmentPaths() {
-  if (!isNativeDesktopShell()) return [];
-  return invokeDesktop<string[]>('desktop_chat_pick_attachment_paths');
-}
-
 export type DesktopChatMessageRoute = {
   model?: string | null;
   authProvider?: string | null;

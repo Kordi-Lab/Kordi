@@ -7,9 +7,9 @@ import { composerAttachmentItemFromFile } from '@/features/chat/composerAttachme
 import { composerAttachmentItemFromStoredPath } from '@/features/chat/useComposerInputActions';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { mapDesktopMessagesForTranscript } from '@/features/chat/useDesktopTranscriptAdapter';
+import { pickDesktopChatAttachmentPaths } from '@/lib/cloudAttachmentUpload';
 import {
   isNativeDesktopShell,
-  pickDesktopChatAttachmentPaths,
   storeDesktopChatAttachmentPath,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';

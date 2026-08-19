@@ -3,7 +3,8 @@ import { useCallback } from 'react';
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
-import { pickDesktopChatAttachmentPaths, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
+import { pickDesktopChatAttachmentPaths } from '@/lib/cloudAttachmentUpload';
+import { storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import {
   composerAttachmentItemFromFile,

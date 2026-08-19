@@ -1,4 +1,4 @@
-import { invokeDesktop } from './desktop';
+import { invokeDesktop, isNativeDesktopShell } from './desktop';
 
 export type DesktopCloudAttachmentUploadResult = {
   attachmentId: string;
@@ -23,4 +23,9 @@ export function uploadDesktopCloudAttachment(
 
 export function cancelDesktopCloudAttachmentUpload(requestId: string) {
   return invokeDesktop<void>('desktop_cloud_attachment_cancel', { requestId });
+}
+
+export function pickDesktopChatAttachmentPaths() {
+  if (!isNativeDesktopShell()) return Promise.resolve([] as string[]);
+  return invokeDesktop<string[]>('desktop_chat_pick_attachment_paths');
 }

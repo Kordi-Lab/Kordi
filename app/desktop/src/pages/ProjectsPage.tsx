@@ -485,12 +485,7 @@ export function ProjectsPage({
           </div>
           <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-              <ComposerAttachmentAddMenu
-                inputRef={chatAttachmentInputRef}
-                onChooseFiles={isNativeShell
-                  ? () => { void saveDesktopAttachmentPaths(); }
-                  : undefined}
-              />
+              <ComposerAttachmentAddMenu inputRef={chatAttachmentInputRef} onChooseFiles={isNativeShell ? () => { void saveDesktopAttachmentPaths(); } : undefined} />
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
               {isNativeShell && activeRuntimeSessionId === activeProjectSession.id ? (
