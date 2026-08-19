@@ -4,6 +4,11 @@ import test from 'node:test';
 
 const scriptPath = new URL('../bridges/cloud-server/deploy/sync-and-build.sh', import.meta.url);
 const bootstrapScriptPath = new URL('../bridges/cloud-server/deploy/k3s/bootstrap-product-host.sh', import.meta.url);
+const installK3sScriptPath = new URL('../bridges/cloud-server/deploy/k3s/install-k3s.sh', import.meta.url);
+const nodePortConfigPath = new URL(
+  '../bridges/cloud-server/deploy/k3s/config/90-kordi-cloud-nodeport.yaml',
+  import.meta.url,
+);
 const firewallScriptPath = new URL(
   '../bridges/cloud-server/deploy/k3s/configure-product-firewall.sh',
   import.meta.url,
@@ -100,7 +105,21 @@ test('product firewall overrides broad shared-network ingress rules', async () =
   assert.match(script, /--priority=900[\s\S]*--action=DENY[\s\S]*--rules=all/);
   assert.match(script, /instances add-tags/);
   assert.match(script, /KORDI_CLOUD_GCP_PROJECT/);
+  assert.doesNotMatch(script, /tcp:30081/);
   assert.doesNotMatch(script, /35\.\d+\.\d+\.\d+/);
+});
+
+test('k3s exposes the Cloud NodePort only on loopback', async () => {
+  const [installScript, nodePortConfig] = await Promise.all([
+    readFile(installK3sScriptPath, 'utf8'),
+    readFile(nodePortConfigPath, 'utf8'),
+  ]);
+
+  assert.match(nodePortConfig, /kube-proxy-arg\+:/);
+  assert.match(nodePortConfig, /proxy-mode=iptables/);
+  assert.match(nodePortConfig, /nodeport-addresses=127\.0\.0\.0\/8/);
+  assert.match(installScript, /90-kordi-cloud-nodeport\.yaml/);
+  assert.match(installScript, /existing installation is missing the reviewed loopback NodePort config/);
 });
 
 test('cloud server manifest targets the hosted product public base', async () => {
@@ -136,8 +155,10 @@ test('product media uses pinned host networking and secret-backed credentials', 
 
 test('product origin serves desktop compatibility routes without redirects', async () => {
   const caddyfile = await readFile(caddyfilePath, 'utf8');
-  const portForwardService = await readFile(portForwardServicePath, 'utf8');
   const deploy = await readFile(deployScriptPath, 'utf8');
+  const manifest = await readFile(cloudServerManifestPath, 'utf8');
+
+  await assert.rejects(readFile(portForwardServicePath, 'utf8'), { code: 'ENOENT' });
 
   assert.match(
     caddyfile,
@@ -160,14 +181,17 @@ test('product origin serves desktop compatibility routes without redirects', asy
       < caddyfile.indexOf('redir https://kordi.ai{uri} 308'),
     'legacy product routes must be handled before the marketing redirect',
   );
-  assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:17081/);
+  assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:30081/);
+  assert.doesNotMatch(caddyfile, /reverse_proxy 127\.0\.0\.1:17081/);
+  assert.equal(caddyfile.match(/keepalive off/g)?.length, 3);
+  assert.equal(caddyfile.match(/lb_try_duration 5s/g)?.length, 3);
+  assert.equal(caddyfile.match(/lb_try_interval 100ms/g)?.length, 3);
   assert.match(caddyfile, /@call_media path \/rtc \/rtc\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:7880/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 10\.\d+\.\d+\.\d+:17081/);
-  assert.match(portForwardService, /service\/kordi-cloud-server 17081:17081/);
-  assert.match(portForwardService, /--address=127\.0\.0\.1/);
-  assert.match(portForwardService, /Restart=always/);
-  assert.match(portForwardService, /LimitNOFILE=65536/);
-  assert.doesNotMatch(portForwardService, /LimitNOFILE=1024/);
+  assert.match(manifest, /nodePort: 30081/);
+  assert.match(manifest, /type: NodePort/);
+  assert.match(manifest, /terminationGracePeriodSeconds: 10/);
+  assert.match(manifest, /livenessProbe:[\s\S]*periodSeconds: 5[\s\S]*failureThreshold: 2/);
 
   assert.match(deploy, /PUBLIC_ORIGIN=.*https:\/\/kordi\.ai/);
   assert.match(deploy, /LEGACY_ORIGIN=.*https:\/\/coordinar\.io/);
@@ -180,6 +204,7 @@ test('product origin serves desktop compatibility routes without redirects', asy
   assert.match(deploy, /Access-Control-Request-Method: POST/);
   assert.match(deploy, /access-control-allow-origin/);
   assert.match(deploy, /expected direct updater metadata status 200/);
+  assert.match(deploy, /http:\/\/127\.0\.0\.1:30081\/health/);
   assert.match(deploy, /kubectl apply -f .*manifests\/livekit\.yaml/);
   assert.match(deploy, /rollout status deployment\/livekit/);
 });

@@ -17,7 +17,8 @@ spec:
       port: 17081
       targetPort: http
       protocol: TCP
-  type: ClusterIP
+      nodePort: 30081
+  type: NodePort
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -46,6 +47,7 @@ spec:
         app.kubernetes.io/name: kordi-cloud-server
         app.kubernetes.io/component: api
     spec:
+      terminationGracePeriodSeconds: 10
       containers:
         - name: server
           image: kordi-cloud-server:dev
@@ -252,12 +254,16 @@ spec:
               port: http
             initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
           livenessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 10
-            periodSeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
           resources:
             requests:
               cpu: "100m"

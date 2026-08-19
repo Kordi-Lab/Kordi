@@ -210,23 +210,37 @@ override.
 
 ## Product edge
 
-Caddy reaches the Kubernetes Service through a loopback-only port-forward.
-This avoids embedding a replaceable cluster IP in the public proxy config and
-does not expose the application port on the VM network interface.
+Caddy reaches the Kubernetes Service through its fixed TCP NodePort at
+`127.0.0.1:30081`. Kubernetes routes the connection to ready pods without an
+embedded cluster IP or a long-running `kubectl port-forward` process. The
+reviewed K3s drop-in restricts NodePorts to loopback, and the product firewall
+must continue denying public TCP access to the NodePort.
+
+Install the K3s drop-in and restart K3s first. Then deploy the updated Cloud
+server manifest with `deploy-cloud-server.sh`; the deploy fails closed unless
+the host NodePort is healthy. Switch Caddy only after that check passes.
 
 From the synced repository on the product host:
 
 ```bash
+sudo install -d -m 0755 /etc/rancher/k3s/config.yaml.d
 sudo install -m 0644 \
-  bridges/cloud-server/deploy/k3s/systemd/kordi-cloud-port-forward.service \
-  /etc/systemd/system/kordi-cloud-port-forward.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now kordi-cloud-port-forward.service
+  bridges/cloud-server/deploy/k3s/config/90-kordi-cloud-nodeport.yaml \
+  /etc/rancher/k3s/config.yaml.d/90-kordi-cloud-nodeport.yaml
+sudo systemctl restart k3s
+
+# Run deploy-cloud-server.sh from the operator workstation before continuing.
+curl --fail --silent --show-error http://127.0.0.1:30081/health
 
 sudo install -m 0644 \
   bridges/cloud-server/deploy/Caddyfile.snippet \
   /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+
+sudo systemctl disable --now kordi-cloud-port-forward.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/kordi-cloud-port-forward.service
+sudo systemctl daemon-reload
 ```
 
 The complete Caddy config preserves all three public responsibilities:

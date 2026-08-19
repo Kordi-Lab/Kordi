@@ -246,10 +246,10 @@ Never generate a new `pubDate` during restoration. A rollback rehearsal is not
 complete until the restored public manifest and downloads are reverified.
 
 After a Kubernetes rollout, verify the public origin separately from in-cluster
-health. The VM's loopback port-forward can remain attached to a replaced pod
-and produce public `502` responses even while the new pods are healthy. Inspect
-and restart only the managed `kordi-cloud-port-forward.service` when its target
-is stale, then repeat `/health`, auth-capability, updater, and CORS checks.
+health. Verify `http://127.0.0.1:30081/health` on the host first. If the
+in-cluster Service is healthy but the fixed NodePort is not, inspect the Service
+endpoints and kube-proxy; do not reintroduce `kubectl port-forward`. Then repeat
+`/health`, auth-capability, updater, and CORS checks.
 
 Treat duplicated command output such as `204204` as an attachment or transport
 diagnostic, not as a valid HTTP result. Repeat the check with one standalone
