@@ -9,7 +9,8 @@
 #   - cluster pod CIDR uses the k3s default 10.42.0.0/16; service CIDR
 #     10.43.0.0/16. Probe earlier showed nothing on either subnet.
 #
-# Idempotent: re-running with k3s already installed is a no-op.
+# Idempotent: re-running validates the reviewed networking config and otherwise
+# leaves an existing k3s installation unchanged.
 #
 # Usage on the operator-provided host:
 #   sudo bash /path/to/kordi/bridges/cloud-server/deploy/k3s/install-k3s.sh
@@ -26,11 +27,21 @@ fi
 
 KUBE_USER="${KORDI_KUBE_USER:?Set KORDI_KUBE_USER to the non-root operator user that should own kubeconfig}"
 KUBECONFIG_TARGET="/home/${KUBE_USER}/.kube/config"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NODEPORT_CONFIG_SOURCE="${SCRIPT_DIR}/config/90-kordi-cloud-nodeport.yaml"
+NODEPORT_CONFIG_TARGET="/etc/rancher/k3s/config.yaml.d/90-kordi-cloud-nodeport.yaml"
 
 if command -v k3s >/dev/null 2>&1; then
+	if ! cmp -s "${NODEPORT_CONFIG_SOURCE}" "${NODEPORT_CONFIG_TARGET}"; then
+		echo "[k3s] existing installation is missing the reviewed loopback NodePort config" >&2
+		echo "[k3s] follow the Product edge migration before restarting k3s" >&2
+		exit 1
+	fi
 	echo "[k3s] already installed: $(k3s --version | head -1)"
 	echo "[k3s] skipping installer; ensure server is running."
 else
+	install -d -m 0755 "$(dirname "${NODEPORT_CONFIG_TARGET}")"
+	install -m 0644 "${NODEPORT_CONFIG_SOURCE}" "${NODEPORT_CONFIG_TARGET}"
 	echo "[k3s] downloading + installing k3s server (single-node)"
 	# --disable traefik:                Caddy is the public TLS terminator.
 	# --disable servicelb:              we don't need klipper-lb on a single node.

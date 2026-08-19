@@ -480,10 +480,11 @@ Preserve production data and deploy in place from a clean worktree at `RELEASE_C
 The pre-publication deployment must retain the last verified legacy version and
 URLs. Check that every advertised URL returns HTTP 200 before continuing; a
 safe response cannot name the candidate version while its DMG returns HTTP 404.
-After a pod rollout, a healthy in-cluster service with a public HTTP 502 usually
-means the VM's managed loopback port-forward is still attached to the replaced
-pod. Restart only `kordi-cloud-port-forward.service`, then repeat public health,
-auth-capability, updater, and CORS verification.
+After a pod rollout, verify both the in-cluster Service and the host NodePort at
+`http://127.0.0.1:30081/health` before checking the public edge. If the
+in-cluster route is healthy but the NodePort is not, inspect the Service
+endpoints and kube-proxy; do not reintroduce `kubectl port-forward`. Then repeat
+public health, auth-capability, updater, and CORS verification.
 
 Production Desktop beta builds should connect to the hosted product API (`https://kordi.ai`). Do not build a public DMG with a raw GCP/sslip URL or local tunnel in `VITE_KORDI_CLOUD_API_BASE`.
 

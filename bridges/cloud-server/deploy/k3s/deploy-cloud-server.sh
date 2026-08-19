@@ -132,6 +132,10 @@ echo "[deploy] verifying /health from inside the cluster"
 kubectl -n kordi-cloud run hc-${IMAGE_TAG} -i --rm --restart=Never --image=curlimages/curl:8.10.1 --quiet -- \
     -sS http://kordi-cloud-server.kordi-cloud.svc.cluster.local:17081/health"
 
+echo "[deploy] verifying /health through the host NodePort"
+"${GCLOUD_SSH[@]}" --command "curl --fail --silent --show-error --max-time 5 \
+    http://127.0.0.1:30081/health >/dev/null"
+
 echo "[deploy] verifying safe legacy updater fallback"
 "${GCLOUD_SSH[@]}" --command "kubectl -n kordi-cloud run legacy-${IMAGE_TAG} -i --rm --restart=Never --image=curlimages/curl:8.10.1 --quiet --command -- sh -c '
 set -eu
