@@ -240,7 +240,7 @@ final class AppModel: ObservableObject {
         email: String,
         password: String,
         displayName: String?,
-        avatarUrl: String
+        avatarSeed: String
     ) async -> Bool {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
@@ -258,7 +258,7 @@ final class AppModel: ObservableObject {
                 email: cleanEmail,
                 password: password,
                 displayName: cleanName,
-                avatarUrl: avatarUrl
+                avatarSeed: avatarSeed
             )
             try await completeAuthentication(response)
             return true
@@ -360,6 +360,7 @@ final class AppModel: ObservableObject {
         if showSyncActivity { messageSyncState = .syncing }
         defer { isRefreshing = false }
         do {
+            async let refreshedAccount = api.me(token: token)
             async let fetchedContacts = api.listContacts(token: token)
             async let fetchedPresence = try? api.listContactPresence(token: token)
             async let fetchedRequests = api.listContactRequests(token: token)
@@ -368,13 +369,20 @@ final class AppModel: ObservableObject {
             async let fetchedAuth = try? api.currentProviderAuthSnapshot(token: token)
             async let fetchedDevices = try? api.listDevices(token: token)
             async let canonicalLatestMessages = api.bootstrapChatLatestMessages(token: token)
-            let (contactList, presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical) = try await (
-                fetchedContacts, fetchedPresence, fetchedRequests, ownedAgents, fetchedVisibility, fetchedAuth,
-                fetchedDevices, canonicalLatestMessages
+            let (canonicalAccount, contactList, presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical) = try await (
+                refreshedAccount, fetchedContacts, fetchedPresence, fetchedRequests, ownedAgents,
+                fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages
             )
+            if self.account?.accountId == canonicalAccount.accountId {
+                self.account = canonicalAccount
+            }
+            let sharedAgentOwnerIDs = Set(
+                contactList.map(\.accountId)
+                    + (await api.cachedChatConversations()).flatMap(\.members).map(\.accountId)
+            ).filter { $0 != canonicalAccount.accountId }
             var shared = try await api.listSharedAgents(
                 token: token,
-                ownerAccountIds: contactList.map(\.accountId)
+                ownerAccountIds: Array(sharedAgentOwnerIDs)
             )
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             if let presence {
@@ -492,7 +500,10 @@ final class AppModel: ObservableObject {
         ))
     }
 
-    func updateProfile(displayName: String, avatarUrl: String?) async -> Bool {
+    func updateProfile(
+        displayName: String,
+        avatarMutation: CanonicalAvatarMutation?
+    ) async -> Bool {
         guard let token else { return false }
         let cleanName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else {
@@ -503,7 +514,7 @@ final class AppModel: ObservableObject {
             account = try await api.updateProfile(
                 token: token,
                 displayName: cleanName,
-                avatarUrl: avatarUrl?.nonEmpty
+                avatarMutation: avatarMutation
             )
             errorMessage = nil
             await rebuildConversationCatalog()
@@ -2232,7 +2243,7 @@ final class AppModel: ObservableObject {
             CloudGroupParticipant(
                 accountId: account.accountId,
                 displayName: account.preferredName,
-                avatarUrl: account.avatarUrl,
+                avatarUrl: account.avatar.imageSource,
                 role: "self"
             )
         ] + contacts.map { contact in
@@ -2518,6 +2529,24 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = userFacing(error, fallback: "Could not save this agent.")
             return nil
+        }
+    }
+
+    func updateAgentAvatar(id: String, mutation: CanonicalAvatarMutation) async -> Bool {
+        guard let token else { return false }
+        do {
+            let updated = try await api.updateAgentAvatar(token: token, agentId: id, mutation: mutation)
+            if let index = ownedCloudAgents.firstIndex(where: { $0.agentId == updated.agentId }) {
+                ownedCloudAgents[index] = updated
+            } else {
+                ownedCloudAgents.insert(updated, at: 0)
+            }
+            await rebuildConversationCatalog()
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not update this agent's avatar.")
+            return false
         }
     }
 
@@ -3156,7 +3185,7 @@ final class AppModel: ObservableObject {
         byAccountID[account.accountId] = CloudGroupParticipant(
             accountId: account.accountId,
             displayName: account.preferredName,
-            avatarUrl: account.avatarUrl?.nonEmpty ?? byAccountID[account.accountId]?.avatarUrl,
+            avatarUrl: account.avatar.imageSource,
             role: byAccountID[account.accountId]?.role.nonEmpty ?? "self"
         )
         return byAccountID.values.sorted { $0.accountId < $1.accountId }
@@ -4164,6 +4193,19 @@ final class AppModel: ObservableObject {
         previewRouting.defaultAuthProvider = "codex"
         previewRouting.defaultAuthChoice = "oauth"
         previewRouting.thinking = "medium"
+        let previewAgentAvatar: (String) -> CanonicalAvatarDescriptor = { agentId in
+            CanonicalAvatarDescriptor(
+                entityType: "agent",
+                entityId: agentId,
+                source: "generated",
+                style: CanonicalAvatarSystem.agentStyle,
+                seed: agentId,
+                rendererVersion: CanonicalAvatarSystem.rendererVersion,
+                uploadedAsset: nil,
+                version: 1,
+                updatedAt: "2026-08-19T00:00:00Z"
+            )
+        }
         account = fixture.account
         contacts = fixture.contacts
         let now = Date()
@@ -4191,6 +4233,12 @@ final class AppModel: ObservableObject {
                 description: "Plans and reviews product work.",
                 updatedAt: ISO8601DateFormatter().string(from: Date()),
                 ownerDisplayName: fixture.account.preferredName,
+                avatarUrl: CanonicalAvatarSystem.marker(
+                    style: CanonicalAvatarSystem.agentStyle,
+                    seed: "cloud_agent_research",
+                    version: 1
+                ),
+                avatar: previewAgentAvatar("cloud_agent_research"),
                 modelRouting: previewRouting
             )
         ]
@@ -4205,7 +4253,12 @@ final class AppModel: ObservableObject {
                 description: "Helps Maya answer support questions.",
                 updatedAt: ISO8601DateFormatter().string(from: Date()),
                 ownerDisplayName: "Maya Chen",
-                avatarUrl: fixture.contacts.first(where: { $0.accountId == "acct_maya" })?.avatarUrl
+                avatarUrl: CanonicalAvatarSystem.marker(
+                    style: CanonicalAvatarSystem.agentStyle,
+                    seed: "cloud_agent_support",
+                    version: 1
+                ),
+                avatar: previewAgentAvatar("cloud_agent_support")
             )
         ]
         providerAuthSnapshot = CloudProviderAuthSnapshot(

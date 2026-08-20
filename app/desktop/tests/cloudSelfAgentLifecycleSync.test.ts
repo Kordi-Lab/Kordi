@@ -1,3 +1,4 @@
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -13,7 +14,8 @@ import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kord
 
 const account: CloudAccount = {
   accountId: 'acct_me', displayName: 'Me Cloud', primaryEmail: 'me@example.com',
-  avatarUrl: null, nodeId: 'node_me', passwordSet: true,
+  avatarUrl: null,
+    avatar: cloudAccountAvatarFixture, nodeId: 'node_me', passwordSet: true,
 };
 
 function emptyState(messages: CanonicalSessionMessage[] = []): CanonicalSessionState {

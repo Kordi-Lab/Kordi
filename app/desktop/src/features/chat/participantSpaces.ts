@@ -333,7 +333,7 @@ function spaceIdForConversation(
 function avatarForParticipant(participant: ConversationParticipant): ParticipantSpaceAvatar {
   return {
     kind: participant.kind === 'agent' ? 'agent' : 'human',
-    seed: participant.avatarKey || participant.agentId || participant.humanId || participant.id || participant.name,
+    seed: participant.agentId || participant.avatarKey || participant.humanId || participant.id || participant.name,
     ...(isSelfParticipant(participant) ? { isSelf: true } : {}),
     imageUrl: participant.profileImageUrl ?? null,
     presenceStatus: participant.presenceStatus ?? null,
@@ -619,7 +619,7 @@ export function primaryAgentForConversation(conversation: Conversation): AgentId
   if (!agent) return null;
   return {
     name: agent.name,
-    avatarSeed: agent.avatarKey || agent.id || agent.name,
+    avatarSeed: agent.agentId || agent.avatarKey || agent.id || agent.name,
     profileImageUrl: agent.profileImageUrl ?? null,
   };
 }

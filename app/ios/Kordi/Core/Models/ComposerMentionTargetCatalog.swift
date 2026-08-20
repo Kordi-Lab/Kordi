@@ -57,7 +57,6 @@ enum ComposerMentionTargetCatalog {
             targets.append(defaultAgentTarget(
                 ownerAccountID: account.accountId,
                 ownerName: account.preferredName,
-                avatarSource: account.avatarUrl,
                 isCurrentAccount: true
             ))
             for contact in contacts
@@ -69,7 +68,6 @@ enum ComposerMentionTargetCatalog {
                 targets.append(defaultAgentTarget(
                     ownerAccountID: contact.accountId,
                     ownerName: contact.preferredName,
-                    avatarSource: contact.avatarUrl,
                     isCurrentAccount: false
                 ))
             }
@@ -88,7 +86,7 @@ enum ComposerMentionTargetCatalog {
                 agentId: agent.agentId,
                 ownerName: agent.ownerDisplayName
                     ?? (agent.ownerAccountId == account.accountId ? account.preferredName : nil),
-                avatarSource: agent.avatarUrl
+                avatarSource: agent.avatar.imageSource
             ))
         }
 
@@ -98,11 +96,10 @@ enum ComposerMentionTargetCatalog {
     private static func defaultAgentTarget(
         ownerAccountID: String,
         ownerName: String,
-        avatarSource: String?,
         isCurrentAccount: Bool
     ) -> ComposerMentionTarget {
         let agentID = isCurrentAccount
-            ? "cloud-local-agent"
+            ? CanonicalAvatarSystem.defaultAgentId
             : "cloud-agent:\(ownerAccountID)"
         return ComposerMentionTarget(
             id: "agent:\(agentID)",
@@ -111,7 +108,7 @@ enum ComposerMentionTargetCatalog {
             accountId: ownerAccountID,
             agentId: agentID,
             ownerName: ownerName,
-            avatarSource: avatarSource
+            avatarSource: nil
         )
     }
 

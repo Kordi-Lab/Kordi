@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::avatars::{AvatarDescriptor, AvatarMutationRequest};
+
 pub const CLOUD_AGENT_ACCESS_PRIVATE: &str = "private";
 pub const CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS: &str = "participant_conversations";
 pub const CLOUD_AGENT_STATUS_ACTIVE: &str = "active";
@@ -35,6 +37,8 @@ pub struct CloudAgentDefinition {
     pub name: String,
     pub role: String,
     pub description: Option<String>,
+    pub avatar_url: Option<String>,
+    pub avatar: AvatarDescriptor,
     pub system_prompt: String,
     pub source_summary: Option<String>,
     pub boundaries: Vec<String>,
@@ -56,6 +60,8 @@ pub struct SharedCloudAgentSummary {
     pub name: String,
     pub role: String,
     pub description: Option<String>,
+    pub avatar_url: Option<String>,
+    pub avatar: AvatarDescriptor,
     pub updated_at: String,
 }
 
@@ -66,6 +72,8 @@ pub struct CreateCloudAgentRequest {
     pub name: String,
     pub role: String,
     pub description: Option<String>,
+    #[serde(default)]
+    pub avatar_mutation: Option<AvatarMutationRequest>,
     pub system_prompt: String,
     pub source_summary: Option<String>,
     #[serde(default)]
@@ -85,6 +93,7 @@ pub struct UpdateCloudAgentRequest {
     pub name: Option<String>,
     pub role: Option<String>,
     pub description: Option<String>,
+    pub avatar_mutation: Option<AvatarMutationRequest>,
     pub system_prompt: Option<String>,
     pub source_summary: Option<String>,
     pub boundaries: Option<Vec<String>>,

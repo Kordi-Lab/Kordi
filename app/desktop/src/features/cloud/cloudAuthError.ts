@@ -3,8 +3,10 @@ export type CloudAuthErrorCode =
   | 'weak_password'
   | 'email_in_use'
   | 'invalid_credentials'
-  | 'missing_avatar'
   | 'invalid_avatar'
+  | 'invalid_avatar_seed'
+  | 'invalid_avatar_version'
+  | 'avatar_conflict'
   | 'invalid_session'
   | 'invalid_session_id'
   | 'invalid_attachment'
@@ -56,7 +58,8 @@ type ServerErrorBody = { errorCode?: string; message?: string };
 
 const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'invalid_email', 'weak_password', 'email_in_use', 'invalid_credentials',
-  'missing_avatar', 'invalid_avatar', 'invalid_session', 'invalid_session_id',
+  'invalid_avatar', 'invalid_avatar_seed', 'invalid_avatar_version', 'avatar_conflict',
+  'invalid_session', 'invalid_session_id',
   'invalid_attachment', 'invalid_provider_auth_snapshot', 'provider_auth_not_configured',
   'provider_auth_snapshot_not_found', 'oauth_not_configured', 'requester_mismatch',
   'agent_not_available', 'owner_online', 'rate_limited', 'account_missing',

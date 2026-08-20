@@ -1,3 +1,4 @@
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -14,7 +15,8 @@ import {
 
 const account: CloudAccount = {
   accountId: 'acct_me', displayName: 'Mayas', primaryEmail: 'taylor@example.com',
-  avatarUrl: null, nodeId: 'node_me', passwordSet: true,
+  avatarUrl: null,
+    avatar: cloudAccountAvatarFixture, nodeId: 'node_me', passwordSet: true,
 };
 
 test('owner execution snapshots stream the real redacted trajectory to the owners devices', () => {

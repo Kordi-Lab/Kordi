@@ -692,7 +692,7 @@ function MessageBubbleView({
 } & MessageSelectionProps) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
-  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
+  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
   const isPinned = Boolean(selectionId && pinnedMessageId === selectionId);
   const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, isPinned };

@@ -344,7 +344,7 @@
       "count": 2
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 3
+      "count": 2
     }
   },
   "src/features/cloud/useScheduledTasks.ts": {
@@ -487,9 +487,6 @@
   "src/kordi-app/cloud/CloudLoginPage.tsx": {
     "@typescript-eslint/no-misused-promises": {
       "count": 1
-    },
-    "react-refresh/only-export-components": {
-      "count": 2
     }
   },
   "src/kordi-app/components.tsx": {
@@ -502,7 +499,7 @@
       "count": 2
     },
     "react-refresh/only-export-components": {
-      "count": 7
+      "count": 6
     }
   },
   "src/kordi-app/components/avatarOverrides.ts": {

@@ -6,129 +6,178 @@ pub(super) async fn update_me(
     Json(req): Json<UpdateProfileRequest>,
 ) -> Response {
     let display_name = clean_profile_display_name(req.display_name.as_deref());
-    let avatar_url = match clean_optional_uploaded_avatar_url(req.avatar_url.as_deref()) {
-        Ok(value) => value,
-        Err(response) => return *response,
-    };
+    let avatar_mutation = req.avatar_mutation;
     let now = Utc::now().to_rfc3339();
-    if query(
-        "UPDATE cloud_accounts \
-         SET display_name = COALESCE($1, display_name), \
-             avatar_url = COALESCE($2, avatar_url), \
-             updated_at = $3 \
-         WHERE account_id = $4",
-    )
-    .bind(display_name.as_deref())
-    .bind(avatar_url.as_deref())
-    .bind(&now)
-    .bind(&session.account_id)
-    .execute(state.db_pool())
-    .await
-    .is_err()
-    {
-        return err(
-            "server_error",
-            "Could not update profile.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-    match account_response_row(state.db_pool(), &session.account_id).await {
-        Ok(Some(account)) => {
-            let observers: Vec<(String,)> =
-                query_as("SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1")
-                    .bind(&session.account_id)
-                    .fetch_all(state.db_pool())
-                    .await
-                    .unwrap_or_default();
-            let mut observer_account_ids: HashSet<String> = observers
-                .into_iter()
-                .map(|(observer_account_id,)| observer_account_id)
-                .collect();
-            observer_account_ids.insert(session.account_id.clone());
-            if !observer_account_ids.is_empty() {
-                let events = state.events().clone();
-                let account_id = account.account_id.clone();
-                let display_name = account.display_name.clone();
-                let avatar_url = account.avatar_url.clone();
-                tokio::spawn(async move {
-                    for observer_account_id in observer_account_ids {
-                        events
-                            .publish_profile_updated(
-                                &account_id,
-                                &observer_account_id,
-                                display_name.as_deref(),
-                                avatar_url.as_deref(),
-                            )
-                            .await;
-                    }
-                });
-            }
-            Json(account).into_response()
+    let pool = state.db_pool();
+    let mut tx = match pool.begin().await {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not update profile.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
         }
-        Ok(None) => err(
+    };
+    let current: Option<StoredAvatarRow> = match query_as(
+        "SELECT avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_url, avatar_version, avatar_updated_at \
+         FROM cloud_accounts WHERE account_id = $1 FOR UPDATE",
+    )
+    .bind(&session.account_id)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return err("server_error", "Could not update profile.", StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    let Some(current) = current else {
+        return err(
             "account_missing",
             "Account no longer exists.",
             StatusCode::NOT_FOUND,
-        ),
-        Err(_) => err(
-            "server_error",
-            "Could not fetch account.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ),
-    }
-}
-
-pub(super) fn decoded_base64_len(encoded: &str) -> usize {
-    let trimmed = encoded.trim_end_matches('=');
-    (trimmed.len() * 3) / 4
-}
-
-pub(super) fn clean_optional_uploaded_avatar_url(
-    value: Option<&str>,
-) -> Result<Option<String>, Box<Response>> {
-    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(None);
+        );
     };
-    if raw.starts_with(AVATAR_SEED_PREFIX) {
-        return Err(boxed_err(
-            "invalid_avatar",
-            "Avatar must be an uploaded image.",
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-    if let Some(payload) = raw
-        .strip_prefix("data:image/png;base64,")
-        .or_else(|| raw.strip_prefix("data:image/jpeg;base64,"))
-        .or_else(|| raw.strip_prefix("data:image/webp;base64,"))
-    {
-        if decoded_base64_len(payload) <= AVATAR_UPLOAD_MAX_BYTES {
-            return Ok(Some(raw.to_string()));
+    let current_avatar = descriptor_from_parts(
+        "human".to_string(),
+        session.account_id.clone(),
+        current.into(),
+    );
+    let next_avatar = match avatar_mutation.as_ref() {
+        Some(mutation) if mutation.expected_version.is_none() => {
+            return err(
+                "invalid_avatar_version",
+                "Refresh the profile before changing its avatar.",
+                StatusCode::BAD_REQUEST,
+            );
         }
-        return Err(boxed_err(
-            "invalid_avatar",
-            "Avatar payload is too large after processing.",
-            StatusCode::BAD_REQUEST,
-        ));
+        Some(mutation) => {
+            if preserve_avatar_render_key(&mut tx, &current_avatar)
+                .await
+                .is_err()
+            {
+                return err(
+                    "server_error",
+                    "Could not preserve avatar history.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+            match apply_avatar_mutation(&current_avatar, mutation, &now) {
+                Ok(value) => value,
+                Err(AvatarMutationError::Conflict) => {
+                    return err(
+                        "avatar_conflict",
+                        "Avatar changed on another device. Refresh and try again.",
+                        StatusCode::CONFLICT,
+                    );
+                }
+                Err(AvatarMutationError::Invalid(message)) => {
+                    return err("invalid_avatar", message, StatusCode::BAD_REQUEST);
+                }
+            }
+        }
+        None => current_avatar,
+    };
+    let avatar_url = next_avatar.image_url();
+    let row: Option<AccountRecordRow> = match query_as(
+        "UPDATE cloud_accounts SET \
+            display_name = COALESCE($1, display_name), avatar_url = $2, avatar_source = $3, \
+            avatar_style = $4, avatar_seed = $5, avatar_renderer_version = $6, avatar_version = $7, \
+            avatar_updated_at = $8, updated_at = $9 \
+         WHERE account_id = $10 \
+         RETURNING account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
+            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at",
+    )
+    .bind(display_name.as_deref())
+    .bind(&avatar_url)
+    .bind(&next_avatar.source)
+    .bind(&next_avatar.style)
+    .bind(&next_avatar.seed)
+    .bind(&next_avatar.renderer_version)
+    .bind(next_avatar.version)
+    .bind(&next_avatar.updated_at)
+    .bind(&now)
+    .bind(&session.account_id)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return err("server_error", "Could not update profile.", StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    let Some(row) = row else {
+        return err(
+            "account_missing",
+            "Account no longer exists.",
+            StatusCode::NOT_FOUND,
+        );
+    };
+    let account = account_response_from_row(row);
+    let recipients = match crate::chat_sync::store::identity_sync_recipient_ids(
+        &mut tx,
+        &session.account_id,
+        true,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not synchronize profile.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+    let viewer_recipients = recipients
+        .iter()
+        .filter(|account_id| *account_id != &session.account_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    if crate::chat_sync::store::append_user_sync_events_in_transaction(
+        &mut tx,
+        std::slice::from_ref(&session.account_id),
+        "account.profile.updated",
+        None,
+        &serde_json::json!({ "account": account }),
+    )
+    .await
+    .is_err()
+        || crate::chat_sync::store::append_user_sync_events_in_transaction(
+            &mut tx,
+            &viewer_recipients,
+            "account.directory.changed",
+            None,
+            &serde_json::json!({
+                "accountId": account.account_id,
+                "avatarVersion": account.avatar.version,
+            }),
+        )
+        .await
+        .is_err()
+        || tx.commit().await.is_err()
+    {
+        return err(
+            "server_error",
+            "Could not synchronize profile.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
     }
-    Err(boxed_err(
-        "invalid_avatar",
-        "Avatar must be a PNG, JPEG, or WebP image.",
-        StatusCode::BAD_REQUEST,
-    ))
-}
 
-pub(super) fn clean_required_signup_avatar_url(
-    value: Option<&str>,
-) -> Result<String, Box<Response>> {
-    match clean_optional_uploaded_avatar_url(value) {
-        Ok(Some(value)) => Ok(value),
-        Ok(None) => Err(boxed_err(
-            "missing_avatar",
-            "Upload an avatar to sign up.",
-            StatusCode::BAD_REQUEST,
-        )),
-        Err(response) => Err(response),
-    }
+    let events = state.events().clone();
+    let account_for_event = account.clone();
+    let observer_account_ids = recipients;
+    tokio::spawn(async move {
+        for observer_account_id in observer_account_ids {
+            events
+                .publish_profile_updated(
+                    &account_for_event.account_id,
+                    &observer_account_id,
+                    account_for_event.display_name.as_deref(),
+                    account_for_event.avatar_url.as_deref(),
+                )
+                .await;
+        }
+    });
+    Json(account).into_response()
 }
 
 pub(super) async fn me(

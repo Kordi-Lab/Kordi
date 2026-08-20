@@ -715,7 +715,7 @@ export function agentCanonicalIdentityRequest(agent: Agent): UpsertCanonicalIden
     sourceIdentityId: agent.sourceParticipantId ?? null,
     humanId: null,
     agentId: agentId || null,
-    avatarKey: agent.avatarSeed ?? (agentId || agent.id),
+    avatarKey: agentId || agent.avatarSeed || agent.id,
     profileImageUrl: agent.profileImageUrl ?? null,
     metadata: {
       agentId: agent.id,

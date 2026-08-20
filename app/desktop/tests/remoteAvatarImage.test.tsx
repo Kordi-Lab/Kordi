@@ -7,7 +7,11 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { IdentityAvatar } from '../src/kordi-app/components/IdentityAvatar';
+import {
+  getLocalAgentAvatarSeed,
+  getIdentityAvatarKey,
+  IdentityAvatar,
+} from '../src/kordi-app/components/IdentityAvatar';
 import {
   clearRemoteAvatarImageCacheForTests,
   getRemoteAvatarImageCacheStatsForTests,
@@ -105,6 +109,19 @@ test('native avatar failures do not authorize a renderer-side URL fallback', () 
   assert.match(avatarSource, /remoteAvatar\.status === 'ready' \? remoteAvatar\.dataUrl : null/);
   assert.match(loaderSource, /desktop_fetch_remote_image_data_url/);
   assert.doesNotMatch(avatarSource, /remoteAvatar\.status === 'failed'[^\n]+originalImageUrl/);
+});
+
+test('generated agent avatars use the canonical Thumbs renderer', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/IdentityAvatar.tsx', import.meta.url), 'utf8');
+
+  assert.equal(getLocalAgentAvatarSeed(), 'cloud-local-agent');
+  assert.match(source, /generatedAvatarPreviewUrl\([\s\S]*AGENT_CANONICAL_AVATAR_STYLE/);
+  assert.doesNotMatch(source, /AgentIdenticonAvatar|shapeRendering="crispEdges"/);
+});
+
+test('agent avatar keys preserve their canonical model identity', () => {
+  assert.equal(getIdentityAvatarKey('agent', 'local:123'), 'agent:local:123');
+  assert.equal(getIdentityAvatarKey('agent', 'local:123', 'agent:local:123'), 'agent:local:123');
 });
 
 test('resolved remote avatars stay within a byte-budgeted LRU cache', async () => {
@@ -267,6 +284,57 @@ test('duplicate mounted avatars share one request and update together', async ()
     });
     assert.equal(host.querySelectorAll('[data-avatar-state="ready"]').length, 2);
     assert.equal(host.querySelectorAll('img[src="data:image/png;base64,c2hhcmVk"]').length, 2);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    installed.restore();
+  }
+});
+
+test('an avatar keeps its last valid image while a replacement loads', async () => {
+  const installed = installNativeDom();
+  clearRemoteAvatarImageCacheForTests();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: Root | null = createRoot(host);
+  let resolveReplacement: ((value: string) => void) | null = null;
+  const previousUrl = 'https://images.example/alex-v1.png';
+  const replacementUrl = 'https://images.example/alex-v2.png';
+
+  try {
+    await loadAvatarThroughNativeProxy(
+      previousUrl,
+      async <T,>() => 'data:image/png;base64,b2xk' as T,
+    );
+    await act(async () => {
+      root?.render(
+        <IdentityAvatar kind="human" seed="acct_alex" name="Alex" imageUrl={previousUrl} />,
+      );
+    });
+    await act(async () => {
+      host.querySelector('img')?.dispatchEvent(new window.Event('load'));
+    });
+    const replacement = loadAvatarThroughNativeProxy(
+      replacementUrl,
+      async <T,>() => new Promise<T>((resolve) => {
+        resolveReplacement = (value) => resolve(value as T);
+      }),
+    );
+    await act(async () => {
+      root?.render(
+        <IdentityAvatar kind="human" seed="acct_alex" name="Alex" imageUrl={replacementUrl} />,
+      );
+    });
+    assert.match(host.innerHTML, /data-avatar-state="stale"/);
+    assert.match(host.innerHTML, /src="data:image\/png;base64,b2xk"/);
+
+    await act(async () => {
+      resolveReplacement?.('data:image/png;base64,bmV3');
+      await replacement;
+    });
+    assert.match(host.innerHTML, /data-avatar-state="ready"/);
+    assert.match(host.innerHTML, /src="data:image\/png;base64,bmV3"/);
   } finally {
     await act(async () => root?.unmount());
     root = null;

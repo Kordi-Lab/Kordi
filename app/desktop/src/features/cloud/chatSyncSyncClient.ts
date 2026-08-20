@@ -290,8 +290,11 @@ export class ChatSyncSyncClient {
       }];
     }
     if ([
+      'account.profile.updated',
+      'account.directory.changed',
       'agent.definition.upserted',
       'agent.definition.archived',
+      'agent.directory.changed',
       'provider-auth.updated',
       'task.upsert',
       'artifact.upsert',

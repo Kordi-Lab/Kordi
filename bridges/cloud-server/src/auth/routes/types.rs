@@ -16,8 +16,8 @@ pub struct SignupRequest {
     pub password: String,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
-    #[serde(rename = "avatarUrl")]
-    pub avatar_url: Option<String>,
+    #[serde(rename = "avatarSeed")]
+    pub avatar_seed: String,
     pub device: Option<crate::auth::devices::DeviceRegistrationRequest>,
 }
 
@@ -72,11 +72,11 @@ pub struct AuthCapabilitiesResponse {
 pub struct UpdateProfileRequest {
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
-    #[serde(rename = "avatarUrl")]
-    pub avatar_url: Option<String>,
+    #[serde(rename = "avatarMutation")]
+    pub avatar_mutation: Option<AvatarMutationRequest>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct AccountResponse {
     #[serde(rename = "accountId")]
     pub account_id: String,
@@ -88,6 +88,7 @@ pub struct AccountResponse {
     pub primary_email: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
+    pub avatar: AvatarDescriptor,
     #[serde(rename = "nodeId")]
     pub node_id: Option<String>,
     #[serde(rename = "passwordSet")]

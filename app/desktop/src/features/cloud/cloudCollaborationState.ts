@@ -26,7 +26,6 @@ import type {
   DesktopChatTurnSnapshot,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
-
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { formatDesktopClockTime, formatDesktopLastActiveLabel } from '@/lib/time';
 
@@ -41,6 +40,7 @@ import {
 } from './cloudCollaborationMemo';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { cloudAvatarImageUrl } from './avatar';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupParticipantFromContact,
@@ -418,7 +418,7 @@ export function buildCloudCollaborationHost(
     discoveryMode: 'contacts',
     humanVisibilityPolicy: 'server-approval',
     contactApprovalPolicy: 'approval-required',
-    profileImageUrl: cloudAvatarImageUrl(account.avatarUrl),
+    profileImageUrl: cloudAvatarImageUrl(canonicalAvatarImageSource(account.avatar)),
     activeAgentId: 'cloud-local-agent',
     agents: [{
       id: 'cloud-local-agent',
@@ -436,7 +436,7 @@ export function buildCloudCollaborationHost(
       fallbackAuthChoice: null,
       thinking: localAgentRuntimeRoute?.thinking ?? null,
       reachabilityPolicy: 'contacts',
-      profileImageUrl: cloudAvatarImageUrl(account.avatarUrl),
+      profileImageUrl: null,
     }],
     visiblePeers: peers,
     visiblePeerCount: peers.length,
@@ -835,7 +835,7 @@ export function buildCloudDesktopCollaborationState({
       account.displayName ?? '',
       account.primaryEmail,
       account.nodeId ?? '',
-      account.avatarUrl ?? '',
+      canonicalAvatarImageSource(account.avatar) ?? '',
       runtime,
       cleanCloudSessionId(cloudSessionId) ?? '',
       forceRead ? 'read' : 'unread',

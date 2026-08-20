@@ -810,7 +810,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         let participants = ([CloudCallParticipant(
             accountId: accountID,
             displayName: model?.account?.preferredName ?? "You",
-            avatarUrl: model?.account?.avatarUrl,
+            avatarUrl: model?.account?.avatar.imageSource,
             state: "joined",
             joinedAt: ISO8601DateFormatter().string(from: Date()),
             leftAt: nil

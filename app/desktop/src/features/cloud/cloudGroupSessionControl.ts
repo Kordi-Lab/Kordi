@@ -16,6 +16,7 @@ import type {
 } from '@/kordi-app/types';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import type { CloudPublicProfile } from './authClient';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 import {
   cloudGroupAdminAccountIds,
   cloudGroupIdentityRequest,
@@ -212,7 +213,7 @@ export async function applyCloudGroupSessionControl({
                 accountId: account.accountId,
                 kordiId: account.kordiId,
                 displayName: account.displayName,
-                avatarUrl: account.avatarUrl,
+                avatarUrl: canonicalAvatarImageSource(account.avatar),
                 nodeId: account.nodeId,
                 isContact: false,
                 isSelf: true,

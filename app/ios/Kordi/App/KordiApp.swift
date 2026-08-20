@@ -465,13 +465,13 @@ struct MainTabView: View {
         [
             model.account?.accountId ?? "",
             model.account?.preferredName ?? "Me",
-            model.account?.avatarUrl ?? "",
+            model.account?.avatar.imageSource ?? "",
         ].joined(separator: "|")
     }
 
     private func refreshAccountTabImage() async {
         let sourceImage: UIImage?
-        if let source = AvatarImageLoader.normalizedSource(model.account?.avatarUrl) {
+        if let source = AvatarImageLoader.normalizedSource(model.account?.avatar.imageSource) {
             sourceImage = await AvatarImageLoader.image(from: source)
         } else {
             sourceImage = nil

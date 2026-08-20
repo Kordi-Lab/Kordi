@@ -8,7 +8,6 @@ import type {
   CanonicalSessionMessage,
   DesktopCollaborationSessionParticipant,
 } from '@/kordi-app/types';
-
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -20,6 +19,7 @@ import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { normalizeKordiId } from './kordiId';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
@@ -323,7 +323,7 @@ function cloudMessageActionFromRecord(value: unknown): MessageActionMetadata | n
 function cloudAvatarUrlForLimit(value: string | null | undefined, maxDataUrlLength: number): string | null {
   const url = cleanText(value);
   if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url.length <= 4096 ? url : null;
+  if (url.startsWith('kordi-avatar://') || /^https?:\/\//i.test(url)) return url.length <= 4096 ? url : null;
   if (!/^data:image\/(?:png|jpeg|webp);base64,/i.test(url)) return null;
   return url.length <= maxDataUrlLength ? url : null;
 }
@@ -724,7 +724,7 @@ export function cloudGroupSelfParticipant(account: CloudAccount, role: CloudGrou
     accountId: account.accountId,
     ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(account.displayName) || cleanText(account.primaryEmail) || account.accountId,
-    avatarUrl: syncableCloudGroupAvatarUrl(account.avatarUrl),
+    avatarUrl: syncableCloudGroupAvatarUrl(canonicalAvatarImageSource(account.avatar)),
     role,
   };
 }

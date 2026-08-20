@@ -45,7 +45,7 @@ fn signup_body(email: &str, password: &str) -> Body {
             "email": email,
             "password": password,
             "displayName": "Scheduled Tool E2E",
-            "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+            "avatarSeed": "scheduled_tool_avatar",
         })
         .to_string(),
     )
@@ -79,14 +79,22 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
 }
 
 async fn seed_account(pool: &PgPool, account_id: &str) {
+    let avatar_url =
+        format!("kordi-avatar://dicebear-rust-10.6.0-styles-10.5.0/lorelei/{account_id}?version=1");
     query(
-        "INSERT INTO cloud_accounts(account_id, primary_email, password_hash, display_name, avatar_url, created_at, updated_at)
-         VALUES ($1, $2, 'hash', $3, NULL, '2026-06-08T00:00:00Z', '2026-06-08T00:00:00Z')
+        "INSERT INTO cloud_accounts(
+             account_id, primary_email, password_hash, display_name, avatar_url, created_at,
+             updated_at, avatar_source, avatar_style, avatar_seed, avatar_renderer_version,
+             avatar_version, avatar_updated_at
+         ) VALUES ($1, $2, 'hash', $3, $4, '2026-06-08T00:00:00Z',
+             '2026-06-08T00:00:00Z', 'generated', 'lorelei', $1,
+             'dicebear-rust-10.6.0-styles-10.5.0', 1, '2026-06-08T00:00:00Z')
          ON CONFLICT (account_id) DO NOTHING",
     )
     .bind(account_id)
     .bind(format!("{account_id}@example.com"))
     .bind(account_id)
+    .bind(avatar_url)
     .execute(pool)
     .await
     .expect("seed account");

@@ -106,8 +106,9 @@ async fn account(pool: &PgPool, label: &str) -> String {
     let account_id = format!("chat-{label}-{}", Uuid::new_v4().simple());
     let now = chrono::Utc::now().to_rfc3339();
     query(
-        "INSERT INTO cloud_accounts(account_id, display_name, avatar_url, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $4)",
+        "INSERT INTO cloud_accounts(account_id, display_name, avatar_url, created_at, updated_at, avatar_source,
+             avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at) VALUES ($1, $2, $3, $4, $4, 'uploaded', 'lorelei', $1,
+             'dicebear-rust-10.6.0-styles-10.5.0', 1, $4)",
     )
     .bind(&account_id)
     .bind(label)

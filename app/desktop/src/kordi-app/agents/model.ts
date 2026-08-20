@@ -1,4 +1,5 @@
 import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import { newCanonicalAvatarSeed } from '@/features/cloud/canonicalAvatar';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 
@@ -35,6 +36,39 @@ export type AgentsPageProps = {
   onArchiveCloudAgent?: (agent: Agent) => Promise<void>;
   onSetAgentSkillEnabled?: (agent: Agent, skill: string, enabled: boolean) => Promise<void> | void;
 };
+
+export function cloudAgentAvatarControls(
+  agent: Agent,
+  update?: AgentsPageProps['onUpdateCloudAgent'],
+) {
+  if (!agent.cloudAgentId || !update) return {};
+  return {
+    onUpload: async (uploadedAsset: string) => {
+      await update(agent, {
+        avatarMutation: {
+          action: 'upload',
+          uploadedAsset,
+          expectedVersion: agent.cloudAgentAvatarVersion,
+        },
+      });
+    },
+    onGenerate: async () => {
+      await update(agent, {
+        avatarMutation: agent.cloudAgentAvatarSource === 'uploaded'
+          ? {
+            action: 'remove_upload',
+            expectedVersion: agent.cloudAgentAvatarVersion,
+          }
+          : {
+            action: 'regenerate',
+            seed: newCanonicalAvatarSeed(),
+            expectedVersion: agent.cloudAgentAvatarVersion,
+          },
+      });
+    },
+    generateLabel: agent.cloudAgentAvatarSource === 'uploaded' ? 'Use generated' : 'Generate another',
+  };
+}
 
 export type AgentConfigDraft = {
   systemPrompt: string;

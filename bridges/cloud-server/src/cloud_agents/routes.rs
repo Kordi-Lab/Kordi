@@ -91,6 +91,11 @@ fn store_error_response(context: &str, error: CloudAgentStoreError) -> Response 
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }
+        CloudAgentStoreError::AvatarConflict => error_response(
+            "avatar_conflict",
+            "Avatar changed on another device. Refresh and try again.",
+            StatusCode::CONFLICT,
+        ),
     }
 }
 

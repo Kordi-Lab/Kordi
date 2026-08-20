@@ -59,7 +59,7 @@ fn signup_body(email: &str, password: &str) -> Body {
             "email": email,
             "password": password,
             "displayName": "E2E",
-            "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+            "avatarSeed": "e2e_avatar_seed",
         })
         .to_string(),
     )
@@ -88,7 +88,7 @@ fn signup_body_with_device(email: &str, password: &str, device: serde_json::Valu
             "email": email,
             "password": password,
             "displayName": "E2E",
-            "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+            "avatarSeed": "e2e_avatar_seed",
             "device": device,
         })
         .to_string(),

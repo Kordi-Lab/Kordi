@@ -27,7 +27,7 @@ export class CloudIdentityAuthClient {
     email: string;
     password: string;
     displayName?: string;
-    avatarUrl?: string;
+    avatarSeed: string;
   }): Promise<CloudAuthResult> {
     const device = await this.deviceRegistration();
     return this.request<CloudAuthResult>(

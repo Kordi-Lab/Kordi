@@ -300,30 +300,6 @@ pub(super) async fn oauth_callback(
     }
 }
 
-pub(super) fn oauth_account_avatar_url(
-    existing_avatar_url: Option<&str>,
-    provider_avatar_url: Option<&str>,
-) -> Option<String> {
-    let existing = existing_avatar_url.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    });
-    let provider = provider_avatar_url.and_then(|value| {
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
-    });
-
-    if provider.is_some()
-        && existing.as_deref().is_none_or(|value| {
-            value.starts_with(AVATAR_SEED_PREFIX) || !value.starts_with("data:")
-        })
-    {
-        return provider;
-    }
-
-    existing.or(provider)
-}
-
 pub(super) async fn complete_oauth_login(
     pool: &PgPool,
     provider: OAuthProvider,
@@ -362,34 +338,39 @@ pub(super) async fn complete_oauth_login(
     let display_name = clean_profile_display_name(profile.display_name.as_deref())
         .or_else(|| profile.username.clone());
     let provider_avatar_url = clean_profile_avatar_url(profile.avatar_url.as_deref());
-    let existing_account_avatar_url: Option<(Option<String>,)> =
-        query_as("SELECT avatar_url FROM cloud_accounts WHERE account_id = $1")
-            .bind(&account_id)
-            .fetch_optional(pool)
+    let (avatar, is_new_account) =
+        resolve_oauth_account_avatar(pool, &account_id, provider_avatar_url.as_deref(), &now)
             .await?;
-    let is_new_account = existing_account_avatar_url.is_none();
-    let avatar_url = oauth_account_avatar_url(
-        existing_account_avatar_url
-            .as_ref()
-            .and_then(|row| row.0.as_deref()),
-        provider_avatar_url.as_deref(),
-    );
+    let canonical_avatar_url = avatar.image_url();
 
     let mut tx = pool.begin().await?;
     query(
-        "INSERT INTO cloud_accounts (account_id, display_name, primary_email, avatar_url, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $5) \
+        "INSERT INTO cloud_accounts (account_id, display_name, primary_email, avatar_url, created_at, updated_at, \
+            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11) \
          ON CONFLICT (account_id) DO UPDATE SET \
            display_name = COALESCE(cloud_accounts.display_name, excluded.display_name), \
            primary_email = COALESCE(cloud_accounts.primary_email, excluded.primary_email), \
            avatar_url = excluded.avatar_url, \
+           avatar_source = excluded.avatar_source, \
+           avatar_style = excluded.avatar_style, \
+           avatar_seed = excluded.avatar_seed, \
+           avatar_renderer_version = excluded.avatar_renderer_version, \
+           avatar_version = excluded.avatar_version, \
+           avatar_updated_at = excluded.avatar_updated_at, \
            updated_at = excluded.updated_at",
     )
     .bind(&account_id)
     .bind(display_name.as_deref())
     .bind(normalized_email.as_deref())
-    .bind(avatar_url.as_deref())
+    .bind(&canonical_avatar_url)
     .bind(&now)
+    .bind(&avatar.source)
+    .bind(&avatar.style)
+    .bind(&avatar.seed)
+    .bind(&avatar.renderer_version)
+    .bind(avatar.version)
+    .bind(&avatar.updated_at)
     .execute(&mut *tx)
     .await?;
 
@@ -414,7 +395,7 @@ pub(super) async fn complete_oauth_login(
     .bind(profile.username.as_deref())
     .bind(normalized_email.as_deref())
     .bind(profile.email_verified)
-    .bind(avatar_url.as_deref())
+    .bind(&canonical_avatar_url)
     .bind(&now)
     .execute(&mut *tx)
     .await?;
@@ -465,6 +446,3 @@ pub(super) async fn complete_oauth_login(
         is_new_authorization,
     ))
 }
-
-#[cfg(test)]
-mod tests;

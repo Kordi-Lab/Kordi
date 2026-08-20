@@ -2,7 +2,7 @@ import { memo, useEffect, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
-import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopCollaborationIdentitySnapshot, DesktopCollaborationOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
@@ -59,35 +59,10 @@ function participantProfileImageUrl(activeConv: ActiveConversation, participant:
     ?? null;
 }
 
-function participantAvatarSeed(activeConv: ActiveConversation, participant: string, isAgent: boolean, localProfileSeed?: string, localAgentSeed?: string) {
+function participantAvatarSeed(activeConv: ActiveConversation, participant: string) {
   const normalizedParticipant = participant.trim();
   const explicitSeed = activeConv.participantAvatarSeeds?.[participant] ?? activeConv.participantAvatarSeeds?.[normalizedParticipant];
-  if (explicitSeed?.trim()) return explicitSeed;
-
-  const identity = activeConv.identity;
-
-  if (/^(you|me)$/i.test(normalizedParticipant)) {
-    return localProfileSeed || getLocalProfileAvatarSeed();
-  }
-  if (isAgent) {
-    if (/^(kordi|agent|assistant|my\s+.+)$/i.test(normalizedParticipant)) {
-      return localAgentSeed || normalizedParticipant;
-    }
-    if (identity?.localAgentName && normalizedParticipant === identity.localAgentName) {
-      return identity.localAgentId || identity.localAgentNodeId || localAgentSeed || identity.localAgentName;
-    }
-    if (identity?.remoteAgentName && normalizedParticipant === identity.remoteAgentName) {
-      return identity.remoteAgentId || identity.remoteAgentNodeId || identity.remoteAgentName;
-    }
-    return normalizedParticipant;
-  }
-  if (identity?.localHumanName && normalizedParticipant === identity.localHumanName) {
-    return identity.localHumanId || identity.localHumanName;
-  }
-  if (identity?.remoteHumanName && normalizedParticipant === identity.remoteHumanName) {
-    return identity.remoteHumanId || identity.remoteHumanNodeId || identity.remoteHumanName;
-  }
-  return normalizedParticipant;
+  return explicitSeed?.trim() || normalizedParticipant;
 }
 
 function canonicalParticipantOwnerIsSelf(activeConv: ActiveConversation, participant: NonNullable<ActiveConversation['canonicalParticipants']>[number]) {
@@ -119,20 +94,9 @@ function canonicalParticipantOwnerLabel(activeConv: ActiveConversation, particip
 }
 
 function canonicalParticipantAvatarSeed(
-  activeConv: ActiveConversation,
   participant: NonNullable<ActiveConversation['canonicalParticipants']>[number],
-  localProfileSeed?: string,
-  localAgentSeed?: string,
 ) {
-  const fallbackSeed = participant.avatarKey?.trim() || participant.name;
-  const isSelfHuman = canonicalParticipantIsSelfHuman(participant);
-  if (isSelfHuman) return localProfileSeed || fallbackSeed;
-
-  const isLocalOwnedAgent = participant.kind === 'agent'
-    && (participant.source === 'local' || canonicalParticipantOwnerIsSelf(activeConv, participant));
-  if (isLocalOwnedAgent) return localAgentSeed || fallbackSeed;
-
-  return fallbackSeed;
+  return participant.avatarKey?.trim() || participant.agentId?.trim() || participant.id;
 }
 
 function identityAvatarPresenceStatus(status?: string | null) {
@@ -244,8 +208,6 @@ function ChatDetailPanelView({
   onOpenArtifact,
   onNavigateToResponse,
 }: ChatDetailPanelProps) {
-  const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
-  const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
   const artifactPreviewBaseRoot = chatArtifactPreviewBaseRoot({
@@ -291,7 +253,7 @@ function ChatDetailPanelView({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={canonicalParticipantAvatarSeed(activeConv, participant, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
+                      seed={canonicalParticipantAvatarSeed(participant)}
                       isSelf={isSelfHuman}
                       imageUrl={participant.profileImageUrl}
                       name={displayName}
@@ -316,7 +278,7 @@ function ChatDetailPanelView({
                   <span className="flex min-w-0 items-center gap-2">
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
-                      seed={participantAvatarSeed(activeConv, participant, isAgent, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
+                      seed={participantAvatarSeed(activeConv, participant)}
                       isSelf={isSelfHuman}
                       imageUrl={participantProfileImageUrl(activeConv, participant)}
                       name={displayName}

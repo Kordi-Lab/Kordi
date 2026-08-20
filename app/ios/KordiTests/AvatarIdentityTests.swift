@@ -30,19 +30,36 @@ final class AvatarIdentityTests: XCTestCase {
         XCTAssertNil(AvatarImageLoader.normalizedSource("file:///private/avatar.png"))
     }
 
-    func testAgentIdenticonMatchesTheMacDesktopGenerator() {
-        let parts = AgentIdenticonGenerator.parts(seed: "cloud_agent_research")
+    func testCanonicalAvatarMarkerResolvesToThePinnedKordiRenderer() throws {
+        let marker = try XCTUnwrap(CanonicalAvatarSystem.marker(
+            style: CanonicalAvatarSystem.humanStyle,
+            seed: "acct_123",
+            version: 4
+        ))
+        let parsed = try XCTUnwrap(CanonicalAvatarSystem.marker(from: marker))
+        XCTAssertEqual(parsed.style, "lorelei")
+        XCTAssertEqual(parsed.seed, "acct_123")
+        XCTAssertEqual(parsed.version, 4)
 
-        XCTAssertEqual(parts.paletteIndex, 0)
-        XCTAssertEqual(parts.cells.count, 15)
-        XCTAssertEqual(parts.cells[0].x, 0)
-        XCTAssertEqual(parts.cells[0].y, 0)
-        XCTAssertFalse(parts.cells[0].accent)
-        XCTAssertEqual(parts.cells[0].opacity, 0.88462171, accuracy: 0.00000001)
-        XCTAssertEqual(parts.cells[1].x, 4)
-        XCTAssertEqual(parts.cells.last?.x, 2)
-        XCTAssertEqual(parts.cells.last?.y, 4)
-        XCTAssertEqual(parts.cells.last?.opacity ?? 0, 0.93623877, accuracy: 0.00000001)
+        let renderURL = try XCTUnwrap(CanonicalAvatarSystem.renderURL(
+            from: marker,
+            baseURL: URL(string: "https://avatars.example")!
+        ))
+        XCTAssertEqual(
+            renderURL.absoluteString,
+            "https://avatars.example/v1/avatars/dicebear-rust-10.6.0-styles-10.5.0/lorelei/acct_123.png?v=4"
+        )
+        XCTAssertNotNil(AvatarImageLoader.normalizedSource(marker))
+    }
+
+    func testGeneratedAgentUsesThePinnedThumbsRenderer() throws {
+        let seed = CanonicalAvatarSystem.defaultAgentId
+        let preview = try XCTUnwrap(CanonicalAvatarSystem.previewURL(
+            style: CanonicalAvatarSystem.agentStyle,
+            seed: seed,
+            baseURL: URL(string: "https://avatars.example")!
+        ))
+        XCTAssertTrue(preview.absoluteString.contains("/preview/thumbs/"))
     }
 
     func testDirectConversationKeepsTheExactProfileImageSource() {
@@ -53,6 +70,7 @@ final class AvatarIdentityTests: XCTestCase {
             displayName: "Me",
             primaryEmail: "me@example.com",
             avatarUrl: nil,
+            avatar: testHumanAvatar(entityId: "acct_me"),
             nodeId: nil,
             passwordSet: true
         )
@@ -202,4 +220,18 @@ final class AvatarIdentityTests: XCTestCase {
             requestMessageId: nil
         )
     }
+}
+
+private func testHumanAvatar(entityId: String) -> CanonicalAvatarDescriptor {
+    CanonicalAvatarDescriptor(
+        entityType: "human",
+        entityId: entityId,
+        source: "generated",
+        style: CanonicalAvatarSystem.humanStyle,
+        seed: entityId,
+        rendererVersion: CanonicalAvatarSystem.rendererVersion,
+        uploadedAsset: nil,
+        version: 1,
+        updatedAt: "2026-08-19T00:00:00Z"
+    )
 }

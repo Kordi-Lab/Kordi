@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
 import { composerThinkingLabel, fallbackComposerThinkingValue, type ComposerModelOption, type ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
-import { cloudAgentAccessDescription, cloudAgentAccessLabel, formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
+import { cloudAgentAccessDescription, cloudAgentAccessLabel, cloudAgentAvatarControls, formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentsPageProps, type PersistedAgentConfig } from './model';
 import { promptDisplayText } from './promptDisplay';
 import { AgentConfigList, AgentInspectorSection } from './shared';
 
@@ -606,7 +606,7 @@ export function AgentDetailPane({
   onReset: (agent: Agent) => void;
   onMessage?: () => void;
   onOpenReachoutSession?: (sessionId: string) => void;
-  onUpdateCloudAgent?: (agent: Agent, input: { accessScope: 'private' | 'participant_conversations' }) => Promise<Agent> | Promise<void> | Agent | void;
+  onUpdateCloudAgent?: AgentsPageProps['onUpdateCloudAgent'];
   onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
   onOpenPromptDetail: (agentId: string) => void;
   onStartEditing: (agentId: string, section: 'prompt' | 'skills') => void;
@@ -879,7 +879,7 @@ export function AgentDetailPane({
               name={activeAgent.name}
               imageUrl={activeAgent.profileImageUrl}
               label={`${activeAgent.name} avatar`}
-              compact
+              compact {...cloudAgentAvatarControls(activeAgent, onUpdateCloudAgent)}
               className="mt-0.5 h-12 w-12 border border-white/10"
             />
             <div className="min-w-0">

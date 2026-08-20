@@ -10,6 +10,7 @@ import {
   type CloudAgentDefinition,
   type SharedCloudAgentSummary,
 } from './cloudAgents';
+import type { CanonicalAvatarMutation } from './canonicalAvatar';
 
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
@@ -32,6 +33,7 @@ export type CreateCloudAgentInput = {
   name: string;
   role: string;
   description?: string | null;
+  avatarMutation?: CanonicalAvatarMutation;
   systemPrompt: string;
   sourceSummary?: string | null;
   boundaries?: string[];

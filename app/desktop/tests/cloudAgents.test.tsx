@@ -10,6 +10,18 @@ import {
   normalizeSharedCloudAgentSummary,
 } from '../src/features/cloud/cloudAgents';
 
+const agentAvatar = {
+  entityType: 'agent',
+  entityId: 'cloud_agent_abc',
+  source: 'generated',
+  style: 'thumbs',
+  seed: 'canonical_agent_seed',
+  rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+  uploadedAsset: null,
+  version: 1,
+  updatedAt: '2026-06-18T00:01:00Z',
+};
+
 const rawAgent = {
   agentId: 'cloud_agent_abc',
   ownerAccountId: 'acct_owner',
@@ -35,6 +47,8 @@ const rawAgent = {
   createdAt: '2026-06-18T00:00:00Z',
   updatedAt: '2026-06-18T00:01:00Z',
   archivedAt: null,
+  avatarUrl: null,
+  avatar: agentAvatar,
 };
 
 const sharedRawAgent = {
@@ -45,6 +59,12 @@ const sharedRawAgent = {
   name: 'Project Driver',
   role: 'Planning agent',
   description: 'Keeps projects moving',
+  avatarUrl: null,
+  avatar: {
+    ...agentAvatar,
+    entityId: 'cloud_agent_shared',
+    seed: 'canonical_shared_agent_seed',
+  },
   updatedAt: '2026-06-19T00:00:00Z',
 };
 
@@ -103,6 +123,8 @@ test('cloudAgentDefinitionToSharedCloudAgentSummary exposes owned shared agents 
     name: 'Kordi Project Driver',
     role: 'Technical Support Agent',
     description: 'Moves the project forward',
+    avatarUrl: null,
+    avatar: agentAvatar,
     updatedAt: '2026-06-18T00:01:00Z',
   });
 });
@@ -135,6 +157,7 @@ test('cloudAgentDefinitionToAgent maps private cloud definition into Agent page 
   assert.equal(agent.cloudAgentAccessScope, 'private');
   assert.equal(agent.cloudAgentDescription, 'Answers docs questions');
   assert.equal(agent.cloudAgentSourceSummary, 'Description-only docs helper');
+  assert.equal(agent.avatarSeed, 'canonical_agent_seed');
 });
 
 test('cloudAgentDefinitionToAgent preserves runtime-shaping context for private agent chats', () => {

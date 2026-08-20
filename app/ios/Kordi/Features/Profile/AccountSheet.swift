@@ -109,7 +109,7 @@ struct AccountSheet: View {
         HStack(spacing: 14) {
             IdentityAvatar(
                 name: model.account?.preferredName ?? "Me",
-                imageSource: model.account?.avatarUrl.nonEmpty,
+                imageSource: model.account?.avatar.imageSource,
                 kind: .person,
                 size: 54,
                 seed: model.account?.accountId
@@ -544,6 +544,7 @@ private struct ProfileSettingsView: View {
     @State private var displayName = ""
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var avatarDraft: String?
+    @State private var avatarMutation: CanonicalAvatarMutation?
     @State private var isSaving = false
     @State private var didLoad = false
     @State private var saved = false
@@ -555,17 +556,32 @@ private struct ProfileSettingsView: View {
                 VStack(spacing: 12) {
                     IdentityAvatar(
                         name: displayName.nonEmpty ?? model.account?.preferredName ?? "Me",
-                        imageSource: avatarDraft?.nonEmpty ?? model.account?.avatarUrl.nonEmpty,
+                        imageSource: avatarDraft?.nonEmpty ?? model.account?.avatar.imageSource,
                         kind: .person,
                         size: 88,
                         seed: model.account?.accountId
                     )
 
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label("Change photo", systemImage: "photo")
+                    HStack(spacing: 10) {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Label("Change photo", systemImage: "photo")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            updateGeneratedAvatarPreview()
+                        } label: {
+                            Label(
+                                CanonicalAvatarSystem.marker(from: avatarDraft) == nil
+                                    ? "Use generated"
+                                    : "Generate another",
+                                systemImage: "arrow.clockwise"
+                            )
                             .font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
 
                     VStack(spacing: 4) {
                         Text(displayName.nonEmpty ?? model.account?.preferredName ?? "Kordi account")
@@ -698,7 +714,8 @@ private struct ProfileSettingsView: View {
         guard !didLoad else { return }
         didLoad = true
         displayName = model.account?.preferredName ?? ""
-        avatarDraft = model.account?.avatarUrl
+        avatarDraft = model.account?.avatar.imageSource
+        avatarMutation = nil
         model.errorMessage = nil
     }
 
@@ -709,6 +726,10 @@ private struct ProfileSettingsView: View {
             return
         }
         avatarDraft = prepared.dataURL
+        avatarMutation = .upload(
+            prepared.dataURL,
+            expectedVersion: model.account?.avatar.version
+        )
         saved = false
         model.errorMessage = nil
     }
@@ -719,8 +740,37 @@ private struct ProfileSettingsView: View {
         defer { isSaving = false }
         saved = await model.updateProfile(
             displayName: displayName,
-            avatarUrl: avatarDraft == model.account?.avatarUrl ? nil : avatarDraft
+            avatarMutation: avatarMutation
         )
+        if saved { avatarMutation = nil }
+    }
+
+    private func updateGeneratedAvatarPreview() {
+        guard let account = model.account else { return }
+        let currentVersion = account.avatar.version
+        let style = account.avatar.style
+        if CanonicalAvatarSystem.marker(from: avatarDraft) == nil {
+            let seed = account.avatar.seed
+            avatarDraft = CanonicalAvatarSystem.marker(
+                style: style,
+                seed: seed,
+                version: currentVersion + 1
+            )
+            avatarMutation = .removeUpload(expectedVersion: account.avatar.version)
+        } else {
+            let seed = CanonicalAvatarSystem.newSeed()
+            avatarDraft = CanonicalAvatarSystem.marker(
+                style: style,
+                seed: seed,
+                version: currentVersion + 1
+            )
+            avatarMutation = .regenerate(
+                seed: seed,
+                expectedVersion: account.avatar.version
+            )
+        }
+        saved = false
+        model.errorMessage = nil
     }
 }
 

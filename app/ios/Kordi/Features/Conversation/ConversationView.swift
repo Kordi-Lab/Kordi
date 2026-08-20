@@ -952,8 +952,8 @@ struct ConversationView: View {
                 name: model.account?.preferredName.nonEmpty
                     ?? participant?.displayName.nonEmpty
                     ?? message.authorName,
-                source: model.account?.avatarUrl?.nonEmpty ?? participant?.avatarUrl?.nonEmpty,
-                seed: model.account?.accountId.nonEmpty ?? participant?.accountId.nonEmpty
+                source: model.account?.avatar.imageSource ?? participant?.avatarUrl?.nonEmpty,
+                seed: model.account?.avatar.seed.nonEmpty ?? participant?.accountId.nonEmpty
             )
         }
 

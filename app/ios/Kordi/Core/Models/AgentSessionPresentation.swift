@@ -180,7 +180,7 @@ enum AgentSessionFactory {
                 id: "agent-template:session:self-agent:default",
                 kind: .agent,
                 peerAccountId: ownAccountId,
-                agentId: nil,
+                agentId: CanonicalAvatarSystem.defaultAgentId,
                 ownerDisplayName: nil,
                 displayName: "My Kordi",
                 lastMessage: "Your private cloud agent",

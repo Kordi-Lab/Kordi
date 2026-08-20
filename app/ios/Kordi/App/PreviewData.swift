@@ -11,12 +11,28 @@ struct PreviewFixture {
 enum PreviewData {
     static func make(now: Date = Date()) -> PreviewFixture {
         let previewAvatarSource = ProcessInfo.processInfo.environment["KORDI_PREVIEW_AVATAR_SOURCE"]?.nonEmpty
+        let avatarSeed = "preview_account"
         let account = CloudAccount(
             accountId: "acct_me",
             kordiId: "482731906",
             displayName: "Alex",
             primaryEmail: "preview@kordi.ai",
-            avatarUrl: previewAvatarSource,
+            avatarUrl: previewAvatarSource ?? CanonicalAvatarSystem.marker(
+                style: CanonicalAvatarSystem.humanStyle,
+                seed: avatarSeed,
+                version: 1
+            ),
+            avatar: CanonicalAvatarDescriptor(
+                entityType: "human",
+                entityId: "acct_me",
+                source: previewAvatarSource == nil ? "generated" : "uploaded",
+                style: CanonicalAvatarSystem.humanStyle,
+                seed: avatarSeed,
+                rendererVersion: CanonicalAvatarSystem.rendererVersion,
+                uploadedAsset: previewAvatarSource,
+                version: 1,
+                updatedAt: "2026-08-19T00:00:00Z"
+            ),
             nodeId: nil,
             passwordSet: true
         )
@@ -35,7 +51,7 @@ enum PreviewData {
         ]
 
         let conversations = [
-            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: nil, ownerDisplayName: "Alex", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
+            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
             ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
             ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: "The latest iPhone build is ready.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [

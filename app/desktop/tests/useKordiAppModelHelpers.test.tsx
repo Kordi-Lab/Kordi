@@ -5,6 +5,7 @@ import {
   canonicalGroupInviteContextForSession,
   canonicalGroupInviteTitleForSession,
   canonicalGroupSessionSyncContextForSession,
+  canonicalLocalAgentAvatarSeed,
   canonicalSessionMessagesForGroupInvite,
   currentMentionQuery,
   filterMentionTargets,
@@ -14,6 +15,26 @@ import {
   sessionRenameNoticeText,
 } from '../src/app/useKordiAppModelHelpers';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
+
+test('default local agent avatar uses one cross-device identity seed', () => {
+  const state = {
+    profile: {
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local:123',
+    },
+    identities: [{
+      id: 'agent:local:123',
+      kind: 'agent',
+      displayName: 'My Kordi',
+      source: 'local',
+      ownerIdentityId: 'human:me',
+      agentId: 'local:123',
+      avatarKey: 'agent:local:123',
+    }],
+  } as unknown as CanonicalSessionState;
+
+  assert.equal(canonicalLocalAgentAvatarSeed(state), 'cloud-local-agent');
+});
 
 test('mention helper hides suggestions after an exact mention followed by whitespace', () => {
   const query = currentMentionQuery('@Kordi ');

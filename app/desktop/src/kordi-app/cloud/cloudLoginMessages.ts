@@ -24,8 +24,8 @@ export function cloudLoginErrorMessage(
       return 'Could not reach the cloud server. Check your connection and try again.';
     case 'server_error':
       return 'The server hit an unexpected error. Please try again.';
-    case 'missing_avatar':
-      return 'Upload an avatar to create your account.';
+    case 'invalid_avatar_seed':
+      return 'Could not prepare that generated avatar. Try another look.';
     case 'invalid_avatar':
       return 'Could not process that avatar. Try another image.';
     case 'oauth_not_configured':

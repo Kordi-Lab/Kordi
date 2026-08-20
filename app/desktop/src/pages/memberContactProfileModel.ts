@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 
 import type { CloudAccount } from '@/features/cloud/authClient';
+import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
 import { directSessionId } from '@/features/cloud/chatSyncMapping';
 import type {
   Contact,
@@ -100,7 +101,7 @@ export function contactProfileSharedSummary(
 }
 
 export function directCallConversationForMember(
-  account: Pick<CloudAccount, 'accountId' | 'displayName' | 'avatarUrl'> | null,
+  account: Pick<CloudAccount, 'accountId' | 'displayName' | 'avatar'> | null,
   member: ConversationParticipant,
   contact: Contact | null,
 ): Conversation | null {
@@ -134,7 +135,8 @@ export function directCallConversationForMember(
         kind: 'human',
         role: 'self',
         source: 'cloud',
-        profileImageUrl: account?.avatarUrl ?? null,
+        avatarKey: account?.avatar.seed,
+        profileImageUrl: account ? canonicalAvatarImageSource(account.avatar) : null,
       },
       {
         ...member,

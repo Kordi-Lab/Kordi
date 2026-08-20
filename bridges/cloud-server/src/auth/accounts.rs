@@ -9,6 +9,10 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use crate::avatars::{
+    generated_avatar_marker, new_avatar_seed, AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
+};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OAuthProviderId {
     GitHub,
@@ -97,20 +101,6 @@ pub struct AccountIdentityRecord {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CloudAccountProfileUpdate {
-    pub account_id: String,
-    pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CloudAccountProfileRecord {
-    pub account_id: String,
-    pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CloudDeviceRegistration {
     pub account_id: String,
     pub device_name: Option<String>,
@@ -172,17 +162,30 @@ pub async fn upsert_account_identity(
 
     let account_id = new_prefixed_id("acct");
     let identity_id = new_prefixed_id("ident");
+    let avatar_seed = new_avatar_seed();
+    let provider_avatar = upsert
+        .avatar_url
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
+    let avatar_url = provider_avatar
+        .map(ToString::to_string)
+        .unwrap_or_else(|| generated_avatar_marker(HUMAN_AVATAR_STYLE, &avatar_seed, 1));
 
     query(
         "INSERT INTO cloud_accounts \
-         (account_id, display_name, primary_email, avatar_url, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $5)",
+         (account_id, display_name, primary_email, avatar_url, created_at, updated_at, \
+          avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, 1, $5)",
     )
     .bind(&account_id)
     .bind(upsert.display_name.as_deref())
     .bind(upsert.email.as_deref())
-    .bind(upsert.avatar_url.as_deref())
+    .bind(&avatar_url)
     .bind(&now)
+    .bind(if provider_avatar.is_some() { "uploaded" } else { "generated" })
+    .bind(HUMAN_AVATAR_STYLE)
+    .bind(&avatar_seed)
+    .bind(AVATAR_RENDERER_VERSION)
     .execute(&mut *tx)
     .await?;
 
@@ -210,37 +213,6 @@ pub async fn upsert_account_identity(
         identity_id,
         created_account: true,
     })
-}
-
-/// Update a cloud account's display name + avatar. Returns the updated
-/// record, or `None` if no such account.
-pub async fn update_cloud_account_profile(
-    pool: &PgPool,
-    update: CloudAccountProfileUpdate,
-) -> Result<Option<CloudAccountProfileRecord>, sqlx_core::Error> {
-    let now = Utc::now().to_rfc3339();
-    let row: Option<(String, Option<String>, Option<String>)> = query_as(
-        "UPDATE cloud_accounts SET \
-            display_name = COALESCE($1, display_name), \
-            avatar_url = COALESCE($2, avatar_url), \
-            updated_at = $3 \
-         WHERE account_id = $4 \
-         RETURNING account_id, display_name, avatar_url",
-    )
-    .bind(update.display_name.as_deref())
-    .bind(update.avatar_url.as_deref())
-    .bind(&now)
-    .bind(&update.account_id)
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(row.map(
-        |(account_id, display_name, avatar_url)| CloudAccountProfileRecord {
-            account_id,
-            display_name,
-            avatar_url,
-        },
-    ))
 }
 
 /// Register a device for an existing cloud account.

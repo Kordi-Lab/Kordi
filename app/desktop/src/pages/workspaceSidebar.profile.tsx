@@ -7,7 +7,8 @@ import {
 import { createPortal } from 'react-dom';
 import { Check, Copy, Settings, Share2 } from 'lucide-react';
 
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
+import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
+import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { cn } from '@/lib/utils';
@@ -221,9 +222,11 @@ export function SidebarProfileControl({
     : 'Local profile';
   const profileKordiHandle = formatKordiHandle(cloudAccount?.kordiId);
   const profileAvatarSeed = cloudAccount
-    ? cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl)
+    ? cloudAccount.avatar.seed
     : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
-  const profileImageUrl = cloudAccount ? cloudAvatarImageUrl(cloudAccount.avatarUrl) : null;
+  const profileImageUrl = cloudAccount
+    ? cloudAvatarImageUrl(canonicalAvatarImageSource(cloudAccount.avatar))
+    : null;
   const hasDeviceReview = Boolean(
     cloudAccount
     && deviceReview?.accountId === cloudAccount.accountId
@@ -326,7 +329,6 @@ export function SidebarProfileControl({
           isOpen={dialogTab !== null}
           initialTab={dialogTab ?? 'profile'}
           account={cloudAccount}
-          localProfileAvatarSeed={localProfileAvatarSeed}
           onClose={() => setDialogTab(null)}
           onUpdateProfile={onUpdateCloudProfile}
           onSignOut={onCloudSignOut}

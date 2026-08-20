@@ -27,7 +27,18 @@ const account: CloudAccount = {
   accountId: 'acct_me',
   displayName: 'Me Cloud',
   primaryEmail: 'me@example.com',
-  avatarUrl: null,
+  avatarUrl: 'kordi-avatar://dicebear-rust-10.6.0-styles-10.5.0/lorelei/account_seed?version=1',
+  avatar: {
+    entityType: 'human',
+    entityId: 'acct_me',
+    source: 'generated',
+    style: 'lorelei',
+    seed: 'account_seed',
+    rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+    uploadedAsset: null,
+    version: 1,
+    updatedAt: '2026-08-19T00:00:00Z',
+  },
   nodeId: 'node_me',
   passwordSet: true,
 };
@@ -223,6 +234,7 @@ test('cloud bridge state ignores poisoned localhost bridge state instead of merg
 
   assert.deepEqual(cloudState.hosts.map((host) => host.id), ['cloud']);
   assert.equal(cloudState.conversations.every((conversation) => conversation.hostId === 'cloud'), true);
+  assert.equal(cloudState.hosts[0]?.agents[0]?.profileImageUrl, null);
 });
 
 

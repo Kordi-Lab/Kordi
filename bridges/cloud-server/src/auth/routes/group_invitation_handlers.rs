@@ -102,7 +102,8 @@ fn syncable_cloud_avatar_url(value: &str) -> Option<String> {
     if value.is_empty() || value.len() > 4096 {
         return None;
     }
-    (value.starts_with("https://")
+    (parse_generated_avatar_marker(value).is_some()
+        || value.starts_with("https://")
         || value.starts_with("http://")
         || value.starts_with("data:image/png;base64,")
         || value.starts_with("data:image/jpeg;base64,")

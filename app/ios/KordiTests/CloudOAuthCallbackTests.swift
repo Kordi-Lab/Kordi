@@ -3,7 +3,7 @@ import XCTest
 
 final class CloudOAuthCallbackTests: XCTestCase {
     func testValidCloudResultDecodesFromNativeCallback() throws {
-        let payload = Data(#"{"account":{"accountId":"acct_1","kordiId":"482731906","displayName":"Maya","primaryEmail":"maya@example.com","avatarUrl":null,"nodeId":null,"passwordSet":false},"session":{"token":"session_secret","expiresAt":"2026-09-08T00:00:00Z"}}"#.utf8)
+        let payload = Data(#"{"account":{"accountId":"acct_1","kordiId":"482731906","displayName":"Maya","primaryEmail":"maya@example.com","avatarUrl":"kordi-avatar://dicebear-rust-10.6.0-styles-10.5.0/lorelei/acct_1?version=1","avatar":{"entityType":"human","entityId":"acct_1","source":"generated","style":"lorelei","seed":"acct_1","rendererVersion":"dicebear-rust-10.6.0-styles-10.5.0","uploadedAsset":null,"version":1,"updatedAt":"2026-08-19T00:00:00Z"},"nodeId":null,"passwordSet":false},"session":{"token":"session_secret","expiresAt":"2026-09-08T00:00:00Z"}}"#.utf8)
         let encoded = payload.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
@@ -163,11 +163,16 @@ private final class ProviderAuthenticationSyncURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
-final class SignupAvatarRendererTests: XCTestCase {
-    func testGeneratedAvatarIsAcceptedWireShape() throws {
-        let value = try XCTUnwrap(SignupAvatarRenderer.generatedDataURL(displayName: "Maya Chen", paletteIndex: 1))
-        XCTAssertTrue(value.hasPrefix("data:image/png;base64,"))
-        XCTAssertLessThan(value.utf8.count, 200_000 * 2)
-        XCTAssertEqual(SignupAvatarRenderer.initials(for: "Maya Chen"), "MC")
+final class SignupAvatarPreviewTests: XCTestCase {
+    func testSignupPreviewUsesThePinnedLoreleiRenderer() throws {
+        let preview = try XCTUnwrap(CanonicalAvatarSystem.previewURL(
+            style: CanonicalAvatarSystem.humanStyle,
+            seed: "signup_seed",
+            baseURL: URL(string: "http://127.0.0.1:17081")!
+        ))
+        XCTAssertEqual(
+            preview.absoluteString,
+            "http://127.0.0.1:17081/v1/avatars/preview/lorelei/signup_seed.png"
+        )
     }
 }

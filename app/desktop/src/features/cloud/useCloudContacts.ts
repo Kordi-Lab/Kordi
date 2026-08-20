@@ -1,9 +1,3 @@
-// useCloudContacts: load + mutate the cloud contact graph for the
-// signed-in account, exposing the data in the shapes the existing
-// ContactsPage / ChatCreateDialog already consume (Contact +
-// ContactRequest). This keeps the UI plumbing untouched — cloud rows
-// just look like another data source in the same shape.
-
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Contact, ContactRequest } from '@/kordi-app/types';
@@ -31,6 +25,7 @@ import {
   type CloudContactsSnapshot,
 } from './cloudContactsSnapshot';
 import { loadSession } from './session';
+import { CLOUD_DIRECTORY_SYNC_EVENT } from './cloudDeviceEvents';
 import {
   createCloudSupportTicket,
   getCloudSupportTicketBySubmissionId,
@@ -366,10 +361,13 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     });
     publishSnapshot();
     const listener = () => publishSnapshot();
+    const refreshDirectory = () => { void refreshCloudContactsStore(store, client); };
     store.listeners.add(listener);
     startCloudContactsStore(store, client);
+    if (typeof window !== 'undefined') window.addEventListener(CLOUD_DIRECTORY_SYNC_EVENT, refreshDirectory);
     return () => {
       store.listeners.delete(listener);
+      if (typeof window !== 'undefined') window.removeEventListener(CLOUD_DIRECTORY_SYNC_EVENT, refreshDirectory);
       if (store.listeners.size === 0) {
         if (store.pollTimer && typeof window !== 'undefined') window.clearInterval(store.pollTimer);
         store.pollTimer = null;

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, Camera, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
+import { Bell, Camera, KeyRound, Laptop, Palette, RefreshCw, User, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -11,11 +11,17 @@ import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
 import type { CloudAccount, CloudProfileUpdateInput } from '@/features/cloud/authClient';
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
+import {
+  canonicalAvatarImageSource,
+  generatedAvatarMarker,
+  newCanonicalAvatarSeed,
+  parseGeneratedAvatarMarker,
+  type CanonicalAvatarMutation,
+} from '@/features/cloud/canonicalAvatar';
 
 export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'appearance';
 
@@ -43,7 +49,6 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   isOpen: boolean;
   initialTab?: CloudAccountSettingsTabId;
   account: CloudAccount | null;
-  localProfileAvatarSeed?: string | null;
   onClose: () => void;
   onUpdateProfile: (input: CloudProfileUpdateInput) => Promise<void>;
   onSignOut?: () => Promise<void> | void;
@@ -64,18 +69,13 @@ function cloudProfileRows(account: CloudAccount | null) {
 
 export function cloudProfileSaveInput({
   displayNameDraft,
-  avatarUrlDraft,
-  originalAvatarUrl,
+  avatarMutationDraft,
 }: {
   displayNameDraft: string;
-  avatarUrlDraft: string;
-  originalAvatarUrl: string;
+  avatarMutationDraft: CanonicalAvatarMutation | null;
 }): CloudProfileUpdateInput {
   const input: CloudProfileUpdateInput = { displayName: displayNameDraft.trim() };
-  const nextAvatarUrl = avatarUrlDraft.trim();
-  if (nextAvatarUrl && nextAvatarUrl !== originalAvatarUrl.trim()) {
-    input.avatarUrl = nextAvatarUrl;
-  }
+  if (avatarMutationDraft) input.avatarMutation = avatarMutationDraft;
   return input;
 }
 
@@ -83,7 +83,6 @@ export function CloudAccountSettingsDialog({
   isOpen,
   initialTab = 'profile',
   account,
-  localProfileAvatarSeed,
   onClose,
   onUpdateProfile,
   onSignOut,
@@ -108,6 +107,7 @@ export function CloudAccountSettingsDialog({
   const [activeTab, setActiveTab] = useState<CloudAccountSettingsTabId>('profile');
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [avatarUrlDraft, setAvatarUrlDraft] = useState('');
+  const [avatarMutationDraft, setAvatarMutationDraft] = useState<CanonicalAvatarMutation | null>(null);
   const [profileError, setProfileError] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -115,7 +115,6 @@ export function CloudAccountSettingsDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openedAccountIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
-  const originalAvatarUrlRef = useRef('');
 
   useEffect(() => {
     if (!isOpen) {
@@ -132,14 +131,14 @@ export function CloudAccountSettingsDialog({
     if (initialTab === 'auth' || initialTab === 'notifications' || initialTab === 'appearance') {
       setActiveSettingsSectionId(initialTab);
     }
-    const nextAvatarUrl = cloudAvatarImageUrl(account?.avatarUrl) || '';
-    originalAvatarUrlRef.current = nextAvatarUrl;
+    const nextAvatarUrl = account ? canonicalAvatarImageSource(account.avatar) ?? '' : '';
     setDisplayNameDraft(account?.displayName?.trim() || '');
     setAvatarUrlDraft(nextAvatarUrl);
+    setAvatarMutationDraft(null);
     setProfileError('');
     setIsSavingProfile(false);
     setIsSigningOut(false);
-  }, [account?.accountId, account?.avatarUrl, account?.displayName, initialTab, isOpen, setActiveSettingsSectionId]);
+  }, [account, initialTab, isOpen, setActiveSettingsSectionId]);
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return;
@@ -154,7 +153,8 @@ export function CloudAccountSettingsDialog({
 
   const displayName = profileDisplayName(account);
   const isDisplayNameInvalid = Boolean(profileError && !displayNameDraft.trim());
-  const avatarSeed = cloudAvatarSeedForAccount(account.accountId, account.avatarUrl) || localProfileAvatarSeed || account.accountId;
+  const avatarSeed = account.avatar.seed;
+  const draftIsGenerated = Boolean(parseGeneratedAvatarMarker(avatarUrlDraft));
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
   const tabs: Array<{ id: CloudAccountSettingsTabId; label: string; icon: typeof User }> = [
     { id: 'profile', label: 'Profile', icon: User },
@@ -183,13 +183,10 @@ export function CloudAccountSettingsDialog({
       setProfileError('');
       const input = cloudProfileSaveInput({
         displayNameDraft,
-        avatarUrlDraft,
-        originalAvatarUrl: originalAvatarUrlRef.current,
+        avatarMutationDraft,
       });
       await onUpdateProfile(input);
-      if (input.avatarUrl) {
-        originalAvatarUrlRef.current = input.avatarUrl;
-      }
+      setAvatarMutationDraft(null);
     } catch (caught) {
       setProfileError(caught instanceof Error ? caught.message : 'Could not save profile.');
     } finally {
@@ -206,9 +203,39 @@ export function CloudAccountSettingsDialog({
     void fileToAvatarDataUrl(file)
       .then((dataUrl) => {
         setAvatarUrlDraft(dataUrl);
+        setAvatarMutationDraft({
+          action: 'upload',
+          uploadedAsset: dataUrl,
+          expectedVersion: account.avatar.version,
+        });
         setProfileError('');
       })
       .catch((caught) => setProfileError(caught instanceof Error ? caught.message : 'Could not use that image.'));
+  };
+
+  const useAnotherGeneratedAvatar = () => {
+    const seed = newCanonicalAvatarSeed();
+    const nextVersion = account.avatar.version + 1;
+    const style = account.avatar.style;
+    setAvatarUrlDraft(generatedAvatarMarker(style, seed, nextVersion));
+    setAvatarMutationDraft({
+      action: 'regenerate',
+      seed,
+      expectedVersion: account.avatar.version,
+    });
+    setProfileError('');
+  };
+
+  const restoreGeneratedAvatar = () => {
+    const seed = account.avatar.seed;
+    const style = account.avatar.style;
+    const nextVersion = account.avatar.version + 1;
+    setAvatarUrlDraft(generatedAvatarMarker(style, seed, nextVersion));
+    setAvatarMutationDraft({
+      action: 'remove_upload',
+      expectedVersion: account.avatar.version,
+    });
+    setProfileError('');
   };
 
   const signOut = async () => {
@@ -242,6 +269,14 @@ export function CloudAccountSettingsDialog({
             <Camera className="h-3.5 w-3.5" />
             Change
           </Button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[11px] font-medium text-slate-400 outline-none transition hover:bg-white/5 hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-emerald-300/80"
+            onClick={draftIsGenerated ? useAnotherGeneratedAvatar : restoreGeneratedAvatar}
+          >
+            <RefreshCw className="h-3 w-3" aria-hidden="true" />
+            {draftIsGenerated ? 'Generate another' : 'Use generated'}
+          </button>
         </div>
         <div className="min-w-0">
           <label className="grid gap-2 text-[12px] font-medium text-slate-300">

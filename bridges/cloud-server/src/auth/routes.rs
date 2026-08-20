@@ -5,7 +5,6 @@
 //! `ServerState`. Every handler is straight-line async — no DbRunner
 //! closures, no spawn_blocking — because sqlx is async-native.
 
-use std::collections::HashSet;
 use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -47,6 +46,12 @@ use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, touch_device_activity,
     DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
 };
+use crate::avatars::{
+    apply_avatar_mutation, descriptor_from_parts, generated_avatar_marker, is_valid_avatar_seed,
+    new_avatar_seed, parse_generated_avatar_marker, preserve_avatar_render_key, AvatarDescriptor,
+    AvatarMutationError, AvatarMutationRequest, StoredAvatar, StoredAvatarRow,
+    AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
+};
 use crate::server::ServerState;
 
 mod app_invitation_handlers;
@@ -61,6 +66,7 @@ mod expressive_media;
 mod group_invitation_handlers;
 mod identity_handlers;
 mod middleware;
+mod oauth_avatar;
 mod password_handlers;
 mod presence_handlers;
 mod profile_handlers;
@@ -80,6 +86,7 @@ use device_types::*;
 use expressive_media::*;
 use group_invitation_handlers::*;
 use identity_handlers::*;
+use oauth_avatar::*;
 use password_handlers::*;
 use presence_handlers::*;
 use profile_handlers::*;

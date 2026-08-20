@@ -106,7 +106,7 @@ export function mapDesktopMessagesForTranscript(
 
     const assistantSenderLabel = cloudAgentIdentity?.name
       || assistantSenderLabelForTranscript(message.sender, avatarSeeds?.agentDisplayName);
-    const assistantAvatarSeed = cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed(message.sender ?? 'Kordi');
+    const assistantAvatarSeed = cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed();
 
     return [{
       id: messageId,

@@ -374,7 +374,17 @@ test('member profile builds a stable direct Cloud call target inside a group con
   const account = {
     accountId: 'acct_me',
     displayName: 'Me',
-    avatarUrl: null,
+    avatar: {
+      entityType: 'human',
+      entityId: 'acct_me',
+      source: 'generated' as const,
+      style: 'lorelei' as const,
+      seed: 'group_call_account_seed',
+      rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+      uploadedAsset: null,
+      version: 1,
+      updatedAt: '2026-08-19T00:00:00Z',
+    },
   };
   const callConversation = directCallConversationForMember(account, member, null);
 

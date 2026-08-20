@@ -27,10 +27,14 @@ pub(super) async fn signup(
         .filter(|value| !value.is_empty())
         .map(|value| value.chars().take(80).collect::<String>());
 
-    let avatar_url = match clean_required_signup_avatar_url(req.avatar_url.as_deref()) {
-        Ok(value) => value,
-        Err(response) => return *response,
-    };
+    let avatar_seed = req.avatar_seed.trim();
+    if !is_valid_avatar_seed(avatar_seed) {
+        return err(
+            "invalid_avatar_seed",
+            "Generated avatar seed is invalid.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
     let registration = match req.device.clone() {
         Some(device) => match normalize_device_registration(device) {
             Ok(value) => value,
@@ -88,6 +92,7 @@ pub(super) async fn signup(
 
     let now = Utc::now().to_rfc3339();
     let account_id = format!("acct_{}", uuid::Uuid::new_v4().simple());
+    let avatar_url = generated_avatar_marker(HUMAN_AVATAR_STYLE, avatar_seed, 1);
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(_) => {
@@ -102,8 +107,9 @@ pub(super) async fn signup(
     if query(
         "INSERT INTO cloud_accounts \
          (account_id, display_name, primary_email, avatar_url, created_at, updated_at, \
-          password_hash, password_algorithm, password_updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $5)",
+          password_hash, password_algorithm, password_updated_at, avatar_source, avatar_style, \
+          avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $5, $8, $9, $10, $11, 1, $5)",
     )
     .bind(&account_id)
     .bind(display_name.as_deref())
@@ -112,6 +118,10 @@ pub(super) async fn signup(
     .bind(&now)
     .bind(&password_hash)
     .bind(PASSWORD_ALGORITHM_ID)
+    .bind("generated")
+    .bind(HUMAN_AVATAR_STYLE)
+    .bind(avatar_seed)
+    .bind(AVATAR_RENDERER_VERSION)
     .execute(&mut *tx)
     .await
     .is_err()

@@ -97,6 +97,17 @@ test('cloud account profile identity takes precedence over host fallbacks', () =
       displayName: 'Account Owner',
       primaryEmail: 'owner@example.com',
       avatarUrl: 'https://cdn.kordi.ai/account.png',
+      avatar: {
+        entityType: 'human',
+        entityId: 'account-1',
+        source: 'uploaded',
+        style: 'lorelei',
+        seed: 'account_owner_seed',
+        rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+        uploadedAsset: 'https://cdn.kordi.ai/account.png',
+        version: 1,
+        updatedAt: '2026-08-19T00:00:00Z',
+      },
       nodeId: null,
       passwordSet: true,
     },
@@ -109,7 +120,7 @@ test('cloud account profile identity takes precedence over host fallbacks', () =
     ]),
   });
 
-  assert.equal(state.localProfileAvatarSeed, 'account-1');
+  assert.equal(state.localProfileAvatarSeed, 'account_owner_seed');
   assert.equal(state.localProfileDisplayName, 'Account Owner');
   assert.equal(
     state.localProfileImageUrl,
@@ -125,6 +136,17 @@ test('cloud account email keeps generated self avatars stable when a display nam
       displayName: null,
       primaryEmail: 'owner@example.com',
       avatarUrl: null,
+      avatar: {
+        entityType: 'human',
+        entityId: 'account-2',
+        source: 'generated',
+        style: 'lorelei',
+        seed: 'account_email_seed',
+        rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+        uploadedAsset: null,
+        version: 1,
+        updatedAt: '2026-08-19T00:00:00Z',
+      },
       nodeId: null,
       passwordSet: true,
     },

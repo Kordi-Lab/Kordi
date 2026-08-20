@@ -74,7 +74,7 @@ actor CloudAPIClient {
         email: String,
         password: String,
         displayName: String?,
-        avatarUrl: String
+        avatarSeed: String
     ) async throws -> CloudAuthResponse {
         let device = try await deviceRegistration()
         let response: CloudAuthResponse = try await send(
@@ -84,7 +84,7 @@ actor CloudAPIClient {
                 email: email,
                 password: password,
                 displayName: displayName,
-                avatarUrl: avatarUrl,
+                avatarSeed: avatarSeed,
                 device: device
             ),
             fallback: "Could not create account."
@@ -135,13 +135,13 @@ actor CloudAPIClient {
     func updateProfile(
         token: String,
         displayName: String,
-        avatarUrl: String?
+        avatarMutation: CanonicalAvatarMutation?
     ) async throws -> CloudAccount {
         try await send(
             path: "/v1/cloud/auth/me",
             method: "PATCH",
             token: token,
-            body: UpdateProfileRequest(displayName: displayName, avatarUrl: avatarUrl),
+            body: UpdateProfileRequest(displayName: displayName, avatarMutation: avatarMutation),
             fallback: "Could not update your profile."
         )
     }
@@ -461,6 +461,21 @@ actor CloudAPIClient {
             token: token,
             body: CloudAgentDefinitionRequest(draft: draft),
             fallback: "Could not save this agent."
+        )
+        return response.agent
+    }
+
+    func updateAgentAvatar(
+        token: String,
+        agentId: String,
+        mutation: CanonicalAvatarMutation
+    ) async throws -> CloudAgent {
+        let response: AgentResponse = try await send(
+            path: "/v1/cloud/agents/\(agentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? agentId)",
+            method: "PUT",
+            token: token,
+            body: CloudAgentAvatarRequest(avatarMutation: mutation),
+            fallback: "Could not update this agent's avatar."
         )
         return response.agent
     }
@@ -1334,18 +1349,14 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
-        if ["agent.definition.upserted", "agent.definition.archived"]
-            .contains(event.eventType) {
-            return [CloudSyncEvent(
-                eventId: event.eventId,
-                eventType: event.eventType,
-                peerAccountId: nil,
-                messageId: nil,
-                payload: nil,
-                occurredAt: event.occurredAt
-            )]
-        }
-        if event.eventType == "provider-auth.updated" {
+        if [
+            "account.profile.updated",
+            "account.directory.changed",
+            "agent.definition.upserted",
+            "agent.definition.archived",
+            "agent.directory.changed",
+            "provider-auth.updated"
+        ].contains(event.eventType) {
             return [CloudSyncEvent(
                 eventId: event.eventId,
                 eventType: event.eventType,
@@ -1356,8 +1367,8 @@ actor CloudAPIClient {
             )]
         }
         let knownNonChatEvents: Set<String> = [
-            "task.upsert", "artifact.upsert", "artifact.archived", "session.pin.updated", "session.hidden",
-            "session.unhidden", "session.deleted", "session-forked"
+            "task.upsert", "artifact.upsert", "artifact.archived", "session.pin.updated",
+            "session.hidden", "session.unhidden", "session.deleted", "session-forked"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
             .contains(event.eventType) {
@@ -1612,13 +1623,13 @@ private struct LoginRequest: Encodable {
 }
 private struct UpdateProfileRequest: Encodable {
     let displayName: String
-    let avatarUrl: String?
+    let avatarMutation: CanonicalAvatarMutation?
 }
 private struct SignupRequest: Encodable {
     let email: String
     let password: String
     let displayName: String?
-    let avatarUrl: String
+    let avatarSeed: String
     let device: CloudDeviceRegistration
 }
 private struct DeviceMetadataUpdateRequest: Encodable {
@@ -1653,6 +1664,9 @@ private struct ContactRequestResponse: Decodable { let request: CloudContactRequ
 private struct SendContactRequest: Encodable { let peerAccountId: String; let message: String? }
 private struct AgentsResponse: Decodable { let agents: [CloudAgent] }
 private struct AgentResponse: Decodable { let agent: CloudAgent }
+private struct CloudAgentAvatarRequest: Encodable {
+    let avatarMutation: CanonicalAvatarMutation
+}
 private struct CloudAgentDefinitionRequest: Encodable {
     let accessScope: String
     let name: String

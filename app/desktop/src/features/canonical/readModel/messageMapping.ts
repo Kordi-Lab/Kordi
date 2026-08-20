@@ -10,6 +10,7 @@ import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/fea
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
+import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 import { canonicalCallActivity } from './callActivity';
@@ -19,7 +20,6 @@ import { canonicalMentions } from './mentionMapping';
 
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 export { canonicalAttachments } from './attachmentMapping';
-
 export function contentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -112,7 +112,7 @@ function canonicalReadReceiptSummary(
     return [{
       id: identity?.id ?? identityId,
       name,
-      avatarSeed: identity?.avatarKey ?? stringValue(record.avatarSeed) ?? null,
+      avatarSeed: canonicalIdentityAvatarSeed(identity) ?? stringValue(record.avatarSeed) ?? null,
       profileImageUrl: identity?.profileImageUrl ?? stringValue(record.profileImageUrl) ?? null,
       readAt: stringValue(record.readAt) ?? null,
     }];
@@ -529,7 +529,7 @@ export function mapCanonicalMessage(
     senderIdentityId: message.senderIdentityId,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
-    senderAvatarSeed: identity?.avatarKey ?? null,
+    senderAvatarSeed: canonicalIdentityAvatarSeed(identity),
     isOwnMessage,
     showSenderMeta: role === 'person' || role === 'external-agent',
     text: isAgentTurn ? '' : displayText,

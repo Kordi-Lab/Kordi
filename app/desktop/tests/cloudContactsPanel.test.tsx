@@ -13,6 +13,17 @@ test('CloudContactsPanel self card uses the provider image avatar instead of a g
     displayName: 'Provider User',
     primaryEmail: 'provider@example.com',
     avatarUrl: 'https://lh3.googleusercontent.com/a/provider-avatar',
+    avatar: {
+      entityType: 'human',
+      entityId: 'acct_provider',
+      source: 'uploaded',
+      style: 'lorelei',
+      seed: 'provider_user_seed',
+      rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+      uploadedAsset: 'https://lh3.googleusercontent.com/a/provider-avatar',
+      version: 1,
+      updatedAt: '2026-08-19T00:00:00Z',
+    },
     nodeId: 'node-provider',
     passwordSet: false,
   };

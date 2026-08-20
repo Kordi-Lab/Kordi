@@ -13,7 +13,6 @@ import {
   type StoredSession,
 } from '../src/features/cloud/session';
 import {
-  applyCloudSessionProfileUpdate,
   cloudAccountsEqual,
   shouldRefreshCloudSessionProfileForWsSubject,
 } from '../src/features/cloud/useCloudSession';
@@ -102,40 +101,33 @@ test('profile update websocket subjects target the signed-in account session', (
   assert.equal(shouldRefreshCloudSessionProfileForWsSubject('kordi.events.contact.request.acct_1', 'acct_1'), false);
 });
 
-test('profile update payload patches the current cloud session account', () => {
-  const account = {
-    accountId: 'acct_1',
-    displayName: 'Old name',
-    primaryEmail: 'old@example.com',
-    avatarUrl: 'data:image/png;base64,old',
-    nodeId: 'node_1',
-    passwordSet: true,
-  };
-
-  assert.deepEqual(applyCloudSessionProfileUpdate(account, {
-    account_id: 'acct_1',
-    display_name: 'New name',
-    avatar_url: 'data:image/png;base64,new',
-  }), {
-    ...account,
-    displayName: 'New name',
-    avatarUrl: 'data:image/png;base64,new',
-  });
-  assert.equal(applyCloudSessionProfileUpdate(account, { account_id: 'acct_2', display_name: 'Other' }), null);
-});
-
 test('cloud account refresh equality ignores object identity but detects visible changes', () => {
   const account = {
     accountId: 'acct_1',
     displayName: 'Name',
     primaryEmail: 'name@example.com',
     avatarUrl: null,
+    avatar: {
+      entityType: 'human',
+      entityId: 'acct_1',
+      source: 'generated' as const,
+      style: 'lorelei' as const,
+      seed: 'account_seed',
+      rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+      uploadedAsset: null,
+      version: 1,
+      updatedAt: '2026-08-19T00:00:00Z',
+    },
     nodeId: 'node_1',
     passwordSet: true,
   };
 
   assert.equal(cloudAccountsEqual(account, { ...account }), true);
   assert.equal(cloudAccountsEqual(account, { ...account, displayName: 'Changed' }), false);
+  assert.equal(cloudAccountsEqual(account, {
+    ...account,
+    avatar: { ...account.avatar, seed: 'another_seed' },
+  }), false);
 });
 
 test('clearSessionAndNotifySignedOut clears storage and broadcasts logout for other Cloud session hooks', async () => {

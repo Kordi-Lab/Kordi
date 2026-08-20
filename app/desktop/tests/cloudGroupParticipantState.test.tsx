@@ -1,3 +1,4 @@
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -12,6 +13,7 @@ const account: CloudAccount = {
   displayName: 'Me Cloud',
   primaryEmail: 'me@example.com',
   avatarUrl: null,
+  avatar: cloudAccountAvatarFixture,
   nodeId: 'node_me',
   passwordSet: true,
 };
@@ -141,6 +143,11 @@ test('cloud contact identity requests preserve account ids, display names, and u
     account: {
       ...account,
       avatarUrl: 'data:image/jpeg;base64,me',
+      avatar: {
+        ...account.avatar,
+        source: 'uploaded',
+        uploadedAsset: 'data:image/jpeg;base64,me',
+      },
     },
     contacts: [cloudContactToContact({
       accountId: 'acct_peer',

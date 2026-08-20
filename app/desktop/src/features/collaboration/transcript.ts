@@ -17,15 +17,14 @@ import {
 import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
 import { isKordiSupportConversation, KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
+import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 import {
   collaborationHostLabel,
   collaborationOutboundStatusChip,
 } from './transcriptStatus';
 
-type CollaborationConversationViewModel = Conversation & {
-  _updatedAtMs?: number;
-};
+type CollaborationConversationViewModel = Conversation & { _updatedAtMs?: number };
 function isImplicitDirectPersonSessionMessage(outreach: DesktopCollaborationOutreachMetadata) {
   return outreach.targetKind === 'person'
     && (
@@ -269,7 +268,7 @@ export function mapCollaborationConversationToViewModel(
     : remoteAgentLabel;
   const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
   const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
-  const localAgentAvatarSeed = conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent';
+  const localAgentAvatarSeed = DEFAULT_LOCAL_AGENT_AVATAR_SEED;
   const remoteHumanAvatarSeed = peer?.avatarSeed || conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
   const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isCloudSelfAgent ? localAgentAvatarSeed : isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;

@@ -19,6 +19,7 @@ import type {
 import type {
   CloudAccount,
 } from './authClient';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 import {
   cloudContactsToCanonicalIdentityRequests,
 } from './cloudCollaborationState';
@@ -53,20 +54,16 @@ export function useCloudCanonicalIdentitySync({
   const localHumanIdentityId = account?.accountId
     ? `human:${account.accountId}`
     : canonicalState?.profile.humanIdentityId?.trim() || '';
-  const profileAdoptionSignature = useMemo(() => JSON.stringify({
+  const accountAvatarSource = account ? canonicalAvatarImageSource(account.avatar) : null;
+  const profileAdoptionSignature = JSON.stringify({
     accountId: account?.accountId ?? null,
     displayName:
       account?.displayName ?? account?.primaryEmail ?? null,
-    avatarUrl: account?.avatarUrl ?? null,
+    avatarSeed: account?.avatar.seed ?? null,
+    avatarSource: accountAvatarSource,
     profileHumanIdentityId:
       canonicalState?.profile.humanIdentityId ?? null,
-  }), [
-    account?.accountId,
-    account?.avatarUrl,
-    account?.displayName,
-    account?.primaryEmail,
-    canonicalState?.profile.humanIdentityId,
-  ]);
+  });
 
   useEffect(() => {
     if (
@@ -81,8 +78,8 @@ export function useCloudCanonicalIdentitySync({
           account.displayName
           || account.primaryEmail
           || account.accountId,
-        avatarKey: account.accountId,
-        profileImageUrl: account.avatarUrl ?? null,
+        avatarKey: account.avatar.seed,
+        profileImageUrl: canonicalAvatarImageSource(account.avatar),
       },
       adoptCloudProfileIdentity,
       (delta) => {

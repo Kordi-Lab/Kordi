@@ -6,6 +6,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::routes::ContactSummary;
+use crate::avatars::{
+    generated_avatar_marker, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
+};
 
 use super::config::{PendingSupportConfig, SupportConfig, SupportConfigError};
 
@@ -40,13 +43,17 @@ pub async fn bootstrap_support_agent(
     .await?;
 
     let now = Utc::now().to_rfc3339();
+    let owner_avatar_url =
+        generated_avatar_marker(HUMAN_AVATAR_STYLE, &pending.owner_account_id, 1);
     let (owner_account_id, contact_created_at) = if let Some(row) = existing_by_email {
         row
     } else {
         let row: (String, String) = query_as(
             "INSERT INTO cloud_accounts (
-                 account_id, display_name, primary_email, avatar_url, created_at, updated_at
-             ) VALUES ($1, $2, $3, NULL, $4, $4)
+                 account_id, display_name, primary_email, avatar_url, created_at, updated_at,
+                 avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version,
+                 avatar_updated_at
+             ) VALUES ($1, $2, $3, $4, $5, $5, 'generated', $6, $1, $7, 1, $5)
              ON CONFLICT (account_id) DO UPDATE
              SET display_name = EXCLUDED.display_name,
                  primary_email = COALESCE(cloud_accounts.primary_email, EXCLUDED.primary_email),
@@ -56,7 +63,10 @@ pub async fn bootstrap_support_agent(
         .bind(&pending.owner_account_id)
         .bind(&pending.name)
         .bind(&pending.owner_email)
+        .bind(&owner_avatar_url)
         .bind(&now)
+        .bind(HUMAN_AVATAR_STYLE)
+        .bind(AVATAR_RENDERER_VERSION)
         .fetch_one(pool)
         .await?;
         row
@@ -72,16 +82,19 @@ pub async fn bootstrap_support_agent(
         contact_created_at,
         provider_auth: pending.provider_auth,
     };
+    let agent_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &config.agent_id, 1);
 
     let result = query(
         "INSERT INTO cloud_agent_definitions (
              agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at, is_system_managed
+             model_routing_json, created_at, updated_at, archived_at, is_system_managed,
+             avatar_url, avatar_source, avatar_style, avatar_seed, avatar_renderer_version,
+             avatar_version, avatar_updated_at
          ) VALUES (
              $1, $2, 'participant_conversations', 'active', $3, 'Official Kordi support agent',
              $4, $5, 'Official Kordi product guidance and feedback intake.', '[]', '[]', '[]',
-             $6, $7, $7, NULL, TRUE
+             $6, $7, $7, NULL, TRUE, $8, 'generated', $9, $1, $10, 1, $7
          )
          ON CONFLICT (agent_id) DO UPDATE SET
              owner_account_id = EXCLUDED.owner_account_id,
@@ -106,6 +119,9 @@ pub async fn bootstrap_support_agent(
     .bind(SUPPORT_SYSTEM_PROMPT)
     .bind(config.model_routing())
     .bind(&now)
+    .bind(&agent_avatar_url)
+    .bind(AGENT_AVATAR_STYLE)
+    .bind(AVATAR_RENDERER_VERSION)
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {

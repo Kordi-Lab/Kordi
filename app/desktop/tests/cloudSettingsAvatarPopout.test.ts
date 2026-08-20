@@ -199,22 +199,28 @@ test('profile sign out action is styled as destructive red', () => {
   assert.match(modal, /hover:bg-rose-500\/15/);
 });
 
-test('profile save omits an unchanged avatar so legacy or external avatars do not fail validation', () => {
+test('profile save sends only an explicit canonical avatar mutation', () => {
   assert.deepEqual(cloudProfileSaveInput({
     displayNameDraft: 'Renamed user',
-    avatarUrlDraft: 'https://images.example/avatar.png',
-    originalAvatarUrl: 'https://images.example/avatar.png',
+    avatarMutationDraft: null,
   }), {
     displayName: 'Renamed user',
   });
 
   assert.deepEqual(cloudProfileSaveInput({
     displayNameDraft: 'Renamed user',
-    avatarUrlDraft: 'data:image/jpeg;base64,new',
-    originalAvatarUrl: 'https://images.example/avatar.png',
+    avatarMutationDraft: {
+      action: 'upload',
+      uploadedAsset: 'data:image/jpeg;base64,new',
+      expectedVersion: 3,
+    },
   }), {
     displayName: 'Renamed user',
-    avatarUrl: 'data:image/jpeg;base64,new',
+    avatarMutation: {
+      action: 'upload',
+      uploadedAsset: 'data:image/jpeg;base64,new',
+      expectedVersion: 3,
+    },
   });
 });
 
@@ -222,16 +228,18 @@ test('profile editor does not reset avatar drafts while open for same account sy
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
 
   assert.match(modal, /openedAccountIdRef/);
-  assert.doesNotMatch(modal, /\}, \[account, initialTab, isOpen, setActiveSettingsSectionId\]\);/);
+  assert.match(modal, /wasOpenRef\.current && openedAccountIdRef\.current === accountId/);
 });
 
-test('cloud profile updates publish to observers and the edited account', () => {
+test('cloud profile updates publish owner snapshots and viewer-safe invalidations', () => {
   const profileHandlers = readFileSync(
     new URL('../../../bridges/cloud-server/src/auth/routes/profile_handlers.rs', import.meta.url),
     'utf8',
   );
 
-  assert.match(profileHandlers, /observer_account_ids\.insert\(session\.account_id\.clone\(\)\)/);
+  assert.match(profileHandlers, /identity_sync_recipient_ids/);
+  assert.match(profileHandlers, /std::slice::from_ref\(&session\.account_id\)[\s\S]*"account\.profile\.updated"/);
+  assert.match(profileHandlers, /&viewer_recipients,[\s\S]*"account\.directory\.changed"/);
   assert.match(profileHandlers, /for observer_account_id in observer_account_ids/);
 });
 
