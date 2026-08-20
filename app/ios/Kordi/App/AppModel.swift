@@ -240,7 +240,8 @@ final class AppModel: ObservableObject {
         email: String,
         password: String,
         displayName: String?,
-        avatarSeed: String
+        avatarSeed: String,
+        avatarMutation: CanonicalAvatarMutation? = nil
     ) async -> Bool {
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
@@ -258,7 +259,8 @@ final class AppModel: ObservableObject {
                 email: cleanEmail,
                 password: password,
                 displayName: cleanName,
-                avatarSeed: avatarSeed
+                avatarSeed: avatarSeed,
+                avatarMutation: avatarMutation
             )
             try await completeAuthentication(response)
             return true

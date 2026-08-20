@@ -1,4 +1,5 @@
 import Foundation
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -79,6 +80,55 @@ struct IdentityAvatar: View {
         }
     }
 
+}
+
+struct AvatarActionPill: View {
+    @Binding var selectedPhoto: PhotosPickerItem?
+    let disabled: Bool
+    let onRandomize: () -> Void
+    var randomLabel = "Random avatar"
+    var uploadLabel = "Upload avatar"
+    var vertical = false
+
+    var body: some View {
+        Group {
+            if vertical {
+                VStack(spacing: 0) { actions }
+            } else {
+                HStack(spacing: 0) { actions }
+            }
+        }
+        .foregroundStyle(.secondary)
+        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color(uiColor: .separator).opacity(0.45), lineWidth: 0.5)
+        }
+        .disabled(disabled)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button(action: onRandomize) {
+            Image(systemName: "dice")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(randomLabel)
+
+        Divider()
+            .frame(width: vertical ? 24 : nil, height: vertical ? nil : 24)
+
+        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+            Image(systemName: "camera")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(uploadLabel)
+    }
 }
 
 enum KordiSupportIdentity {

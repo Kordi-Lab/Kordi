@@ -579,34 +579,13 @@ private struct ProfileSettingsView: View {
                             seed: model.account?.accountId
                         )
 
-                        HStack(spacing: 0) {
-                            Button(action: updateGeneratedAvatarPreview) {
-                                Image(systemName: "dice")
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Random profile avatar")
-
-                            Divider()
-                                .frame(height: 24)
-
-                            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                                Image(systemName: "camera")
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Upload profile avatar")
-                        }
-                        .foregroundStyle(.secondary)
-                        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-                        .overlay {
-                            Capsule()
-                                .stroke(Color(uiColor: .separator).opacity(0.45), lineWidth: 0.5)
-                        }
-                        .disabled(isSaving)
-                        .accessibilityElement(children: .contain)
+                        AvatarActionPill(
+                            selectedPhoto: $selectedPhoto,
+                            disabled: isSaving,
+                            onRandomize: updateGeneratedAvatarPreview,
+                            randomLabel: "Random profile avatar",
+                            uploadLabel: "Upload profile avatar"
+                        )
                     }
 
                     VStack(spacing: 4) {
