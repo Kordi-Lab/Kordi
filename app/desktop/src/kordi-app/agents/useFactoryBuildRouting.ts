@@ -1,6 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 
-import { fetchDesktopSkillLibraryDetail, type DesktopAgentBuilderSeed } from '@/lib/desktop';
+import { fetchDesktopSkillLibraryDetail, type DesktopAgentBuilderSeed, type DesktopChatMessageRoute } from '@/lib/desktop';
 import {
   fetchDesktopAgentBuilderList,
   resolveDesktopAgentBuilder,
@@ -28,6 +28,7 @@ type FactoryBuildRoutingOptions = {
   buildRoute: FactoryBuildRoute | null;
   canCreateAgent: boolean;
   cloudAccountId?: string | null;
+  defaultAgentRuntimeRoute?: DesktopChatMessageRoute | null;
   factorySection: FactorySection;
   inspectedAgent?: Agent;
   libraryArtifacts: Record<'tool' | 'plugin', FactoryLibraryArtifact[]>;
@@ -48,6 +49,7 @@ export function useFactoryBuildRouting({
   buildRoute,
   canCreateAgent,
   cloudAccountId,
+  defaultAgentRuntimeRoute,
   factorySection,
   inspectedAgent,
   libraryArtifacts,
@@ -111,7 +113,7 @@ export function useFactoryBuildRouting({
       artifactKind: kind,
       artifactId: null,
       returnContext: currentReturnContext(),
-    }, newArtifactSeed(kind));
+    }, newArtifactSeed(kind, defaultAgentRuntimeRoute));
   };
 
   const editAgentInBuild = async (agent: Agent) => {
@@ -192,7 +194,7 @@ export function useFactoryBuildRouting({
             status: 'status' in libraryArtifact ? String(libraryArtifact.status) : 'Published',
             usedBy: [],
           }, skillMd)
-          : newArtifactSeed(kind);
+          : newArtifactSeed(kind, defaultAgentRuntimeRoute);
       showBuild({
         targetKey: summary.targetKey,
         sessionId: summary.sessionId,

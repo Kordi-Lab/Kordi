@@ -66,7 +66,7 @@ import {
 } from './cloudConversationMetadata';
 import {
   latestVisibleConversationMessage,
-  visibleCloudAgentResponseMessages,
+  selectVisibleCloudAgentResponses,
 } from './cloudAgentResponseSelection';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import {
@@ -76,6 +76,7 @@ import {
   cloudDirectMessageTargetCloudAgentName,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
 } from './cloudDirectMessages';
+import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import { compareCloudMessages } from './cloudMessageMerge';
 import {
@@ -94,15 +95,12 @@ import {
   messagesForCloudContact,
   systemAgentIdsByPeer,
 } from './cloudSystemAgentConversations';
-
 export const CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
 const CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS = 10 * 60_000;
 const cloudConversationRevisionByObject = new WeakMap<DesktopCollaborationConversation, string>();
-
 export function isCloudCollaborationHostId(hostId: string | null | undefined): boolean {
   return hostId === CLOUD_HOST_SENTINEL;
 }
-
 export function cloudSessionIdForCollaborationSend(localAccountId: string | null | undefined, peerAccountId: string | null | undefined, conversationId: string): string | null {
   const local = localAccountId?.trim() ?? '';
   const peer = peerAccountId?.trim() ?? '';
@@ -542,6 +540,9 @@ export function buildCloudCollaborationConversation({
     }
   }
   const cancelledRequestIds = new Set(cancelMessageByRequestId.keys());
+  const sessionAgentTarget = isSelfPeer ? cloudAgentSessionTargetFromMessages(messages, account.accountId) : null;
+  const selfAgentId = sessionAgentTarget?.targetCloudAgentId || 'cloud-local-agent';
+  const selfAgentName = sessionAgentTarget?.targetCloudAgentName || 'My Kordi';
   const requestTargetAccountIds = new Map<string, string>();
   const requestTargetAgentNames = new Map<string, string>();
   const explicitResponseAgentNames = new Map<string, string>();
@@ -554,6 +555,7 @@ export function buildCloudCollaborationConversation({
     const directTargetOwnerAccountId = directTargetCloudAgentId
       ? cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body)
       : null;
+    if (!displayBody && directTargetCloudAgentId) continue;
     if (directTargetOwnerAccountId) {
       requestTargetAccountIds.set(message.messageId, directTargetOwnerAccountId);
       const directTargetAgentName = cloudDirectMessageTargetCloudAgentName(message.body)
@@ -562,7 +564,7 @@ export function buildCloudCollaborationConversation({
       explicitResponseAgentNames.set(message.messageId, directTargetAgentName);
     } else if (isSelfPeer && cloudMessageIsSelfAgentRequest({ ...message, body: displayBody }, account)) {
       requestTargetAccountIds.set(message.messageId, account.accountId);
-      requestTargetAgentNames.set(message.messageId, 'My Kordi');
+      requestTargetAgentNames.set(message.messageId, selfAgentName);
     } else if (cloudMessageMentionsFirstPersonAgent(displayBody)) {
       requestTargetAccountIds.set(message.messageId, message.fromAccountId);
       requestTargetAgentNames.set(message.messageId, message.fromAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact));
@@ -574,10 +576,14 @@ export function buildCloudCollaborationConversation({
       requestTargetAgentNames.set(message.messageId, 'My Kordi');
     }
   }
-  const visibleCloudMessages = visibleCloudAgentResponseMessages(
+  const {
+    visibleMessages: visibleCloudMessages,
+    responseRequestIds, terminalResponseRequestIds,
+  } = selectVisibleCloudAgentResponses(
     messages,
     requestTargetAccountIds,
     (message) => cloudMessageIsGroupControl(message, groupControlMessageIds),
+    (requestId) => Boolean(localAgentTurnsByRequestId[requestId]?.completed),
   );
   const agentRequests = messages.filter((message) => {
     if (cloudMessageIsGroupControl(message, groupControlMessageIds)) return false;
@@ -585,11 +591,7 @@ export function buildCloudCollaborationConversation({
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
     return Boolean(requestTargetAccountIds.get(message.messageId));
   });
-  const responseRequestIds = new Set(messages
-    .map((message) => parseCloudAgentResponse(message.body)?.requestId)
-    .filter((value): value is string => Boolean(value)));
-  const answeredRequestIds = new Set(responseRequestIds);
-  for (const requestId of cancelledRequestIds) answeredRequestIds.add(requestId);
+  const answeredRequestIds = new Set([...responseRequestIds, ...cancelledRequestIds]);
   // Remote Cloud agents remain reachable through server-side fallback while the
   // owner device is offline. Keep the request in the normal processing slot
   // until a Cloud/local agent response or cancel arrives instead of showing an
@@ -610,7 +612,7 @@ export function buildCloudCollaborationConversation({
     const targetAccountId = requestTargetAccountIds.get(message.messageId);
     if (!targetAccountId) return [mapped];
     const localTurn = localAgentTurnsByRequestId[message.messageId] ?? null;
-    if (localTurn?.completed && !answeredRequestIds.has(message.messageId)) {
+    if (localTurn?.completed && !terminalResponseRequestIds.has(message.messageId)) {
       return [mapped, cloudAgentCompletedLocalTurnCollaborationMessage({
         account,
         request: message,
@@ -744,18 +746,16 @@ export function buildCloudCollaborationConversation({
       sourceHostId: CLOUD_HOST_SENTINEL,
       localHumanId: account.accountId,
       localHumanName: account.displayName || account.primaryEmail || 'Me',
-      localAgentId: 'cloud-local-agent',
-      localAgentName: 'My Kordi',
+      localAgentId: isSelfPeer ? selfAgentId : 'cloud-local-agent',
+      localAgentName: isSelfPeer ? selfAgentName : 'My Kordi',
       localAgentNodeId: account.nodeId || account.accountId,
       remoteHumanId: peerAccountId,
       remoteHumanName: isSelfPeer
         ? (account.displayName || account.primaryEmail || 'Me')
         : contact.targetCloudAgentOwnerName?.trim() || cloudPeerDisplayName(contact),
       remoteHumanNodeId: peerAccountId,
-      remoteAgentId: isSelfPeer
-        ? 'cloud-local-agent'
-        : contact.sourceAgentId?.trim() || `cloud-agent:${peerAccountId}`,
-      remoteAgentName: isSelfPeer ? 'My Kordi' : cloudAgentDisplayName(contact),
+      remoteAgentId: isSelfPeer ? selfAgentId : contact.sourceAgentId?.trim() || `cloud-agent:${peerAccountId}`,
+      remoteAgentName: isSelfPeer ? selfAgentName : cloudAgentDisplayName(contact),
       remoteAgentNodeId: peerAccountId,
       remoteAgentRuntime: CLOUD_AGENT_RUNTIME,
     },

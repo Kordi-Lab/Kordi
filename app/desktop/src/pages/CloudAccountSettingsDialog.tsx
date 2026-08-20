@@ -1,13 +1,12 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, Camera, KeyRound, Laptop, Palette, RefreshCw, User, X } from 'lucide-react';
+import { Bell, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 import { SettingsValueControl } from '@/kordi-app/components';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
+import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
 import type { CloudAccount, CloudProfileUpdateInput } from '@/features/cloud/authClient';
@@ -17,9 +16,8 @@ import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
 import {
   canonicalAvatarImageSource,
-  generatedAvatarMarker,
+  generatedAvatarPreviewUrl,
   newCanonicalAvatarSeed,
-  parseGeneratedAvatarMarker,
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
 
@@ -112,7 +110,6 @@ export function CloudAccountSettingsDialog({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const profileErrorId = useId();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openedAccountIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
 
@@ -154,7 +151,6 @@ export function CloudAccountSettingsDialog({
   const displayName = profileDisplayName(account);
   const isDisplayNameInvalid = Boolean(profileError && !displayNameDraft.trim());
   const avatarSeed = account.avatar.seed;
-  const draftIsGenerated = Boolean(parseGeneratedAvatarMarker(avatarUrlDraft));
   const appearanceSection = settingsSections.find((section) => section.id === 'appearance');
   const tabs: Array<{ id: CloudAccountSettingsTabId; label: string; icon: typeof User }> = [
     { id: 'profile', label: 'Profile', icon: User },
@@ -194,45 +190,28 @@ export function CloudAccountSettingsDialog({
     }
   };
 
-  const handleAvatarFile = (file: File | undefined) => {
-    if (!file) return;
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setProfileError('Choose a PNG, JPEG, or WebP image.');
-      return;
-    }
-    void fileToAvatarDataUrl(file)
-      .then((dataUrl) => {
-        setAvatarUrlDraft(dataUrl);
-        setAvatarMutationDraft({
-          action: 'upload',
-          uploadedAsset: dataUrl,
-          expectedVersion: account.avatar.version,
-        });
-        setProfileError('');
-      })
-      .catch((caught) => setProfileError(caught instanceof Error ? caught.message : 'Could not use that image.'));
-  };
-
-  const useAnotherGeneratedAvatar = () => {
-    const seed = newCanonicalAvatarSeed();
-    const nextVersion = account.avatar.version + 1;
-    const style = account.avatar.style;
-    setAvatarUrlDraft(generatedAvatarMarker(style, seed, nextVersion));
+  const handleAvatarUpload = (dataUrl: string) => {
+    setAvatarUrlDraft(dataUrl);
     setAvatarMutationDraft({
-      action: 'regenerate',
-      seed,
+      action: 'upload',
+      uploadedAsset: dataUrl,
       expectedVersion: account.avatar.version,
     });
     setProfileError('');
   };
 
-  const restoreGeneratedAvatar = () => {
-    const seed = account.avatar.seed;
+  const useAnotherGeneratedAvatar = () => {
+    const seed = newCanonicalAvatarSeed();
     const style = account.avatar.style;
-    const nextVersion = account.avatar.version + 1;
-    setAvatarUrlDraft(generatedAvatarMarker(style, seed, nextVersion));
+    const previewUrl = generatedAvatarPreviewUrl(style, seed);
+    if (!previewUrl) {
+      setProfileError('Could not create a random avatar.');
+      return;
+    }
+    setAvatarUrlDraft(previewUrl);
     setAvatarMutationDraft({
-      action: 'remove_upload',
+      action: 'regenerate',
+      seed,
       expectedVersion: account.avatar.version,
     });
     setProfileError('');
@@ -253,30 +232,19 @@ export function CloudAccountSettingsDialog({
 
   const profilePanel = (
     <div className="app-cloud-account-settings-section app-cloud-account-profile max-w-[620px] py-2">
-      <div className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-5">
-        <div className="grid justify-items-center gap-2.5">
-          <IdentityAvatar
+      <div className="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-5">
+        <div className="flex justify-center">
+          <EditableIdentityAvatar
             kind="human"
             seed={avatarSeed}
             name={displayNameDraft || displayName}
             imageUrl={avatarUrlDraft || undefined}
             className="h-16 w-16 border border-white/10"
+            label="Profile avatar"
+            generateLabel="Random avatar"
+            onUpload={handleAvatarUpload}
+            onGenerate={useAnotherGeneratedAvatar}
           />
-          <Button type="button" variant="quiet" className="h-8 rounded-full px-2.5 text-[11px]" onClick={() => {
-            setProfileError('');
-            fileInputRef.current?.click();
-          }}>
-            <Camera className="h-3.5 w-3.5" />
-            Change
-          </Button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[11px] font-medium text-slate-400 outline-none transition hover:bg-white/5 hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-emerald-300/80"
-            onClick={draftIsGenerated ? useAnotherGeneratedAvatar : restoreGeneratedAvatar}
-          >
-            <RefreshCw className="h-3 w-3" aria-hidden="true" />
-            {draftIsGenerated ? 'Generate another' : 'Use generated'}
-          </button>
         </div>
         <div className="min-w-0">
           <label className="grid gap-2 text-[12px] font-medium text-slate-300">
@@ -305,21 +273,10 @@ export function CloudAccountSettingsDialog({
             ))}
           </dl>
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            handleAvatarFile(file);
-          }}
-        />
       </div>
-      {profileError ? <div id={profileErrorId} className="app-error-text mt-3 text-[12px] text-rose-200 sm:pl-[108px]" aria-live="polite">{profileError}</div> : null}
+      {profileError ? <div id={profileErrorId} className="app-error-text mt-3 text-[12px] text-rose-200 sm:pl-[116px]" aria-live="polite">{profileError}</div> : null}
       <div className={cn(
-        'app-cloud-account-settings-meta-row mt-6 flex flex-wrap items-center gap-3 sm:pl-[108px]',
+        'app-cloud-account-settings-meta-row mt-6 flex flex-wrap items-center gap-3 sm:pl-[116px]',
         onSignOut ? 'justify-between' : 'justify-end',
       )}>
         {onSignOut ? (

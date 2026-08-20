@@ -10,7 +10,8 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 import type { CloudAgentDefinition } from '@/features/cloud/cloudAgents';
-
+import { agentSessionKind, agentSessionParticipantSpaceKind } from './agentSessionRouting';
+import { publishedAgentRuntimeRouteMetadata } from './agentSessionRuntimeRoute';
 export type ChatCreatePersonOption = {
   id: string;
   label: string;
@@ -62,11 +63,9 @@ export type ChatGroupMetadata = {
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
-
 function firstNonEmpty(...values: Array<string | null | undefined>) {
   return values.map(cleanText).find(Boolean) ?? '';
 }
-
 function isContactAgent(contact: Contact) {
   const entityType = contact.entityType.toLowerCase();
   return entityType.includes('agent') || contact.classType === 'my-agents' || contact.classType === 'other-users-agents';
@@ -175,7 +174,7 @@ export function collaborationAgentForChatStart(input: CollaborationAgentStartInp
 }
 
 export function buildChatAgentSessionKind(agent: Agent): ChatAgentSessionKind {
-  return agent.isOwned ? 'self-agent' : 'direct-agent';
+  return agentSessionKind(agent);
 }
 
 export function chatSessionIdForPersonStart(randomId: string) {
@@ -200,7 +199,7 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
   return {
     createdFrom: 'chat-create-flow' as const,
     agentId: agent.id,
-    participantSpaceKind: 'self' as const,
+    participantSpaceKind: agentSessionParticipantSpaceKind(agent),
     ...(sourceHostId ? { sourceHostId } : {}),
     ...(peerNodeId ? { peerNodeId } : {}),
     ...(peerRuntime ? { peerRuntime } : {}),
@@ -218,6 +217,7 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
       cloudAgentTools: agent.loadedTools,
       cloudAgentPlugins: agent.loadedPlugins,
     } : {}),
+    ...publishedAgentRuntimeRouteMetadata(agent),
   };
 }
 

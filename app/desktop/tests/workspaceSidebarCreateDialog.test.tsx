@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import { participantSpaceSessionIdLabel, participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation } from '../src/pages/WorkspaceSidebar';
+import { usesDefaultLocalAgentSession } from '../src/app/openLocalAgentChat';
 import { conversation, contact, agent } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
 test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-tab New session', () => {
@@ -18,6 +19,13 @@ test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-
   assert.match(source, /initialMode=\{chatCreateInitialMode\}/);
   assert.doesNotMatch(source, /initialMode=\{chatChannel === 'agent' \? 'agent' : 'menu'\}/);
   assert.match(dialogSource, /if \(isOpen\) \{\s*setMode\(initialMode\);\s*\}/);
+});
+
+test('only the default Kordi agent uses the generic local New session path', () => {
+  assert.equal(usesDefaultLocalAgentSession(agent({ id: 'desktop:local-agent', isOwned: true })), true);
+  assert.equal(usesDefaultLocalAgentSession(agent({ id: 'agent:default', isOwned: true, isCollaborationDefault: true })), true);
+  assert.equal(usesDefaultLocalAgentSession(agent({ id: 'agent:stock-trader', isOwned: true, isCollaborationDefault: false })), false);
+  assert.equal(usesDefaultLocalAgentSession(agent({ id: 'cloud-agent:stock-trader', isOwned: true, cloudAgentId: 'stock-trader' })), false);
 });
 
 test('ChatCreateDialog agent mode shows agent choices with avatars directly', () => {

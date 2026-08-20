@@ -1,7 +1,21 @@
-import type { DesktopAgentBuilderDraft, DesktopAgentBuilderSeed } from '@/lib/desktop';
+import type { DesktopAgentBuilderDraft, DesktopAgentBuilderSeed, DesktopAgentBuilderStatus, DesktopChatMessageRoute } from '@/lib/desktop';
+import type { CloudAgentAccessScope, CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import type { CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
 import type { Agent } from '../types';
 import type { FactoryArtifactKind, FactoryLibraryArtifact } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
+
+export const CLOUD_AGENT_TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  bash: 'Run shell commands in the private agent workspace.',
+  edit: 'Make precise changes to workspace files.',
+  find: 'Find files and folders by name.',
+  grep: 'Search text across workspace files.',
+  ls: 'List files and folders in the workspace.',
+  read: 'Read files from the workspace.',
+  web_fetch: 'Read content from a web page.',
+  web_search: 'Search the web for current information.',
+  write: 'Create or replace workspace files.',
+};
 
 export function resourcesForCreate(creatorAgent?: Agent | null) {
   return creatorAgent ? [{
@@ -10,6 +24,53 @@ export function resourcesForCreate(creatorAgent?: Agent | null) {
     title: creatorAgent.name,
     summary: `${creatorAgent.loadedTools.length} tools and ${creatorAgent.loadedSkills.length} skills available during shaping`,
   }] : [];
+}
+
+export function factoryAgentCreateInput({
+  draft,
+  runtime,
+  accessScope,
+  creatorAgent,
+  avatarMutation,
+}: {
+  draft: ShapeAgentDraft;
+  runtime?: DesktopAgentBuilderDraft | null;
+  accessScope: CloudAgentAccessScope;
+  creatorAgent?: Agent | null;
+  avatarMutation?: CanonicalAvatarMutation;
+}): CreateCloudAgentInput {
+  return {
+    accessScope,
+    name: draft.name,
+    role: draft.role,
+    description: draft.description,
+    ...(avatarMutation ? { avatarMutation } : {}),
+    systemPrompt: draft.systemPrompt,
+    sourceSummary: draft.sourceSummary,
+    boundaries: draft.boundaries,
+    resources: resourcesForCreate(creatorAgent),
+    skills: draft.skills,
+    modelRouting: {
+      defaultModel: runtime?.model ?? null,
+      defaultAuthProvider: runtime?.provider ?? null,
+      thinking: runtime?.thinking ?? null,
+      tools: runtime?.tools ?? [],
+      plugins: runtime?.plugins ?? [],
+    },
+  };
+}
+
+export async function readyFactoryBuildForPublish(
+  status: DesktopAgentBuilderStatus | null,
+  testDraft: () => Promise<DesktopAgentBuilderStatus | null>,
+) {
+  if (!status) throw new Error('The Factory draft is unavailable.');
+  if (status.publishReady) return status;
+  const tested = await testDraft();
+  if (!tested?.publishReady) {
+    throw new Error(tested?.testReport?.summary || 'The agent test did not pass. Review Runs and try again.');
+  }
+  return tested;
 }
 
 export function shapeDraftFromBuilder(draft: DesktopAgentBuilderDraft): ShapeAgentDraft {
@@ -55,7 +116,10 @@ export function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed
   };
 }
 
-export function newArtifactSeed(kind: FactoryArtifactKind): DesktopAgentBuilderSeed {
+export function newArtifactSeed(
+  kind: FactoryArtifactKind,
+  defaultRoute?: DesktopChatMessageRoute | null,
+): DesktopAgentBuilderSeed {
   if (kind === 'skill') {
     return {
       name: 'New skill build',
@@ -100,6 +164,9 @@ export function newArtifactSeed(kind: FactoryArtifactKind): DesktopAgentBuilderS
     description: '',
     systemPrompt: '',
     access: 'only-me',
+    provider: defaultRoute?.authProvider ?? null,
+    model: defaultRoute?.model ?? null,
+    thinking: defaultRoute?.thinking ?? null,
     tools: [],
     plugins: [],
     skills: [],

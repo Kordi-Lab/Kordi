@@ -423,7 +423,8 @@ test('contact detail modal suppresses detail text when it repeats the visible ac
     }),
   });
 
-  assert.equal((markup.match(/acct_peer_123/g) ?? []).length, 1);
+  const visibleText = markup.replace(/<[^>]*>/g, ' ');
+  assert.equal((visibleText.match(/acct_peer_123/g) ?? []).length, 1);
 });
 
 test('contacts add surface uses concise public Kordi ID controls without implementation wording', () => {

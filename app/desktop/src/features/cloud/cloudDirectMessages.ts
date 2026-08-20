@@ -2,6 +2,8 @@ import type { MessageActionMetadata } from '../../kordi-app/types/message';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 export const CLOUD_DIRECT_MESSAGE_PREFIX = 'kordi-cloud-message:';
+export const CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND =
+  'canonical-history-agent-identity';
 
 export type CloudDirectMessageEnvelope = {
   schemaVersion: 1;

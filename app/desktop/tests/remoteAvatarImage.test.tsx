@@ -212,7 +212,7 @@ test('a memory-cached native avatar is present on the first render', async () =>
   }
 });
 
-test('a blocked native avatar settles on one deterministic fallback', async () => {
+test('a blocked native avatar settles on one neutral fallback', async () => {
   const installed = installNativeDom();
   clearRemoteAvatarImageCacheForTests();
   let calls = 0;
@@ -235,7 +235,8 @@ test('a blocked native avatar settles on one deterministic fallback', async () =
     );
 
     assert.match(markup, /data-avatar-state="failed"/);
-    assert.match(markup, />AL</);
+    assert.match(markup, /bg-slate-200/);
+    assert.doesNotMatch(markup, />AL</);
     assert.doesNotMatch(markup, /<img/);
     await assert.rejects(loadAvatarThroughNativeProxy(
       'https://images.example/blocked.png',

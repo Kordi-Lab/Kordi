@@ -30,6 +30,9 @@ import {
 } from './cloudDeviceEvents';
 
 type CloudAgentCatalogStores = {
+  definitionsByIdRef: MutableRefObject<
+    Record<string, CloudAgentDefinition>
+  >;
   setDefinitionsById: Dispatch<
     SetStateAction<Record<string, CloudAgentDefinition>>
   >;
@@ -57,16 +60,26 @@ export function useCloudAgentCatalog({
   stores: CloudAgentCatalogStores;
 }) {
   const {
+    definitionsByIdRef,
     setDefinitionsById,
     sharedByOwner,
     setSharedByOwner,
   } = stores;
 
+  const commitDefinitions = useCallback((
+    next: Record<string, CloudAgentDefinition>,
+  ) => {
+    definitionsByIdRef.current = next;
+    setDefinitionsById((current) =>
+      recordEqual(current, next) ? current : next
+    );
+  }, [definitionsByIdRef, setDefinitionsById]);
+
   const refreshDefinitions = useCallback(async (
     generation?: number,
   ) => {
     if (!account) {
-      setDefinitionsById({});
+      commitDefinitions({});
       return;
     }
     const session = await loadSession();
@@ -82,14 +95,12 @@ export function useCloudAgentCatalog({
     const next = Object.fromEntries(
       agents.map((agent) => [agent.agentId, agent]),
     );
-    setDefinitionsById((current) =>
-      recordEqual(current, next) ? current : next
-    );
+    commitDefinitions(next);
   }, [
     account,
     cancelledRef,
     client,
-    setDefinitionsById,
+    commitDefinitions,
     syncCoordinator,
   ]);
 
@@ -155,12 +166,12 @@ export function useCloudAgentCatalog({
       throw new Error('Sign in to Cloud before creating an agent.');
     }
     const agent = await client.createCloudAgent(session.token, input);
-    setDefinitionsById((current) => ({
-      ...current,
+    commitDefinitions({
+      ...definitionsByIdRef.current,
       [agent.agentId]: agent,
-    }));
+    });
     return agent;
-  }, [client, setDefinitionsById]);
+  }, [client, commitDefinitions, definitionsByIdRef]);
 
   const updateDefinition = useCallback(async (
     agentId: string,
@@ -175,12 +186,12 @@ export function useCloudAgentCatalog({
       agentId,
       input,
     );
-    setDefinitionsById((current) => ({
-      ...current,
+    commitDefinitions({
+      ...definitionsByIdRef.current,
       [agent.agentId]: agent,
-    }));
+    });
     return agent;
-  }, [client, setDefinitionsById]);
+  }, [client, commitDefinitions, definitionsByIdRef]);
 
   const archiveDefinition = useCallback(async (agentId: string) => {
     const session = await loadSession();
@@ -191,12 +202,11 @@ export function useCloudAgentCatalog({
       session.token,
       agentId,
     );
-    setDefinitionsById((current) => {
-      const { [agent.agentId]: _removed, ...rest } = current;
-      return rest;
-    });
+    const { [agent.agentId]: _removed, ...rest } =
+      definitionsByIdRef.current;
+    commitDefinitions(rest);
     return agent;
-  }, [client, setDefinitionsById]);
+  }, [client, commitDefinitions, definitionsByIdRef]);
 
   return {
     refreshDefinitions,

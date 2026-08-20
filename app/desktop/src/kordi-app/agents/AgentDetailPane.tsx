@@ -879,7 +879,7 @@ export function AgentDetailPane({
               name={activeAgent.name}
               imageUrl={activeAgent.profileImageUrl}
               label={`${activeAgent.name} avatar`}
-              compact {...cloudAgentAvatarControls(activeAgent, onUpdateCloudAgent)}
+              {...cloudAgentAvatarControls(activeAgent, onUpdateCloudAgent)}
               className="mt-0.5 h-12 w-12 border border-white/10"
             />
             <div className="min-w-0">

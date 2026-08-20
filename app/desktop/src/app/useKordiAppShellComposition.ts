@@ -352,6 +352,7 @@ export function useKordiAppShellComposition({
       selectComposerProviderChoice: wrappedSelectComposerProviderChoice,
       composerProviderOptions: composer.composerProviderOptions,
       chatModelOptions: chatModelOptionsForShell,
+      defaultCloudAgentRuntimeRoute: composer.defaultCloudAgentRuntimeRoute,
       isDesktopChatSending: activity.isDesktopChatSending,
       handleStopDesktopChatTurn: wrappedStopDesktopChatTurn,
       handleStopCollaborationAgentRequest:

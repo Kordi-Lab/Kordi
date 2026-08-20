@@ -569,34 +569,23 @@ private struct ProfileSettingsView: View {
     var body: some View {
         Form {
             Section {
-                VStack(spacing: 12) {
-                    IdentityAvatar(
-                        name: displayName.nonEmpty ?? model.account?.preferredName ?? "Me",
-                        imageSource: avatarDraft?.nonEmpty ?? model.account?.avatar.imageSource,
-                        kind: .person,
-                        size: 88,
-                        seed: model.account?.accountId
-                    )
+                VStack(spacing: 16) {
+                    VStack(spacing: 8) {
+                        IdentityAvatar(
+                            name: displayName.nonEmpty ?? model.account?.preferredName ?? "Me",
+                            imageSource: avatarDraft?.nonEmpty ?? model.account?.avatar.imageSource,
+                            kind: .person,
+                            size: 88,
+                            seed: model.account?.accountId
+                        )
 
-                    HStack(spacing: 10) {
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            Label("Change photo", systemImage: "photo")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button {
-                            updateGeneratedAvatarPreview()
-                        } label: {
-                            Label(
-                                CanonicalAvatarSystem.marker(from: avatarDraft) == nil
-                                    ? "Use generated"
-                                    : "Generate another",
-                                systemImage: "arrow.clockwise"
-                            )
-                            .font(.subheadline.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
+                        AvatarActionPill(
+                            selectedPhoto: $selectedPhoto,
+                            disabled: isSaving,
+                            onRandomize: updateGeneratedAvatarPreview,
+                            randomLabel: "Random profile avatar",
+                            uploadLabel: "Upload profile avatar"
+                        )
                     }
 
                     VStack(spacing: 4) {
@@ -763,28 +752,16 @@ private struct ProfileSettingsView: View {
 
     private func updateGeneratedAvatarPreview() {
         guard let account = model.account else { return }
-        let currentVersion = account.avatar.version
-        let style = account.avatar.style
-        if CanonicalAvatarSystem.marker(from: avatarDraft) == nil {
-            let seed = account.avatar.seed
-            avatarDraft = CanonicalAvatarSystem.marker(
-                style: style,
-                seed: seed,
-                version: currentVersion + 1
-            )
-            avatarMutation = .removeUpload(expectedVersion: account.avatar.version)
-        } else {
-            let seed = CanonicalAvatarSystem.newSeed()
-            avatarDraft = CanonicalAvatarSystem.marker(
-                style: style,
-                seed: seed,
-                version: currentVersion + 1
-            )
-            avatarMutation = .regenerate(
-                seed: seed,
-                expectedVersion: account.avatar.version
-            )
-        }
+        let seed = CanonicalAvatarSystem.newSeed()
+        guard let previewURL = CanonicalAvatarSystem.previewURL(
+            style: account.avatar.style,
+            seed: seed
+        ) else { return }
+        avatarDraft = previewURL.absoluteString
+        avatarMutation = .regenerate(
+            seed: seed,
+            expectedVersion: account.avatar.version
+        )
         saved = false
         model.errorMessage = nil
     }

@@ -227,6 +227,7 @@ export type KordiShellCompositionArgs = {
     | 'selectComposerProviderChoice'
     | 'composerProviderOptions'
     | 'chatModelOptions'
+    | 'defaultCloudAgentRuntimeRoute'
     | 'isDesktopChatSending'
     | 'handleStopDesktopChatTurn'
     | 'handleStopCollaborationAgentRequest'

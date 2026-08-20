@@ -540,7 +540,7 @@ export function mapCollaborationConversationToViewModel(
   const collaborationTarget: ConversationCollaborationTarget = {
     hostId: conversation.hostId,
     nodeId: conversation.peerNodeId,
-    displayName: conversation.peerDisplayName,
+    displayName: isCloudSelfAgent ? localCollaborationAgentLabel : conversation.peerDisplayName,
     ownerName: conversation.peerOwnerName,
     runtime: conversation.peerRuntime,
     humanId: conversation.identity?.remoteHumanId,

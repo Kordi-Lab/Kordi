@@ -21,6 +21,35 @@ function canonicalMessageId(cloudMessageId: string) {
   return `msg:cloud:self:${cloudMessageId}`;
 }
 
+function configuredAgentIdentityId(
+  state: CanonicalSessionState,
+  metadata: Record<string, unknown>,
+) {
+  const configuredAgentId = cleanText(
+    typeof metadata.agentId === 'string' ? metadata.agentId : null,
+  );
+  if (
+    metadata.createdFrom !== 'chat-create-flow'
+    || !cleanText(typeof metadata.cloudAgentId === 'string' ? metadata.cloudAgentId : null)
+    || !configuredAgentId
+  ) return null;
+  return state.identities.find((identity) => {
+    const identityMetadata = identity.metadata
+      && typeof identity.metadata === 'object'
+      && !Array.isArray(identity.metadata)
+      ? identity.metadata as Record<string, unknown>
+      : {};
+    return identity.kind === 'agent' && (
+      cleanText(identity.agentId) === configuredAgentId
+      || cleanText(
+        typeof identityMetadata.agentId === 'string'
+          ? identityMetadata.agentId
+          : null,
+      ) === configuredAgentId
+    );
+  })?.id ?? null;
+}
+
 export function createCloudSelfAgentSessionPlanner({
   state,
   forksBySessionId,
@@ -38,6 +67,7 @@ export function createCloudSelfAgentSessionPlanner({
     new Map<string, OpenCanonicalSessionRequest>();
   const existingById =
     new Map(state.sessions.map((session) => [session.id, session]));
+  const configuredIdentityBySessionId = new Map<string, string>();
 
   const ensure = (
     sessionId: string,
@@ -149,6 +179,14 @@ export function createCloudSelfAgentSessionPlanner({
         === 'string'
         ? existingMetadata.sessionTitleGeneratedFromMessageId.trim()
         : '';
+    const configuredIdentityId = configuredAgentIdentityId(state, existingMetadata);
+    if (configuredIdentityId) {
+      configuredIdentityBySessionId.set(sessionId, configuredIdentityId);
+    }
+    const shouldRepairConfiguredIdentity = Boolean(configuredIdentityId) && (
+      existingSession?.kind !== 'direct-agent'
+      || existingSession.primaryIdentityId !== configuredIdentityId
+    );
     const currentGeneratedFromMessageId =
       generatedFromMessageId?.trim() ?? '';
     const cloudWinsExisting = Boolean(cloudTitle)
@@ -263,10 +301,12 @@ export function createCloudSelfAgentSessionPlanner({
       existingSession
       && (!fork || existingHasCompleteForkContract)
       && !shouldUpdateExistingTitle
+      && !shouldRepairConfiguredIdentity
     ) return;
+    const primaryIdentityId = configuredIdentityId ?? agentIdentityId;
     requestsById.set(sessionId, {
       id: sessionId,
-      kind: 'self-agent',
+      kind: configuredIdentityId ? 'direct-agent' : 'self-agent',
       title: shouldResetInheritedForkTitle
         ? 'New fork'
         : shouldUpdateExistingTitle
@@ -274,8 +314,8 @@ export function createCloudSelfAgentSessionPlanner({
           : cleanText(existingSession?.title) || title,
       status: 'active',
       createdByIdentityId: localHumanIdentityId,
-      primaryIdentityId: agentIdentityId,
-      participantIdentityIds: [agentIdentityId],
+      primaryIdentityId,
+      participantIdentityIds: [primaryIdentityId],
       metadata,
     });
   };
@@ -284,6 +324,9 @@ export function createCloudSelfAgentSessionPlanner({
     ensure,
     get requests(): OpenCanonicalSessionRequest[] {
       return [...requestsById.values()];
+    },
+    agentIdentityIdForSession(sessionId: string) {
+      return configuredIdentityBySessionId.get(sessionId) ?? agentIdentityId;
     },
     existingById,
   };

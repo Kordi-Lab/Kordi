@@ -1,5 +1,6 @@
 import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import { newCanonicalAvatarSeed } from '@/features/cloud/canonicalAvatar';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 
@@ -15,6 +16,7 @@ export type AgentsPageProps = {
   getStatusBadgeClass: (value: string) => string;
   chatModelOptions?: ComposerModelOption[];
   composerProviderOptions?: ComposerProviderOption[];
+  defaultAgentRuntimeRoute?: DesktopChatMessageRoute | null;
   onUpdateAgentModelRouting?: (
     agent: Agent,
     values: {
@@ -54,19 +56,14 @@ export function cloudAgentAvatarControls(
     },
     onGenerate: async () => {
       await update(agent, {
-        avatarMutation: agent.cloudAgentAvatarSource === 'uploaded'
-          ? {
-            action: 'remove_upload',
-            expectedVersion: agent.cloudAgentAvatarVersion,
-          }
-          : {
-            action: 'regenerate',
-            seed: newCanonicalAvatarSeed(),
-            expectedVersion: agent.cloudAgentAvatarVersion,
-          },
+        avatarMutation: {
+          action: 'regenerate',
+          seed: newCanonicalAvatarSeed(),
+          expectedVersion: agent.cloudAgentAvatarVersion,
+        },
       });
     },
-    generateLabel: agent.cloudAgentAvatarSource === 'uploaded' ? 'Use generated' : 'Generate another',
+    generateLabel: 'Random avatar',
   };
 }
 

@@ -22,6 +22,10 @@ The draft is defined by these files:
 5. Keep the tool list minimal. Never add shell, network, outreach, scheduling, or session-reading tools unless the product explicitly supports and the user explicitly requests them.
 6. After editing, summarize the files changed and ask the user to run the draft test before publishing.
 
+The Factory conversation's own file tools and private workspace are only for editing the draft. They are not the candidate agent's runtime limits. Configure the candidate from the user's request and the capabilities shown in Factory. For example, a request for current web research calls for `web_search` and `web_fetch` when those tools are available.
+
+Preserve the configured model route already present in `agent.json`. Do not replace it with a model from an example or guess another model ID. If no route is configured, leave the provider and model as `null` so Kordi can use the active authenticated route.
+
 ## `agent.json` shape
 
 ```json
@@ -32,12 +36,12 @@ The draft is defined by these files:
   "sourceSummary": "What this agent is grounded in",
   "boundaries": ["A concrete limit"],
   "model": {
-    "provider": "openai",
-    "model": "gpt-5.2",
-    "thinking": "medium"
+    "provider": null,
+    "model": null,
+    "thinking": null
   },
   "access": "only-me",
-  "tools": ["read", "find", "grep", "ls"],
+  "tools": [],
   "plugins": [],
   "skills": [
     {

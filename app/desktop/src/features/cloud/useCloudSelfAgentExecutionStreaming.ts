@@ -19,6 +19,8 @@ import {
   publishCloudSelfAgentExecutionSnapshot,
 } from './cloudSelfAgentForwardExecution';
 import { loadCloudSelfAgentSyncLedger } from './cloudSelfAgentForwardSync';
+import { cloudSelfAgentShouldPublishProgress } from './cloudSelfAgentForwardPolicy';
+import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 import { loadSession } from './session';
 
 export function useCloudSelfAgentExecutionStreaming({
@@ -94,9 +96,11 @@ export function useCloudSelfAgentExecutionStreaming({
         const session = await loadSession();
         if (!state || !session?.token || cancelledRef.current) return;
         const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
+        const historySessionIds = cloudSyncedLocalAgentSessionIds(state);
         let published = false;
         for (const turn of Object.values(localTurnsRef.current)) {
           if (turn.completed || cancelledRef.current) continue;
+          if (!cloudSelfAgentShouldPublishProgress(turn.sessionId, historySessionIds)) continue;
           const localRequest = state.messages
             .filter((message) => (
               message.sessionId === turn.sessionId

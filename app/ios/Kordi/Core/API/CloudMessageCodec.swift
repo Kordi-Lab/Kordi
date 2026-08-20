@@ -4,6 +4,7 @@ enum CloudMessageCodec {
     static let directPrefix = "kordi-cloud-message:"
     static let agentResponsePrefix = "kordi-cloud-agent-response:"
     static let agentCancelPrefix = "kordi-cloud-agent-cancel:"
+    static let agentSessionIdentityMessageKind = "canonical-history-agent-identity"
 
     struct DirectEnvelope: Codable, Equatable {
         let schemaVersion: Int

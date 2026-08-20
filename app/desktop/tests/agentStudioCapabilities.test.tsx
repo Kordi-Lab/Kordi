@@ -107,9 +107,9 @@ test('Factory keeps its publish action only in the bottom-right workspace footer
 
   const footerStart = html.indexOf('app-agent-studio-workspace-footer');
   assert.equal(footerStart >= 0, true);
-  assert.equal(html.match(/>Create agent<\/button>/g)?.length, 1);
-  assert.equal(html.indexOf('>Create agent</button>') > footerStart, true);
-  assert.doesNotMatch(html, /Research agent|app-agent-studio-blueprint-core/);
+  assert.equal(html.match(/>Publish agent<\/button>/g)?.length, 1);
+  assert.equal(html.indexOf('>Publish agent</button>') > footerStart, true);
+  assert.doesNotMatch(html, /app-agent-studio-blueprint-core/);
   assert.match(html, /app-agent-studio-icon-button is-inline-edit/);
   assert.match(html, /app-agent-studio-access-edit/);
   assert.match(html, /aria-label="Edit access"/);

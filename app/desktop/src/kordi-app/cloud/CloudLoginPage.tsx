@@ -10,6 +10,7 @@ import {
   generatedAvatarPreviewUrl,
   HUMAN_CANONICAL_AVATAR_STYLE,
   newCanonicalAvatarSeed,
+  type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
@@ -135,6 +136,7 @@ export type CloudLoginPageProps = {
     password: string;
     displayName?: string;
     avatarSeed: string;
+    avatarMutation?: CanonicalAvatarMutation;
   }) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
   showDebugAuthDiagnostics?: boolean;
@@ -154,6 +156,7 @@ export function CloudLoginPage({
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarSeed, setAvatarSeed] = useState(() => newCanonicalAvatarSeed());
+  const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -174,6 +177,7 @@ export function CloudLoginPage({
   }, [mode]);
 
   function regenerateAvatar() {
+    setUploadedAvatar(null);
     setAvatarSeed(newCanonicalAvatarSeed());
   }
 
@@ -227,6 +231,7 @@ export function CloudLoginPage({
           password,
           displayName: trimmedName.length > 0 ? trimmedName : undefined,
           avatarSeed,
+          ...(uploadedAvatar ? { avatarMutation: { action: 'upload' as const, uploadedAsset: uploadedAvatar } } : {}),
         });
       } else {
         await onSignIn(email, password);
@@ -359,7 +364,8 @@ export function CloudLoginPage({
           >
             <div className="app-cloud-login-signup-field grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <CloudSignupAvatarPicker
-                generatedImageUrl={generatedSignupAvatarUrl}
+                imageUrl={uploadedAvatar ?? generatedSignupAvatarUrl}
+                onUpload={setUploadedAvatar}
                 onRegenerate={regenerateAvatar}
                 disabled={!isSignup}
               />

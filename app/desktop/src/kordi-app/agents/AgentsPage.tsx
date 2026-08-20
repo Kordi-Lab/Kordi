@@ -19,8 +19,9 @@ import { AgentStudioWorkspace } from './AgentStudioWorkspace';
 import { CapabilityLibraryView, type FactorySkillLibraryMode } from './CapabilityLibraryView';
 import {
   agentBuilderSkillSlug,
+  factoryAgentCreateInput,
   modelRoutingForAgent,
-  resourcesForCreate,
+  readyFactoryBuildForPublish,
   sameModelRouting,
   shapeDraftFromBuilder,
   type AgentModelRoutingDraft,
@@ -46,6 +47,7 @@ import { useAgentBuilderSession } from './useAgentBuilderSession';
 import { useAgentsPageModel } from './useAgentsPageModel';
 import { useFactoryBuildRouting } from './useFactoryBuildRouting';
 import { useSkillLibrary } from './useSkillLibrary';
+import { useFactoryCreationAvatar } from './useFactoryCreationAvatar';
 
 function isNativeDesktopShell() {
   return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
@@ -62,6 +64,7 @@ export function AgentsPage({
   onOpenAgent,
   chatModelOptions,
   composerProviderOptions,
+  defaultAgentRuntimeRoute,
   onUpdateAgentModelRouting,
   onOpenAgentReachoutSession,
   onOpenAuthSettings,
@@ -140,7 +143,6 @@ export function AgentsPage({
       descriptions,
     };
   }, [availableSkills, skillLibrary.skills]);
-
   const libraryArtifacts = useMemo<Record<'tool' | 'plugin', FactoryLibraryArtifact[]>>(() => {
     const buildArtifacts = (kind: 'tool' | 'plugin') => builds
       .filter((build) => build.available && build.lifecycle === 'published' && build.artifactKind === kind)
@@ -211,6 +213,7 @@ export function AgentsPage({
     buildRoute,
     canCreateAgent: Boolean(onCreateCloudAgent),
     cloudAccountId,
+    defaultAgentRuntimeRoute,
     factorySection,
     inspectedAgent,
     libraryArtifacts,
@@ -224,7 +227,6 @@ export function AgentsPage({
     setFactorySection,
     setPublishFeedback,
   });
-
   const refreshBuilds = useCallback(async () => {
     setBuildListLoading(true);
     try {
@@ -237,7 +239,6 @@ export function AgentsPage({
       setBuildListLoading(false);
     }
   }, []);
-
   useEffect(() => {
     let cancelled = false;
     void fetchDesktopAgentBuilderList()
@@ -245,7 +246,6 @@ export function AgentsPage({
       .finally(() => { if (!cancelled) setBuildListLoading(false); });
     return () => { cancelled = true; };
   }, []);
-
   const builderTargetKey = buildRoute?.targetKey ?? agentBuilderTargetKey(cloudAccountId, 'inactive');
   const builderSeed = buildSeed;
   const builderSeedKey = `${builderGeneration}:${JSON.stringify(builderSeed)}`;
@@ -275,6 +275,8 @@ export function AgentsPage({
   const creationDraft = creating && builder.status?.draft
     ? shapeDraftFromBuilder(builder.status.draft)
     : null;
+  const creationDraftId = builder.status?.draftId ?? null;
+  const creationAvatar = useFactoryCreationAvatar(creationDraftId);
   const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
     ? 'participant_conversations'
     : 'private';
@@ -287,7 +289,6 @@ export function AgentsPage({
   const activeDraftChanges = activeAgentConfig && activePersistedConfig
     ? agentStudioConfigChanges(activeAgentConfig, activePersistedConfig)
     : modelActiveDraftChanges;
-
   useEffect(() => {
     if (!builder.status) return;
     void fetchDesktopAgentBuilderList().then(setBuilds).catch(() => undefined);
@@ -364,7 +365,7 @@ export function AgentsPage({
     || builder.testing
     || builder.updating
     || (builder.activeTurn && !builder.activeTurn.completed)
-    || !builder.status?.publishReady
+    || !builder.status?.validation.valid
     || (creating
       ? !creationDraft || (creatingSkill
         ? !builder.status?.draft?.skills[0]
@@ -446,24 +447,25 @@ export function AgentsPage({
       };
     });
   };
-
   const publish = async () => {
     if (publishDisabled || publishing) return;
+    const publishingText = creatingSkill
+      ? 'Installing the reviewed skill…'
+      : routeKind === 'tool' || routeKind === 'plugin'
+        ? `Publishing the ${routeKind} definition…`
+        : creating
+          ? 'Publishing the Cloud Agent…'
+          : `Publishing ${selectedAgent?.name ?? 'agent'}…`;
     setPublishing(true);
     setPublishFeedback({
       tone: 'info',
-      text: creatingSkill
-        ? 'Installing the reviewed skill…'
-        : routeKind === 'tool' || routeKind === 'plugin'
-          ? `Publishing the ${routeKind} definition…`
-        : creating
-          ? 'Creating the Cloud Agent…'
-          : `Publishing ${selectedAgent?.name ?? 'agent'}…`,
+      text: builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…',
     });
     try {
+      const status = await readyFactoryBuildForPublish(builder.status, builder.testDraft);
+      setPublishFeedback({ tone: 'info', text: publishingText });
       if (creating) {
         if (creatingSkill) {
-          const status = builder.status;
           const skill = status?.draft?.skills[0];
           if (!status || !skill) throw new Error('The Factory draft does not contain an installable skill.');
           const installed = await installDesktopAgentBuilderSkill(
@@ -482,7 +484,6 @@ export function AgentsPage({
           return;
         }
         if (routeKind === 'tool' || routeKind === 'plugin') {
-          const status = builder.status;
           const name = routeKind === 'tool' ? status?.draft?.tools[0] : status?.draft?.plugins[0];
           if (!status || !name) throw new Error(`The Factory draft does not contain a ${routeKind} definition.`);
           const artifactId = `${routeKind}:${name}`;
@@ -496,24 +497,11 @@ export function AgentsPage({
           return;
         }
         if (!creationDraft || !onCreateCloudAgent) return;
-        const created = await onCreateCloudAgent({
-          accessScope: creationAccessScope,
-          name: creationDraft.name,
-          role: creationDraft.role,
-          description: creationDraft.description,
-          systemPrompt: creationDraft.systemPrompt,
-          sourceSummary: creationDraft.sourceSummary,
-          boundaries: creationDraft.boundaries,
-          resources: resourcesForCreate(creatorAgent),
-          skills: creationDraft.skills,
-          modelRouting: {
-            defaultModel: builder.status?.draft?.model ?? null,
-            defaultAuthProvider: builder.status?.draft?.provider ?? null,
-            thinking: builder.status?.draft?.thinking ?? null,
-            tools: builder.status?.draft?.tools ?? [],
-            plugins: builder.status?.draft?.plugins ?? [],
-          },
-        });
+        const created = await onCreateCloudAgent(factoryAgentCreateInput({
+          draft: creationDraft, runtime: status.draft, accessScope: creationAccessScope,
+          creatorAgent, avatarMutation: creationAvatar.mutation,
+        }));
+        creationAvatar.clearAvatar();
         const targetKey = factoryArtifactTargetKey(cloudAccountId, 'agent', created.id);
         await builder.retarget(targetKey);
         await builder.markPublished();
@@ -525,15 +513,15 @@ export function AgentsPage({
       if (!selectedAgent || !activeAgentConfig || !activePersistedConfig) return;
       if (selectedAgent.cloudAgentId) {
         if (!onUpdateCloudAgent) throw new Error('Cloud Agent updates are unavailable in this session.');
-        const builderSkills = new Map((builder.status?.draft?.skills ?? []).map((skill) => [skill.name, skill]));
+        const builderSkills = new Map((status.draft?.skills ?? []).map((skill) => [skill.name, skill]));
         const descriptions = new Map((selectedAgent.cloudAgentSkills ?? []).map((skill) => [skill.name, skill.description]));
         await onUpdateCloudAgent(selectedAgent, {
-          name: builder.status?.draft?.name ?? selectedAgent.name,
-          role: builder.status?.draft?.role ?? selectedAgent.role,
-          description: builder.status?.draft?.description ?? selectedAgent.cloudAgentDescription ?? null,
+          name: status.draft?.name ?? selectedAgent.name,
+          role: status.draft?.role ?? selectedAgent.role,
+          description: status.draft?.description ?? selectedAgent.cloudAgentDescription ?? null,
           systemPrompt: activeAgentConfig.systemPrompt,
-          sourceSummary: builder.status?.draft?.sourceSummary ?? selectedAgent.cloudAgentSourceSummary ?? null,
-          boundaries: builder.status?.draft?.boundaries ?? selectedAgent.cloudAgentBoundaries ?? [],
+          sourceSummary: status.draft?.sourceSummary ?? selectedAgent.cloudAgentSourceSummary ?? null,
+          boundaries: status.draft?.boundaries ?? selectedAgent.cloudAgentBoundaries ?? [],
           skills: activeAgentConfig.loadedSkills.map((name) => ({
             name,
             description: builderSkills.get(name)?.description ?? descriptions.get(name) ?? 'Configured in Kordi Factory.',
@@ -541,8 +529,8 @@ export function AgentsPage({
           })),
           modelRouting: {
             ...selectedRouting,
-            tools: builder.status?.draft?.tools ?? activeAgentConfig.loadedTools,
-            plugins: builder.status?.draft?.plugins ?? activeAgentConfig.loadedPlugins,
+            tools: status.draft?.tools ?? activeAgentConfig.loadedTools,
+            plugins: status.draft?.plugins ?? activeAgentConfig.loadedPlugins,
           },
           ...(accessChanged ? { accessScope: selectedAccessScope } : {}),
         });
@@ -590,7 +578,6 @@ export function AgentsPage({
       setPublishing(false);
     }
   };
-
   const discard = async () => {
     const discarded = await builder.discard();
     if (!discarded) return;
@@ -634,6 +621,15 @@ export function AgentsPage({
       thinking: values.thinking ?? null,
     }));
     setPublishFeedback({ tone: 'info', text: 'Model routing change added to the reviewable draft.' });
+  };
+
+  const stageCreationModelRouting = async (values: AgentModelRoutingDraft) => {
+    await persistBuilderDraft((draft) => ({
+      ...draft,
+      provider: values.defaultAuthProvider ?? null,
+      model: values.defaultModel ?? null,
+      thinking: values.thinking ?? null,
+    }));
   };
 
   const openFactorySection = (section: FactorySection) => {
@@ -783,6 +779,10 @@ export function AgentsPage({
               canEditPrompt={canEditPrompt}
               onPromptChange={updateBuilderPrompt}
               onCreationDraftChange={updateBuilderShapeDraft}
+              creationAvatarUrl={creationAvatar.imageUrl}
+              onCreationAvatarUpload={creationAvatar.upload}
+              onCreationAvatarRandomize={creationAvatar.randomize}
+              onCreationModelRoutingChange={stageCreationModelRouting}
               onToggleCapability={(kind, name, selected) => {
                 updateBuilderCapability(kind, name, selected);
               }}

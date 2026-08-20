@@ -71,7 +71,17 @@ test('cloud startup renders the durable chat cache before catch-up and settles a
   );
   assert.match(
     source,
-    /request\.mode === 'bootstrap'[\s\S]*hydrateChatLocalState\(generation\)[\s\S]*syncDiffOnceForGeneration\(generation, request\.mode === 'full'\)[\s\S]*hydrateMissingChatHistory\(generation\)[\s\S]*markUnreadReadiness\('ready'/,
+    /request\.mode === 'bootstrap'[\s\S]*Promise\.all\(\[[\s\S]*hydrateChatLocalState\(generation\)[\s\S]*refreshCloudAgents\(generation\)[\s\S]*syncDiffOnceForGeneration\(generation, request\.mode === 'full'\)[\s\S]*hydrateMissingChatHistory\(generation\)[\s\S]*markUnreadReadiness\('ready'/,
+  );
+  assert.doesNotMatch(
+    source,
+    /startupSnapshotContextRef\.current = cloudUnreadContextKey;\s*void refreshCloudAgents/,
+    'agent catalog refresh must finish before an advanced event cursor is applied',
+  );
+  assert.match(
+    source,
+    /agentsRef\.current = cloudAgentsById;\s*setAgents/,
+    'cursor sync must publish the next agent catalog to its live ref atomically',
   );
   assert.doesNotMatch(
     source,

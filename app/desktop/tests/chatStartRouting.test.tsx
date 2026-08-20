@@ -229,7 +229,7 @@ test('sidebar shell forwards chat create and group management handlers', () => {
   assert.equal(element.props.chatActions.onSetChatGroupAdmin, setAdmin);
 });
 
-test('sidebar chat-create agent option opens owned agents with local Saved Messages creation', async () => {
+test('sidebar chat-create uses the generic draft only for default Kordi', async () => {
   const calls: string[] = [];
   const element = assembleSidebarSlot(baseSidebarArgs({
     handleCreateChatSession: async () => { calls.push('createLocal'); },
@@ -242,10 +242,11 @@ test('sidebar chat-create agent option opens owned agents with local Saved Messa
     };
   };
 
-  await element.props.chatActions.onStartChatWithAgent({ id: 'agent:local', isOwned: true });
+  await element.props.chatActions.onStartChatWithAgent({ id: 'desktop:local-agent', isOwned: true });
+  await element.props.chatActions.onStartChatWithAgent({ id: 'agent:custom', isOwned: true });
   await element.props.chatActions.onStartChatWithAgent({ id: 'agent:remote', isOwned: false });
 
-  assert.deepEqual(calls, ['createLocal', 'startAgent:agent:remote']);
+  assert.deepEqual(calls, ['createLocal', 'startAgent:agent:custom', 'startAgent:agent:remote']);
 });
 
 test('sidebar chat-create private cloud agent option routes to the selected cloud agent', async () => {

@@ -1,4 +1,5 @@
 import Foundation
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -57,7 +58,10 @@ struct IdentityAvatar: View {
                     .font(.system(size: size * 0.34, weight: .semibold))
                     .foregroundStyle(KordiTheme.signalBlue)
             case .person:
-                initials
+                Circle().fill(Color(uiColor: .secondarySystemFill))
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: size * 0.42, weight: .regular))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -76,14 +80,55 @@ struct IdentityAvatar: View {
         }
     }
 
-    private var initials: some View {
-        let palette = CloudAvatarFallback.palette(for: name)
-        return ZStack {
-            Circle().fill(palette.background)
-            Text(CloudAvatarFallback.initials(for: name))
-                .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
-                .foregroundStyle(palette.foreground)
+}
+
+struct AvatarActionPill: View {
+    @Binding var selectedPhoto: PhotosPickerItem?
+    let disabled: Bool
+    let onRandomize: () -> Void
+    var randomLabel = "Random avatar"
+    var uploadLabel = "Upload avatar"
+    var vertical = false
+    var buttonHeight: CGFloat = 44
+
+    var body: some View {
+        Group {
+            if vertical {
+                VStack(spacing: 0) { actions }
+            } else {
+                HStack(spacing: 0) { actions }
+            }
         }
+        .foregroundStyle(.secondary)
+        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color(uiColor: .separator).opacity(0.45), lineWidth: 0.5)
+        }
+        .disabled(disabled)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button(action: onRandomize) {
+            Image(systemName: "dice")
+                .frame(width: 44, height: buttonHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(randomLabel)
+
+        Divider()
+            .frame(width: vertical ? 24 : nil, height: vertical ? nil : 24)
+
+        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+            Image(systemName: "camera")
+                .frame(width: 44, height: buttonHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(uploadLabel)
     }
 }
 
@@ -173,38 +218,6 @@ struct GroupAvatarStack: View {
             size: diameter,
             seed: participant.accountId
         )
-    }
-}
-
-enum CloudAvatarFallback {
-    struct Palette {
-        let background: Color
-        let foreground: Color
-    }
-
-    private static let palettes: [Palette] = [
-        Palette(background: Color(red: 0.435, green: 0.812, blue: 0.592), foreground: Color(red: 0.122, green: 0.161, blue: 0.216)),
-        Palette(background: Color(red: 0.949, green: 0.651, blue: 0.353), foreground: Color(red: 0.122, green: 0.161, blue: 0.216)),
-        Palette(background: Color(red: 0.910, green: 0.627, blue: 0.784), foreground: Color(red: 0.122, green: 0.161, blue: 0.216))
-    ]
-
-    static func initials(for label: String) -> String {
-        let characters = label.filter { $0.isLetter || $0.isNumber }
-        let initials = String(characters.prefix(2)).uppercased()
-        return initials.isEmpty ? "KO" : initials
-    }
-
-    static func paletteIndex(for label: String) -> Int {
-        var hash: UInt32 = 2_166_136_261
-        for scalar in label.unicodeScalars {
-            hash ^= scalar.value
-            hash = hash &* 16_777_619
-        }
-        return Int(hash % UInt32(palettes.count))
-    }
-
-    static func palette(for label: String) -> Palette {
-        palettes[paletteIndex(for: label)]
     }
 }
 

@@ -393,7 +393,7 @@ export function cloudMessageMentionsLocalAgent(
 export function cloudMessageIsSelfAgentRequest(message: CloudMessage, account: CloudAccount): boolean {
   if (message.fromAccountId !== account.accountId || message.toAccountId !== account.accountId) return false;
   if (!message.body.trim()) return false;
-  if (message.messageKind === 'agent-model-change') return false;
+  if (message.messageKind === 'agent-model-change' || message.messageKind?.startsWith('canonical-history-')) return false;
   if (isCloudGroupControlMessage(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
   return true;
 }

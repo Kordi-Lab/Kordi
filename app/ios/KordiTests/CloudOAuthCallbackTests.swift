@@ -44,6 +44,31 @@ final class CloudOAuthCallbackTests: XCTestCase {
 }
 
 final class CloudAPIClientAccountActivationTests: XCTestCase {
+    func testSignupSendsUploadedAvatarMutation() async throws {
+        SignupAvatarURLProtocol.body = nil
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SignupAvatarURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+        let uploadedAsset = "data:image/jpeg;base64,YXZhdGFy"
+
+        _ = try await client.signup(
+            email: "avatar@example.com",
+            password: "password123",
+            displayName: "Avatar",
+            avatarSeed: "signup_seed",
+            avatarMutation: .upload(uploadedAsset, expectedVersion: nil)
+        )
+
+        let body = try XCTUnwrap(SignupAvatarURLProtocol.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let mutation = try XCTUnwrap(json["avatarMutation"] as? [String: Any])
+        XCTAssertEqual(mutation["action"] as? String, "upload")
+        XCTAssertEqual(mutation["uploadedAsset"] as? String, uploadedAsset)
+    }
+
     func testOAuthAccountActivationAllowsReliableChatBootstrap() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ChatBootstrapURLProtocol.self]
@@ -92,6 +117,40 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertEqual(response.cursor, "43")
         XCTAssertEqual(response.events.map(\.eventType), ["provider-auth.updated"])
     }
+}
+
+private final class SignupAvatarURLProtocol: URLProtocol {
+    static var body: Data?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.body = request.httpBody ?? request.httpBodyStream.flatMap { stream in
+            stream.open()
+            defer { stream.close() }
+            var data = Data()
+            var buffer = [UInt8](repeating: 0, count: 4_096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                guard count > 0 else { break }
+                data.append(contentsOf: buffer.prefix(count))
+            }
+            return data
+        }
+        let payload = Data(#"{"account":{"accountId":"acct_signup","kordiId":"482731906","displayName":"Avatar","primaryEmail":"avatar@example.com","avatarUrl":"data:image/jpeg;base64,YXZhdGFy","avatar":{"entityType":"human","entityId":"acct_signup","source":"uploaded","style":"lorelei","seed":"signup_seed","rendererVersion":"dicebear-rust-10.6.0-styles-10.5.0","uploadedAsset":"data:image/jpeg;base64,YXZhdGFy","version":2,"updatedAt":"2026-08-20T00:00:00Z"},"nodeId":null,"passwordSet":true},"session":{"token":"session_secret","expiresAt":"2026-09-08T00:00:00Z","deviceId":"device_signup"}}"#.utf8)
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 201,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 private final class ChatBootstrapURLProtocol: URLProtocol {

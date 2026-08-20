@@ -2,6 +2,8 @@ import { findOwnedAgentConversation } from '@/features/canonical/sessionResolver
 import type { Conversation } from '@/kordi-app/types';
 import { createDesktopChatSession, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
+export { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
+
 type LocalAgentChatNavigationArgs = {
   setActiveNav: (nav: 'chats') => void;
   chatConversations: Conversation[];

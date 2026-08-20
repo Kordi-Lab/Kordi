@@ -11,7 +11,12 @@ const AVATAR_UPLOAD_TARGET_BYTES = 200 * 1024;
 type AvatarOverrideMap = Record<string, string>;
 
 function hasBrowserStorage() {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  if (typeof window === 'undefined') return false;
+  try {
+    return typeof window.localStorage !== 'undefined';
+  } catch {
+    return false;
+  }
 }
 
 function readOverrides(): AvatarOverrideMap {

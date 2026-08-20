@@ -9,6 +9,7 @@ import {
   shouldRouteMentionThroughCloudGroup,
 } from '@/features/cloud/cloudGroupMessages';
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
+import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSessionRuntimeRoute';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
@@ -33,7 +34,6 @@ import {
   updateDesktopChatSessionConfig,
   type DesktopChatContextMessage,
 } from '@/lib/desktop';
-
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
 import type { AttachmentItem } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
@@ -121,7 +121,6 @@ export {
   isCollaborationGroupSession,
   shouldUseCollaborationConversationRouting,
 } from './collaborationRouting';
-
 async function persistCanonicalGroupMessageFailure(
   prepared: PreparedCanonicalUserMessage | null,
   detail: string,
@@ -1626,8 +1625,9 @@ export function useChatMessageActions({
     }
 
     let materializedState: DesktopChatState | null = null;
-    const runtimeRouteForSend = resolveChatRuntimeRoute(
-      targetSessionId ?? activeConvCanonicalSessionId ?? activeConvId,
+    const runtimeRouteForSend = resolvedPublishedAgentRuntimeRoute(
+      activeConvMentionScope,
+      resolveChatRuntimeRoute(targetSessionId ?? activeConvCanonicalSessionId ?? activeConvId),
     );
     const ensureLocalSessionId = async () => {
       if (targetSessionId) {

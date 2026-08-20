@@ -290,6 +290,65 @@ test('self-agent forward planning preserves explicit request identity and termin
   ]);
 });
 
+test('custom owned direct-agent sync preserves the selected agent identity', () => {
+  const state = {
+    sessions: [{
+      id: 'session:direct-agent:stock',
+      kind: 'direct-agent',
+      title: 'hi',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'agent:stock',
+      metadata: { createdFrom: 'chat-create-flow', cloudAgentId: 'cloud_agent_stock', cloudAgentName: 'US Stock Paper Trader' },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }],
+    identities: [{
+      id: 'agent:stock',
+      kind: 'agent',
+      displayName: 'US Stock Paper Trader',
+      source: 'local',
+      agentId: 'cloud_agent_stock',
+      avatarKey: 'cloud_agent_stock',
+      metadata: { isOwned: true },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }],
+    participants: [],
+    profile: { id: 'profile', activeAgentIdentityId: 'agent:default', storageRoot: '/tmp/device-a', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [{
+      id: 'local-request',
+      sessionId: 'session:direct-agent:stock',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'who are you',
+      content: {},
+      parentMessageId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 10,
+      updatedAtMs: 10,
+    }] as CanonicalSessionMessage[],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/device-a/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  assert.deepEqual(planCloudSelfAgentSync(state, {}), [{
+    localMessageId: 'local-request',
+    sessionId: 'session:direct-agent:stock',
+    role: 'user',
+    text: 'who are you',
+    parentLocalMessageId: null,
+    createdAtMs: 10,
+    deliveryState: 'sent',
+    targetAgentId: 'cloud_agent_stock',
+    targetAgentName: 'US Stock Paper Trader',
+  }]);
+});
+
 test('cloud self-agent forward sync does not re-upload restored Cloud canonical rows', () => {
   const state = {
     sessions: [

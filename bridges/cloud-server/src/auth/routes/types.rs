@@ -18,6 +18,8 @@ pub struct SignupRequest {
     pub display_name: Option<String>,
     #[serde(rename = "avatarSeed")]
     pub avatar_seed: String,
+    #[serde(rename = "avatarMutation", default)]
+    pub avatar_mutation: Option<AvatarMutationRequest>,
     pub device: Option<crate::auth::devices::DeviceRegistrationRequest>,
 }
 

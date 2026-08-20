@@ -16,6 +16,7 @@ import {
   type AgentSaveFeedback,
   type PersistedAgentConfig,
 } from './model';
+import { CLOUD_AGENT_TOOL_DESCRIPTIONS } from './factoryAgentUtils';
 
 const EMPTY_FILE_PREVIEW = { status: 'idle' as const, text: '' };
 
@@ -70,6 +71,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
   );
   const availableTools = useMemo(
     () => Array.from(new Set([
+      ...Object.keys(CLOUD_AGENT_TOOL_DESCRIPTIONS),
       ...(activePersistedConfig?.loadedTools ?? []),
       ...(activeAgentConfig?.loadedTools ?? []),
       ...agents.flatMap((agent) => agent.loadedTools),

@@ -40,6 +40,7 @@ function jsonResponse(status: number, body: unknown): Response {
 test('signup posts JSON to the signup route and parses the response', async () => {
   const avatarUrl = 'data:image/jpeg;base64,abc';
   const avatarSeed = 'signup_seed';
+  const avatarMutation = { action: 'upload' as const, uploadedAsset: avatarUrl };
   const { calls, fetchImpl } = recordingFetch(() =>
     jsonResponse(201, {
       account: {
@@ -63,6 +64,7 @@ test('signup posts JSON to the signup route and parses the response', async () =
     password: 'correct horse',
     displayName: 'Ada',
     avatarSeed,
+    avatarMutation,
   });
 
   assert.equal(calls.length, 1);
@@ -74,6 +76,7 @@ test('signup posts JSON to the signup route and parses the response', async () =
     password: 'correct horse',
     displayName: 'Ada',
     avatarSeed,
+    avatarMutation,
     device: testDevice,
   });
   assert.equal(result.session.token, 'kordi_cs_abc');

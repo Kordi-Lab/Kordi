@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -16,6 +17,8 @@ struct LoginView: View {
     @State private var confirmPassword = ""
     @State private var activeSubmission: Submission?
     @State private var avatarSeed = CanonicalAvatarSystem.newSeed()
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var uploadedAvatarDataURL: String?
     @FocusState private var focusedField: Field?
 
     private enum AuthMode: String, CaseIterable, Identifiable {
@@ -65,6 +68,10 @@ struct LoginView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .toolbar(.hidden, for: .navigationBar)
         }
+        .onChange(of: selectedPhoto) { _, item in
+            guard let item else { return }
+            Task { await loadAvatar(item) }
+        }
     }
 
     private var isSignup: Bool { mode == .signup }
@@ -82,6 +89,9 @@ struct LoginView: View {
             style: CanonicalAvatarSystem.humanStyle,
             seed: avatarSeed
         )?.absoluteString
+    }
+    private var avatarImageSource: String? {
+        uploadedAvatarDataURL ?? generatedAvatarPreviewURL
     }
 
     private var header: some View {
@@ -248,31 +258,33 @@ struct LoginView: View {
     }
 
     private var signupIdentity: some View {
-        HStack(spacing: 14) {
-            IdentityAvatar(
-                name: displayName.nonEmpty ?? "Kordi account",
-                imageSource: generatedAvatarPreviewURL,
-                kind: .person,
-                size: 68,
-                seed: avatarSeed
-            )
+        HStack(alignment: .center, spacing: 14) {
+            HStack(spacing: 8) {
+                IdentityAvatar(
+                    name: displayName.nonEmpty ?? "Kordi account",
+                    imageSource: avatarImageSource,
+                    kind: .person,
+                    size: 68,
+                    seed: avatarSeed
+                )
 
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("Display name", text: $displayName)
-                    .textContentType(.name)
-                    .submitLabel(.next)
-                    .focused($focusedField, equals: .displayName)
-                    .onSubmit { focusedField = .email }
-                    .kordiLoginField(isFocused: focusedField == .displayName)
-
-                Button {
-                    avatarSeed = CanonicalAvatarSystem.newSeed()
-                } label: {
-                    Label("New look", systemImage: "die.face.5.fill")
-                }
-                .font(.caption.weight(.semibold))
-                .disabled(isBusy)
+                AvatarActionPill(
+                    selectedPhoto: $selectedPhoto,
+                    disabled: isBusy,
+                    onRandomize: randomizeAvatar,
+                    randomLabel: "Random signup avatar",
+                    uploadLabel: "Upload signup avatar",
+                    vertical: true,
+                    buttonHeight: 34
+                )
             }
+
+            TextField("Display name", text: $displayName)
+                .textContentType(.name)
+                .submitLabel(.next)
+                .focused($focusedField, equals: .displayName)
+                .onSubmit { focusedField = .email }
+                .kordiLoginField(isFocused: focusedField == .displayName)
         }
     }
 
@@ -342,12 +354,32 @@ struct LoginView: View {
                 email: email,
                 password: password,
                 displayName: displayName,
-                avatarSeed: avatarSeed
+                avatarSeed: avatarSeed,
+                avatarMutation: uploadedAvatarDataURL.map {
+                    .upload($0, expectedVersion: nil)
+                }
             )
         } else {
             succeeded = await model.signIn(email: email, password: password)
         }
         announceSuccess(succeeded)
+    }
+
+    private func randomizeAvatar() {
+        selectedPhoto = nil
+        uploadedAvatarDataURL = nil
+        avatarSeed = CanonicalAvatarSystem.newSeed()
+        model.errorMessage = nil
+    }
+
+    private func loadAvatar(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let prepared = SignupAvatarRenderer.uploadedImage(from: data) else {
+            model.errorMessage = "Choose a smaller PNG, JPEG, or WebP photo."
+            return
+        }
+        uploadedAvatarDataURL = prepared.dataURL
+        model.errorMessage = nil
     }
 
     private func submitSocial(_ provider: CloudOAuthProvider) async {

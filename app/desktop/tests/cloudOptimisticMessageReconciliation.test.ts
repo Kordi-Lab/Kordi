@@ -11,6 +11,7 @@ import {
   appendOptimisticCollaborationMessage,
   markOptimisticCollaborationMessageFailed,
 } from '../src/features/chat/messageActions/optimistic';
+import { reconcileOptimisticCollaborationMessage } from '../src/features/chat/messageActions/optimisticReconciliation';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -113,6 +114,33 @@ test('the canonical snapshot replaces its matching optimistic message', () => {
   assert.equal(merged?.conversations[0].messages[1].id, 'message_2');
   assert.equal(merged?.conversations[0].messages[1].clientMessageId, optimisticId);
   assert.equal(merged?.conversations[0].messages[1].deliveryState, 'delivered');
+});
+
+test('a delivered optimistic request stays visible until canonical sync catches up', () => {
+  const optimisticId = '77777777-7777-4777-8777-777777777777';
+  const initial = authoritativeState([
+    outgoingMessage('message_1', 'first', '11111111-1111-4111-8111-111111111111', 1),
+  ]);
+  const optimistic = appendOptimisticCollaborationMessage(
+    initial,
+    initial.conversations[0].id,
+    'who are you',
+    '00:02',
+    optimisticId,
+  );
+  const delivered = reconcileOptimisticCollaborationMessage(
+    optimistic,
+    initial.conversations[0].id,
+    optimisticId,
+    { messageId: 'message_2', clientMessageId: optimisticId },
+  );
+
+  const beforeCanonicalSync = mergeCloudCollaborationOptimisticState(initial, delivered);
+  assert.deepEqual(
+    beforeCanonicalSync?.conversations[0].messages.map((message) => message.text),
+    ['first', 'who are you'],
+  );
+  assert.equal(beforeCanonicalSync?.conversations[0].messages.at(-1)?.deliveryState, 'delivered');
 });
 
 test('failed optimistic messages remain retryable until canonical sync confirms the operation', () => {

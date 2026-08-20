@@ -4,17 +4,31 @@ import {
   parseCloudAgentResponse,
 } from './cloudAgentMessages';
 import { cloudSelfAgentProcessingTextWouldRegress } from './cloudSelfAgentResponseLifecycle';
+import { CLOUD_SELF_AGENT_HEARTBEAT_MS } from './cloudSelfAgentForwardExecution';
 import { compareCloudMessages } from './cloudMessageMerge';
+import { CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND } from './cloudDirectMessages';
 
-export function visibleCloudAgentResponseMessages(
+const CLOUD_AGENT_PROCESSING_STALE_AFTER_MS =
+  CLOUD_SELF_AGENT_HEARTBEAT_MS * 3;
+
+export function selectVisibleCloudAgentResponses(
   messages: readonly CloudMessage[],
   requestTargetAccountIds: ReadonlyMap<string, string>,
   isGroupControlMessage: (message: CloudMessage) => boolean,
-): CloudMessage[] {
+  hasCompletedLocalResponse: (requestId: string) => boolean,
+  nowMs = Date.now(),
+) {
   const preferredResponseByKey = new Map<string, CloudMessage>();
   for (const message of messages) {
     const response = parseCloudAgentResponse(message.body);
     if (!response) continue;
+    if (response.deliveryState === 'processing') {
+      const createdAtMs = Date.parse(message.createdAt);
+      if (
+        !Number.isFinite(createdAtMs)
+        || nowMs - createdAtMs > CLOUD_AGENT_PROCESSING_STALE_AFTER_MS
+      ) continue;
+    }
     const expectedResponder = requestTargetAccountIds.get(response.requestId);
     if (expectedResponder && message.fromAccountId !== expectedResponder) {
       continue;
@@ -45,7 +59,10 @@ export function visibleCloudAgentResponseMessages(
     ) preferredResponseByKey.set(responseKey, message);
   }
 
-  return messages.filter((message) => {
+  const selectedMessages = messages.filter((message) => {
+    if (message.messageKind === CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND) {
+      return false;
+    }
     if (isCloudAgentControlMessage(message.body) || isGroupControlMessage(message)) {
       return false;
     }
@@ -60,6 +77,19 @@ export function visibleCloudAgentResponseMessages(
     return preferredResponseByKey.get(responseKey)?.messageId
       === message.messageId;
   });
+  const responseRequestIds = new Set<string>();
+  const terminalResponseRequestIds = new Set<string>();
+  const visibleMessages = selectedMessages.filter((message) => {
+    const response = parseCloudAgentResponse(message.body);
+    if (!response) return true;
+    responseRequestIds.add(response.requestId);
+    if (response.deliveryState !== 'processing') {
+      terminalResponseRequestIds.add(response.requestId);
+      return true;
+    }
+    return !hasCompletedLocalResponse(response.requestId);
+  });
+  return { visibleMessages, responseRequestIds, terminalResponseRequestIds };
 }
 
 export function latestVisibleConversationMessage<T extends {

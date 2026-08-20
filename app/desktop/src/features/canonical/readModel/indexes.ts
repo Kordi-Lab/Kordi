@@ -23,7 +23,7 @@ import {
   stringValue,
 } from './messageMapping';
 import { completedCallStartMessageIds } from './callActivity';
-import { canonicalMessageCountsForLastActive } from './conversationMapping';
+import { applySessionAgentIdentity, canonicalMessageCountsForLastActive, isChatCreatedDirectAgentSession } from './conversationMapping';
 
 export type CanonicalIndexes = {
   storagePath: string;
@@ -433,7 +433,7 @@ function selfAgentMirrorDuplicateKey(
     ),
     message.senderRole,
     message.messageKind,
-    message.createdAtMs.toString(),
+    normalizeOwnedAgentIdentity && message.senderRole === 'owned-agent' && message.parentMessageId?.trim() ? '' : message.createdAtMs.toString(),
     text,
     selfAgentMirrorMessageRelationKey(
       message,
@@ -1136,7 +1136,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       sortedMessages,
       identityById,
       canonicalState.profile.humanIdentityId,
-      sessionById.get(sessionId)?.kind === 'self-agent',
+      sessionById.get(sessionId)?.kind === 'self-agent' || isChatCreatedDirectAgentSession(sessionById.get(sessionId)),
     );
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     const suppressedAgedLegacyCollaborationProcessingPlaceholderIds = new Set(
@@ -1175,16 +1175,16 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedPendingDelegationRawProcessingPlaceholderIds.has(message.id)
         || suppressedCompletedCallStartIds.has(message.id)
       ) return [];
-      const displaySourceMessage: CanonicalSessionMessage = confirmedLocalAgentUiMessageIds.has(message.id)
-        ? {
-            ...message,
-            status: 'sent',
-            content: {
-              ...contentRecord(message.content),
-              deliveryState: 'sent',
-            },
-          }
-        : message;
+      const displaySourceMessage = applySessionAgentIdentity(sessionById.get(sessionId),
+        confirmedLocalAgentUiMessageIds.has(message.id) ? {
+          ...message,
+          status: 'sent',
+          content: {
+            ...contentRecord(message.content),
+            deliveryState: 'sent',
+          },
+        } : message,
+      );
       const content = contentRecord(displaySourceMessage.content);
       if (stringValue(content.kind) === 'delegation-join-event') {
         const key = [

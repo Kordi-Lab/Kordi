@@ -17,7 +17,7 @@ import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { compatibleSourceHostId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 
-import { stringValue } from './messageMapping';
+import { contentRecord, stringValue } from './messageMapping';
 import { canonicalMessageCountsAsReadable } from './messageVisibility';
 
 export type ConversationSubtitleBuilder = (messages: Message[], fallback?: string) => string;
@@ -121,6 +121,24 @@ export function sessionMetadata(session: CanonicalSessionState['sessions'][numbe
   return session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
     ? session.metadata as Record<string, unknown>
     : {};
+}
+
+export function isChatCreatedDirectAgentSession(session?: CanonicalSessionState['sessions'][number]) {
+  return session?.kind === 'direct-agent' && sessionMetadata(session).createdFrom === 'chat-create-flow';
+}
+
+export function applySessionAgentIdentity(
+  session: CanonicalSessionState['sessions'][number] | undefined,
+  message: CanonicalSessionMessage,
+) {
+  if (!session || message.senderRole !== 'owned-agent' || sessionMetadata(session).createdFrom !== 'chat-create-flow') return message;
+  const primaryIdentityId = session.primaryIdentityId?.trim();
+  if (!primaryIdentityId) return message;
+  return {
+    ...message,
+    senderIdentityId: primaryIdentityId,
+    content: { ...contentRecord(message.content), sender: null },
+  };
 }
 
 export function sessionViewMetadata(session: CanonicalSessionState['sessions'][number]) {

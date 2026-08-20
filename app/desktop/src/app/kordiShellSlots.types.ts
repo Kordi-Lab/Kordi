@@ -10,7 +10,7 @@ import type {
 import type { KordiShellAttachmentArgs } from './kordiShellAttachment.types';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
-import type { DesktopChatContextMessage } from '@/lib/desktop';
+import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
   Agent,
   CollaborationAgentRequestControl,
@@ -39,7 +39,6 @@ import type {
   SessionArtifact,
   ThemeMode,
 } from '@/kordi-app/types';
-
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
 export type AttachmentItem = ComposerAttachmentItem;
@@ -280,6 +279,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => void;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions: ComposerModelOption[] | undefined;
+  defaultCloudAgentRuntimeRoute: DesktopChatMessageRoute | null;
   isDesktopChatSending: boolean;
   handleStopDesktopChatTurn: () => void;
   handleStopCollaborationAgentRequest: (request: CollaborationAgentRequestControl) => void | Promise<void>;
@@ -527,6 +527,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'selectComposerProviderChoice'
   | 'composerProviderOptions'
   | 'chatModelOptions'
+  | 'defaultCloudAgentRuntimeRoute'
   | 'isDesktopChatSending'
   | 'handleStopDesktopChatTurn'
   | 'handleStopCollaborationAgentRequest'
@@ -636,7 +637,6 @@ export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleCloseInlineAuthDialog'
   | 'startWindowResize'
 >;
-
 export type KordiShellArgs = {
   sidebar: SidebarShellArgs;
   mainContent: MainContentShellArgs;

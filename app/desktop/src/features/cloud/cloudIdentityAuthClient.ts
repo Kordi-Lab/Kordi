@@ -28,6 +28,7 @@ export class CloudIdentityAuthClient {
     password: string;
     displayName?: string;
     avatarSeed: string;
+    avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
   }): Promise<CloudAuthResult> {
     const device = await this.deviceRegistration();
     return this.request<CloudAuthResult>(

@@ -107,7 +107,11 @@ test('mounted self avatars react to live profile changes without changing their 
     await act(async () => {
       root.render(<IdentityAvatar kind="human" seed="stale" name="Me" isSelf />);
     });
-    assert.equal(host.textContent, 'AL');
+    assert.match(
+      host.querySelector('img')?.getAttribute('src') ?? '',
+      /\/v1\/avatars\/preview\/lorelei\/acct_alex\.png/,
+    );
+    assert.equal(host.textContent, '');
 
     await act(async () => {
       setActiveLocalProfileIdentity({

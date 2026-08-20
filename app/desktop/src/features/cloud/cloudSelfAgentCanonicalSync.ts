@@ -406,7 +406,7 @@ export function planCloudSelfAgentCanonicalSync({
       sessionId,
       senderIdentityId:
         responseRequestId || role === 'system'
-          ? agentIdentityId
+          ? sessionPlanner.agentIdentityIdForSession(sessionId)
           : localHumanIdentityId,
       senderRole: responseRequestId
         ? 'owned-agent'

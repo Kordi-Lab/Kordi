@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Activity,
-  Bot,
   Check,
   Clock3,
   FileCode2,
@@ -9,13 +8,11 @@ import {
   FolderOpen,
   History,
   LoaderCircle,
-  LockKeyhole,
   Pencil,
   Plug,
   Plus,
   Puzzle,
   Search,
-  Settings2,
   SlidersHorizontal,
   Wrench,
   X,
@@ -26,9 +23,11 @@ import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
-import { cloudAgentAccessDescription, cloudAgentAccessLabel, skillLibraryFileDisplay, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
+import { skillLibraryFileDisplay, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
+import { AgentStudioBlueprintView } from './AgentStudioBlueprintView';
+import { CLOUD_AGENT_TOOL_DESCRIPTIONS, type AgentModelRoutingDraft } from './factoryAgentUtils';
 
 type FilePreviewState = { status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string };
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
@@ -39,12 +38,6 @@ const TABS: Array<{ id: AgentStudioTab; label: string; icon: typeof SlidersHoriz
   { id: 'runs', label: 'Runs', icon: Activity },
   { id: 'history', label: 'History', icon: History },
 ];
-
-function shortPrompt(value: string) {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (!normalized) return 'No prompt configured.';
-  return normalized.length > 92 ? `${normalized.slice(0, 91).trimEnd()}…` : normalized;
-}
 
 function capabilityField(kind: AgentStudioCapabilityKind): keyof Pick<AgentStudioConfigDraft, 'loadedSkills' | 'loadedTools' | 'loadedPlugins'> {
   if (kind === 'skill') return 'loadedSkills';
@@ -84,221 +77,6 @@ function WorkspaceHeading({ title, action }: { title: string; action?: ReactNode
   );
 }
 
-function BlueprintRow({ icon: Icon, label, value, detail, onEdit }: {
-  icon: typeof Bot;
-  label: string;
-  value: string;
-  detail?: string;
-  onEdit?: () => void;
-}) {
-  return (
-    <div className="app-agent-studio-blueprint-row">
-      <div className="app-agent-studio-blueprint-label"><Icon className="h-4 w-4" />{label}</div>
-      <div className="min-w-0">
-        <div className="app-agent-studio-blueprint-value">{value}</div>
-        {detail ? <div className="app-agent-studio-blueprint-detail">{detail}</div> : null}
-      </div>
-      {onEdit ? <button type="button" className="app-button-quiet app-agent-studio-icon-button is-inline-edit" aria-label={`Edit ${label.toLowerCase()}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></button> : <span />}
-    </div>
-  );
-}
-
-function PromptEditor({ value, onChange, onClose }: { value: string; onChange: (value: string) => void; onClose: () => void }) {
-  const [draft, setDraft] = useState(value);
-  return (
-    <section className="app-agent-studio-popover is-wide" role="dialog" aria-label="Edit system prompt">
-      <div className="app-agent-studio-popover-head">
-        <div><strong>System prompt</strong><p>Changes stay in the draft until you publish them.</p></div>
-        <button type="button" className="app-button-quiet app-agent-studio-icon-button" onClick={onClose} aria-label="Close system prompt editor"><X className="h-4 w-4" /></button>
-      </div>
-      <label className="app-agent-studio-field">
-        <span>Instructions</span>
-        <textarea value={draft} onChange={(event) => setDraft(event.currentTarget.value)} spellCheck={false} />
-      </label>
-      <div className="app-agent-studio-popover-actions">
-        <button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={() => { onChange(draft); onClose(); }}>Keep in draft</button>
-      </div>
-    </section>
-  );
-}
-
-function BlueprintView({
-  agent,
-  creating,
-  creationDraft,
-  config,
-  changes,
-  accessScope,
-  onAccessScopeChange,
-  canEditPrompt,
-  onPromptChange,
-  onCreationDraftChange,
-  onOpenCapabilities,
-  onOpenRouting,
-  builderStatus,
-}: {
-  agent?: Agent;
-  creating: boolean;
-  creationDraft: ShapeAgentDraft | null;
-  config: AgentStudioConfigDraft | null;
-  changes: Array<{ key: string; label: string; detail: string }>;
-  accessScope: CloudAgentAccessScope;
-  onAccessScopeChange: (scope: CloudAgentAccessScope) => void;
-  canEditPrompt: boolean;
-  onPromptChange: (value: string) => void;
-  onCreationDraftChange: (draft: ShapeAgentDraft) => void;
-  onOpenCapabilities: () => void;
-  onOpenRouting?: () => void;
-  builderStatus?: DesktopAgentBuilderStatus | null;
-}) {
-  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
-  const [accessMenuOpen, setAccessMenuOpen] = useState(false);
-  const accessControlRef = useRef<HTMLDivElement | null>(null);
-  const accessTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const prompt = creating ? creationDraft?.systemPrompt ?? '' : config?.systemPrompt ?? '';
-  const skills = creating ? creationDraft?.skills.map((skill) => skill.name) ?? [] : config?.loadedSkills ?? [];
-  const tools = creating ? builderStatus?.draft?.tools ?? [] : config?.loadedTools ?? [];
-  const totalChanges = creating ? (creationDraft ? 1 : 0) : changes.length;
-
-  useEffect(() => {
-    if (!accessMenuOpen) return;
-
-    accessControlRef.current
-      ?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')
-      ?.focus();
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (accessControlRef.current?.contains(event.target as Node)) return;
-      setAccessMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setAccessMenuOpen(false);
-      accessTriggerRef.current?.focus();
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [accessMenuOpen]);
-
-  const handleAccessMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
-    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
-    const direction = event.key === 'ArrowDown' ? 1 : -1;
-    const nextIndex = currentIndex < 0
-      ? 0
-      : (currentIndex + direction + options.length) % options.length;
-    options[nextIndex]?.focus();
-  };
-
-  return (
-    <div className="app-agent-studio-view-scroll is-blueprint-view">
-      <section className="app-agent-studio-blueprint" aria-label="Agent configuration">
-        <BlueprintRow
-          icon={FileCode2}
-          label="Prompt"
-          value={prompt ? 'Configured' : 'Not configured'}
-          detail={shortPrompt(prompt)}
-          onEdit={canEditPrompt && (creationDraft || !creating) ? () => setPromptEditorOpen(true) : undefined}
-        />
-        <BlueprintRow
-          icon={Settings2}
-          label="Model"
-          value={creating ? builderStatus?.draft?.model || 'Uses authenticated runtime default' : agent?.defaultModel || 'No default model'}
-          detail={creating ? builderStatus?.draft?.provider || 'Kordi Factory uses your active authenticated route' : [agent?.defaultAuthProvider, agent?.fallbackModel ? `fallback ${agent.fallbackModel}` : null].filter(Boolean).join(' · ') || 'Runtime default'}
-          onEdit={!creating && agent?.isOwned && onOpenRouting ? onOpenRouting : undefined}
-        />
-        <BlueprintRow icon={Puzzle} label="Skills" value={`${skills.length} loaded`} detail={skills.join(', ') || 'No skills selected'} onEdit={onOpenCapabilities} />
-        <BlueprintRow icon={Wrench} label="Tools" value={`${tools.length} selected`} detail={tools.join(', ') || 'No tools selected'} onEdit={onOpenCapabilities} />
-        <div className="app-agent-studio-blueprint-row">
-          <div className="app-agent-studio-blueprint-label"><LockKeyhole className="h-4 w-4" />Access</div>
-          <div className="min-w-0">
-            <div className="app-agent-studio-blueprint-value">
-              {cloudAgentAccessLabel(accessScope)}
-            </div>
-            <div className="app-agent-studio-blueprint-detail">
-              {cloudAgentAccessDescription(accessScope)}
-            </div>
-          </div>
-          {creating || agent ? (
-            <div className="app-agent-studio-access-control" ref={accessControlRef}>
-              <button
-                ref={accessTriggerRef}
-                type="button"
-                className="app-button-quiet app-agent-studio-icon-button is-inline-edit app-agent-studio-access-edit"
-                aria-label="Edit access"
-                aria-haspopup="menu"
-                aria-expanded={accessMenuOpen}
-                onClick={() => setAccessMenuOpen((open) => !open)}
-              >
-                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-              {accessMenuOpen ? (
-                <div className="app-agent-studio-access-menu" role="menu" aria-label="Agent access" onKeyDown={handleAccessMenuKeyDown}>
-                  {(['private', 'participant_conversations'] as const).map((scope) => {
-                    const selected = accessScope === scope;
-                    return (
-                      <button
-                        key={scope}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={selected}
-                        className={cn(selected && 'is-selected')}
-                        onClick={() => {
-                          onAccessScopeChange(scope);
-                          setAccessMenuOpen(false);
-                          accessTriggerRef.current?.focus();
-                        }}
-                      >
-                        <span className="app-agent-studio-access-menu-check" aria-hidden="true">
-                          {selected ? <Check className="h-3.5 w-3.5" /> : null}
-                        </span>
-                        <span>{cloudAgentAccessLabel(scope)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          ) : <span />}
-        </div>
-        {totalChanges > 0 ? (
-          <div className="app-agent-studio-draft-summary">
-            <div>
-              <strong>{creating ? 'Build ready to review' : `${totalChanges} change${totalChanges === 1 ? '' : 's'} ready to review`}</strong>
-              <span>{builderStatus?.publishReady ? 'Validation and runtime test passed. Nothing is live until you publish.' : builderStatus?.validation.valid ? 'Run the current draft in the Runs tab before publishing.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
-            </div>
-          </div>
-        ) : null}
-        {!creating && changes.length > 0 ? (
-          <div className="app-agent-studio-change-list">
-            {changes.map((change) => (
-              <div key={`${change.key}:${change.label}`} className="app-agent-studio-change-row"><Check className="h-3.5 w-3.5" /><span>{change.label}</span><code>{change.detail}</code></div>
-            ))}
-          </div>
-        ) : null}
-      </section>
-      {promptEditorOpen ? (
-        <PromptEditor
-          value={prompt}
-          onChange={(value) => {
-            if (creating && creationDraft) onCreationDraftChange({ ...creationDraft, systemPrompt: value });
-            else onPromptChange(value);
-          }}
-          onClose={() => setPromptEditorOpen(false)}
-        />
-      ) : null}
-    </div>
-  );
-}
-
 type CapabilityItem = {
   kind: AgentStudioCapabilityKind;
   name: string;
@@ -309,25 +87,6 @@ type CapabilityItem = {
 type CapabilityCatalogItem = Pick<CapabilityItem, 'kind' | 'name'>;
 
 const CAPABILITY_KINDS: AgentStudioCapabilityKind[] = ['skill', 'tool', 'plugin'];
-
-const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
-  bash: 'Run shell commands in the workspace.',
-  browser_fetch: 'Read dynamic content through the browser.',
-  edit: 'Make precise changes to workspace files.',
-  find: 'Find files and folders by name.',
-  grep: 'Search text across workspace files.',
-  ls: 'List files and folders in the workspace.',
-  read: 'Read files from the workspace.',
-  read_session: 'Read a previous Kordi conversation.',
-  reflection: 'Review progress before choosing the next step.',
-  schedule_task: 'Schedule work to run later.',
-  search_sessions: 'Search previous Kordi conversations.',
-  task_operator: 'Coordinate work with another agent.',
-  update_plan: 'Track the current plan and progress.',
-  web_fetch: 'Read content from a web page.',
-  web_search: 'Search the web for current information.',
-  write: 'Create or replace workspace files.',
-};
 
 function readableCapabilityName(value: string) {
   return value.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -360,7 +119,7 @@ function capabilityDescription({
       || `Reusable guidance for ${readableCapabilityName(name)}.`;
   }
   if (kind === 'tool') {
-    return TOOL_DESCRIPTIONS[name]
+    return CLOUD_AGENT_TOOL_DESCRIPTIONS[name]
       || `Use ${readableCapabilityName(name)} in this agent.`;
   }
   return `Extend this agent with ${readableCapabilityName(name)}.`;
@@ -845,6 +604,10 @@ export function AgentStudioWorkspace({
   canEditPrompt,
   onPromptChange,
   onCreationDraftChange,
+  creationAvatarUrl,
+  onCreationAvatarUpload,
+  onCreationAvatarRandomize,
+  onCreationModelRoutingChange,
   onToggleCapability,
   onAddCapability,
   onRenameCapability,
@@ -896,6 +659,10 @@ export function AgentStudioWorkspace({
   canEditPrompt: boolean;
   onPromptChange: (value: string) => void;
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
+  creationAvatarUrl?: string | null;
+  onCreationAvatarUpload?: (avatar: string) => void;
+  onCreationAvatarRandomize?: () => void;
+  onCreationModelRoutingChange?: (values: AgentModelRoutingDraft) => Promise<void> | void;
   onToggleCapability: (kind: AgentStudioCapabilityKind, name: string, selected: boolean) => void;
   onAddCapability: (kind: AgentStudioCapabilityKind, name: string) => void;
   onRenameCapability: (kind: AgentStudioCapabilityKind, previousName: string, nextName: string) => void;
@@ -950,6 +717,22 @@ export function AgentStudioWorkspace({
     if (creating) onCreationAccessScopeChange(scope);
     else onUpdateAgentAccess?.(scope);
   };
+  const routing: AgentModelRoutingDraft = creating ? {
+    defaultModel: builderStatus?.draft?.model ?? null,
+    defaultAuthProvider: builderStatus?.draft?.provider ?? null,
+    thinking: builderStatus?.draft?.thinking ?? null,
+  } : {
+    defaultModel: agent?.defaultModel ?? null,
+    defaultAuthProvider: agent?.defaultAuthProvider ?? null,
+    defaultAuthChoice: agent?.defaultAuthChoice ?? null,
+    fallbackModel: agent?.fallbackModel ?? null,
+    fallbackAuthProvider: agent?.fallbackAuthProvider ?? null,
+    fallbackAuthChoice: agent?.fallbackAuthChoice ?? null,
+    thinking: agent?.defaultThinking ?? null,
+  };
+  const canEditRouting = chatModelOptions.length > 0 && Boolean(
+    creating ? onCreationModelRoutingChange : agent?.isOwned && onUpdateModelRouting,
+  );
 
   return (
     <section className="app-agent-studio-workspace" aria-label="Factory workspace">
@@ -961,7 +744,7 @@ export function AgentStudioWorkspace({
       <fieldset className="contents" disabled={draftMutationDisabled} aria-busy={draftMutationDisabled}>
       <div className="app-agent-studio-workspace-body">
         {activeTab === 'blueprint' ? (
-          <BlueprintView
+          <AgentStudioBlueprintView
             agent={agent}
             creating={creating}
             creationDraft={creationDraft}
@@ -972,8 +755,11 @@ export function AgentStudioWorkspace({
             canEditPrompt={canEditPrompt}
             onPromptChange={onPromptChange}
             onCreationDraftChange={onCreationDraftChange}
+            creationAvatarUrl={creationAvatarUrl}
+            onCreationAvatarUpload={onCreationAvatarUpload}
+            onCreationAvatarRandomize={onCreationAvatarRandomize}
             onOpenCapabilities={() => setTab('capabilities')}
-            onOpenRouting={onUpdateModelRouting && chatModelOptions.length > 0 ? () => setRoutingOpen(true) : undefined}
+            onOpenRouting={canEditRouting ? () => setRoutingOpen(true) : undefined}
             builderStatus={builderStatus}
           />
         ) : null}
@@ -1023,12 +809,16 @@ export function AgentStudioWorkspace({
         {activeTab === 'runs' ? <RunsView agent={agent} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
         {activeTab === 'history' ? <HistoryView entries={persisted?.editHistory ?? []} /> : null}
         {publishFeedback?.text ? <div className={cn('app-agent-studio-toast', publishFeedback.tone === 'error' && 'is-error', publishFeedback.tone === 'success' && 'is-success')}>{publishFeedback.text}</div> : null}
-        {routingOpen && agent && onUpdateModelRouting ? (
+        {routingOpen && canEditRouting ? (
           <AgentStudioRoutingEditor
-            agent={agent}
+            routing={routing}
             modelOptions={chatModelOptions}
             providerOptions={composerProviderOptions}
-            onSave={onUpdateModelRouting}
+            onSave={(values) => {
+              if (creating) return onCreationModelRoutingChange?.(values);
+              if (agent) return onUpdateModelRouting?.(agent, values);
+              return undefined;
+            }}
             onClose={() => setRoutingOpen(false)}
           />
         ) : null}
@@ -1037,7 +827,7 @@ export function AgentStudioWorkspace({
       {builderStatus?.lifecycle !== 'published' && (changes.length > 0 || creating && creationDraft) ? (
         <div className="app-agent-studio-workspace-footer">
           <span>{standaloneBuild ? `${artifactKind[0]?.toUpperCase()}${artifactKind.slice(1)} draft` : creating ? 'New agent build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
-          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? 'Publishing…' : artifactKind === 'skill' ? 'Publish skill' : artifactKind === 'tool' ? 'Publish tool' : artifactKind === 'plugin' ? 'Publish plugin' : creating ? 'Create agent' : 'Publish'}</button></div>
+          <div className="flex gap-2"><button type="button" className="app-button-quiet app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-button-quiet app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{builderTesting ? 'Testing…' : publishing ? 'Publishing…' : artifactKind === 'skill' ? 'Publish skill' : artifactKind === 'tool' ? 'Publish tool' : artifactKind === 'plugin' ? 'Publish plugin' : creating ? 'Publish agent' : 'Publish'}</button></div>
         </div>
       ) : null}
     </section>

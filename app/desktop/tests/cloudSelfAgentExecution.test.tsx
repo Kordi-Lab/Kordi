@@ -122,6 +122,21 @@ test('self-agent desktop execution ignores cancelled and stale requests', () => 
     }).length,
     0,
   );
+
+  const history = {
+    ...message('request-history', 'Already answered'),
+    messageKind: 'canonical-history-user',
+  };
+  assert.equal(
+    pendingCloudSelfAgentExecutionRequests({
+      account,
+      messageIndex: buildCloudMessageIndex(account.accountId, {
+        [account.accountId]: [history],
+      }),
+      nowMs,
+    }).length,
+    0,
+  );
 });
 
 test('cross-device requests wait until desktop authentication finishes loading', () => {

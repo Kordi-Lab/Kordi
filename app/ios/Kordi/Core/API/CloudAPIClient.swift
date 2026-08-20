@@ -74,7 +74,8 @@ actor CloudAPIClient {
         email: String,
         password: String,
         displayName: String?,
-        avatarSeed: String
+        avatarSeed: String,
+        avatarMutation: CanonicalAvatarMutation? = nil
     ) async throws -> CloudAuthResponse {
         let device = try await deviceRegistration()
         let response: CloudAuthResponse = try await send(
@@ -85,6 +86,7 @@ actor CloudAPIClient {
                 password: password,
                 displayName: displayName,
                 avatarSeed: avatarSeed,
+                avatarMutation: avatarMutation,
                 device: device
             ),
             fallback: "Could not create account."
@@ -1630,6 +1632,7 @@ private struct SignupRequest: Encodable {
     let password: String
     let displayName: String?
     let avatarSeed: String
+    let avatarMutation: CanonicalAvatarMutation?
     let device: CloudDeviceRegistration
 }
 private struct DeviceMetadataUpdateRequest: Encodable {

@@ -1,13 +1,10 @@
 import { useRef, useState } from 'react';
-import { Camera, RefreshCw } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Camera, Dice5 } from 'lucide-react';
 import { fileToAvatarDataUrl, setAvatarOverride } from './avatarOverrides';
 import { getIdentityAvatarKey, IdentityAvatar, type IdentityAvatarProps } from './IdentityAvatar';
 
 type EditableIdentityAvatarProps = IdentityAvatarProps & {
   label?: string;
-  compact?: boolean;
-  controlsClassName?: string;
   onUpload?: (dataUrl: string) => Promise<void> | void;
   onGenerate?: () => Promise<void> | void;
   generateLabel?: string;
@@ -15,11 +12,9 @@ type EditableIdentityAvatarProps = IdentityAvatarProps & {
 
 export function EditableIdentityAvatar({
   label = 'Avatar',
-  compact = false,
-  controlsClassName,
   onUpload,
   onGenerate,
-  generateLabel = 'Generate another',
+  generateLabel = 'Random avatar',
   ...avatarProps
 }: EditableIdentityAvatarProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -55,52 +50,51 @@ export function EditableIdentityAvatar({
   };
 
   return (
-    <div className={cn('flex items-center gap-3', compact ? 'gap-2' : '')}>
-      <div className="relative shrink-0">
+    <div className="grid gap-1.5">
+      <div className="flex items-stretch gap-1">
         <IdentityAvatar {...avatarProps} avatarKey={avatarKey} />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="app-button-quiet absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full p-0"
-          aria-label={`Upload ${label.toLowerCase()}`}
-          title={`Upload ${label.toLowerCase()}`}
-        >
-          <Camera className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className={cn('min-w-0', compact ? 'flex items-center gap-2' : 'space-y-1.5', controlsClassName)}>
-        {!compact ? <div className="text-[12px] font-medium text-white">{label}</div> : null}
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="hidden"
-            onChange={(event) => handleFileChange(event.target.files?.[0])}
-          />
-          {isSaving ? <div className="text-[11px] leading-4 text-slate-400">Saving…</div> : null}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="sr-only"
+          onChange={(event) => handleFileChange(event.currentTarget.files?.[0])}
+        />
+        <div className="flex w-7 shrink-0 flex-col overflow-hidden rounded-full border border-[var(--app-cloud-login-inner-border)] bg-[var(--app-cloud-login-raised-bg)] text-muted-foreground">
           {onGenerate ? (
             <button
               type="button"
-              className="app-button-quiet inline-flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-[11px]"
+              className="grid min-h-6 flex-1 place-items-center border-b border-[var(--app-cloud-login-inner-border)] transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)] disabled:opacity-50"
               disabled={isSaving}
+              title={generateLabel}
+              aria-label={generateLabel}
               onClick={() => {
                 setIsSaving(true);
                 setError(null);
                 void Promise.resolve(onGenerate())
                   .catch((caught: unknown) => {
-                    setError(caught instanceof Error ? caught.message : 'Could not generate another avatar.');
+                    setError(caught instanceof Error ? caught.message : 'Could not create a random avatar.');
                   })
                   .finally(() => setIsSaving(false));
               }}
             >
-              <RefreshCw className="h-3 w-3" aria-hidden="true" />
-              {generateLabel}
+              <Dice5 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="grid min-h-6 flex-1 place-items-center transition hover:bg-[var(--app-cloud-login-sunk-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)] disabled:opacity-50"
+            disabled={isSaving}
+            aria-label={`Upload ${label.toLowerCase()}`}
+            title={`Upload ${label.toLowerCase()}`}
+          >
+            <Camera className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          </button>
         </div>
-        {error ? <div className="app-error-text max-w-[18rem] text-[11px] leading-4 text-rose-300">{error}</div> : null}
       </div>
+      {isSaving ? <span className="sr-only" aria-live="polite">Saving avatar…</span> : null}
+      {error ? <div className="app-error-text max-w-[18rem] text-[11px] leading-4 text-rose-300">{error}</div> : null}
     </div>
   );
 }
