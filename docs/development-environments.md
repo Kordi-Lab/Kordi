@@ -44,7 +44,7 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-See [Local development with an isolated Kordi backend](self-hosted-debug.md) for OAuth, multi-user, log, validation, and reset commands.
+See [Local development with an isolated Kordi backend](self-hosted-debug.md) for OAuth, multi-user, log, validation, and reset commands. Voice and video require the additional [call hosting guide](call-hosting.md); the base stack does not start LiveKit.
 
 ## Remote isolated backend through IAP
 
@@ -81,7 +81,7 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-The tunnel is transport only. It does not authorize product access, and the remote host must continue to satisfy every isolation invariant above.
+The tunnel is transport only. It does not authorize product access, and the remote host must continue to satisfy every isolation invariant above. API-only forwarding is insufficient for calls; follow [Hosting Kordi voice and video calls](call-hosting.md#isolated-development-host) to add signaling and ICE/TCP forwards.
 
 ## Native iPhone environments
 

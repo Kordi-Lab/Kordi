@@ -125,6 +125,25 @@ test('self-hosted guide uses the safe helper and explicit loopback API origin', 
   assert.doesNotMatch(guide, /127\.0\.0\.1:7890/);
 });
 
+test('call hosting guide covers development and product media readiness', () => {
+  const guide = read('docs/call-hosting.md');
+
+  for (const value of [
+    'KORDI_LIVEKIT_URL',
+    'KORDI_LIVEKIT_API_KEY',
+    'KORDI_LIVEKIT_API_SECRET',
+    'Kordi call media is configured',
+    'hostNetwork: true',
+    'CALL_MEDIA_UNAVAILABLE',
+    'Required two-account acceptance test',
+  ]) {
+    assert.match(guide, new RegExp(value));
+  }
+  assert.match(guide, /-L 127\.0\.0\.1:17880:127\.0\.0\.1:7880/);
+  assert.match(guide, /-L 127\.0\.0\.1:17881:127\.0\.0\.1:17881/);
+  assert.match(read('docs/development-environments.md'), /call-hosting\.md/);
+});
+
 test('public contributor entrypoints lead to the isolated development workflow', () => {
   for (const path of [
     'README.md',

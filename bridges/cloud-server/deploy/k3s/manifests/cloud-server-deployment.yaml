@@ -179,6 +179,36 @@ spec:
                 secretKeyRef:
                   name: kordi-livekit
                   key: api-secret
+            - name: KORDI_APNS_ENVIRONMENT
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-apns
+                  key: KORDI_APNS_ENVIRONMENT
+                  optional: true
+            - name: KORDI_APNS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-apns
+                  key: KORDI_APNS_KEY_ID
+                  optional: true
+            - name: KORDI_APNS_TEAM_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-apns
+                  key: KORDI_APNS_TEAM_ID
+                  optional: true
+            - name: KORDI_APNS_PRIVATE_KEY_BASE64
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-apns
+                  key: KORDI_APNS_PRIVATE_KEY_BASE64
+                  optional: true
+            - name: KORDI_APNS_BUNDLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-apns
+                  key: KORDI_APNS_BUNDLE_ID
+                  optional: true
             - name: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:

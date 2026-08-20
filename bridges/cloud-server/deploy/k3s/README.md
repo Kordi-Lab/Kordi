@@ -171,6 +171,11 @@ kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m \
 
 ## Voice and video media
 
+Read [Hosting Kordi voice and video calls](../../../../docs/call-hosting.md)
+before creating credentials or changing the edge. It is the operational source
+of truth for development tunnels, product ports, readiness checks, iOS
+background ringing, and the required two-account acceptance test.
+
 Production calls use the single-node LiveKit deployment in `manifests/livekit.yaml`.
 Create one API key and a secret of at least 32 random bytes, then store the
 client URL and the LiveKit `key: secret` pair without printing either value:

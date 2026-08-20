@@ -135,6 +135,18 @@ test('cloud server manifest targets the hosted product public base', async () =>
   }
   assert.doesNotMatch(manifest, /https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io/);
   assert.match(manifest, /KORDI_LIVEKIT_URL[\s\S]*name: kordi-livekit[\s\S]*key: url/);
+  for (const name of [
+    'KORDI_APNS_ENVIRONMENT',
+    'KORDI_APNS_KEY_ID',
+    'KORDI_APNS_TEAM_ID',
+    'KORDI_APNS_PRIVATE_KEY_BASE64',
+    'KORDI_APNS_BUNDLE_ID',
+  ]) {
+    assert.match(
+      manifest,
+      new RegExp(`${name}[\\s\\S]*name: kordi-apns[\\s\\S]*key: ${name}[\\s\\S]*optional: true`),
+    );
+  }
   assert.match(manifest, /KORDI_SUPPORT_OPENAI_API_KEY[\s\S]*name: kordi-support-openai/);
 });
 

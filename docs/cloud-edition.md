@@ -115,6 +115,10 @@ KORDI_LIVEKIT_API_KEY=...
 KORDI_LIVEKIT_API_SECRET=...
 ```
 
+For the complete isolated-development and product deployment procedure, port
+matrix, readiness checks, and failure guide, see [Hosting Kordi voice and video
+calls](call-hosting.md).
+
 APNs delivery is optional and is enabled only when all of these variables are
 present. Use developer-owned Apple credentials in isolated development.
 
