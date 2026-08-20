@@ -20,7 +20,6 @@ import {
 } from '@/features/cloud/cloudAttachmentUpload';
 import {
   loadVisibleCloudAttachmentPreview,
-  recoverCloudAttachmentPreview,
   type CloudAttachmentPreviewLease,
 } from '@/features/cloud/cloudAttachments';
 import { loadSession } from '@/features/cloud/session';
@@ -35,91 +34,24 @@ import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 import { TranscriptImageGroup } from './transcriptImageGroup';
 import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
+import {
+  recoverableAttachmentId,
+  recoveredAttachmentPreviewUrl,
+  recoverAttachmentPreviewOnce,
+} from './transcriptAttachmentPreviewRecovery';
 import type { AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
+export {
+  clearAttachmentPreviewRecoveryStateForTests,
+  recoverAttachmentPreviewOnce,
+} from './transcriptAttachmentPreviewRecovery';
 export { attachmentImageDeliveryVisual };
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
-const ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS = 30_000;
-const recoveredAttachmentPreviewUrls = new Map<string, string>();
-const recoveringAttachmentPreviewPromises = new Map<string, Promise<string | null>>();
-const attachmentPreviewRecoveryRetryAfter = new Map<string, number>();
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
-}
-
-function recoverableAttachmentId(attachment: MessageAttachment) {
-  return attachment.attachmentId?.trim() || null;
-}
-
-type AttachmentPreviewRecoveryDependencies = {
-  loadCloudSession?: () => Promise<{ token: string } | null>;
-  recoverPreview?: typeof recoverCloudAttachmentPreview;
-  now?: () => number;
-  retryDelayMs?: number;
-};
-
-export function clearAttachmentPreviewRecoveryStateForTests() {
-  recoveredAttachmentPreviewUrls.clear();
-  recoveringAttachmentPreviewPromises.clear();
-  attachmentPreviewRecoveryRetryAfter.clear();
-}
-
-export async function recoverAttachmentPreviewOnce(
-  attachment: MessageAttachment,
-  dependencies: AttachmentPreviewRecoveryDependencies = {},
-) {
-  const attachmentId = recoverableAttachmentId(attachment);
-  if (!attachmentId) return null;
-  const cached = recoveredAttachmentPreviewUrls.get(attachmentId);
-  if (cached) return cached;
-  const now = dependencies.now ?? Date.now;
-  const retryAfter = attachmentPreviewRecoveryRetryAfter.get(attachmentId) ?? 0;
-  if (retryAfter > now()) return null;
-  attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
-  const existing = recoveringAttachmentPreviewPromises.get(attachmentId);
-  if (existing) return existing;
-
-  const promise = (async () => {
-    try {
-      const session = await (dependencies.loadCloudSession ?? loadSession)();
-      if (!session?.token) return null;
-      const previewUrl = await (dependencies.recoverPreview ?? recoverCloudAttachmentPreview)({
-        token: session.token,
-        client: defaultCloudAuthClient(),
-        attachment: {
-          attachmentId,
-          name: attachment.name,
-          kind: attachment.kind,
-          mimeType: attachment.mimeType ?? null,
-          sizeBytes: attachment.sizeBytes ?? null,
-          previewUrl: attachment.previewUrl ?? null,
-        },
-      });
-      if (previewUrl) {
-        recoveredAttachmentPreviewUrls.set(attachmentId, previewUrl);
-        attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
-      } else {
-        attachmentPreviewRecoveryRetryAfter.set(
-          attachmentId,
-          now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
-        );
-      }
-      return previewUrl;
-    } catch {
-      attachmentPreviewRecoveryRetryAfter.set(
-        attachmentId,
-        now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
-      );
-      return null;
-    } finally {
-      recoveringAttachmentPreviewPromises.delete(attachmentId);
-    }
-  })();
-  recoveringAttachmentPreviewPromises.set(attachmentId, promise);
-  return promise;
 }
 
 function formatAttachmentSize(sizeBytes?: number | null) {
@@ -488,6 +420,7 @@ function AttachmentImageCard({
   attachment,
   index,
   totalCount,
+  decorative = false,
   onOpenPreview,
   onOpenContextMenu,
   onImageForegroundTone,
@@ -495,6 +428,7 @@ function AttachmentImageCard({
   attachment: MessageAttachment;
   index: number;
   totalCount: number;
+  decorative?: boolean;
   onOpenPreview: (
     attachment: MessageAttachment,
     previewUrl: string,
@@ -509,7 +443,7 @@ function AttachmentImageCard({
   ) => void;
 }) {
   const attachmentId = recoverableAttachmentId(attachment);
-  const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => attachmentId ? recoveredAttachmentPreviewUrls.get(attachmentId) ?? null : null);
+  const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => recoveredAttachmentPreviewUrl(attachmentId));
   const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<string[]>([]);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
@@ -524,7 +458,7 @@ function AttachmentImageCard({
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
   const intrinsicSingleImage = singleImage && showImage;
-  const showOriginalAction = showImage && isLargeAttachment(attachment);
+  const showOriginalAction = !decorative && showImage && isLargeAttachment(attachment);
 
   useEffect(() => {
     if (usableRecoveredPreviewUrl || usableRemotePreviewUrl || usableDirectPreviewUrl || previewUnavailable || attachment.kind !== 'image' || !attachmentId) return;
@@ -590,9 +524,12 @@ function AttachmentImageCard({
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
+      data-attachment-image-index={index}
       data-attachment-image-context-target="true"
+      aria-hidden={decorative || undefined}
       className={cn(
         'app-attachment-image-card app-attachment-image-tile relative overflow-hidden bg-transparent',
+        decorative && 'pointer-events-none',
         intrinsicSingleImage ? 'w-fit max-w-full justify-self-start rounded-[16px]' : singleImage ? 'rounded-[16px]' : '',
         imageTileClass(index, totalCount, intrinsicSingleImage),
       )}
@@ -603,6 +540,7 @@ function AttachmentImageCard({
           type="button"
           data-attachment-image-preview-trigger="true"
           data-attachment-image-index={index}
+          tabIndex={decorative ? -1 : undefined}
           title={`${displayName} · Right-click for image actions`}
           onClick={(event) => onOpenPreview(
             attachment,
@@ -623,6 +561,7 @@ function AttachmentImageCard({
           <img
             src={previewUrl}
             alt={attachment.altText?.trim() || attachment.name || 'Attached image'}
+            data-attachment-image-loaded={String(imageLoaded)}
             className={cn(
               'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
               imageLoaded ? 'opacity-100' : 'opacity-0',
@@ -693,12 +632,14 @@ export function AttachmentPreview({
     : imageDeliveryStatus;
   const hasImageGroup = previewImageAttachments.length > 1;
   const visibleImageAttachments = hasImageGroup && !isImageGroupExpanded
-    ? previewImageAttachments.slice(0, 1)
+    ? previewImageAttachments.slice(0, 3)
     : previewImageAttachments;
   const isOwnImageGroup = msg.isOwnMessage ?? msg.role === 'user';
   const loadingOnlyImageCollage = visibleImageAttachments.length > 0
     && visibleImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
-  const deliveryImageAttachment = visibleImageAttachments[visibleImageAttachments.length - 1];
+  const deliveryImageAttachment = hasImageGroup && !isImageGroupExpanded
+    ? visibleImageAttachments[0]
+    : visibleImageAttachments[visibleImageAttachments.length - 1];
   const deliveryImagePath = deliveryImageAttachment?.localPath?.trim() ?? '';
   const deliveryUpload = useSyncExternalStore(
     (listener) => subscribeCloudAttachmentUpload(deliveryImagePath, listener),
@@ -803,6 +744,7 @@ export function AttachmentPreview({
                   attachment={attachment}
                   index={index}
                   totalCount={1}
+                  decorative={hasImageGroup && !isImageGroupExpanded && index > 0}
                   onOpenPreview={openLightbox}
                   onOpenContextMenu={openContextMenu}
                   onImageForegroundTone={attachmentPreviewIdentity(attachment) === deliveryImageIdentity

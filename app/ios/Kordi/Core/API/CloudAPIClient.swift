@@ -921,7 +921,7 @@ actor CloudAPIClient {
                 mimeType: uploaded.contentType?.nonEmpty ?? attachment.mimeType,
                 sizeBytes: uploaded.sizeBytes ?? attachment.sizeBytes,
                 downloadUrl: nil,
-                previewUrl: attachment.previewURL
+                previewUrl: nil // Uploaded bytes are referenced by ID; never embed local data URLs in message JSON.
             )
         } catch let error as CloudAPIError {
             throw error

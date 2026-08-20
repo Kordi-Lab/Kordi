@@ -44,13 +44,13 @@ struct ConversationView: View {
     @State private var immediateBottomRequest = 0
     @State private var attachments: [PendingAttachment] = []
     @State private var photoGrouping: PhotoSendGrouping = .combined
-    @State private var photoSelectionReview: PhotoSelectionReview?
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
     @State private var isExpressivePickerPresented = false
     @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
+    @State private var showMemePhotoPicker = false
     @State private var showCamera = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
@@ -256,7 +256,9 @@ struct ConversationView: View {
                                                             )
                                                         }
                                                     },
-                                                    onRetry: { Task { await model.retry(message, in: conversation) } },
+                                                    onRetry: {
+                                                        await model.retry(message, in: conversation)
+                                                    },
                                                     onReply: {
                                                         guard conversation.kind.supportsQuotedReplies else { return }
                                                         replySource = message.actionSource(sessionId: conversation.sessionId)
@@ -505,12 +507,13 @@ struct ConversationView: View {
                     cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
                     onTakePhoto: { showCamera = true },
                     onChoosePhotos: {
+                        guard canPresentPhotoPicker() else { return }
                         selectedPhotoSubtype = nil
                         showPhotoPicker = true
                     },
                     onChooseMeme: {
                         selectedPhotoSubtype = .meme
-                        showPhotoPicker = true
+                        showMemePhotoPicker = true
                     },
                     onChooseFiles: { showFileImporter = true },
                     onOpenAgentModel: { showAgentModel = true },
@@ -575,10 +578,8 @@ struct ConversationView: View {
                 openAttachment(attachment, from: message, in: messages, previewImage: nil)
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-photo-send"),
-               photoSelectionReview == nil {
-                photoSelectionReview = PhotoSelectionReview(
-                    attachments: PreviewData.pendingPhotoAttachments()
-                )
+               !showPhotoPicker {
+                showPhotoPicker = true
             }
             openCompanionPreviewIfReady()
         }
@@ -604,7 +605,7 @@ struct ConversationView: View {
             onCompletion: importFiles
         )
         .photosPicker(
-            isPresented: $showPhotoPicker,
+            isPresented: $showMemePhotoPicker,
             selection: $selectedPhotos,
             maxSelectionCount: max(1, PendingAttachmentLoader.maximumAttachmentCount - attachments.count),
             selectionBehavior: .ordered,
@@ -613,6 +614,13 @@ struct ConversationView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             importPhotos(items)
+        }
+        .fullScreenCover(isPresented: $showPhotoPicker) {
+            PhotoLibrarySendPicker(
+                allowsSeparateMessages: conversation.kind != .agent,
+                onSend: sendPhotoSelection,
+                onError: { model.errorMessage = $0 }
+            )
         }
         .fullScreenCover(isPresented: $showCamera) {
             CameraImagePicker(
@@ -627,15 +635,6 @@ struct ConversationView: View {
         .quickLookPreview($previewURL)
         .fullScreenCover(item: $mediaPreview) { presentation in
             MediaPreviewView(presentation: presentation)
-        }
-        .fullScreenCover(item: $photoSelectionReview) { review in
-            PhotoSendReviewSheet(
-                review: review,
-                allowsSeparateMessages: conversation.kind != .agent,
-                onSend: { grouping in
-                    await sendPhotoSelection(review.attachments, grouping: grouping)
-                }
-            )
         }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
@@ -1168,27 +1167,46 @@ struct ConversationView: View {
         isSending = false
     }
 
-    private func sendPhotoSelection(
-        _ selectedAttachments: [PendingAttachment],
-        grouping: PhotoSendGrouping
-    ) async {
-        guard !selectedAttachments.isEmpty, !isSending else { return }
+    private func canPresentPhotoPicker() -> Bool {
+        if let error = MemeAttachmentPolicy.draftError(for: attachments) {
+            model.errorMessage = error
+            return false
+        }
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return canSendWithCurrentAuthentication(
+            mention: resolvedMentionTarget(in: message)
+        )
+    }
+
+    private func sendPhotoSelection(
+        _ selectedPhotos: [PendingAttachment],
+        grouping: PhotoSendGrouping
+    ) async -> Bool {
+        guard !selectedPhotos.isEmpty, !isSending else { return false }
+        let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outgoingAttachments = attachments + selectedPhotos
+        if let error = MemeAttachmentPolicy.draftError(for: outgoingAttachments) {
+            model.errorMessage = error
+            return false
+        }
         let outgoingMention = resolvedMentionTarget(in: message)
-        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
+        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return false }
         let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         draft = ""
+        attachments = []
+        photoGrouping = .combined
         replySource = nil
         selectedMention = nil
         isSending = true
         await sendOutgoingMessages(
             text: message,
-            attachments: selectedAttachments,
+            attachments: outgoingAttachments,
             grouping: conversation.kind == .agent ? .combined : grouping,
             reply: outgoingReply,
             mention: outgoingMention
         )
         isSending = false
+        return true
     }
 
     private func canSendWithCurrentAuthentication(
@@ -1294,11 +1312,7 @@ struct ConversationView: View {
                     }
                     loaded.append(attachment)
                 }
-                if importedSubtype == nil, loaded.count > 1, attachments.isEmpty {
-                    photoSelectionReview = PhotoSelectionReview(attachments: loaded)
-                } else {
-                    attachments.append(contentsOf: loaded)
-                }
+                attachments.append(contentsOf: loaded)
             } catch {
                 model.errorMessage = error.localizedDescription
             }

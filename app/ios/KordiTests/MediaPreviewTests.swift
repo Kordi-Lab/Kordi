@@ -106,6 +106,30 @@ final class MediaPreviewTests: XCTestCase {
         )
     }
 
+    func testPhotoLibrarySelectionPreservesOrderAndRemovesSelections() {
+        var selected: [String] = []
+
+        selected = PhotoLibrarySelection.toggling("second", in: selected)
+        selected = PhotoLibrarySelection.toggling("first", in: selected)
+        XCTAssertEqual(selected, ["second", "first"])
+
+        selected = PhotoLibrarySelection.toggling("second", in: selected)
+        XCTAssertEqual(selected, ["first"])
+    }
+
+    func testSeparatePhotoPreparationCanEnterChatOnePhotoAtATime() {
+        let selected = ["first", "second", "third"]
+
+        XCTAssertEqual(
+            PhotoSelectionPreparationPlan.batches(for: selected, grouping: .separate),
+            [["first"], ["second"], ["third"]]
+        )
+        XCTAssertEqual(
+            PhotoSelectionPreparationPlan.batches(for: selected, grouping: .combined),
+            [selected]
+        )
+    }
+
     func testImageOnlyMessageUsesBorderlessMediaSurface() {
         let imageMessage = message(
             id: "image-message",
@@ -119,14 +143,13 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
     }
 
-    func testEverySingleAndGroupedImageDeliveryStatePlacesReceiptBelowMedia() {
+    func testEverySingleAndGroupedImageDeliveryStatePlacesReceiptOverMedia() {
         for attachmentCount in [1, 2] {
             for state in [
                 MessageDeliveryState.sending,
                 .sent,
                 .delivered,
                 .read,
-                .failed,
                 .cancelled,
             ] {
                 var imageMessage = message(
@@ -138,12 +161,38 @@ final class MediaPreviewTests: XCTestCase {
                 )
                 imageMessage.deliveryState = state
 
-                XCTAssertEqual(
-                    MessageAttachmentPresentation.deliveryGlyphPlacement(for: imageMessage),
-                    .belowSurface
-                )
+                XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
             }
         }
+
+        var failedImage = message(
+            id: "failed-image-receipt",
+            author: .me,
+            attachments: [attachment(id: "image", kind: .image)]
+        )
+        failedImage.deliveryState = .failed
+        XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: failedImage))
+    }
+
+    func testFailedImageRetryUsesTheSharedImageStatusSlot() {
+        var imageMessage = message(
+            id: "failed-image",
+            author: .me,
+            attachments: [attachment(id: "image", kind: .image)]
+        )
+        imageMessage.deliveryState = .failed
+        XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+
+        imageMessage.text = "Caption"
+        XCTAssertFalse(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+    }
+
+    func testGroupedImageStackKeepsTheNextPhotosBehindTheSelection() {
+        XCTAssertEqual(MessageImageStack.backdropIndices(count: 3, selectedIndex: 0), [2, 1])
+        XCTAssertEqual(MessageImageStack.backdropIndices(count: 3, selectedIndex: 1), [0, 2])
+        XCTAssertEqual(MessageImageStack.backdropIndices(count: 1, selectedIndex: 0), [])
+        XCTAssertEqual(MessageImageStack.targetIndex(count: 3, selectedIndex: 1, direction: 1), 2)
+        XCTAssertEqual(MessageImageStack.targetIndex(count: 3, selectedIndex: 0, direction: -1), 2)
     }
 
     private func attachment(id: String, kind: ChatAttachmentKind) -> ChatAttachment {

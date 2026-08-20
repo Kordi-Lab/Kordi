@@ -21,7 +21,7 @@ struct MessageBubble: View, Equatable {
     let isCallActive: Bool
     let onOpenAuthorProfile: () -> Void
     let onJoinCall: () -> Void
-    let onRetry: () -> Void
+    let onRetry: () async -> Void
     let onReply: () -> Void
     let onPin: () -> Void
     let onForward: () -> Void
@@ -31,6 +31,7 @@ struct MessageBubble: View, Equatable {
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
+    @State private var isRetrying = false
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message
@@ -52,7 +53,7 @@ struct MessageBubble: View, Equatable {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: usesBorderlessImageSurface ? .top : .bottom, spacing: 8) {
             if selectionMode {
                 Button(action: onSelect) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -69,7 +70,7 @@ struct MessageBubble: View, Equatable {
                     Button(action: onOpenAuthorProfile) {
                         Color.clear
                             .frame(width: 44, height: 44)
-                            .overlay(alignment: .bottom) {
+                            .overlay(alignment: usesBorderlessImageSurface ? .top : .bottom) {
                                 IdentityAvatar(
                                     name: authorAvatarName,
                                     imageSource: authorAvatarSource,
@@ -103,87 +104,75 @@ struct MessageBubble: View, Equatable {
                 }
 
                 messageSurface
-                .overlay(alignment: .bottomTrailing) {
-                    if message.author == .me,
-                       !isCallActivity,
-                       deliveryGlyphPlacement == .overlay {
-                        MessageDeliveryGlyph(
-                            state: message.deliveryState,
-                            readByCount: message.readByCount
-                        )
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.trailing, 8)
-                        .padding(.bottom, 2)
+                    .overlay(alignment: .bottomTrailing) {
+                        if message.author == .me, !isCallActivity {
+                            if showsImageDeliveryStatus {
+                                imageDeliveryStatusOverlay
+                            } else {
+                                MessageDeliveryGlyph(
+                                    state: message.deliveryState,
+                                    readByCount: message.readByCount
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.trailing, 8)
+                                .padding(.bottom, 2)
+                            }
+                        }
                     }
-                }
-                .overlay {
-                    if isHighlighted {
+                    .overlay {
+                        if isHighlighted {
+                            bubbleShape
+                                .fill(KordiTheme.signalBlue.opacity(0.10))
+                        }
                         bubbleShape
-                            .fill(KordiTheme.signalBlue.opacity(0.10))
+                            .stroke(
+                                isHighlighted ? KordiTheme.signalBlue : Color.clear,
+                                lineWidth: isHighlighted ? 2 : 0
+                            )
                     }
-                    bubbleShape
-                        .stroke(
-                            isHighlighted ? KordiTheme.signalBlue : Color.clear,
-                            lineWidth: isHighlighted ? 2 : 0
-                        )
-                }
-                .scaleEffect(isHighlighted ? 1.018 : 1)
-                .animation(.snappy(duration: 0.24), value: isHighlighted)
-                .contentShape(.contextMenuPreview, bubbleShape)
-                .contextMenu {
-                    if allowsQuotedReplies {
-                        Button(action: onReply) {
-                            Label("Reply", systemImage: "arrowshape.turn.up.left")
+                    .scaleEffect(isHighlighted ? 1.018 : 1)
+                    .animation(.snappy(duration: 0.24), value: isHighlighted)
+                    .contentShape(.contextMenuPreview, bubbleShape)
+                    .contextMenu {
+                        if allowsQuotedReplies {
+                            Button(action: onReply) {
+                                Label("Reply", systemImage: "arrowshape.turn.up.left")
+                            }
                         }
-                    }
-                    Button(action: onPin) {
-                        Label(isPinned ? "Unpin" : "Pin", systemImage: "pin")
-                    }
-                    .disabled(message.deliveryState == .sending || message.deliveryState == .failed)
-                    if !message.text.isEmpty {
-                        Button {
-                            UIPasteboard.general.string = message.text
-                        } label: {
-                            Label("Copy Text", systemImage: "doc.on.doc")
+                        Button(action: onPin) {
+                            Label(isPinned ? "Unpin" : "Pin", systemImage: "pin")
                         }
-                    }
-                    Button(action: onForward) {
-                        Label("Forward", systemImage: "arrowshape.turn.up.right")
-                    }
-                    .disabled(message.deliveryState == .sending || message.deliveryState == .failed)
-                    Button(action: onDetails) {
-                        Label("Details", systemImage: "info.circle")
-                    }
-                    if message.author == .me, message.deliveryState == .read,
-                       (message.readByCount ?? 0) > 0 {
+                        .disabled(message.deliveryState == .sending || message.deliveryState == .failed)
+                        if !message.text.isEmpty {
+                            Button {
+                                UIPasteboard.general.string = message.text
+                            } label: {
+                                Label("Copy Text", systemImage: "doc.on.doc")
+                            }
+                        }
+                        Button(action: onForward) {
+                            Label("Forward", systemImage: "arrowshape.turn.up.right")
+                        }
+                        .disabled(message.deliveryState == .sending || message.deliveryState == .failed)
                         Button(action: onDetails) {
-                            Label(readReceiptMenuLabel, systemImage: "eye")
+                            Label("Details", systemImage: "info.circle")
+                        }
+                        if message.author == .me, message.deliveryState == .read,
+                           (message.readByCount ?? 0) > 0 {
+                            Button(action: onDetails) {
+                                Label(readReceiptMenuLabel, systemImage: "eye")
+                            }
+                        }
+                        Button(action: onSelect) {
+                            Label("Select", systemImage: "checkmark.circle")
                         }
                     }
-                    Button(action: onSelect) {
-                        Label("Select", systemImage: "checkmark.circle")
-                    }
+
+                if message.deliveryState == .failed, !usesBorderlessImageSurface {
+                    messageRetryControl
                 }
 
-                if message.deliveryState == .failed {
-                    Button("Retry", action: onRetry)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 4)
-                }
-
-                if message.author == .me,
-                   !isCallActivity,
-                   deliveryGlyphPlacement == .belowSurface {
-                    MessageDeliveryGlyph(
-                        state: message.deliveryState,
-                        readByCount: message.readByCount
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 2)
-                }
             }
 
             if showsAvatarSlot && message.author == .me {
@@ -316,8 +305,94 @@ struct MessageBubble: View, Equatable {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
     }
 
-    private var deliveryGlyphPlacement: MessageAttachmentPresentation.DeliveryGlyphPlacement {
-        MessageAttachmentPresentation.deliveryGlyphPlacement(for: message)
+    private var showsImageDeliveryStatus: Bool {
+        MessageImageStatusPresentation.showsOverlay(
+            for: message
+        )
+    }
+
+    @ViewBuilder
+    private var imageDeliveryStatusOverlay: some View {
+        if message.deliveryState == .failed || isRetrying {
+            Button(action: startRetry) {
+                if isRetrying {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.red)
+                        .accessibilityHidden(true)
+                } else {
+                    Text("!")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.red)
+                        .shadow(color: .black.opacity(0.72), radius: 2, y: 1)
+                }
+            }
+            .frame(width: 44, height: 44, alignment: .bottomTrailing)
+            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .disabled(isRetrying)
+            .padding(.trailing, 6)
+            .padding(.bottom, 6)
+            .accessibilityLabel(isRetrying ? "Retrying image" : "Retry sending image")
+            .sensoryFeedback(.selection, trigger: isRetrying) { oldValue, newValue in
+                !oldValue && newValue
+            }
+        } else {
+            HStack(spacing: 4) {
+                Text(message.createdAt, format: .dateTime.hour().minute())
+                MessageDeliveryGlyph(
+                    state: message.deliveryState,
+                    readByCount: message.readByCount
+                )
+            }
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.72), radius: 2, y: 1)
+            .padding(.trailing, 8)
+            .padding(.bottom, 8)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var messageRetryControl: some View {
+        Button(action: startRetry) {
+            HStack(spacing: 4) {
+                if isRetrying {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.red)
+                        .accessibilityHidden(true)
+                    Text("Retrying…")
+                } else {
+                    Text("Retry")
+                        .fontWeight(.bold)
+                }
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.red)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(minHeight: 28)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isRetrying)
+        .accessibilityLabel(isRetrying ? "Retrying message" : "Retry sending message")
+        .sensoryFeedback(.selection, trigger: isRetrying) { oldValue, newValue in
+            !oldValue && newValue
+        }
+    }
+
+    private func startRetry() {
+        guard !isRetrying else { return }
+        isRetrying = true
+        Task {
+            await onRetry()
+            isRetrying = false
+        }
     }
 
     private var hasVisibleMessageText: Bool {
@@ -807,11 +882,6 @@ private struct ConversationCallActivityCard: View {
 }
 
 enum MessageAttachmentPresentation {
-    enum DeliveryGlyphPlacement: Equatable {
-        case overlay
-        case belowSurface
-    }
-
     static func usesBorderlessImageSurface(for message: ChatMessage) -> Bool {
         !message.attachments.isEmpty
             && message.attachments.allSatisfy { $0.kind == .image }
@@ -819,9 +889,12 @@ enum MessageAttachmentPresentation {
             && message.replyToMessageId == nil
             && message.messageAction == nil
     }
+}
 
-    static func deliveryGlyphPlacement(for message: ChatMessage) -> DeliveryGlyphPlacement {
-        usesBorderlessImageSurface(for: message) ? .belowSurface : .overlay
+enum MessageImageStatusPresentation {
+    static func showsOverlay(for message: ChatMessage) -> Bool {
+        message.author == .me
+            && MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
     }
 }
 
@@ -883,12 +956,18 @@ private struct MessageAttachmentCard: View {
 }
 
 private struct MessageImageCollection: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let attachments: [ChatAttachment]
     let author: MessageAuthor
     let onOpen: (ChatAttachment, UIImage?) -> Void
     let onShare: (ChatAttachment) -> Void
 
     @State private var isExpanded = ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
+    @State private var selectedImageIndex = 0
+    @State private var flipProgress: CGFloat = 0
+    @State private var flipDirection = 1
+    @State private var isCompletingFlip = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -918,26 +997,72 @@ private struct MessageImageCollection: View {
                     }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
-            } else if let attachment = attachments.first {
+            } else if !attachments.isEmpty {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(uiColor: .tertiarySystemGroupedBackground))
-                        .frame(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
-                        .rotationEffect(.degrees(4))
-                        .offset(x: 10, y: 3)
-                        .shadow(color: .black.opacity(0.14), radius: 4, y: 2)
+                    ForEach(
+                        visibleBackdropIndices,
+                        id: \.self
+                    ) { index in
+                        let depth = (index - currentImageIndex + attachments.count) % attachments.count
+                        image(attachments[index], presentation: .stackPreview)
+                            .rotationEffect(.degrees(depth == 1 ? -2.5 : 4))
+                            .offset(x: depth == 1 ? 4 : 10, y: depth == 1 ? -1 : 3)
+                            .shadow(
+                                color: .black.opacity(depth == 1 ? 0.10 : 0.14),
+                                radius: depth == 1 ? 3 : 4,
+                                y: 2
+                            )
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
 
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        .frame(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
-                        .rotationEffect(.degrees(-2.5))
-                        .offset(x: 4, y: -1)
-                        .shadow(color: .black.opacity(0.10), radius: 3, y: 2)
+                    image(attachments[flipTargetIndex], presentation: .stackPreview)
+                        .rotationEffect(.degrees(targetBackdropAngle * Double(1 - flipProgress)))
+                        .offset(
+                            x: targetBackdropOffset.width * (1 - flipProgress),
+                            y: targetBackdropOffset.height * (1 - flipProgress)
+                        )
+                        .scaleEffect(0.98 + 0.02 * flipProgress)
+                        .shadow(color: .black.opacity(0.12), radius: 3.5, y: 2)
+                        .opacity(reduceMotion ? flipProgress : 1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
 
-                    image(attachment, presentation: .stackPreview)
+                    image(attachments[currentImageIndex], presentation: .stackPreview)
+                        .rotationEffect(
+                            .degrees(reduceMotion ? 0 : -12 * Double(flipDirection) * Double(flipProgress))
+                        )
+                        .offset(
+                            x: reduceMotion ? 0 : -MessageImageMetrics.stackSide * 0.6
+                                * CGFloat(flipDirection) * flipProgress,
+                            y: reduceMotion ? 0 : 8 * flipProgress
+                        )
+                        .scaleEffect(reduceMotion ? 1 : 1 - 0.03 * flipProgress)
+                        .shadow(
+                            color: .black.opacity(
+                                reduceMotion ? 0.14 : 0.14 + 0.08 * Double(flipProgress)
+                            ),
+                            radius: reduceMotion ? 4 : 4 + 4 * flipProgress,
+                            y: reduceMotion ? 2 : 2 + 3 * flipProgress
+                        )
+                        .opacity(1 - (reduceMotion ? 1 : 0.72) * Double(flipProgress))
+                        .simultaneousGesture(flipGesture)
+                        .accessibilityValue("Photo \(currentImageIndex + 1) of \(attachments.count)")
+                        .accessibilityHint("Swipe left or right to flip through grouped photos")
+                        .accessibilityAdjustableAction { direction in
+                            switch direction {
+                            case .increment:
+                                startFlip(direction: 1)
+                            case .decrement:
+                                startFlip(direction: -1)
+                            @unknown default:
+                                break
+                            }
+                        }
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 8)
+                .clipped()
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
@@ -949,6 +1074,82 @@ private struct MessageImageCollection: View {
 
     private var showsExpansionControl: Bool {
         attachments.count > 1
+    }
+
+    private var currentImageIndex: Int {
+        min(selectedImageIndex, max(0, attachments.count - 1))
+    }
+
+    private var visibleBackdropIndices: [Int] {
+        MessageImageStack.backdropIndices(
+            count: attachments.count,
+            selectedIndex: currentImageIndex
+        ).filter { $0 != flipTargetIndex }
+    }
+
+    private var flipTargetIndex: Int {
+        MessageImageStack.targetIndex(
+            count: attachments.count,
+            selectedIndex: currentImageIndex,
+            direction: flipDirection
+        )
+    }
+
+    private var targetBackdropDepth: Int {
+        min(2, max(1, (flipTargetIndex - currentImageIndex + attachments.count) % attachments.count))
+    }
+
+    private var targetBackdropAngle: Double {
+        targetBackdropDepth == 1 ? -2.5 : 4
+    }
+
+    private var targetBackdropOffset: CGSize {
+        targetBackdropDepth == 1 ? CGSize(width: 4, height: -1) : CGSize(width: 10, height: 3)
+    }
+
+    private var flipGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                guard attachments.count > 1, !isCompletingFlip,
+                      abs(value.translation.width) > abs(value.translation.height) else { return }
+                flipDirection = value.translation.width < 0 ? 1 : -1
+                flipProgress = min(0.92, abs(value.translation.width) / MessageImageMetrics.stackSide)
+            }
+            .onEnded { value in
+                guard flipProgress > 0 else { return }
+                let shouldComplete = flipProgress >= 0.3
+                    || abs(value.predictedEndTranslation.width) >= MessageImageMetrics.stackSide * 0.5
+                if shouldComplete {
+                    completeFlip()
+                } else {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+                        flipProgress = 0
+                    }
+                }
+            }
+    }
+
+    private func startFlip(direction: Int) {
+        guard attachments.count > 1, !isCompletingFlip else { return }
+        flipDirection = direction
+        completeFlip()
+    }
+
+    private func completeFlip() {
+        let targetIndex = flipTargetIndex
+        if reduceMotion {
+            selectedImageIndex = targetIndex
+            flipProgress = 0
+            return
+        }
+        isCompletingFlip = true
+        withAnimation(.easeIn(duration: 0.18)) {
+            flipProgress = 1
+        } completion: {
+            selectedImageIndex = targetIndex
+            flipProgress = 0
+            isCompletingFlip = false
+        }
     }
 
     private var expansionButton: some View {
@@ -989,6 +1190,18 @@ private struct MessageImageCollection: View {
             },
             onShare: { onShare(attachment) }
         )
+    }
+}
+
+enum MessageImageStack {
+    static func backdropIndices(count: Int, selectedIndex: Int) -> [Int] {
+        guard count > 1 else { return [] }
+        return (1..<min(count, 3)).reversed().map { (selectedIndex + $0) % count }
+    }
+
+    static func targetIndex(count: Int, selectedIndex: Int, direction: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return (selectedIndex + (direction < 0 ? count - 1 : 1)) % count
     }
 }
 

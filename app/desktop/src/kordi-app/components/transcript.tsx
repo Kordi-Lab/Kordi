@@ -679,7 +679,7 @@ function MessageBubbleView({
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
-  onRetryMessage?: (message: Message) => void;
+  onRetryMessage?: (message: Message) => Promise<void> | void;
   onOpenMessageDetail?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
@@ -1095,7 +1095,8 @@ function MessageBubbleView({
   const hasText = Boolean(msg.callActivity) || msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
-  const showsExternalRetry = !hasOnlyImageAttachments && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
+  const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
+  const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
   const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
@@ -1146,7 +1147,8 @@ function MessageBubbleView({
     >
       {showHeaderMeta ? <div className="app-message-meta px-1">{msg.sender}</div> : null}
       <div className={cn(
-        'flex items-end',
+        'flex w-full max-w-full',
+        hasOnlyImageAttachments ? 'items-start' : 'items-end',
         isAgentMessage ? 'w-fit max-w-full gap-2' : showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
       )}>
@@ -1210,6 +1212,7 @@ function MessageBubbleView({
           }}
           className={cn(
           'app-message-hover-time-trigger min-w-0',
+          hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
           canOpenSenderProfile ? 'cursor-pointer' : '',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
@@ -1293,10 +1296,7 @@ function MessageBubbleView({
                   <AttachmentPreview
                     msg={msg}
                     imageGallery={imageGallery}
-                    imageDeliveryStatus={hasOnlyImageAttachments && isOwnHumanMessage ? deliveryStatus : null}
-                    onRetryImage={hasOnlyImageAttachments && isOwnHumanMessage && deliveryVisual?.tone === 'red' && onRetryMessage
-                      ? () => onRetryMessage(msg)
-                      : undefined}
+                    imageDeliveryStatus={hasOnlyImageAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
                   />
                 ) : null}
                 {msg.supportContactTyping ? (

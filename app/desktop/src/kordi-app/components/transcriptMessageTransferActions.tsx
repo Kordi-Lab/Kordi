@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Check, CheckCheck, LoaderCircle, RotateCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -80,8 +81,26 @@ export function TranscriptMessageTransferActions({
   message: Message;
   showUploads: boolean;
   retryable: boolean;
-  onRetryMessage?: (message: Message) => void;
+  onRetryMessage?: (message: Message) => Promise<void> | void;
 }) {
+  const [isRetrying, setIsRetrying] = useState(false);
+  const attachments = message.attachments ?? [];
+  const imageOnly = attachments.length > 0
+    && message.text.trim().length === 0
+    && attachments.every((attachment) => attachment.kind === 'image');
+
+  async function retryMessage() {
+    if (!onRetryMessage || isRetrying) return;
+    setIsRetrying(true);
+    try {
+      await onRetryMessage(message);
+    } catch {
+      // The conversation surface owns retry errors; this control only mirrors progress.
+    } finally {
+      setIsRetrying(false);
+    }
+  }
+
   return (
     <>
       {showUploads ? <TranscriptFileAttachmentUploadActions attachments={message.attachments ?? []} /> : null}
@@ -91,13 +110,38 @@ export function TranscriptMessageTransferActions({
           variant="quiet"
           size="icon"
           data-message-retry-button="true"
+          data-message-retry-placement={imageOnly ? 'beside-image' : 'opposite-avatar'}
+          data-message-retry-state={isRetrying ? 'retrying' : 'idle'}
           data-message-transfer-action-side="opposite-avatar"
-          className="app-message-transfer-action mb-0.5 h-7 w-7 shrink-0 self-end rounded-full p-0 text-rose-600"
-          onClick={() => onRetryMessage(message)}
-          aria-label="Retry sending message"
-          title="Retry sending message"
+          className={cn(
+            'app-message-transfer-action shrink-0 text-rose-600',
+            imageOnly
+              ? 'h-8 w-auto self-center rounded-[10px] px-2.5 text-[11px] font-semibold'
+              : 'mb-0.5 h-7 w-7 self-end rounded-full p-0',
+          )}
+          onClick={() => void retryMessage()}
+          disabled={isRetrying}
+          aria-label={isRetrying
+            ? `Retrying ${imageOnly ? 'image' : 'message'}`
+            : `Retry sending ${imageOnly ? 'image' : 'message'}`}
+          title={isRetrying
+            ? `Retrying ${imageOnly ? 'image' : 'message'}`
+            : `Retry sending ${imageOnly ? 'image' : 'message'}`}
         >
-          <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          {isRetrying ? (
+            <>
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              {imageOnly ? <span aria-live="polite">Retrying…</span> : null}
+            </>
+          ) : imageOnly ? (
+            <>
+              <span>Failed</span>
+              <span aria-hidden="true">·</span>
+              <span className="font-bold">Retry</span>
+            </>
+          ) : (
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          )}
         </Button>
       ) : null}
     </>
