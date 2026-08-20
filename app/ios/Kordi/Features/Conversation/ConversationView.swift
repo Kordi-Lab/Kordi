@@ -216,8 +216,8 @@ struct ConversationView: View {
                                                     ConversationTimestampDivider(date: message.createdAt)
                                                 }
 
-                                                if message.isAgentModelChangeNotice {
-                                                    AgentModelChangeNoticeRow(text: message.text)
+                                                if message.isSystemNotice {
+                                                    SystemNoticeRow(text: message.text)
                                                         .padding(.vertical, 8)
                                                 } else {
                                                     MessageBubble(
@@ -1650,6 +1650,7 @@ enum ConversationTimelinePresentation {
             uniquingKeysWith: { first, _ in first }
         )
         let groupKeys = messages.map { message -> String? in
+            if message.isSystemNotice { return nil }
             switch message.author {
             case .agent:
                 return nil
@@ -1742,7 +1743,7 @@ private struct ConversationAvatarIdentity {
     let seed: String?
 }
 
-private struct AgentModelChangeNoticeRow: View {
+private struct SystemNoticeRow: View {
     let text: String
 
     var body: some View {

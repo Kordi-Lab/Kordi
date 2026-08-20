@@ -2305,6 +2305,17 @@ final class AppModel: ObservableObject {
             return true
         }
         guard let token else { return false }
+        let joinedAtMs = (Date().timeIntervalSince1970 * 1_000).rounded(.towardZero)
+        var memberJoinByAccountID: [String: CloudGroupMemberJoin] = [:]
+        for (index, participant) in addedParticipants.enumerated()
+        where memberJoinByAccountID[participant.accountId] == nil {
+            memberJoinByAccountID[participant.accountId] = CloudGroupMemberJoin(
+                eventId: UUID().uuidString.lowercased(),
+                accountId: participant.accountId,
+                displayName: participant.displayName,
+                createdAtMs: joinedAtMs + Double(index)
+            )
+        }
         do {
             for conversation in space.sessions {
                 let existing = groupParticipantsIncludingSelf(conversation, account: account)
@@ -2336,11 +2347,13 @@ final class AppModel: ObservableObject {
                     groupTitle: space.displayName,
                     targetAccountIds: addedIDs,
                     token: token,
-                    account: account
+                    account: account,
+                    memberJoins: addedIDs.sorted().compactMap { memberJoinByAccountID[$0] }
                 )
             }
             cloudConnectionState = .connected
             await rebuildConversationCatalog()
+            await refreshLoadedConversationProjections()
             return true
         } catch {
             recordCloudConnectionFailure(error)
@@ -3326,7 +3339,8 @@ final class AppModel: ObservableObject {
         groupTitle: String?,
         targetAccountIds: Set<String>,
         token: String,
-        account: CloudAccount
+        account: CloudAccount,
+        memberJoins: [CloudGroupMemberJoin] = []
     ) async throws {
         guard let actor = participants.first(where: { $0.accountId == account.accountId }) else { return }
         let envelope = CloudGroupControlEnvelope(
@@ -3337,6 +3351,7 @@ final class AppModel: ObservableObject {
             createdByAccountId: account.accountId,
             actor: actor,
             participants: participants,
+            memberJoins: memberJoins.isEmpty ? nil : memberJoins,
             message: nil
         )
         let body = try CloudGroupMessageCodec.encode(envelope)
@@ -3387,18 +3402,48 @@ final class AppModel: ObservableObject {
         )
     }
 
-    nonisolated private static func mapGroupMessages(
+    nonisolated static func mapGroupMessages(
         _ messages: [CloudMessageDTO],
         conversation: ConversationSummary,
         ownAccountId: String
     ) -> [ChatMessage] {
         var rowsByMessageId: [String: [(CloudMessageDTO, CloudGroupMessagePayload)]] = [:]
+        var memberJoinMessagesByID: [String: ChatMessage] = [:]
         let participantNames = Dictionary(uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0.displayName) })
         for wire in messages {
             guard let envelope = CloudGroupMessageCodec.parse(wire.body),
-                  envelope.kind == "group-message",
-                  envelope.groupId == conversation.sessionId,
-                  let payload = envelope.message else { continue }
+                  envelope.groupId == conversation.sessionId else { continue }
+            if envelope.kind == "group-invite" {
+                let participantIDs = Set(envelope.participants.compactMap { $0.accountId.nonEmpty })
+                for join in envelope.memberJoins ?? [] {
+                    guard let eventID = join.eventId.nonEmpty,
+                          eventID.range(
+                            of: #"^[A-Za-z0-9_-]{1,80}$"#,
+                            options: .regularExpression
+                          ) != nil,
+                          let accountID = join.accountId.nonEmpty,
+                          accountID.hasPrefix("acct_"),
+                          participantIDs.contains(accountID),
+                          join.createdAtMs.isFinite else { continue }
+                    let messageID = "msg:group-member-join:\(eventID):\(envelope.groupId)"
+                    guard memberJoinMessagesByID[messageID] == nil else { continue }
+                    let memberName = join.displayName.nonEmpty ?? accountID
+                    let inviterName = envelope.actor.displayName.nonEmpty ?? "Someone"
+                    memberJoinMessagesByID[messageID] = ChatMessage(
+                        id: messageID,
+                        conversationId: conversation.id,
+                        author: envelope.actor.accountId == ownAccountId ? .me : .person,
+                        authorName: inviterName,
+                        text: "\(memberName) joined the group, invited by \(inviterName).",
+                        createdAt: Date(timeIntervalSince1970: join.createdAtMs / 1_000),
+                        deliveryState: .delivered,
+                        errorMessage: nil,
+                        requestMessageId: nil,
+                        messageKind: ChatMessage.groupMemberJoinMessageKind
+                    )
+                }
+            }
+            guard envelope.kind == "group-message", let payload = envelope.message else { continue }
             rowsByMessageId[payload.id, default: []].append((wire, payload))
         }
         let representativePayloads = rowsByMessageId.values.compactMap { rows in
@@ -3483,7 +3528,7 @@ final class AppModel: ObservableObject {
                 messageKind: wire.messageKind
             )
         }
-        return (chatMessages + callMessages)
+        return (chatMessages + callMessages + Array(memberJoinMessagesByID.values))
             .sorted { $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id) }
     }
 

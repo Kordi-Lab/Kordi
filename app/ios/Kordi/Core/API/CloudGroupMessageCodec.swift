@@ -75,6 +75,13 @@ struct CloudGroupForkPayload: Codable, Hashable {
     let createdAtMs: Double?
 }
 
+struct CloudGroupMemberJoin: Codable, Hashable {
+    let eventId: String
+    let accountId: String
+    let displayName: String
+    let createdAtMs: Double
+}
+
 struct CloudGroupControlEnvelope: Codable, Hashable {
     let kind: String
     let groupId: String
@@ -83,6 +90,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let createdByAccountId: String
     let actor: CloudGroupParticipant
     let participants: [CloudGroupParticipant]
+    let memberJoins: [CloudGroupMemberJoin]?
     let fork: CloudGroupForkPayload?
     let message: CloudGroupMessagePayload?
 
@@ -94,6 +102,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         createdByAccountId: String,
         actor: CloudGroupParticipant,
         participants: [CloudGroupParticipant],
+        memberJoins: [CloudGroupMemberJoin]? = nil,
         fork: CloudGroupForkPayload? = nil,
         message: CloudGroupMessagePayload?
     ) {
@@ -104,6 +113,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         self.createdByAccountId = createdByAccountId
         self.actor = actor
         self.participants = participants
+        self.memberJoins = memberJoins
         self.fork = fork
         self.message = message
     }

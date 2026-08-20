@@ -2,6 +2,133 @@ import XCTest
 @testable import Kordi
 
 final class CloudGroupMessageCodecTests: XCTestCase {
+    func testGroupMemberJoinsRoundTripProjectAndDeduplicateReplay() throws {
+        let participants = [
+            CloudGroupParticipant(
+                accountId: "acct_me",
+                displayName: "Alex Morgan",
+                avatarUrl: nil,
+                role: "admin"
+            ),
+            CloudGroupParticipant(
+                accountId: "acct_maya",
+                displayName: "Maya Chen",
+                avatarUrl: nil,
+                role: "person"
+            ),
+            CloudGroupParticipant(
+                accountId: "acct_ethan",
+                displayName: "Ethan Park",
+                avatarUrl: nil,
+                role: "person"
+            )
+        ]
+        let joins = [
+            CloudGroupMemberJoin(
+                eventId: "invite_event_maya",
+                accountId: "acct_maya",
+                displayName: "Maya Chen",
+                createdAtMs: 1_234
+            ),
+            CloudGroupMemberJoin(
+                eventId: "invite_event_ethan",
+                accountId: "acct_ethan",
+                displayName: "Ethan Park",
+                createdAtMs: 1_235
+            )
+        ]
+        let envelope = CloudGroupControlEnvelope(
+            kind: "group-invite",
+            groupId: "session:group:mobile",
+            groupSpaceId: "session:group:mobile",
+            groupTitle: "Mobile builders",
+            createdByAccountId: "acct_me",
+            actor: participants[0],
+            participants: participants,
+            memberJoins: joins,
+            message: nil
+        )
+        let body = try CloudGroupMessageCodec.encode(envelope)
+
+        XCTAssertEqual(CloudGroupMessageCodec.parse(body)?.memberJoins, joins)
+
+        let conversation = ConversationSummary(
+            id: "group:mobile",
+            kind: .group,
+            peerAccountId: "acct_maya",
+            agentId: nil,
+            ownerDisplayName: "Mobile builders",
+            displayName: "main",
+            lastMessage: "",
+            lastActivityAt: Date(timeIntervalSince1970: 2),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: "session:group:mobile",
+            groupSpaceId: "session:group:mobile",
+            groupParticipants: participants
+        )
+        let projected = AppModel.mapGroupMessages(
+            [
+                groupWire(id: "wire-copy-a", body: body, to: "acct_maya"),
+                groupWire(id: "wire-copy-b", body: body, to: "acct_ethan")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.map(\.id), [
+            "msg:group-member-join:invite_event_maya:session:group:mobile",
+            "msg:group-member-join:invite_event_ethan:session:group:mobile"
+        ])
+        XCTAssertEqual(projected.map(\.text), [
+            "Maya Chen joined the group, invited by Alex Morgan.",
+            "Ethan Park joined the group, invited by Alex Morgan."
+        ])
+        XCTAssertTrue(projected.allSatisfy(\.isGroupMemberJoinNotice))
+        XCTAssertTrue(projected.allSatisfy(\.isSystemNotice))
+    }
+
+    func testGroupMemberJoinNoticeBreaksMessageGrouping() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let messages = [
+            timelineMessage(id: "before", text: "Before", date: start),
+            timelineMessage(
+                id: "join",
+                text: "Ethan Park joined the group, invited by Alex Morgan.",
+                date: start.addingTimeInterval(10),
+                messageKind: ChatMessage.groupMemberJoinMessageKind
+            ),
+            timelineMessage(id: "after", text: "After", date: start.addingTimeInterval(20))
+        ]
+
+        let presentation = ConversationTimelinePresentation.make(
+            messages: messages,
+            selfAccountId: "acct_me",
+            participants: [
+                CloudGroupParticipant(
+                    accountId: "acct_maya",
+                    displayName: "Maya Chen",
+                    avatarUrl: nil,
+                    role: "person"
+                )
+            ]
+        )
+
+        XCTAssertEqual(presentation.map(\.groupedWithPrevious), [false, false, false])
+        XCTAssertEqual(presentation.map(\.groupedWithNext), [false, false, false])
+        XCTAssertEqual(presentation.map(\.showsAvatar), [true, false, true])
+    }
+
+    func testGroupPreviewIncludesMemberJoinNotice() throws {
+        let fixture = PreviewData.make(now: Date(timeIntervalSince1970: 1_000))
+        let messages = try XCTUnwrap(fixture.messagesByConversation["group:mobile"])
+        let notice = try XCTUnwrap(messages.first(where: \.isGroupMemberJoinNotice))
+
+        XCTAssertEqual(notice.text, "Ethan Park joined the group, invited by Alex.")
+        XCTAssertTrue(notice.isSystemNotice)
+    }
+
     func testOutboundMessageNormalizesFractionalMilliseconds() throws {
         let participant = CloudGroupParticipant(
             accountId: "acct_me",
@@ -204,6 +331,40 @@ final class CloudGroupMessageCodecTests: XCTestCase {
             deliveryState: state,
             replyToMessageId: "request",
             requestId: "request"
+        )
+    }
+
+    private func groupWire(id: String, body: String, to: String) -> CloudMessageDTO {
+        CloudMessageDTO(
+            messageId: id,
+            fromAccountId: "acct_me",
+            toAccountId: to,
+            body: body,
+            createdAt: "2026-08-14T10:00:00Z",
+            deliveredAt: "2026-08-14T10:00:01Z",
+            readAt: nil,
+            direction: "outgoing",
+            sessionId: "session:group:mobile"
+        )
+    }
+
+    private func timelineMessage(
+        id: String,
+        text: String,
+        date: Date,
+        messageKind: String? = nil
+    ) -> ChatMessage {
+        ChatMessage(
+            id: id,
+            conversationId: "group:mobile",
+            author: .person,
+            authorName: "Maya Chen",
+            text: text,
+            createdAt: date,
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: messageKind
         )
     }
 }
