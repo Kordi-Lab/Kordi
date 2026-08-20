@@ -135,10 +135,14 @@ struct ConversationView: View {
         let pinnedMessage = model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId
             .flatMap { messagesById[$0] }
         let activeConversationCall = model.activeCall(for: conversation)
+        let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
+            == activeConversationCall?.id
+            && (callCoordinator.isCallScreenPresented || callCoordinator.isAwaitingIncomingAnswer)
         let mentionTargets = model.mentionTargets(for: conversation)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
-                if let activeCall = activeConversationCall,
+                if !coordinatorOwnsConversationCall,
+                   let activeCall = activeConversationCall,
                    activeCall.kind == .meeting {
                     ConversationCallBanner(
                         call: activeCall,
@@ -148,7 +152,8 @@ struct ConversationView: View {
                             Task { await callCoordinator.join(activeCall, in: conversation) }
                         }
                     )
-                } else if let activeCall = activeConversationCall,
+                } else if !coordinatorOwnsConversationCall,
+                          let activeCall = activeConversationCall,
                           activeCall.state == .ringing,
                           activeCall.createdByAccountId != model.account?.accountId,
                           activeCall.participants.contains(where: {
@@ -205,7 +210,6 @@ struct ConversationView: View {
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
                                             let readers = readReceiptParticipants(for: message)
-                                            let callActivity = message.callActivity
 
                                             VStack(spacing: 0) {
                                                 if presentation.showsTimestamp {
@@ -232,9 +236,6 @@ struct ConversationView: View {
                                                         authorAvatarSource: avatar.source,
                                                         authorAvatarSeed: avatar.seed,
                                                         readByNames: readers.map(\.displayName),
-                                                        isCallActive: callActivity?.matchesActiveCall(
-                                                            activeConversationCall
-                                                        ) == true,
                                                         onOpenAuthorProfile: {
                                                             authorProfileConversation = ConversationAuthorProfileResolver.destination(
                                                                 currentConversation: conversation,
@@ -244,21 +245,9 @@ struct ConversationView: View {
                                                                 conversations: model.conversations
                                                             )
                                                         },
-                                                        onJoinCall: {
-                                                            guard callActivity?.matchesActiveCall(
-                                                                activeConversationCall
-                                                            ) == true,
-                                                                  let activeConversationCall else { return }
-                                                        Task {
-                                                            await callCoordinator.join(
-                                                                activeConversationCall,
-                                                                in: conversation
-                                                            )
-                                                        }
-                                                    },
-                                                    onRetry: {
-                                                        await model.retry(message, in: conversation)
-                                                    },
+                                                        onRetry: {
+                                                            await model.retry(message, in: conversation)
+                                                        },
                                                     onReply: {
                                                         guard conversation.kind.supportsQuotedReplies else { return }
                                                         replySource = message.actionSource(sessionId: conversation.sessionId)

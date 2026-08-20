@@ -43,60 +43,14 @@
   display: grid;
   min-height: 88px;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: '. kind actions';
   align-items: center;
   gap: 18px;
   padding: 20px clamp(24px, 3.5vw, 52px);
 }
 
-.app-call-surface-heading {
-  min-width: 0;
-}
-
-.app-call-surface-heading h2 {
-  overflow: hidden;
-  margin: 0;
-  color: rgb(255 255 255 / 0.96);
-  font-size: 18px;
-  font-weight: 680;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-call-surface-heading p {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0 0;
-  color: rgb(221 227 255 / 0.72);
-  font-size: 12px;
-  font-weight: 520;
-}
-
-.app-call-phase-dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
-  background: rgb(99 224 176);
-  box-shadow: 0 0 0 4px rgb(99 224 176 / 0.12);
-}
-
-.app-call-phase-dot[data-phase='preparing'],
-.app-call-phase-dot[data-phase='connecting'],
-.app-call-phase-dot[data-phase='ringing'],
-.app-call-phase-dot[data-phase='reconnecting'] {
-  background: rgb(255 176 112);
-  box-shadow: 0 0 0 4px rgb(255 176 112 / 0.12);
-}
-
-.app-call-phase-dot[data-phase='failed'] {
-  background: rgb(255 116 124);
-  box-shadow: 0 0 0 4px rgb(255 116 124 / 0.12);
-}
-
 .app-call-surface-kind {
+  grid-area: kind;
   color: rgb(235 239 255 / 0.7);
   font-size: 12px;
   font-weight: 620;
@@ -104,6 +58,7 @@
 }
 
 .app-call-surface-actions {
+  grid-area: actions;
   display: flex;
   justify-content: flex-end;
 }

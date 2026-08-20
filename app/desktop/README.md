@@ -47,6 +47,9 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
+The API-only development path does not provide LiveKit media. Follow the
+[call hosting guide](../../docs/call-hosting.md) before testing voice or video.
+
 For a desktop-only production operator preview, run:
 
 ```bash
@@ -83,6 +86,10 @@ pnpm build:desktop
 ```
 
 This uses the desktop packaging path. Release builds must pass the release secret guard and should not include local account/session secrets.
+
+A packaged call-capable release is not accepted by build success alone. Test
+the installed app with two product accounts using the [required call acceptance
+test](../../docs/call-hosting.md#required-two-account-acceptance-test).
 
 ## Package-local commands
 
@@ -123,4 +130,5 @@ pnpm --dir app/desktop exec tsx --test tests/productShell.test.tsx tests/cloudSu
 - [../../docs/run-cloud-desktop.md](../../docs/run-cloud-desktop.md)
 - [../../docs/architecture.md](../../docs/architecture.md)
 - [../../docs/hosted-cloud-developer-guide.md](../../docs/hosted-cloud-developer-guide.md)
+- [../../docs/call-hosting.md](../../docs/call-hosting.md)
 - [../../docs/release.md](../../docs/release.md)

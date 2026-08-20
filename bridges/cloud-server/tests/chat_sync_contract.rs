@@ -132,6 +132,7 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
     assert!(pool.contains("0049_relink_legacy_agent_responses.sql"));
     assert!(pool.contains("0050_chat_v2_artifact_links.sql"));
     assert!(pool.contains("0051_retire_chat_sync_v1.sql"));
+    assert!(pool.contains("0062_call_revisions.sql"));
 
     let backfill =
         read(root.join("bridges/cloud-server/migrations/0048_backfill_reliable_chat_sync_v2.sql"));

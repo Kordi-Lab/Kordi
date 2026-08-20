@@ -22,6 +22,7 @@ export type CloudCallParticipant = {
 
 export type CloudCall = {
   id: string;
+  revision: number;
   conversationId: string;
   kind: CloudCallKind;
   state: CloudCallState;
@@ -68,6 +69,7 @@ type CloudCallApiParticipant = {
 
 type CloudCallApiSnapshot = {
   id?: unknown;
+  revision?: unknown;
   conversation_id?: unknown;
   kind?: unknown;
   state?: unknown;
@@ -117,8 +119,14 @@ export function normalizeCloudCall(value: unknown): CloudCall | null {
       }];
     });
     const endedAt = optionalString(input.ended_at);
+    const revision = typeof input.revision === 'number'
+      && Number.isSafeInteger(input.revision)
+      && input.revision > 0
+      ? input.revision
+      : 0;
     return {
       id: requiredString(input.id, 'call id'),
+      revision,
       conversationId: requiredString(input.conversation_id, 'conversation id'),
       kind: input.kind,
       state: endedAt ? 'ended' : input.state,
@@ -379,4 +387,17 @@ export function callMediaErrorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
     ? error.message
     : 'Kordi could not access your microphone or camera.';
+}
+
+export function callConnectionErrorMessage(error: unknown): string {
+  const reason = error && typeof error === 'object' && 'reasonName' in error
+    ? String(error.reasonName)
+    : '';
+  if (reason === 'WebSocket' || reason === 'ServiceNotFound' || reason === 'NotAllowed') {
+    return 'Call signaling failed. Check the server connection and try again.';
+  }
+  if (reason === 'Timeout' || reason === 'ServerUnreachable') {
+    return 'Call media could not establish an ICE or TURN connection.';
+  }
+  return 'Call signaling or media transport failed. Check your connection and try again.';
 }

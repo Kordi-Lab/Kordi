@@ -4,6 +4,8 @@ This runbook supplements [the release guide](../release.md). It captures the
 repeatable build and publication sequence established while releasing
 `0.0.1-beta.9`. The release guide remains authoritative for signing profiles,
 credentials, publisher arguments, channel policy, and backend deployment.
+Voice/video deployment and installed-app acceptance remain governed by the
+[call hosting guide](../call-hosting.md).
 
 ## Release invariant
 
@@ -43,6 +45,8 @@ been verified.
    the toolchain.
 6. Inspect the macOS system proxy with `scutil --proxy`. Never bake a proxy
    host or port into a release.
+7. If the release contains call changes or follows a call-service deployment,
+   confirm the product call readiness checks are green before compiling.
 
 Useful read-only checks:
 
@@ -181,8 +185,10 @@ their prerequisites are known:
 1. Merge the release-preparation PR and pin `RELEASE_COMMIT`.
 2. Back up the production database.
 3. Deploy server and runner images built from `RELEASE_COMMIT`; verify rollout,
-   schema, secret-free logs, and public health. Keep legacy release metadata on
-   the last verified artifact while the new artifact does not yet exist.
+   schema, secret-free logs, public health, and the [two-account call acceptance
+   test](../call-hosting.md#required-two-account-acceptance-test). Keep legacy
+   release metadata on the last verified artifact while the new artifact does
+   not yet exist.
 4. Build or reuse path-remapped sidecars, then build the desktop bundle from
    the physical neutral worktree.
 5. Run the source gate, bundle/signing gate, DMG layout gate, checksum gate,

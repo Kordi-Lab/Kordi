@@ -1,6 +1,6 @@
 # Kordi Hosted Developer Guide
 
-This guide explains how developers should choose an environment, test, and deploy against a hosted environment. It is the canonical policy for Kordi preview and debug sessions that may use remote hosted infrastructure. Read [Development environment isolation](development-environments.md) first for the complete local, remote development, and product decision matrix.
+This guide explains how developers should choose an environment, test, and deploy against a hosted environment. It is the canonical policy for Kordi preview and debug sessions that may use remote hosted infrastructure. Read [Development environment isolation](development-environments.md) first for the complete local, remote development, and product decision matrix. Any host or release validation that includes voice or video must also follow [Hosting Kordi voice and video calls](call-hosting.md).
 
 Production API is `https://kordi.ai`, but that does not make it the correct target for every operator session. Apply the preflight below before launching a preview, debug session, tunnel, deploy, or server restart.
 
@@ -37,6 +37,8 @@ For product-server-affecting work:
    KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
      pnpm dev:cloud:operator -- "https://kordi.ai"
    ```
+
+   If the deployment can affect calling, complete the [product call readiness checks and two-account acceptance test](call-hosting.md#product-host) before reporting it healthy.
 
 Do not route this path through a public test API, self-hosted API, local tunnel, or community/debug-server profile. Those environments are useful for separate isolated work, but they do not substitute for required product-server validation. If product-server access or approval is missing, stop.
 

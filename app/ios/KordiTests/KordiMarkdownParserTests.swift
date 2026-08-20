@@ -406,6 +406,14 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testCallMediaFailuresIdentifyTheirStage() {
+        XCTAssertTrue(KordiCallMediaFailureStage.signaling.message.contains("signaling"))
+        XCTAssertTrue(KordiCallMediaFailureStage.iceOrTurn.message.contains("ICE or TURN"))
+        XCTAssertTrue(KordiCallMediaFailureStage.device.message.contains("microphone or camera"))
+        XCTAssertTrue(KordiCallMediaFailureStage.cameraPublication.message.contains("published"))
+        XCTAssertTrue(KordiCallMediaFailureStage.subscription.message.contains("subscribed"))
+    }
+
     func testTimelinePresentationShowsAvatarOnlyOnTheLastAdjacentHumanMessage() {
         let start = Date(timeIntervalSince1970: 1_000)
         let messages = [

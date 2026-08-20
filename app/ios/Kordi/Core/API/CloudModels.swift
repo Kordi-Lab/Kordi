@@ -990,6 +990,7 @@ struct CloudCallParticipant: Codable, Hashable, Identifiable {
 
 struct CloudCall: Codable, Hashable, Identifiable {
     let id: String
+    var revision: Int64? = nil
     let conversationId: String
     let kind: CloudCallKind
     let state: CloudCallState
@@ -1000,12 +1001,26 @@ struct CloudCall: Codable, Hashable, Identifiable {
     let participants: [CloudCallParticipant]
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, state, participants
+        case id, revision, kind, state, participants
         case conversationId = "conversation_id"
         case createdByAccountId = "created_by_account_id"
         case createdAt = "created_at"
         case answeredAt = "answered_at"
         case endedAt = "ended_at"
+    }
+}
+
+enum CloudCallSnapshotOrdering {
+    static func shouldApply(
+        _ incoming: CloudCall,
+        after current: CloudCall?,
+        endedCallIDs: Set<String>
+    ) -> Bool {
+        if endedCallIDs.contains(incoming.id), incoming.state != .ended { return false }
+        guard let current, current.id == incoming.id else { return true }
+        if current.state == .ended { return false }
+        if incoming.state == .ended { return true }
+        return (incoming.revision ?? 0) >= (current.revision ?? 0)
     }
 }
 
@@ -1021,6 +1036,20 @@ struct CloudCallSessionResponse: Codable, Hashable {
 
 struct CloudCallResponse: Codable, Hashable {
     let call: CloudCall?
+}
+
+struct CloudActiveCallSnapshot: Codable, Hashable {
+    let call: CloudCall
+    let sessionId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case call
+        case sessionId = "session_id"
+    }
+}
+
+struct CloudCallListResponse: Codable, Hashable {
+    let calls: [CloudActiveCallSnapshot]
 }
 
 struct CloudStartCallRequest: Codable, Hashable {
@@ -1100,6 +1129,23 @@ struct CloudChatSyncResponse: Codable, Hashable {
     }
 }
 
+struct CloudChatRealtimeTicket: Codable, Hashable {
+    let ticket: String
+    let deviceId: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case ticket
+        case deviceId = "device_id"
+        case expiresAt = "expires_at"
+    }
+}
+
+struct CloudChatRealtimeConnection: Hashable {
+    let url: URL
+    let deviceId: String
+}
+
 struct CloudChatBootstrapResponse: Codable, Hashable {
     let protocolVersion: Int
     let conversations: [CloudChatConversation]
@@ -1133,6 +1179,7 @@ struct CloudAgentRun: Codable, Hashable {
 
 struct CloudSyncResponse: Codable, Hashable {
     let cursor: String
+    let lastStreamSequence: Int64
     let hasMore: Bool
     let events: [CloudSyncEvent]
 }

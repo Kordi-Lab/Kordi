@@ -214,7 +214,8 @@ Before archiving:
 3. Run the complete simulator test suite.
 4. Run the signed build on a physical iPhone and verify login, sync, direct chat, group chat, agent fallback, attachments, appearance, and provider-auth recovery.
 5. Confirm the Release configuration uses `https://kordi.ai` and contains no preview arguments or test credentials.
-6. In Xcode, choose Any iOS Device (arm64), then Product > Archive and distribute through App Store Connect.
+6. Complete the [product call readiness and two-account acceptance test](call-hosting.md#required-two-account-acceptance-test), including voice, video, first remote frame, terminal state, and background CallKit answer.
+7. In Xcode, choose Any iOS Device (arm64), then Product > Archive and distribute through App Store Connect.
 
 TestFlight upload and tester enrollment require the correct App Store Connect team, bundle identifier, agreements, and tester account. Those credentials and team IDs are intentionally not stored in this repository.
 

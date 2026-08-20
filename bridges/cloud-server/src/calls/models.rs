@@ -55,6 +55,7 @@ pub struct CallParticipantSnapshot {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CallSnapshot {
     pub id: Uuid,
+    pub revision: i64,
     pub conversation_id: Uuid,
     pub kind: CallKind,
     pub state: CallState,

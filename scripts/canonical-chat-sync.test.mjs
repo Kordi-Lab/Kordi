@@ -56,6 +56,9 @@ test("canonical chat has no runtime rollout switch or retired chat route", async
   assert.match(desktop, /\/v2\/chat\/sync/);
   assert.match(ios, /\/v2\/chat\/sync/);
   assert.match(contract, /\/v2\/chat\/sync/);
+  assert.match(desktop, /\/v2\/chat\/realtime\/ticket/);
+  assert.match(ios, /\/v2\/chat\/realtime\/ticket/);
+  assert.match(ios, /URLSession\.shared\.webSocketTask/);
 });
 
 test("canonical chat source and contract names are unversioned", async () => {

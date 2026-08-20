@@ -172,6 +172,7 @@ mod tests {
     fn call(kind: CallKind) -> CallSnapshot {
         CallSnapshot {
             id: Uuid::parse_str("018f4e88-8a9d-7c65-a319-4f6c3dfdc100").unwrap(),
+            revision: 1,
             conversation_id: Uuid::nil(),
             kind,
             state: CallState::Ended,

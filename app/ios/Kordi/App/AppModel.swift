@@ -39,9 +39,43 @@ struct ConversationReadPresentation: Equatable {
     }
 }
 
+private struct CloudRealtimeConnectFrame: Encodable {
+    let type = "connect"
+    let protocolVersion = 2
+    let deviceId: String
+    let cursor: String
+
+    enum CodingKeys: String, CodingKey {
+        case type, cursor
+        case protocolVersion = "protocol_version"
+        case deviceId = "device_id"
+    }
+}
+
+private struct CloudRealtimeHeartbeatFrame: Encodable {
+    let type = "heartbeat"
+    let lastAppliedSequence: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case lastAppliedSequence = "last_applied_seq"
+    }
+}
+
+private struct CloudRealtimeServerFrame: Decodable {
+    let type: String
+    let streamSequence: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case streamSequence = "stream_seq"
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
+    private static let cloudSyncRepairInterval: Duration = .seconds(2)
 
     private struct ConversationPresentationSnapshot: Equatable {
         let latestMessageID: String?
@@ -91,15 +125,22 @@ final class AppModel: ObservableObject {
     private var currentDeviceId: String?
     private var deviceOperationIds: [String: String] = [:]
     private var cloudSyncTask: Task<Void, Never>?
+    private var cloudRealtimeTask: Task<Void, Never>?
+    private var cloudRealtimeSyncWakeTask: Task<Void, Never>?
     private var expressiveMediaSyncTask: Task<Void, Never>?
     private var expressiveMediaSyncTaskID: UUID?
     private var cloudSyncCursor = "0"
+    private var cloudSyncLastStreamSequence: Int64 = 0
+    private var cloudSyncHasCurrentSequence = false
+    private var cloudRealtimeLastReceivedSequence: Int64 = 0
     private var hasHydratedWireSnapshot = false
     private var hasHydratedForkLineage = false
     private var hasObservedOwnedAgentRouting = false
     private var fullyHydratedCanonicalGroupSessionIds = Set<String>()
     private var cloudMessagesByPeer: [String: [CloudMessageDTO]] = [:]
     private var cloudMessageIndicesByPeer: [String: [String: Int]] = [:]
+    private var endedCallIDs = Set<String>()
+    private var callSnapshotGeneration = 0
     private var sessionForksById: [String: CloudSessionForkSummary] = [:]
     private var canonicalConversationIDBySessionID: [String: String] = [:]
     @Published private var ownedCloudAgents: [CloudAgent] = []
@@ -173,6 +214,8 @@ final class AppModel: ObservableObject {
 
     deinit {
         cloudSyncTask?.cancel()
+        cloudRealtimeTask?.cancel()
+        cloudRealtimeSyncWakeTask?.cancel()
         expressiveMediaSyncTask?.cancel()
     }
 
@@ -289,10 +332,17 @@ final class AppModel: ObservableObject {
         let oldAccountId = account?.accountId
         cloudSyncTask?.cancel()
         cloudSyncTask = nil
+        cloudRealtimeTask?.cancel()
+        cloudRealtimeTask = nil
+        cloudRealtimeSyncWakeTask?.cancel()
+        cloudRealtimeSyncWakeTask = nil
         expressiveMediaSyncTask?.cancel()
         expressiveMediaSyncTask = nil
         expressiveMediaSyncTaskID = nil
         cloudSyncCursor = "0"
+        cloudSyncLastStreamSequence = 0
+        cloudSyncHasCurrentSequence = false
+        cloudRealtimeLastReceivedSequence = 0
         hasHydratedWireSnapshot = false
         hasHydratedForkLineage = false
         hasObservedOwnedAgentRouting = false
@@ -309,6 +359,8 @@ final class AppModel: ObservableObject {
         messagesByConversation = [:]
         callsByConversationID = [:]
         latestCallSnapshot = nil
+        endedCallIDs = []
+        callSnapshotGeneration = 0
         sessionActivityByID = [:]
         sessionPinsByID = [:]
         providerAuthSnapshot = nil
@@ -354,6 +406,7 @@ final class AppModel: ObservableObject {
 
     func refreshWorkspace(showSyncActivity: Bool = true) async {
         guard let token, let account, !isRefreshing else { return }
+        let callSnapshotGenerationAtStart = callSnapshotGeneration
         let previousOwnedAgents = Dictionary(
             uniqueKeysWithValues: ownedCloudAgents.map { ($0.agentId, $0) }
         )
@@ -371,9 +424,11 @@ final class AppModel: ObservableObject {
             async let fetchedAuth = try? api.currentProviderAuthSnapshot(token: token)
             async let fetchedDevices = try? api.listDevices(token: token)
             async let canonicalLatestMessages = api.bootstrapChatLatestMessages(token: token)
-            let (canonicalAccount, contactList, presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical) = try await (
+            async let fetchedActiveCalls = try? api.activeCalls(token: token)
+            let (canonicalAccount, contactList, presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical, activeCalls) = try await (
                 refreshedAccount, fetchedContacts, fetchedPresence, fetchedRequests, ownedAgents,
-                fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages
+                fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages,
+                fetchedActiveCalls
             )
             if self.account?.accountId == canonicalAccount.accountId {
                 self.account = canonicalAccount
@@ -412,6 +467,12 @@ final class AppModel: ObservableObject {
             hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
             deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
             for message in latestCanonical { mergeCloudMessage(message, peerHint: nil) }
+            if let activeCalls {
+                applyActiveCallSnapshot(
+                    activeCalls.map(\.call),
+                    removeMissing: callSnapshotGeneration == callSnapshotGenerationAtStart
+                )
+            }
             let peerAccountIds = Set(
                 [account.accountId]
                 + contactList.map(\.accountId)
@@ -1583,9 +1644,29 @@ final class AppModel: ObservableObject {
 
     func refreshActiveCall(in conversation: ConversationSummary) async {
         guard let token, !previewMode else { return }
+        let callSnapshotGenerationAtStart = callSnapshotGeneration
+        let canonicalID = canonicalConversationIDBySessionID[conversation.sessionId]
+            ?? canonicalConversationIDBySessionID[conversation.id]
+            ?? conversation.sessionId
+        let callIDAtRequest = callsByConversationID[canonicalID]?.id
         do {
             if let call = try await api.activeCall(token: token, conversation: conversation) {
                 applyCallSnapshot(call)
+            } else if callSnapshotGeneration == callSnapshotGenerationAtStart,
+                      let current = callsByConversationID[canonicalID],
+                      current.id == callIDAtRequest {
+                applyCallSnapshot(CloudCall(
+                    id: current.id,
+                    revision: current.revision,
+                    conversationId: current.conversationId,
+                    kind: current.kind,
+                    state: .ended,
+                    createdByAccountId: current.createdByAccountId,
+                    createdAt: current.createdAt,
+                    answeredAt: current.answeredAt,
+                    endedAt: ISO8601DateFormatter().string(from: Date()),
+                    participants: current.participants
+                ))
             }
         } catch {
             recordCloudConnectionFailure(error)
@@ -1725,11 +1806,43 @@ final class AppModel: ObservableObject {
     }
 
     private func applyCallSnapshot(_ call: CloudCall) {
+        let current = callsByConversationID[call.conversationId]
+        guard CloudCallSnapshotOrdering.shouldApply(
+            call,
+            after: current,
+            endedCallIDs: endedCallIDs
+        ) else { return }
+        callSnapshotGeneration += 1
         latestCallSnapshot = call
         if call.state == .ended {
-            callsByConversationID[call.conversationId] = nil
+            endedCallIDs.insert(call.id)
+            if current?.id == call.id {
+                callsByConversationID[call.conversationId] = nil
+            }
         } else {
             callsByConversationID[call.conversationId] = call
+        }
+    }
+
+    private func applyActiveCallSnapshot(_ calls: [CloudCall], removeMissing: Bool) {
+        let activeCallIDs = Set(calls.map(\.id))
+        for call in calls {
+            applyCallSnapshot(call)
+        }
+        guard removeMissing else { return }
+        for current in Array(callsByConversationID.values) where !activeCallIDs.contains(current.id) {
+            applyCallSnapshot(CloudCall(
+                id: current.id,
+                revision: current.revision,
+                conversationId: current.conversationId,
+                kind: current.kind,
+                state: .ended,
+                createdByAccountId: current.createdByAccountId,
+                createdAt: current.createdAt,
+                answeredAt: current.answeredAt,
+                endedAt: ISO8601DateFormatter().string(from: Date()),
+                participants: current.participants
+            ))
         }
     }
 
@@ -3374,15 +3487,16 @@ final class AppModel: ObservableObject {
             .sorted { $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id) }
     }
 
-    /// Mobile is a passive Cloud client, never an execution-capable device.
-    /// HTTP cursor polling intentionally avoids presence-bearing WebSockets so
-    /// an iPhone cannot block Cloud fallback by being mistaken for the owner's Mac.
+    /// Realtime frames wake the durable HTTP cursor reader immediately. This
+    /// two-second poll is the bounded repair path when realtime is unavailable.
     private func startCloudSync(resetCursor: Bool) {
         guard let token else { return }
+        startCloudRealtime(token: token)
         let isForkLineageReplay = resetCursor
         cloudSyncTask?.cancel()
         if resetCursor {
             cloudSyncCursor = "0"
+            cloudSyncHasCurrentSequence = false
             if messageSyncState != .syncing { messageSyncState = .syncing }
         }
         cloudSyncTask = Task { [weak self] in
@@ -3406,9 +3520,11 @@ final class AppModel: ObservableObject {
                         pendingEvents.append(contentsOf: response.events)
                     }
                     nextCursor = response.cursor
+                    cloudSyncLastStreamSequence = response.lastStreamSequence
                     if response.hasMore { continue }
 
                     cloudSyncCursor = nextCursor
+                    cloudSyncHasCurrentSequence = true
                     if !pendingEvents.isEmpty {
                         let hasProviderAuthenticationChanges = pendingEvents.contains {
                             $0.eventType == "provider-auth.updated"
@@ -3462,9 +3578,97 @@ final class AppModel: ObservableObject {
                 } else {
                     chatPollsUntilPresenceRefresh -= 1
                 }
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: Self.cloudSyncRepairInterval)
             }
         }
+    }
+
+    private func startCloudRealtime(token: String) {
+        guard cloudRealtimeTask == nil else { return }
+        cloudRealtimeTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                if cloudSyncCursor == "0" || !cloudSyncHasCurrentSequence {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    continue
+                }
+                do {
+                    let connection = try await api.chatRealtimeConnection(token: token)
+                    let socket = URLSession.shared.webSocketTask(with: connection.url)
+                    cloudRealtimeLastReceivedSequence = cloudSyncLastStreamSequence
+                    socket.resume()
+                    try await Self.sendRealtimeFrame(
+                        CloudRealtimeConnectFrame(
+                            deviceId: connection.deviceId,
+                            cursor: cloudSyncCursor
+                        ),
+                        over: socket
+                    )
+                    let heartbeat = Task { @MainActor [weak self] in
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .seconds(25))
+                            guard let self, !Task.isCancelled else { return }
+                            try? await Self.sendRealtimeFrame(
+                                CloudRealtimeHeartbeatFrame(
+                                    lastAppliedSequence: min(
+                                        cloudSyncLastStreamSequence,
+                                        cloudRealtimeLastReceivedSequence
+                                    )
+                                ),
+                                over: socket
+                            )
+                        }
+                    }
+                    defer {
+                        heartbeat.cancel()
+                        socket.cancel(with: .goingAway, reason: nil)
+                    }
+                    while !Task.isCancelled {
+                        let message = try await socket.receive()
+                        let data: Data
+                        switch message {
+                        case .string(let value): data = Data(value.utf8)
+                        case .data(let value): data = value
+                        @unknown default: continue
+                        }
+                        let frame = try JSONDecoder().decode(CloudRealtimeServerFrame.self, from: data)
+                        if frame.type == "event" {
+                            if let streamSequence = frame.streamSequence {
+                                cloudRealtimeLastReceivedSequence = max(
+                                    cloudRealtimeLastReceivedSequence,
+                                    streamSequence
+                                )
+                            }
+                            scheduleRealtimeSyncWake()
+                        } else if frame.type == "resync_required" {
+                            startCloudSync(resetCursor: true)
+                            break
+                        }
+                    }
+                } catch {
+                    if Task.isCancelled { return }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
+        }
+    }
+
+    private func scheduleRealtimeSyncWake() {
+        guard cloudRealtimeSyncWakeTask == nil else { return }
+        cloudRealtimeSyncWakeTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard let self, !Task.isCancelled else { return }
+            cloudRealtimeSyncWakeTask = nil
+            startCloudSync(resetCursor: false)
+        }
+    }
+
+    private static func sendRealtimeFrame<Frame: Encodable>(
+        _ frame: Frame,
+        over socket: URLSessionWebSocketTask
+    ) async throws {
+        let data = try JSONEncoder().encode(frame)
+        try await socket.send(.string(String(decoding: data, as: UTF8.self)))
     }
 
     private func refreshLoadedConversationProjections() async {

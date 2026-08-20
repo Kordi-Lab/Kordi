@@ -34,6 +34,8 @@ These launch safeguards prevent accidental production traffic. They are not a se
 
 The runner uses a local sandbox volume and talks only to the isolated Cloud API. It does not use the hosted runner, production data, or a Kubernetes cluster.
 
+The base stack does not start LiveKit. Accounts, messages, and `/health` can all work while call creation reports that calling is not configured. Follow [Hosting Kordi voice and video calls](call-hosting.md) before testing voice or video.
+
 ## Prerequisites
 
 - macOS with the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) installed
@@ -372,5 +374,6 @@ The allowlisted operator launcher described in [`hosted-cloud-developer-guide.md
 - [`community-contributor-guide.md`](community-contributor-guide.md): community contribution paths and review expectations
 - [`development.md`](development.md): monorepo command map
 - [`run-cloud-desktop.md`](run-cloud-desktop.md): desktop launch reference
+- [`call-hosting.md`](call-hosting.md): development and product voice/video deployment and acceptance checks
 - [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md): approved shared staging and operator workflows
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md): branch, validation, and review workflow

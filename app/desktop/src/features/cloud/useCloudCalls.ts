@@ -33,6 +33,7 @@ import {
   callParticipant,
   callStartedOnAnotherDevice,
   conversationSessionId,
+  newestCloudCallSnapshot,
   preferredCallEntry,
   reconcileCloudCallSnapshot,
   shouldApplyActiveCallSnapshot,
@@ -99,10 +100,8 @@ export function useCloudCalls({
 
   const updateCall = useCallback((call: CloudCall, sessionId?: string | null) => {
     const ended = call.state === 'ended' || Boolean(call.endedAt);
+    callSnapshotGenerationRef.current += 1;
     if (ended) {
-      if (!locallyEndedCallIdsRef.current.has(call.id)) {
-        callSnapshotGenerationRef.current += 1;
-      }
       locallyEndedCallIdsRef.current.add(call.id);
     }
     else if (locallyEndedCallIdsRef.current.has(call.id)) return;
@@ -110,7 +109,7 @@ export function useCloudCalls({
       || (currentRef.current?.call.id === call.id ? currentRef.current.sessionId : null);
     setCallsBySessionId((existing) => reconcileCloudCallSnapshot(existing, call, resolvedSessionId));
     setCurrent((existing) => existing?.call.id === call.id
-      ? ended ? null : { ...existing, call }
+      ? ended ? null : { ...existing, call: newestCloudCallSnapshot(existing.call, call) }
       : existing);
   }, []);
 
@@ -274,10 +273,6 @@ export function useCloudCalls({
       )) return;
       const locallyEndedCallIds = locallyEndedCallIdsRef.current;
       const next = activeCallsBySessionId(calls, knownSessionIds, locallyEndedCallIds);
-      const activeCallIds = new Set(calls.map((entry) => entry.call.id));
-      for (const callId of locallyEndedCallIds) {
-        if (!activeCallIds.has(callId)) locallyEndedCallIds.delete(callId);
-      }
       setCallsBySessionId(next);
       const activeCurrent = currentRef.current;
       if (activeCurrent) {
