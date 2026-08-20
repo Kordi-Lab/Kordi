@@ -292,6 +292,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "canonical generated and uploaded avatars",
         sql: include_str!("../../migrations/0061_canonical_avatars.sql"),
     },
+    EmbeddedMigration {
+        version: 62,
+        description: "monotonic call revisions",
+        sql: include_str!("../../migrations/0062_call_revisions.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
