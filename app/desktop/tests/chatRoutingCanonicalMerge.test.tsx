@@ -84,6 +84,35 @@ test('canonical fork snapshot markers enrich matching runtime messages after hyd
   assert.deepEqual(merged[1]?.replyAliasIds, ['msg:canonical-agent']);
 });
 
+test('canonical agent mirrors match runtime replies across request and completion timestamps', () => {
+  const response = (id: string, time: string) => ({
+    id,
+    role: 'owned-agent' as const,
+    sender: 'US Stock Paper Trader',
+    text: '',
+    time,
+    turn: {
+      id: `turn:${id}`,
+      sessionId: 'session:direct-agent:stock',
+      prompt: '',
+      status: 'complete' as const,
+      message: 'Complete',
+      assistantText: 'Check successful.',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: true,
+      error: null,
+    },
+  });
+  const canonical = [response('canonical-1', '14:14'), response('canonical-2', '14:15')];
+  const runtime = [response('runtime-1', '14:16'), response('runtime-2', '14:17')];
+
+  const merged = mergeCanonicalHistoryIntoRuntime(canonical, runtime);
+
+  assert.deepEqual(merged.map((message) => message.id), ['runtime-1', 'runtime-2']);
+});
+
 test('restored Cloud self-agent messages are sent as native context for continued local turns', () => {
   const contextMessages = restoredSelfAgentContextMessages([
     {

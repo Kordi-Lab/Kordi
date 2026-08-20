@@ -61,7 +61,7 @@ function sameAgentResponseText(left: string, right: string) {
 function runtimeTranscriptAnchorKey(message: Message) {
   const text = messageResponseText(message).replace(/\s+/gu, ' ').trim().toLowerCase();
   if (!text) return null;
-  return [message.role, message.time.trim(), text].join('\u0000');
+  return [message.role, ...(message.role === 'owned-agent' ? [] : [message.time.trim()]), text].join('\u0000');
 }
 
 function firstIndexGreaterThan(sortedValues: readonly number[], target: number) {
