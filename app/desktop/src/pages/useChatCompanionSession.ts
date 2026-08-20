@@ -335,7 +335,10 @@ export function useChatCompanionSession({
       create,
       open,
       switchConversation: (conversationId: string) => {
-        if (!selectableSessionIds.has(conversationId)) return;
+        if (
+          !selectableSessionIds.has(conversationId)
+          && !candidateIds.has(conversationId)
+        ) return;
         activate(conversationId);
       },
       close: () => updateState((current) => ({

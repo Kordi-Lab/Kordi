@@ -114,6 +114,7 @@ test('side chat picker exposes hierarchy, panel states, and flat inactive rows',
   assert.match(headerSource, /!isCurrent && 'app-transient-flat-action'/);
   assert.match(headerSource, />\s*Main\s*</);
   assert.match(headerSource, />\s*Current\s*</);
+  assert.match(sessionSource, /candidateIds\.has\(conversationId\)/);
   assert.match(sessionSource, /selectableSessionIds\.has\(conversationId\)/);
 });
 
