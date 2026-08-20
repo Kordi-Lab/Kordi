@@ -16,6 +16,7 @@ import type {
   DesktopCollaborationConversation,
   DesktopCollaborationState,
 } from '@/kordi-app/types';
+import { isChatCreatedDirectAgentSession } from '@/features/canonical/readModel/conversationMapping';
 import type {
   CloudAccount,
   CloudMessage,
@@ -37,6 +38,14 @@ import {
 import type {
   CloudMessageIndex,
 } from './cloudMessageIndex';
+
+export function localOwnedAgentSessionsForCloudHiding(
+  sessions: CanonicalSessionState['sessions'],
+) {
+  return sessions.filter((session) => (
+    session.kind === 'self-agent' || isChatCreatedDirectAgentSession(session)
+  ));
+}
 
 export function applyCloudAgentRuntimeRouteToState(
   state: DesktopCollaborationState | null,
@@ -239,10 +248,9 @@ export function useCloudCollaborationReadModel({
       overrideContextKey,
       accountContextKey,
     );
-    const canonicalSelfAgentSessions =
-      (canonicalState?.sessions ?? []).filter(
-        (session) => session.kind === 'self-agent',
-      );
+    const canonicalSelfAgentSessions = localOwnedAgentSessionsForCloudHiding(
+      canonicalState?.sessions ?? [],
+    );
     const cloudSessionTitlesById = Object.fromEntries(
       canonicalSelfAgentSessions.map(
         (session) => [session.id, session.title],

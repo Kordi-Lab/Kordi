@@ -16,6 +16,7 @@ import {
   loadChatSyncLocalState,
 } from '@/lib/desktopChatSync';
 import { fetchCanonicalSessionMessages } from '@/lib/desktop';
+import { isChatCreatedDirectAgentSession } from '@/features/canonical/readModel/conversationMapping';
 import type {
   ChatSyncConversation,
   ChatSyncMessage,
@@ -343,6 +344,7 @@ export function useCloudSelfAgentForwardSync({
             )),
           ],
         };
+        const localDirectAgentSessionIds = new Set(recoveryState.sessions.filter(isChatCreatedDirectAgentSession).map((session) => session.id));
         let ledger = identityLedger;
         let forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
           account.accountId,
@@ -424,7 +426,7 @@ export function useCloudSelfAgentForwardSync({
             ledger: executionLedger,
             mergeMessage,
             messageKindForOperation: (operation) => (
-              recoverySessionIds.has(operation.sessionId)
+              recoverySessionIds.has(operation.sessionId) || localDirectAgentSessionIds.has(operation.sessionId)
                 ? operation.role === 'user'
                   ? 'canonical-history-user'
                   : 'canonical-history-agent'

@@ -11,6 +11,7 @@ import type {
 } from '@/kordi-app/types';
 import type { CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import { agentSessionKind, agentSessionParticipantSpaceKind } from './agentSessionRouting';
+import { publishedAgentRuntimeRouteMetadata } from './agentSessionRuntimeRoute';
 export type ChatCreatePersonOption = {
   id: string;
   label: string;
@@ -62,11 +63,9 @@ export type ChatGroupMetadata = {
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
-
 function firstNonEmpty(...values: Array<string | null | undefined>) {
   return values.map(cleanText).find(Boolean) ?? '';
 }
-
 function isContactAgent(contact: Contact) {
   const entityType = contact.entityType.toLowerCase();
   return entityType.includes('agent') || contact.classType === 'my-agents' || contact.classType === 'other-users-agents';
@@ -218,6 +217,7 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
       cloudAgentTools: agent.loadedTools,
       cloudAgentPlugins: agent.loadedPlugins,
     } : {}),
+    ...publishedAgentRuntimeRouteMetadata(agent),
   };
 }
 

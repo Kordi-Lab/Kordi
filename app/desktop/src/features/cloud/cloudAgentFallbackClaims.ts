@@ -301,6 +301,7 @@ export function cloudFallbackRunClaimsForMessages({
           message.fromAccountId !== account.accountId
           || message.toAccountId !== account.accountId
           || message.messageKind === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
+          || message.messageKind?.startsWith('canonical-history-')
           || groupControlMessageIds.has(message.messageId)
           || parseCloudAgentResponse(message.body)
           || parseCloudAgentCancel(message.body)
