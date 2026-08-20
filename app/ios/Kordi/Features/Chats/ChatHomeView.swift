@@ -7,6 +7,7 @@ enum ChatChannel {
 
 struct ChatHomeView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let channel: ChatChannel
     @State private var searchText = ""
     @State private var newChatMode: NewChatMode?
@@ -374,32 +375,22 @@ struct ChatHomeView: View {
     }
 
     private func agentSessionActionRow(_ item: AgentSessionListItem) -> some View {
-        HStack(spacing: 0) {
-            Button {
-                openConversation(item.conversation)
-            } label: {
-                AgentSessionRow(conversation: item.conversation, isFork: item.isFork)
-                    .padding(.leading, CGFloat(item.depth) * 16)
-            }
-            .buttonStyle(.plain)
-
-            if item.childCount > 0 {
-                Button {
-                    toggleAgentForks(for: item.conversation)
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.triangle.branch")
-                        Text(String(item.childCount))
-                        Image(systemName: "chevron.down")
-                            .rotationEffect(.degrees(collapsedAgentForkParentIds.contains(item.conversation.sessionId) ? -90 : 0))
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 0) {
+                    agentSessionButton(item)
+                    if item.childCount > 0 {
+                        agentForkButton(item)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 56, height: 44)
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(collapsedAgentForkParentIds.contains(item.conversation.sessionId) ? "Show forks" : "Hide forks")
+            } else {
+                HStack(spacing: 0) {
+                    agentSessionButton(item)
+                    if item.childCount > 0 {
+                        agentForkButton(item)
+                    }
+                }
             }
         }
         .contextMenu {
@@ -407,6 +398,39 @@ struct ChatHomeView: View {
         }
         .accessibilityHint("Double-tap to open. Touch and hold for session actions.")
         .chatHomeRow(separatorLeading: 16)
+    }
+
+    private func agentSessionButton(_ item: AgentSessionListItem) -> some View {
+        Button {
+            openConversation(item.conversation)
+        } label: {
+            AgentSessionRow(conversation: item.conversation, isFork: item.isFork)
+                .padding(.leading, CGFloat(item.depth) * 16)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func agentForkButton(_ item: AgentSessionListItem) -> some View {
+        Button {
+            toggleAgentForks(for: item.conversation)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.triangle.branch")
+                Text(dynamicTypeSize.isAccessibilitySize
+                    ? (item.childCount == 1 ? "1 fork" : "\(item.childCount) forks")
+                    : String(item.childCount))
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(collapsedAgentForkParentIds.contains(item.conversation.sessionId) ? -90 : 0))
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : 56)
+            .frame(minHeight: 44)
+            .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(collapsedAgentForkParentIds.contains(item.conversation.sessionId) ? "Show forks" : "Hide forks")
     }
 
     @ViewBuilder

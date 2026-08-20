@@ -37,66 +37,103 @@ struct AgentSessionRow: View {
     var isFork = false
 
     var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibilityLayout
+            } else {
+                regularLayout
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(conversation.accessibilitySummary)
+    }
+
+    private var accessibilityLayout: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            title
+            preview
+
+            if let activity = conversation.agentActivity, activity != .ready {
+                AgentSessionActivityLabel(activity: activity)
+            }
+
+            HStack(spacing: 10) {
+                timestamp
+                if conversation.unreadCount > 0 {
+                    unreadBadge
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var regularLayout: some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if isFork {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
-                    }
-                    Text(sessionTitle)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                        .layoutPriority(1)
-                }
-
-                (
-                    Text(conversation.agentDisplayName?.nonEmpty ?? "My Kordi")
-                        .foregroundColor(KordiTheme.agentViolet)
-                    + Text(" · ")
-                        .foregroundColor(.secondary)
-                    + Text(conversation.lastMessage.nonEmpty ?? "No messages yet")
-                        .foregroundColor(.secondary)
-                )
-                .font(.subheadline)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
-
-                if dynamicTypeSize.isAccessibilitySize,
-                   let activity = conversation.agentActivity,
-                   activity != .ready {
-                    AgentSessionActivityLabel(activity: activity)
-                }
+                title
+                preview
             }
 
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text(relativeTimestamp)
-                    .font(.caption)
-                    .foregroundStyle(conversation.unreadCount > 0 ? KordiTheme.signalBlue : .secondary)
-                    .lineLimit(1)
+                timestamp
 
                 if conversation.unreadCount > 0 {
-                    Text(String(conversation.unreadCount))
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(KordiTheme.signalBlue, in: Capsule())
-                } else if !dynamicTypeSize.isAccessibilitySize,
-                          let activity = conversation.agentActivity,
+                    unreadBadge
+                } else if let activity = conversation.agentActivity,
                           activity != .ready {
                     AgentSessionActivityLabel(activity: activity, compact: true)
                 }
             }
         }
-        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(conversation.accessibilitySummary)
+    }
+
+    private var title: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if isFork {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            Text(sessionTitle)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                .layoutPriority(1)
+        }
+    }
+
+    private var preview: some View {
+        (
+            Text(conversation.agentDisplayName?.nonEmpty ?? "My Kordi")
+                .foregroundColor(KordiTheme.agentViolet)
+            + Text(" · ")
+                .foregroundColor(.secondary)
+            + Text(conversation.lastMessage.nonEmpty ?? "No messages yet")
+                .foregroundColor(.secondary)
+        )
+        .font(.subheadline)
+        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
+    }
+
+    private var timestamp: some View {
+        Text(relativeTimestamp)
+            .font(.caption)
+            .foregroundStyle(conversation.unreadCount > 0 ? KordiTheme.signalBlue : .secondary)
+            .lineLimit(1)
+    }
+
+    private var unreadBadge: some View {
+        Text(String(conversation.unreadCount))
+            .font(.caption2.bold())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(KordiTheme.signalBlue, in: Capsule())
     }
 
     private var sessionTitle: String {
@@ -133,6 +170,8 @@ private struct AgentSessionActivityLabel: View {
             } else {
                 Image(systemName: "exclamationmark.circle.fill")
                     .accessibilityHidden(true)
+            }
+            if !compact || activity != .replying {
                 Text(activity.label)
                     .font(compact ? .caption2.weight(.semibold) : .caption.weight(.medium))
             }
