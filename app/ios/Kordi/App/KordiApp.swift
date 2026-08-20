@@ -446,7 +446,6 @@ struct MainTabView: View {
     private var pendingIncomingRequestCount: Int {
         model.contactRequests.lazy.filter { $0.isIncoming && $0.status == "pending" }.count
     }
-
 }
 
 private extension View {

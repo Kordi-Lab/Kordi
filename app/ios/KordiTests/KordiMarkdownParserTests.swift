@@ -801,16 +801,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertLessThan(hypot(middle.width, middle.height), hypot(end.width, end.height))
     }
 
-    func testAvatarFallbackMatchesTheDesktopInitialsRule() {
-        XCTAssertEqual(CloudAvatarFallback.initials(for: "Kordi Support"), "KO")
-        XCTAssertEqual(CloudAvatarFallback.initials(for: "Chen Xiaoming"), "CH")
-        XCTAssertEqual(CloudAvatarFallback.initials(for: " -- "), "KO")
-        XCTAssertEqual(
-            CloudAvatarFallback.paletteIndex(for: "Kordi Support"),
-            CloudAvatarFallback.paletteIndex(for: "Kordi Support")
-        )
-    }
-
     private func timelineMessage(
         id: String,
         author: MessageAuthor,

@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
 import {
   canonicalAvatarImageSource,
-  generatedAvatarMarker,
+  generatedAvatarPreviewUrl,
   newCanonicalAvatarSeed,
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
@@ -202,9 +202,13 @@ export function CloudAccountSettingsDialog({
 
   const useAnotherGeneratedAvatar = () => {
     const seed = newCanonicalAvatarSeed();
-    const nextVersion = account.avatar.version + 1;
     const style = account.avatar.style;
-    setAvatarUrlDraft(generatedAvatarMarker(style, seed, nextVersion));
+    const previewUrl = generatedAvatarPreviewUrl(style, seed);
+    if (!previewUrl) {
+      setProfileError('Could not create a random avatar.');
+      return;
+    }
+    setAvatarUrlDraft(previewUrl);
     setAvatarMutationDraft({
       action: 'regenerate',
       seed,

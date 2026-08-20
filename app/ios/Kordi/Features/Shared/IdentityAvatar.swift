@@ -57,7 +57,10 @@ struct IdentityAvatar: View {
                     .font(.system(size: size * 0.34, weight: .semibold))
                     .foregroundStyle(KordiTheme.signalBlue)
             case .person:
-                initials
+                Circle().fill(Color(uiColor: .secondarySystemFill))
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: size * 0.42, weight: .regular))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -76,15 +79,6 @@ struct IdentityAvatar: View {
         }
     }
 
-    private var initials: some View {
-        let palette = CloudAvatarFallback.palette(for: name)
-        return ZStack {
-            Circle().fill(palette.background)
-            Text(CloudAvatarFallback.initials(for: name))
-                .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
-                .foregroundStyle(palette.foreground)
-        }
-    }
 }
 
 enum KordiSupportIdentity {
@@ -173,38 +167,6 @@ struct GroupAvatarStack: View {
             size: diameter,
             seed: participant.accountId
         )
-    }
-}
-
-enum CloudAvatarFallback {
-    struct Palette {
-        let background: Color
-        let foreground: Color
-    }
-
-    private static let palettes: [Palette] = [
-        Palette(background: Color(red: 0.435, green: 0.812, blue: 0.592), foreground: Color(red: 0.122, green: 0.161, blue: 0.216)),
-        Palette(background: Color(red: 0.949, green: 0.651, blue: 0.353), foreground: Color(red: 0.122, green: 0.161, blue: 0.216)),
-        Palette(background: Color(red: 0.910, green: 0.627, blue: 0.784), foreground: Color(red: 0.122, green: 0.161, blue: 0.216))
-    ]
-
-    static func initials(for label: String) -> String {
-        let characters = label.filter { $0.isLetter || $0.isNumber }
-        let initials = String(characters.prefix(2)).uppercased()
-        return initials.isEmpty ? "KO" : initials
-    }
-
-    static func paletteIndex(for label: String) -> Int {
-        var hash: UInt32 = 2_166_136_261
-        for scalar in label.unicodeScalars {
-            hash ^= scalar.value
-            hash = hash &* 16_777_619
-        }
-        return Int(hash % UInt32(palettes.count))
-    }
-
-    static func palette(for label: String) -> Palette {
-        palettes[paletteIndex(for: label)]
     }
 }
 

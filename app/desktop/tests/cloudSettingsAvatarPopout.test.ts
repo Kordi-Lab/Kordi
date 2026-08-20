@@ -125,6 +125,8 @@ test('profile editor groups identity controls without resizing the settings dial
 
   assert.match(modal, /grid-cols-\[96px_minmax\(0,1fr\)\]/);
   assert.match(modal, /<EditableIdentityAvatar/);
+  assert.match(modal, /generatedAvatarPreviewUrl/);
+  assert.doesNotMatch(modal, /generatedAvatarMarker/);
   assert.match(avatarEditor, /<Dice5 className="h-3\.5 w-3\.5"/);
   assert.match(avatarEditor, /flex w-7 shrink-0 flex-col overflow-hidden rounded-full/);
   assert.match(modal, /app-cloud-account-settings-dialog[^\n]*h-\[min\(680px,/);
