@@ -64,6 +64,7 @@
 		BE821F4028CF8A3212755E16 /* KordiTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2E075B7257EB94109FA940 /* KordiTheme.swift */; };
 		C43FBB268AD9D16808177E02 /* ConversationReadPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DCA28263C9542B2585C6820 /* ConversationReadPresentationTests.swift */; };
 		C44AB4CDAC5B8D7F66D2F952 /* PreviewData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B4B71699619CACFFD7AF71 /* PreviewData.swift */; };
+		C6F07352981BFA43F316E7AA /* LocalMessageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C36C042F23DA97ABD30265 /* LocalMessageStoreTests.swift */; };
 		C70D585973E462F22DE1259A /* AgentSessionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9191C934D4CD680DDA85704F /* AgentSessionPresentation.swift */; };
 		C8BD24AA4D691A02181E4FB4 /* CloudMessageCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CAA0002D51BCCCF6B07B66 /* CloudMessageCodecTests.swift */; };
 		CE3B28D7B1662C11FCB93086 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4021DE92BF82560F7905E214 /* ConversationView.swift */; };
@@ -103,6 +104,7 @@
 		12B4F4E132BAF9FF02E0EE58 /* CloudGroupMessageCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGroupMessageCodecTests.swift; sourceTree = "<group>"; };
 		1381CF79C72E0D7F70A6AF27 /* LocalMessageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMessageStore.swift; sourceTree = "<group>"; };
 		151CB7A492FFA22F02806ED0 /* CloudOAuthSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudOAuthSession.swift; sourceTree = "<group>"; };
+		16C36C042F23DA97ABD30265 /* LocalMessageStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMessageStoreTests.swift; sourceTree = "<group>"; };
 		1891761174EB0D425725600A /* CloudAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudAPIClient.swift; sourceTree = "<group>"; };
 		1A3A55FE7BDA62F4175A28D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1B208AC082D8D2E3AC98654A /* CloudMessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudMessageCodec.swift; sourceTree = "<group>"; };
@@ -363,6 +365,7 @@
 				568EBC3F7D9760AAD86C912C /* DigestViewTests.swift */,
 				1B3BED33D4A29116EAD073A0 /* KordiAppEnvironmentTests.swift */,
 				274B3D971B28CFFC0EF77C13 /* KordiMarkdownParserTests.swift */,
+				16C36C042F23DA97ABD30265 /* LocalMessageStoreTests.swift */,
 				4D3FAACD21D63BFA6A9455D5 /* MediaPreviewTests.swift */,
 				5BAE23D56402398862849C56 /* ProviderAuthenticationTests.swift */,
 				B7C0162644ADAD950961A3EF /* SessionRuntimeRouteStoreTests.swift */,
@@ -563,6 +566,7 @@
 				97FE7B56ED21F0CDBDC8AAEB /* DigestViewTests.swift in Sources */,
 				F72232A5E55E5DDBF7C08493 /* KordiAppEnvironmentTests.swift in Sources */,
 				A7D9800431A98277443048BB /* KordiMarkdownParserTests.swift in Sources */,
+				C6F07352981BFA43F316E7AA /* LocalMessageStoreTests.swift in Sources */,
 				35B9B24F661F5992EE4281EA /* MediaPreviewTests.swift in Sources */,
 				3D7A4357454B74FB0D27E7C0 /* ProviderAuthenticationTests.swift in Sources */,
 				ADAFE64FFE54941BDDDC6908 /* SessionRuntimeRouteStoreTests.swift in Sources */,

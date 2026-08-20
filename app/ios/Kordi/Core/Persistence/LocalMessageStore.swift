@@ -1,9 +1,15 @@
 import Foundation
 import SwiftData
 
+private func scopedCacheRecordID(accountId: String, entityId: String) -> String {
+    "\(accountId.count):\(accountId)\(entityId)"
+}
+
 @Model
 final class CachedConversationRecord {
     @Attribute(.unique) var id: String
+    var accountId: String = ""
+    var conversationId: String = ""
     var kind: String
     var peerAccountId: String
     var agentId: String?
@@ -21,8 +27,10 @@ final class CachedConversationRecord {
     var messageCount: Int?
     var forkedFromSessionId: String?
 
-    init(_ conversation: ConversationSummary) {
-        id = conversation.id
+    init(accountId: String, conversation: ConversationSummary) {
+        id = scopedCacheRecordID(accountId: accountId, entityId: conversation.id)
+        self.accountId = accountId
+        conversationId = conversation.id
         kind = conversation.kind.rawValue
         peerAccountId = conversation.peerAccountId
         agentId = conversation.agentId
@@ -51,7 +59,7 @@ final class CachedConversationRecord {
             .flatMap { try? JSONDecoder().decode([CloudGroupParticipant].self, from: $0) }
             ?? []
         return ConversationSummary(
-            id: id,
+            id: conversationId,
             kind: kind,
             peerAccountId: peerAccountId,
             agentId: agentId,
@@ -75,6 +83,8 @@ final class CachedConversationRecord {
 @Model
 final class CachedMessageRecord {
     @Attribute(.unique) var id: String
+    var accountId: String = ""
+    var messageId: String = ""
     var conversationId: String
     var author: String
     var authorName: String
@@ -91,8 +101,10 @@ final class CachedMessageRecord {
     var messageKind: String?
     var agentExecutionJSON: String?
 
-    init(_ message: ChatMessage) {
-        id = message.id
+    init(accountId: String, message: ChatMessage) {
+        id = scopedCacheRecordID(accountId: accountId, entityId: message.id)
+        self.accountId = accountId
+        messageId = message.id
         conversationId = message.conversationId
         author = message.author.rawValue
         authorName = message.authorName
@@ -132,7 +144,7 @@ final class CachedMessageRecord {
         guard let author = MessageAuthor(rawValue: author),
               let state = MessageDeliveryState(rawValue: deliveryState) else { return nil }
         return ChatMessage(
-            id: id,
+            id: messageId,
             conversationId: conversationId,
             author: author,
             authorName: authorName,
@@ -169,8 +181,8 @@ final class CachedMessageRecord {
 final class LocalMessageStore {
     private let container: ModelContainer
     private var context: ModelContext { container.mainContext }
-    private var conversationFingerprint: Int?
-    private var messageFingerprints: [String: Int] = [:]
+    private var conversationFingerprints: [String: Int] = [:]
+    private var messageFingerprints: [String: [String: Int]] = [:]
 
     init(inMemory: Bool = false) throws {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
@@ -180,73 +192,118 @@ final class LocalMessageStore {
             configurations: configuration
         )
         context.autosaveEnabled = false
+        purgeLegacyRecords()
     }
 
-    func loadConversations() -> [ConversationSummary] {
+    func loadConversations(accountId: String) -> [ConversationSummary] {
+        guard !accountId.isEmpty else { return [] }
+        let scope = accountId
         let descriptor = FetchDescriptor<CachedConversationRecord>(
+            predicate: #Predicate { $0.accountId == scope },
             sortBy: [SortDescriptor(\.lastActivityAt, order: .reverse)]
         )
         let conversations = (try? context.fetch(descriptor))?.compactMap(\.value) ?? []
-        conversationFingerprint = fingerprint(conversations)
+        conversationFingerprints[accountId] = fingerprint(conversations)
         return conversations
     }
 
-    func loadMessages(conversationId: String) -> [ChatMessage] {
-        let id = conversationId
+    func loadMessages(accountId: String, conversationId: String) -> [ChatMessage] {
+        guard !accountId.isEmpty else { return [] }
+        let scope = accountId
+        let conversation = conversationId
         let descriptor = FetchDescriptor<CachedMessageRecord>(
-            predicate: #Predicate { $0.conversationId == id },
+            predicate: #Predicate {
+                $0.accountId == scope && $0.conversationId == conversation
+            },
             sortBy: [SortDescriptor(\.createdAt)]
         )
         let messages = (try? context.fetch(descriptor))?.compactMap(\.value) ?? []
-        messageFingerprints[conversationId] = fingerprint(messages)
+        messageFingerprints[accountId, default: [:]][conversationId] = fingerprint(messages)
         return messages
     }
 
-    func saveConversations(_ conversations: [ConversationSummary]) {
+    func saveConversations(_ conversations: [ConversationSummary], accountId: String) {
+        guard !accountId.isEmpty else { return }
         let nextFingerprint = fingerprint(conversations)
-        guard nextFingerprint != conversationFingerprint else { return }
+        guard nextFingerprint != conversationFingerprints[accountId] else { return }
         do {
-            try context.delete(model: CachedConversationRecord.self)
-            conversations.forEach { context.insert(CachedConversationRecord($0)) }
+            let scope = accountId
+            let existing = try context.fetch(FetchDescriptor<CachedConversationRecord>(
+                predicate: #Predicate { $0.accountId == scope }
+            ))
+            existing.forEach(context.delete)
+            conversations.forEach {
+                context.insert(CachedConversationRecord(accountId: accountId, conversation: $0))
+            }
             try context.save()
-            conversationFingerprint = nextFingerprint
+            conversationFingerprints[accountId] = nextFingerprint
         } catch {
             context.rollback()
         }
     }
 
-    func saveMessages(_ messages: [ChatMessage], conversationId: String) {
+    func saveMessages(_ messages: [ChatMessage], conversationId: String, accountId: String) {
+        guard !accountId.isEmpty else { return }
         let nextFingerprint = fingerprint(messages)
-        guard nextFingerprint != messageFingerprints[conversationId] else { return }
+        guard nextFingerprint != messageFingerprints[accountId]?[conversationId] else { return }
         do {
-            let id = conversationId
+            let scope = accountId
+            let conversation = conversationId
             let descriptor = FetchDescriptor<CachedMessageRecord>(
-                predicate: #Predicate { $0.conversationId == id }
+                predicate: #Predicate {
+                    $0.accountId == scope && $0.conversationId == conversation
+                }
             )
             let existing = try context.fetch(descriptor)
-            var existingById = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+            var existingById = Dictionary(uniqueKeysWithValues: existing.map { ($0.messageId, $0) })
             for message in messages {
                 if let record = existingById.removeValue(forKey: message.id) {
                     if record.value != message { record.update(from: message) }
                 } else {
-                    context.insert(CachedMessageRecord(message))
+                    context.insert(CachedMessageRecord(accountId: accountId, message: message))
                 }
             }
             for stale in existingById.values { context.delete(stale) }
             try context.save()
-            messageFingerprints[conversationId] = nextFingerprint
+            messageFingerprints[accountId, default: [:]][conversationId] = nextFingerprint
         } catch {
             context.rollback()
         }
     }
 
-    func clear() {
+    func clear(accountId: String) {
+        guard !accountId.isEmpty else { return }
         do {
-            try context.delete(model: CachedConversationRecord.self)
-            try context.delete(model: CachedMessageRecord.self)
+            let scope = accountId
+            let conversations = try context.fetch(FetchDescriptor<CachedConversationRecord>(
+                predicate: #Predicate { $0.accountId == scope }
+            ))
+            let messages = try context.fetch(FetchDescriptor<CachedMessageRecord>(
+                predicate: #Predicate { $0.accountId == scope }
+            ))
+            conversations.forEach(context.delete)
+            messages.forEach(context.delete)
             try context.save()
-            conversationFingerprint = nil
-            messageFingerprints = [:]
+            conversationFingerprints[accountId] = nil
+            messageFingerprints[accountId] = nil
+        } catch {
+            context.rollback()
+        }
+    }
+
+    private func purgeLegacyRecords() {
+        do {
+            let legacyScope = ""
+            let conversations = try context.fetch(FetchDescriptor<CachedConversationRecord>(
+                predicate: #Predicate { $0.accountId == legacyScope }
+            ))
+            let messages = try context.fetch(FetchDescriptor<CachedMessageRecord>(
+                predicate: #Predicate { $0.accountId == legacyScope }
+            ))
+            guard !conversations.isEmpty || !messages.isEmpty else { return }
+            conversations.forEach(context.delete)
+            messages.forEach(context.delete)
+            try context.save()
         } catch {
             context.rollback()
         }

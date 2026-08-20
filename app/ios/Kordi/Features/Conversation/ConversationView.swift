@@ -325,10 +325,17 @@ struct ConversationView: View {
                                         }
                                 }
                                 .scrollTargetLayout()
+                                .frame(
+                                    minHeight: max(
+                                        0,
+                                        viewport.size.height - timelineVerticalInset * 2
+                                    ),
+                                    alignment: timeline.isEmpty ? .top : .bottom
+                                )
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, timelineVerticalInset)
                             }
-                            .modifier(ConversationScrollAlignmentModifier())
+                            .defaultScrollAnchor(.bottom)
                             .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
                             .modifier(
                                 ConversationBottomTrackingModifier(
@@ -1344,17 +1351,6 @@ struct ConversationView: View {
             in: timeline,
             initialImage: previewImage
         )
-    }
-}
-
-private struct ConversationScrollAlignmentModifier: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.defaultScrollAnchor(.bottom, for: .alignment)
-        } else {
-            content
-        }
     }
 }
 
