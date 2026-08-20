@@ -116,3 +116,25 @@ test('side chat picker exposes hierarchy, panel states, and flat inactive rows',
   assert.match(headerSource, />\s*Current\s*</);
   assert.match(sessionSource, /selectableSessionIds\.has\(conversationId\)/);
 });
+
+test('related agent sessions open in the companion panel instead of replacing main chat', () => {
+  const pageSource = readFileSync(
+    new URL('../src/pages/ChatsPage.tsx', import.meta.url),
+    'utf8',
+  );
+  const mainSource = readFileSync(
+    new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
+  const companionSource = readFileSync(
+    new URL('../src/pages/chatsPage.companionWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(pageSource, /companionSession\.actions\.switchConversation\(sessionId\)/);
+  assert.match(pageSource, /companionLayout\.placeCompanion\('right'\)/);
+  assert.match(pageSource, /companionLayout\.setFolded\(false\)/);
+  assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
+  assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
+  assert.doesNotMatch(mainSource, /onOpenForkSession: runtime\.onSelectSession/);
+});

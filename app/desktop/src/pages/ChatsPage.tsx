@@ -297,6 +297,11 @@ export function ChatsPage({
     companionLayout.setFolded(false);
     return opened;
   };
+  const openRelatedAgentSession = (sessionId: string) => {
+    companionSession.actions.switchConversation(sessionId);
+    companionLayout.placeCompanion('right');
+    companionLayout.setFolded(false);
+  };
   const companionPane = companionConversation ? (
     <ChatCompanionWorkspace
       session={companionSession}
@@ -380,6 +385,7 @@ export function ChatsPage({
             canOpen: canOpenSideAgentPanel,
             suggestedName: suggestedSideAgentConversation?.name,
             open: openSideAgentPanel,
+            openSession: openRelatedAgentSession,
           }}
         />
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}

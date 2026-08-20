@@ -85,6 +85,7 @@ type ChatMainWorkspaceProps = {
     canOpen: boolean;
     suggestedName?: string;
     open: (initialPrompt?: string) => Promise<boolean>;
+    openSession: (sessionId: string) => void;
   };
 };
 
@@ -280,7 +281,7 @@ export function ChatMainWorkspace({
                   runtime.onRequestCollaborationContact,
                 onOpenSenderProfile: models.senderProfiles.openActive,
                 onForkMessage: models.fork.forkMessage,
-                onOpenForkSession: runtime.onSelectSession,
+                onOpenForkSession: companion.openSession,
                 onReplyMessage: composer.onReplyMessage,
                 onForwardMessage: composer.onForwardMessage,
                 onRetryMessage: runtime.onRetryChatMessage,

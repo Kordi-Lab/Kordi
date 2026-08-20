@@ -193,7 +193,7 @@ export function ChatCompanionWorkspace({
                 void runtime.onForkChatMessage?.(conversation.id, entryId);
               }
             : undefined,
-          onOpenForkSession: runtime.onSelectSession,
+          onOpenForkSession: session.actions.switchConversation,
           onForwardMessage: composer.onForwardMessage,
           onSelectMessage: composer.onSelectMessage,
         },
