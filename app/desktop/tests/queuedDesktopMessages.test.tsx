@@ -61,10 +61,10 @@ test('queued desktop message storage ignores missing or malformed persisted data
 test('queued desktop message storage treats unavailable browser storage as best-effort', () => {
   const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
   const fakeWindow = {};
-  Object.defineProperty(fakeWindow, 'localStorage', {
+  Object.defineProperty(fakeWindow, 'sessionStorage', {
     configurable: true,
     get() {
-      throw new Error('localStorage unavailable');
+      throw new Error('sessionStorage unavailable');
     },
   });
   Object.defineProperty(globalThis, 'window', {
@@ -75,6 +75,36 @@ test('queued desktop message storage treats unavailable browser storage as best-
   try {
     assert.deepEqual(loadQueuedDesktopMessagesBySession(), {});
     assert.doesNotThrow(() => saveQueuedDesktopMessagesBySession({ 'session-a': [] }));
+  } finally {
+    if (originalWindowDescriptor) {
+      Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'window');
+    }
+  }
+});
+
+test('queued desktop messages do not survive a new browser session', () => {
+  const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  localStorage.setItem(QUEUED_DESKTOP_MESSAGES_STORAGE_KEY, JSON.stringify({
+    'session-a': [{
+      id: 'stale-queued-message',
+      sessionId: 'session-a',
+      scope: 'chat',
+      text: 'do not send after restart',
+      time: '12:34',
+      attachments: [],
+    }],
+  }));
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { localStorage, sessionStorage },
+  });
+
+  try {
+    assert.deepEqual(loadQueuedDesktopMessagesBySession(), {});
   } finally {
     if (originalWindowDescriptor) {
       Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
