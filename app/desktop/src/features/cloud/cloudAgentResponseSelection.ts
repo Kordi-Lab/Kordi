@@ -4,19 +4,31 @@ import {
   parseCloudAgentResponse,
 } from './cloudAgentMessages';
 import { cloudSelfAgentProcessingTextWouldRegress } from './cloudSelfAgentResponseLifecycle';
+import { CLOUD_SELF_AGENT_HEARTBEAT_MS } from './cloudSelfAgentForwardExecution';
 import { compareCloudMessages } from './cloudMessageMerge';
 import { CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND } from './cloudDirectMessages';
+
+const CLOUD_AGENT_PROCESSING_STALE_AFTER_MS =
+  CLOUD_SELF_AGENT_HEARTBEAT_MS * 3;
 
 export function selectVisibleCloudAgentResponses(
   messages: readonly CloudMessage[],
   requestTargetAccountIds: ReadonlyMap<string, string>,
   isGroupControlMessage: (message: CloudMessage) => boolean,
   hasCompletedLocalResponse: (requestId: string) => boolean,
+  nowMs = Date.now(),
 ) {
   const preferredResponseByKey = new Map<string, CloudMessage>();
   for (const message of messages) {
     const response = parseCloudAgentResponse(message.body);
     if (!response) continue;
+    if (response.deliveryState === 'processing') {
+      const createdAtMs = Date.parse(message.createdAt);
+      if (
+        !Number.isFinite(createdAtMs)
+        || nowMs - createdAtMs > CLOUD_AGENT_PROCESSING_STALE_AFTER_MS
+      ) continue;
+    }
     const expectedResponder = requestTargetAccountIds.get(response.requestId);
     if (expectedResponder && message.fromAccountId !== expectedResponder) {
       continue;

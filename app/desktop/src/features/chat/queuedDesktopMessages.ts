@@ -25,7 +25,7 @@ export function removeQueuedDesktopMessageById(
 
 function browserQueuedDesktopMessagesStorage(): QueuedDesktopMessagesStorage | null {
   if (typeof window === 'undefined') return null;
-  return window.sessionStorage;
+  return window.localStorage;
 }
 
 export function loadQueuedDesktopMessagesBySession(

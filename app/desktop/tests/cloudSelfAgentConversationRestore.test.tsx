@@ -273,6 +273,52 @@ test('cloud self-agent plain messages show local processing and match session-sc
   assert.equal(answeredState.conversations[0]?.messages.at(-1)?.text, 'Yes, I can see it.');
 });
 
+test('cloud self-agent bridge state ignores stale cached processing during startup hydration', () => {
+  const sessionId = 'session:self-agent:stale-processing';
+  const nowMs = Date.now();
+  const request = {
+    ...message,
+    messageId: 'msg_stale_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    direction: 'outgoing',
+    body: 'old request',
+    sessionId,
+    createdAt: new Date(nowMs - 20 * 60_000).toISOString(),
+  } as CloudMessage;
+  const processing = {
+    ...request,
+    messageId: 'msg_stale_processing',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'processing...',
+      deliveryState: 'processing',
+      execution: {
+        phase: 'writing',
+        summary: 'Writing the response',
+        steps: [],
+        updatedAtMs: nowMs - 2 * 60_000,
+        completed: false,
+      },
+    }),
+    createdAt: new Date(nowMs - 2 * 60_000).toISOString(),
+  } as CloudMessage;
+
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [],
+    messagesByPeer: { [account.accountId]: [request, processing] },
+  });
+
+  assert.equal(state.conversations[0]?.awaitingReply, false);
+  assert.equal(
+    state.conversations[0]?.messages.some((entry) => (
+      entry.deliveryState === 'processing' || entry.localTurn?.completed === false
+    )),
+    false,
+  );
+});
+
 test('planCloudSelfAgentSync backfills terminal local self-agent turns without runtime internals', () => {
   const state = {
     sessions: [
