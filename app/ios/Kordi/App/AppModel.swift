@@ -186,7 +186,7 @@ final class AppModel: ObservableObject {
             let restoredAccount = try await api.me(token: savedToken)
             token = savedToken
             account = restoredAccount
-            conversations = cache?.loadConversations() ?? []
+            conversations = cache?.loadConversations(accountId: restoredAccount.accountId) ?? []
             conversations.forEach(hydrateCachedMessages)
             if let snapshot = await wireCache.load(accountId: restoredAccount.accountId) {
                 cloudMessagesByPeer = snapshot.messagesByPeer
@@ -343,7 +343,7 @@ final class AppModel: ObservableObject {
         pendingMessageActionByMessageId = [:]
         pendingMentionByMessageId = [:]
         pendingAgentContextByMessageId = [:]
-        cache?.clear()
+        if let oldAccountId { cache?.clear(accountId: oldAccountId) }
         if let oldAccountId { await wireCache.clear(accountId: oldAccountId) }
         try? keychain.deleteToken()
         phase = .signedOut
@@ -844,8 +844,12 @@ final class AppModel: ObservableObject {
     }
 
     func hydrateCachedMessages(for conversation: ConversationSummary) {
-        guard messagesByConversation[conversation.id] == nil else { return }
-        let cached = cache?.loadMessages(conversationId: conversation.id) ?? []
+        guard messagesByConversation[conversation.id] == nil,
+              let accountId = account?.accountId else { return }
+        let cached = cache?.loadMessages(
+            accountId: accountId,
+            conversationId: conversation.id
+        ) ?? []
         if !cached.isEmpty {
             messagesByConversation[conversation.id] = cached
         }
@@ -860,13 +864,10 @@ final class AppModel: ObservableObject {
         )
         guard !projected.isEmpty else { return }
         let existing = messagesByConversation[conversation.id, default: []]
-        let merged = Self.mergeProjectedMessages(
-            projected,
-            preservingLocalMessagesFrom: existing
-        )
+        let merged = Self.mergePartialProjection(projected, preserving: existing)
         guard merged != existing else { return }
         messagesByConversation[conversation.id] = merged
-        cache?.saveMessages(merged, conversationId: conversation.id)
+        cacheCurrentMessages(conversation.id)
     }
 
     /// An explicitly read or actively presented session updates the local
@@ -875,7 +876,7 @@ final class AppModel: ObservableObject {
         guard let index = conversations.firstIndex(where: { $0.id == conversation.id }),
               conversations[index].unreadCount != 0 else { return }
         conversations[index].unreadCount = 0
-        cache?.saveConversations(conversations)
+        cacheCurrentConversations()
     }
 
     func updateConversationReadPresentation(
@@ -1018,7 +1019,7 @@ final class AppModel: ObservableObject {
             )
             if messagesByConversation[conversation.id] != remote {
                 messagesByConversation[conversation.id] = remote
-                cache?.saveMessages(remote, conversationId: conversation.id)
+                cacheCurrentMessages(conversation.id)
             }
             reconcilePendingAgentRequest(
                 conversationId: conversation.id,
@@ -1054,7 +1055,7 @@ final class AppModel: ObservableObject {
             changedUnreadState = true
         }
         if changedUnreadState {
-            cache?.saveConversations(conversations)
+            cacheCurrentConversations()
         }
 
         guard !previewMode, let token, let account else { return }
@@ -1505,6 +1506,18 @@ final class AppModel: ObservableObject {
             guard !projectedClientMessageIDs.contains(clientMessageId) else { continue }
             messagesByID[localMessage.id] = localMessage
         }
+        return messagesByID.values.sorted {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }
+    }
+
+    static func mergePartialProjection(
+        _ projected: [ChatMessage],
+        preserving existing: [ChatMessage]
+    ) -> [ChatMessage] {
+        guard !projected.isEmpty else { return existing }
+        var messagesByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        projected.forEach { messagesByID[$0.id] = $0 }
         return messagesByID.values.sorted {
             $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
         }
@@ -2366,7 +2379,7 @@ final class AppModel: ObservableObject {
 
     func canChangeRuntimeRouting(for conversation: ConversationSummary) -> Bool {
         conversation.kind != .agent
-            || conversation.agentId == nil
+            || conversation.agentId == CanonicalAvatarSystem.defaultAgentId
             || ownedAgent(for: conversation) != nil
     }
 
@@ -3481,9 +3494,9 @@ final class AppModel: ObservableObject {
             })
         }.value
         for (conversationId, projected) in projections {
-            let merged = Self.mergeProjectedMessages(
+            let merged = Self.mergePartialProjection(
                 projected,
-                preservingLocalMessagesFrom: messagesByConversation[conversationId, default: []]
+                preserving: messagesByConversation[conversationId, default: []]
             )
             if messagesByConversation[conversationId] != merged {
                 messagesByConversation[conversationId] = merged
@@ -3572,7 +3585,7 @@ final class AppModel: ObservableObject {
         titled.forEach(prepareConversationForPresentation)
         if titled != conversations {
             conversations = titled
-            cache?.saveConversations(titled)
+            cacheCurrentConversations()
         }
         await reconcileVisibleConversationReadState()
     }
@@ -4129,7 +4142,17 @@ final class AppModel: ObservableObject {
     }
 
     private func cacheCurrentMessages(_ conversationId: String) {
-        cache?.saveMessages(messagesByConversation[conversationId] ?? [], conversationId: conversationId)
+        guard let accountId = account?.accountId else { return }
+        cache?.saveMessages(
+            messagesByConversation[conversationId] ?? [],
+            conversationId: conversationId,
+            accountId: accountId
+        )
+    }
+
+    private func cacheCurrentConversations() {
+        guard let accountId = account?.accountId else { return }
+        cache?.saveConversations(conversations, accountId: accountId)
     }
 
     private func appendPreviewCallActivity(

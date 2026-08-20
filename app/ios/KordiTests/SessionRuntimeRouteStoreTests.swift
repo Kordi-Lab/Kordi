@@ -34,7 +34,9 @@ final class SessionRuntimeRouteStoreTests: XCTestCase {
             previewMode: true
         )
         let contact = try XCTUnwrap(model.conversations.first { $0.id == "person:acct_maya" })
-        let defaultAgent = try XCTUnwrap(model.conversations.first { $0.agentId == nil && $0.kind == .agent })
+        let defaultAgent = try XCTUnwrap(model.conversations.first {
+            $0.agentId == CanonicalAvatarSystem.defaultAgentId && $0.kind == .agent
+        })
 
         XCTAssertTrue(model.canChangeRuntimeRouting(for: contact))
         XCTAssertTrue(model.runtimeRoutingIsSessionScoped(for: contact))
@@ -164,7 +166,9 @@ final class SessionRuntimeRouteStoreTests: XCTestCase {
             previewMode: true
         )
         let template = try XCTUnwrap(
-            model.conversations.first { $0.agentId == nil && $0.kind == .agent }
+            model.conversations.first {
+                $0.agentId == CanonicalAvatarSystem.defaultAgentId && $0.kind == .agent
+            }
         )
         let updated = await model.updateRuntimeRouting(
             for: template,
