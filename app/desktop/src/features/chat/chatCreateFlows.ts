@@ -10,7 +10,7 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 import type { CloudAgentDefinition } from '@/features/cloud/cloudAgents';
-
+import { agentSessionKind, agentSessionParticipantSpaceKind } from './agentSessionRouting';
 export type ChatCreatePersonOption = {
   id: string;
   label: string;
@@ -175,7 +175,7 @@ export function collaborationAgentForChatStart(input: CollaborationAgentStartInp
 }
 
 export function buildChatAgentSessionKind(agent: Agent): ChatAgentSessionKind {
-  return agent.isOwned ? 'self-agent' : 'direct-agent';
+  return agentSessionKind(agent);
 }
 
 export function chatSessionIdForPersonStart(randomId: string) {
@@ -200,7 +200,7 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
   return {
     createdFrom: 'chat-create-flow' as const,
     agentId: agent.id,
-    participantSpaceKind: 'self' as const,
+    participantSpaceKind: agentSessionParticipantSpaceKind(agent),
     ...(sourceHostId ? { sourceHostId } : {}),
     ...(peerNodeId ? { peerNodeId } : {}),
     ...(peerRuntime ? { peerRuntime } : {}),

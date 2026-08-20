@@ -45,6 +45,10 @@ import {
 } from './cloudSelfAgentForwardExecution';
 import { useCloudSelfAgentExecutionStreaming } from './useCloudSelfAgentExecutionStreaming';
 import { loadSession } from './session';
+import {
+  cloudAgentIdentitySyncedSessionIds,
+  publishCloudAgentIdentityMarkers,
+} from './cloudSelfAgentSessionIdentity';
 
 async function loadCanonicalRecoveryMessages(
   sessionIds: ReadonlySet<string>,
@@ -239,13 +243,18 @@ export function useCloudSelfAgentForwardSync({
           loadChatSyncLocalState(account.accountId),
         ]);
         if (!session?.token || cancelledRef.current) return;
+        const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
 
         const pendingRecoverySessionIds =
           loadCloudSelfAgentRecoverySessionIds(account.accountId);
+        const identitySyncedSessionIds = cloudAgentIdentitySyncedSessionIds(
+          latestState,
+          initialLedger,
+        );
         const reconciliation = planCloudSelfAgentSessionReconciliation(
           latestState,
           localChat?.conversations ?? [],
-          { pendingRecoverySessionIds },
+          { identitySyncedSessionIds, pendingRecoverySessionIds },
         );
         for (const plan of reconciliation) {
           if (plan.recoverHistory) {
@@ -276,6 +285,18 @@ export function useCloudSelfAgentForwardSync({
           )),
         );
         if (cancelledRef.current) return;
+
+        const identityResult = await publishCloudAgentIdentityMarkers({
+          accountId: account.accountId,
+          client,
+          ledger: initialLedger,
+          plans: reconciliation,
+          token: session.token,
+        });
+        if (identityResult.changed) {
+          saveCloudSelfAgentSyncLedger(account.accountId, identityResult.ledger);
+        }
+        const identityLedger = identityResult.ledger;
 
         const recoverySessionIds = new Set(pendingRecoverySessionIds);
         const [canonicalRecoveryMessages, remoteRecoveryMessages] =
@@ -322,7 +343,7 @@ export function useCloudSelfAgentForwardSync({
             )),
           ],
         };
-        let ledger = loadCloudSelfAgentSyncLedger(account.accountId);
+        let ledger = identityLedger;
         let forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
           account.accountId,
         );

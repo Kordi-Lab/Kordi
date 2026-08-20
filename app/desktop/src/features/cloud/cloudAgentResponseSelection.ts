@@ -5,6 +5,7 @@ import {
 } from './cloudAgentMessages';
 import { cloudSelfAgentProcessingTextWouldRegress } from './cloudSelfAgentResponseLifecycle';
 import { compareCloudMessages } from './cloudMessageMerge';
+import { CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND } from './cloudDirectMessages';
 
 export function selectVisibleCloudAgentResponses(
   messages: readonly CloudMessage[],
@@ -47,6 +48,9 @@ export function selectVisibleCloudAgentResponses(
   }
 
   const selectedMessages = messages.filter((message) => {
+    if (message.messageKind === CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND) {
+      return false;
+    }
     if (isCloudAgentControlMessage(message.body) || isGroupControlMessage(message)) {
       return false;
     }

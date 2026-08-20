@@ -268,15 +268,15 @@ test('existingSessionIdForPersonStart reuses the existing human pair session', (
   assert.equal(existingSessionIdForPersonStart(alice, conversations), 'session:direct-person:newer');
 });
 
-test('agent create flow starts a new selected-agent session under Saved Messages', () => {
+test('agent create flow gives custom owned agents their own direct-agent sessions', () => {
   const selectedAgent = agent({ id: 'agent:reviewer', name: 'Reviewer', isOwned: true });
 
-  assert.equal(buildChatAgentSessionKind(selectedAgent), 'self-agent');
-  assert.equal(chatSessionIdForAgentStart(selectedAgent, 'next-id'), 'session:self-agent:next-id');
+  assert.equal(buildChatAgentSessionKind(selectedAgent), 'direct-agent');
+  assert.equal(chatSessionIdForAgentStart(selectedAgent, 'next-id'), 'session:direct-agent:next-id');
   assert.deepEqual(buildChatAgentSessionMetadata(selectedAgent), {
     createdFrom: 'chat-create-flow',
     agentId: 'agent:reviewer',
-    participantSpaceKind: 'self',
+    participantSpaceKind: 'direct-agent',
   });
 });
 
@@ -346,7 +346,7 @@ test('external bridge agent create flow stores bridge target metadata for Saved 
   assert.deepEqual(buildChatAgentSessionMetadata(remoteAgent), {
     createdFrom: 'chat-create-flow',
     agentId: 'agent:bob',
-    participantSpaceKind: 'self',
+    participantSpaceKind: 'direct-agent',
     sourceHostId: 'host-1',
     peerNodeId: 'node-shared',
     peerRuntime: 'kordi-desktop',

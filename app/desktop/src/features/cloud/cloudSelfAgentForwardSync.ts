@@ -10,7 +10,7 @@ export {
   loadCloudSelfAgentRecoverySessionIds,
   saveCloudSelfAgentRecoverySessionIds,
 } from './cloudSelfAgentIdentity';
-import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
+import { cloudAgentTargetsBySessionId, cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX =
   'kordi.cloud.selfAgentSync.chat:';
@@ -39,6 +39,7 @@ export type CloudSelfAgentSyncOperation = {
   parentLocalMessageId: string | null;
   createdAtMs: number;
   deliveryState: 'sent' | 'complete' | 'failed' | 'cancelled';
+  targetAgentId?: string; targetAgentName?: string;
 };
 
 export type CloudSelfAgentSessionReconciliation = {
@@ -46,6 +47,7 @@ export type CloudSelfAgentSessionReconciliation = {
   title: string | null;
   createConversation: boolean;
   recoverHistory: boolean;
+  targetAgentId?: string; targetAgentName?: string;
 };
 
 function cleanText(value?: string | null) {
@@ -247,19 +249,6 @@ function explicitSelfAgentParentMessageId(
     || null;
 }
 
-function localSelfAgentSessionIds(
-  state: CanonicalSessionState,
-): Set<string> {
-  return new Set(
-    state.sessions
-      .filter((session) => (
-        session.kind === 'self-agent'
-        && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)
-      ))
-      .map((session) => session.id),
-  );
-}
-
 function shouldSkipSelfAgentForwardSyncMessage(
   message: CanonicalSessionMessage,
   recoverMissingChatSession = false,
@@ -282,6 +271,7 @@ export function planCloudSelfAgentSessionReconciliation(
   state: CanonicalSessionState,
   conversations: readonly ChatSyncConversation[],
   options: {
+    identitySyncedSessionIds?: ReadonlySet<string>;
     pendingRecoverySessionIds?: ReadonlySet<string>;
     nowMs?: number;
   } = {},
@@ -312,14 +302,18 @@ export function planCloudSelfAgentSessionReconciliation(
     );
   }
   const nowMs = options.nowMs ?? Date.now();
+  const syncedSessionIds = cloudSyncedLocalAgentSessionIds(state);
+  const targetsBySessionId = cloudAgentTargetsBySessionId(state, syncedSessionIds);
 
   return state.sessions
     .filter((session) => (
-      session.kind === 'self-agent'
+      syncedSessionIds.has(session.id)
       && session.status === 'active'
-      && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)
     ))
     .map((session) => {
+      const target = options.identitySyncedSessionIds?.has(session.id)
+        ? undefined
+        : targetsBySessionId.get(session.id);
       const remote = remoteBySessionId.get(session.id) ?? null;
       const title = cleanText(session.title);
       const desiredTitle = title && !isGenericSessionTitle(title)
@@ -351,11 +345,13 @@ export function planCloudSelfAgentSessionReconciliation(
         title: desiredTitle,
         createConversation,
         recoverHistory,
+        ...target,
       };
     })
     .filter((plan) => (
       plan.createConversation
       || plan.recoverHistory
+      || Boolean(plan.targetAgentId)
     ))
     .sort((left, right) => left.sessionId.localeCompare(right.sessionId));
 }
@@ -365,7 +361,7 @@ export function seedCloudSelfAgentForwardSyncLedger(
   ledger: CloudSelfAgentSyncLedger,
   syncedAtMs: number = Date.now(),
 ): { ledger: CloudSelfAgentSyncLedger; changed: boolean } {
-  const selfAgentSessionIds = localSelfAgentSessionIds(state);
+  const selfAgentSessionIds = cloudSyncedLocalAgentSessionIds(state);
   if (selfAgentSessionIds.size === 0) {
     return { ledger, changed: false };
   }
@@ -400,8 +396,9 @@ export function planCloudSelfAgentSync(
   } = {},
 ): CloudSelfAgentSyncOperation[] {
   if (options.allowLocalBackfill === false) return [];
-  const selfAgentSessionIds = localSelfAgentSessionIds(state);
+  const selfAgentSessionIds = cloudSyncedLocalAgentSessionIds(state);
   if (selfAgentSessionIds.size === 0) return [];
+  const targetBySessionId = cloudAgentTargetsBySessionId(state, selfAgentSessionIds);
 
   const messagesBySession =
     new Map<string, CanonicalSessionMessage[]>();
@@ -430,6 +427,7 @@ export function planCloudSelfAgentSync(
 
   const operations: CloudSelfAgentSyncOperation[] = [];
   for (const [sessionId, messages] of messagesBySession.entries()) {
+    const target = targetBySessionId.get(sessionId);
     const sorted = [...messages].sort((left, right) => (
       left.sequenceNum - right.sequenceNum
       || left.createdAtMs - right.createdAtMs
@@ -451,6 +449,7 @@ export function planCloudSelfAgentSync(
             parentLocalMessageId: null,
             createdAtMs: message.createdAtMs,
             deliveryState: 'sent',
+            ...target,
           };
           if (!options.remoteClientMessageIds?.has(
             cloudSelfAgentOperationClientMessageId(operation),
@@ -480,6 +479,7 @@ export function planCloudSelfAgentSync(
         parentLocalMessageId,
         createdAtMs: message.createdAtMs,
         deliveryState,
+        ...target,
       };
       if (!options.remoteClientMessageIds?.has(
         cloudSelfAgentOperationClientMessageId(operation),

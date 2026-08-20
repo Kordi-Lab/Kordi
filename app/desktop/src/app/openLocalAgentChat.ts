@@ -1,6 +1,8 @@
 import { findOwnedAgentConversation } from '@/features/canonical/sessionResolver';
-import type { Agent, Conversation } from '@/kordi-app/types';
+import type { Conversation } from '@/kordi-app/types';
 import { createDesktopChatSession, updateDesktopChatSessionConfig } from '@/lib/desktop';
+
+export { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 
 type LocalAgentChatNavigationArgs = {
   setActiveNav: (nav: 'chats') => void;
@@ -8,10 +10,6 @@ type LocalAgentChatNavigationArgs = {
   handleSelectChatSession: (sessionId: string) => Promise<void>;
   handleCreateChatSession: () => Promise<void>;
 };
-
-export function usesDefaultLocalAgentSession(agent: Pick<Agent, 'id' | 'isOwned' | 'cloudAgentId' | 'isCollaborationDefault'>) {
-  return Boolean(agent.isOwned && !agent.cloudAgentId && (agent.id === 'desktop:local-agent' || agent.isCollaborationDefault));
-}
 
 export async function openLocalAgentChatFromArgs(
   args: LocalAgentChatNavigationArgs,

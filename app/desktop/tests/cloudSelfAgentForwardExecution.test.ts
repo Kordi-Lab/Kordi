@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import { parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import {
   cloudSelfAgentProcessingLedgerKey,
   publishCloudSelfAgentExecutionSnapshot,
@@ -99,6 +100,60 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
     completedLedger[cloudSelfAgentProcessingLedgerKey('local-request')],
     undefined,
   );
+});
+
+test('custom agent publication carries its identity to other devices', async () => {
+  let publishedBody = '';
+  const client = {
+    async sendMessage(
+      _token: string,
+      accountId: string,
+      body: string,
+      options: { sessionId?: string | null; clientCreatedAt?: string | null },
+    ): Promise<CloudMessage> {
+      publishedBody = body;
+      return {
+        messageId: 'cloud-request',
+        fromAccountId: accountId,
+        toAccountId: accountId,
+        body,
+        sessionId: options.sessionId ?? null,
+        createdAt: options.clientCreatedAt ?? '',
+        deliveredAt: null,
+        readAt: null,
+      };
+    },
+  };
+
+  await publishCloudSelfAgentOperations({
+    accountId: 'acct_me',
+    client,
+    ledger: {},
+    mergeMessage: () => undefined,
+    operations: [{
+      localMessageId: 'local-request',
+      sessionId: 'session:direct-agent:stock',
+      role: 'user',
+      text: 'who are you',
+      parentLocalMessageId: null,
+      createdAtMs: 1_000,
+      deliveryState: 'sent',
+      targetAgentId: 'cloud_agent_stock',
+      targetAgentName: 'US Stock Paper Trader',
+    }],
+    saveLedger: () => undefined,
+    shouldPublishProcessing: () => false,
+    token: 'token',
+  });
+
+  assert.deepEqual(parseCloudDirectMessageEnvelope(publishedBody), {
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'who are you',
+    targetCloudAgentId: 'cloud_agent_stock',
+    targetCloudAgentName: 'US Stock Paper Trader',
+    targetCloudAgentOwnerAccountId: 'acct_me',
+  });
 });
 
 test('self-agent execution heartbeats are idempotent within one time bucket', async () => {

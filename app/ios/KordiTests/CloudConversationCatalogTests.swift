@@ -134,6 +134,89 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(session.messageCount, 12)
     }
 
+    func testLegacyCustomAgentSessionRecoversIdentityFromCanonicalTitle() throws {
+        let sessionId = "session:self-agent:legacy-stock"
+        let canonical = canonicalConversation(
+            id: "conversation-legacy-stock",
+            kind: "ai",
+            sessionId: sessionId,
+            latestSequence: 1,
+            lastReadSequence: 1,
+            sharedTitle: "Research Agent",
+            personalTitle: "hi"
+        )
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [ownedAgent],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [
+                wire(
+                    id: "legacy-request",
+                    body: "hi",
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:00:00Z",
+                    messageKind: "canonical-history-user"
+                )
+            ]],
+            canonicalConversations: [canonical]
+        )
+
+        let session = try XCTUnwrap(catalog.first { $0.sessionId == sessionId })
+        XCTAssertEqual(session.displayName, "hi")
+        XCTAssertEqual(session.agentId, ownedAgent.agentId)
+        XCTAssertEqual(session.agentDisplayName, ownedAgent.name)
+        XCTAssertEqual(session.avatarSource, ownedAgent.avatar.imageSource)
+    }
+
+    func testCustomAgentIdentityMarkerDoesNotReplaceTheSessionPreview() throws {
+        let sessionId = "session:self-agent:legacy-stock"
+        let identity = try CloudMessageCodec.encodeDirect(
+            text: "",
+            agentId: ownedAgent.agentId,
+            agentName: ownedAgent.name,
+            ownerAccountId: account.accountId,
+            ownerName: account.preferredName
+        )
+        let canonical = canonicalConversation(
+            id: "conversation-legacy-stock",
+            kind: "ai",
+            sessionId: sessionId,
+            latestSequence: 2,
+            lastReadSequence: 2,
+            sharedTitle: "hi",
+            personalTitle: "hi"
+        )
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [ownedAgent],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [
+                wire(
+                    id: "legacy-request",
+                    body: "hi",
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:00:00Z",
+                    messageKind: "canonical-history-user"
+                ),
+                wire(
+                    id: "agent-identity",
+                    body: identity,
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:00:01Z",
+                    messageKind: CloudMessageCodec.agentSessionIdentityMessageKind
+                )
+            ]],
+            canonicalConversations: [canonical]
+        )
+
+        let session = try XCTUnwrap(catalog.first { $0.sessionId == sessionId })
+        XCTAssertEqual(session.agentDisplayName, ownedAgent.name)
+        XCTAssertEqual(session.lastMessage, "hi")
+        XCTAssertEqual(session.agentActivity, .ready)
+    }
+
     func testOwnAgentResponseRemainsUnreadUntilCanonicalCursorAdvances() throws {
         let sessionId = "session:self-agent:notification"
         let conversationId = "conversation-agent-notification"
@@ -1296,12 +1379,14 @@ final class CloudConversationCatalogTests: XCTestCase {
         kind: String,
         sessionId: String,
         latestSequence: Int64,
-        lastReadSequence: Int64
+        lastReadSequence: Int64,
+        sharedTitle: String? = nil,
+        personalTitle: String? = nil
     ) -> CloudChatConversation {
         CloudChatConversation(
             id: id,
             kind: kind,
-            sharedTitle: nil,
+            sharedTitle: sharedTitle,
             version: 1,
             createdByAccountId: "acct_me",
             legacySessionId: sessionId,
@@ -1325,7 +1410,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             preferences: CloudChatPreferences(
                 conversationId: id,
                 accountId: "acct_me",
-                personalTitle: nil,
+                personalTitle: personalTitle,
                 version: 1
             )
         )

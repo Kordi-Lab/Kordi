@@ -13,6 +13,7 @@ import {
   type CloudSelfAgentSyncLedger,
   type CloudSelfAgentSyncOperation,
 } from './cloudSelfAgentForwardSync';
+import { encodeCloudDirectMessageEnvelope } from './cloudDirectMessages';
 
 const PROCESSING_LEDGER_PREFIX = 'processing:';
 export const CLOUD_SELF_AGENT_HEARTBEAT_MS = 30_000;
@@ -208,10 +209,20 @@ export async function publishCloudSelfAgentOperations({
     if (ledger[operation.localMessageId]) continue;
     if (operation.role === 'user') {
       const messageKind = messageKindForOperation(operation);
+      const body = operation.targetAgentId && operation.targetAgentName
+        ? encodeCloudDirectMessageEnvelope({
+            schemaVersion: 1,
+            kind: 'message',
+            text: operation.text,
+            targetCloudAgentId: operation.targetAgentId,
+            targetCloudAgentName: operation.targetAgentName,
+            targetCloudAgentOwnerAccountId: accountId,
+          })
+        : operation.text;
       const request = await client.sendMessage(
         token,
         accountId,
-        operation.text,
+        body,
         {
           sessionId: operation.sessionId,
           clientCreatedAt: new Date(operation.createdAtMs).toISOString(),

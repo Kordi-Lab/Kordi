@@ -348,15 +348,21 @@ enum CloudConversationCatalog {
             let sorted = CloudAgentLifecycleProjector.visibleRows(rows)
             let conversationalRows = sorted.filter {
                 !CloudMessageCodec.isAgentModelChange($0)
+                    && $0.messageKind != CloudMessageCodec.agentSessionIdentityMessageKind
             }
             guard !conversationalRows.isEmpty else { return nil }
             let requests = sorted.compactMap { message -> (CloudMessageDTO, CloudMessageCodec.DirectEnvelope)? in
                 guard let envelope = CloudMessageCodec.directEnvelope(message.body) else { return nil }
                 return (message, envelope)
             }
+            let canonical = canonicalConversationsBySessionId[sessionId]
+            let titleDefinition = canonical.flatMap {
+                agentDefinition(matchingTitlesIn: $0, agentsById: agentsById)
+            }
             let targetId = requests.compactMap { $0.1.targetCloudAgentId?.nonEmpty }.last
                 ?? knownAgentId(from: sessionId, agentsById: agentsById)
-            let definition = targetId.flatMap { agentsById[$0] }
+                ?? titleDefinition?.agentId
+            let definition = targetId.flatMap { agentsById[$0] } ?? titleDefinition
             let peerAccountId = requests.compactMap { $0.1.targetCloudAgentOwnerAccountId?.nonEmpty }.last
                 ?? definition?.ownerAccountId
                 ?? otherAccountId(in: sorted, accountId: account.accountId)
@@ -453,13 +459,19 @@ enum CloudConversationCatalog {
             )
             let conversationalRows = rows.filter {
                 !CloudMessageCodec.isAgentModelChange($0)
+                    && $0.messageKind != CloudMessageCodec.agentSessionIdentityMessageKind
             }
             let requests = rows.compactMap { message -> CloudMessageCodec.DirectEnvelope? in
                 CloudMessageCodec.directEnvelope(message.body)
             }
+            let titleDefinition = agentDefinition(
+                matchingTitlesIn: conversation,
+                agentsById: agentsById
+            )
             let targetId = requests.compactMap { $0.targetCloudAgentId?.nonEmpty }.last
                 ?? knownAgentId(from: sessionId, agentsById: agentsById)
-            let definition = targetId.flatMap { agentsById[$0] }
+                ?? titleDefinition?.agentId
+            let definition = targetId.flatMap { agentsById[$0] } ?? titleDefinition
             let otherMember = conversation.members.first {
                 $0.accountId != account.accountId && $0.membershipState == "active"
             }
@@ -636,6 +648,23 @@ enum CloudConversationCatalog {
 
     private static func knownAgentId(from sessionId: String, agentsById: [String: CloudAgent]) -> String? {
         agentsById.keys.first { sessionId.hasSuffix(":\($0)") }
+    }
+
+    private static func agentDefinition(
+        matchingTitlesIn conversation: CloudChatConversation,
+        agentsById: [String: CloudAgent]
+    ) -> CloudAgent? {
+        let titles = [
+            conversation.preferences.personalTitle?.nonEmpty,
+            conversation.sharedTitle?.nonEmpty,
+        ].compactMap { $0 }
+        guard !titles.isEmpty else { return nil }
+        let matches = agentsById.values.filter { agent in
+            titles.contains {
+                $0.localizedCaseInsensitiveCompare(agent.name) == .orderedSame
+            }
+        }
+        return matches.count == 1 ? matches[0] : nil
     }
 
     private static func sessionTitle(_ text: String?) -> String? {
