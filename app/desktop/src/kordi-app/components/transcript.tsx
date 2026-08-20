@@ -1096,9 +1096,7 @@ function MessageBubbleView({
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
   const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
-  const showsExternalRetry = isOwnHumanMessage
-    && deliveryVisual?.tone === 'red'
-    && Boolean(onRetryMessage);
+  const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
   const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';

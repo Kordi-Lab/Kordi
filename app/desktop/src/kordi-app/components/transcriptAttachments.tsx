@@ -20,7 +20,6 @@ import {
 } from '@/features/cloud/cloudAttachmentUpload';
 import {
   loadVisibleCloudAttachmentPreview,
-  recoverCloudAttachmentPreview,
   type CloudAttachmentPreviewLease,
 } from '@/features/cloud/cloudAttachments';
 import { loadSession } from '@/features/cloud/session';
@@ -35,91 +34,24 @@ import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 import { TranscriptImageGroup } from './transcriptImageGroup';
 import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
+import {
+  recoverableAttachmentId,
+  recoveredAttachmentPreviewUrl,
+  recoverAttachmentPreviewOnce,
+} from './transcriptAttachmentPreviewRecovery';
 import type { AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
+export {
+  clearAttachmentPreviewRecoveryStateForTests,
+  recoverAttachmentPreviewOnce,
+} from './transcriptAttachmentPreviewRecovery';
 export { attachmentImageDeliveryVisual };
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
-const ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS = 30_000;
-const recoveredAttachmentPreviewUrls = new Map<string, string>();
-const recoveringAttachmentPreviewPromises = new Map<string, Promise<string | null>>();
-const attachmentPreviewRecoveryRetryAfter = new Map<string, number>();
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
-}
-
-function recoverableAttachmentId(attachment: MessageAttachment) {
-  return attachment.attachmentId?.trim() || null;
-}
-
-type AttachmentPreviewRecoveryDependencies = {
-  loadCloudSession?: () => Promise<{ token: string } | null>;
-  recoverPreview?: typeof recoverCloudAttachmentPreview;
-  now?: () => number;
-  retryDelayMs?: number;
-};
-
-export function clearAttachmentPreviewRecoveryStateForTests() {
-  recoveredAttachmentPreviewUrls.clear();
-  recoveringAttachmentPreviewPromises.clear();
-  attachmentPreviewRecoveryRetryAfter.clear();
-}
-
-export async function recoverAttachmentPreviewOnce(
-  attachment: MessageAttachment,
-  dependencies: AttachmentPreviewRecoveryDependencies = {},
-) {
-  const attachmentId = recoverableAttachmentId(attachment);
-  if (!attachmentId) return null;
-  const cached = recoveredAttachmentPreviewUrls.get(attachmentId);
-  if (cached) return cached;
-  const now = dependencies.now ?? Date.now;
-  const retryAfter = attachmentPreviewRecoveryRetryAfter.get(attachmentId) ?? 0;
-  if (retryAfter > now()) return null;
-  attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
-  const existing = recoveringAttachmentPreviewPromises.get(attachmentId);
-  if (existing) return existing;
-
-  const promise = (async () => {
-    try {
-      const session = await (dependencies.loadCloudSession ?? loadSession)();
-      if (!session?.token) return null;
-      const previewUrl = await (dependencies.recoverPreview ?? recoverCloudAttachmentPreview)({
-        token: session.token,
-        client: defaultCloudAuthClient(),
-        attachment: {
-          attachmentId,
-          name: attachment.name,
-          kind: attachment.kind,
-          mimeType: attachment.mimeType ?? null,
-          sizeBytes: attachment.sizeBytes ?? null,
-          previewUrl: attachment.previewUrl ?? null,
-        },
-      });
-      if (previewUrl) {
-        recoveredAttachmentPreviewUrls.set(attachmentId, previewUrl);
-        attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
-      } else {
-        attachmentPreviewRecoveryRetryAfter.set(
-          attachmentId,
-          now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
-        );
-      }
-      return previewUrl;
-    } catch {
-      attachmentPreviewRecoveryRetryAfter.set(
-        attachmentId,
-        now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
-      );
-      return null;
-    } finally {
-      recoveringAttachmentPreviewPromises.delete(attachmentId);
-    }
-  })();
-  recoveringAttachmentPreviewPromises.set(attachmentId, promise);
-  return promise;
 }
 
 function formatAttachmentSize(sizeBytes?: number | null) {
@@ -511,7 +443,7 @@ function AttachmentImageCard({
   ) => void;
 }) {
   const attachmentId = recoverableAttachmentId(attachment);
-  const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => attachmentId ? recoveredAttachmentPreviewUrls.get(attachmentId) ?? null : null);
+  const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => recoveredAttachmentPreviewUrl(attachmentId));
   const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<string[]>([]);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
