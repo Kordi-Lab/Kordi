@@ -17,6 +17,7 @@ type ActiveCallRow = (
     DateTime<Utc>,
     Option<DateTime<Utc>>,
     Option<DateTime<Utc>>,
+    i64,
     Option<String>,
 );
 
@@ -28,12 +29,14 @@ pub async fn active_for_account(
     let rows: Vec<ActiveCallRow> = query_as(
         "SELECT call.call_id, call.conversation_id, call.call_kind, call.call_state, \
                 call.created_by_account_id, call.room_name, call.created_at, \
-                call.answered_at, call.ended_at, conversation.legacy_session_id \
+                call.answered_at, call.ended_at, call.revision, conversation.legacy_session_id \
          FROM cloud_calls call \
          JOIN cloud_call_participants participant ON participant.call_id = call.call_id \
          JOIN cloud_chat_conversations conversation \
            ON conversation.conversation_id = call.conversation_id \
-         WHERE call.ended_at IS NULL AND participant.account_id = $1 \
+         WHERE call.ended_at IS NULL AND call.call_state <> 'ended' \
+           AND participant.account_id = $1 \
+           AND participant.participant_state IN ('invited', 'joined') \
          ORDER BY call.created_at DESC",
     )
     .bind(account_id)
@@ -41,9 +44,9 @@ pub async fn active_for_account(
     .await?;
     let mut calls = Vec::with_capacity(rows.len());
     for row in rows {
-        let session_id = row.9.clone();
+        let session_id = row.10.clone();
         let call_row: CallRow = (
-            row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8,
+            row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9,
         );
         calls.push(ActiveCallSnapshot {
             call: snapshot_from_row(&mut transaction, call_row).await?.0,

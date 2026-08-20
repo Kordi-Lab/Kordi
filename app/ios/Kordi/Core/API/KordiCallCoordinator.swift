@@ -68,6 +68,52 @@ enum KordiCallRecoveryPolicy {
     static let reconnectDelays: [Duration] = [.seconds(1), .seconds(3)]
 }
 
+enum KordiCallMediaFailureStage: Equatable {
+    case signaling
+    case iceOrTurn
+    case device
+    case microphonePublication
+    case cameraPublication
+    case subscription
+
+    var message: String {
+        switch self {
+        case .signaling:
+            "Call signaling failed. Check the server connection and try again."
+        case .iceOrTurn:
+            "Call media could not establish an ICE or TURN connection."
+        case .device:
+            "Kordi could not find the microphone or camera needed for this call."
+        case .microphonePublication:
+            "The microphone connected, but its audio track could not be published."
+        case .cameraPublication:
+            "The camera connected, but its video track could not be published."
+        case .subscription:
+            "A remote camera or microphone track could not be subscribed."
+        }
+    }
+
+    static func connectionStage(for error: Error) -> Self {
+        guard let error = error as? LiveKitError else { return .iceOrTurn }
+        switch error.type {
+        case .validation, .serviceNotFound, .insufficientPermissions, .joinFailure:
+            return .signaling
+        default:
+            return .iceOrTurn
+        }
+    }
+
+    static func publicationStage(for error: Error, fallback: Self) -> Self {
+        guard let error = error as? LiveKitError else { return fallback }
+        switch error.type {
+        case .deviceNotFound, .captureFormatNotFound, .unableToResolveFPSRange:
+            return .device
+        default:
+            return fallback
+        }
+    }
+}
+
 private let kordiCallLogger = Logger(
     subsystem: "ai.kordi.ios",
     category: "CallCoordinator"
@@ -520,6 +566,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
     private func updateActiveCall(_ call: CloudCall, conversation: ConversationSummary) {
         guard let current = activeCall else { return }
         if call.state == .ended {
+            if finishingCallID == call.id { return }
             if let activeCallUUID {
                 provider.reportCall(with: activeCallUUID, endedAt: Date(), reason: .remoteEnded)
             }
@@ -547,6 +594,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             )
         }
         phase = .connecting
+        kordiCallLogger.notice("LiveKit signaling started")
         do {
             try await room.connect(url: media.url, token: media.token)
         } catch {
@@ -554,8 +602,14 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             kordiCallLogger.error(
                 "LiveKit room connection failed, domain: \(error.domain, privacy: .public), code: \(error.code)"
             )
-            throw error
+            let stage = KordiCallMediaFailureStage.connectionStage(for: error)
+            throw CloudAPIError(
+                code: stage == .signaling ? "CALL_SIGNALING_FAILED" : "CALL_ICE_TURN_FAILED",
+                message: stage.message,
+                statusCode: 0
+            )
         }
+        kordiCallLogger.notice("LiveKit signaling and media transport connected")
         updateConnectionPhaseFromRoom()
         isCallScreenPresented = true
         scheduleLocalMediaPublication()
@@ -668,6 +722,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         defer { isPublishingMicrophone = false }
         do {
             try await room.localParticipant.setMicrophone(enabled: requestedState)
+            kordiCallLogger.notice("LiveKit microphone publication completed")
         } catch {
             guard activeCall?.id == callID else { return }
             if isMicrophoneEnabled == requestedState {
@@ -677,6 +732,10 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             kordiCallLogger.error(
                 "LiveKit microphone publication failed, domain: \(error.domain, privacy: .public), code: \(error.code)"
             )
+            phase = .failed(KordiCallMediaFailureStage.publicationStage(
+                for: error,
+                fallback: .microphonePublication
+            ).message)
         }
     }
 
@@ -691,6 +750,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         defer { isPublishingCamera = false }
         do {
             try await room.localParticipant.setCamera(enabled: requestedState)
+            kordiCallLogger.notice("LiveKit camera publication completed")
         } catch {
             guard self.activeCall?.id == callID else { return }
             if isCameraEnabled == requestedState {
@@ -700,6 +760,10 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             kordiCallLogger.error(
                 "LiveKit camera publication failed, domain: \(error.domain, privacy: .public), code: \(error.code)"
             )
+            phase = .failed(KordiCallMediaFailureStage.publicationStage(
+                for: error,
+                fallback: .cameraPublication
+            ).message)
         }
     }
 
@@ -727,7 +791,6 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
                 finishingCallID = nil
             }
         }
-        await cleanUpRoom()
         if activeCall.isPreview {
             model?.recordPreviewCallEnded(activeCall.call, in: activeCall.conversation)
         } else if let model {
@@ -740,6 +803,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
                 await model.endCall(activeCall.call)
             }
         }
+        await cleanUpRoom()
         resetPresentation()
     }
 
@@ -942,11 +1006,10 @@ extension KordiCallCoordinator: CXProviderDelegate {
                 isCallScreenPresented = true
                 return
             }
+            action.fulfill(withDateStarted: startedAt)
             do {
                 try await connectCurrentRoom()
-                action.fulfill(withDateStarted: startedAt)
             } catch {
-                action.fail()
                 phase = .failed(error.localizedDescription)
                 provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .failed)
                 kordiCallLogger.error("Outgoing call media connection failed before CallKit acknowledgement")
@@ -969,6 +1032,7 @@ extension KordiCallCoordinator: CXProviderDelegate {
             isRequestingIncomingAnswer = false
             isCallScreenPresented = true
             var hasJoined = false
+            action.fulfill()
             do {
                 guard await requestMediaPermission(for: activeCall.call.kind) else {
                     throw CloudAPIError(
@@ -988,9 +1052,7 @@ extension KordiCallCoordinator: CXProviderDelegate {
                     isPreview: false
                 )
                 try await connectCurrentRoom()
-                action.fulfill()
             } catch {
-                action.fail()
                 phase = .failed(error.localizedDescription)
                 provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .failed)
                 kordiCallLogger.error("Incoming call media connection failed before CallKit acknowledgement")
@@ -1199,6 +1261,31 @@ extension KordiCallCoordinator: RoomDelegate {
         Task { @MainActor [weak self] in self?.updateConnectionPhaseFromRoom() }
     }
 
+    nonisolated func room(
+        _ room: Room,
+        participant: RemoteParticipant,
+        didSubscribeTrack publication: RemoteTrackPublication
+    ) {
+        if let videoTrack = publication.track as? VideoTrack {
+            videoTrack.add(delegate: self)
+        }
+        kordiCallLogger.notice("LiveKit remote track subscription completed")
+    }
+
+    nonisolated func room(
+        _ room: Room,
+        participant: RemoteParticipant,
+        didFailToSubscribeTrackWithSid trackSid: Track.Sid,
+        error: LiveKitError
+    ) {
+        kordiCallLogger.error(
+            "LiveKit remote track subscription failed, code: \(error.code, privacy: .public)"
+        )
+        Task { @MainActor [weak self] in
+            self?.phase = .failed(KordiCallMediaFailureStage.subscription.message)
+        }
+    }
+
     nonisolated func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) {
         Task { @MainActor [weak self] in
             guard let self,
@@ -1220,5 +1307,12 @@ extension KordiCallCoordinator: RoomDelegate {
             )
             scheduleRoomRecovery(for: activeCall.id)
         }
+    }
+}
+
+extension KordiCallCoordinator: TrackDelegate {
+    nonisolated func track(_ track: VideoTrack, didUpdateDimensions dimensions: Dimensions?) {
+        guard dimensions != nil else { return }
+        kordiCallLogger.notice("LiveKit first remote video frame rendered")
     }
 }

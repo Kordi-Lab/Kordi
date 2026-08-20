@@ -38,6 +38,13 @@ export function preferredCallEntry(
   return entry ? { sessionId: entry[0], call: entry[1] } : null;
 }
 
+export function newestCloudCallSnapshot(current: CloudCall, incoming: CloudCall): CloudCall {
+  if (current.id !== incoming.id) return incoming;
+  if (current.state === 'ended' || current.endedAt) return current;
+  if (incoming.state === 'ended' || incoming.endedAt) return incoming;
+  return incoming.revision >= current.revision ? incoming : current;
+}
+
 export function reconcileCloudCallSnapshot(
   existing: Readonly<Record<string, CloudCall>>,
   call: CloudCall,
@@ -45,16 +52,16 @@ export function reconcileCloudCallSnapshot(
 ): Record<string, CloudCall> {
   const resolvedSessionId = sessionId?.trim() || null;
   if (call.state === 'ended' || call.endedAt) {
-    const matchingEntries = Object.entries(existing).filter(([key, value]) => (
-      key === resolvedSessionId || value.id === call.id
-    ));
+    const matchingEntries = Object.entries(existing).filter(([, value]) => value.id === call.id);
     if (matchingEntries.length === 0) return existing;
     const next = { ...existing };
     for (const [key] of matchingEntries) delete next[key];
     return next;
   }
   if (!resolvedSessionId || existing[resolvedSessionId] === call) return existing;
-  return { ...existing, [resolvedSessionId]: call };
+  const current = existing[resolvedSessionId];
+  const next = current ? newestCloudCallSnapshot(current, call) : call;
+  return next === current ? existing : { ...existing, [resolvedSessionId]: next };
 }
 
 export function activeCallsBySessionId(

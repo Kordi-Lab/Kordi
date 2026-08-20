@@ -9,7 +9,11 @@ import {
 } from 'react';
 import type { Room } from 'livekit-client';
 
-import { callMediaErrorMessage, type CloudCall } from './cloudCalls';
+import {
+  callConnectionErrorMessage,
+  callMediaErrorMessage,
+  type CloudCall,
+} from './cloudCalls';
 import type {
   CloudCallMediaDevice,
   CloudCallMediaParticipant,
@@ -150,6 +154,9 @@ export function useCloudCallMedia({
     });
     room.on(RoomEvent.ParticipantDisconnected, refresh);
     room.on(RoomEvent.TrackSubscribed, refresh);
+    room.on(RoomEvent.TrackSubscriptionFailed, () => {
+      setError('A remote camera or microphone track could not be subscribed.');
+    });
     room.on(RoomEvent.TrackUnsubscribed, refresh);
     room.on(RoomEvent.TrackMuted, refresh);
     room.on(RoomEvent.TrackUnmuted, refresh);
@@ -160,7 +167,11 @@ export function useCloudCallMedia({
       setIsAudioPlaybackBlocked(!playing || !room.canPlaybackAudio);
     });
     room.on(RoomEvent.MediaDevicesError, (mediaError) => setError(callMediaErrorMessage(mediaError)));
-    await room.connect(session.media.url, session.media.token);
+    try {
+      await room.connect(session.media.url, session.media.token);
+    } catch (caught) {
+      throw new Error(callConnectionErrorMessage(caught));
+    }
     if (operationRef.current !== operation) {
       await room.disconnect(true);
       return;
@@ -171,9 +182,17 @@ export function useCloudCallMedia({
     } catch {
       setIsAudioPlaybackBlocked(true);
     }
-    await room.localParticipant.setMicrophoneEnabled(true);
+    try {
+      await room.localParticipant.setMicrophoneEnabled(true);
+    } catch {
+      throw new Error('Microphone publication failed. Check microphone access and try again.');
+    }
     if (session.call.kind !== 'voice') {
-      await room.localParticipant.setCameraEnabled(true);
+      try {
+        await room.localParticipant.setCameraEnabled(true);
+      } catch {
+        throw new Error('Camera publication failed. Check camera access and try again.');
+      }
       setIsCameraEnabled(true);
     }
     setIsMicrophoneEnabled(true);

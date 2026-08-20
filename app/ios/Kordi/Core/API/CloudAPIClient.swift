@@ -780,6 +780,16 @@ actor CloudAPIClient {
         return response.call
     }
 
+    func activeCalls(token: String) async throws -> [CloudActiveCallSnapshot] {
+        let response: CloudCallListResponse = try await send(
+            path: "/v2/calls/active",
+            method: "GET",
+            token: token,
+            fallback: "Could not refresh active calls."
+        )
+        return response.calls
+    }
+
     func joinCall(token: String, callId: String) async throws -> CloudCallSessionResponse {
         try await send(
             path: "/v2/calls/\(escapedPath(callId))/join",
@@ -1474,6 +1484,7 @@ actor CloudAPIClient {
             let bootstrap = try await bootstrapChat(token: token, force: true)
             return CloudSyncResponse(
                 cursor: bootstrap.nextCursor,
+                lastStreamSequence: bootstrap.lastStreamSequence,
                 hasMore: false,
                 events: bootstrapEvents(bootstrap)
             )
@@ -1498,7 +1509,35 @@ actor CloudAPIClient {
         for event in response.events {
             events.append(contentsOf: try projectedEvents(from: event))
         }
-        return CloudSyncResponse(cursor: response.nextCursor, hasMore: response.hasMore, events: events)
+        return CloudSyncResponse(
+            cursor: response.nextCursor,
+            lastStreamSequence: response.lastStreamSequence,
+            hasMore: response.hasMore,
+            events: events
+        )
+    }
+
+    func chatRealtimeConnection(token: String) async throws -> CloudChatRealtimeConnection {
+        let ticket: CloudChatRealtimeTicket = try await send(
+            path: "/v2/chat/realtime/ticket",
+            method: "POST",
+            token: token,
+            fallback: "Could not open realtime call updates."
+        )
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("v2/chat/realtime"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.scheme = baseURL.scheme == "https" ? "wss" : "ws"
+        components?.queryItems = [URLQueryItem(name: "ticket", value: ticket.ticket)]
+        guard let url = components?.url else {
+            throw CloudAPIError(
+                code: "invalid_realtime_url",
+                message: "Could not open realtime call updates.",
+                statusCode: 0
+            )
+        }
+        return CloudChatRealtimeConnection(url: url, deviceId: ticket.deviceId)
     }
 
     private func send<Response: Decodable>(

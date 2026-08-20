@@ -100,7 +100,10 @@ Kordi uses the hosted API for call lifecycle, participant authorization, and
 short-lived media credentials. LiveKit carries audio and video after the API
 authorizes a participant. Direct calls use PushKit and CallKit for incoming
 ringing, while group meetings use ordinary APNs alerts plus a durable Join card
-in the conversation timeline.
+above the conversation. Call lifecycle changes use the durable realtime chat
+stream; desktop has a 15-second repair poll and iOS has a two-second repair
+poll when realtime is unavailable. Each snapshot carries a monotonic revision,
+and an ended call is terminal for every client projection.
 
 Configure the LiveKit variables together. `KORDI_LIVEKIT_URL` must use `wss`,
 except that an isolated development service may use `ws` on a loopback host.

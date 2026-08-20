@@ -318,6 +318,61 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertFalse(endedActivity.matchesActiveCall(activeCall))
     }
 
+    func testCallSnapshotOrderingRejectsDelayedStateAfterEnd() {
+        let active = CloudCall(
+            id: "call-ordering",
+            revision: 2,
+            conversationId: "conversation",
+            kind: .video,
+            state: .active,
+            createdByAccountId: "acct_maya",
+            createdAt: "2026-08-14T10:00:00Z",
+            answeredAt: "2026-08-14T10:00:01Z",
+            endedAt: nil,
+            participants: []
+        )
+        let delayed = CloudCall(
+            id: active.id,
+            revision: 1,
+            conversationId: active.conversationId,
+            kind: active.kind,
+            state: .ringing,
+            createdByAccountId: active.createdByAccountId,
+            createdAt: active.createdAt,
+            answeredAt: nil,
+            endedAt: nil,
+            participants: []
+        )
+        let ended = CloudCall(
+            id: active.id,
+            revision: 3,
+            conversationId: active.conversationId,
+            kind: active.kind,
+            state: .ended,
+            createdByAccountId: active.createdByAccountId,
+            createdAt: active.createdAt,
+            answeredAt: active.answeredAt,
+            endedAt: "2026-08-14T10:01:00Z",
+            participants: []
+        )
+
+        XCTAssertFalse(CloudCallSnapshotOrdering.shouldApply(
+            delayed,
+            after: active,
+            endedCallIDs: []
+        ))
+        XCTAssertTrue(CloudCallSnapshotOrdering.shouldApply(
+            ended,
+            after: active,
+            endedCallIDs: []
+        ))
+        XCTAssertFalse(CloudCallSnapshotOrdering.shouldApply(
+            active,
+            after: nil,
+            endedCallIDs: [active.id]
+        ))
+    }
+
     func testCachedChatMessagePreservesCallActivityKind() throws {
         let callID = "0198aabc-8b27-7a30-8cba-215495609c7a"
         let original = ChatMessage(
@@ -352,6 +407,14 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(response.call.state, .active)
         XCTAssertEqual(response.call.participants.map(\.state), ["joined", "invited"])
         XCTAssertEqual(response.media.url, "wss://media.example.test")
+    }
+
+    func testRealtimeTicketCarriesTheBoundDeviceWithoutExposingTheSessionToken() throws {
+        let payload = Data(#"{"ticket":"single-use","device_id":"device-ios","expires_at":"2026-08-20T10:00:00Z"}"#.utf8)
+        let ticket = try JSONDecoder().decode(CloudChatRealtimeTicket.self, from: payload)
+
+        XCTAssertEqual(ticket.ticket, "single-use")
+        XCTAssertEqual(ticket.deviceId, "device-ios")
     }
 
     func testCloudMessageDecodesAttachmentMetadataUsedByMacOS() throws {

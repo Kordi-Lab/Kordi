@@ -112,7 +112,6 @@ struct KordiApp: App {
                     callCoordinator.configure(model: model)
                     notificationCoordinator.accountDidChange()
                     notificationCoordinator.synchronizeBadge()
-                    callCoordinator.receive(callSnapshots: Array(model.callsByConversationID.values))
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: .kordiDidRegisterForRemoteNotifications)
@@ -123,7 +122,7 @@ struct KordiApp: App {
                 .onReceive(model.$callsByConversationID) { calls in
                     callCoordinator.receive(callSnapshots: Array(calls.values))
                 }
-                .onReceive(model.$latestCallSnapshot.compactMap { $0 }) { call in
+                .onReceive(model.$latestCallSnapshot.compactMap { $0 }.filter { $0.state == .ended }) { call in
                     callCoordinator.receive(callSnapshots: [call])
                 }
                 .onReceive(model.$account) { account in

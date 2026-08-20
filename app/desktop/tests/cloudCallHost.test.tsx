@@ -13,6 +13,7 @@ test('minimizing a call keeps the remote audio element mounted', () => {
   };
   const call = {
     id: 'call-1',
+    revision: 1,
     conversationId: 'conversation-1',
     kind: 'voice' as const,
     state: 'active' as const,

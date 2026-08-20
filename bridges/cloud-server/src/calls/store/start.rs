@@ -54,8 +54,8 @@ pub async fn start(
     }
     let existing: Option<CallRow> = query_as(
         "SELECT call_id, conversation_id, call_kind, call_state, created_by_account_id, \
-                room_name, created_at, answered_at, ended_at \
-         FROM cloud_calls WHERE conversation_id = $1 AND ended_at IS NULL",
+                room_name, created_at, answered_at, ended_at, revision \
+         FROM cloud_calls WHERE conversation_id = $1 AND ended_at IS NULL FOR UPDATE",
     )
     .bind(conversation_id)
     .fetch_optional(&mut *transaction)
@@ -78,6 +78,10 @@ pub async fn start(
             .bind(account_id)
             .execute(&mut *transaction)
             .await?;
+            query("UPDATE cloud_calls SET revision = revision + 1 WHERE call_id = $1")
+                .bind(call.id)
+                .execute(&mut *transaction)
+                .await?;
             call = load_call_in_transaction(&mut transaction, call.id).await?.0;
             publish_snapshot(&mut transaction, "call.updated", &call).await?;
         }

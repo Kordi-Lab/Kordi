@@ -35,6 +35,11 @@ export function ConversationCallBanner({ conversation }: { conversation: Convers
   const duration = useCallDuration(current ? calls?.connectedAtMs ?? null : null);
   if (!calls || !call || call.state === 'ended') return null;
 
+  const hostOwnsCall = (current?.call.id === call.id && calls.isPresented)
+    || calls.incomingCall?.call.id === call.id
+    || calls.handoffCall?.call.id === call.id;
+  if (hostOwnsCall) return null;
+
   const isCurrent = current?.call.id === call.id;
   const target = calls.targetForConversation(conversation);
   const joinedCount = call.participants.filter((participant) => participant.state === 'joined').length;

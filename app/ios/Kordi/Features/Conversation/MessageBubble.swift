@@ -18,9 +18,7 @@ struct MessageBubble: View, Equatable {
     let authorAvatarSource: String?
     let authorAvatarSeed: String?
     let readByNames: [String]
-    let isCallActive: Bool
     let onOpenAuthorProfile: () -> Void
-    let onJoinCall: () -> Void
     let onRetry: () async -> Void
     let onReply: () -> Void
     let onPin: () -> Void
@@ -49,7 +47,6 @@ struct MessageBubble: View, Equatable {
             && lhs.authorAvatarSource == rhs.authorAvatarSource
             && lhs.authorAvatarSeed == rhs.authorAvatarSeed
             && lhs.readByNames == rhs.readByNames
-            && lhs.isCallActive == rhs.isCallActive
     }
 
     var body: some View {
@@ -202,11 +199,7 @@ struct MessageBubble: View, Equatable {
     @ViewBuilder
     private var messageSurface: some View {
         if isCallActivity {
-            ConversationCallActivityCard(
-                message: message,
-                isActive: isCallActive,
-                onJoin: onJoinCall
-            )
+            ConversationCallActivityCard(message: message)
         } else if usesBorderlessImageSurface {
             MessageImageCollection(
                 attachments: message.attachments,
@@ -795,8 +788,6 @@ struct AgentExecutionActivityIndicator: View {
 
 private struct ConversationCallActivityCard: View {
     let message: ChatMessage
-    let isActive: Bool
-    let onJoin: () -> Void
 
     private var activity: ChatCallActivity {
         message.callActivity ?? ChatCallActivity(messageKind: "call")!
@@ -819,9 +810,6 @@ private struct ConversationCallActivityCard: View {
     private var title: String {
         if activity.event == .ended {
             return "\(callLabel) ended"
-        }
-        if isActive {
-            return "\(callLabel) in progress"
         }
         if activity.callId == nil {
             return "\(callLabel) ended"
@@ -857,14 +845,6 @@ private struct ConversationCallActivityCard: View {
             }
             .layoutPriority(1)
 
-            if isActive && activity.event == .started {
-                Button("Join", action: onJoin)
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.small)
-                    .frame(minHeight: 44)
-            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

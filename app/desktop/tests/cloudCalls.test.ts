@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import {
   CloudCallClient,
+  callConnectionErrorMessage,
   cloudCallTargetForConversation,
   normalizeCloudCall,
   requestCallMediaAccess,
@@ -11,6 +12,7 @@ import {
 import {
   activeCallsBySessionId,
   callMutationCompleted,
+  newestCloudCallSnapshot,
   reconcileCloudCallSnapshot,
   shouldApplyActiveCallSnapshot,
 } from '../src/features/cloud/cloudCallState';
@@ -210,6 +212,11 @@ test('call media permission probe requests the right devices and releases them',
   assert.equal(stopped, 4);
 });
 
+test('call connection failures identify signaling and ICE or TURN stages', () => {
+  assert.match(callConnectionErrorMessage({ reasonName: 'WebSocket' }), /signaling/i);
+  assert.match(callConnectionErrorMessage({ reasonName: 'Timeout' }), /ICE or TURN/i);
+});
+
 test('chat sync keeps call events and attaches the stable desktop session id', async () => {
   const chatConversation: ChatSyncConversation = {
     id: 'conversation-v2',
@@ -302,6 +309,33 @@ test('ended call snapshots cannot be revived as another-device calls', () => {
     new Set(['session:direct:me:peer']),
     new Set([active.id]),
   ), {});
+});
+
+test('call revisions reject delayed active snapshots and keep end terminal', () => {
+  const revisionTwo = normalizeCloudCall({ ...apiCall, revision: 2, state: 'active' });
+  const delayed = normalizeCloudCall({ ...apiCall, revision: 1 });
+  const ended = normalizeCloudCall({
+    ...apiCall,
+    revision: 3,
+    state: 'ended',
+    ended_at: '2026-08-15T09:01:00Z',
+  });
+  assert.ok(revisionTwo);
+  assert.ok(delayed);
+  assert.ok(ended);
+  assert.equal(newestCloudCallSnapshot(revisionTwo, delayed), revisionTwo);
+  assert.equal(newestCloudCallSnapshot(revisionTwo, ended), ended);
+  assert.equal(newestCloudCallSnapshot(ended, revisionTwo), ended);
+
+  const nextCall = { ...revisionTwo, id: 'next-call' };
+  assert.equal(
+    reconcileCloudCallSnapshot(
+      { 'session:direct:me:peer': nextCall },
+      ended,
+      'session:direct:me:peer',
+    )['session:direct:me:peer'],
+    nextCall,
+  );
 });
 
 test('local call UI closes only after the requested mutation is confirmed', () => {
