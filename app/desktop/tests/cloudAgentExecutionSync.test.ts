@@ -88,9 +88,10 @@ test('synced execution timeline renders only for the owning self-agent account',
 });
 
 test('desktop owner view replaces earlier processing rows with the latest streamed execution snapshot', () => {
+  const nowMs = Date.now();
   const request: CloudMessage = {
     messageId: 'msg_request', fromAccountId: account.accountId, toAccountId: account.accountId,
-    body: 'Check the latest rollout status', createdAt: '2026-05-11T10:00:00Z',
+    body: 'Check the latest rollout status', createdAt: new Date(nowMs - 4_000).toISOString(),
     deliveredAt: null, readAt: null, direction: 'outgoing', sessionId: 'session:self-stream',
   };
   const response = (
@@ -111,17 +112,17 @@ test('desktop owner view replaces earlier processing rows with the latest stream
   const state = buildCloudDesktopCollaborationState({
     account, contacts: [], messagesByPeer: { [account.accountId]: [
       request,
-      response('msg_execution_1', '2026-05-11T10:00:01Z', 'Analyzing the request', 'analyzing'),
+      response('msg_execution_1', new Date(nowMs - 3_000).toISOString(), 'Analyzing the request', 'analyzing'),
       response(
         'msg_execution_2',
-        '2026-05-11T10:00:02Z',
+        new Date(nowMs - 2_000).toISOString(),
         'Using Web Search',
         'using-tool',
         'The rollout is nearly ready.',
       ),
       response(
         'msg_execution_3',
-        '2026-05-11T10:00:03Z',
+        new Date(nowMs - 1_000).toISOString(),
         'Using Web Search',
         'using-tool',
         'The rollout',

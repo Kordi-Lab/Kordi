@@ -249,8 +249,14 @@ export function useCloudSelfAgentExecution({
           token: session.token,
         });
         mergeMessage(claim.message);
-        await syncMessages();
-        if (!claim.acquired || isInactive()) return;
+        if (!claim.acquired || isInactive()) {
+          await syncMessages();
+          return;
+        }
+        void syncMessages().catch((error) => reportWarning(
+          '[cloud-self-agent-execution] claim sync failed',
+          error,
+        ));
 
         const runtimeSessionId = cloudAgentRuntimeSessionId(
           account.accountId,
