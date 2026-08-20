@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CloudCallHost } from '../src/features/cloud/CloudCallHost';
+import { recoveryContent } from '../src/features/cloud/cloudCallSurfaceSupport';
 import type { CloudCallsController } from '../src/features/cloud/cloudCallController';
 
 test('minimizing a call keeps the remote audio element mounted', () => {
@@ -74,4 +75,21 @@ test('an idle call lifecycle never shows a stale connection error', () => {
     controller: { ...controller, phase: 'failed' },
   }));
   assert.match(failedMarkup, /Connection lost/);
+});
+
+test('device and publication failures are not mislabeled as network loss', () => {
+  assert.deepEqual(
+    recoveryContent('Kordi could not find the microphone or camera needed for this call.', 'failed'),
+    {
+      title: 'Microphone or camera unavailable',
+      description: 'Kordi could not find the microphone or camera needed for this call.',
+    },
+  );
+  assert.deepEqual(
+    recoveryContent('Camera publication failed. Check camera access and try again.', 'failed'),
+    {
+      title: 'Call media unavailable',
+      description: 'Camera publication failed. Check camera access and try again.',
+    },
+  );
 });

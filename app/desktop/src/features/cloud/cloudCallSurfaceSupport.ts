@@ -134,6 +134,18 @@ export function recoveryContent(
       description: error,
     };
   }
+  if (normalized.includes('could not find') || normalized.includes('notfound')) {
+    return {
+      title: 'Microphone or camera unavailable',
+      description: error,
+    };
+  }
+  if (normalized.includes('publication') || normalized.includes('subscribed')) {
+    return {
+      title: 'Call media unavailable',
+      description: error,
+    };
+  }
   if (phase === 'failed'
     || normalized.includes('connection')
     || normalized.includes('transport')
