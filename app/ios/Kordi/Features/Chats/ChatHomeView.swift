@@ -11,7 +11,7 @@ struct ChatHomeView: View {
     @EnvironmentObject private var model: AppModel
     @State private var channel: ChatChannel
     @State private var searchText = ""
-    @State private var showNewChat = false
+    @State private var newChatMode: NewChatMode?
     @State private var composedConversation: ConversationSummary?
     @State private var expandedGroupSpaceIds = Set<String>()
     @State private var collapsedAgentForkParentIds = Set<String>()
@@ -21,15 +21,18 @@ struct ChatHomeView: View {
     @State private var groupManagementPresentation: GroupManagementPresentation?
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     private let onOpenConversation: ((ConversationSummary) -> Void)?
+    private let onOpenNewChat: ((NewChatMode) -> Void)?
 
     init(
         initialChannel: ChatChannel? = nil,
-        onOpenConversation: ((ConversationSummary) -> Void)? = nil
+        onOpenConversation: ((ConversationSummary) -> Void)? = nil,
+        onOpenNewChat: ((NewChatMode) -> Void)? = nil
     ) {
         let previewChannel: ChatChannel = ProcessInfo.processInfo.arguments.contains("--preview-agent-page") ? .agent : .contact
         _channel = State(initialValue: initialChannel ?? previewChannel)
-        _showNewChat = State(initialValue: ProcessInfo.processInfo.arguments.contains("--preview-new-chat"))
+        _newChatMode = State(initialValue: NewChatMode.previewMode(arguments: ProcessInfo.processInfo.arguments))
         self.onOpenConversation = onOpenConversation
+        self.onOpenNewChat = onOpenNewChat
     }
 
     private var searchQuery: String {
@@ -98,6 +101,17 @@ struct ChatHomeView: View {
         .background(Color(uiColor: .systemBackground))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            if let previewNewChatMode = newChatMode {
+                newChatMode = nil
+                if let onOpenNewChat {
+                    onOpenNewChat(previewNewChatMode)
+                } else {
+                    Task { @MainActor in
+                        await Task.yield()
+                        newChatMode = previewNewChatMode
+                    }
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("--preview-agent-page") {
                 channel = .agent
             }
@@ -144,12 +158,11 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .sheet(isPresented: $showNewChat) {
-            NewChatSheet { selected in
-                openConversation(selected)
-            }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+        .navigationDestination(item: $newChatMode) { mode in
+            newChatDestination(for: mode)
+        }
+        .navigationDestination(for: NewChatMode.self) { mode in
+            newChatDestination(for: mode)
         }
         .sheet(item: $groupManagementPresentation) { presentation in
             GroupManagementSheet(presentation: presentation)
@@ -198,15 +211,33 @@ struct ChatHomeView: View {
     }
 
     private var newChatButton: some View {
-        Button { showNewChat = true } label: {
+        Menu {
+            ForEach(NewChatMode.allCases) { mode in
+                Button {
+                    if let onOpenNewChat {
+                        onOpenNewChat(mode)
+                    } else {
+                        newChatMode = mode
+                    }
+                } label: {
+                    Label(mode.menuTitle, systemImage: mode.systemImage)
+                }
+            }
+        } label: {
             Image(systemName: "plus")
                 .font(.body.weight(.semibold))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .menuOrder(.fixed)
         .contentShape(Rectangle())
         .accessibilityLabel("Start a chat")
+    }
+
+    private func newChatDestination(for mode: NewChatMode) -> some View {
+        NewChatView(mode: mode) { selected in
+            openConversation(selected)
+        }
     }
 
     private var chatPageHeader: some View {

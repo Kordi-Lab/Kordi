@@ -15,86 +15,102 @@ struct AccountSheet: View {
     @EnvironmentObject private var model: AppModel
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @State private var path: [AccountSettingsRoute]
+    private let embeddedInNavigationStack: Bool
 
-    init() {
+    init(embeddedInNavigationStack: Bool = false) {
         _path = State(initialValue: [])
+        self.embeddedInNavigationStack = embeddedInNavigationStack
     }
 
     init(openingAuthentication: Bool) {
         _path = State(initialValue: openingAuthentication ? [.authentication] : [])
+        embeddedInNavigationStack = false
     }
 
     fileprivate init(previewing route: AccountSettingsRoute) {
         _path = State(initialValue: [route])
+        embeddedInNavigationStack = false
     }
 
+    @ViewBuilder
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
-                Section {
-                    accountHeader
+        if embeddedInNavigationStack {
+            settingsContent
+                .preferredColorScheme(preferredColorScheme)
+        } else {
+            NavigationStack(path: $path) {
+                settingsContent
+            }
+            .preferredColorScheme(preferredColorScheme)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var settingsContent: some View {
+        List {
+            Section {
+                accountHeader
+            }
+
+            Section {
+                NavigationLink(value: AccountSettingsRoute.profile) {
+                    SettingsNavigationLabel(title: "Profile", systemImage: "person")
                 }
 
-                Section {
-                    NavigationLink(value: AccountSettingsRoute.profile) {
-                        SettingsNavigationLabel(title: "Profile", systemImage: "person")
-                    }
-
-                    NavigationLink(value: AccountSettingsRoute.activeSessions) {
-                        HStack {
-                            SettingsNavigationLabel(title: "Active sessions", systemImage: "iphone.and.arrow.forward")
-                            Spacer(minLength: 8)
-                            if model.deviceReviewRequired {
-                                Text("Review")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.orange)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(.orange.opacity(0.12), in: Capsule())
-                                    .accessibilityLabel("New device needs review")
-                            }
+                NavigationLink(value: AccountSettingsRoute.activeSessions) {
+                    HStack {
+                        SettingsNavigationLabel(title: "Active sessions", systemImage: "iphone.and.arrow.forward")
+                        Spacer(minLength: 8)
+                        if model.deviceReviewRequired {
+                            Text("Review")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(.orange.opacity(0.12), in: Capsule())
+                                .accessibilityLabel("New device needs review")
                         }
                     }
+                }
 
-                    NavigationLink(value: AccountSettingsRoute.authentication) {
-                        SettingsNavigationLabel(title: "Authentication", systemImage: "key")
-                    }
+                NavigationLink(value: AccountSettingsRoute.authentication) {
+                    SettingsNavigationLabel(title: "Authentication", systemImage: "key")
+                }
 
-                    NavigationLink(value: AccountSettingsRoute.notifications) {
-                        SettingsNavigationLabel(title: "Notifications", systemImage: "bell")
-                    }
+                NavigationLink(value: AccountSettingsRoute.notifications) {
+                    SettingsNavigationLabel(title: "Notifications", systemImage: "bell")
+                }
 
-                    NavigationLink(value: AccountSettingsRoute.appearance) {
-                        SettingsNavigationLabel(title: "Appearance", systemImage: "paintpalette")
-                    }
+                NavigationLink(value: AccountSettingsRoute.appearance) {
+                    SettingsNavigationLabel(title: "Appearance", systemImage: "paintpalette")
                 }
             }
-            .listStyle(.insetGrouped)
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: AccountSettingsRoute.self) { route in
-                switch route {
-                case .profile:
-                    ProfileSettingsView()
-                case .activeSessions:
-                    DevicesSettingsView()
-                case .authentication:
-                    ProviderAuthenticationView()
-                case .notifications:
-                    NotificationSettingsView()
-                case .appearance:
-                    AppearanceSettingsView()
-                }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: AccountSettingsRoute.self) { route in
+            switch route {
+            case .profile:
+                ProfileSettingsView()
+            case .activeSessions:
+                DevicesSettingsView()
+            case .authentication:
+                ProviderAuthenticationView()
+            case .notifications:
+                NotificationSettingsView()
+            case .appearance:
+                AppearanceSettingsView()
             }
-            .toolbar {
+        }
+        .toolbar {
+            if !embeddedInNavigationStack {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
         }
-        .preferredColorScheme(preferredColorScheme)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
     }
 
     private var preferredColorScheme: ColorScheme? {

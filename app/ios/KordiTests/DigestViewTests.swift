@@ -3,29 +3,9 @@ import XCTest
 
 final class DigestViewTests: XCTestCase {
     func testMainDestinationsUseTheRequestedOrderWithoutFactory() {
-        XCTAssertEqual(MainTab.contentTabs, [.contacts, .chats, .digest])
-        XCTAssertEqual(MainTab.contentTabs.map(\.rawValue), ["Contacts", "Chats", "Digest"])
-        XCTAssertEqual(MainTab.allCases.last, .account)
-    }
-
-    func testAccountTabPresentsProfileWithoutChangingTheSelectedContentTab() {
-        let resolution = MainTabSelectionPolicy.resolve(
-            current: .digest,
-            requested: .account
-        )
-
-        XCTAssertEqual(resolution.selectedTab, .digest)
-        XCTAssertTrue(resolution.presentsAccount)
-    }
-
-    func testContentTabSelectionDoesNotPresentProfile() {
-        let resolution = MainTabSelectionPolicy.resolve(
-            current: .chats,
-            requested: .contacts
-        )
-
-        XCTAssertEqual(resolution.selectedTab, .contacts)
-        XCTAssertFalse(resolution.presentsAccount)
+        XCTAssertEqual(MainTab.contentTabs, [.contacts, .chats, .digest, .account])
+        XCTAssertEqual(MainTab.contentTabs, MainTab.allCases)
+        XCTAssertEqual(MainTab.account.symbol, "person")
     }
 
     func testDigestSummarizesMessageContentAcrossEverySession() {

@@ -1,9 +1,9 @@
 import SwiftUI
 
-struct AgentModelSheet: View {
+struct AgentModelPicker: View {
     @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
     let conversation: ConversationSummary
+    let onDismiss: () -> Void
     @State private var selectedProvider = ""
     @State private var selectedModel = ""
     @State private var selectedThinking = "medium"
@@ -38,80 +38,84 @@ struct AgentModelSheet: View {
     private var canEdit: Bool { model.canChangeRuntimeRouting(for: conversation) }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    AgentModelMenuRow(
-                        title: "Provider",
-                        options: providers,
-                        selection: $selectedProvider,
-                        isEnabled: canEdit && !providers.isEmpty,
-                        optionLabel: providerLabel
-                    )
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("AGENT MODEL")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
 
-                    AgentModelMenuRow(
-                        title: "Model",
-                        options: routes,
-                        selection: $selectedModel,
-                        optionLabel: modelLabel
-                    )
+                Spacer(minLength: 8)
 
-                    AgentModelMenuRow(
-                        title: "Thinking level",
-                        options: thinkingLevels,
-                        selection: $selectedThinking,
-                        optionLabel: thinkingLabel
-                    )
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
                 }
-
-                if !canEdit {
-                    Section {
-                        Label("Only the agent owner can change this model route.", systemImage: "lock")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    Spacer()
-                    Button("Cancel") { dismiss() }
-                        .buttonStyle(.bordered)
-                    Button {
-                        save()
-                    } label: {
-                        if isSaving {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("Save")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canEdit || isSaving || selectedModel.isEmpty)
-                }
-                .controlSize(.large)
-                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+                .buttonStyle(.plain)
+                .disabled(isSaving)
+                .accessibilityLabel("Close agent model")
             }
-            .listStyle(.insetGrouped)
-            .listSectionSpacing(16)
-            .contentMargins(.top, 12, for: .scrollContent)
-            .scrollContentBackground(.hidden)
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Agent model")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Close agent model")
-                }
+            .padding(.leading, 12)
+            .padding(.trailing, 6)
+            .padding(.top, 6)
+
+            VStack(spacing: 0) {
+                AgentModelMenuRow(
+                    title: "Provider",
+                    options: providers,
+                    selection: $selectedProvider,
+                    isEnabled: canEdit && !providers.isEmpty,
+                    optionLabel: providerLabel
+                )
+
+                Divider()
+
+                AgentModelMenuRow(
+                    title: "Model",
+                    options: routes,
+                    selection: $selectedModel,
+                    optionLabel: modelLabel
+                )
+
+                Divider()
+
+                AgentModelMenuRow(
+                    title: "Thinking level",
+                    options: thinkingLevels,
+                    selection: $selectedThinking,
+                    optionLabel: thinkingLabel
+                )
             }
+            .padding(.horizontal, 12)
+
+            if !canEdit {
+                Label("Only the agent owner can change this model route.", systemImage: "lock")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            }
+
+            HStack {
+                Spacer()
+                Button {
+                    save()
+                } label: {
+                    if isSaving {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text("Save")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(minHeight: 44)
+                .disabled(!canEdit || isSaving || selectedModel.isEmpty)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
-        .interactiveDismissDisabled(isSaving)
+        .frame(maxWidth: .infinity)
+        .modifier(ComposerFloatingPanelSurfaceModifier())
         .onAppear { loadSelection() }
         .onChange(of: selectedProvider) { _, provider in
             selectCompatibleModel(for: provider)
@@ -229,7 +233,7 @@ struct AgentModelSheet: View {
                 thinking: selectedThinking
             )
             isSaving = false
-            if saved { dismiss() }
+            if saved { onDismiss() }
         }
     }
 
@@ -249,6 +253,7 @@ private struct AgentModelMenuRow: View {
     @Binding var selection: String
     var isEnabled = true
     var optionLabel: (String) -> String = { $0 }
+    @State private var isOptionsPresented = false
 
     private var selectedLabel: String {
         optionLabel(selection.nonEmpty ?? options.first ?? "")
@@ -260,18 +265,8 @@ private struct AgentModelMenuRow: View {
                 .lineLimit(1)
                 .layoutPriority(1)
 
-            Menu {
-                ForEach(options, id: \.self) { option in
-                    Button {
-                        selection = option
-                    } label: {
-                        if selection == option {
-                            Label(optionLabel(option), systemImage: "checkmark")
-                        } else {
-                            Text(optionLabel(option))
-                        }
-                    }
-                }
+            Button {
+                isOptionsPresented = true
             } label: {
                 HStack(spacing: 5) {
                     Text(selectedLabel)
@@ -292,6 +287,46 @@ private struct AgentModelMenuRow: View {
             .disabled(!isEnabled)
             .accessibilityLabel(title)
             .accessibilityValue(selectedLabel)
+            .popover(
+                isPresented: $isOptionsPresented,
+                attachmentAnchor: .rect(.bounds),
+                arrowEdge: .bottom
+            ) {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(options, id: \.self) { option in
+                            let isSelected = selection == option
+                            Button {
+                                selection = option
+                                isOptionsPresented = false
+                            } label: {
+                                Text(optionLabel(option))
+                                    .font(.body.weight(isSelected ? .semibold : .regular))
+                                    .foregroundStyle(isSelected ? KordiTheme.signalBlue : .primary)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .frame(minHeight: 44)
+                                    .background(
+                                        isSelected
+                                            ? KordiTheme.signalBlue.opacity(0.12)
+                                            : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    )
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityValue(isSelected ? "Selected" : "Not selected")
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        }
+                    }
+                    .padding(8)
+                }
+                .frame(width: 290)
+                .frame(height: min(CGFloat(options.count) * 46 + 16, 360))
+                .presentationCompactAdaptation(.popover)
+            }
         }
+        .frame(minHeight: 44)
     }
 }

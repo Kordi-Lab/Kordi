@@ -352,8 +352,10 @@ mod tests {
         );
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn resume_record_is_reused_only_for_the_same_file_version() {
+        let _environment_guard = crate::test_support::lock_process_environment();
         let dir =
             std::env::temp_dir().join(format!("kordi-upload-resume-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
