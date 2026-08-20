@@ -488,6 +488,7 @@ function AttachmentImageCard({
   attachment,
   index,
   totalCount,
+  decorative = false,
   onOpenPreview,
   onOpenContextMenu,
   onImageForegroundTone,
@@ -495,6 +496,7 @@ function AttachmentImageCard({
   attachment: MessageAttachment;
   index: number;
   totalCount: number;
+  decorative?: boolean;
   onOpenPreview: (
     attachment: MessageAttachment,
     previewUrl: string,
@@ -524,7 +526,7 @@ function AttachmentImageCard({
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
   const intrinsicSingleImage = singleImage && showImage;
-  const showOriginalAction = showImage && isLargeAttachment(attachment);
+  const showOriginalAction = !decorative && showImage && isLargeAttachment(attachment);
 
   useEffect(() => {
     if (usableRecoveredPreviewUrl || usableRemotePreviewUrl || usableDirectPreviewUrl || previewUnavailable || attachment.kind !== 'image' || !attachmentId) return;
@@ -590,9 +592,12 @@ function AttachmentImageCard({
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
+      data-attachment-image-index={index}
       data-attachment-image-context-target="true"
+      aria-hidden={decorative || undefined}
       className={cn(
         'app-attachment-image-card app-attachment-image-tile relative overflow-hidden bg-transparent',
+        decorative && 'pointer-events-none',
         intrinsicSingleImage ? 'w-fit max-w-full justify-self-start rounded-[16px]' : singleImage ? 'rounded-[16px]' : '',
         imageTileClass(index, totalCount, intrinsicSingleImage),
       )}
@@ -603,6 +608,7 @@ function AttachmentImageCard({
           type="button"
           data-attachment-image-preview-trigger="true"
           data-attachment-image-index={index}
+          tabIndex={decorative ? -1 : undefined}
           title={`${displayName} · Right-click for image actions`}
           onClick={(event) => onOpenPreview(
             attachment,
@@ -623,6 +629,7 @@ function AttachmentImageCard({
           <img
             src={previewUrl}
             alt={attachment.altText?.trim() || attachment.name || 'Attached image'}
+            data-attachment-image-loaded={String(imageLoaded)}
             className={cn(
               'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
               imageLoaded ? 'opacity-100' : 'opacity-0',
@@ -693,12 +700,14 @@ export function AttachmentPreview({
     : imageDeliveryStatus;
   const hasImageGroup = previewImageAttachments.length > 1;
   const visibleImageAttachments = hasImageGroup && !isImageGroupExpanded
-    ? previewImageAttachments.slice(0, 1)
+    ? previewImageAttachments.slice(0, 3)
     : previewImageAttachments;
   const isOwnImageGroup = msg.isOwnMessage ?? msg.role === 'user';
   const loadingOnlyImageCollage = visibleImageAttachments.length > 0
     && visibleImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
-  const deliveryImageAttachment = visibleImageAttachments[visibleImageAttachments.length - 1];
+  const deliveryImageAttachment = hasImageGroup && !isImageGroupExpanded
+    ? visibleImageAttachments[0]
+    : visibleImageAttachments[visibleImageAttachments.length - 1];
   const deliveryImagePath = deliveryImageAttachment?.localPath?.trim() ?? '';
   const deliveryUpload = useSyncExternalStore(
     (listener) => subscribeCloudAttachmentUpload(deliveryImagePath, listener),
@@ -803,6 +812,7 @@ export function AttachmentPreview({
                   attachment={attachment}
                   index={index}
                   totalCount={1}
+                  decorative={hasImageGroup && !isImageGroupExpanded && index > 0}
                   onOpenPreview={openLightbox}
                   onOpenContextMenu={openContextMenu}
                   onImageForegroundTone={attachmentPreviewIdentity(attachment) === deliveryImageIdentity

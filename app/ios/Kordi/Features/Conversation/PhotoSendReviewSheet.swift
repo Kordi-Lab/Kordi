@@ -1,4 +1,5 @@
-import ImageIO
+import Foundation
+import Photos
 import SwiftUI
 import UIKit
 
@@ -7,9 +8,343 @@ enum PhotoSendGrouping: Equatable {
     case separate
 }
 
-struct PhotoSelectionReview: Identifiable {
-    let id = UUID()
-    let attachments: [PendingAttachment]
+enum PhotoLibrarySelection {
+    static func toggling(_ id: String, in selectedIDs: [String]) -> [String] {
+        if selectedIDs.contains(id) {
+            return selectedIDs.filter { $0 != id }
+        }
+        return selectedIDs + [id]
+    }
+}
+
+enum PhotoSelectionPreparationPlan {
+    static func batches<Element>(
+        for selection: [Element],
+        grouping: PhotoSendGrouping
+    ) -> [[Element]] {
+        guard grouping == .separate else {
+            return selection.isEmpty ? [] : [selection]
+        }
+        return selection.map { [$0] }
+    }
+}
+
+struct PhotoLibrarySendPicker: View {
+    @Environment(\.dismiss) private var dismiss
+    let allowsSeparateMessages: Bool
+    let onSend: ([PendingAttachment], PhotoSendGrouping) async -> Bool
+    let onError: (String) -> Void
+
+    @State private var authorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    @State private var assets: [PHAsset] = []
+    @State private var selectedAssetIDs: [String] = []
+    @State private var grouping: PhotoSendGrouping = .combined
+    @State private var isSending = false
+
+    private let columns = Array(
+        repeating: GridItem(.flexible(), spacing: 2),
+        count: 4
+    )
+
+    var body: some View {
+        VStack(spacing: 0) {
+            pickerHeader
+            Group {
+                switch authorizationStatus {
+                case .authorized, .limited:
+                    photoGrid
+                case .denied, .restricted:
+                    deniedAccessView
+                case .notDetermined:
+                    ProgressView("Loading photos")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                @unknown default:
+                    deniedAccessView
+                }
+            }
+            .background(Color(uiColor: .systemBackground))
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if authorizationStatus == .authorized || authorizationStatus == .limited {
+                sendBar
+            }
+        }
+        .interactiveDismissDisabled(isSending)
+        .task {
+            await loadLibrary()
+        }
+    }
+
+    private var pickerHeader: some View {
+        ZStack {
+            Text("Recents")
+                .font(.headline)
+            HStack {
+                Button("Close", systemImage: "xmark") {
+                    dismiss()
+                }
+                .labelStyle(.iconOnly)
+                .font(.title3)
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .disabled(isSending)
+                Spacer()
+            }
+        }
+        .frame(height: 54)
+        .padding(.horizontal, 8)
+        .background(.bar)
+    }
+
+    private var photoGrid: some View {
+        Group {
+            if assets.isEmpty {
+                ContentUnavailableView(
+                    "No photos",
+                    systemImage: "photo.on.rectangle.angled",
+                    description: Text("Photos in your library will appear here.")
+                )
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 2) {
+                        ForEach(assets, id: \.localIdentifier) { asset in
+                            photoCell(asset)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func photoCell(_ asset: PHAsset) -> some View {
+        let selectionIndex = selectedAssetIDs.firstIndex(of: asset.localIdentifier)
+        return Button {
+            selectedAssetIDs = PhotoLibrarySelection.toggling(
+                asset.localIdentifier,
+                in: selectedAssetIDs
+            )
+        } label: {
+            PhotoLibraryThumbnail(asset: asset)
+                .overlay(alignment: .topTrailing) {
+                    ZStack {
+                        Circle()
+                            .fill(selectionIndex == nil ? .black.opacity(0.24) : KordiTheme.signalBlue)
+                        Circle()
+                            .stroke(.white, lineWidth: 2)
+                        if let selectionIndex {
+                            Text("\(selectionIndex + 1)")
+                                .font(.caption.bold())
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 27, height: 27)
+                    .padding(6)
+                }
+                .overlay {
+                    if selectionIndex != nil {
+                        Rectangle()
+                            .stroke(KordiTheme.signalBlue, lineWidth: 3)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Photo")
+        .accessibilityValue(selectionIndex.map { "Selected \($0 + 1)" } ?? "Not selected")
+    }
+
+    private var deniedAccessView: some View {
+        ContentUnavailableView {
+            Label("Photo access is off", systemImage: "photo.on.rectangle.angled")
+        } description: {
+            Text("Allow Kordi to view your photo library in Settings.")
+        } actions: {
+            Button("Open Settings") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    private var sendBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            if allowsSeparateMessages, selectedAssetIDs.count > 1 {
+                Button {
+                    grouping = grouping == .combined ? .separate : .combined
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: grouping == .combined ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(grouping == .combined ? KordiTheme.signalBlue : .secondary)
+                        Text("Send photos as one grouped message")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 52)
+            }
+
+            HStack(spacing: 16) {
+                Text(selectedAssetIDs.isEmpty ? "Select photos" : "\(selectedAssetIDs.count) selected")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    sendSelection()
+                } label: {
+                    Text("Send (\(selectedAssetIDs.count))")
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 44)
+                        .foregroundStyle(.white)
+                        .background(
+                            selectedAssetIDs.isEmpty
+                                ? Color(uiColor: .tertiarySystemFill)
+                                : KordiTheme.signalBlue,
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(selectedAssetIDs.isEmpty || isSending)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+        }
+        .background(.bar)
+    }
+
+    @MainActor
+    private func loadLibrary() async {
+        if authorizationStatus == .notDetermined {
+            authorizationStatus = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        }
+        guard authorizationStatus == .authorized || authorizationStatus == .limited else { return }
+
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let result = PHAsset.fetchAssets(with: .image, options: options)
+        var fetched: [PHAsset] = []
+        fetched.reserveCapacity(result.count)
+        result.enumerateObjects { asset, _, _ in
+            fetched.append(asset)
+        }
+        assets = fetched
+        if ProcessInfo.processInfo.arguments.contains("--preview-photo-send"),
+           selectedAssetIDs.isEmpty {
+            selectedAssetIDs = fetched.prefix(4).map(\.localIdentifier)
+        }
+    }
+
+    @MainActor
+    private func sendSelection() {
+        guard !selectedAssetIDs.isEmpty, !isSending else { return }
+        isSending = true
+        let selectedAssets = selectedAssetIDs.compactMap { id in
+            assets.first(where: { $0.localIdentifier == id })
+        }
+        let batches = PhotoSelectionPreparationPlan.batches(
+            for: selectedAssets,
+            grouping: grouping
+        )
+        dismiss()
+        Task {
+            await Task.yield()
+            do {
+                for batch in batches {
+                    let attachments = try await PhotoLibraryAttachmentLoader.load(batch)
+                    guard await onSend(attachments, grouping) else { return }
+                }
+            } catch {
+                onError(error.localizedDescription)
+            }
+        }
+    }
+}
+
+private struct PhotoLibraryThumbnail: View {
+    private static let imageManager = PHCachingImageManager()
+
+    let asset: PHAsset
+    @State private var image: UIImage?
+    @State private var requestID = PHInvalidImageRequestID
+
+    var body: some View {
+        Rectangle()
+            .fill(Color(uiColor: .secondarySystemFill))
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                }
+            }
+            .clipped()
+            .onAppear(perform: requestImage)
+            .onDisappear {
+                Self.imageManager.cancelImageRequest(requestID)
+            }
+    }
+
+    private func requestImage() {
+        guard image == nil else { return }
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .fast
+        options.isNetworkAccessAllowed = true
+        requestID = Self.imageManager.requestImage(
+            for: asset,
+            targetSize: CGSize(width: 320, height: 320),
+            contentMode: .aspectFill,
+            options: options
+        ) { result, _ in
+            guard let result else { return }
+            Task { @MainActor in image = result }
+        }
+    }
+}
+
+private enum PhotoLibraryAttachmentLoader {
+    static func load(_ assets: [PHAsset]) async throws -> [PendingAttachment] {
+        var attachments: [PendingAttachment] = []
+        attachments.reserveCapacity(assets.count)
+        for (index, asset) in assets.enumerated() {
+            let data = try await imageData(for: asset)
+            let originalName = PHAssetResource.assetResources(for: asset).first?.originalFilename
+                ?? "Photo-\(index + 1).jpg"
+            let attachment = try await Task.detached(priority: .userInitiated) {
+                try PendingAttachmentLoader.loadImage(data: data, suggestedName: originalName)
+            }.value
+            attachments.append(attachment)
+        }
+        return attachments
+    }
+
+    private static func imageData(for asset: PHAsset) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.version = .current
+            options.isNetworkAccessAllowed = true
+            PHImageManager.default().requestImageDataAndOrientation(
+                for: asset,
+                options: options
+            ) { data, _, _, info in
+                if let error = info?[PHImageErrorKey] as? Error {
+                    continuation.resume(throwing: error)
+                } else if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: AttachmentTransferError.invalidImage)
+                }
+            }
+        }
+    }
 }
 
 enum OutgoingAttachmentGroupingPlan {
@@ -28,160 +363,5 @@ enum OutgoingAttachmentGroupingPlan {
             batches[0].append(contentsOf: otherAttachments)
         }
         return batches
-    }
-}
-
-struct PhotoSendReviewSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let review: PhotoSelectionReview
-    let allowsSeparateMessages: Bool
-    let onSend: (PhotoSendGrouping) async -> Void
-
-    @State private var grouping: PhotoSendGrouping = .combined
-    @State private var isSending = false
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-    ]
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 2) {
-                    ForEach(review.attachments) { attachment in
-                        PhotoSelectionThumbnail(attachment: attachment)
-                    }
-                }
-                .padding(.horizontal, 2)
-                .padding(.top, 8)
-
-                if allowsSeparateMessages {
-                    groupingControl
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 18)
-                }
-            }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Selected Photos")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel", action: dismiss.callAsFunction)
-                        .disabled(isSending)
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                sendBar
-            }
-        }
-        .interactiveDismissDisabled(isSending)
-    }
-
-    private var groupingControl: some View {
-        Button {
-            grouping = grouping == .combined ? .separate : .combined
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: grouping == .combined ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(grouping == .combined ? KordiTheme.signalBlue : .secondary)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Send as one grouped message")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(grouping == .combined
-                         ? "The photos appear as one expandable stack."
-                         : "Each photo appears as its own message.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Send as one grouped message")
-        .accessibilityValue(grouping == .combined ? "On" : "Off")
-        .accessibilityHint("Double tap to change how the selected photos appear in the conversation")
-        .accessibilityAddTraits(grouping == .combined ? .isSelected : [])
-    }
-
-    private var sendBar: some View {
-        HStack {
-            Text("\(review.attachments.count) selected")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Spacer(minLength: 12)
-
-            Button(action: send) {
-                HStack(spacing: 8) {
-                    if isSending {
-                        ProgressView()
-                            .tint(.white)
-                            .controlSize(.small)
-                    }
-                    Text("Send \(review.attachments.count)")
-                        .font(.body.weight(.semibold))
-                }
-                .frame(minWidth: 92, minHeight: 44)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isSending)
-            .accessibilityLabel(isSending
-                                ? "Sending selected photos"
-                                : "Send \(review.attachments.count) selected photos")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
-    }
-
-    private func send() {
-        guard !isSending else { return }
-        isSending = true
-        Task {
-            await onSend(grouping)
-            dismiss()
-        }
-    }
-}
-
-private struct PhotoSelectionThumbnail: View {
-    let attachment: PendingAttachment
-
-    @State private var image: UIImage?
-
-    var body: some View {
-        ZStack {
-            Color(uiColor: .secondarySystemGroupedBackground)
-
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .transition(.opacity)
-            } else {
-                ProgressView()
-            }
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .clipped()
-        .task(id: attachment.id) {
-            image = await Task.detached(priority: .userInitiated) {
-                AttachmentImageDecoder.downsampledImage(
-                    data: attachment.data,
-                    maximumPixelSize: 720
-                )
-            }.value
-        }
-        .accessibilityLabel(attachment.name)
     }
 }

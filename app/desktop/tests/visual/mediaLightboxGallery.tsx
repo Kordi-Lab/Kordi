@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import '../../src/index.css';
+import { saveSession } from '../../src/features/cloud/session';
 import { AttachmentImageLightbox } from '../../src/kordi-app/components/transcriptAttachmentLightbox';
 import { MessageBubble } from '../../src/kordi-app/components/transcript';
 import type { Message, MessageAttachment } from '../../src/kordi-app/types';
@@ -11,7 +12,12 @@ const theme = params.get('theme') === 'light'
   ? 'light'
   : 'dark';
 const requestedIndex = Number(params.get('index') ?? 0);
-const surface = params.get('surface') === 'transcript' ? 'transcript' : 'lightbox';
+const requestedSurface = params.get('surface');
+const surface = requestedSurface === 'transcript'
+    || requestedSurface === 'remote-transcript'
+    || requestedSurface === 'retry-transcript'
+  ? requestedSurface
+  : 'lightbox';
 
 function geometricImage(width: number, height: number, palette: [string, string, string, string]) {
   const [canvas, block, signal, line] = palette;
@@ -119,6 +125,23 @@ const transcriptMessages: Message[] = [
   },
 ];
 
+const remoteTranscriptMessage: Message = {
+  role: 'user',
+  sender: 'Me',
+  senderType: 'human',
+  isOwnMessage: true,
+  text: '',
+  time: '14:38',
+  attachments: [{
+    kind: 'image',
+    name: 'Synced landscape.png',
+    attachmentId: 'visual-remote-original',
+    previewAttachmentId: 'visual-remote-preview',
+    previewUrl: null,
+    mimeType: 'image/png',
+  }],
+};
+
 function TranscriptImageGallery() {
   return (
     <main className="transcript-image-visual-shell">
@@ -131,6 +154,44 @@ function TranscriptImageGallery() {
   );
 }
 
+function RemoteTranscriptGallery() {
+  const [sessionReady, setSessionReady] = useState(false);
+
+  useEffect(() => {
+    void saveSession({
+      token: 'visual-token',
+      accountId: 'visual-account',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    }).then(() => setSessionReady(true));
+  }, []);
+
+  return sessionReady ? (
+    <main className="transcript-image-visual-shell">
+      <section aria-label="Remote transcript image">
+        <MessageBubble msg={remoteTranscriptMessage} />
+      </section>
+    </main>
+  ) : null;
+}
+
+function RetryTranscriptGallery() {
+  const failedMessage: Message = {
+    ...transcriptMessages[1]!,
+    statusChips: ['failed'],
+  };
+
+  return (
+    <main className="transcript-image-visual-shell">
+      <section aria-label="Failed transcript image">
+        <MessageBubble
+          msg={failedMessage}
+          onRetryMessage={() => new Promise<void>(() => {})}
+        />
+      </section>
+    </main>
+  );
+}
+
 document.body.classList.add(`theme-${theme}`);
 if (surface === 'lightbox') {
   document.body.classList.add('app-attachment-media-window-root');
@@ -139,6 +200,12 @@ if (surface === 'lightbox') {
 }
 document.documentElement.style.colorScheme = theme;
 createRoot(document.querySelector('#root')!).render(
-  surface === 'transcript' ? <TranscriptImageGallery /> : <MediaLightboxGallery />,
+  surface === 'transcript'
+    ? <TranscriptImageGallery />
+    : surface === 'remote-transcript'
+      ? <RemoteTranscriptGallery />
+      : surface === 'retry-transcript'
+        ? <RetryTranscriptGallery />
+        : <MediaLightboxGallery />,
 );
 document.body.dataset.visualReady = 'true';

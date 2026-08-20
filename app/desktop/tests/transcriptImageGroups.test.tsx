@@ -86,7 +86,9 @@ test('multiple image attachments render as a folded stack with a stable disclosu
   assert.match(markup, /data-attachment-image-group-disclosure="true"/);
   assert.match(markup, /aria-expanded="false"/);
   assert.match(markup, />Expand 3</);
-  assert.equal((markup.match(/data-attachment-image-card="true"/g) ?? []).length, 1);
+  assert.match(markup, /app-button-quiet app-attachment-image-group-disclosure/);
+  assert.equal((markup.match(/data-attachment-image-card="true"/g) ?? []).length, 3);
+  assert.equal((markup.match(/data-attachment-image-card="true"[^>]*aria-hidden="true"/g) ?? []).length, 2);
   assert.match(markup, /app-attachment-image-tile/);
   assert.match(markup, /app-attachment-image-group-collapsed/);
   assert.doesNotMatch(markup, /rounded-\[15px\]|rounded-\[20px\]/);
@@ -95,9 +97,19 @@ test('multiple image attachments render as a folded stack with a stable disclosu
   assert.doesNotMatch(markup, /61 KB|168 KB/);
   assert.doesNotMatch(markup, />Screenshot 2026-05-20 20\.54\.15\.png<\/span>/);
   assert.doesNotMatch(markup, /app-attachment-image-footer/);
-  assert.match(stylesheet, /\.app-attachment-image-group-shell\s*{[^}]*gap:\s*0\.5rem;/s);
-  assert.match(stylesheet, /\.app-attachment-image-group-disclosure\s*{[^}]*width:\s*5\.125rem;[^}]*height:\s*2\.75rem;[^}]*margin-top:\s*4\.25rem;/s);
-  assert.match(stylesheet, /\.app-attachment-image-group-media\s*{[^}]*width:\s*11\.25rem;/s);
+  assert.match(stylesheet, /\.app-attachment-image-group-shell\s*{[^}]*width:\s*16\.25rem;[^}]*max-width:\s*100%;[^}]*gap:\s*0\.5rem;/s);
+  assert.match(stylesheet, /\.app-attachment-image-group-disclosure\s*{[^}]*width:\s*auto;[^}]*min-width:\s*4\.5rem;[^}]*height:\s*2rem;[^}]*margin-top:\s*4\.625rem;/s);
+  assert.match(stylesheet, /\.app-attachment-image-group-media\s*{[^}]*width:\s*11\.25rem;[^}]*min-width:\s*0;[^}]*max-width:\s*calc\(100% - 5rem\);/s);
+  assert.match(stylesheet, /\.app-attachment-image-group-collapsed\s*{[^}]*aspect-ratio:\s*1;[^}]*overflow:\s*hidden;/s);
+});
+
+test('a remotely loaded standalone image escapes the temporary loading row', () => {
+  const stylesheet = readFileSync(new URL('../src/styles/shell-image-groups.css', import.meta.url), 'utf8');
+
+  assert.match(
+    stylesheet,
+    /\[data-attachment-image-count="1"\]:has\([^)]*\[data-attachment-image-loaded="true"\][^)]*\)\s*{[^}]*width:\s*fit-content;[^}]*grid-auto-rows:\s*auto;/s,
+  );
 });
 
 test('grouped image disclosure expands and collapses in place', async () => {
@@ -114,7 +126,7 @@ test('grouped image disclosure expands and collapses in place', async () => {
     assert.ok(disclosure);
     assert.equal(disclosure.textContent, 'Expand 3');
     assert.equal(disclosure.getAttribute('aria-expanded'), 'false');
-    assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 1);
+    assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 3);
 
     await act(async () => {
       disclosure.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
@@ -132,7 +144,7 @@ test('grouped image disclosure expands and collapses in place', async () => {
     });
     assert.equal(disclosure.textContent, 'Expand 3');
     assert.equal(disclosure.getAttribute('aria-expanded'), 'false');
-    assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 1);
+    assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 3);
   } finally {
     if (root) await act(async () => root?.unmount());
     installedDom.restore();

@@ -200,7 +200,7 @@ export type ChatsPageRuntime = {
     sessionId: string,
     messageEntryId: string,
   ) => Promise<void>;
-  onRetryChatMessage?: (message: Message) => void;
+  onRetryChatMessage?: (message: Message) => Promise<void> | void;
   onSelectSession?: (sessionId: string) => void;
   onPrefetchChatSession?: (sessionId: string) => Promise<boolean>;
   onSendChatMessage: (
@@ -286,7 +286,7 @@ export type ChatSessionPaneActions = {
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
-  onRetryMessage?: (message: Message) => void;
+  onRetryMessage?: (message: Message) => Promise<void> | void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
   onRequestUnpinMessage?: (message: Message) => void;

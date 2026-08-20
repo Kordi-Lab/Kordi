@@ -96,7 +96,7 @@ export function useKordiShellViewModel({
   }, [handleSendChatMessage]);
 
   const wrappedRetryChatMessage = useCallback((message: Message) => {
-    void handleRetryChatMessage(message);
+    return handleRetryChatMessage(message);
   }, [handleRetryChatMessage]);
 
   return {

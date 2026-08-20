@@ -285,7 +285,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   handleStopCollaborationAgentRequest: (request: CollaborationAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
   handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
-  handleRetryChatMessage: (message: Message) => void;
+  handleRetryChatMessage: (message: Message) => Promise<void> | void;
   handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;

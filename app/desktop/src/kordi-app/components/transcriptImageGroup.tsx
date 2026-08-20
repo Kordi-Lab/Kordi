@@ -22,7 +22,7 @@ function ImageGroupDisclosure({
   return (
     <button
       type="button"
-      className="app-attachment-image-group-disclosure"
+      className="app-button-quiet app-attachment-image-group-disclosure"
       data-attachment-image-group-disclosure="true"
       aria-expanded={isExpanded}
       aria-controls={groupId}
@@ -54,8 +54,8 @@ export function TranscriptImageGroup({
         'app-attachment-image-collage relative rounded-[16px] p-0',
         isGroup
           ? cn(
-            'app-attachment-image-group-media flex w-[11.25rem] flex-col gap-1.5 overflow-visible',
-            !isExpanded && 'app-attachment-image-group-collapsed h-[11.25rem]',
+            'app-attachment-image-group-media flex flex-col gap-1.5',
+            !isExpanded && 'app-attachment-image-group-collapsed',
           )
           : cn(
             'grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden',
