@@ -503,6 +503,7 @@ enum ChatCallActivityTimeline {
 
 struct ChatMessage: Identifiable, Codable, Hashable {
     static let agentModelChangeMessageKind = "agent-model-change"
+    static let groupMemberJoinMessageKind = "group-member-joined"
     private static let agentModelChangePrefix = "Switched model to "
     private static let agentRuntimeRouteNoticePrefix = "Model: "
     private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
@@ -566,6 +567,14 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     var isAgentModelChangeNotice: Bool {
         messageKind == Self.agentModelChangeMessageKind
+    }
+
+    var isGroupMemberJoinNotice: Bool {
+        messageKind == Self.groupMemberJoinMessageKind
+    }
+
+    var isSystemNotice: Bool {
+        isAgentModelChangeNotice || isGroupMemberJoinNotice
     }
 
     init(
