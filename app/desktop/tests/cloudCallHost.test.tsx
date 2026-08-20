@@ -77,6 +77,47 @@ test('an idle call lifecycle never shows a stale connection error', () => {
   assert.match(failedMarkup, /Connection lost/);
 });
 
+test('the full call surface does not repeat its title and phase in the header', () => {
+  const call = {
+    id: 'call-1',
+    revision: 1,
+    conversationId: 'conversation-1',
+    kind: 'voice' as const,
+    state: 'ringing' as const,
+    createdByAccountId: 'acct_me',
+    createdAt: '2026-08-15T09:00:00Z',
+    answeredAt: null,
+    endedAt: null,
+    participants: [{
+      accountId: 'acct_peer',
+      displayName: 'Call Test B',
+      avatarUrl: null,
+      state: 'invited' as const,
+    }],
+  };
+  const controller = {
+    account: { accountId: 'acct_me' },
+    currentCall: { call, sessionId: 'session-1' },
+    incomingCall: null,
+    handoffCall: null,
+    phase: 'ringing',
+    error: null,
+    isPresented: true,
+    isMicrophoneEnabled: true,
+    isCameraEnabled: false,
+    isAudioPlaybackBlocked: false,
+    connectedAtMs: null,
+    mediaParticipants: [],
+    mediaDevices: [],
+    activeDeviceIds: {},
+    canSelectAudioOutput: false,
+  } as unknown as CloudCallsController;
+
+  const markup = renderToStaticMarkup(createElement(CloudCallHost, { controller }));
+  assert.doesNotMatch(markup, /app-call-surface-heading|app-call-phase-dot/);
+  assert.match(markup, /class="sr-only" role="status" aria-live="polite">Ringing/);
+});
+
 test('device and publication failures are not mislabeled as network loss', () => {
   assert.deepEqual(
     recoveryContent('Kordi could not find the microphone or camera needed for this call.', 'failed'),

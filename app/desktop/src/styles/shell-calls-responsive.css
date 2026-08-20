@@ -6,6 +6,7 @@
   .app-call-surface-header {
     min-height: 70px;
     grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: '. actions';
     padding: 14px 18px;
   }
 
@@ -87,14 +88,6 @@
   .app-conversation-call-banner-copy b,
   .app-conversation-call-banner-copy i {
     display: none;
-  }
-
-  .app-call-surface-heading h2 {
-    font-size: 16px;
-  }
-
-  .app-call-surface-heading p {
-    font-size: 11px;
   }
 
   .app-call-local-preview {

@@ -96,14 +96,8 @@ function CallSurface({ controller }: { controller: CloudCallsController }) {
         aria-label={`${title} call`}
         tabIndex={-1}
       >
+        <p className="sr-only" role="status" aria-live="polite">{status}</p>
         <header className="app-call-surface-header">
-          <div className="app-call-surface-heading">
-            <h2>{title}</h2>
-            <p role="status" aria-live="polite">
-              <span className="app-call-phase-dot" data-phase={controller.phase} aria-hidden="true" />
-              <span>{status}</span>
-            </p>
-          </div>
           <span className="app-call-surface-kind">{isMeeting ? 'Kordi meeting' : 'Kordi call'}</span>
           <div className="app-call-surface-actions">
             <button
@@ -140,7 +134,7 @@ function CallSurface({ controller }: { controller: CloudCallsController }) {
                 accountId={remoteParticipant?.accountId || remoteProfile?.accountId || call.id}
                 name={remoteParticipant?.name || title}
                 avatarUrl={remoteParticipant?.avatarUrl ?? remoteProfile?.avatarUrl ?? null}
-                status={controller.phase === 'failed' ? 'Keeping the call open…' : phaseLabel(controller)}
+                status={controller.phase === 'failed' ? 'Keeping the call open…' : status}
               />
             )}
             {isVideoCall && localParticipant ? (
