@@ -2,10 +2,16 @@ import XCTest
 @testable import Kordi
 
 final class DigestViewTests: XCTestCase {
-    func testMainDestinationsUseTheRequestedOrderWithoutFactory() {
-        XCTAssertEqual(MainTab.contentTabs, [.contacts, .chats, .digest, .account])
+    func testMainDestinationsIncludeAgentsWithoutFactory() {
+        XCTAssertEqual(MainTab.contentTabs, [.contacts, .chats, .agents, .digest, .account])
         XCTAssertEqual(MainTab.contentTabs, MainTab.allCases)
         XCTAssertEqual(MainTab.account.symbol, "person")
+    }
+
+    func testConversationKindsRouteToTheirDedicatedTabs() {
+        XCTAssertEqual(MainTab.destination(for: .agent), .agents)
+        XCTAssertEqual(MainTab.destination(for: .person), .chats)
+        XCTAssertEqual(MainTab.destination(for: .group), .chats)
     }
 
     func testDigestSummarizesMessageContentAcrossEverySession() {

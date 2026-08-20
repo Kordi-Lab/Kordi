@@ -1,7 +1,7 @@
 /*
- THESIS: Contacts, conversations, and a concise activity digest are the three mobile destinations; account settings stay one tap away without competing with page actions.
+ THESIS: Contacts, human chats, agent sessions, and a concise activity digest are first-class mobile destinations; account settings stay one tap away without competing with page actions.
  OWN-WORLD: Native grouped canvases, Signal Blue actions, Agent Violet identity, circular avatars, continuous list rows, and explicit state labels.
- STORY: Sign in, switch among Contacts, Chats, and Digest, open the right conversation, and reach account settings from the persistent bottom-right avatar.
+ STORY: Sign in, switch among Contacts, Chats, Agents, and Digest, open the right conversation, and reach account settings from the persistent bottom-right avatar.
  FIRST VIEWPORT: Each root page sits above one stable destination bar whose account avatar occupies the final position.
  FORM: Native navigation stacks with a compact destination bar and continuous lists; assigned surface structure, seed a5fd657b.
  */
@@ -318,11 +318,14 @@ struct MainTabView: View {
             return .digest
         } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts-tab") {
             return .contacts
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-agent-page") {
+            return .agents
         }
 #endif
         return .chats
     }()
     @State private var chatsPath = NavigationPath()
+    @State private var agentsPath = NavigationPath()
     @State private var contactsPath = NavigationPath()
     @State private var digestPath = NavigationPath()
     @State private var accountPath = NavigationPath()
@@ -338,9 +341,15 @@ struct MainTabView: View {
         .sensoryFeedback(.selection, trigger: selection)
         .task(id: notificationCoordinator.pendingMessageRoute) {
             guard let route = notificationCoordinator.pendingMessageRoute else { return }
-            selection = .chats
-            chatsPath = NavigationPath()
-            chatsPath.append(route)
+            let destination = MainTab.destination(for: route.conversation.kind)
+            selection = destination
+            if destination == .agents {
+                agentsPath = NavigationPath()
+                agentsPath.append(route)
+            } else {
+                chatsPath = NavigationPath()
+                chatsPath.append(route)
+            }
             notificationCoordinator.consumePendingRoute()
         }
 #if DEBUG
@@ -349,6 +358,8 @@ struct MainTabView: View {
                 selection = .digest
             } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts-tab") {
                 selection = .contacts
+            } else if ProcessInfo.processInfo.arguments.contains("--preview-agent-page") {
+                selection = .agents
             } else if ProcessInfo.processInfo.arguments.contains("--preview-chats-tab") {
                 selection = .chats
             }
@@ -370,6 +381,12 @@ struct MainTabView: View {
                 chatsRoot
             } label: {
                 Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol)
+            }
+
+            Tab(value: MainTab.agents) {
+                agentsRoot
+            } label: {
+                Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol)
             }
 
             Tab(value: MainTab.digest) {
@@ -397,6 +414,10 @@ struct MainTabView: View {
                 .tabItem { Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol) }
                 .tag(MainTab.chats)
 
+            agentsRoot
+                .tabItem { Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol) }
+                .tag(MainTab.agents)
+
             digestRoot
                 .tabItem { Label(MainTab.digest.rawValue, systemImage: MainTab.digest.symbol) }
                 .tag(MainTab.digest)
@@ -417,11 +438,23 @@ struct MainTabView: View {
     private var chatsRoot: some View {
         NavigationStack(path: $chatsPath) {
             ChatHomeView(
+                channel: .contact,
                 onOpenConversation: { chatsPath.append($0) },
                 onOpenNewChat: { chatsPath.append($0) }
             )
         }
         .kordiTabBarVisibility(isRoot: chatsPath.isEmpty)
+    }
+
+    private var agentsRoot: some View {
+        NavigationStack(path: $agentsPath) {
+            ChatHomeView(
+                channel: .agent,
+                onOpenConversation: { agentsPath.append($0) },
+                onOpenNewChat: { agentsPath.append($0) }
+            )
+        }
+        .kordiTabBarVisibility(isRoot: agentsPath.isEmpty)
     }
 
     private var digestRoot: some View {
@@ -461,10 +494,11 @@ private extension View {
 enum MainTab: String, CaseIterable, Identifiable {
     case contacts = "Contacts"
     case chats = "Chats"
+    case agents = "Agents"
     case digest = "Digest"
     case account = "Account"
 
-    static let contentTabs: [MainTab] = [.contacts, .chats, .digest, .account]
+    static let contentTabs: [MainTab] = [.contacts, .chats, .agents, .digest, .account]
 
     var id: Self { self }
 
@@ -474,11 +508,17 @@ enum MainTab: String, CaseIterable, Identifiable {
             "person.2"
         case .chats:
             "bubble.left.and.bubble.right"
+        case .agents:
+            "sparkles"
         case .digest:
             "list.bullet.clipboard"
         case .account:
             "person"
         }
+    }
+
+    static func destination(for conversationKind: ConversationKind) -> MainTab {
+        conversationKind == .agent ? .agents : .chats
     }
 }
 

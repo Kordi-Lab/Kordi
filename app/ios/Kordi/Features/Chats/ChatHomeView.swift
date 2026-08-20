@@ -1,15 +1,13 @@
 import SwiftUI
 
-enum ChatChannel: String, CaseIterable, Identifiable {
-    case contact = "Contact"
-    case agent = "Agent"
-
-    var id: Self { self }
+enum ChatChannel {
+    case contact
+    case agent
 }
 
 struct ChatHomeView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var channel: ChatChannel
+    let channel: ChatChannel
     @State private var searchText = ""
     @State private var newChatMode: NewChatMode?
     @State private var composedConversation: ConversationSummary?
@@ -24,12 +22,11 @@ struct ChatHomeView: View {
     private let onOpenNewChat: ((NewChatMode) -> Void)?
 
     init(
-        initialChannel: ChatChannel? = nil,
+        channel: ChatChannel,
         onOpenConversation: ((ConversationSummary) -> Void)? = nil,
         onOpenNewChat: ((NewChatMode) -> Void)? = nil
     ) {
-        let previewChannel: ChatChannel = ProcessInfo.processInfo.arguments.contains("--preview-agent-page") ? .agent : .contact
-        _channel = State(initialValue: initialChannel ?? previewChannel)
+        self.channel = channel
         _newChatMode = State(initialValue: NewChatMode.previewMode(arguments: ProcessInfo.processInfo.arguments))
         self.onOpenConversation = onOpenConversation
         self.onOpenNewChat = onOpenNewChat
@@ -89,14 +86,11 @@ struct ChatHomeView: View {
         VStack(spacing: 0) {
             chatPageHeader
 
-            TabView(selection: $channel) {
+            if channel == .contact {
                 contactPage
-                    .tag(ChatChannel.contact)
-
+            } else {
                 agentPage
-                    .tag(ChatChannel.agent)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
         }
         .background(Color(uiColor: .systemBackground))
         .navigationBarTitleDisplayMode(.inline)
@@ -111,9 +105,6 @@ struct ChatHomeView: View {
                         newChatMode = previewNewChatMode
                     }
                 }
-            }
-            if ProcessInfo.processInfo.arguments.contains("--preview-agent-page") {
-                channel = .agent
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-group-management"),
                groupManagementPresentation == nil,
@@ -247,16 +238,7 @@ struct ChatHomeView: View {
             accessibilityLabel: channel == .contact
                 ? "Search contact and group chats"
                 : "Search agents, sessions, owners, and messages"
-        ) {
-            Picker("Chat channel", selection: $channel) {
-                ForEach(ChatChannel.allCases) { item in
-                    Text(item.rawValue).tag(item)
-                }
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.large)
-            .frame(minHeight: 44)
-        }
+        ) { EmptyView() }
     }
 
     private var contactPage: some View {
@@ -712,7 +694,7 @@ private struct ErrorBanner: View {
 }
 
 #Preview("Chats · Contact page") {
-    NavigationStack { ChatHomeView() }
+    NavigationStack { ChatHomeView(channel: .contact) }
         .environmentObject(AppModel(previewMode: true))
         .tint(KordiTheme.signalBlue)
 }

@@ -110,7 +110,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | Argument | Surface |
 | --- | --- |
 | `--preview-data` | Complete signed-in Contact chat flow |
-| `--preview-agent-page` | Agent session page (combine with preview data) |
+| `--preview-agent-page` | Agents root tab (combine with preview data) |
 | `--preview-login` | Email and social login |
 | `--preview-signup` | Account creation |
 | `--preview-contacts` | Contacts and requests |
