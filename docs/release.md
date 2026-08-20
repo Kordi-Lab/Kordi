@@ -2,7 +2,7 @@
 
 This document describes how the Kordi monorepo is expected to package and release its different layers.
 
-Before any product deploy, restart, hosted validation, or release publication, select the authorized target through [Development environment isolation](development-environments.md) and the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Obtain real product infrastructure values privately and keep them out of commits and shared logs.
+Before any product deploy, restart, hosted validation, or release publication, select the authorized target through [Development environment isolation](development-environments.md) and the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Obtain real product infrastructure values privately and keep them out of commits and shared logs. A release that includes the call client or hosted call services must also pass [Hosting Kordi voice and video calls](call-hosting.md) before artifact publication.
 
 ## Product surfaces
 
@@ -476,6 +476,7 @@ Preserve production data and deploy in place from a clean worktree at `RELEASE_C
 
 5. Deploy runner with `bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh`.
 6. Verify rollout images, latest `cloud_schema_versions`, private MinIO readiness, and secret-free logs. The server deploy script also requires in-cluster health, public `https://kordi.ai/health`, safe legacy metadata without `downloadUrl`, and HTTP 204 for the unpublished beta updater route.
+7. Verify product media and APNs readiness, then complete the [two-account call acceptance test](call-hosting.md#required-two-account-acceptance-test). Do not build or publish a call-capable release from `/health` evidence alone.
 
 The pre-publication deployment must retain the last verified legacy version and
 URLs. Check that every advertised URL returns HTTP 200 before continuing; a
@@ -570,6 +571,10 @@ pnpm build:registry
 ```
 
 Add focused tests for recently changed release surfaces, and always scan the final DMG before upload.
+
+When the release contains call changes or follows a call-service deployment,
+the installed candidate must also pass the [call hosting readiness
+contract](call-hosting.md) before channel promotion or tagging.
 
 ## Ownership
 

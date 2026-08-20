@@ -141,6 +141,7 @@ pnpm check
 For hosted desktop debugging, multi-user sync checks, and operator tunnel rules, see [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md).
 For native iPhone development, see [`ios-development.md`](ios-development.md).
 For the isolated Docker backend and contributor access model, see [`self-hosted-debug.md`](self-hosted-debug.md).
+For development or product voice/video hosting and release acceptance, see [`call-hosting.md`](call-hosting.md).
 For community contribution areas, issue preparation, and review expectations, see [`community-contributor-guide.md`](community-contributor-guide.md).
 Tauri debug launches automatically enforce a bounded, regenerable artifact budget before launch and after exit. For the safe candidate list, manual dry run, local budget overrides, Rust artifact size notes, and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
 For overlong-file thresholds and refactor boundaries, see [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).

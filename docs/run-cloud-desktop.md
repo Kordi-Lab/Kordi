@@ -48,6 +48,10 @@ pnpm debug:cloud:up
 pnpm debug:cloud:smoke
 ```
 
+The base backend does not start LiveKit. Before testing voice or video, follow
+[Hosting Kordi voice and video calls](call-hosting.md) and keep its API,
+signaling, and RTC tunnels open for the full test.
+
 Launch the desktop with the explicit loopback origin and an isolated named profile:
 
 ```bash
@@ -79,6 +83,10 @@ pnpm build:desktop
 ```
 
 The desktop build path uses the product configuration.
+
+Before a release is accepted or published, run its installed app against the
+product call deployment and complete the [two-account call acceptance
+test](call-hosting.md#required-two-account-acceptance-test).
 
 ## Optional: run multiple isolated users
 
@@ -122,5 +130,6 @@ Never use a tunnel/local backend as product-server validation. Use tunnel/local 
 - [Local development with an isolated backend](self-hosted-debug.md)
 - [Kordi architecture and backend notes](cloud-edition.md)
 - [Hosted developer guide](hosted-cloud-developer-guide.md)
+- [Voice and video call hosting](call-hosting.md)
 - [Desktop app README](../app/desktop/README.md)
 - [Development command map](development.md)
