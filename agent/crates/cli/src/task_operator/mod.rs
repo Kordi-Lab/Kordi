@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use kordi_core::error::KordiError;
 use kordi_tools::task_operator::models::{
     TaskCloseRequest, TaskCreateRequest, TaskListRequest, TaskMessageRequest,
-    TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse, TaskOperatorTaskStatus,
-    TaskSearchRequest, TaskSpawnRequest, TaskWaitRequest,
+    TaskOperatorBackgroundSession, TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse,
+    TaskOperatorTaskStatus, TaskSearchRequest, TaskSpawnRequest, TaskWaitRequest,
 };
 use kordi_tools::{TaskOperatorFn, TaskOperatorRuntime};
 use registry::{TaskAgentMetadata, TaskAgentRegistry, TaskAgentStatus};
@@ -17,45 +17,85 @@ use tokio::{process::Command, sync::Mutex, task::JoinHandle};
 
 use child_process_policy::{CHILD_AGENT_PROCESS_TIMEOUT, child_agent_tool_names, prompt_context};
 
-const DEFAULT_MAX_LIVE_TASKS: usize = 4;
+pub(crate) const DEFAULT_MAX_LIVE_TASKS: usize = 4;
 const DEFAULT_WAIT_TIMEOUT_MS: u64 = 30_000;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SpawnRequest {
-    pub(crate) task_path: String,
-    pub(crate) task_name: String,
-    pub(crate) message: String,
-    pub(crate) fork_turns: Option<String>,
-    pub(crate) write_scope: Vec<String>,
-    pub(crate) cwd: PathBuf,
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub fn managed_child_tool_names(has_write_scope: bool) -> Vec<String> {
+    child_agent_tool_names(has_write_scope)
+        .split(',')
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub fn managed_child_prompt_context(
+    task_path: &str,
+    task_name: &str,
+    write_scope: &[String],
+) -> String {
+    prompt_context(task_path, task_name, write_scope)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SpawnedTask {
+pub struct SpawnRequest {
+    pub task_path: String,
+    pub task_name: String,
+    pub task_title: String,
+    pub message: String,
+    pub fork_turns: Option<String>,
+    pub write_scope: Vec<String>,
+    pub cwd: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpawnedTask {
     pub(crate) task_path: String,
     pub(crate) status: TaskAgentStatus,
     pub(crate) summary: Option<String>,
+    pub(crate) background_session: Option<TaskOperatorBackgroundSession>,
 }
 
 impl SpawnedTask {
-    pub(crate) fn running(task_path: impl Into<String>) -> Self {
+    pub fn running(task_path: impl Into<String>) -> Self {
         Self {
             task_path: task_path.into(),
             status: TaskAgentStatus::Running,
             summary: None,
+            background_session: None,
+        }
+    }
+
+    #[cfg_attr(feature = "cli", allow(dead_code))]
+    pub fn running_in_background_session(
+        task_path: impl Into<String>,
+        session_id: impl Into<String>,
+        turn_id: impl Into<String>,
+        title: impl Into<String>,
+    ) -> Self {
+        Self {
+            task_path: task_path.into(),
+            status: TaskAgentStatus::Running,
+            summary: None,
+            background_session: Some(TaskOperatorBackgroundSession {
+                session_id: session_id.into(),
+                turn_id: Some(turn_id.into()),
+                title: title.into(),
+                status: "running".to_string(),
+            }),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum WaitOutcome {
+pub enum WaitOutcome {
     Completed { target: String, summary: String },
     Failed { target: String, summary: String },
     TimedOut,
 }
 
 #[async_trait]
-pub(crate) trait ChildAgentRunner: Send + Sync {
+pub trait ChildAgentRunner: Send + Sync {
     async fn spawn(&self, request: SpawnRequest) -> Result<SpawnedTask>;
     async fn send(&self, target: &str, message: String) -> Result<()>;
     async fn wait(&self, timeout_ms: u64) -> Result<WaitOutcome>;
@@ -180,6 +220,7 @@ impl TaskOperatorState {
             message: Some(format!("Task created: {}", stored.title)),
             target: Some(stored.task_id.clone()),
             tasks: vec![task_status_from_stored(stored)],
+            background_session: None,
         })
     }
 
@@ -215,6 +256,7 @@ impl TaskOperatorState {
             }),
             target: None,
             tasks,
+            background_session: None,
         })
     }
 
@@ -249,15 +291,23 @@ impl TaskOperatorState {
         if request.message.trim().is_empty() {
             bail!("spawn message cannot be empty")
         }
+        let task_title = request
+            .task_title
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| humanize_task_name(task_name));
 
         let metadata = {
             let mut registry = self.registry.lock().await;
-            registry.reserve(task_name, task_name, request.write_scope.clone())?
+            registry.reserve(task_name, &task_title, request.write_scope.clone())?
         };
         let task_path = metadata.path.as_str().to_string();
         let spawn_request = SpawnRequest {
             task_path: task_path.clone(),
             task_name: task_name.to_string(),
+            task_title,
             message: request.message,
             fork_turns: request.fork_turns,
             write_scope: request.write_scope,
@@ -286,6 +336,7 @@ impl TaskOperatorState {
             )),
             target: Some(task_path),
             tasks: Vec::new(),
+            background_session: spawned.background_session,
         })
     }
 
@@ -313,6 +364,7 @@ impl TaskOperatorState {
             message: Some(format!("Message sent to {target}")),
             target: Some(target.to_string()),
             tasks: Vec::new(),
+            background_session: None,
         })
     }
 
@@ -327,6 +379,7 @@ impl TaskOperatorState {
                     message: Some(format!("Task completed: {target}")),
                     target: Some(target),
                     tasks: Vec::new(),
+                    background_session: None,
                 })
             }
             WaitOutcome::Failed { target, summary } => {
@@ -337,6 +390,7 @@ impl TaskOperatorState {
                     message: Some(format!("Task failed: {target}")),
                     target: Some(target),
                     tasks: Vec::new(),
+                    background_session: None,
                 })
             }
             WaitOutcome::TimedOut => Ok(TaskOperatorRuntimeResponse {
@@ -344,6 +398,7 @@ impl TaskOperatorState {
                 message: Some("No task completed before timeout".to_string()),
                 target: None,
                 tasks: Vec::new(),
+                background_session: None,
             }),
         }
     }
@@ -360,6 +415,7 @@ impl TaskOperatorState {
             message: Some(format!("Listed {} task agent(s)", tasks.len())),
             target: None,
             tasks,
+            background_session: None,
         })
     }
 
@@ -378,6 +434,7 @@ impl TaskOperatorState {
                 message: Some(format!("Task agent closed: {target}")),
                 target: Some(target.to_string()),
                 tasks: Vec::new(),
+                background_session: None,
             });
         }
 
@@ -403,7 +460,17 @@ impl TaskOperatorState {
             message: Some(format!("Task closed: {}", stored.title)),
             target: Some(stored.task_id.clone()),
             tasks: vec![task_status_from_stored(stored)],
+            background_session: None,
         })
+    }
+}
+
+fn humanize_task_name(task_name: &str) -> String {
+    let words = task_name.replace('_', " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => "Background task".to_string(),
     }
 }
 
@@ -913,6 +980,7 @@ mod tests {
         (runtime.run)(TaskOperatorRuntimeRequest::Spawn(
             kordi_tools::task_operator::models::TaskSpawnRequest {
                 task_name: "writer".to_string(),
+                task_title: None,
                 message: "write one".to_string(),
                 fork_turns: None,
                 write_scope: vec!["src".to_string()],
@@ -920,10 +988,12 @@ mod tests {
         ))
         .await
         .expect("first spawn should reserve scope");
+        assert_eq!(runner.spawned.lock().unwrap()[0].task_title, "Writer");
 
         let error = (runtime.run)(TaskOperatorRuntimeRequest::Spawn(
             kordi_tools::task_operator::models::TaskSpawnRequest {
                 task_name: "nested".to_string(),
+                task_title: None,
                 message: "write nested".to_string(),
                 fork_turns: None,
                 write_scope: vec!["src/task_operator".to_string()],
@@ -949,6 +1019,7 @@ mod tests {
         (runtime.run)(TaskOperatorRuntimeRequest::Spawn(
             kordi_tools::task_operator::models::TaskSpawnRequest {
                 task_name: "research".to_string(),
+                task_title: None,
                 message: "research".to_string(),
                 fork_turns: None,
                 write_scope: vec![],

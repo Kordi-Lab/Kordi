@@ -64,6 +64,55 @@ pub(super) fn snapshot_turn(
         .map_err(|_| "Chat turn state is unavailable".to_string())
 }
 
+pub(super) async fn turn_snapshot_by_id(
+    manager: &DesktopChatManager,
+    turn_id: &str,
+) -> Result<DesktopChatTurnSnapshot, String> {
+    let turns = manager.turns.lock().await;
+    let turn = turns
+        .get(turn_id)
+        .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
+    snapshot_turn(&turn.snapshot)
+}
+
+pub(super) async fn active_turn_snapshots(
+    manager: &DesktopChatManager,
+) -> Result<Vec<DesktopChatTurnSnapshot>, String> {
+    let background_turn_ids = manager.background_turn_ids.lock().await.clone();
+    let turns = manager.turns.lock().await;
+    let snapshots = turns
+        .iter()
+        .filter(|(turn_id, _)| background_turn_ids.contains(*turn_id))
+        .map(|(_, turn)| snapshot_turn(&turn.snapshot))
+        .collect::<Result<Vec<_>, _>>()?;
+    let retained_ids = turns
+        .keys()
+        .filter(|turn_id| background_turn_ids.contains(*turn_id))
+        .cloned()
+        .collect();
+    drop(turns);
+    *manager.background_turn_ids.lock().await = retained_ids;
+    Ok(snapshots)
+}
+
+pub(super) async fn cancel_turn_by_id(
+    manager: &DesktopChatManager,
+    turn_id: &str,
+) -> Result<DesktopChatTurnSnapshot, String> {
+    let turns = manager.turns.lock().await;
+    let turn = turns
+        .get(turn_id)
+        .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
+    turn.cancel.cancel();
+    update_turn(&turn.snapshot, |state| {
+        if !state.completed {
+            state.status = "cancelling".to_string();
+            state.message = "Stopping…".to_string();
+        }
+    });
+    snapshot_turn(&turn.snapshot)
+}
+
 pub(super) fn update_turn(
     snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
     apply: impl FnOnce(&mut DesktopChatTurnSnapshot),

@@ -92,6 +92,7 @@ pub(super) async fn start_message(
     }
     let snapshot_for_task = snapshot.clone();
     let is_agent_builder_session = agent_builder::is_agent_builder_session_id(&target_session_id);
+    let manager_for_task = manager.clone();
 
     tokio::spawn(async move {
         let (provider, model) = {
@@ -117,7 +118,14 @@ pub(super) async fn start_message(
                     fail_turn(&snapshot_for_task, error.to_string());
                     return;
                 }
-                prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
+                prepare_desktop_session_for_send(
+                    &manager_for_task,
+                    &mut session,
+                    cwd.clone(),
+                    &text,
+                    scheduled_task_session_id.as_deref(),
+                )
+                .await;
             }
 
             let detail = session.detail().ok();

@@ -85,6 +85,8 @@ pub struct TaskSearchRequest {
 #[serde(rename_all = "camelCase")]
 pub struct TaskSpawnRequest {
     pub task_name: String,
+    #[serde(default)]
+    pub task_title: Option<String>,
     pub message: String,
     pub fork_turns: Option<String>,
     #[serde(default)]
@@ -167,12 +169,24 @@ pub struct TaskOperatorTaskStatus {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct TaskOperatorBackgroundSession {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    pub title: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskOperatorRuntimeResponse {
     pub status: String,
     pub message: Option<String>,
     pub target: Option<String>,
     #[serde(default)]
     pub tasks: Vec<TaskOperatorTaskStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_session: Option<TaskOperatorBackgroundSession>,
 }
 
 impl TaskOperatorRuntimeResponse {
@@ -183,6 +197,7 @@ impl TaskOperatorRuntimeResponse {
             message: Some(format!("Task agent spawned: {target}")),
             target: Some(target),
             tasks: Vec::new(),
+            background_session: None,
         }
     }
 }
@@ -258,13 +273,14 @@ mod tests {
         let spawn: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
             "action": "spawn",
             "taskName": "research_docs",
+            "taskTitle": "Research documentation",
             "message": "Inspect the docs and summarize the relevant files.",
             "forkTurns": "active",
             "writeScope": []
         }))
         .expect("spawn request should deserialize");
         assert!(
-            matches!(spawn, TaskOperatorRequest::Spawn(request) if request.task_name == "research_docs")
+            matches!(spawn, TaskOperatorRequest::Spawn(request) if request.task_name == "research_docs" && request.task_title.as_deref() == Some("Research documentation"))
         );
 
         let message: TaskOperatorRequest = serde_json::from_value(serde_json::json!({

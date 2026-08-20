@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { relatedAgentSessionsFromTools, type RelatedAgentSession } from '@/features/chat/relatedAgentSessions';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
@@ -107,6 +108,45 @@ function ForwardedFromHeader({ senderLabel }: { senderLabel?: string | null }) {
       <Forward className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span className="shrink-0">Forwarded from</span>
       <span className="app-message-forwarded-header-name min-w-0 truncate font-semibold">{sender}</span>
+    </div>
+  );
+}
+
+function RelatedAgentSessionLinks({
+  sessions,
+  onOpen,
+}: {
+  sessions: RelatedAgentSession[];
+  onOpen?: (sessionId: string) => void;
+}) {
+  if (sessions.length === 0) return null;
+
+  return (
+    <div className="mt-2 grid w-[34rem] max-w-full gap-1.5" data-related-agent-sessions="true">
+      {sessions.map((session) => (
+        <button
+          key={session.sessionId}
+          type="button"
+          className="app-button-quiet group flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2 text-left transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-default disabled:opacity-60"
+          onClick={() => onOpen?.(session.sessionId)}
+          disabled={!onOpen}
+          aria-label={`Open background agent session: ${session.title}`}
+          data-related-agent-session-id={session.sessionId}
+        >
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[color:var(--app-control-hover)] text-[color:var(--app-sidebar-accent)]" aria-hidden="true">
+            <Bot className="h-3.5 w-3.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12px] font-semibold leading-4 text-[color:var(--utility-foreground)]" title={session.title}>
+              {session.title}
+            </span>
+            <span className="block truncate text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
+              Background agent session
+            </span>
+          </span>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--utility-muted-text)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+        </button>
+      ))}
     </div>
   );
 }
@@ -905,6 +945,7 @@ function MessageBubbleView({
       ) : null}
     </span>
   ) : null;
+  const relatedAgentSessions = relatedAgentSessionsFromTools(msg.turn?.tools);
 
   if (isCompactionSummaryMessage(msg)) {
     return (
@@ -1069,6 +1110,10 @@ function MessageBubbleView({
               onNavigateToMessage={onNavigateToMessage}
               onOpenArtifact={onOpenArtifact}
               onOpenAuthSettings={onOpenAuthSettings}
+            />
+            <RelatedAgentSessionLinks
+              sessions={relatedAgentSessions}
+              onOpen={onOpenForkSession}
             />
           </div>
           <MessageHoverTime msg={msg} side="peer" />

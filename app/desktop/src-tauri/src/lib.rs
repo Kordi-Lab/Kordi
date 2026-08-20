@@ -334,6 +334,7 @@ pub fn run() {
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state,
+            chat::desktop_chat_active_turns,
             skill_library::desktop_skill_library_list,
             skill_library::desktop_skill_library_detail,
             skill_library::desktop_skill_library_read_file,

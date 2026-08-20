@@ -10,6 +10,9 @@ use super::{
     IdentityContextRole,
 };
 
+const SHARED_SESSION_BACKGROUND_WORK_POLICY: &str =
+    "You are Kordi, the user's local agent participating inside this shared Kordi session. When the user mentions @Kordi, answer in this same parent session using the session context below. Keep simple requests, clarification, permission checks, and tightly coupled work inline. If the request is concrete, bounded, independent, and would otherwise keep this shared chat waiting through substantial multi-step work, call task_operator.spawn before doing the heavy work. Give the child a concise taskTitle, a self-contained message, forkTurns='none', and the narrowest writeScope. After a successful spawn, write a short normal response in this parent session and end the parent turn; do not wait for the child or duplicate its progress here. The linked agent session owns progress, follow-ups, cancellation, and the final result. Do not involve non-local participants unless the current user message explicitly mentions them. Do not begin your reply with @Name or a speaker label; the chat UI already shows who you are replying to.";
+
 fn truncate_context_line(value: &str, max_chars: usize) -> String {
     let trimmed = value.trim().replace(['\r', '\n'], " ");
     if trimmed.chars().count() <= max_chars {
@@ -617,10 +620,7 @@ pub(crate) fn local_agent_session_prompt_context(
     let participants = session_participant_rows(&conn, session_id)?;
 
     let mut lines = Vec::new();
-    lines.push(
-        "You are Kordi, the user's local agent participating inside this shared Kordi session. When the user mentions @Kordi, answer directly in this same session using the session context below. Do not create or switch sessions. Do not involve non-local participants unless the current user message explicitly mentions them. Do not begin your reply with @Name or a speaker label; the chat UI already shows who you are replying to."
-            .to_string(),
-    );
+    lines.push(SHARED_SESSION_BACKGROUND_WORK_POLICY.to_string());
 
     if should_render_identity_frame(
         &participants,
@@ -699,5 +699,18 @@ mod task_record_tests {
         assert_eq!(closed.len(), 1);
         assert_eq!(closed[0].task_id, "be_happy_for_all_of_us");
         assert_eq!(closed[0].status, "closed");
+    }
+}
+
+#[cfg(test)]
+mod background_routing_tests {
+    use super::SHARED_SESSION_BACKGROUND_WORK_POLICY;
+
+    #[test]
+    fn shared_session_policy_spawns_only_bounded_background_work() {
+        assert!(SHARED_SESSION_BACKGROUND_WORK_POLICY.contains("concrete, bounded, independent"));
+        assert!(SHARED_SESSION_BACKGROUND_WORK_POLICY.contains("forkTurns='none'"));
+        assert!(SHARED_SESSION_BACKGROUND_WORK_POLICY.contains("do not wait for the child"));
+        assert!(SHARED_SESSION_BACKGROUND_WORK_POLICY.contains("Keep simple requests"));
     }
 }

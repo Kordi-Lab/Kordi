@@ -277,6 +277,7 @@ export async function respondToCloudGroupAgentMention(
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
       requestId: message.id,
       replyToMessageId: message.id,
+      ...(finalTurn.tools.length > 0 ? { tools: finalTurn.tools } : {}),
       ...(failureMessage ? { error: failureMessage } : {}),
     },
     createdAtMs: responseCreatedAtMs,

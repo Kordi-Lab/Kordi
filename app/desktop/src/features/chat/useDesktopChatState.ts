@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { DesktopChatState, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import {
+  fetchDesktopChatActiveTurns,
   fetchDesktopChatState,
   fetchDesktopChatTurnState,
 } from '@/lib/desktop';
@@ -48,6 +49,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
   const pendingLiveTurnSnapshotsRef = useRef<Record<string, DesktopChatTurnSnapshot>>({});
   const liveTurnCommitTimersRef = useRef<Record<string, number>>({});
   const watchedDesktopTurnIdsRef = useRef<Set<string>>(new Set());
+  const discoveredDesktopTurnIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedInitialDesktopChatRef = useRef(false);
   const [desktopChatState, setDesktopChatState] = useState<DesktopChatState | null>(null);
   const [isDesktopChatLoading, setIsDesktopChatLoading] = useState(isNativeShell);
@@ -488,6 +490,32 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
       void watchDesktopLiveTurn(turn);
     }
   }, [desktopLiveTurnsBySession, isNativeShell, watchDesktopLiveTurn]);
+
+  useEffect(() => {
+    if (!isNativeShell) return;
+    let cancelled = false;
+
+    const discoverBackendTurns = async () => {
+      const turns = await fetchDesktopChatActiveTurns().catch(() => []);
+      if (cancelled) return;
+      const currentIds = new Set(turns.map((turn) => turn.id));
+      for (const turn of turns) {
+        if (discoveredDesktopTurnIdsRef.current.has(turn.id)) continue;
+        discoveredDesktopTurnIdsRef.current.add(turn.id);
+        void watchDesktopLiveTurn(turn);
+      }
+      for (const turnId of discoveredDesktopTurnIdsRef.current) {
+        if (!currentIds.has(turnId)) discoveredDesktopTurnIdsRef.current.delete(turnId);
+      }
+    };
+
+    void discoverBackendTurns();
+    const interval = window.setInterval(discoverBackendTurns, 1_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isNativeShell, watchDesktopLiveTurn]);
 
   return {
     desktopChatState,
