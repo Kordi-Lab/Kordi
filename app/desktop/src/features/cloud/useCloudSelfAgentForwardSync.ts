@@ -16,7 +16,6 @@ import {
   loadChatSyncLocalState,
 } from '@/lib/desktopChatSync';
 import { fetchCanonicalSessionMessages } from '@/lib/desktop';
-import { isChatCreatedDirectAgentSession } from '@/features/canonical/readModel/conversationMapping';
 import type {
   ChatSyncConversation,
   ChatSyncMessage,
@@ -38,6 +37,7 @@ import {
   saveCloudSelfAgentRecoverySessionIds,
   seedCloudSelfAgentForwardSyncLedger,
 } from './cloudSelfAgentForwardSync';
+import { cloudSelfAgentForwardMessageKind } from './cloudSelfAgentForwardPolicy';
 import {
   CLOUD_SELF_AGENT_HEARTBEAT_MS,
   cloudSelfAgentProcessingLedgerKey,
@@ -48,6 +48,7 @@ import { useCloudSelfAgentExecutionStreaming } from './useCloudSelfAgentExecutio
 import { loadSession } from './session';
 import {
   cloudAgentIdentitySyncedSessionIds,
+  cloudSyncedLocalAgentSessionIds,
   publishCloudAgentIdentityMarkers,
 } from './cloudSelfAgentSessionIdentity';
 
@@ -344,7 +345,10 @@ export function useCloudSelfAgentForwardSync({
             )),
           ],
         };
-        const localDirectAgentSessionIds = new Set(recoveryState.sessions.filter(isChatCreatedDirectAgentSession).map((session) => session.id));
+        const historySessionIds = new Set([
+          ...recoverySessionIds,
+          ...cloudSyncedLocalAgentSessionIds(recoveryState),
+        ]);
         let ledger = identityLedger;
         let forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
           account.accountId,
@@ -425,12 +429,9 @@ export function useCloudSelfAgentForwardSync({
             client,
             ledger: executionLedger,
             mergeMessage,
-            messageKindForOperation: (operation) => (
-              recoverySessionIds.has(operation.sessionId) || localDirectAgentSessionIds.has(operation.sessionId)
-                ? operation.role === 'user'
-                  ? 'canonical-history-user'
-                  : 'canonical-history-agent'
-                : null
+            messageKindForOperation: (operation) => cloudSelfAgentForwardMessageKind(
+              operation,
+              historySessionIds,
             ),
             onRequestPublished: (message, operation) => {
               if (!recoverySessionIds.has(operation.sessionId)) {
