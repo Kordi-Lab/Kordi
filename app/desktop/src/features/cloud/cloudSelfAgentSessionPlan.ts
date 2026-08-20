@@ -67,6 +67,7 @@ export function createCloudSelfAgentSessionPlanner({
     new Map<string, OpenCanonicalSessionRequest>();
   const existingById =
     new Map(state.sessions.map((session) => [session.id, session]));
+  const configuredIdentityBySessionId = new Map<string, string>();
 
   const ensure = (
     sessionId: string,
@@ -179,6 +180,9 @@ export function createCloudSelfAgentSessionPlanner({
         ? existingMetadata.sessionTitleGeneratedFromMessageId.trim()
         : '';
     const configuredIdentityId = configuredAgentIdentityId(state, existingMetadata);
+    if (configuredIdentityId) {
+      configuredIdentityBySessionId.set(sessionId, configuredIdentityId);
+    }
     const shouldRepairConfiguredIdentity = Boolean(configuredIdentityId) && (
       existingSession?.kind !== 'direct-agent'
       || existingSession.primaryIdentityId !== configuredIdentityId
@@ -320,6 +324,9 @@ export function createCloudSelfAgentSessionPlanner({
     ensure,
     get requests(): OpenCanonicalSessionRequest[] {
       return [...requestsById.values()];
+    },
+    agentIdentityIdForSession(sessionId: string) {
+      return configuredIdentityBySessionId.get(sessionId) ?? agentIdentityId;
     },
     existingById,
   };
