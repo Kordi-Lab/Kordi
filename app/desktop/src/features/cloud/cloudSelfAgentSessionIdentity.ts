@@ -1,10 +1,14 @@
 import type { CanonicalSessionState } from '@/kordi-app/types';
-import type { CloudAuthClient } from './authClient';
+import type { CloudAuthClient, CloudMessage } from './authClient';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
 import {
   CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND,
+  cloudDirectMessageTargetCloudAgentId,
+  cloudDirectMessageTargetCloudAgentName,
+  cloudDirectMessageTargetCloudAgentOwnerAccountId,
   encodeCloudDirectMessageEnvelope,
 } from './cloudDirectMessages';
+import { compareCloudMessages } from './cloudMessageMerge';
 
 type IdentityLedger = Record<string, {
   cloudMessageId: string | null;
@@ -29,6 +33,30 @@ function text(value: unknown) {
 
 export function cloudSelfAgentIdentityLedgerKey(sessionId: string) {
   return `agent-identity:${sessionId}`;
+}
+
+export function cloudAgentSessionTargetFromMessages(
+  messages: readonly CloudMessage[],
+  ownerAccountId: string,
+  beforeMessage?: CloudMessage,
+) {
+  const sessionId = beforeMessage?.sessionId?.trim();
+  const targetNamesById = new Map<string, string>();
+  let target: { targetCloudAgentId: string; targetCloudAgentName: string | null } | null = null;
+  for (const message of [...messages].sort(compareCloudMessages)) {
+    if (sessionId && message.sessionId?.trim() !== sessionId) continue;
+    if (beforeMessage && compareCloudMessages(message, beforeMessage) > 0) break;
+    const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
+    if (
+      !targetCloudAgentId
+      || cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body) !== ownerAccountId
+    ) continue;
+    const messageTargetName = cloudDirectMessageTargetCloudAgentName(message.body);
+    if (messageTargetName) targetNamesById.set(targetCloudAgentId, messageTargetName);
+    const targetCloudAgentName = targetNamesById.get(targetCloudAgentId) ?? null;
+    target = { targetCloudAgentId, targetCloudAgentName };
+  }
+  return target;
 }
 
 export function cloudSyncedLocalAgentSessionIds(state: CanonicalSessionState) {

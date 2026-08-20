@@ -62,6 +62,7 @@ import {
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
 } from './cloudSelfAgentExecutionState';
+import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
 
 export {
   cloudSelfAgentExecutionCanStart,
@@ -265,7 +266,13 @@ export function useCloudSelfAgentExecution({
           return;
         }
         const targetCloudAgentId =
-          cloudDirectMessageTargetCloudAgentId(request.body);
+          cloudDirectMessageTargetCloudAgentId(request.body)
+          || cloudAgentSessionTargetFromMessages(
+            selfMessages,
+            account.accountId,
+            request,
+          )?.targetCloudAgentId
+          || null;
         const ownerName =
           account.displayName || account.primaryEmail || 'Me';
         const contextMessages = [

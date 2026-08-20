@@ -2,9 +2,15 @@ import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { localOwnedAgentSenderLabel } from '../src/app/viewModels/helpers';
+import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import { buildCloudDesktopCollaborationState, cloudCollaborationConversationId } from '../src/features/cloud/cloudCollaborationState';
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import {
+  CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND,
+  encodeCloudDirectMessageEnvelope,
+} from '../src/features/cloud/cloudDirectMessages';
 import { planCloudSelfAgentSync } from '../src/features/cloud/useCloudCollaborationState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -103,6 +109,63 @@ test('cloud self-agent bridge state restores session titles instead of naming ev
 
   assert.equal(state.conversations[0]?.title, 'OpenClaw notes');
   assert.equal(state.conversations[0]?.peerDisplayName, 'OpenClaw notes');
+});
+
+test('cloud self-agent bridge state keeps a custom agent identity on plain follow-up requests', () => {
+  const sessionId = 'session:direct-agent:stock';
+  const createdAt = new Date().toISOString();
+  const marker = {
+    ...message,
+    messageId: 'msg_stock_identity',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    direction: 'outgoing',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '',
+      targetCloudAgentId: 'cloud_agent_stock',
+      targetCloudAgentName: 'US Stock Paper Trader',
+      targetCloudAgentOwnerAccountId: account.accountId,
+    }),
+    messageKind: CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND,
+    sessionId,
+    conversationSequence: 1,
+    createdAt,
+  } as CloudMessage;
+  const request = {
+    ...marker,
+    messageId: 'msg_stock_request',
+    body: 'hello',
+    messageKind: 'text',
+    conversationSequence: 2,
+  } as CloudMessage;
+  const processing = {
+    ...request,
+    messageId: 'msg_stock_processing',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'processing...',
+      deliveryState: 'processing',
+    }),
+    conversationSequence: 3,
+  } as CloudMessage;
+
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [],
+    messagesByPeer: { [account.accountId]: [marker, request, processing] },
+  });
+
+  assert.equal(state.conversations[0]?.identity?.localAgentId, 'cloud_agent_stock');
+  assert.equal(state.conversations[0]?.identity?.localAgentName, 'US Stock Paper Trader');
+  const viewModel = mapCollaborationConversationToViewModel(
+    state.conversations[0],
+    undefined,
+    'My Kordi',
+  );
+  assert.equal(viewModel.collaborationTarget?.displayName, 'US Stock Paper Trader');
+  assert.equal(localOwnedAgentSenderLabel(viewModel), 'US Stock Paper Trader');
 });
 
 test('cloud self-agent bridge state ignores draft sessions and model changes in list previews', () => {

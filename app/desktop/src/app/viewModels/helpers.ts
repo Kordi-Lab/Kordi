@@ -250,9 +250,9 @@ function legacyFirstUserSentence(messages: Message[]) {
 }
 
 function localOwnedAgentDisplayName(value?: string | null) {
-  return firstPersonPossessiveLabel(value || 'Kordi');
+  const label = (value || 'Kordi').trim();
+  return /^(?:my\s+)?kordi$/i.test(label) ? firstPersonPossessiveLabel(label) : label;
 }
-
 export function localOwnedAgentSenderLabel(
   conversation: Pick<Conversation, 'canonicalParticipants' | 'participants' | 'messages'>,
   fallback = 'Kordi',

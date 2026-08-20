@@ -2,11 +2,49 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CloudMessage } from '../src/features/cloud/authClient';
-import { parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
+import { encodeCloudDirectMessageEnvelope, parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import {
+  cloudAgentSessionTargetFromMessages,
   cloudSelfAgentIdentityLedgerKey,
   publishCloudAgentIdentityMarkers,
 } from '../src/features/cloud/cloudSelfAgentSessionIdentity';
+
+test('plain requests inherit the custom agent identity marker for their session', () => {
+  const sessionId = 'session:direct-agent:stock';
+  const marker = {
+    messageId: 'identity-marker',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '',
+      targetCloudAgentId: 'cloud_agent_stock',
+      targetCloudAgentName: 'US Stock Paper Trader',
+      targetCloudAgentOwnerAccountId: 'acct_me',
+    }),
+    sessionId,
+    conversationSequence: 1,
+    createdAt: '2026-08-20T00:00:00Z',
+    deliveredAt: null,
+    readAt: null,
+  } as CloudMessage;
+  const request = {
+    ...marker,
+    messageId: 'plain-request',
+    body: 'hello',
+    conversationSequence: 2,
+    createdAt: '2026-08-20T00:00:01Z',
+  } as CloudMessage;
+
+  assert.deepEqual(
+    cloudAgentSessionTargetFromMessages([marker, request], 'acct_me', request),
+    {
+      targetCloudAgentId: 'cloud_agent_stock',
+      targetCloudAgentName: 'US Stock Paper Trader',
+    },
+  );
+});
 
 test('custom agent identity marker is idempotent and carries the selected name', async () => {
   const bodies: string[] = [];
