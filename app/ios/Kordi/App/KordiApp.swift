@@ -326,8 +326,7 @@ struct MainTabView: View {
     @State private var chatsPath = NavigationPath()
     @State private var contactsPath = NavigationPath()
     @State private var digestPath = NavigationPath()
-    @State private var showAccount = false
-    @State private var accountTabImage: UIImage?
+    @State private var accountPath = NavigationPath()
 
     var body: some View {
         Group {
@@ -336,12 +335,6 @@ struct MainTabView: View {
             } else {
                 legacyTabView
             }
-        }
-        .sheet(isPresented: $showAccount) {
-            AccountSheet()
-        }
-        .task(id: accountTabImageIdentity) {
-            await refreshAccountTabImage()
         }
         .sensoryFeedback(.selection, trigger: selection)
         .task(id: notificationCoordinator.pendingMessageRoute) {
@@ -366,7 +359,7 @@ struct MainTabView: View {
 
     @available(iOS 18.0, *)
     private var modernTabView: some View {
-        TabView(selection: tabSelection) {
+        TabView(selection: $selection) {
             Tab(value: MainTab.contacts) {
                 contactsRoot
             } label: {
@@ -387,7 +380,7 @@ struct MainTabView: View {
             }
 
             Tab(value: MainTab.account) {
-                Color.clear
+                accountRoot
             } label: {
                 accountTabLabel
             }
@@ -395,7 +388,7 @@ struct MainTabView: View {
     }
 
     private var legacyTabView: some View {
-        TabView(selection: tabSelection) {
+        TabView(selection: $selection) {
             contactsRoot
                 .tabItem { Label(MainTab.contacts.rawValue, systemImage: MainTab.contacts.symbol) }
                 .badge(pendingIncomingRequestCount)
@@ -409,24 +402,10 @@ struct MainTabView: View {
                 .tabItem { Label(MainTab.digest.rawValue, systemImage: MainTab.digest.symbol) }
                 .tag(MainTab.digest)
 
-            Color.clear
+            accountRoot
                 .tabItem { accountTabLabel }
                 .tag(MainTab.account)
         }
-    }
-
-    private var tabSelection: Binding<MainTab> {
-        Binding(
-            get: { selection },
-            set: { requestedTab in
-                let resolution = MainTabSelectionPolicy.resolve(
-                    current: selection,
-                    requested: requestedTab
-                )
-                selection = resolution.selectedTab
-                showAccount = resolution.presentsAccount
-            }
-        )
     }
 
     private var contactsRoot: some View {
@@ -439,7 +418,8 @@ struct MainTabView: View {
     private var chatsRoot: some View {
         NavigationStack(path: $chatsPath) {
             ChatHomeView(
-                onOpenConversation: { chatsPath.append($0) }
+                onOpenConversation: { chatsPath.append($0) },
+                onOpenNewChat: { chatsPath.append($0) }
             )
         }
         .kordiTabBarVisibility(isRoot: chatsPath.isEmpty)
@@ -452,97 +432,21 @@ struct MainTabView: View {
         .kordiTabBarVisibility(isRoot: digestPath.isEmpty)
     }
 
-    private var accountTabLabel: some View {
-        Image(uiImage: accountTabImage ?? AccountTabAvatarRenderer.image(
-            name: model.account?.preferredName ?? "Me",
-            sourceImage: nil
-        ))
-        .renderingMode(.original)
-        .accessibilityLabel("Account settings")
-    }
-
-    private var accountTabImageIdentity: String {
-        [
-            model.account?.accountId ?? "",
-            model.account?.preferredName ?? "Me",
-            model.account?.avatar.imageSource ?? "",
-        ].joined(separator: "|")
-    }
-
-    private func refreshAccountTabImage() async {
-        let sourceImage: UIImage?
-        if let source = AvatarImageLoader.normalizedSource(model.account?.avatar.imageSource) {
-            sourceImage = await AvatarImageLoader.image(from: source)
-        } else {
-            sourceImage = nil
+    private var accountRoot: some View {
+        NavigationStack(path: $accountPath) {
+            AccountSheet(embeddedInNavigationStack: true)
         }
-        guard !Task.isCancelled else { return }
-        accountTabImage = AccountTabAvatarRenderer.image(
-            name: model.account?.preferredName ?? "Me",
-            sourceImage: sourceImage
-        )
+        .kordiTabBarVisibility(isRoot: accountPath.isEmpty)
+    }
+
+    private var accountTabLabel: some View {
+        Label(MainTab.account.rawValue, systemImage: MainTab.account.symbol)
     }
 
     private var pendingIncomingRequestCount: Int {
         model.contactRequests.lazy.filter { $0.isIncoming && $0.status == "pending" }.count
     }
-}
 
-private enum AccountTabAvatarRenderer {
-    private static let size = CGSize(width: 28, height: 28)
-
-    static func image(name: String, sourceImage: UIImage?) -> UIImage {
-        let format = UIGraphicsImageRendererFormat.preferred()
-        format.scale = 2
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-
-        return renderer.image { rendererContext in
-            let context = rendererContext.cgContext
-            let bounds = CGRect(origin: .zero, size: size)
-            context.addEllipse(in: bounds)
-            context.clip()
-
-            if let sourceImage {
-                sourceImage.draw(in: aspectFillRect(for: sourceImage.size, inside: bounds))
-            } else {
-                let palette = CloudAvatarFallback.palette(for: name)
-                UIColor(palette.background).setFill()
-                context.fill(bounds)
-
-                let initials = CloudAvatarFallback.initials(for: name)
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
-                    .foregroundColor: UIColor(palette.foreground),
-                ]
-                let textSize = initials.size(withAttributes: attributes)
-                initials.draw(
-                    at: CGPoint(
-                        x: (bounds.width - textSize.width) / 2,
-                        y: (bounds.height - textSize.height) / 2
-                    ),
-                    withAttributes: attributes
-                )
-            }
-
-            context.resetClip()
-            context.setStrokeColor(UIColor.separator.withAlphaComponent(0.22).cgColor)
-            context.setLineWidth(1)
-            context.strokeEllipse(in: bounds.insetBy(dx: 0.5, dy: 0.5))
-        }
-        .withRenderingMode(.alwaysOriginal)
-    }
-
-    private static func aspectFillRect(for imageSize: CGSize, inside bounds: CGRect) -> CGRect {
-        guard imageSize.width > 0, imageSize.height > 0 else { return bounds }
-        let scale = max(bounds.width / imageSize.width, bounds.height / imageSize.height)
-        let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        return CGRect(
-            x: bounds.midX - scaledSize.width / 2,
-            y: bounds.midY - scaledSize.height / 2,
-            width: scaledSize.width,
-            height: scaledSize.height
-        )
-    }
 }
 
 private extension View {
@@ -562,7 +466,7 @@ enum MainTab: String, CaseIterable, Identifiable {
     case digest = "Digest"
     case account = "Account"
 
-    static let contentTabs: [MainTab] = [.contacts, .chats, .digest]
+    static let contentTabs: [MainTab] = [.contacts, .chats, .digest, .account]
 
     var id: Self { self }
 
@@ -575,31 +479,8 @@ enum MainTab: String, CaseIterable, Identifiable {
         case .digest:
             "list.bullet.clipboard"
         case .account:
-            "person.crop.circle"
+            "person"
         }
-    }
-}
-
-struct MainTabSelectionResolution: Equatable {
-    let selectedTab: MainTab
-    let presentsAccount: Bool
-}
-
-enum MainTabSelectionPolicy {
-    static func resolve(
-        current: MainTab,
-        requested: MainTab
-    ) -> MainTabSelectionResolution {
-        guard requested == .account else {
-            return MainTabSelectionResolution(
-                selectedTab: requested,
-                presentsAccount: false
-            )
-        }
-        return MainTabSelectionResolution(
-            selectedTab: current,
-            presentsAccount: true
-        )
     }
 }
 

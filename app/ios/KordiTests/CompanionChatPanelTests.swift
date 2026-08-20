@@ -2,6 +2,20 @@ import XCTest
 @testable import Kordi
 
 final class CompanionChatPanelTests: XCTestCase {
+    func testNewChatMenuRoutesEveryActionToItsNavigationDestination() {
+        XCTAssertEqual(
+            NewChatMode.allCases.map(\.menuTitle),
+            ["Chat with contact", "Chat with agent", "Start group", "Add contacts"]
+        )
+        XCTAssertEqual(
+            NewChatMode.allCases.map(\.systemImage),
+            ["message.fill", "sparkles", "person.3.fill", "person.badge.plus"]
+        )
+        XCTAssertEqual(NewChatMode.previewMode(arguments: ["--preview-new-chat"]), .contact)
+        XCTAssertEqual(NewChatMode.previewMode(arguments: ["--preview-new-group"]), .group)
+        XCTAssertEqual(NewChatMode.previewMode(arguments: ["--preview-add-contact"]), .addContact)
+    }
+
     func testWrappedComposerTextUsesTheExpandedControlLayout() {
         XCTAssertTrue(ComposerTextFieldLayout.usesExpandedLayout(
             hasLineBreak: false,

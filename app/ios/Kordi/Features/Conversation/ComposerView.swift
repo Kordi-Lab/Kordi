@@ -87,6 +87,8 @@ struct ComposerView: View {
     @Binding var replySource: MessageActionSource?
     @Binding var selectedMention: ComposerMentionTarget?
     @Binding var isExpressivePickerPresented: Bool
+    @Binding var isAgentModelPickerPresented: Bool
+    let conversation: ConversationSummary
     let mentionTargets: [ComposerMentionTarget]
     let isSending: Bool
     let isPreparingAttachments: Bool
@@ -96,7 +98,6 @@ struct ComposerView: View {
     let onChoosePhotos: () -> Void
     let onChooseMeme: () -> Void
     let onChooseFiles: () -> Void
-    let onOpenAgentModel: () -> Void
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
     @State private var isFocused = false
@@ -110,6 +111,9 @@ struct ComposerView: View {
 
     var body: some View {
         composerContainer
+            .overlay(alignment: .bottom) {
+                floatingPanelLayer
+            }
             .padding(.top, 9)
             .padding(.bottom, isExpressivePickerPresented ? 0 : 9)
             .background {
@@ -119,7 +123,6 @@ struct ComposerView: View {
                     Rectangle().fill(.bar)
                 }
             }
-            .animation(inputSurfaceAnimation, value: showsMentionPicker)
             .animation(.snappy(duration: 0.2), value: attachments.count)
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
     }
@@ -156,8 +159,20 @@ struct ComposerView: View {
         } action: { height in
             composerContentHeight = height
         }
-        .overlay(alignment: .bottom) {
-            if showsMentionPicker {
+    }
+
+    private var floatingPanelLayer: some View {
+        ZStack(alignment: .bottom) {
+            if isAgentModelPickerPresented {
+                AgentModelPicker(
+                    conversation: conversation,
+                    onDismiss: dismissAgentModelPicker
+                )
+                .padding(.horizontal, 10)
+                .offset(y: -composerContentHeight - 8)
+                .transition(mentionPickerTransition)
+                .zIndex(10)
+            } else if showsMentionPicker {
                 mentionPicker
                     .padding(.horizontal, 10)
                     .offset(y: -composerContentHeight - 8)
@@ -165,6 +180,9 @@ struct ComposerView: View {
                     .zIndex(10)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .animation(inputSurfaceAnimation, value: showsMentionPicker)
+        .animation(inputSurfaceAnimation, value: isAgentModelPickerPresented)
     }
 
     private var inputSurfaceAssembly: some View {
@@ -254,7 +272,8 @@ struct ComposerView: View {
     private var modelMenuButton: some View {
         Button {
             dismissExpressivePicker()
-            onOpenAgentModel()
+            isFocused = false
+            isAgentModelPickerPresented.toggle()
         } label: {
             Image(systemName: "line.3.horizontal")
                 .font(.body.weight(.semibold))
@@ -280,7 +299,10 @@ struct ComposerView: View {
         .padding(.horizontal, 8)
         .accessibilityHidden(isExpressivePickerPresented)
         .onChange(of: isFocused) { _, isFocused in
-            if isFocused { dismissExpressivePicker() }
+            if isFocused {
+                dismissExpressivePicker()
+                dismissAgentModelPicker()
+            }
         }
         .onChange(of: text) { _, newValue in
             if let selectedMention,
@@ -351,6 +373,7 @@ struct ComposerView: View {
     }
 
     private func showExpressivePicker() {
+        dismissAgentModelPicker()
         let transitionDuration = ComposerInputSurfaceMotion.delayBeforePresentingPicker(
             keyboardIsFocused: isFocused,
             reduceMotion: reduceMotion
@@ -367,6 +390,7 @@ struct ComposerView: View {
 
     private func showKeyboard() {
         dismissExpressivePicker()
+        dismissAgentModelPicker()
         let transitionDuration = reduceMotion ? Duration.zero : ComposerInputSurfaceMotion.duration
         Task { @MainActor in
             try? await Task.sleep(for: transitionDuration)
@@ -442,6 +466,7 @@ struct ComposerView: View {
         .simultaneousGesture(
             TapGesture().onEnded {
                 dismissExpressivePicker()
+                dismissAgentModelPicker()
             }
         )
         .disabled(isSending || isPreparingAttachments)
@@ -472,6 +497,7 @@ struct ComposerView: View {
     private var sendButtonContent: some View {
         Button {
             dismissExpressivePicker()
+            dismissAgentModelPicker()
             onSend()
         } label: {
             Group {
@@ -544,11 +570,14 @@ struct ComposerView: View {
         .padding(.bottom, 6)
         .frame(height: mentionPickerHeight)
         .frame(maxWidth: .infinity)
-        .modifier(MentionPickerSurfaceModifier())
+        .modifier(ComposerFloatingPanelSurfaceModifier())
     }
 
     private var showsMentionPicker: Bool {
-        isFocused && !isExpressivePickerPresented && !filteredMentionTargets.isEmpty
+        isFocused
+            && !isExpressivePickerPresented
+            && !isAgentModelPickerPresented
+            && !filteredMentionTargets.isEmpty
     }
 
     private var mentionPickerHeight: CGFloat {
@@ -562,24 +591,8 @@ struct ComposerView: View {
         )
     }
 
-    private struct MentionPickerSurfaceModifier: ViewModifier {
-        @ViewBuilder
-        func body(content: Content) -> some View {
-            if #available(iOS 26.0, *) {
-                content
-                    .glassEffect(.regular, in: .rect(cornerRadius: 22))
-            } else {
-                content
-                    .background(
-                        .regularMaterial,
-                        in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 0.5)
-                    }
-            }
-        }
+    private func dismissAgentModelPicker() {
+        isAgentModelPickerPresented = false
     }
 
     private func replyPreview(_ source: MessageActionSource) -> some View {
@@ -820,6 +833,26 @@ struct ComposerView: View {
 
     private func attachmentCountText(_ count: Int) -> String {
         count == 1 ? "1 attachment" : "\(count) attachments"
+    }
+}
+
+struct ComposerFloatingPanelSurfaceModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        } else {
+            content
+                .background(
+                    .regularMaterial,
+                    in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 0.5)
+                }
+        }
     }
 }
 

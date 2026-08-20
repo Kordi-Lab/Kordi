@@ -351,7 +351,7 @@ struct ConversationView: View {
                             .scrollDismissesKeyboard(.interactively)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
-                                    dismissExpressivePicker()
+                                    dismissComposerPickers()
                                 }
                             )
 
@@ -500,6 +500,8 @@ struct ConversationView: View {
                             isExpressivePickerPresented = isPresented
                         }
                     ),
+                    isAgentModelPickerPresented: $showAgentModel,
+                    conversation: conversation,
                     mentionTargets: mentionTargets,
                     isSending: isSending,
                     isPreparingAttachments: isPreparingAttachments,
@@ -516,7 +518,6 @@ struct ConversationView: View {
                         showMemePhotoPicker = true
                     },
                     onChooseFiles: { showFileImporter = true },
-                    onOpenAgentModel: { showAgentModel = true },
                     onSendExpressiveMedia: sendExpressiveMedia,
                     onSend: { Task { await send() } }
                 )
@@ -554,7 +555,10 @@ struct ConversationView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
                 || ProcessInfo.processInfo.arguments.contains("--preview-contact-model") {
-                showAgentModel = true
+                Task { @MainActor in
+                    await Task.yield()
+                    showAgentModel = true
+                }
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-forward-message"),
                forwardRequest == nil,
@@ -644,11 +648,6 @@ struct ConversationView: View {
         }
         .navigationDestination(item: $authorProfileConversation) { destination in
             SessionDetailView(conversation: destination)
-        }
-        .sheet(isPresented: $showAgentModel) {
-            AgentModelSheet(conversation: conversation)
-                .presentationDetents([.height(380)])
-                .presentationDragIndicator(.visible)
         }
         .sheet(item: $forwardRequest) { request in
             ForwardMessageSheet(request: request) { destination in
@@ -1051,7 +1050,7 @@ struct ConversationView: View {
     }
 
     private func openSessionDetails() {
-        dismissExpressivePicker()
+        dismissComposerPickers()
         showSessionDetails = true
     }
 
@@ -1079,7 +1078,7 @@ struct ConversationView: View {
     }
 
     private func openCompanionPanel() {
-        dismissExpressivePicker()
+        dismissComposerPickers()
         guard allowsCompanionPanel else { return }
         guard model.hasConfiguredProviderAuthentication else {
             showsProviderAuthentication = true
@@ -1096,8 +1095,9 @@ struct ConversationView: View {
         showsCompanionPanel = selectedCompanionConversation != nil
     }
 
-    private func dismissExpressivePicker() {
+    private func dismissComposerPickers() {
         isExpressivePickerPresented = false
+        showAgentModel = false
     }
 
     private func openCompanionPreviewIfReady() {
