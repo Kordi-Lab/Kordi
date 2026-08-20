@@ -570,7 +570,7 @@ private struct ProfileSettingsView: View {
         Form {
             Section {
                 VStack(spacing: 16) {
-                    HStack(spacing: 8) {
+                    VStack(spacing: 8) {
                         IdentityAvatar(
                             name: displayName.nonEmpty ?? model.account?.preferredName ?? "Me",
                             imageSource: avatarDraft?.nonEmpty ?? model.account?.avatar.imageSource,
@@ -579,27 +579,26 @@ private struct ProfileSettingsView: View {
                             seed: model.account?.accountId
                         )
 
-                        VStack(spacing: 0) {
+                        HStack(spacing: 0) {
                             Button(action: updateGeneratedAvatarPreview) {
                                 Image(systemName: "dice")
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .frame(width: 44, height: 44)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Random profile avatar")
 
                             Divider()
-                                .padding(.horizontal, 8)
+                                .frame(height: 24)
 
                             PhotosPicker(selection: $selectedPhoto, matching: .images) {
                                 Image(systemName: "camera")
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .frame(width: 44, height: 44)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Upload profile avatar")
                         }
-                        .frame(width: 40, height: 88)
                         .foregroundStyle(.secondary)
                         .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
                         .overlay {
@@ -775,11 +774,11 @@ private struct ProfileSettingsView: View {
     private func updateGeneratedAvatarPreview() {
         guard let account = model.account else { return }
         let seed = CanonicalAvatarSystem.newSeed()
-        avatarDraft = CanonicalAvatarSystem.marker(
+        guard let previewURL = CanonicalAvatarSystem.previewURL(
             style: account.avatar.style,
-            seed: seed,
-            version: account.avatar.version + 1
-        )
+            seed: seed
+        ) else { return }
+        avatarDraft = previewURL.absoluteString
         avatarMutation = .regenerate(
             seed: seed,
             expectedVersion: account.avatar.version
