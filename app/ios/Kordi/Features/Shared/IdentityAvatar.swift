@@ -89,6 +89,7 @@ struct AvatarActionPill: View {
     var randomLabel = "Random avatar"
     var uploadLabel = "Upload avatar"
     var vertical = false
+    var buttonHeight: CGFloat = 44
 
     var body: some View {
         Group {
@@ -112,7 +113,7 @@ struct AvatarActionPill: View {
     private var actions: some View {
         Button(action: onRandomize) {
             Image(systemName: "dice")
-                .frame(width: 44, height: 44)
+                .frame(width: 44, height: buttonHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -123,7 +124,7 @@ struct AvatarActionPill: View {
 
         PhotosPicker(selection: $selectedPhoto, matching: .images) {
             Image(systemName: "camera")
-                .frame(width: 44, height: 44)
+                .frame(width: 44, height: buttonHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

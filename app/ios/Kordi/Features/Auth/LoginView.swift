@@ -258,13 +258,13 @@ struct LoginView: View {
     }
 
     private var signupIdentity: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .center, spacing: 14) {
             HStack(spacing: 8) {
                 IdentityAvatar(
                     name: displayName.nonEmpty ?? "Kordi account",
                     imageSource: avatarImageSource,
                     kind: .person,
-                    size: 88,
+                    size: 68,
                     seed: avatarSeed
                 )
 
@@ -274,7 +274,8 @@ struct LoginView: View {
                     onRandomize: randomizeAvatar,
                     randomLabel: "Random signup avatar",
                     uploadLabel: "Upload signup avatar",
-                    vertical: true
+                    vertical: true,
+                    buttonHeight: 34
                 )
             }
 
