@@ -1644,6 +1644,7 @@ final class AppModel: ObservableObject {
 
     func refreshActiveCall(in conversation: ConversationSummary) async {
         guard let token, !previewMode else { return }
+        let callSnapshotGenerationAtStart = callSnapshotGeneration
         let canonicalID = canonicalConversationIDBySessionID[conversation.sessionId]
             ?? canonicalConversationIDBySessionID[conversation.id]
             ?? conversation.sessionId
@@ -1651,7 +1652,8 @@ final class AppModel: ObservableObject {
         do {
             if let call = try await api.activeCall(token: token, conversation: conversation) {
                 applyCallSnapshot(call)
-            } else if let current = callsByConversationID[canonicalID],
+            } else if callSnapshotGeneration == callSnapshotGenerationAtStart,
+                      let current = callsByConversationID[canonicalID],
                       current.id == callIDAtRequest {
                 applyCallSnapshot(CloudCall(
                     id: current.id,
