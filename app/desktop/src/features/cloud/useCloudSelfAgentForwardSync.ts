@@ -37,7 +37,10 @@ import {
   saveCloudSelfAgentRecoverySessionIds,
   seedCloudSelfAgentForwardSyncLedger,
 } from './cloudSelfAgentForwardSync';
-import { cloudSelfAgentForwardMessageKind } from './cloudSelfAgentForwardPolicy';
+import {
+  cloudSelfAgentForwardMessageKind,
+  cloudSelfAgentShouldPublishProgress,
+} from './cloudSelfAgentForwardPolicy';
 import {
   CLOUD_SELF_AGENT_HEARTBEAT_MS,
   cloudSelfAgentProcessingLedgerKey,
@@ -176,7 +179,9 @@ export function useCloudSelfAgentForwardSync({
         if (!state || !session?.token || cancelled) return;
         const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
         const heartbeatAtMs = Date.now();
+        const historySessionIds = cloudSyncedLocalAgentSessionIds(state);
         for (const sessionId of activeSessionIds) {
+          if (!cloudSelfAgentShouldPublishProgress(sessionId, historySessionIds)) continue;
           const localRequest = state.messages
             .filter((message) => (
               message.sessionId === sessionId
@@ -447,15 +452,15 @@ export function useCloudSelfAgentForwardSync({
             },
             shouldContinue: () => !cancelledRef.current,
             shouldMergeMessage: (operation) => (
-              !recoverySessionIds.has(operation.sessionId)
+              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
             ),
             shouldPublishProcessing: (operation) => (
-              !recoverySessionIds.has(operation.sessionId)
+              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
             ),
             executionSnapshotForOperation: (operation) => (
-              recoverySessionIds.has(operation.sessionId)
-                ? undefined
-                : executionBySessionIdRef.current[operation.sessionId]
+              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
+                ? executionBySessionIdRef.current[operation.sessionId]
+                : undefined
             ),
             token: session.token,
           });

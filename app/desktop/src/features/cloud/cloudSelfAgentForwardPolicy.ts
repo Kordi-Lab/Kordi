@@ -9,3 +9,10 @@ export function cloudSelfAgentForwardMessageKind(
     ? 'canonical-history-user'
     : 'canonical-history-agent';
 }
+
+export function cloudSelfAgentShouldPublishProgress(
+  sessionId: string,
+  historySessionIds: ReadonlySet<string>,
+) {
+  return !historySessionIds.has(sessionId);
+}

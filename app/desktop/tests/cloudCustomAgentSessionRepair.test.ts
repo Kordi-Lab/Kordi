@@ -6,7 +6,10 @@ import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClien
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import { createCloudSelfAgentSessionPlanner } from '../src/features/cloud/cloudSelfAgentSessionPlan';
-import { cloudSelfAgentForwardMessageKind } from '../src/features/cloud/cloudSelfAgentForwardPolicy';
+import {
+  cloudSelfAgentForwardMessageKind,
+  cloudSelfAgentShouldPublishProgress,
+} from '../src/features/cloud/cloudSelfAgentForwardPolicy';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 const sessionId = 'session:direct-agent:stock';
@@ -124,4 +127,6 @@ test('all locally executed owned-agent turns sync as non-executable history', ()
     sessionId: 'session:remote',
     role: 'user',
   }, historySessionIds), null);
+  assert.equal(cloudSelfAgentShouldPublishProgress('session:self-agent:local', historySessionIds), false);
+  assert.equal(cloudSelfAgentShouldPublishProgress('session:remote', historySessionIds), true);
 });
