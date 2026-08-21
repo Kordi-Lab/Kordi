@@ -172,6 +172,7 @@ struct MessageBubble: View, Equatable {
                 if !backgroundSessions.isEmpty {
                     BackgroundAgentSessionList(
                         sessions: backgroundSessions,
+                        agentName: message.authorName,
                         isEnabled: !selectionMode,
                         onOpen: onOpenBackgroundSession
                     )
@@ -518,26 +519,55 @@ struct MessageBubble: View, Equatable {
 
 private struct BackgroundAgentSessionList: View {
     let sessions: [BackgroundAgentSessionPresentation]
+    let agentName: String
     let isEnabled: Bool
     let onOpen: (BackgroundAgentSession) -> Void
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 2) {
             ForEach(sessions) { presentation in
                 BackgroundAgentSessionRow(
                     presentation: presentation,
+                    agentName: agentName,
                     isEnabled: isEnabled,
                     onOpen: onOpen
                 )
             }
         }
+        .padding(.leading, 16)
         .frame(maxWidth: 360, alignment: .leading)
+        .overlay(alignment: .topLeading) {
+            BackgroundSessionThreadConnector()
+                .stroke(
+                    Color(uiColor: .separator).opacity(0.6),
+                    style: StrokeStyle(lineWidth: 0.75, lineCap: .round, lineJoin: .round)
+                )
+                .frame(width: 12, height: 28)
+                .offset(x: 4, y: -12)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct BackgroundSessionThreadConnector: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let radius = min(9, min(rect.width, rect.height))
+        path.move(to: .zero)
+        path.addLine(to: CGPoint(x: 0, y: rect.maxY - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: radius, y: rect.maxY),
+            control: CGPoint(x: 0, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        return path
     }
 }
 
 private struct BackgroundAgentSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let presentation: BackgroundAgentSessionPresentation
+    let agentName: String
     let isEnabled: Bool
     let onOpen: (BackgroundAgentSession) -> Void
 
@@ -546,52 +576,71 @@ private struct BackgroundAgentSessionRow: View {
             onOpen(presentation.session)
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.branch")
+                Image(systemName: "sparkles")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(KordiTheme.agentViolet)
-                    .frame(width: 24, height: 24)
+                    .foregroundStyle(KordiTheme.signalBlue)
+                    .frame(width: 20, height: 20)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(presentation.session.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                        .layoutPriority(1)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(presentation.session.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                            .layoutPriority(1)
 
-                    HStack(spacing: 5) {
-                        Text("Background")
-                        Text("·").accessibilityHidden(true)
-                        statusLabel
+                        Spacer(minLength: 8)
+
+                        HStack(spacing: 2) {
+                            Text("Open")
+                            Image(systemName: "chevron.right")
+                                .accessibilityHidden(true)
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(KordiTheme.signalBlue)
+                        .fixedSize()
                     }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
 
-                Spacer(minLength: 8)
-
-                HStack(spacing: 2) {
-                    Text("Open")
-                    Image(systemName: "chevron.right")
-                        .accessibilityHidden(true)
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 2) {
+                            metadataLabel
+                            statusLabel
+                        }
+                    } else {
+                        HStack(spacing: 5) {
+                            metadataLabel
+                            Spacer(minLength: 6)
+                            statusLabel
+                        }
+                    }
                 }
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(KordiTheme.agentViolet)
-                .fixedSize()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-            .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 10))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(presentation.session.title), background session, \(presentation.state.label)"
+            "\(presentation.session.title), \(agentName), background session, \(presentation.state.label)"
         )
         .accessibilityHint("Opens the linked agent session")
+    }
+
+    private var metadataLabel: some View {
+        HStack(spacing: 5) {
+            Text(agentName)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+            Text("·")
+                .accessibilityHidden(true)
+            Text("Background session")
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
     }
 
     private var statusLabel: some View {
@@ -602,6 +651,9 @@ private struct BackgroundAgentSessionRow: View {
                 .accessibilityHidden(true)
             Text(presentation.state.label)
         }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .fixedSize()
     }
 
     private var statusColor: Color {
