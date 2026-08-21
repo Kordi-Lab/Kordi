@@ -139,6 +139,10 @@ test('related agent sessions open in the companion panel instead of replacing ma
     new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url),
     'utf8',
   );
+  const controllerSource = readFileSync(
+    new URL('../src/features/chat/useDesktopSessionController.ts', import.meta.url),
+    'utf8',
+  );
 
   assert.match(pageSource, /companionSession\.actions\.switchConversation\(sessionId\)/);
   assert.match(pageSource, /directConversations: companionConversations/);
@@ -146,6 +150,10 @@ test('related agent sessions open in the companion panel instead of replacing ma
   assert.match(pageSource, /companionLayout\.setFolded\(false\)/);
   assert.match(sessionSource, /chatCompanionCandidates\(activeConversation, directConversations\)/);
   assert.match(sessionSource, /chatCompanionSessionOptions\(activeConversation, conversations\)/);
+  assert.match(sessionSource, /requestedConversationId: conversationId/);
+  assert.match(sessionSource, /onPrefetchChatSession\(conversationId\)/);
+  assert.match(sessionSource, /candidateIds\.has\(state\.requestedConversationId\)/);
+  assert.match(controllerSource, /loaded && !isKnownSession[\s\S]*refreshDesktopChat\(\)/);
   assert.match(workspaceSource, /isGroupForkSession\(conversation\)/);
   assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
   assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
