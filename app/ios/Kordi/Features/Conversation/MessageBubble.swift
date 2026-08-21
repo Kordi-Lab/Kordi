@@ -536,6 +536,7 @@ private struct BackgroundAgentSessionList: View {
 }
 
 private struct BackgroundAgentSessionRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let presentation: BackgroundAgentSessionPresentation
     let isEnabled: Bool
     let onOpen: (BackgroundAgentSession) -> Void
@@ -544,45 +545,44 @@ private struct BackgroundAgentSessionRow: View {
         Button {
             onOpen(presentation.session)
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.subheadline.weight(.semibold))
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(KordiTheme.agentViolet)
-                    .frame(width: 32, height: 32)
-                    .background(KordiTheme.agentViolet.opacity(0.10), in: .rect(cornerRadius: 9))
+                    .frame(width: 24, height: 24)
                     .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(presentation.session.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .layoutPriority(1)
 
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 6) {
-                            Text("Background session")
-                            statusLabel
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Background session")
-                            statusLabel
-                        }
+                    HStack(spacing: 5) {
+                        Text("Background")
+                        Text("·").accessibilityHidden(true)
+                        statusLabel
                     }
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 8)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                HStack(spacing: 2) {
+                    Text("Open")
+                    Image(systemName: "chevron.right")
+                        .accessibilityHidden(true)
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(KordiTheme.agentViolet)
+                .fixedSize()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 10))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
