@@ -18,6 +18,9 @@ enum CloudDirectMessageProjector {
             },
             uniquingKeysWith: { first, _ in first }
         )
+        let cancelledRequestIds = Set(cancellations.keys.filter {
+            CloudAgentLifecycleProjector.state(forRequestId: $0, in: messages) == .cancelled
+        })
         let responseRequestIds = Set(sorted.compactMap { CloudMessageCodec.agentResponseRequestId($0.body)?.nonEmpty })
         let requestCreatedAtById = Dictionary(
             uniqueKeysWithValues: sorted.compactMap { message -> (String, Date)? in
@@ -33,6 +36,9 @@ enum CloudDirectMessageProjector {
             }
 
             let responseRequestId = CloudMessageCodec.agentResponseRequestId(wire.body)?.nonEmpty
+            if let responseRequestId, cancelledRequestIds.contains(responseRequestId) {
+                continue
+            }
             let anchoredCreatedAt = responseRequestId
                 .flatMap { requestCreatedAtById[$0] }
                 .map { $0.addingTimeInterval(0.001) }
@@ -54,7 +60,7 @@ enum CloudDirectMessageProjector {
             ))
 
             guard let cancel = cancellations[wire.messageId],
-                  !responseRequestIds.contains(wire.messageId) else { continue }
+                  cancelledRequestIds.contains(wire.messageId) else { continue }
             let targetAccountId = CloudMessageCodec.directEnvelope(wire.body)?.targetCloudAgentOwnerAccountId?.nonEmpty
                 ?? conversation.peerAccountId.nonEmpty
                 ?? ownAccountId

@@ -592,4 +592,33 @@ final class CloudMessageCodecTests: XCTestCase {
         XCTAssertTrue(CloudMessageCodec.isAgentControl(body))
         XCTAssertFalse(CloudMessageCodec.isAgentControl("A visible session message"))
     }
+
+    func testAgentCancelControlRoundTripsCanonicalRequestId() throws {
+        let requestId = "msg:ui:request"
+
+        let body = try CloudMessageCodec.encodeCancel(requestId: requestId)
+
+        XCTAssertEqual(CloudMessageCodec.agentCancelEnvelope(body)?.requestId, requestId)
+    }
+
+    func testStopControlOnlyMatchesTheActiveAgentResponse() {
+        let response = ChatMessage(
+            id: "response",
+            conversationId: "agent-session",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "processing...",
+            createdAt: .distantPast,
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: "request"
+        )
+
+        XCTAssertTrue(MessageBubble.showsAgentStopControl(response, activeRequestID: "request"))
+        XCTAssertFalse(MessageBubble.showsAgentStopControl(response, activeRequestID: nil))
+
+        var unrelated = response
+        unrelated.requestMessageId = nil
+        XCTAssertFalse(MessageBubble.showsAgentStopControl(unrelated, activeRequestID: nil))
+    }
 }
