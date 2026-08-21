@@ -142,7 +142,7 @@ Before publishing built artifacts, omit `--source-only` and pass the exact `Kord
 
 ### Private updater storage and publisher
 
-Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly. New clients use `https://kordi.ai`; the same immutable manifests and downloads remain available through `https://coordinar.io` for already-released clients whose embedded updater endpoint cannot change until they install an update. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects but cannot delete objects or administer buckets and policies. Cleanup and rollback conditionally PUT a strict unpublished tombstone instead of deleting a pointer; out-of-band pointer deletion is forbidden.
+Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly; all immutable manifests and downloads use `https://kordi.ai`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects but cannot delete objects or administer buckets and policies. Cleanup and rollback conditionally PUT a strict unpublished tombstone instead of deleting a pointer; out-of-band pointer deletion is forbidden.
 
 Provision or reconcile these identities from a trusted operator machine:
 
@@ -161,7 +161,7 @@ Kordi.app.tar.gz
 Kordi.app.tar.gz.sig
 ```
 
-Pass the corresponding `Kordi.app` bundle separately. By default, the publisher uses the production profile and checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `kordi.ai` product origin. A live publication verifies the exact bytes, checksums, updater manifest, stable DMG, and safe legacy metadata through both `kordi.ai` and `coordinar.io`; failure on either origin prevents promotion or restores the prior channel pointer. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
+Pass the corresponding `Kordi.app` bundle separately. By default, the publisher uses the production profile and checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `kordi.ai` product origin. A live publication verifies the exact bytes, checksums, updater manifest, stable DMG, and safe legacy metadata through `kordi.ai`; failure prevents promotion or restores the prior channel pointer. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
 
 ```bash
 RELEASE_COMMIT="$(git rev-parse HEAD)"
@@ -547,8 +547,8 @@ strings "$DMG" | rg -F 'https://kordi.ai'
 3. Copy the updater archive, change one byte, and verify the Tauri signature check rejects the copy while the installed app remains runnable. Never upload the tampered copy.
 4. On a separate installation of the prior production beta, use the update confirmation to open the product-domain manual DMG. Verify the old app never starts its native installer, then drag the new version to Applications once and confirm login, Keychain, canonical sessions, caches, and preferences remain intact.
 5. After all acceptance clients have migrated, mark the acceptance channel unpublished with its strict compare-and-swap tombstone and verify HTTP 204 for a client on the prior acceptance version while retaining immutable objects. Do not clear acceptance while beta.6 preview testers still need beta.7.
-6. Publish the same immutable signed release to `--channel beta`. The publisher must pass the complete endpoint matrix on both `https://kordi.ai` and the legacy `https://coordinar.io`: supported older clients receive the same signed manifest, current/newer/unsupported clients receive 204, and anonymous DMG GET/HEAD plus updater archive GET/HEAD match the recorded sizes and SHA-256 values. The manifest returned through either hostname uses the canonical `kordi.ai` artifact URL; direct legacy artifact URLs remain byte-identical for clients that already stored them.
-7. Exercise rollback with an explicit expected-current-version guard. The command replaces the beta pointer with an unpublished tombstone only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata through both origins, and restores/re-verifies the release if those checks fail. Then promote the release again and repeat the endpoint matrix:
+6. Publish the same immutable signed release to `--channel beta`. The publisher must pass the complete `https://kordi.ai` endpoint matrix: supported older clients receive the same signed manifest, current/newer/unsupported clients receive 204, and anonymous DMG GET/HEAD plus updater archive GET/HEAD match the recorded sizes and SHA-256 values.
+7. Exercise rollback with an explicit expected-current-version guard. The command replaces the beta pointer with an unpublished tombstone only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata through the product origin, and restores/re-verifies the release if those checks fail. Then promote the release again and repeat the endpoint matrix:
 
    ```bash
    RELEASE_VERSION=0.0.1-beta.N

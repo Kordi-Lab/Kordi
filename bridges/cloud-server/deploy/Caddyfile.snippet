@@ -1,9 +1,7 @@
 # Complete Kordi product edge configuration.
 #
-# The canonical origin serves the public website, beta intake, Cloud API,
-# WebSocket, health, and updater routes. The legacy origin keeps product routes
-# available for already-released desktop clients and redirects only ordinary
-# browser navigation to the canonical site.
+# The product origin serves the public website, beta intake, Cloud API,
+# WebSocket, health, and updater routes.
 #
 # The loopback-only Kubernetes NodePort follows ready Service endpoints without
 # a long-running kubectl transport process or an embedded cluster IP.
@@ -97,25 +95,5 @@ kordi.ai, www.kordi.ai {
 				keepalive off
 			}
 		}
-	}
-}
-
-coordinar.io, www.coordinar.io {
-	encode zstd gzip
-
-	@legacy_product_routes path /v1/cloud/* /v2/chat/* /health /updates/*
-	handle @legacy_product_routes {
-		reverse_proxy 127.0.0.1:30081 {
-			header_up X-Real-IP {remote_host}
-			lb_try_duration 5s
-			lb_try_interval 100ms
-			transport http {
-				keepalive off
-			}
-		}
-	}
-
-	handle {
-		redir https://kordi.ai{uri} 308
 	}
 }

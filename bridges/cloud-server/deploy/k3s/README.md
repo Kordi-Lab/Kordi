@@ -81,7 +81,7 @@ Required production server environment:
 
 ```bash
 KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
-KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io,kordi://oauth/callback
+KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,kordi://oauth/callback
 KORDI_CHAT_SYNC_CURSOR_SECRET=<from kordi-chat-sync>
 KORDI_CHAT_REALTIME_ALLOWED_ORIGINS=https://kordi.ai,tauri://localhost,http://tauri.localhost,http://127.0.0.1:1420,http://127.0.0.1:1422,http://127.0.0.1:1482,http://127.0.0.1:1484,http://127.0.0.1:1486
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
@@ -199,12 +199,10 @@ deploying. Caddy sends only `/rtc` to LiveKit on the existing `kordi.ai` TLS
 origin. The firewall exposes ICE TCP/UDP, TURN/UDP, and the bounded TURN relay
 range; database and application ports stay private.
 
-The production origin is a compatibility contract with released desktop
-clients. Both `kordi.ai` and the legacy `coordinar.io` origin must serve
-`/v1/cloud/*`, `/v2/chat/*`, `/health`, and `/updates/*` directly. A marketing-site redirect
-may handle other legacy paths, but must never match those product routes:
-cross-host redirects break browser CORS preflights and can also disable
-WebSockets and desktop updates.
+The production origin at `kordi.ai` serves `/v1/cloud/*`, `/v2/chat/*`,
+`/health`, and `/updates/*` directly. Cross-host redirects must never match
+those product routes because they break browser CORS preflights and can also
+disable WebSockets and desktop updates.
 
 Before DNS cutover, set
 `KORDI_VERIFY_RESOLVE_IP=<GREEN_STATIC_IP>` so the deploy checks exercise the
@@ -248,12 +246,10 @@ sudo rm -f /etc/systemd/system/kordi-cloud-port-forward.service
 sudo systemctl daemon-reload
 ```
 
-The complete Caddy config preserves all three public responsibilities:
+The complete Caddy config preserves both public responsibilities:
 
 - website and beta intake on `kordi.ai`;
-- Cloud API, WebSocket, health, and updater routes on `kordi.ai`;
-- direct product compatibility routes on `coordinar.io`, with browser-only
-  navigation redirected to `kordi.ai`.
+- Cloud API, WebSocket, health, and updater routes on `kordi.ai`.
 
 Keep Caddy stopped on a green host until its website assets, beta-intake
 database, TLS state, and product data have been migrated and verified. During
@@ -270,8 +266,7 @@ Before the freeze:
 1. Reserve the green host's external IP and confirm deletion protection,
    Secure Boot, vTPM, integrity monitoring, unattended upgrades, snapshots,
    and the instance-scoped firewall.
-2. Add the canonical Google OAuth callback and preserve its legacy callback
-   during the transition:
+2. Add the canonical Google OAuth callback:
    - `https://kordi.ai/v1/cloud/auth/oauth/google/callback`
 3. The production GitHub credential is an OAuth App, which supports only one
    authorization callback URL. The lowest-risk migration is to create a second
@@ -280,10 +275,9 @@ Before the freeze:
    - callback: `https://kordi.ai/v1/cloud/auth/oauth/github/callback`
    Install that app's client ID and secret only on the green host. The old host
    then keeps its current OAuth App throughout DNS propagation and rollback.
-   If the existing OAuth App must be reused instead, do not replace its
-   `coordinar.io` callback early. Replace it with the canonical callback only
-   during the coordinated cutover, after the active server generates and
-   accepts that callback.
+   If the existing OAuth App must be reused, replace its callback only during
+   the coordinated cutover, after the active server generates and accepts the
+   canonical callback.
 4. Restore a recent copy of Postgres, MinIO, NATS JetStream, the beta-intake
    SQLite database, the website, and Caddy TLS state to the green host.
 5. Keep the green agent runner scaled to zero until the final database copy is
@@ -292,7 +286,6 @@ Before the freeze:
 
    ```bash
    curl --resolve kordi.ai:443:<GREEN_STATIC_IP> https://kordi.ai/health
-   curl --resolve coordinar.io:443:<GREEN_STATIC_IP> https://coordinar.io/health
    ```
 
 For the final cutover:
@@ -305,11 +298,10 @@ For the final cutover:
    row counts, object counts and bytes, stream messages and bytes, and beta
    table counts. Do not compare or print credentials.
 4. Start Caddy, keep the green runner at zero, and repeat the canonical,
-   legacy, CORS-preflight, updater, OAuth-start, homepage, and beta-intake
+   CORS-preflight, updater, OAuth-start, homepage, and beta-intake
    checks with `curl --resolve`.
-5. Change the `kordi.ai`, `www.kordi.ai`, `coordinar.io`, and
-   `www.coordinar.io` records as required so both product origins reach the
-   green static IP.
+5. Change the `kordi.ai` and `www.kordi.ai` records as required so the product
+   origin reaches the green static IP.
 6. After public DNS and TLS checks pass, scale the green runner to one and
    require a stable Ready pod with zero restarts.
 7. Exercise email/password login, Google and GitHub OAuth, WebSocket sync,
@@ -317,9 +309,8 @@ For the final cutover:
    metadata before ending the freeze.
 
 Keep the old VM stopped but intact for the rollback window. A rollback points
-both product origins back to the old static IP and resumes only the old
-workloads. Remove every temporary migration key from both hosts after
-acceptance.
+the product origin back to the old static IP and resumes only the old workloads.
+Remove every temporary migration key from both hosts after acceptance.
 
 For test servers:
 

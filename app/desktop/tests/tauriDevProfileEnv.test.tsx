@@ -59,7 +59,7 @@ test('buildBeforeDevCommand fails closed without a debug server origin', () => {
 test('buildBeforeDevCommand rejects the production origin', () => {
   for (const productionOrigin of [
     'https://kordi.ai',
-    'http://coordinar.io',
+    'http://kordi.ai',
     'https://kordi.ai./',
   ]) {
     assert.throws(

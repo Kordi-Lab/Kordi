@@ -97,7 +97,7 @@ VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
 pnpm dev:cloud:multi -- --reset --users user1,user2,user3
 ```
 
-Never use a tunnel/local backend as product-server validation. Use tunnel/local options only with explicit operator authorization or for an intentionally isolated compatible API. Product-server-affecting work moves to the corresponding product-server machine and `https://coordinar.io`. Keep real private host details out of docs, PRs, issues, and shared logs. See [Internal/operator local tunnel debug pipeline](hosted-cloud-developer-guide.md#internaloperator-local-tunnel-debug-pipeline).
+Never use a tunnel/local backend as product-server validation. Use tunnel/local options only with explicit operator authorization or for an intentionally isolated compatible API. Product-server-affecting work moves to the corresponding product-server machine and `https://kordi.ai`. Keep real private host details out of docs, PRs, issues, and shared logs. See [Internal/operator local tunnel debug pipeline](hosted-cloud-developer-guide.md#internaloperator-local-tunnel-debug-pipeline).
 
 ## Environment variables
 

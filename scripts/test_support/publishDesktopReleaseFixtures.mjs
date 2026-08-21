@@ -6,9 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
-  LEGACY_RELEASE_ORIGIN,
   PRODUCT_ORIGIN,
-  PUBLIC_RELEASE_ORIGINS,
   TAURI_UPDATER_PUBLIC_KEY,
   assertAppBundleContract,
   clearDesktopReleaseChannel,
@@ -282,35 +280,29 @@ export function responseFor(bytes, digest, status = 200) {
 
 export function makePublicHttp(prepared, {
   failPostPromotion = false,
-  failLegacyPostPromotion = false,
   wrongArchive = false,
   previousPrepared = null,
   onPostPromotionFailure = null,
 } = {}) {
   const actions = [];
-  const publicUrlSets = (release) => [release.urls, release.legacyUrls];
   const byUrl = new Map();
-  for (const urls of publicUrlSets(prepared)) {
-    byUrl.set(urls.manual, {
-      bytes: prepared.artifacts.manual.bytes,
-      digest: prepared.artifacts.manual.sha256,
-    });
-    byUrl.set(urls.updaterArchive, {
-      bytes: wrongArchive ? Buffer.from('tampered') : prepared.artifacts.updater.bytes,
-      digest: prepared.artifacts.updater.sha256,
-    });
-  }
+  byUrl.set(prepared.urls.manual, {
+    bytes: prepared.artifacts.manual.bytes,
+    digest: prepared.artifacts.manual.sha256,
+  });
+  byUrl.set(prepared.urls.updaterArchive, {
+    bytes: wrongArchive ? Buffer.from('tampered') : prepared.artifacts.updater.bytes,
+    digest: prepared.artifacts.updater.sha256,
+  });
   if (previousPrepared) {
-    for (const urls of publicUrlSets(previousPrepared)) {
-      byUrl.set(urls.manual, {
-        bytes: previousPrepared.artifacts.manual.bytes,
-        digest: previousPrepared.artifacts.manual.sha256,
-      });
-      byUrl.set(urls.updaterArchive, {
-        bytes: previousPrepared.artifacts.updater.bytes,
-        digest: previousPrepared.artifacts.updater.sha256,
-      });
-    }
+    byUrl.set(previousPrepared.urls.manual, {
+      bytes: previousPrepared.artifacts.manual.bytes,
+      digest: previousPrepared.artifacts.manual.sha256,
+    });
+    byUrl.set(previousPrepared.urls.updaterArchive, {
+      bytes: previousPrepared.artifacts.updater.bytes,
+      digest: previousPrepared.artifacts.updater.sha256,
+    });
   }
   let postPromotionFailed = false;
   const updateResponse = (release) => Buffer.from(JSON.stringify({
@@ -325,7 +317,7 @@ export function makePublicHttp(prepared, {
     actions,
     async head(url) {
       actions.push({ method: 'HEAD', url });
-      if (publicUrlSets(prepared).some((urls) => url === urls.stableManual)) {
+      if (url === prepared.urls.stableManual) {
         const found = stableAsset();
         return found ? responseFor(found.bytes, found.sha256) : { status: 404, headers: {}, body: Buffer.alloc(0) };
       }
@@ -334,11 +326,8 @@ export function makePublicHttp(prepared, {
     },
     async get(url) {
       actions.push({ method: 'GET', url });
-      if (publicUrlSets(prepared).some((urls) => url === urls.updaterEndpoint)) {
-        const shouldFailPostPromotion = !postPromotionFailed && (
-          failPostPromotion
-          || (failLegacyPostPromotion && url === prepared.legacyUrls.updaterEndpoint)
-        );
+      if (url === prepared.urls.updaterEndpoint) {
+        const shouldFailPostPromotion = !postPromotionFailed && failPostPromotion;
         if (shouldFailPostPromotion) {
           postPromotionFailed = true;
           onPostPromotionFailure?.();
@@ -350,7 +339,7 @@ export function makePublicHttp(prepared, {
         return { status: 200, headers: { 'content-length': String(updateBody.length) }, body: updateBody };
       }
       if (
-        PUBLIC_RELEASE_ORIGINS.some((origin) => url === `${origin}/updates/releases/version`)
+        url === `${PRODUCT_ORIGIN}/updates/releases/version`
         && postPromotionFailed
         && !previousPrepared
       ) {
@@ -363,7 +352,7 @@ export function makePublicHttp(prepared, {
           })),
         };
       }
-      if (publicUrlSets(prepared).some((urls) => url === urls.stableManual)) {
+      if (url === prepared.urls.stableManual) {
         const found = stableAsset();
         return found ? responseFor(found.bytes, found.sha256) : { status: 404, headers: {}, body: Buffer.alloc(0) };
       }
@@ -396,9 +385,7 @@ export {
   writeFile,
   join,
   test,
-  LEGACY_RELEASE_ORIGIN,
   PRODUCT_ORIGIN,
-  PUBLIC_RELEASE_ORIGINS,
   TAURI_UPDATER_PUBLIC_KEY,
   assertAppBundleContract,
   clearDesktopReleaseChannel,

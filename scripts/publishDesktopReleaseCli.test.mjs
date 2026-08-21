@@ -51,7 +51,7 @@ test('publisher error redaction removes credentials, signing material, and inter
   assert.match(redacted, /REDACTED/);
 });
 
-test('public release verification accepts only canonical and legacy product origins', async () => {
+test('public release verification accepts only the product origin', async () => {
   const requested = [];
   const publicHttp = createPublicHttpAdapter({
     fetchImpl: async (url, options) => {
@@ -67,14 +67,14 @@ test('public release verification accepts only canonical and legacy product orig
   });
 
   await publicHttp.get('https://kordi.ai/updates/releases/version');
-  await publicHttp.head('https://coordinar.io/updates/releases/version');
+  await publicHttp.head('https://kordi.ai/updates/releases/version');
   await assert.rejects(
     publicHttp.get('https://example.com/updates/releases/version'),
-    /must use https:\/\/kordi\.ai or its legacy release origin/i,
+    /must use https:\/\/kordi\.ai/i,
   );
   assert.deepEqual(requested, [
     ['https://kordi.ai/updates/releases/version', 'GET'],
-    ['https://coordinar.io/updates/releases/version', 'HEAD'],
+    ['https://kordi.ai/updates/releases/version', 'HEAD'],
   ]);
 });
 

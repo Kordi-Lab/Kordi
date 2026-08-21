@@ -123,22 +123,16 @@ test('uploads immutable objects, verifies product GET and HEAD, and writes the p
   assert.equal(puts.at(-1).metadata.ifNoneMatch, '*');
   assert.ok(puts.slice(0, -1).every((action) => action.key.startsWith(`desktop/releases/${VERSION}/`)));
   assert.deepEqual(
-    publicHttp.actions.slice(0, 8).map(({ method, url }) => [method, url]),
+    publicHttp.actions.slice(0, 4).map(({ method, url }) => [method, url]),
     [
       ['HEAD', prepared.urls.manual],
       ['GET', prepared.urls.manual],
       ['HEAD', prepared.urls.updaterArchive],
       ['GET', prepared.urls.updaterArchive],
-      ['HEAD', prepared.legacyUrls.manual],
-      ['GET', prepared.legacyUrls.manual],
-      ['HEAD', prepared.legacyUrls.updaterArchive],
-      ['GET', prepared.legacyUrls.updaterArchive],
     ],
   );
   assert.equal(publicHttp.actions.some(({ url }) => url === prepared.urls.updaterEndpoint), true);
-  assert.equal(publicHttp.actions.some(({ url }) => url === prepared.legacyUrls.updaterEndpoint), true);
   assert.equal(publicHttp.actions.some(({ url }) => url === prepared.urls.stableManual), true);
-  assert.equal(publicHttp.actions.some(({ url }) => url === prepared.legacyUrls.stableManual), true);
 });
 
 test('publishing from a tombstone compares against its ETag instead of treating the key as absent', async (t) => {
@@ -181,34 +175,4 @@ test('a public digest mismatch prevents pointer promotion', async (t) => {
     /digest|length/i,
   );
   assert.equal(store.actions.some((action) => action.type === 'put' && action.key === prepared.pointerKey), false);
-});
-
-test('a legacy-origin artifact failure prevents pointer promotion', async (t) => {
-  const fixture = await makeFixture();
-  t.after(() => rm(fixture.root, { recursive: true, force: true }));
-  const prepared = await preparedFixture(fixture);
-  const store = new MemoryStore();
-  const basePublicHttp = makePublicHttp(prepared);
-  const publicHttp = {
-    head: (url) => basePublicHttp.head(url),
-    get(url) {
-      if (url === prepared.legacyUrls.updaterArchive) {
-        return Promise.resolve({ status: 503, headers: {}, body: Buffer.from('unavailable') });
-      }
-      return basePublicHttp.get(url);
-    },
-  };
-
-  await assert.rejects(
-    publishDesktopRelease(optionsFor(fixture), {
-      verifier: passingVerifier(),
-      store,
-      publicHttp,
-    }),
-    /public get verification failed.*503/i,
-  );
-  assert.equal(
-    store.actions.some((action) => action.type === 'put' && action.key === prepared.pointerKey),
-    false,
-  );
 });

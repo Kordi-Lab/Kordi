@@ -27,7 +27,6 @@ EXPECT_UNPUBLISHED_RELEASE="${KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED:-true}"
 VERIFY_PUBLIC_ORIGINS="${KORDI_VERIFY_PUBLIC_ORIGINS:-true}"
 VERIFY_RESOLVE_IP="${KORDI_VERIFY_RESOLVE_IP:-}"
 PUBLIC_ORIGIN="${KORDI_CLOUD_PUBLIC_BASE_URL:-https://kordi.ai}"
-LEGACY_ORIGIN="${KORDI_CLOUD_LEGACY_BASE_URL:-https://coordinar.io}"
 
 GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --project "${SSH_PROJECT}")
 
@@ -237,9 +236,8 @@ verify_product_origin() {
 }
 
 if [ "${VERIFY_PUBLIC_ORIGINS}" = "true" ]; then
-    echo "[deploy] verifying canonical and legacy public product routes"
-    verify_product_origin "${PUBLIC_ORIGIN}" "canonical origin"
-    verify_product_origin "${LEGACY_ORIGIN}" "legacy origin"
+    echo "[deploy] verifying the public product origin"
+    verify_product_origin "${PUBLIC_ORIGIN}" "product origin"
 else
     echo "[deploy] skipping public-origin checks for pre-DNS staging"
 fi

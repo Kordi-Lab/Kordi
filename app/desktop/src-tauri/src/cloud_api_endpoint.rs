@@ -1,6 +1,5 @@
 pub(crate) const DEFAULT_CLOUD_API_BASE_URL: &str = "https://kordi.ai";
-const LEGACY_PRODUCTION_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
-const PRODUCTION_CLOUD_API_HOSTNAMES: [&str; 2] = ["kordi.ai", "coordinar.io"];
+const PRODUCTION_CLOUD_API_HOSTNAMES: [&str; 1] = ["kordi.ai"];
 
 fn is_production_cloud_api_url(url: &reqwest::Url) -> bool {
     url.host_str()
@@ -85,11 +84,9 @@ fn resolve_cloud_api_base_url(
                         .to_string(),
                 );
             }
-            if origin != DEFAULT_CLOUD_API_BASE_URL
-                && origin != LEGACY_PRODUCTION_CLOUD_API_BASE_URL
-            {
+            if origin != DEFAULT_CLOUD_API_BASE_URL {
                 return Err(
-                    "Operator development may use only the approved https://kordi.ai or https://coordinar.io product origin."
+                    "Operator development may use only the approved https://kordi.ai product origin."
                         .to_string(),
                 );
             }
@@ -119,22 +116,14 @@ pub(crate) fn cloud_api_base_url_from_env() -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        resolve_cloud_api_base_url, DEFAULT_CLOUD_API_BASE_URL,
-        LEGACY_PRODUCTION_CLOUD_API_BASE_URL,
-    };
+    use super::{resolve_cloud_api_base_url, DEFAULT_CLOUD_API_BASE_URL};
 
     #[test]
     fn debug_build_requires_an_explicit_non_production_cloud_api() {
         assert!(resolve_cloud_api_base_url(None, None, true, None, None)
             .unwrap_err()
             .contains("required for development"));
-        for origin in [
-            "https://kordi.ai/",
-            "http://kordi.ai",
-            "https://kordi.ai./",
-            "https://coordinar.io/",
-        ] {
+        for origin in ["https://kordi.ai/", "http://kordi.ai", "https://kordi.ai./"] {
             assert!(
                 resolve_cloud_api_base_url(Some(origin), None, true, None, None)
                     .unwrap_err()
@@ -176,17 +165,6 @@ mod tests {
             )
             .unwrap(),
             DEFAULT_CLOUD_API_BASE_URL,
-        );
-        assert_eq!(
-            resolve_cloud_api_base_url(
-                Some(LEGACY_PRODUCTION_CLOUD_API_BASE_URL),
-                None,
-                true,
-                Some("operator"),
-                Some("1"),
-            )
-            .unwrap(),
-            LEGACY_PRODUCTION_CLOUD_API_BASE_URL,
         );
         assert!(resolve_cloud_api_base_url(
             Some("https://staging.example.test"),

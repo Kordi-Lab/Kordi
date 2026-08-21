@@ -1,15 +1,10 @@
 export const PRODUCTION_CLOUD_API_ORIGIN = 'https://kordi.ai';
-export const LEGACY_PRODUCTION_CLOUD_API_ORIGIN = 'https://coordinar.io';
 export const COMMUNITY_CLOUD_DEV_PROFILE = 'community';
 export const OPERATOR_CLOUD_DEV_PROFILE = 'operator';
 const PRODUCTION_CLOUD_API_HOSTNAMES = new Set([
-  PRODUCTION_CLOUD_API_ORIGIN,
-  LEGACY_PRODUCTION_CLOUD_API_ORIGIN,
-].map((origin) => new URL(origin).hostname));
-const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([
-  PRODUCTION_CLOUD_API_ORIGIN,
-  LEGACY_PRODUCTION_CLOUD_API_ORIGIN,
+  new URL(PRODUCTION_CLOUD_API_ORIGIN).hostname,
 ]);
+const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([PRODUCTION_CLOUD_API_ORIGIN]);
 
 function normalizeHostname(value) {
   return value.toLowerCase().replace(/\.+$/, '');
@@ -72,13 +67,10 @@ export function resolveCloudDevApiBase(env = process.env) {
       throw new Error(
         'Production Cloud API is blocked in development until the operator acknowledgement is set.',
       );
-    }
-    if (!APPROVED_OPERATOR_CLOUD_API_ORIGINS.has(origin)) {
-      throw new Error(
-        'Operator development may use only the approved https://kordi.ai or '
-        + 'https://coordinar.io product origin.',
-      );
-    }
+      }
+      if (!APPROVED_OPERATOR_CLOUD_API_ORIGINS.has(origin)) {
+      throw new Error('Operator development may use only the approved https://kordi.ai product origin.');
+      }
     return origin;
   }
   if (isProductionCloudApiUrl(new URL(origin))) {
