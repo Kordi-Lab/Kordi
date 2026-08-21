@@ -28,6 +28,7 @@ export type KordiShellCompositionArgs = {
   >;
   conversationIndex: ShellArgGroup<
     | 'chatConversations'
+    | 'companionConversations'
     | 'participantSpaces'
     | 'contactParticipantSpaces'
     | 'agentParticipantSpaces'

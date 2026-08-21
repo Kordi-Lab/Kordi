@@ -6,9 +6,9 @@ import {
 } from 'react';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
-  startDesktopChatMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
+import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
 import type {
   Contact,
   DesktopChatTurnSnapshot,
@@ -30,6 +30,7 @@ import {
   isCloudAgentNoProviderConfiguredError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
+import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
@@ -216,7 +217,8 @@ export function useCloudDirectAgentExecution({
             const agentAttachmentPaths = agentAttachments
               .map((attachment) => attachment.localPath?.trim() || '')
               .filter(Boolean);
-            const startedTurn = await startDesktopChatMessage(
+            const startedTurn = await startDesktopSharedChatMessage(
+              message.messageId,
               runtimeSessionId,
               prompt,
               agentAttachmentPaths,
@@ -336,6 +338,7 @@ export function useCloudDirectAgentExecution({
                 requestId: message.messageId,
                 text: responseText,
                 deliveryState: responseSucceeded ? 'complete' : 'failed',
+                backgroundSessions: cloudAgentBackgroundSessionsFromTurn(finalTurn),
               }),
               { sessionId: message.sessionId ?? null },
             );

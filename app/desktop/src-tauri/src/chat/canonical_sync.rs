@@ -126,6 +126,7 @@ mod tests {
                 updated_at_ms: 2,
                 message_count: 2,
                 draft: false,
+                background_status: None,
                 forked_from_session_id: None,
                 forked_from_message_id: None,
             }],

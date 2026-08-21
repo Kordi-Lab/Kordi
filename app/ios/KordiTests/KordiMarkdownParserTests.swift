@@ -271,6 +271,15 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testCachedConversationRevealsBeforeNetworkReload() {
+        XCTAssertTrue(
+            ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: 19)
+        )
+        XCTAssertFalse(
+            ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: 0)
+        )
+    }
+
     @MainActor
     func testPreviewCallUpdatesOneActivityFromStartedToEnded() throws {
         let model = AppModel(previewMode: true)
@@ -595,13 +604,39 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
-    func testConversationDoesNotScrollWhenRemoteSyncOnlyRefreshesExistingMessages() {
-        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+    func testConversationKeepsFollowingWhenLatestMessageStreamsInPlace() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
             hasPositionedInitialTimeline: true,
             isAtBottom: true,
             previousLatestMessageID: "message-13",
             currentLatestMessageID: "message-13"
         ))
+    }
+
+    func testConversationUsesTheBottomAnchorWhileGeometryCatchesUp() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.isFollowingLatest(
+            isAtBottom: false,
+            trackedMessageID: "conversation-bottom",
+            bottomAnchorID: "conversation-bottom"
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.isFollowingLatest(
+            isAtBottom: false,
+            trackedMessageID: "message-12",
+            bottomAnchorID: "conversation-bottom"
+        ))
+    }
+
+    func testLatestButtonAnimationDoesNotWrapTranscript() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let animation = ".animation(.snappy(duration: 0.2), value: isAtBottom)"
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+
+        XCTAssertTrue(lines.contains("                            \(animation)"))
+        XCTAssertFalse(lines.contains("                        \(animation)"))
     }
 
     func testConversationShowsLatestButtonWhenInitialScrollHasNotCompleted() {

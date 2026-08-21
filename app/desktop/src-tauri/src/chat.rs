@@ -16,6 +16,7 @@ pub(crate) mod agent_builder;
 pub(crate) mod agent_prompt_runner;
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
+pub(crate) mod background_tasks;
 pub(crate) mod canonical_sync;
 mod message_execution;
 pub(crate) mod message_route;
@@ -100,12 +101,15 @@ use transient_drafts::{
 };
 
 use turns::{
-    apply_desktop_turn_event, desktop_task_tools_from_messages, reserve_turn_if_session_idle,
-    session_has_running_turn, snapshot_turn, turn_snapshot_has_model_task_tools, update_turn,
+    apply_desktop_turn_event, cancel_turn_by_id, desktop_task_tools_from_messages,
+    reserve_turn_if_session_idle, session_has_running_turn, snapshot_turn, turn_snapshot_by_id,
+    turn_snapshot_has_model_task_tools, update_turn,
 };
 
 #[cfg(test)]
-use turns::{is_auto_compaction_failure_status, is_auto_compaction_success_status};
+use turns::{
+    active_turn_snapshots, is_auto_compaction_failure_status, is_auto_compaction_success_status,
+};
 
 type DesktopSessionHandle = Arc<tokio::sync::Mutex<DesktopRuntimeSession>>;
 
@@ -119,6 +123,7 @@ struct DesktopChatTurnHandle {
 pub struct DesktopChatManager {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, DesktopSessionHandle>>>,
     turns: Arc<tokio::sync::Mutex<HashMap<String, DesktopChatTurnHandle>>>,
+    background_turn_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl DesktopChatManager {
@@ -572,7 +577,14 @@ pub async fn desktop_chat_send_message(
         let mut session = session_handle.lock().await;
         if !agent_builder::is_agent_builder_session_id(&target_session_id) {
             attach_cloud_scheduled_task_runtime(&mut session);
-            prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
+            prepare_desktop_session_for_send(
+                manager.inner(),
+                &mut session,
+                cwd.clone(),
+                &text,
+                None,
+            )
+            .await;
         }
         let detail = session.detail().map_err(|err| err.to_string())?;
         (detail.provider, detail.model)
@@ -619,6 +631,7 @@ pub async fn desktop_chat_start_message(
             context_messages,
             visible_task_records,
             scheduled_task_session_id,
+            sync_session_at_start: false,
         },
     )
     .await
@@ -655,18 +668,7 @@ pub async fn desktop_chat_cancel_turn(
     manager: State<'_, DesktopChatManager>,
     turn_id: String,
 ) -> Result<DesktopChatTurnSnapshot, String> {
-    let turns = manager.turns.lock().await;
-    let turn = turns
-        .get(&turn_id)
-        .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
-    turn.cancel.cancel();
-    update_turn(&turn.snapshot, |state| {
-        if !state.completed {
-            state.status = "cancelling".to_string();
-            state.message = "Stopping…".to_string();
-        }
-    });
-    snapshot_turn(&turn.snapshot)
+    cancel_turn_by_id(manager.inner(), &turn_id).await
 }
 
 #[tauri::command]
@@ -674,11 +676,7 @@ pub async fn desktop_chat_turn_state(
     manager: State<'_, DesktopChatManager>,
     turn_id: String,
 ) -> Result<DesktopChatTurnSnapshot, String> {
-    let turns = manager.turns.lock().await;
-    let snapshot = turns
-        .get(&turn_id)
-        .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
-    snapshot_turn(&snapshot.snapshot)
+    turn_snapshot_by_id(manager.inner(), &turn_id).await
 }
 
 #[cfg(test)]

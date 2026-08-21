@@ -10,6 +10,7 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         updated_at_ms: 0,
         message_count: 0,
         draft: true,
+        background_status: None,
         forked_from_session_id: None,
         forked_from_message_id: None,
     };
@@ -52,6 +53,7 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         updated_at_ms: 1,
         message_count: 0,
         draft: false,
+        background_status: None,
         forked_from_session_id: None,
         forked_from_message_id: None,
     };
@@ -63,6 +65,7 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         updated_at_ms: 1,
         message_count: 0,
         draft: false,
+        background_status: None,
         forked_from_session_id: None,
         forked_from_message_id: None,
     };

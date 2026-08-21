@@ -104,11 +104,15 @@ export function useDesktopSessionController({
         return true;
       }
       if (isLocalDraftChatConversationId(sessionId) || sessionId.startsWith('bridge:')) return true;
-      return await preloadDesktopSessionTranscript(sessionId);
+      const isKnownSession = desktopChatState?.activeSession.id === sessionId
+        || desktopChatState?.sessions.some((session) => session.id === sessionId);
+      const loaded = await preloadDesktopSessionTranscript(sessionId);
+      if (loaded && !isKnownSession) await refreshDesktopChat();
+      return loaded;
     } catch {
       return false;
     }
-  }, [hydrateCanonicalSessionPage, isNativeShell, preloadDesktopSessionTranscript]);
+  }, [desktopChatState, hydrateCanonicalSessionPage, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat]);
 
   const handleSelectChatSession = useCallback(async (sessionId: string) => {
     const requestId = selectionRequestIdRef.current + 1;

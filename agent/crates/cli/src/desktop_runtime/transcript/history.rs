@@ -74,6 +74,8 @@ fn append_agent_message(
                 "{}/{} • {}",
                 message.provider, message.model, stop_reason_label,
             ));
+            turn.awaiting_final_response =
+                message.stop_reason == kordi_core::types::StopReason::ToolUse;
             if message.stop_reason == kordi_core::types::StopReason::Error {
                 turn.failed = true;
                 if let Some(error_message) = message.error_message.as_deref() {
@@ -106,7 +108,7 @@ fn append_agent_message(
                         turn.tools.push(DesktopChatStoredTool {
                             id,
                             name,
-                            status: "done".to_string(),
+                            status: "running".to_string(),
                             arguments: raw_args,
                             live_output: String::new(),
                             result_text: None,
@@ -214,6 +216,7 @@ fn append_agent_message(
                 error_message: None,
                 failed: false,
                 cancelled: message.cancelled,
+                awaiting_final_response: false,
                 timestamp_ms: message.timestamp,
                 last_entry_id: Some(entry_id.to_string()),
             });

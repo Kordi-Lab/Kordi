@@ -270,6 +270,38 @@ test('cloud agent response envelope round trips without exposing metadata text',
   assert.equal(parseCloudAgentResponse('normal text'), null);
 });
 
+test('linked background sessions round trip and render as task operator tools on another device', () => {
+  const encoded = encodeCloudAgentResponse({
+    requestId: 'msg_background_request',
+    text: 'I started this in a linked background session.',
+    deliveryState: 'complete',
+    backgroundSessions: [{
+      sessionId: 'session-background',
+      turnId: 'turn-background',
+      title: 'Review runtime',
+      status: 'running',
+    }],
+  });
+  const parsed = parseCloudAgentResponse(encoded);
+  assert.equal(parsed?.backgroundSessions?.[0]?.sessionId, 'session-background');
+
+  const mapped = cloudMessageToCollaborationMessage(account, {
+    messageId: 'msg_background_response',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encoded,
+    createdAt: '2026-05-11T10:00:01Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: 'session:direct-person:acct_me:acct_peer',
+  });
+
+  assert.equal(mapped.localTurn?.completed, true);
+  assert.equal(mapped.localTurn?.tools[0]?.name, 'task_operator');
+  assert.match(mapped.localTurn?.tools[0]?.resultText ?? '', /Background session:/);
+});
+
 test('cloud agent failed response envelope marks bridge replies failed', () => {
   const encoded = encodeCloudAgentResponse({
     requestId: 'msg_1',

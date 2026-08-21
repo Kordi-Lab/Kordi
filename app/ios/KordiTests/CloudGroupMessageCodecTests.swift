@@ -2,6 +2,76 @@ import XCTest
 @testable import Kordi
 
 final class CloudGroupMessageCodecTests: XCTestCase {
+    func testGroupAgentResponseProjectsLinkedBackgroundSession() throws {
+        let participant = CloudGroupParticipant(
+            accountId: "acct_me",
+            displayName: "Alex",
+            avatarUrl: nil,
+            role: "admin"
+        )
+        let tool = AgentExecutionTool(
+            id: "background-session:session-child",
+            name: "task_operator",
+            status: "completed",
+            arguments: "{}",
+            liveOutput: "",
+            resultText: "Task agent running\n\nBackground session: {\"sessionId\":\"session-child\",\"turnId\":\"turn-child\",\"title\":\"Review runtime\",\"status\":\"running\"}",
+            detail: "Started linked background session",
+            toolLayer: "operator",
+            isError: false
+        )
+        let envelope = CloudGroupControlEnvelope(
+            kind: "group-message",
+            groupId: "session:group:mobile",
+            groupSpaceId: "session:group:mobile",
+            groupTitle: "Mobile builders",
+            createdByAccountId: "acct_me",
+            actor: participant,
+            participants: [participant],
+            message: CloudGroupMessagePayload(
+                id: "agent-response",
+                senderAccountId: "acct_me",
+                text: "Background session started",
+                createdAtMs: 1_000,
+                senderKind: "agent",
+                senderDisplayName: "My Kordi",
+                deliveryState: "complete",
+                replyToMessageId: "request",
+                requestId: "request",
+                structuredContent: CloudGroupStructuredContent(tools: [tool])
+            )
+        )
+        let body = try CloudGroupMessageCodec.encode(envelope)
+        let conversation = ConversationSummary(
+            id: "group:mobile",
+            kind: .group,
+            peerAccountId: "acct_peer",
+            agentId: nil,
+            ownerDisplayName: "Mobile builders",
+            displayName: "Mobile builders",
+            lastMessage: "",
+            lastActivityAt: Date(timeIntervalSince1970: 1),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: "session:group:mobile",
+            groupSpaceId: "session:group:mobile",
+            groupParticipants: [participant]
+        )
+        let projected = AppModel.mapGroupMessages(
+            [groupWire(id: "wire-agent-response", body: body, to: "acct_me")],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(
+            CloudGroupMessageCodec.parse(body)?.message?.structuredContent?.tools,
+            [tool]
+        )
+        XCTAssertEqual(projected.first?.backgroundAgentSessions.first?.sessionId, "session-child")
+        XCTAssertEqual(projected.first?.backgroundAgentSessions.first?.state, .running)
+    }
+
     func testGroupMemberJoinsRoundTripProjectAndDeduplicateReplay() throws {
         let participants = [
             CloudGroupParticipant(

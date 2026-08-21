@@ -3,22 +3,7 @@ use kordi_core::settings::ProviderOverride;
 use std::sync::Mutex;
 
 include!("tests/route_switch.rs");
-#[test]
-fn session_prompt_context_strips_current_and_legacy_wrappers() {
-    assert_eq!(
-        strip_session_prompt_context(
-            "base\n\n<desktop_session_context>\ncurrent\n</desktop_session_context>"
-        ),
-        "base"
-    );
-    assert_eq!(
-        strip_session_prompt_context(
-            "base\n\n<desktop_bridge_outreach_context>\nlegacy\n</desktop_bridge_outreach_context>"
-        ),
-        "base"
-    );
-}
-
+include!("tests/background_sessions.rs");
 fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
     model_options::effective_thinking_for_model_with_auth(requested, model, None)
 }

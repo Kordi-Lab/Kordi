@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useMemo,
   useRef,
   useState,
@@ -44,6 +43,7 @@ import type { ComposerScope } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
+import { useRefreshCompletedCanonicalSession } from '@/app/useRefreshCompletedCanonicalSession';
 export function useKordiAppFoundation({
   cloudSessionOverride,
 }: {
@@ -122,12 +122,9 @@ export function useKordiAppFoundation({
 
   const { mapDesktopMessages } = useDesktopTranscriptAdapter({ localAvatarSeedsRef });
 
-  const refreshCompletedCanonicalSession = useCallback(
-    (sessionId: string) => hydrateCanonicalSessionPage(
-      sessionId,
-      { force: true },
-    ),
-    [hydrateCanonicalSessionPage],
+  const refreshCompletedCanonicalSession = useRefreshCompletedCanonicalSession(
+    refreshCanonicalState,
+    hydrateCanonicalSessionPage,
   );
 
   const {

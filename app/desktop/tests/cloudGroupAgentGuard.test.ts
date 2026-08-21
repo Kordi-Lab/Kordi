@@ -11,6 +11,8 @@ const cloudGroupAgentExecutionSource = () => readFileSync(
   'utf8',
 );
 
+const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
+
 test('history and fallback ownership guards start concurrently', async () => {
   const starts: string[] = [];
   const decision = cloudGroupAgentGuardDecision({
@@ -101,4 +103,14 @@ test('terminal persistence precedes slow activity and ownership publication', ()
   assert.ok(terminalUpsert >= 0, 'expected terminal canonical upsert');
   assert.ok(activityPublish > terminalUpsert, 'activity must follow terminal persistence');
   assert.ok(terminalFanout > terminalUpsert, 'Cloud guards must follow terminal persistence');
+});
+
+test('group terminal fanout preserves only sanitized linked background tools', () => {
+  const execution = cloudGroupAgentExecutionSource();
+  const publication = source('../src/features/cloud/cloudGroupAgentPublication.ts');
+  const application = source('../src/features/cloud/cloudGroupMessageControl.ts');
+
+  assert.match(execution, /responseTools: cloudAgentPublicBackgroundToolsFromTurn\(finalTurn\)/);
+  assert.match(publication, /structuredContent: responseTools\.length > 0/);
+  assert.match(application, /content: senderIsAgent \? \{\s*\.\.\.structuredContent,/);
 });

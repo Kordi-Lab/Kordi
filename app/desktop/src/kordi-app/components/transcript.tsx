@@ -26,12 +26,18 @@ import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import {
+  relatedAgentSessionsFromTools,
+  type RelatedAgentSessionRunStatus,
+} from '@/features/chat/relatedAgentSessions';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
+import { ForwardedFromHeader } from './forwardedFromHeader';
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
+import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
 import { messageSnapshotKey } from './transcriptMessageSnapshot';
@@ -77,38 +83,6 @@ function cleanCompactionSummary(text: string) {
 function compactionTokenLabel(detail?: string) {
   const match = detail?.match(/Conversation compressed\s*•\s*([^•]+?)\s+tokens before/i);
   return match?.[1]?.trim() ? `${match[1].trim()} tokens before` : null;
-}
-
-function ActiveSheenTitle({ text }: { text: string }) {
-  return (
-    <span className="app-transcript-sheen-title" aria-label={text}>
-      {Array.from(text).map((character, index) => (
-        <span
-          key={`${character}-${index}`}
-          aria-hidden="true"
-          className="app-transcript-sheen-title-char"
-          style={{ '--char-index': index } as CSSProperties}
-        >
-          {character === ' ' ? '\u00A0' : character}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function ForwardedFromHeader({ senderLabel }: { senderLabel?: string | null }) {
-  const sender = senderLabel?.trim() || 'Unknown sender';
-
-  return (
-    <div
-      data-message-forwarded-header="true"
-      className="app-message-forwarded-header mb-1.5 flex min-w-0 items-center gap-1.5 text-[11px] font-medium leading-4"
-    >
-      <Forward className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span className="shrink-0">Forwarded from</span>
-      <span className="app-message-forwarded-header-name min-w-0 truncate font-semibold">{sender}</span>
-    </div>
-  );
 }
 
 export function TypeBadge({ type, compact = false }: { type: ConversationType; compact?: boolean }) {
@@ -644,6 +618,7 @@ function MessageBubbleView({
   messageForks,
   imageGallery,
   onOpenForkSession,
+  relatedAgentSessionStatusById,
   onReplyMessage,
   onForwardMessage,
   onRetryMessage,
@@ -677,6 +652,7 @@ function MessageBubbleView({
   messageForks?: MessageForkSummary[];
   imageGallery?: readonly MessageAttachment[];
   onOpenForkSession?: (sessionId: string) => void;
+  relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
   onRetryMessage?: (message: Message) => Promise<void> | void;
@@ -905,6 +881,7 @@ function MessageBubbleView({
       ) : null}
     </span>
   ) : null;
+  const relatedAgentSessions = relatedAgentSessionsFromTools(msg.turn?.tools);
 
   if (isCompactionSummaryMessage(msg)) {
     return (
@@ -1069,6 +1046,12 @@ function MessageBubbleView({
               onNavigateToMessage={onNavigateToMessage}
               onOpenArtifact={onOpenArtifact}
               onOpenAuthSettings={onOpenAuthSettings}
+            />
+            <RelatedAgentSessionLinks
+              sessions={relatedAgentSessions}
+              agentName={msg.sender}
+              statusBySessionId={relatedAgentSessionStatusById}
+              onOpen={onOpenForkSession}
             />
           </div>
           <MessageHoverTime msg={msg} side="peer" />
@@ -1362,6 +1345,7 @@ export const MessageBubble = memo(
     && previous.onOpenSenderProfile === next.onOpenSenderProfile
     && previous.onForkMessage === next.onForkMessage
     && previous.onOpenForkSession === next.onOpenForkSession
+    && previous.relatedAgentSessionStatusById === next.relatedAgentSessionStatusById
     && previous.onReplyMessage === next.onReplyMessage
     && previous.onForwardMessage === next.onForwardMessage
     && previous.onRetryMessage === next.onRetryMessage

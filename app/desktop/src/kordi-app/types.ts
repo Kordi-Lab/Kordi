@@ -1,4 +1,5 @@
 import type { CollaborationMessageDirection } from '@/features/collaboration/messages';
+import type { DesktopChatSessionSummary } from '@/features/chat/desktopChatSessionSummary';
 
 import type {
   ComposerQuoteState,
@@ -789,17 +790,7 @@ export type DesktopChatMessage = {
    * that map 1:1 to a SessionEntry (e.g., user messages). */
   entryId?: string | null;
 };
-export type DesktopChatSessionSummary = {
-  id: string;
-  title: string;
-  subtitle: string;
-  updatedAtLabel: string;
-  updatedAtMs: number;
-  messageCount: number;
-  draft: boolean;
-  forkedFromSessionId?: string | null;
-  forkedFromMessageId?: string | null;
-};
+export type { DesktopChatSessionSummary };
 
 export type DesktopChatProjectGroup = {
   id: string;

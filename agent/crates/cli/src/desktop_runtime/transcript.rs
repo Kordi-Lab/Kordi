@@ -148,6 +148,15 @@ mod tests {
         };
         kordi_session::store::append_entry(&conn, session_id, &assistant_entry)?;
 
+        let pending_messages = load_session_messages(&conn, session_id)?;
+        let pending = pending_messages.last().expect("pending assistant message");
+        assert!(pending.failed);
+        assert_eq!(
+            pending.text,
+            "Background task interrupted before producing a final result."
+        );
+        assert_eq!(pending.tools[0].status, "running");
+
         let tool_result_entry = SessionEntry::Message {
             base: EntryBase {
                 id: EntryId::generate(),
@@ -170,8 +179,37 @@ mod tests {
         };
         kordi_session::store::append_entry(&conn, session_id, &tool_result_entry)?;
 
+        let interrupted_messages = load_session_messages(&conn, session_id)?;
+        assert!(
+            interrupted_messages
+                .last()
+                .expect("interrupted turn")
+                .failed
+        );
+
+        let final_entry = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: crate::turn_runner::get_leaf_raw(&conn, session_id),
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::Assistant(AssistantMessage {
+                content: vec![AssistantContent::Text {
+                    text: "Final report".to_string(),
+                }],
+                provider: "anthropic".to_string(),
+                model: "claude-opus-4-6".to_string(),
+                usage: Usage::default(),
+                stop_reason: StopReason::Stop,
+                error_message: None,
+                timestamp: 2_200,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &final_entry)?;
+
         let messages = load_session_messages(&conn, session_id)?;
         let assistant = messages.last().expect("assistant message");
+        assert!(!assistant.failed);
         let tool = assistant.tools.first().expect("tool snapshot");
         assert_eq!(tool.tool_layer.as_deref(), Some("observation"));
         assert_eq!(

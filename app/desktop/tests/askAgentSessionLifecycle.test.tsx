@@ -244,7 +244,7 @@ test('opening Ask Agent reports and renders authoritative transcript hydration',
 
   assert.match(shellBuilder, /onPrefetchChatSession: args\.handlePrefetchChatSession/);
   assert.match(chatsPage, /onPrefetchChatSession,?[\s\S]*useChatCompanionSession\(\{[\s\S]*onPrefetchChatSession,/);
-  assert.match(sessionController, /return await preloadDesktopSessionTranscript\(sessionId\)/);
+  assert.match(sessionController, /const loaded = await preloadDesktopSessionTranscript\(sessionId\)/);
   assert.match(companionSession, /desktopRuntimeTranscriptLoaded !== true/);
   assert.match(companionSession, /onPrefetchChatSession\(conversationId\)\.then\(\(loaded\)/);
   assert.match(companionSession, /Couldn’t load chat history\./);

@@ -4,7 +4,6 @@ import {
   type MutableRefObject,
 } from 'react';
 import type {
-  CanonicalSessionMessage,
   CanonicalSessionState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
@@ -15,10 +14,7 @@ import {
 import {
   loadChatSyncLocalState,
 } from '@/lib/desktopChatSync';
-import { fetchCanonicalSessionMessages } from '@/lib/desktop';
 import type {
-  ChatSyncConversation,
-  ChatSyncMessage,
   CloudAccount,
   CloudAuthClient,
   CloudMessage,
@@ -39,6 +35,7 @@ import {
 } from './cloudSelfAgentForwardSync';
 import {
   cloudSelfAgentForwardMessageKind,
+  cloudSelfAgentProgressPolicy,
   cloudSelfAgentShouldPublishProgress,
 } from './cloudSelfAgentForwardPolicy';
 import {
@@ -54,75 +51,10 @@ import {
   cloudSyncedLocalAgentSessionIds,
   publishCloudAgentIdentityMarkers,
 } from './cloudSelfAgentSessionIdentity';
-
-async function loadCanonicalRecoveryMessages(
-  sessionIds: ReadonlySet<string>,
-  shouldContinue: () => boolean,
-) {
-  const pages = await Promise.all([...sessionIds].map(async (sessionId) => {
-    const messages: CanonicalSessionMessage[] = [];
-    let beforeSequenceNum: number | null = null;
-    let pageCount = 0;
-    do {
-      if (!shouldContinue()) return [];
-      const page = await fetchCanonicalSessionMessages(
-        sessionId,
-        beforeSequenceNum,
-        200,
-      );
-      if (!page) return [];
-      messages.push(...page.messages);
-      if (!page.hasOlder || page.oldestSequenceNum === null) break;
-      beforeSequenceNum = page.oldestSequenceNum;
-      pageCount += 1;
-      if (pageCount >= 10_000) {
-        throw new Error('Canonical agent history pagination did not finish.');
-      }
-    } while (true);
-    return messages;
-  }));
-  return pages.flat();
-}
-
-async function loadRemoteRecoveryMessages(
-  client: CloudAuthClient,
-  token: string,
-  conversations: readonly ChatSyncConversation[],
-  sessionIds: ReadonlySet<string>,
-  shouldContinue: () => boolean,
-): Promise<ChatSyncMessage[]> {
-  const conversationBySessionId = new Map(conversations.map((conversation) => [
-    conversation.legacy_session_id ?? conversation.id,
-    conversation,
-  ]));
-  const pages = await Promise.all([...sessionIds].map(async (sessionId) => {
-    const conversation = conversationBySessionId.get(sessionId);
-    if (!conversation || conversation.latest_message_sequence === 0) {
-      return [];
-    }
-    const messages: ChatSyncMessage[] = [];
-    let beforeSequence: number | undefined;
-    let pageCount = 0;
-    do {
-      if (!shouldContinue()) return [];
-      const page = await client.listChatConversationHistoryPage(
-        token,
-        conversation.id,
-        beforeSequence,
-        200,
-      );
-      messages.push(...page.messages);
-      if (!page.hasMore || page.nextBeforeSequence === null) break;
-      beforeSequence = page.nextBeforeSequence;
-      pageCount += 1;
-      if (pageCount >= 10_000) {
-        throw new Error('Remote agent history pagination did not finish.');
-      }
-    } while (true);
-    return messages;
-  }));
-  return pages.flat();
-}
+import {
+  loadCanonicalRecoveryMessages,
+  loadRemoteRecoveryMessages,
+} from './cloudSelfAgentRecoveryMessages';
 
 export function useCloudSelfAgentForwardSync({
   account,
@@ -181,7 +113,7 @@ export function useCloudSelfAgentForwardSync({
         const heartbeatAtMs = Date.now();
         const historySessionIds = cloudSyncedLocalAgentSessionIds(state);
         for (const sessionId of activeSessionIds) {
-          if (!cloudSelfAgentShouldPublishProgress(sessionId, historySessionIds)) continue;
+          if (!cloudSelfAgentShouldPublishProgress(sessionId, historySessionIds, true)) continue;
           const localRequest = state.messages
             .filter((message) => (
               message.sessionId === sessionId
@@ -417,6 +349,10 @@ export function useCloudSelfAgentForwardSync({
           },
         );
         if (operations.length > 0) {
+          const shouldPublishProgress = cloudSelfAgentProgressPolicy(
+            historySessionIds,
+            activeLocalTurnSessionKey,
+          );
           const executionLedger = { ...ledger };
           for (const operation of operations) {
             if (!recoverySessionIds.has(operation.sessionId)) continue;
@@ -452,13 +388,13 @@ export function useCloudSelfAgentForwardSync({
             },
             shouldContinue: () => !cancelledRef.current,
             shouldMergeMessage: (operation) => (
-              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
+              shouldPublishProgress(operation.sessionId)
             ),
             shouldPublishProcessing: (operation) => (
-              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
+              shouldPublishProgress(operation.sessionId)
             ),
             executionSnapshotForOperation: (operation) => (
-              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
+              shouldPublishProgress(operation.sessionId)
                 ? executionBySessionIdRef.current[operation.sessionId]
                 : undefined
             ),
@@ -488,6 +424,7 @@ export function useCloudSelfAgentForwardSync({
     client,
     executionBySessionIdRef,
     initialMessagesSettled,
+    activeLocalTurnSessionKey,
     mergeMessage,
     processedRequestIdsRef,
     reportWarning,

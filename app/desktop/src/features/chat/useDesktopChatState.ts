@@ -22,23 +22,8 @@ import { createDesktopTurnRenderAliasRegistry } from './desktopTurnRenderAliasRe
 import type { UseDesktopChatStateArgs } from './desktopChatState.types';
 import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession } from './queuedDesktopMessages';
 import { useDesktopSessionTranscriptCache } from './useDesktopSessionTranscriptCache';
-
-function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {
-  if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
-  if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
-  if (Notification.permission !== 'granted') return;
-
-  const title = turn.succeeded
-    ? 'Kordi: Background session finished'
-    : turn.status === 'cancelled'
-      ? 'Kordi: Background session stopped'
-      : 'Kordi: Background session needs attention';
-
-  new Notification(title, {
-    body: 'Open Kordi to review the update.',
-    tag: `kordi-session-${turn.sessionId}`,
-  });
-}
+import { notifyBackgroundSessionCompletion } from './backgroundSessionNotifications';
+import { useBackgroundTurnDiscovery } from './useBackgroundTurnDiscovery';
 
 export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refreshCanonicalSession }: UseDesktopChatStateArgs) {
   const latestDesktopSessionIdRef = useRef<string | undefined>(undefined);
@@ -415,6 +400,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
           turnId,
         );
         scheduleLiveTurnSnapshot(nextTurn, { immediate: true });
+        const isBackgroundSession = visibleLocalSessionIdRef.current !== nextTurn.sessionId
+          && latestDesktopSessionIdRef.current !== nextTurn.sessionId;
+        if (isBackgroundSession) {
+          await refreshCanonicalSession?.(nextTurn.sessionId).catch(
+            () => undefined,
+          );
+        }
 
         while (!nextTurn.completed) {
           await new Promise((resolve) => window.setTimeout(resolve, 60));
@@ -488,6 +480,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
       void watchDesktopLiveTurn(turn);
     }
   }, [desktopLiveTurnsBySession, isNativeShell, watchDesktopLiveTurn]);
+
+  useBackgroundTurnDiscovery({ enabled: isNativeShell, watchTurn: watchDesktopLiveTurn });
 
   return {
     desktopChatState,

@@ -1,8 +1,9 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use kordi_cli::desktop_runtime::DesktopRuntimeSession;
+use kordi_cli::desktop_runtime::{DesktopRuntimeProfile, DesktopRuntimeSession};
 
-use super::chat_cwd;
+use super::{background_tasks::ManagedChildAgentRunner, chat_cwd, DesktopChatManager};
 
 fn sanitize_session_segment(value: &str) -> String {
     let sanitized: String = value
@@ -105,19 +106,38 @@ fn text_mentions_local_agent(text: &str, local_agent_labels: &[String]) -> bool 
     })
 }
 
+fn should_load_shared_session_context(
+    has_explicit_context_session: bool,
+    text: &str,
+    local_agent_labels: &[String],
+) -> bool {
+    has_explicit_context_session || text_mentions_local_agent(text, local_agent_labels)
+}
+
 pub(super) async fn prepare_desktop_session_for_send(
+    manager: &DesktopChatManager,
     runtime: &mut DesktopRuntimeSession,
     cwd: PathBuf,
     user_text: &str,
+    context_session_id: Option<&str>,
 ) {
+    let prompt_session_id = context_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| runtime.session_id().to_string());
     let local_agent_labels = local_agent_mention_labels(runtime, &cwd);
-    let local_session_context = if text_mentions_local_agent(user_text, &local_agent_labels) {
+    let local_session_context = if should_load_shared_session_context(
+        context_session_id.is_some(),
+        user_text,
+        &local_agent_labels,
+    ) {
         if let Ok(task_records) =
-            crate::canonical_sessions::local_agent_session_task_records(Some(runtime.session_id()))
+            crate::canonical_sessions::local_agent_session_task_records(Some(&prompt_session_id))
         {
             let _ = runtime.sync_visible_task_records(&task_records);
         }
-        crate::canonical_sessions::local_agent_session_prompt_context(Some(runtime.session_id()))
+        crate::canonical_sessions::local_agent_session_prompt_context(Some(&prompt_session_id))
             .ok()
             .flatten()
     } else {
@@ -127,6 +147,22 @@ pub(super) async fn prepare_desktop_session_for_send(
     runtime.set_session_observation_runtime(Some(
         super::session_observation::build_session_observation_runtime(),
     ));
+
+    if let Ok(detail) = runtime.detail() {
+        let agent = runtime.agent_profile();
+        let profile = DesktopRuntimeProfile {
+            provider: Some(detail.provider),
+            model: Some(detail.model),
+            thinking: Some(detail.thinking),
+            system_prompt: Some(agent.system_prompt),
+            skill_names: Some(agent.loaded_skills),
+            ..DesktopRuntimeProfile::default()
+        };
+        // ponytail: this per-turn registry is enough for background navigation;
+        // keep one registry across turns only when parent-side child control is required.
+        let runner = ManagedChildAgentRunner::new(manager.clone(), prompt_session_id, profile);
+        let _ = runtime.set_task_operator_runner(Arc::new(runner));
+    }
 }
 
 #[cfg(test)]
@@ -145,6 +181,11 @@ mod tests {
         assert!(!text_mentions_local_agent(
             "@OtherPerson's Kordi hi",
             &labels
+        ));
+        assert!(should_load_shared_session_context(
+            true,
+            "compare these systems",
+            &labels,
         ));
     }
 }
