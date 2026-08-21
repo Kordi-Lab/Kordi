@@ -32,6 +32,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     session: {
     activeConv: args.activeConv,
     chatConversations: args.chatConversations,
+    companionConversations: args.companionConversations,
     participantSpaces: args.participantSpaces,
     activeConversationUsesCollaboration: args.activeConversationUsesCollaboration,
     activeCollaborationModelHost: args.activeCollaborationConversationHost

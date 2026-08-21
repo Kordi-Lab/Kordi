@@ -36,6 +36,7 @@ type CompanionSessionState = {
 type UseChatCompanionSessionInput = {
   activeConversation: Conversation;
   conversations: Conversation[];
+  directConversations?: Conversation[];
   activePaneKind: 'human' | 'agent' | null;
   attachmentCount: number;
   setComposerTextForSession: ChatsPageComposer['setChatComposerTextForSession'];
@@ -95,6 +96,7 @@ function normalizeStateForCandidates(
 export function useChatCompanionSession({
   activeConversation,
   conversations,
+  directConversations = conversations,
   activePaneKind,
   attachmentCount,
   setComposerTextForSession,
@@ -102,9 +104,13 @@ export function useChatCompanionSession({
   onCreateAgentSession,
   onPrefetchChatSession,
 }: UseChatCompanionSessionInput) {
-  const candidates = useMemo(
+  const visibleCandidates = useMemo(
     () => chatCompanionCandidates(activeConversation, conversations),
     [activeConversation, conversations],
+  );
+  const candidates = useMemo(
+    () => chatCompanionCandidates(activeConversation, directConversations),
+    [activeConversation, directConversations],
   );
   const sessionOptions = useMemo(
     () => chatCompanionSessionOptions(activeConversation, conversations),
@@ -151,8 +157,8 @@ export function useChatCompanionSession({
   ) ?? null;
   const suggestedConversation = pairedCompanionConversation(
     activeConversation,
-    candidates,
-  ) ?? candidates[0] ?? null;
+    visibleCandidates,
+  ) ?? visibleCandidates[0] ?? null;
   const suggested = selectedConversation ?? suggestedConversation;
   const conversation = chatSideAgentConversationForOpenRequest(
     state.openConversationId,

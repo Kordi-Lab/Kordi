@@ -63,6 +63,7 @@ export type ChatsPageLayout = {
 export type ChatsPageSession = {
   activeConv: Conversation;
   chatConversations: Conversation[];
+  companionConversations?: Conversation[];
   participantSpaces: ParticipantSpaceViewModel[];
   activeConversationUsesCollaboration: boolean;
   activeCollaborationModelHost: DesktopCollaborationHost | null;

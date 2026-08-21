@@ -129,6 +129,7 @@ export function useKordiAppShellComposition({
     },
     conversationIndex: {
       chatConversations: conversations.chatConversations,
+      companionConversations: conversations.companionConversations,
       participantSpaces: conversations.participantSpaces,
       contactParticipantSpaces: conversations.contactParticipantSpaces,
       agentParticipantSpaces: conversations.agentParticipantSpaces,

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import { suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
-import type { Message } from '@/kordi-app/types';
+import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
@@ -62,6 +62,8 @@ export {
   COLLABORATION_ROUTING_NOTICE_EXIT_MS,
 } from '@/pages/chatsPage.constants';
 
+const EMPTY_CONVERSATIONS: Conversation[] = [];
+
 export function ChatsPage({
   layout,
   session,
@@ -79,7 +81,8 @@ export function ChatsPage({
   } = layout;
   const {
     activeConv,
-    chatConversations,
+    chatConversations = EMPTY_CONVERSATIONS,
+    companionConversations = chatConversations,
     activeConversationUsesCollaboration,
     activeCollaborationModelHost,
     desktopChatState,
@@ -120,8 +123,8 @@ export function ChatsPage({
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
   const backgroundSessionStatusById = useMemo(
-    () => relatedAgentSessionStatusById(chatConversations),
-    [chatConversations],
+    () => relatedAgentSessionStatusById(companionConversations),
+    [companionConversations],
   );
   const cloudPresence = useCloudPresence(cloudAccount);
   const activePresenceTarget = cloudAccount
@@ -151,6 +154,7 @@ export function ChatsPage({
   const companionSession = useChatCompanionSession({
     activeConversation: activeConv,
     conversations: chatConversations,
+    directConversations: companionConversations,
     activePaneKind,
     attachmentCount: chatComposerAttachments.length,
     setComposerTextForSession: setChatComposerTextForSession,

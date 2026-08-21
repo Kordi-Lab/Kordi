@@ -131,10 +131,22 @@ test('related agent sessions open in the companion panel instead of replacing ma
     new URL('../src/pages/chatsPage.companionWorkspace.tsx', import.meta.url),
     'utf8',
   );
+  const sessionSource = readFileSync(
+    new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
+    'utf8',
+  );
+  const workspaceSource = readFileSync(
+    new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url),
+    'utf8',
+  );
 
   assert.match(pageSource, /companionSession\.actions\.switchConversation\(sessionId\)/);
+  assert.match(pageSource, /directConversations: companionConversations/);
   assert.match(pageSource, /companionLayout\.placeCompanion\('right'\)/);
   assert.match(pageSource, /companionLayout\.setFolded\(false\)/);
+  assert.match(sessionSource, /chatCompanionCandidates\(activeConversation, directConversations\)/);
+  assert.match(sessionSource, /chatCompanionSessionOptions\(activeConversation, conversations\)/);
+  assert.match(workspaceSource, /isGroupForkSession\(conversation\)/);
   assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
   assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
   assert.doesNotMatch(mainSource, /onOpenForkSession: runtime\.onSelectSession/);

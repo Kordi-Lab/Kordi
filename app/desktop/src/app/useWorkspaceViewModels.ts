@@ -28,6 +28,7 @@ import {
   isLocalDraftChatConversationId,
   isProjectDraftSessionId,
 } from '@/features/chat/draftSessions';
+import { isGroupForkSession } from '@/features/chat/forkLineage';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
 import {
   buildParticipantSpaces,
@@ -456,6 +457,15 @@ export function useWorkspaceViewModels({
     hiddenSessionIds,
     localAgentCollaborationReachoutSessionIds,
   ]);
+  const companionConversations = useMemo(() => {
+    const visibleIds = new Set(chatConversations.map((conversation) => conversation.id));
+    return [
+      ...chatConversations,
+      ...blankShellCollapsedChatConversations.filter((conversation) => (
+        isGroupForkSession(conversation) && !visibleIds.has(conversation.id)
+      )),
+    ];
+  }, [blankShellCollapsedChatConversations, chatConversations]);
 
   const visibleMaterializedChatConversations = useMemo(() => materializedChatConversations(chatConversations), [chatConversations]);
   const nativeChatPlaceholder = useMemo(
@@ -1084,6 +1094,7 @@ export function useWorkspaceViewModels({
 
   return {
     chatConversations,
+    companionConversations,
     filteredConversations,
     participantSpaces,
     contactParticipantSpaces,

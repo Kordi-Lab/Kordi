@@ -68,6 +68,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   showSessionRail: boolean;
   sessionRailWidth: number;
   chatConversations: Conversation[];
+  companionConversations: Conversation[];
   participantSpaces: ParticipantSpaceViewModel[];
   contactParticipantSpaces: ParticipantSpaceViewModel[];
   agentParticipantSpaces: ParticipantSpaceViewModel[];
@@ -399,7 +400,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
   | 'setActiveNav'
   | 'cloudSession'
-  | 'chatConversations' | 'participantSpaces'
+  | 'chatConversations' | 'companionConversations' | 'participantSpaces'
   | 'handleCreateChatSession'
   | 'handleCreateSideAgentSession' | 'handlePrefetchChatSession'
   | 'handleSelectChatSession'
