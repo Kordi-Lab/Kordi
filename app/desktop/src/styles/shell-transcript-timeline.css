@@ -102,6 +102,8 @@
 
 .app-transcript-timeline-reveal {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   grid-template-rows: 0fr;
   pointer-events: none;
   transition: grid-template-rows var(--app-motion-fast) var(--app-motion-ease);
@@ -114,6 +116,8 @@
 
 .app-transcript-timeline-reveal-inner {
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   opacity: 0;
   transform: translateY(-4px);
@@ -194,12 +198,17 @@
 
 .app-transcript-timeline-list {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   gap: 10px;
   padding: 9px 0 1px;
 }
 
 .app-transcript-timeline-row {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 10px;
   color: color-mix(in oklab, var(--utility-muted-text) 78%, transparent);
@@ -235,13 +244,19 @@
 .app-transcript-timeline-row-line {
   display: flex;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   align-items: center;
   gap: 6px;
   min-height: 18px;
 }
 
 .app-transcript-timeline-row-title {
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: color-mix(in oklab, var(--utility-muted-text) 84%, transparent);
   font-size: 13px;
   font-weight: 400;

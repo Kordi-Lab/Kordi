@@ -77,6 +77,26 @@ test('folded timeline summary stays inside narrow response surfaces', () => {
   assert.match(textBlock, /max-width:\s*100%/);
 });
 
+test('expanded thinking rows stay inside narrow response surfaces', () => {
+  const shellCss = readDesktopShellCss();
+  const revealBlock = cssBlock(shellCss, '.app-transcript-timeline-reveal');
+  const listBlock = cssBlock(shellCss, '.app-transcript-timeline-list');
+  const rowBlock = cssBlock(shellCss, '.app-transcript-timeline-row');
+  const lineBlock = cssBlock(shellCss, '.app-transcript-timeline-row-line');
+  const titleBlock = cssBlock(shellCss, '.app-transcript-timeline-row-title');
+  const responsePanelBlock = cssBlock(shellCss, '.app-live-turn-response-panel');
+
+  for (const block of [revealBlock, listBlock, rowBlock, lineBlock]) {
+    assert.match(block, /max-width:\s*100%/);
+  }
+  assert.match(listBlock, /overflow:\s*hidden/);
+  assert.match(lineBlock, /overflow:\s*hidden/);
+  assert.match(titleBlock, /flex:\s*1 1 auto/);
+  assert.match(titleBlock, /text-overflow:\s*ellipsis/);
+  assert.match(titleBlock, /white-space:\s*nowrap/);
+  assert.match(responsePanelBlock, /overflow:\s*hidden/);
+});
+
 test('summarizes foldable timeline state without raw tool activity wording', () => {
   assert.equal(
     toolTimelineSummary({ tools: [{ name: 'bash', status: 'running', arguments: '{"command":"df -h"}' }], active: true, completed: false }),
