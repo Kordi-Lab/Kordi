@@ -604,7 +604,7 @@ async fn fetch_copilot_token_envelope(
         )
         .await;
         let error = match error {
-            ProviderError::Http(error) => ProviderError::Http(error.with_hint(hint)),
+            ProviderError::Http(error) => ProviderError::Http(Box::new((*error).with_hint(hint))),
             error => error,
         };
         return Err(anyhow::Error::new(error));

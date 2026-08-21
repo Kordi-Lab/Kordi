@@ -61,16 +61,16 @@ pub(super) async fn spawn_bash_process(
     raw_output: bool,
     ctx: &ToolContext,
     safety: BashSafetyContext<'_>,
-) -> Result<SpawnedProcess, ToolResult> {
+) -> Result<SpawnedProcess, Box<ToolResult>> {
     match ctx.execution_policy {
         ExecutionPolicy::Yolo => {
             let (process, output_optimization) =
                 optimized_or_raw_bash_command(command, raw_output, ctx).await;
             let child = spawn_process(process).map_err(|error| {
-                structured_error_result(
+                Box::new(structured_error_result(
                     format!("Failed to spawn bash: {error}"),
                     BashResultDetails::error(command, safety, None, None),
-                )
+                ))
             })?;
             #[cfg(unix)]
             let process_group_id = child.id();
@@ -87,7 +87,7 @@ pub(super) async fn spawn_bash_process(
                 Ok(sandboxed) => sandboxed.into_parts(),
                 Err(error) => {
                     let details = error.details().clone();
-                    return Err(structured_error_result(
+                    return Err(Box::new(structured_error_result(
                         details.message().to_string(),
                         BashResultDetails::error(
                             command,
@@ -95,7 +95,7 @@ pub(super) async fn spawn_bash_process(
                             Some(details.backend()),
                             Some(&details),
                         ),
-                    ));
+                    )));
                 }
             };
 
@@ -104,10 +104,10 @@ pub(super) async fn spawn_bash_process(
                     backend,
                     format!("Failed to launch Linux sandbox backend: {error}"),
                 );
-                structured_error_result(
+                Box::new(structured_error_result(
                     details.message().to_string(),
                     BashResultDetails::error(command, safety, Some(backend), Some(&details)),
-                )
+                ))
             })?;
             #[cfg(unix)]
             let process_group_id = child.id();

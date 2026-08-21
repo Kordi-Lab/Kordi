@@ -26,15 +26,15 @@ createRoot(document.querySelector('#root')!).render(
     </section>
     <WhatsNewDialog
       release={{
-        version: '0.0.1-beta.13',
+        version: '0.0.1-beta.14',
         notes: [
           '### What changed',
           '',
           '- Packaged Cloud builds keep Google and GitHub sign-in available when capability discovery is unavailable.',
           '- Group agents can mention conversation participants and their Kordi agents while preserving relevant reply history.',
         ].join('\n'),
-        publishedAt: '2026-08-18T00:00:00Z',
-        changelogUrl: 'https://kordi.ai/changelog#v0-0-1-beta-13',
+        publishedAt: '2026-08-21T00:00:00Z',
+        changelogUrl: 'https://kordi.ai/changelog#v0-0-1-beta-14',
       }}
       onDismiss={() => undefined}
       onOpenFullReleaseNotes={() => undefined}

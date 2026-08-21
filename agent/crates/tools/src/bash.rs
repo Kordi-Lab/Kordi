@@ -90,7 +90,7 @@ impl Tool for BashTool {
         let safety = classify_bash_command(command);
         let approved = match request_bash_approval(command, ctx, &safety).await {
             Ok(approved) => approved,
-            Err(result) => return Ok(result),
+            Err(result) => return Ok(*result),
         };
 
         let safety_context = BashSafetyContext {
@@ -112,7 +112,7 @@ impl Tool for BashTool {
             process_group_id,
         } = match spawn_bash_process(command, raw_output, ctx, safety_context).await {
             Ok(process) => process,
-            Err(result) => return Ok(result),
+            Err(result) => return Ok(*result),
         };
 
         let mut stdout = child.stdout.take();

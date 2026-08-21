@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use kordi_cloud_server::support::{
     bootstrap_support_agent, PendingSupportConfig, SupportProviderAuth, SupportService,
 };

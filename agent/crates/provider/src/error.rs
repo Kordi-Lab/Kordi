@@ -95,7 +95,7 @@ impl fmt::Display for ProviderHttpError {
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ProviderError {
     #[error("{0}")]
-    Http(ProviderHttpError),
+    Http(Box<ProviderHttpError>),
 
     #[error("{message}, url: {url}")]
     Transport {
@@ -322,7 +322,7 @@ pub async fn unexpected_response_with_sensitive_values(
     };
     let retry_after_ms = header_retry_after_ms.or_else(|| provider_retry_delay_ms(format, &body));
 
-    ProviderError::Http(ProviderHttpError {
+    ProviderError::Http(Box::new(ProviderHttpError {
         provider,
         operation,
         status,
@@ -336,7 +336,7 @@ pub async fn unexpected_response_with_sensitive_values(
         retry_after_ms,
         body_truncated,
         hint: None,
-    })
+    }))
 }
 
 pub fn is_retryable_error_message(message: &str) -> bool {

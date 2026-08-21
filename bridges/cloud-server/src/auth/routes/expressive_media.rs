@@ -139,7 +139,7 @@ pub(super) async fn save_expressive_media(
             .await
         {
             Ok(row) => row,
-            Err(response) => return response,
+            Err(response) => return *response,
         };
     let Some(size_bytes) = size_bytes else {
         return err(

@@ -11,7 +11,7 @@ import {
   whatsNewRequestUrl,
 } from '../src/features/updates/whatsNew';
 
-const VERSION = '0.0.1-beta.13';
+const VERSION = '0.0.1-beta.14';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -30,8 +30,8 @@ function releaseMetadata(version = VERSION) {
     schemaVersion: 1,
     version,
     notes: '### Added\n\n- Added a first-launch summary. ([#893])',
-    pubDate: '2026-08-18T00:00:00Z',
-    changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta13',
+    pubDate: '2026-08-21T00:00:00Z',
+    changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta14',
   };
 }
 
@@ -158,33 +158,33 @@ test('release metadata and highlights stay safe and readable', () => {
   );
 });
 
-test('beta.13 uses the four customer-facing release highlights', () => {
+test('beta.14 uses the four customer-facing release highlights', () => {
   const release = parseWhatsNewRelease(releaseMetadata(), VERSION);
   assert.ok(release);
   assert.deepEqual(releaseHighlights(release), [
     {
-      category: 'iPhone companion',
-      title: 'Your chats, agents, calls, and media now travel with you',
-      detail: 'The native iPhone app now includes Contact and Agent conversations, Digest, Ask Agent, calls, session details, expressive media, profiles, and presence.',
+      category: 'Large attachments',
+      title: 'Large files upload without freezing the composer',
+      detail: 'Resumable uploads support files up to 2 GiB with progress, cancellation, retry, and restart recovery.',
       kind: 'general',
     },
     {
-      category: 'Reliable collaboration',
-      title: 'Chats and agent work converge cleanly across devices',
-      detail: 'Reliable sync v2 keeps messages, group handoffs, agent replies, read state, and runtime routes consistent without duplicate execution.',
+      category: 'Shared identity',
+      title: 'People and agents keep the same avatar everywhere',
+      detail: 'Canonical avatars now stay consistent across Factory, conversations, mentions, profiles, calls, macOS, and iOS.',
       kind: 'collaboration',
     },
     {
-      category: 'Calls and devices',
-      title: 'Review active devices and start native calls',
-      detail: 'Manage signed-in installations and use synchronized audio, video, and group-call history across macOS and iOS.',
-      kind: 'collaboration',
-    },
-    {
-      category: 'Chat polish',
-      title: 'Messages stay compact, readable, and correctly delivered',
-      detail: 'Refined composer behavior, mentions, partial agent output, receipts, media previews, scrolling, timestamps, and expandable tool activity.',
+      category: 'iPhone navigation',
+      title: 'Agents and Account are now first-class destinations',
+      detail: 'Root tabs, full-page destinations, and compact floating menus make frequent iPhone workflows easier to reach.',
       kind: 'general',
+    },
+    {
+      category: 'Reliable agents and calls',
+      title: 'Factory sessions, Support, and calls converge cleanly',
+      detail: 'Agent identity and routing persist correctly, while call state resists delayed events and reports clearer media diagnostics.',
+      kind: 'collaboration',
     },
   ]);
 });

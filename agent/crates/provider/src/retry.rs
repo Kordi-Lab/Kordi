@@ -150,7 +150,7 @@ mod tests {
         status: StatusCode,
         retry_after_ms: Option<u64>,
     ) -> ProviderError {
-        ProviderError::Http(ProviderHttpError {
+        ProviderError::Http(Box::new(ProviderHttpError {
             provider: "test".to_string(),
             operation: "test".to_string(),
             status,
@@ -164,7 +164,7 @@ mod tests {
             body_truncated: false,
             cloudflare_block: false,
             hint: None,
-        })
+        }))
     }
 
     #[tokio::test]

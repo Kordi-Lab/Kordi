@@ -74,23 +74,24 @@ fn add_github_copilot_hint(error: ProviderError, model: &str) -> ProviderError {
     let ProviderError::Http(http) = error else {
         return error;
     };
+    let http = *http;
     let lower = http.message.to_ascii_lowercase();
     let hint = if http.status == reqwest::StatusCode::UNAUTHORIZED {
         Some("Sign in to GitHub Copilot again and retry.")
     } else if http.status == reqwest::StatusCode::FORBIDDEN {
         Some("Confirm that this GitHub Copilot account and plan can use the selected model.")
     } else if lower.contains("model not supported") || lower.contains("unsupported model") {
-        return ProviderError::Http(http.with_hint(format!(
+        return ProviderError::Http(Box::new(http.with_hint(format!(
             "Enable `{model}` in GitHub Copilot or select another model."
-        )));
+        ))));
     } else {
         None
     };
 
-    ProviderError::Http(match hint {
+    ProviderError::Http(Box::new(match hint {
         Some(hint) => http.with_hint(hint),
         None => http,
-    })
+    }))
 }
 
 #[async_trait]
