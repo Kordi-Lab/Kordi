@@ -151,9 +151,7 @@ export function resizeComposerTextarea(selector: string, value?: string) {
   window.requestAnimationFrame(() => {
     const textarea = document.querySelector(selector) as HTMLTextAreaElement | null;
     if (!textarea) return;
-    if (typeof value === 'string') {
-      textarea.value = value;
-    }
+    textarea.value = value ?? '';
     textarea.style.height = '0px';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
     if (typeof value === 'string') {
