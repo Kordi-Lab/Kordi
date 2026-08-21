@@ -152,7 +152,7 @@ impl Provider for AlwaysStreamErrorProvider {
 }
 
 fn terminal_http_error() -> ProviderError {
-    ProviderError::Http(ProviderHttpError {
+    ProviderError::Http(Box::new(ProviderHttpError {
         provider: "openai".to_string(),
         operation: "responses".to_string(),
         status: StatusCode::FORBIDDEN,
@@ -166,7 +166,7 @@ fn terminal_http_error() -> ProviderError {
         body_truncated: true,
         cloudflare_block: true,
         hint: None,
-    })
+    }))
 }
 
 struct CancelAfterToolCallProvider;

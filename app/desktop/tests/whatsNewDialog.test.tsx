@@ -10,7 +10,7 @@ import { WhatsNewDialog } from '../src/features/updates/WhatsNewDialog';
 import type { WhatsNewRelease } from '../src/features/updates/whatsNew';
 
 const release: WhatsNewRelease = {
-  version: '0.0.1-beta.13',
+  version: '0.0.1-beta.14',
   notes: [
     '### Added',
     '',
@@ -20,8 +20,8 @@ const release: WhatsNewRelease = {
     '',
     '- Kept the workspace available when release metadata cannot load.',
   ].join('\n'),
-  publishedAt: '2026-08-18T00:00:00Z',
-  changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta13',
+  publishedAt: '2026-08-21T00:00:00Z',
+  changelogUrl: 'https://github.com/Kordi-Lab/Kordi/releases/tag/V0.0.1.beta14',
 };
 
 const whatsNewCss = readFileSync(new URL('../src/styles/whats-new.css', import.meta.url), 'utf8');
@@ -34,9 +34,9 @@ test('What’s New renders concise highlights and both clear actions', () => {
   }));
 
   assert.match(markup, /What’s New in Kordi/);
-  assert.match(markup, /4 product updates in the beta\.13 release/);
-  assert.match(markup, /Your chats, agents, calls, and media now travel with you/);
-  assert.match(markup, /Messages stay compact, readable, and correctly delivered/);
+  assert.match(markup, /4 product updates in the beta\.14 release/);
+  assert.match(markup, /Large files upload without freezing the composer/);
+  assert.match(markup, /Factory sessions, Support, and calls converge cleanly/);
   assert.match(markup, /View full changelog/);
   assert.match(markup, />Continue</);
   assert.match(markup, /aria-label="Close What’s New"/);

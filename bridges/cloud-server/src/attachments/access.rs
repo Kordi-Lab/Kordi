@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use sqlx_core::query_as::query_as;
 
-use crate::attachments::response::err;
+use crate::attachments::response::boxed_err;
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
@@ -19,7 +19,7 @@ pub(crate) async fn attachment_access_row(
     state: &ServerState,
     session: &CloudSession,
     attachment_id: &str,
-) -> Result<AttachmentAccessRow, Response> {
+) -> Result<AttachmentAccessRow, Box<Response>> {
     let pool = state.db_pool();
     let row: Option<AttachmentAccessRow> = match query_as(
         "SELECT object_key, owner_account_id, finalized_at, content_type, detected_content_type, size_bytes \
@@ -32,7 +32,7 @@ pub(crate) async fn attachment_access_row(
     {
         Ok(value) => value,
         Err(_) => {
-            return Err(err(
+            return Err(boxed_err(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -41,7 +41,7 @@ pub(crate) async fn attachment_access_row(
     };
 
     let Some(row) = row else {
-        return Err(err(
+        return Err(boxed_err(
             "not_found",
             "Attachment not found.",
             StatusCode::NOT_FOUND,
@@ -70,7 +70,7 @@ pub(crate) async fn attachment_access_row(
         {
             Ok(value) => value,
             Err(_) => {
-                return Err(err(
+                return Err(boxed_err(
                     "server_error",
                     "Database error.",
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -78,7 +78,7 @@ pub(crate) async fn attachment_access_row(
             }
         };
         if allowed.is_none() {
-            return Err(err(
+            return Err(boxed_err(
                 "not_found",
                 "Attachment not found.",
                 StatusCode::NOT_FOUND,
@@ -86,7 +86,7 @@ pub(crate) async fn attachment_access_row(
         }
     }
     if row.2.is_none() {
-        return Err(err(
+        return Err(boxed_err(
             "not_finalized",
             "Attachment upload has not been finalized.",
             StatusCode::CONFLICT,

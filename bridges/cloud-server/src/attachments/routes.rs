@@ -430,7 +430,7 @@ pub async fn download_url(
     let (object_key, _, _, _, _, _) =
         match attachment_access_row(&state, &session, &attachment_id).await {
             Ok(value) => value,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
 
     let url = match presign_download_url(s3, &object_key) {
@@ -472,7 +472,7 @@ pub async fn update_preview(
     let (_, _owner_account_id, _, _, _, _) =
         match attachment_access_row(&state, &session, &attachment_id).await {
             Ok(row) => row,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
 
     let result = match query(
@@ -522,7 +522,7 @@ pub async fn content(
     let (object_key, _, _, content_type, detected_content_type, size_bytes) =
         match attachment_access_row(&state, &session, &attachment_id).await {
             Ok(value) => value,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
 
     let url = match presign_download_url(s3, &object_key) {

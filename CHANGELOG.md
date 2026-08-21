@@ -4,6 +4,40 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1-beta.14] - 2026-08-21
+
+### Added
+
+- Added resumable attachment uploads up to 2 GiB with bounded memory, visible
+  progress, cancellation, retry, and restart recovery across macOS and iOS.
+  ([#1068])
+- Added canonical synchronized avatars for people and agents across Factory,
+  conversations, mentions, profiles, calls, macOS, and iOS. ([#1076])
+
+### Changed
+
+- Promoted Agents and Account to root iPhone destinations, moved secondary
+  destinations into full-page navigation, and refined compact floating menus
+  and agent model selection. ([#1080], [#1081])
+- Reworked grouped-image messaging with bounded macOS stacks, native iOS photo
+  review, real image layers, accessible browsing, and attached delivery and
+  retry feedback. ([#1079])
+- Replaced the hosted edge port-forward with a loopback-only NodePort so
+  healthy Cloud pods remain reachable without a stale userspace tunnel.
+  ([#1075])
+
+### Fixed
+
+- Restored Kordi Support and hosted call media, then made call lifecycle state
+  monotonic across delayed polls, events, joins, and media callbacks with
+  clearer connection diagnostics. ([#1057], [#1060], [#1082])
+- Fixed Factory publishing, avatar controls, custom-agent identity and routing,
+  owner-Mac execution, and cross-device session repair without replaying
+  completed local work. ([#1074])
+- Isolated cached iPhone timelines by account, preserved history and composer
+  positioning, and aligned durable group-member join notices with macOS.
+  ([#1077], [#1084])
+
 ## [0.0.1-beta.13] - 2026-08-18
 
 ### Added
@@ -212,7 +246,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta13...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta14...HEAD
+[0.0.1-beta.14]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta13...V0.0.1.beta14
 [0.0.1-beta.13]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta12...V0.0.1.beta13
 [0.0.1-beta.12]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta11...V0.0.1.beta12
 [0.0.1-beta.11]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta10...V0.0.1.beta11
@@ -321,3 +356,15 @@ This release is the comparison baseline for beta.8. See the
 [#1045]: https://github.com/Kordi-Lab/Kordi/pull/1045
 [#1050]: https://github.com/Kordi-Lab/Kordi/pull/1050
 [#1051]: https://github.com/Kordi-Lab/Kordi/pull/1051
+[#1057]: https://github.com/Kordi-Lab/Kordi/pull/1057
+[#1060]: https://github.com/Kordi-Lab/Kordi/pull/1060
+[#1068]: https://github.com/Kordi-Lab/Kordi/pull/1068
+[#1074]: https://github.com/Kordi-Lab/Kordi/pull/1074
+[#1075]: https://github.com/Kordi-Lab/Kordi/pull/1075
+[#1076]: https://github.com/Kordi-Lab/Kordi/pull/1076
+[#1077]: https://github.com/Kordi-Lab/Kordi/pull/1077
+[#1079]: https://github.com/Kordi-Lab/Kordi/pull/1079
+[#1080]: https://github.com/Kordi-Lab/Kordi/pull/1080
+[#1081]: https://github.com/Kordi-Lab/Kordi/pull/1081
+[#1082]: https://github.com/Kordi-Lab/Kordi/pull/1082
+[#1084]: https://github.com/Kordi-Lab/Kordi/pull/1084

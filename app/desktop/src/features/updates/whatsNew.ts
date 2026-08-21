@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.1-beta.14': [
+    {
+      category: 'Large attachments',
+      title: 'Large files upload without freezing the composer',
+      detail: 'Resumable uploads support files up to 2 GiB with progress, cancellation, retry, and restart recovery.',
+      kind: 'general',
+    },
+    {
+      category: 'Shared identity',
+      title: 'People and agents keep the same avatar everywhere',
+      detail: 'Canonical avatars now stay consistent across Factory, conversations, mentions, profiles, calls, macOS, and iOS.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'iPhone navigation',
+      title: 'Agents and Account are now first-class destinations',
+      detail: 'Root tabs, full-page destinations, and compact floating menus make frequent iPhone workflows easier to reach.',
+      kind: 'general',
+    },
+    {
+      category: 'Reliable agents and calls',
+      title: 'Factory sessions, Support, and calls converge cleanly',
+      detail: 'Agent identity and routing persist correctly, while call state resists delayed events and reports clearer media diagnostics.',
+      kind: 'collaboration',
+    },
+  ],
   '0.0.1-beta.13': [
     {
       category: 'iPhone companion',

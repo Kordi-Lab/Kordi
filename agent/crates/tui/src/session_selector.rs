@@ -61,7 +61,7 @@ impl SessionSelector {
 
     /// Render the selector.
     pub fn render(&self, width: u16) -> Vec<String> {
-        let mut lines = vec![format!("Resume Session"), format!("")];
+        let mut lines = vec!["Resume Session".to_string(), String::new()];
         lines.extend(self.list.render(width));
         lines
     }

@@ -65,7 +65,7 @@ pub(super) async fn request_bash_approval(
     command: &str,
     ctx: &ToolContext,
     safety: &BashSafetyAssessment,
-) -> Result<bool, ToolResult> {
+) -> Result<bool, Box<ToolResult>> {
     let approval_required = ctx.execution_policy == ExecutionPolicy::Safety
         && matches!(
             safety.disposition,
@@ -77,20 +77,20 @@ pub(super) async fn request_bash_approval(
     }
 
     match ctx.execution_mode {
-        ToolExecutionMode::NonInteractive => Err(approval_denied_result(
+        ToolExecutionMode::NonInteractive => Err(Box::new(approval_denied_result(
             command,
             safety,
             "Command requires approval in interactive mode and cannot run in non-interactive mode",
             ctx.execution_policy,
-        )),
+        ))),
         ToolExecutionMode::Interactive => {
             let Some(request_approval) = ctx.request_approval.as_ref() else {
-                return Err(approval_denied_result(
+                return Err(Box::new(approval_denied_result(
                     command,
                     safety,
                     "Interactive approval UI is unavailable for this command",
                     ctx.execution_policy,
-                ));
+                )));
             };
             let outcome = request_approval(ToolApprovalRequest {
                 tool_name: "bash".to_string(),
@@ -100,12 +100,12 @@ pub(super) async fn request_bash_approval(
             })
             .await;
             if !outcome.approved() {
-                return Err(approval_denied_result(
+                return Err(Box::new(approval_denied_result(
                     command,
                     safety,
                     "Command was denied by the interactive approval flow",
                     ctx.execution_policy,
-                ));
+                )));
             }
             Ok(true)
         }
