@@ -114,35 +114,47 @@ function ForwardedFromHeader({ senderLabel }: { senderLabel?: string | null }) {
 
 function RelatedAgentSessionLinks({
   sessions,
+  agentName,
   onOpen,
 }: {
   sessions: RelatedAgentSession[];
+  agentName?: string | null;
   onOpen?: (sessionId: string) => void;
 }) {
   if (sessions.length === 0) return null;
 
   return (
-    <div className="mt-1.5 grid w-[30rem] max-w-full gap-0.5" data-related-agent-sessions="true">
+    <div
+      className="relative ml-4 mt-1 grid w-[30rem] max-w-[calc(100%-1rem)] gap-0.5"
+      data-related-agent-sessions="true"
+      data-related-agent-session-style="thread-preview"
+    >
+      <span className="pointer-events-none absolute -left-3 -top-3 h-7 w-3 rounded-bl-[9px] border-b border-l border-[color:var(--app-divider)]" aria-hidden="true" />
       {sessions.map((session) => (
         <button
           key={session.sessionId}
           type="button"
-          className="app-button-quiet group flex min-h-9 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left disabled:cursor-default disabled:opacity-60"
+          className="app-button-quiet group grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-1.5 py-1 text-left disabled:cursor-default disabled:opacity-60"
           onClick={() => onOpen?.(session.sessionId)}
           disabled={!onOpen}
           aria-label={`Open background agent session: ${session.title}`}
           data-related-agent-session-id={session.sessionId}
         >
-          <span className="grid h-5 w-5 shrink-0 place-items-center text-[color:var(--app-sidebar-accent)]" aria-hidden="true">
+          <span className="row-span-2 grid h-5 w-5 place-items-center self-center text-[color:var(--app-sidebar-accent)]" aria-hidden="true">
             <Bot className="h-3.5 w-3.5" />
           </span>
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-[color:var(--utility-foreground)]" title={session.title}>
             {session.title}
           </span>
-          <span className="shrink-0 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
+          <span className="flex shrink-0 items-center gap-0.5 text-[10.5px] font-semibold leading-4 text-[color:var(--app-sidebar-accent)]">
+            Open
+            <ChevronRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+          </span>
+          <span className="col-span-2 col-start-2 min-w-0 truncate text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
+            <span className="font-medium text-[color:var(--utility-foreground)]">{agentName?.trim() || 'Agent'}</span>
+            <span aria-hidden="true"> · </span>
             Background session
           </span>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--utility-muted-text)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
         </button>
       ))}
     </div>
@@ -1111,6 +1123,7 @@ function MessageBubbleView({
             />
             <RelatedAgentSessionLinks
               sessions={relatedAgentSessions}
+              agentName={msg.sender}
               onOpen={onOpenForkSession}
             />
           </div>

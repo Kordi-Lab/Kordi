@@ -139,9 +139,11 @@ test('renders a compact linked agent session beneath the normal parent response'
 
   assert.match(markup, /I started the deeper review in a background session\./);
   assert.match(markup, /data-related-agent-sessions="true"/);
+  assert.match(markup, /data-related-agent-session-style="thread-preview"/);
   assert.match(markup, /data-related-agent-session-id="child-session"/);
   assert.match(markup, /Open background agent session: Review subagent orchestration/);
-  assert.match(markup, /min-h-9/);
+  assert.match(markup, /min-h-10/);
+  assert.match(markup, />My Kordi</);
   assert.match(markup, />Background session</);
   assert.doesNotMatch(markup, /min-h-11/);
   assert.doesNotMatch(markup, /Open work thread/);
