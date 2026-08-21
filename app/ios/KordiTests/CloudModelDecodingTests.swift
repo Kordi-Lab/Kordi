@@ -113,6 +113,25 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(activity.artifacts.first?.attachmentId, nil)
     }
 
+    @MainActor
+    func testPreviewContactRequestActionsStayLocalAndInteractive() async throws {
+        let acceptModel = AppModel(previewMode: true)
+        let acceptRequest = try XCTUnwrap(acceptModel.contactRequests.first(where: \.isIncoming))
+
+        XCTAssertNotNil(acceptModel.contactRequests.first { !$0.isIncoming })
+
+        await acceptModel.acceptContactRequest(acceptRequest)
+
+        XCTAssertFalse(acceptModel.contactRequests.contains { $0.id == acceptRequest.id })
+
+        let declineModel = AppModel(previewMode: true)
+        let declineRequest = try XCTUnwrap(declineModel.contactRequests.first(where: \.isIncoming))
+
+        await declineModel.rejectContactRequest(declineRequest)
+
+        XCTAssertFalse(declineModel.contactRequests.contains { $0.id == declineRequest.id })
+    }
+
     func testContactPresenceDecodesLastSeenTimestamp() throws {
         let payload = Data(#"{"accountId":"acct_maya","status":"offline","updatedAt":"2026-08-17T10:00:00Z","lastSeenAt":"2026-08-17T09:55:00Z"}"#.utf8)
 

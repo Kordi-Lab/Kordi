@@ -124,11 +124,16 @@ private struct ContactIdentityRow: View {
 
 private struct ContactRequestRow: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let request: CloudContactRequest
     @State private var isWorking = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        let actionLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
+
+        HStack(alignment: .top, spacing: 12) {
             IdentityAvatar(
                 name: request.counterpart?.preferredName ?? "Kordi user",
                 imageSource: request.counterpart?.avatarUrl.nonEmpty,
@@ -136,43 +141,77 @@ private struct ContactRequestRow: View {
                 size: 46,
                 seed: request.counterpart?.accountId
             )
+            .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
-                Text(request.counterpart?.preferredName ?? "Kordi user")
-                    .font(.headline)
-                Text(request.isIncoming ? (request.message.nonEmpty ?? "Wants to connect") : "Request sent")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 8)
-            if request.isIncoming {
                 HStack(spacing: 8) {
-                    Button("Decline", role: .destructive) {
-                        isWorking = true
-                        Task {
-                            await model.rejectContactRequest(request)
-                            isWorking = false
-                        }
+                    Text(request.counterpart?.preferredName ?? "Kordi user")
+                        .font(.headline)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if !request.isIncoming && !dynamicTypeSize.isAccessibilitySize {
+                        pendingLabel
                     }
-                    .buttonStyle(.borderless)
-                    Button("Accept") {
-                        isWorking = true
-                        Task {
-                            await model.acceptContactRequest(request)
-                            isWorking = false
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
-                .controlSize(.small)
-                .disabled(isWorking)
-            } else {
-                Text("Pending")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                requestMessage.lineLimit(2)
+                if request.isIncoming {
+                    requestActions(using: actionLayout)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, 5)
+                } else if !request.isIncoming && dynamicTypeSize.isAccessibilitySize {
+                    pendingLabel
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+    }
+
+    private var requestMessage: some View {
+        Text(request.isIncoming ? (request.message.nonEmpty ?? "Wants to connect") : "Request sent")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+    }
+
+    private func requestActions(using layout: AnyLayout) -> some View {
+        layout {
+            Button(role: .destructive, action: decline) {
+                Text("Decline")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.red)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            Button(action: accept) {
+                Text("Accept")
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .controlSize(dynamicTypeSize.isAccessibilitySize ? .large : .small)
+        .disabled(isWorking)
+    }
+
+    private var pendingLabel: some View {
+        Text("Pending")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private func accept() {
+        isWorking = true
+        Task {
+            await model.acceptContactRequest(request)
+            isWorking = false
+        }
+    }
+
+    private func decline() {
+        isWorking = true
+        Task {
+            await model.rejectContactRequest(request)
+            isWorking = false
+        }
     }
 }
 
