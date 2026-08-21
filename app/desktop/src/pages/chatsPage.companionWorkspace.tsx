@@ -23,6 +23,7 @@ import type {
   ChatsPageLayout,
   ChatsPageRuntime,
   ChatsPageTranscript,
+  ChatSessionPanePresentation,
 } from '@/pages/chatsPage.types';
 import type { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
 import type { useChatCompanionLayout } from '@/pages/useChatCompanionLayout';
@@ -44,6 +45,7 @@ type ChatCompanionWorkspaceProps = {
     isCollaborationAgent: boolean;
     showsLocalAgentControls: boolean;
     prefersReducedMotion: boolean | null;
+    relatedAgentSessionStatusById?: ChatSessionPanePresentation['relatedAgentSessionStatusById'];
   };
   shell: {
     isNativeShell: boolean;
@@ -168,6 +170,7 @@ export function ChatCompanionWorkspace({
           inferLatestHumanReplyTarget:
             shouldInferLatestHumanReplyTarget(conversation),
           plainAgentResponse: shouldSuppressAgentReplyAttribution(conversation),
+          relatedAgentSessionStatusById: presentation.relatedAgentSessionStatusById,
         },
         actions: {
           onOpenSource: (file) => {

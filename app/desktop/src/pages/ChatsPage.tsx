@@ -3,6 +3,7 @@ import { useReducedMotion } from 'framer-motion';
 
 import { suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Message } from '@/kordi-app/types';
+import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
@@ -117,6 +118,10 @@ export function ChatsPage({
   const isCompressionActive = visibleDesktopLiveTurn?.status === 'compacting';
   const activeLiveTurnIsRunning = Boolean(
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
+  );
+  const backgroundSessionStatusById = useMemo(
+    () => relatedAgentSessionStatusById(chatConversations),
+    [chatConversations],
   );
   const cloudPresence = useCloudPresence(cloudAccount);
   const activePresenceTarget = cloudAccount
@@ -316,6 +321,7 @@ export function ChatsPage({
         isCollaborationAgent: companionConversationIsCollaborationAgent,
         showsLocalAgentControls: companionShowsLocalAgentControls,
         prefersReducedMotion,
+        relatedAgentSessionStatusById: backgroundSessionStatusById,
       }}
       shell={{
         isNativeShell,
@@ -378,6 +384,7 @@ export function ChatsPage({
             isCompressionActive,
             activeLiveTurnIsRunning,
             prefersReducedMotion,
+            relatedAgentSessionStatusById: backgroundSessionStatusById,
             showCompanionPane,
             activeSide: companionSide === 'left' ? 'right' : 'left',
           }}

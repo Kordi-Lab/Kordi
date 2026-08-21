@@ -135,6 +135,7 @@ test('renders a compact linked agent session beneath the normal parent response'
   const markup = renderToStaticMarkup(createElement(MessageBubble, {
     msg: message,
     onOpenForkSession: () => undefined,
+    relatedAgentSessionStatusById: new Map([['child-session', 'failed']]),
   }));
 
   assert.match(markup, /I started the deeper review in a background session\./);
@@ -145,6 +146,8 @@ test('renders a compact linked agent session beneath the normal parent response'
   assert.match(markup, /min-h-10/);
   assert.match(markup, />My Kordi</);
   assert.match(markup, />Background session</);
+  assert.match(markup, /data-related-agent-session-status="failed"/);
+  assert.match(markup, />Failed</);
   assert.doesNotMatch(markup, /min-h-11/);
   assert.doesNotMatch(markup, /Open work thread/);
 });

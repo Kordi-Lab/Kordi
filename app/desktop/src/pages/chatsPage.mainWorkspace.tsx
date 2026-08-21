@@ -44,6 +44,7 @@ import type {
   ChatsPageRuntime,
   ChatsPageSession,
   ChatsPageTranscript,
+  ChatSessionPanePresentation,
 } from '@/pages/chatsPage.types';
 import type { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
 import type { useChatDestinations } from '@/pages/useChatDestinations';
@@ -78,6 +79,7 @@ type ChatMainWorkspaceProps = {
     isCompressionActive: boolean;
     activeLiveTurnIsRunning: boolean;
     prefersReducedMotion: boolean | null;
+    relatedAgentSessionStatusById?: ChatSessionPanePresentation['relatedAgentSessionStatusById'];
     showCompanionPane: boolean;
     activeSide: 'left' | 'right';
   };
@@ -266,6 +268,7 @@ export function ChatMainWorkspace({
                 activeForkSourceTitle: models.fork.sourceTitle,
                 messageForksByEntryId: models.fork.forksByEntryId,
                 pinnedMessageId: models.pins.pinnedMessageId,
+                relatedAgentSessionStatusById: presentation.relatedAgentSessionStatusById,
               }}
               actions={{
                 onSelectSession: runtime.onSelectSession,

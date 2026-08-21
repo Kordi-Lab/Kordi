@@ -91,6 +91,7 @@ export function useChatTranscriptViewport({
     messageForksByEntryId,
     pinnedMessageId,
     densityMode = 'default',
+    relatedAgentSessionStatusById,
   } = presentation;
   const {
     onSelectSession,
@@ -183,6 +184,7 @@ export function useChatTranscriptViewport({
             onForkMessage={onForkMessage}
             messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
             onOpenForkSession={onOpenForkSession}
+            relatedAgentSessionStatusById={relatedAgentSessionStatusById}
             onReplyMessage={onReplyMessage}
             onForwardMessage={onForwardMessage}
             onRetryMessage={onRetryMessage}
@@ -282,6 +284,7 @@ export function useChatTranscriptViewport({
     pinnedMessageId,
     plainAgentResponse,
     queuedMessages,
+    relatedAgentSessionStatusById,
     scrollClassName,
     scrollRef,
     selectedMessageIds,

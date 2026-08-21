@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { relatedAgentSessionsFromTools } from '../src/features/chat/relatedAgentSessions';
-import type { DesktopChatToolSnapshot } from '../src/kordi-app/types';
+import { relatedAgentSessionsFromTools, relatedAgentSessionStatusById } from '../src/features/chat/relatedAgentSessions';
+import type { Conversation, DesktopChatToolSnapshot } from '../src/kordi-app/types';
 
 function spawnTool(
   sessionId: string,
@@ -52,4 +52,50 @@ test('caps related sessions at the task operator concurrency limit', () => {
 
   assert.equal(sessions.length, 4);
   assert.equal(sessions[3]?.sessionId, 'session-3');
+});
+
+test('derives live and terminal background session states from child conversations', () => {
+  const conversation = (
+    id: string,
+    turn: NonNullable<Conversation['previewLiveTurn']>,
+    live = false,
+  ): Conversation => ({
+    id,
+    name: id,
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    collaborationSources: ['Local'],
+    trust: 'Owned',
+    directness: 'Agent chat',
+    participants: ['Me', 'My Kordi'],
+    messages: live ? [] : [{ id: `message-${id}`, role: 'owned-agent', text: '', time: '', turn }],
+    previewLiveTurn: live ? turn : null,
+  });
+  const turn = (status: string, completed: boolean, succeeded: boolean) => ({
+    id: `turn-${status}`,
+    sessionId: `session-${status}`,
+    prompt: '',
+    status,
+    message: '',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed,
+    succeeded,
+    error: succeeded ? null : 'Turn failed',
+  });
+  const statuses = relatedAgentSessionStatusById([
+    conversation('running', turn('processing', false, false), true),
+    conversation('done', turn('complete', true, true)),
+    conversation('failed', turn('failed', true, false)),
+    conversation('stopped', turn('cancelled', true, false)),
+  ]);
+
+  assert.deepEqual(Object.fromEntries(statuses), {
+    running: 'running',
+    done: 'done',
+    failed: 'failed',
+    stopped: 'stopped',
+  });
 });
