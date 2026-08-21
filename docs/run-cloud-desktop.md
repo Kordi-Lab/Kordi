@@ -121,7 +121,7 @@ Never use a tunnel/local backend as product-server validation. Use tunnel/local 
 - For operator tunnel debugging, verify the local tunnel endpoint and each desktop log's `VITE_KORDI_CLOUD_API_BASE` before changing code. Do not switch to production as a workaround unless an operator explicitly asks.
 - For product-server-affecting work, verify `https://kordi.ai/health` before the change and after every restart/deploy, then confirm the allowlisted desktop logs show `https://kordi.ai` for the end-to-end test.
 - If Tauri fails before the app opens, run `pnpm install` again and confirm the Rust toolchain is installed.
-- If multi-instance ports are already in use, stop old instances or choose a smaller user set.
+- If multi-instance ports are already in use, leave their owners running and select unused ports or a different user set. Never stop an instance that the current task did not launch.
 - Do not use `--reset` unless you intentionally want to delete that local test user's desktop state.
 
 ## Related docs

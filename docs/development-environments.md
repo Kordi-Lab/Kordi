@@ -26,6 +26,16 @@ If the impact, authorization, or environment identity is uncertain, stop and fai
 - The `Kordi Beta` iOS scheme must keep its `ai.kordi.ios.beta` identity, `kordi-beta://oauth/callback`, gray icon, and loopback origin. The `Kordi` scheme must keep the production identity, callback, color icon, and `https://kordi.ai` origin.
 - Keep real project names, instance names, IP addresses, account names, and credentials out of commits, issues, pull requests, screenshots, and shared logs.
 
+## Parallel debug ownership
+
+Assume every process, port, tunnel, desktop profile, simulator, worktree, data directory, and backend that the current task did not create belongs to another active debugging session.
+
+- Never stop, restart, erase, reset, reconfigure, delete, or reuse another session's resources, even when they appear stale or occupy the preferred port. An occupied resource is a reason to choose another resource, not permission to terminate it.
+- Never use broad cleanup commands such as `pkill`, `killall`, `xcrun simctl shutdown all`, `xcrun simctl erase all`, or a project-wide Docker shutdown while parallel debugging may be active.
+- Give each task a unique worktree, local ports, `io.kordi.cloud.*` profile, app data directory, simulator device, DerivedData directory, logs, and tunnel lifecycle. Stop or erase only exact resource identifiers recorded when that task created them.
+- Treat a development backend as shared whenever another session may depend on it. Do not rebuild, restart, reset, or change its environment; use a task-specific backend instead. If isolation is unavailable or ownership is uncertain, stop and ask rather than disturbing existing work.
+- A launcher or cleanup trap may terminate only the tunnel and child processes it created. It must not discover and kill an unrelated listener to reclaim a port.
+
 ## Local isolated backend
 
 Run the complete isolated stack from the repository root:
