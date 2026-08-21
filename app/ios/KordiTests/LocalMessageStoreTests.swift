@@ -43,6 +43,27 @@ final class LocalMessageStoreTests: XCTestCase {
         XCTAssertEqual(merged.map(\.text), ["Earlier message", "Synced latest"])
     }
 
+    func testPartialProjectionReplacesPreviousAgentSnapshotForSameRequest() {
+        let previous = message(
+            id: "processing-1",
+            conversationID: "agent-session",
+            text: "Inspecting files",
+            author: .agent,
+            requestMessageID: "request-1"
+        )
+        let current = message(
+            id: "processing-2",
+            conversationID: "agent-session",
+            text: "Inspecting files and running tests",
+            author: .agent,
+            requestMessageID: "request-1"
+        )
+
+        let merged = AppModel.mergePartialProjection([current], preserving: [previous])
+
+        XCTAssertEqual(merged, [current])
+    }
+
     func testCacheRoundTripsLinkedBackgroundSessions() throws {
         let store = try LocalMessageStore(inMemory: true)
         let session = try XCTUnwrap(BackgroundAgentSession(wire: .init(
@@ -121,17 +142,23 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
-    private func message(id: String, conversationID: String, text: String) -> ChatMessage {
+    private func message(
+        id: String,
+        conversationID: String,
+        text: String,
+        author: MessageAuthor = .person,
+        requestMessageID: String? = nil
+    ) -> ChatMessage {
         ChatMessage(
             id: id,
             conversationId: conversationID,
-            author: .person,
-            authorName: "Shared contact",
+            author: author,
+            authorName: author == .agent ? "My Kordi" : "Shared contact",
             text: text,
             createdAt: Date(timeIntervalSince1970: id == "earlier" ? 1 : 2),
             deliveryState: .delivered,
             errorMessage: nil,
-            requestMessageId: nil
+            requestMessageId: requestMessageID
         )
     }
 }

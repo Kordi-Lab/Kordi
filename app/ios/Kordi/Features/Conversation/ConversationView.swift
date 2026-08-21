@@ -399,7 +399,11 @@ struct ConversationView: View {
                             .animation(.snappy(duration: 0.2), value: isAtBottom)
                         }
                         .onChange(of: viewport.size) { previousViewportSize, currentViewportSize in
-                            let wasAtLatest = isAtBottom || trackedMessageID == bottomAnchorID
+                            let wasAtLatest = ConversationTimelineScrollBehavior.isFollowingLatest(
+                                isAtBottom: isAtBottom,
+                                trackedMessageID: trackedMessageID,
+                                bottomAnchorID: bottomAnchorID
+                            )
                             guard ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
                                 hasRevealedInitialViewport: hasRevealedInitialViewport,
                                 wasAtLatest: wasAtLatest,
@@ -429,16 +433,27 @@ struct ConversationView: View {
                     isInitialViewportRevealed: hasRevealedInitialViewport
                 )
             }
-            .onChange(of: timeline.last.map(model.timelineIdentity(for:))) {
-                previousLatestMessageID,
-                currentLatestMessageID in
+            .onChange(of: timeline.last) { previousLatestMessage, currentLatestMessage in
+                let previousLatestMessageID = previousLatestMessage.map(model.timelineIdentity(for:))
+                let currentLatestMessageID = currentLatestMessage.map(model.timelineIdentity(for:))
                 if ConversationTimelineScrollBehavior.shouldFollowLatest(
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
-                    isAtBottom: isAtBottom,
+                    isAtBottom: ConversationTimelineScrollBehavior.isFollowingLatest(
+                        isAtBottom: isAtBottom,
+                        trackedMessageID: trackedMessageID,
+                        bottomAnchorID: bottomAnchorID
+                    ),
                     previousLatestMessageID: previousLatestMessageID,
                     currentLatestMessageID: currentLatestMessageID
                 ) {
-                    scrollToBottom(animated: true)
+                    let identityChanged = previousLatestMessageID != currentLatestMessageID
+                    scrollToBottom(animated: identityChanged)
+                    if !identityChanged {
+                        Task { @MainActor in
+                            await Task.yield()
+                            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                        }
+                    }
                 }
             }
             .onChange(of: isExpressivePickerPresented) { _, isPresented in
@@ -524,7 +539,11 @@ struct ConversationView: View {
                                     ConversationTimelineScrollBehavior
                                         .shouldFollowLatestWhenPresentingInputSurface(
                                             hasRevealedInitialViewport: hasRevealedInitialViewport,
-                                            wasAtLatest: isAtBottom || trackedMessageID == bottomAnchorID,
+                                            wasAtLatest: ConversationTimelineScrollBehavior.isFollowingLatest(
+                                                isAtBottom: isAtBottom,
+                                                trackedMessageID: trackedMessageID,
+                                                bottomAnchorID: bottomAnchorID
+                                            ),
                                             isPresented: true
                                         )
                             }
@@ -1616,6 +1635,14 @@ final class ConversationViewportMemory {
 }
 
 enum ConversationTimelineScrollBehavior {
+    static func isFollowingLatest(
+        isAtBottom: Bool,
+        trackedMessageID: String?,
+        bottomAnchorID: String
+    ) -> Bool {
+        isAtBottom || trackedMessageID == bottomAnchorID
+    }
+
     static func shouldFollowLatest(
         hasPositionedInitialTimeline: Bool,
         isAtBottom: Bool,
@@ -1626,7 +1653,7 @@ enum ConversationTimelineScrollBehavior {
               isAtBottom,
               let previousLatestMessageID,
               let currentLatestMessageID else { return false }
-        return previousLatestMessageID != currentLatestMessageID
+        return true
     }
 
     static func shouldShowLatestButton(

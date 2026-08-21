@@ -551,15 +551,16 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertFalse(projected.first?.agentExecution?.completed ?? true)
     }
 
+    @MainActor
     func testLateProcessingHeartbeatCannotRegressTerminalResponse() throws {
         let complete = try agentResponse(
             requestId: "msg_request",
-            text: "Finished once.",
+            text: "Done.",
             deliveryState: "complete"
         )
         let lateProcessing = try agentResponse(
             requestId: "msg_request",
-            text: "processing...",
+            text: "The rollout is nearly ready.",
             deliveryState: "processing"
         )
 
@@ -572,7 +573,7 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             ownAccountId: "acct_me"
         )
 
-        XCTAssertEqual(projected.map(\.text), ["Finished once."])
+        XCTAssertEqual(projected.map(\.text), ["Done."])
         XCTAssertEqual(
             CloudAgentLifecycleProjector.state(
                 forRequestId: "msg_request",
@@ -583,6 +584,38 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             ),
             .complete
         )
+
+        let request = wire(
+            id: "msg_request",
+            body: "Finish the task",
+            createdAt: "2026-08-08T10:00:00Z"
+        )
+        let initial = CloudDirectMessageProjector.project(
+            [request, wire(id: "msg_processing", body: lateProcessing, createdAt: "2026-08-08T10:00:01Z")],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+        let terminal = CloudDirectMessageProjector.project(
+            [request, wire(id: "msg_complete", body: complete, createdAt: "2026-08-08T10:00:02Z")],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+        let late = CloudDirectMessageProjector.project(
+            [
+                request,
+                wire(id: "msg_complete", body: complete, createdAt: "2026-08-08T10:00:02Z"),
+                wire(id: "msg_late_processing", body: lateProcessing, createdAt: "2026-08-08T10:00:03Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        let terminalMerge = AppModel.mergePartialProjection(terminal, preserving: initial)
+        let lateMerge = AppModel.mergePartialProjection(late, preserving: terminalMerge)
+        let responses = lateMerge.filter { $0.requestMessageId == "msg_request" }
+
+        XCTAssertEqual(responses.map(\.id), ["msg_complete"])
+        XCTAssertEqual(responses.map(\.text), ["Done."])
     }
 
     func testCanonicalProcessingAndFailureMapToConversationActivity() throws {

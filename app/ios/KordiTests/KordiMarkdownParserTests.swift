@@ -604,12 +604,25 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
-    func testConversationDoesNotScrollWhenRemoteSyncOnlyRefreshesExistingMessages() {
-        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+    func testConversationKeepsFollowingWhenLatestMessageStreamsInPlace() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
             hasPositionedInitialTimeline: true,
             isAtBottom: true,
             previousLatestMessageID: "message-13",
             currentLatestMessageID: "message-13"
+        ))
+    }
+
+    func testConversationUsesTheBottomAnchorWhileGeometryCatchesUp() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.isFollowingLatest(
+            isAtBottom: false,
+            trackedMessageID: "conversation-bottom",
+            bottomAnchorID: "conversation-bottom"
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.isFollowingLatest(
+            isAtBottom: false,
+            trackedMessageID: "message-12",
+            bottomAnchorID: "conversation-bottom"
         ))
     }
 

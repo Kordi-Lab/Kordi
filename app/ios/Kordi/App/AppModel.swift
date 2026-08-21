@@ -1580,7 +1580,17 @@ final class AppModel: ObservableObject {
         preserving existing: [ChatMessage]
     ) -> [ChatMessage] {
         guard !projected.isEmpty else { return existing }
+        let projectedAgentRequestIDs = Set(projected.compactMap { message in
+            message.author == .agent ? message.requestMessageId : nil
+        })
         var messagesByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        for message in existing {
+            if message.author == .agent,
+               let requestMessageId = message.requestMessageId,
+               projectedAgentRequestIDs.contains(requestMessageId) {
+                messagesByID[message.id] = nil
+            }
+        }
         projected.forEach { messagesByID[$0.id] = $0 }
         return messagesByID.values.sorted {
             $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
