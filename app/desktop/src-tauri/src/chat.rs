@@ -629,6 +629,7 @@ pub async fn desktop_chat_start_message(
             context_messages,
             visible_task_records,
             scheduled_task_session_id,
+            sync_session_at_start: false,
         },
     )
     .await
@@ -658,6 +659,7 @@ pub async fn desktop_chat_start_shared_message(
             context_messages,
             visible_task_records,
             scheduled_task_session_id,
+            sync_session_at_start: false,
         },
     )
     .await

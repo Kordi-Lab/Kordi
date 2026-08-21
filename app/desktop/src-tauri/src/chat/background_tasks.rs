@@ -289,6 +289,7 @@ impl ManagedChildAgentRunner {
                 context_messages: None,
                 visible_task_records: None,
                 scheduled_task_session_id: None,
+                sync_session_at_start: true,
             },
         )
         .await

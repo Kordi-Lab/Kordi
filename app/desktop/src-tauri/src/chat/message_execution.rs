@@ -25,6 +25,7 @@ pub(super) struct StartMessageInput {
     pub context_messages: Option<Vec<DesktopChatContextMessage>>,
     pub visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     pub scheduled_task_session_id: Option<String>,
+    pub sync_session_at_start: bool,
 }
 
 pub(super) async fn start_shared_message(
@@ -156,6 +157,7 @@ pub(super) async fn start_message(
         context_messages,
         visible_task_records,
         scheduled_task_session_id,
+        sync_session_at_start,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -277,6 +279,11 @@ pub(super) async fn start_message(
                 }
             }
         };
+
+        if sync_session_at_start && !is_agent_builder_session {
+            sync_completed_desktop_session_to_canonical(&cwd, &target_session_id, &session_handle)
+                .await;
+        }
 
         let result = match turn
             .run(|event| apply_desktop_turn_event(&snapshot_for_task, event))

@@ -21,6 +21,12 @@ enum ConversationIdentityResolver {
     }
 }
 
+enum ConversationInitialRevealPolicy {
+    static func shouldRevealImmediately(messageCount: Int) -> Bool {
+        messageCount > 0
+    }
+}
+
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -29,6 +35,7 @@ struct ConversationView: View {
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
     private let companionContext: CompanionChatContext?
+    private let linkedBackgroundSession: BackgroundAgentSession?
     private let allowsCompanionPanel: Bool
     private let showsNavigationChrome: Bool
     @State private var draft = ""
@@ -60,6 +67,7 @@ struct ConversationView: View {
     @State private var shareItem: SharedFileItem?
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
+    @State private var selectedBackgroundSession: BackgroundAgentSession?
     @State private var backgroundConversation: ConversationSummary?
     @State private var showAgentModel = false
     @State private var highlightedMessageID: String?
@@ -79,12 +87,14 @@ struct ConversationView: View {
         conversation: ConversationSummary,
         initialMessageID: String? = nil,
         companionContext: CompanionChatContext? = nil,
+        linkedBackgroundSession: BackgroundAgentSession? = nil,
         allowsCompanionPanel: Bool = true,
         showsNavigationChrome: Bool = true
     ) {
         initialConversation = conversation
         self.initialMessageID = initialMessageID
         self.companionContext = companionContext
+        self.linkedBackgroundSession = linkedBackgroundSession
         self.allowsCompanionPanel = allowsCompanionPanel
         self.showsNavigationChrome = showsNavigationChrome
     }
@@ -101,6 +111,12 @@ struct ConversationView: View {
 
     private var messages: [ChatMessage] {
         ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+    }
+    private var linkedBackgroundSessionState: BackgroundAgentSession.State? {
+        linkedBackgroundSession?.resolvedState(in: model.conversations)
+    }
+    private var isWaitingForLinkedBackgroundSession: Bool {
+        messages.isEmpty && linkedBackgroundSessionState == .running
     }
     private var mentionTargetRefreshID: [String] {
         [conversation.id] + ComposerMentionTargetCatalog.ownerAccountIDs(
@@ -189,7 +205,12 @@ struct ConversationView: View {
                             ScrollView {
                                 LazyVStack(spacing: 0) {
                                     if timeline.isEmpty {
-                                        EmptyConversation(conversation: conversation)
+                                        EmptyConversation(
+                                            conversation: conversation,
+                                            backgroundSessionState: linkedBackgroundSession.map {
+                                                $0.resolvedState(in: model.conversations)
+                                            }
+                                        )
                                             .padding(.top, 70)
                                     } else {
                                         if visibleStartIndex > 0 {
@@ -290,6 +311,7 @@ struct ConversationView: View {
                                                         prepare(attachment, forSharing: true)
                                                     },
                                                     onOpenBackgroundSession: { session in
+                                                        selectedBackgroundSession = session
                                                         backgroundConversation = session.destination(
                                                             from: conversation,
                                                             conversations: model.conversations,
@@ -394,7 +416,7 @@ struct ConversationView: View {
                         .accessibilityHidden(!hasRevealedInitialViewport)
                     }
                 } else {
-                    Color(uiColor: .systemGroupedBackground)
+                    ConversationInitialLoadingView()
                 }
             }
             .onChange(of: timeline.count) { oldCount, newCount in
@@ -485,7 +507,8 @@ struct ConversationView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selectedMessageIDs.isEmpty {
-                ComposerView(
+                if !isWaitingForLinkedBackgroundSession {
+                    ComposerView(
                     text: $draft,
                     attachments: $attachments,
                     photoGrouping: $photoGrouping,
@@ -526,7 +549,8 @@ struct ConversationView: View {
                     onChooseFiles: { showFileImporter = true },
                     onSendExpressiveMedia: sendExpressiveMedia,
                     onSend: { Task { await send() } }
-                )
+                    )
+                }
             } else {
                 ConversationSelectionBar(
                     count: selectedMessageIDs.count,
@@ -551,6 +575,7 @@ struct ConversationView: View {
             rememberViewport(in: messages)
         }
         .onAppear {
+            prepareInitialConversationForDisplay()
             isReadPresentationVisible = true
             synchronizeReadPresentation()
             if !conversation.kind.supportsQuotedReplies {
@@ -656,7 +681,10 @@ struct ConversationView: View {
             SessionDetailView(conversation: destination)
         }
         .navigationDestination(item: $backgroundConversation) { destination in
-            ConversationView(conversation: destination)
+            ConversationView(
+                conversation: destination,
+                linkedBackgroundSession: selectedBackgroundSession
+            )
         }
         .sheet(item: $forwardRequest) { request in
             ForwardMessageSheet(request: request) { destination in
@@ -846,12 +874,13 @@ struct ConversationView: View {
 
     @MainActor
     private func loadAndRevealInitialConversation(using proxy: ScrollViewProxy) async {
-        model.hydrateCachedMessages(for: conversation)
-        prepareInitialViewport(in: messages)
+        prepareInitialConversationForDisplay()
         let latestMessageIDAtEntry = messages.last?.id
         let viewportAtEntry = initialViewport
 
-        if model.canRevealConversationImmediately(conversation) {
+        if ConversationInitialRevealPolicy.shouldRevealImmediately(
+            messageCount: messages.count
+        ) {
             await positionAndRevealInitialViewport(using: proxy)
         }
 
@@ -871,6 +900,13 @@ struct ConversationView: View {
             }
         }
         await positionAndRevealInitialViewport(using: proxy)
+    }
+
+    @MainActor
+    private func prepareInitialConversationForDisplay() {
+        model.hydrateCachedMessages(for: conversation)
+        model.prepareConversationForPresentation(conversation)
+        prepareInitialViewport(in: messages)
     }
 
     private func synchronizeReadPresentation() {
@@ -1042,7 +1078,7 @@ struct ConversationView: View {
     }
 
     private var conversationHeaderStatus: String {
-        switch conversation.kind {
+        return switch conversation.kind {
         case .agent:
             agentHeaderStatus
         case .group:
@@ -1921,8 +1957,34 @@ private struct ConversationBottomTrackingModifier: ViewModifier {
     }
 }
 
+private struct ConversationInitialLoadingView: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.regular)
+                .accessibilityHidden(true)
+            Text("Loading messages…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Loading messages")
+    }
+}
+
 private struct EmptyConversation: View {
     let conversation: ConversationSummary
+    let backgroundSessionState: BackgroundAgentSession.State?
+
+    init(
+        conversation: ConversationSummary,
+        backgroundSessionState: BackgroundAgentSession.State? = nil
+    ) {
+        self.conversation = conversation
+        self.backgroundSessionState = backgroundSessionState
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -1953,6 +2015,9 @@ private struct EmptyConversation: View {
     }
 
     private var emptyStateTitle: String {
+        if backgroundSessionState != nil {
+            return conversation.displayName
+        }
         if conversation.kind == .agent {
             return conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
         }
@@ -1960,7 +2025,19 @@ private struct EmptyConversation: View {
     }
 
     private var emptyStateText: String {
-        switch conversation.kind {
+        if let backgroundSessionState {
+            return switch backgroundSessionState {
+            case .running:
+                "Still running on your Mac. Progress and the final result will appear here as they synchronize."
+            case .done:
+                "The background session finished. Its result will appear here after synchronization."
+            case .failed:
+                "The background session needs attention on your Mac."
+            case .stopped:
+                "The background session was stopped before producing a final result."
+            }
+        }
+        return switch conversation.kind {
         case .agent: "Describe the outcome you want. Kordi Cloud or an available Mac handles the run."
         case .group: "Send the first message to this group from your iPhone."
         case .person: "Send the first message from your iPhone."

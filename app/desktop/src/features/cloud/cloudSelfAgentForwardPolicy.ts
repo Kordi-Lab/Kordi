@@ -13,6 +13,7 @@ export function cloudSelfAgentForwardMessageKind(
 export function cloudSelfAgentShouldPublishProgress(
   sessionId: string,
   historySessionIds: ReadonlySet<string>,
+  hasActiveLocalTurn = false,
 ) {
-  return !historySessionIds.has(sessionId);
+  return hasActiveLocalTurn || !historySessionIds.has(sessionId);
 }

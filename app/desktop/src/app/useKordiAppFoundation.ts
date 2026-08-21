@@ -123,11 +123,14 @@ export function useKordiAppFoundation({
   const { mapDesktopMessages } = useDesktopTranscriptAdapter({ localAvatarSeedsRef });
 
   const refreshCompletedCanonicalSession = useCallback(
-    (sessionId: string) => hydrateCanonicalSessionPage(
-      sessionId,
-      { force: true },
-    ),
-    [hydrateCanonicalSessionPage],
+    async (sessionId: string) => {
+      await refreshCanonicalState();
+      return hydrateCanonicalSessionPage(
+        sessionId,
+        { force: true },
+      );
+    },
+    [hydrateCanonicalSessionPage, refreshCanonicalState],
   );
 
   const {

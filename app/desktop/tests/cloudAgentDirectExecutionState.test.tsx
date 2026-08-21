@@ -228,6 +228,28 @@ test('shared direct and group requests route before reserving the parent runtime
   assert.match(desktopSource, /desktop_chat_start_shared_message/);
 });
 
+test('background children publish their prompt and refresh catalog before streaming', () => {
+  const executionSource = readFileSync(new URL('../src-tauri/src/chat/message_execution.rs', import.meta.url), 'utf8');
+  const backgroundSource = readFileSync(new URL('../src-tauri/src/chat/background_tasks.rs', import.meta.url), 'utf8');
+  const desktopStateSource = readFileSync(new URL('../src/features/chat/useDesktopChatState.ts', import.meta.url), 'utf8');
+  const foundationSource = readFileSync(new URL('../src/app/useKordiAppFoundation.ts', import.meta.url), 'utf8');
+
+  const startSync = executionSource.indexOf('if sync_session_at_start');
+  const modelRun = executionSource.indexOf('let result = match turn', startSync);
+  assert.ok(startSync >= 0 && modelRun > startSync, 'child prompt must sync before model execution');
+  assert.match(backgroundSource, /sync_session_at_start: true/);
+
+  const backgroundRefresh = desktopStateSource.indexOf('if (isBackgroundSession) {');
+  const polling = desktopStateSource.indexOf('while (!nextTurn.completed)', backgroundRefresh);
+  assert.ok(backgroundRefresh >= 0 && polling > backgroundRefresh, 'child catalog must refresh before polling');
+
+  const callback = foundationSource.slice(
+    foundationSource.indexOf('const refreshCompletedCanonicalSession'),
+    foundationSource.indexOf('\n\n  const {', foundationSource.indexOf('const refreshCompletedCanonicalSession')),
+  );
+  assert.ok(callback.indexOf('await refreshCanonicalState()') < callback.indexOf('hydrateCanonicalSessionPage('));
+});
+
 test('cloud agent turns wait for their real terminal state without a synthetic timeout failure', () => {
   const source = readFileSync(new URL('../src/features/cloud/cloudAgentLocalExecution.ts', import.meta.url), 'utf8');
 

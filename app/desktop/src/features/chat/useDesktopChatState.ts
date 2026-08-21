@@ -417,6 +417,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
           turnId,
         );
         scheduleLiveTurnSnapshot(nextTurn, { immediate: true });
+        const isBackgroundSession = visibleLocalSessionIdRef.current !== nextTurn.sessionId
+          && latestDesktopSessionIdRef.current !== nextTurn.sessionId;
+        if (isBackgroundSession) {
+          await refreshCanonicalSession?.(nextTurn.sessionId).catch(
+            () => undefined,
+          );
+        }
 
         while (!nextTurn.completed) {
           await new Promise((resolve) => window.setTimeout(resolve, 60));
