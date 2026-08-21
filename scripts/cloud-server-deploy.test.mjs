@@ -19,6 +19,7 @@ const portForwardServicePath = new URL(
   import.meta.url,
 );
 const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh', import.meta.url);
+const cloudServerDockerfilePath = new URL('../bridges/cloud-server/Dockerfile.runtime', import.meta.url);
 const runnerDeployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh', import.meta.url);
 const releaseCredentialsScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const cloudServerManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml', import.meta.url);
@@ -75,12 +76,23 @@ test('legacy systemd deployment renders operator-provided account names', async 
   assert.doesNotMatch(service, /User=(?!@)|Group=(?!@)/);
 });
 
-test('cloud server image context includes the prebuilt release binary', async () => {
-  const dockerignore = await readFile(dockerignorePath, 'utf8');
+test('cloud server image builds and runs against one glibc baseline', async () => {
+  const [dockerfile, dockerignore, syncScript, deployScript] = await Promise.all([
+    readFile(cloudServerDockerfilePath, 'utf8'),
+    readFile(dockerignorePath, 'utf8'),
+    readFile(scriptPath, 'utf8'),
+    readFile(deployScriptPath, 'utf8'),
+  ]);
 
-  assert.match(dockerignore, /^!target\/$/m);
-  assert.match(dockerignore, /^!target\/release\/$/m);
-  assert.match(dockerignore, /^!target\/release\/kordi-cloud-server$/m);
+  assert.match(dockerfile, /^FROM docker\.io\/library\/rust:[^\s]+-bookworm AS builder/m);
+  assert.match(dockerfile, /RUN cargo build --release -p kordi-cloud-server/);
+  assert.match(dockerfile, /^FROM --platform=linux\/amd64 debian:bookworm-slim AS runtime/m);
+  assert.match(dockerfile, /COPY --from=builder \/workspace\/target\/release\/kordi-cloud-server/);
+  assert.match(dockerignore, /^target$/m);
+  assert.doesNotMatch(dockerignore, /^!target/m);
+  assert.match(syncScript, /cargo build --release -p kordi-cloud-server/);
+  assert.match(deployScript, /smoke-testing the image entrypoint/);
+  assert.match(deployScript, /GLIBC_\[0-9\.\]\+\.\*not found/);
 });
 
 test('product host bootstrap is idempotent and leaves the default proxy stopped', async () => {
