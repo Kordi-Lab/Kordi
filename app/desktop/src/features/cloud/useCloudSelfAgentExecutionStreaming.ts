@@ -100,7 +100,11 @@ export function useCloudSelfAgentExecutionStreaming({
         let published = false;
         for (const turn of Object.values(localTurnsRef.current)) {
           if (turn.completed || cancelledRef.current) continue;
-          if (!cloudSelfAgentShouldPublishProgress(turn.sessionId, historySessionIds)) continue;
+          if (!cloudSelfAgentShouldPublishProgress(
+            turn.sessionId,
+            historySessionIds,
+            true,
+          )) continue;
           const localRequest = state.messages
             .filter((message) => (
               message.sessionId === turn.sessionId

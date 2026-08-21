@@ -1,5 +1,8 @@
 .app-live-turn-response-panel {
   --app-live-assistant-answer-bg: color-mix(in oklab, var(--app-control-bg) 74%, var(--app-main-bg));
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .app-live-assistant-answer {

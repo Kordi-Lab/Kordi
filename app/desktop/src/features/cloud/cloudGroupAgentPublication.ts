@@ -16,6 +16,7 @@ import type {
 } from './cloudGroupControlContext';
 import type { CloudGroupAgentHandoff } from './cloudGroupMentions';
 import type { CloudGroupAgentPolicy } from './cloudGroupAgentControl.types';
+import type { CloudAgentExecutionTool } from './cloudAgentMessages';
 
 export async function publishCloudGroupAgentTerminalAfterGuards({
   context,
@@ -27,6 +28,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseCreatedAtMs,
   responseText,
   responseDeliveryState,
+  responseTools,
   agentDisplayName,
   agentHandoff,
   signal,
@@ -40,6 +42,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseCreatedAtMs: number;
   responseText: string;
   responseDeliveryState: 'complete' | 'failed';
+  responseTools: CloudAgentExecutionTool[];
   agentDisplayName: string;
   agentHandoff: CloudGroupAgentHandoff | null;
   signal: AbortSignal;
@@ -104,6 +107,9 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
           deliveryState: responseDeliveryState,
           replyToMessageId: message.id,
           requestId: message.id,
+          structuredContent: responseTools.length > 0
+            ? { tools: responseTools }
+            : null,
           ...(agentHandoff ?? {}),
         },
       }),

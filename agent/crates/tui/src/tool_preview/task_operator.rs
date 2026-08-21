@@ -12,6 +12,7 @@ pub(super) fn render_call_body(args: &Value, expanded: bool) -> Vec<String> {
         Some("message") => render_message_call(args, expanded),
         Some("wait") => render_wait_call(args),
         Some("list") => render_list_call(args),
+        Some("inspect") => render_inspect_call(args),
         Some("close") => render_close_call(args),
         _ => Vec::new(),
     }
@@ -82,6 +83,10 @@ pub(crate) fn title_inner(raw_args: &str) -> Option<String> {
         "list" => Some(format!(
             "list {}",
             arg_str(&args, "pathPrefix").unwrap_or_else(|| "/root".to_string())
+        )),
+        "inspect" => Some(format!(
+            "inspect {}",
+            arg_str(&args, "sessionId").unwrap_or_else(|| "session".to_string())
         )),
         "close" => Some(format!(
             "close {}",
@@ -169,6 +174,11 @@ fn render_wait_call(args: &Value) -> Vec<String> {
 fn render_list_call(args: &Value) -> Vec<String> {
     let prefix = arg_str(args, "pathPrefix").unwrap_or_else(|| "/root".to_string());
     vec![format!("path prefix: {prefix}")]
+}
+
+fn render_inspect_call(args: &Value) -> Vec<String> {
+    let session_id = arg_str(args, "sessionId").unwrap_or_default();
+    vec![format!("session: {}", shorten_path(&session_id))]
 }
 
 fn render_close_call(args: &Value) -> Vec<String> {

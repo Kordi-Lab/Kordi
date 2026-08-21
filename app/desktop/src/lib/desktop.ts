@@ -970,6 +970,28 @@ export async function startDesktopChatMessage(
   });
 }
 
+export async function startDesktopSharedChatMessage(
+  requestId: string,
+  sessionId: string,
+  text: string,
+  attachmentPaths: string[] = [],
+  route?: DesktopChatMessageRoute | null,
+  contextMessages: DesktopChatContextMessage[] = [],
+  visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
+  scheduledTaskSessionId: string | null = null,
+) {
+  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_shared_message', {
+    requestId,
+    sessionId,
+    text,
+    attachmentPaths,
+    route: route ?? null,
+    contextMessages,
+    visibleTaskRecords,
+    scheduledTaskSessionId,
+  });
+}
+
 export type DesktopShapeAgentRoute = {
   defaultModel?: string | null;
   defaultAuthProvider?: string | null;
@@ -995,6 +1017,10 @@ export async function cancelDesktopChatTurn(turnId: string) {
 
 export async function fetchDesktopChatTurnState(turnId: string) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_turn_state', { turnId });
+}
+
+export async function fetchDesktopChatActiveTurns() {
+  return invokeDesktop<DesktopChatTurnSnapshot[]>('desktop_chat_active_turns');
 }
 
 export async function fetchDesktopChatArtifactPreview(path: string, baseRoot?: string | null) {

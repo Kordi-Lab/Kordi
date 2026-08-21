@@ -5,11 +5,14 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
-use kordi_core::error::KordiError;
+use kordi_core::{
+    error::KordiError,
+    types::{AgentMessage, AssistantContent, SessionEntry, StopReason},
+};
 use kordi_tools::task_operator::models::{
-    TaskCloseRequest, TaskCreateRequest, TaskListRequest, TaskMessageRequest,
-    TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse, TaskOperatorTaskStatus,
-    TaskSearchRequest, TaskSpawnRequest, TaskWaitRequest,
+    TaskCloseRequest, TaskCreateRequest, TaskInspectRequest, TaskListRequest, TaskMessageRequest,
+    TaskOperatorBackgroundSession, TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse,
+    TaskOperatorTaskStatus, TaskSearchRequest, TaskSpawnRequest, TaskWaitRequest,
 };
 use kordi_tools::{TaskOperatorFn, TaskOperatorRuntime};
 use registry::{TaskAgentMetadata, TaskAgentRegistry, TaskAgentStatus};
@@ -17,49 +20,105 @@ use tokio::{process::Command, sync::Mutex, task::JoinHandle};
 
 use child_process_policy::{CHILD_AGENT_PROCESS_TIMEOUT, child_agent_tool_names, prompt_context};
 
-const DEFAULT_MAX_LIVE_TASKS: usize = 4;
+pub(crate) const DEFAULT_MAX_LIVE_TASKS: usize = 4;
 const DEFAULT_WAIT_TIMEOUT_MS: u64 = 30_000;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SpawnRequest {
-    pub(crate) task_path: String,
-    pub(crate) task_name: String,
-    pub(crate) message: String,
-    pub(crate) fork_turns: Option<String>,
-    pub(crate) write_scope: Vec<String>,
-    pub(crate) cwd: PathBuf,
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub fn managed_child_tool_names(has_write_scope: bool) -> Vec<String> {
+    child_agent_tool_names(has_write_scope)
+        .split(',')
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub fn managed_child_prompt_context(
+    task_path: &str,
+    task_name: &str,
+    write_scope: &[String],
+) -> String {
+    prompt_context(task_path, task_name, write_scope)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SpawnedTask {
+pub struct SpawnRequest {
+    pub task_path: String,
+    pub task_name: String,
+    pub task_title: String,
+    pub message: String,
+    pub fork_turns: Option<String>,
+    pub write_scope: Vec<String>,
+    pub cwd: PathBuf,
+    pub parent_message_id: Option<String>,
+    pub attachment_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpawnedTask {
     pub(crate) task_path: String,
     pub(crate) status: TaskAgentStatus,
     pub(crate) summary: Option<String>,
+    pub(crate) background_session: Option<TaskOperatorBackgroundSession>,
 }
 
 impl SpawnedTask {
-    pub(crate) fn running(task_path: impl Into<String>) -> Self {
+    pub fn running(task_path: impl Into<String>) -> Self {
         Self {
             task_path: task_path.into(),
             status: TaskAgentStatus::Running,
             summary: None,
+            background_session: None,
         }
+    }
+
+    #[cfg_attr(feature = "cli", allow(dead_code))]
+    pub fn running_in_background_session(
+        task_path: impl Into<String>,
+        session_id: impl Into<String>,
+        turn_id: impl Into<String>,
+        title: impl Into<String>,
+    ) -> Self {
+        Self {
+            task_path: task_path.into(),
+            status: TaskAgentStatus::Running,
+            summary: None,
+            background_session: Some(TaskOperatorBackgroundSession {
+                session_id: session_id.into(),
+                turn_id: Some(turn_id.into()),
+                title: title.into(),
+                status: "running".to_string(),
+            }),
+        }
+    }
+
+    #[cfg_attr(feature = "cli", allow(dead_code))]
+    pub fn background_session(&self) -> Option<&TaskOperatorBackgroundSession> {
+        self.background_session.as_ref()
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum WaitOutcome {
+pub enum WaitOutcome {
     Completed { target: String, summary: String },
     Failed { target: String, summary: String },
     TimedOut,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackgroundSessionInspection {
+    pub status: String,
+    pub summary: Option<String>,
+}
+
 #[async_trait]
-pub(crate) trait ChildAgentRunner: Send + Sync {
+pub trait ChildAgentRunner: Send + Sync {
     async fn spawn(&self, request: SpawnRequest) -> Result<SpawnedTask>;
     async fn send(&self, target: &str, message: String) -> Result<()>;
     async fn wait(&self, timeout_ms: u64) -> Result<WaitOutcome>;
     async fn close(&self, target: &str) -> Result<()>;
+    async fn inspect(&self, _session_id: &str) -> Result<Option<BackgroundSessionInspection>> {
+        Ok(None)
+    }
 }
 
 struct TaskOperatorState {
@@ -180,6 +239,7 @@ impl TaskOperatorState {
             message: Some(format!("Task created: {}", stored.title)),
             target: Some(stored.task_id.clone()),
             tasks: vec![task_status_from_stored(stored)],
+            background_session: None,
         })
     }
 
@@ -215,6 +275,7 @@ impl TaskOperatorState {
             }),
             target: None,
             tasks,
+            background_session: None,
         })
     }
 
@@ -237,6 +298,7 @@ impl TaskOperatorState {
             TaskOperatorRuntimeRequest::Message(request) => self.message(request).await,
             TaskOperatorRuntimeRequest::Wait(request) => self.wait(request).await,
             TaskOperatorRuntimeRequest::List(request) => self.list(request).await,
+            TaskOperatorRuntimeRequest::Inspect(request) => self.inspect(request).await,
             TaskOperatorRuntimeRequest::Close(request) => self.close(request).await,
         }
     }
@@ -249,19 +311,29 @@ impl TaskOperatorState {
         if request.message.trim().is_empty() {
             bail!("spawn message cannot be empty")
         }
+        let task_title = request
+            .task_title
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| humanize_task_name(task_name));
 
         let metadata = {
             let mut registry = self.registry.lock().await;
-            registry.reserve(task_name, task_name, request.write_scope.clone())?
+            registry.reserve(task_name, &task_title, request.write_scope.clone())?
         };
         let task_path = metadata.path.as_str().to_string();
         let spawn_request = SpawnRequest {
             task_path: task_path.clone(),
             task_name: task_name.to_string(),
+            task_title,
             message: request.message,
             fork_turns: request.fork_turns,
             write_scope: request.write_scope,
             cwd: self.cwd.clone(),
+            parent_message_id: None,
+            attachment_paths: Vec::new(),
         };
 
         let spawned = match self.runner.spawn(spawn_request).await {
@@ -286,6 +358,7 @@ impl TaskOperatorState {
             )),
             target: Some(task_path),
             tasks: Vec::new(),
+            background_session: spawned.background_session,
         })
     }
 
@@ -313,10 +386,30 @@ impl TaskOperatorState {
             message: Some(format!("Message sent to {target}")),
             target: Some(target.to_string()),
             tasks: Vec::new(),
+            background_session: None,
         })
     }
 
     async fn wait(&self, request: TaskWaitRequest) -> Result<TaskOperatorRuntimeResponse> {
+        let has_live_agents = self
+            .registry
+            .lock()
+            .await
+            .list(None)?
+            .iter()
+            .any(|task| task.status.is_live());
+        if !has_live_agents {
+            return Ok(TaskOperatorRuntimeResponse {
+                status: "no_live_agents".to_string(),
+                message: Some(
+                    "No live task agents are registered in this runtime. This does not describe linked background sessions; use inspect with the exact sessionId."
+                        .to_string(),
+                ),
+                target: None,
+                tasks: Vec::new(),
+                background_session: None,
+            });
+        }
         let timeout_ms = request.timeout_ms.unwrap_or(DEFAULT_WAIT_TIMEOUT_MS);
         match self.runner.wait(timeout_ms).await? {
             WaitOutcome::Completed { target, summary } => {
@@ -327,6 +420,7 @@ impl TaskOperatorState {
                     message: Some(format!("Task completed: {target}")),
                     target: Some(target),
                     tasks: Vec::new(),
+                    background_session: None,
                 })
             }
             WaitOutcome::Failed { target, summary } => {
@@ -337,6 +431,7 @@ impl TaskOperatorState {
                     message: Some(format!("Task failed: {target}")),
                     target: Some(target),
                     tasks: Vec::new(),
+                    background_session: None,
                 })
             }
             WaitOutcome::TimedOut => Ok(TaskOperatorRuntimeResponse {
@@ -344,6 +439,7 @@ impl TaskOperatorState {
                 message: Some("No task completed before timeout".to_string()),
                 target: None,
                 tasks: Vec::new(),
+                background_session: None,
             }),
         }
     }
@@ -357,9 +453,65 @@ impl TaskOperatorState {
             .collect::<Vec<_>>();
         Ok(TaskOperatorRuntimeResponse {
             status: "listed".to_string(),
-            message: Some(format!("Listed {} task agent(s)", tasks.len())),
+            message: Some(if tasks.is_empty() {
+                "Listed 0 task agents in this runtime. This does not describe linked background sessions; use inspect with the exact sessionId."
+                    .to_string()
+            } else {
+                format!("Listed {} task agent(s)", tasks.len())
+            }),
             target: None,
             tasks,
+            background_session: None,
+        })
+    }
+
+    async fn inspect(&self, request: TaskInspectRequest) -> Result<TaskOperatorRuntimeResponse> {
+        let session_id = request.session_id.trim();
+        if session_id.is_empty() {
+            bail!("sessionId cannot be empty for inspect")
+        }
+        let Some(store) = self.store.as_ref() else {
+            bail!("task_operator durable task storage is unavailable")
+        };
+        let active_inspection = self.runner.inspect(session_id).await?;
+        let (title, inspection) = {
+            let conn = store.lock().await;
+            let session = kordi_session::store::get_session(&conn, session_id)?
+                .ok_or_else(|| anyhow!("background session `{session_id}` was not found"))?;
+            let title = session
+                .name
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "Background session".to_string());
+            let inspection = match active_inspection {
+                Some(active) => active,
+                None => inspect_persisted_background_session(&conn, session_id)?,
+            };
+            (title, inspection)
+        };
+        let summary = inspection
+            .summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(truncate_summary);
+        let message = match summary.as_deref() {
+            Some(summary) => format!(
+                "Background session {}: {}\n\nResult:\n{}",
+                inspection.status, session_id, summary
+            ),
+            None => format!("Background session {}: {}", inspection.status, session_id),
+        };
+        Ok(TaskOperatorRuntimeResponse {
+            status: inspection.status.clone(),
+            message: Some(message),
+            target: Some(session_id.to_string()),
+            tasks: Vec::new(),
+            background_session: Some(TaskOperatorBackgroundSession {
+                session_id: session_id.to_string(),
+                turn_id: None,
+                title,
+                status: inspection.status,
+            }),
         })
     }
 
@@ -378,6 +530,7 @@ impl TaskOperatorState {
                 message: Some(format!("Task agent closed: {target}")),
                 target: Some(target.to_string()),
                 tasks: Vec::new(),
+                background_session: None,
             });
         }
 
@@ -403,7 +556,123 @@ impl TaskOperatorState {
             message: Some(format!("Task closed: {}", stored.title)),
             target: Some(stored.task_id.clone()),
             tasks: vec![task_status_from_stored(stored)],
+            background_session: None,
         })
+    }
+}
+
+fn assistant_text(message: &kordi_core::types::AssistantMessage) -> Option<String> {
+    let text = message
+        .content
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text { text } if !text.trim().is_empty() => Some(text.trim()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    (!text.is_empty()).then_some(text)
+}
+
+pub(crate) fn inspect_persisted_background_session(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+) -> Result<BackgroundSessionInspection> {
+    let path = kordi_session::tree::active_path(conn, session_id)?;
+    let messages = path
+        .into_iter()
+        .filter_map(|row| match kordi_session::store::parse_entry(&row) {
+            Ok(SessionEntry::Message { message, .. }) => Some(Ok(message)),
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(inspect_background_messages(messages))
+}
+
+fn inspect_background_messages(
+    messages: impl IntoIterator<Item = AgentMessage>,
+) -> BackgroundSessionInspection {
+    let mut pending_request = false;
+    let mut status = None;
+    let mut summary = None;
+
+    for message in messages {
+        match message {
+            AgentMessage::User(_) => {
+                pending_request = true;
+                status = None;
+                summary = None;
+            }
+            AgentMessage::Assistant(message) => {
+                if let Some(text) = assistant_text(&message) {
+                    summary = Some(text);
+                }
+                match message.stop_reason {
+                    StopReason::Stop => {
+                        pending_request = false;
+                        status = Some("completed");
+                    }
+                    StopReason::Length => {
+                        pending_request = false;
+                        status = Some("failed");
+                        summary = Some(match summary {
+                            Some(partial) => format!(
+                                "The background session reached its output limit before finishing.\n\nPartial output:\n{partial}"
+                            ),
+                            None => {
+                                "The background session reached its output limit before finishing."
+                                    .to_string()
+                            }
+                        });
+                    }
+                    StopReason::ToolUse => {
+                        pending_request = true;
+                        status = None;
+                    }
+                    StopReason::Error => {
+                        pending_request = false;
+                        status = Some("failed");
+                        if let Some(error) = message
+                            .error_message
+                            .filter(|value| !value.trim().is_empty())
+                        {
+                            summary = Some(error);
+                        }
+                    }
+                    StopReason::Aborted => {
+                        pending_request = false;
+                        status = Some("stopped");
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if pending_request || status.is_none() {
+        let interrupted = "The background session was interrupted before producing a final result.";
+        return BackgroundSessionInspection {
+            status: "failed".to_string(),
+            summary: Some(match summary {
+                Some(partial) => format!("{interrupted}\n\nPartial output:\n{partial}"),
+                None => interrupted.to_string(),
+            }),
+        };
+    }
+
+    BackgroundSessionInspection {
+        status: status.unwrap_or("failed").to_string(),
+        summary,
+    }
+}
+
+fn humanize_task_name(task_name: &str) -> String {
+    let words = task_name.replace('_', " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => "Background task".to_string(),
     }
 }
 
@@ -677,13 +946,17 @@ mod tests {
 
     use anyhow::Result;
     use async_trait::async_trait;
+    use kordi_core::types::{
+        AgentMessage, AssistantContent, AssistantMessage, ContentBlock, StopReason, Usage,
+        UserMessage,
+    };
     use kordi_tools::task_operator::models::TaskOperatorRuntimeRequest;
     use rusqlite::Connection;
     use tokio::sync::Mutex as TokioMutex;
 
     use super::{
         ChildAgentRunner, SpawnRequest, SpawnedTask, WaitOutcome,
-        build_task_operator_runtime_with_runner,
+        build_task_operator_runtime_with_runner, inspect_background_messages,
     };
 
     #[derive(Default)]
@@ -717,6 +990,63 @@ mod tests {
         async fn close(&self, _target: &str) -> Result<()> {
             Ok(())
         }
+    }
+
+    fn user_message() -> AgentMessage {
+        AgentMessage::User(UserMessage {
+            content: vec![ContentBlock::Text {
+                text: "Review the harness".to_string(),
+            }],
+            timestamp: 1,
+        })
+    }
+
+    fn assistant_message(stop_reason: StopReason, content: Vec<AssistantContent>) -> AgentMessage {
+        AgentMessage::Assistant(AssistantMessage {
+            content,
+            provider: "test".to_string(),
+            model: "test".to_string(),
+            usage: Usage::default(),
+            stop_reason,
+            error_message: None,
+            timestamp: 2,
+        })
+    }
+
+    #[test]
+    fn persisted_background_inspection_distinguishes_final_and_interrupted_turns() {
+        let completed = inspect_background_messages([
+            user_message(),
+            assistant_message(
+                StopReason::Stop,
+                vec![AssistantContent::Text {
+                    text: "Final report".to_string(),
+                }],
+            ),
+        ]);
+        assert_eq!(completed.status, "completed");
+        assert_eq!(completed.summary.as_deref(), Some("Final report"));
+
+        let interrupted = inspect_background_messages([
+            user_message(),
+            assistant_message(
+                StopReason::ToolUse,
+                vec![
+                    AssistantContent::Text {
+                        text: "I will start the review".to_string(),
+                    },
+                    AssistantContent::ToolCall {
+                        id: "tool-1".to_string(),
+                        name: "read".to_string(),
+                        arguments: serde_json::json!({ "path": "src" }),
+                    },
+                ],
+            ),
+        ]);
+        assert_eq!(interrupted.status, "failed");
+        assert!(interrupted.summary.as_deref().is_some_and(|summary| {
+            summary.contains("interrupted before producing a final result")
+        }));
     }
 
     #[tokio::test]
@@ -913,6 +1243,7 @@ mod tests {
         (runtime.run)(TaskOperatorRuntimeRequest::Spawn(
             kordi_tools::task_operator::models::TaskSpawnRequest {
                 task_name: "writer".to_string(),
+                task_title: None,
                 message: "write one".to_string(),
                 fork_turns: None,
                 write_scope: vec!["src".to_string()],
@@ -920,10 +1251,12 @@ mod tests {
         ))
         .await
         .expect("first spawn should reserve scope");
+        assert_eq!(runner.spawned.lock().unwrap()[0].task_title, "Writer");
 
         let error = (runtime.run)(TaskOperatorRuntimeRequest::Spawn(
             kordi_tools::task_operator::models::TaskSpawnRequest {
                 task_name: "nested".to_string(),
+                task_title: None,
                 message: "write nested".to_string(),
                 fork_turns: None,
                 write_scope: vec!["src/task_operator".to_string()],
@@ -949,6 +1282,7 @@ mod tests {
         (runtime.run)(TaskOperatorRuntimeRequest::Spawn(
             kordi_tools::task_operator::models::TaskSpawnRequest {
                 task_name: "research".to_string(),
+                task_title: None,
                 message: "research".to_string(),
                 fork_turns: None,
                 write_scope: vec![],
@@ -999,6 +1333,40 @@ mod tests {
         assert_eq!(
             runner.sent.lock().unwrap().as_slice(),
             &[("/root/research".to_string(), "follow up".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_live_registry_redirects_linked_session_checks_to_inspect() {
+        let runtime = build_task_operator_runtime_with_runner(
+            Arc::new(FakeRunner::default()),
+            std::path::PathBuf::from("/tmp/project"),
+            4,
+        );
+
+        let wait = (runtime.run)(TaskOperatorRuntimeRequest::Wait(
+            kordi_tools::task_operator::models::TaskWaitRequest {
+                timeout_ms: Some(10),
+            },
+        ))
+        .await
+        .expect("empty wait response");
+        assert_eq!(wait.status, "no_live_agents");
+        assert!(
+            wait.message
+                .as_deref()
+                .is_some_and(|message| message.contains("use inspect"))
+        );
+
+        let list = (runtime.run)(TaskOperatorRuntimeRequest::List(
+            kordi_tools::task_operator::models::TaskListRequest { path_prefix: None },
+        ))
+        .await
+        .expect("empty list response");
+        assert!(
+            list.message
+                .as_deref()
+                .is_some_and(|message| message.contains("use inspect"))
         );
     }
 }

@@ -18,6 +18,7 @@ struct MessageBubble: View, Equatable {
     let authorAvatarSource: String?
     let authorAvatarSeed: String?
     let readByNames: [String]
+    let backgroundSessions: [BackgroundAgentSessionPresentation]
     let onOpenAuthorProfile: () -> Void
     let onRetry: () async -> Void
     let onReply: () -> Void
@@ -28,6 +29,7 @@ struct MessageBubble: View, Equatable {
     let onNavigateToReply: (String) -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
+    let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
     @State private var isRetrying = false
 
@@ -47,6 +49,7 @@ struct MessageBubble: View, Equatable {
             && lhs.authorAvatarSource == rhs.authorAvatarSource
             && lhs.authorAvatarSeed == rhs.authorAvatarSeed
             && lhs.readByNames == rhs.readByNames
+            && lhs.backgroundSessions == rhs.backgroundSessions
     }
 
     var body: some View {
@@ -165,6 +168,14 @@ struct MessageBubble: View, Equatable {
                             Label("Select", systemImage: "checkmark.circle")
                         }
                     }
+
+                if !backgroundSessions.isEmpty {
+                    BackgroundAgentSessionList(
+                        sessions: backgroundSessions,
+                        isEnabled: !selectionMode,
+                        onOpen: onOpenBackgroundSession
+                    )
+                }
 
                 if message.deliveryState == .failed, !usesBorderlessImageSurface {
                     messageRetryControl
@@ -502,6 +513,104 @@ struct MessageBubble: View, Equatable {
             return "Read by \(readByNames.joined(separator: ", "))"
         }
         return "Read by \(readByNames[0]) and \(readByNames.count - 1) others"
+    }
+}
+
+private struct BackgroundAgentSessionList: View {
+    let sessions: [BackgroundAgentSessionPresentation]
+    let isEnabled: Bool
+    let onOpen: (BackgroundAgentSession) -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(sessions) { presentation in
+                BackgroundAgentSessionRow(
+                    presentation: presentation,
+                    isEnabled: isEnabled,
+                    onOpen: onOpen
+                )
+            }
+        }
+        .frame(maxWidth: 360, alignment: .leading)
+    }
+}
+
+private struct BackgroundAgentSessionRow: View {
+    let presentation: BackgroundAgentSessionPresentation
+    let isEnabled: Bool
+    let onOpen: (BackgroundAgentSession) -> Void
+
+    var body: some View {
+        Button {
+            onOpen(presentation.session)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(KordiTheme.agentViolet)
+                    .frame(width: 32, height: 32)
+                    .background(KordiTheme.agentViolet.opacity(0.10), in: .rect(cornerRadius: 9))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(presentation.session.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            Text("Background session")
+                            statusLabel
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Background session")
+                            statusLabel
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(presentation.session.title), background session, \(presentation.state.label)"
+        )
+        .accessibilityHint("Opens the linked agent session")
+    }
+
+    private var statusLabel: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+            Text(presentation.state.label)
+        }
+    }
+
+    private var statusColor: Color {
+        switch presentation.state {
+        case .running: KordiTheme.signalBlue
+        case .done: .green
+        case .failed: .red
+        case .stopped: .secondary
+        }
     }
 }
 

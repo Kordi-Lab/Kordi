@@ -226,6 +226,7 @@ pub(super) fn build_summary_from_setup(
         updated_at_ms: detail.updated_at_ms,
         message_count: detail.message_count,
         draft: detail.draft,
+        background_status: None,
         forked_from_session_id: detail.forked_from_session_id.clone(),
         forked_from_message_id: detail.forked_from_message_id.clone(),
     })

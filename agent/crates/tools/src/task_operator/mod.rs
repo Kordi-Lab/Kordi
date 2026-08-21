@@ -27,7 +27,7 @@ impl Tool for TaskOperatorTool {
     }
 
     fn description(&self) -> &str {
-        "Operator tool for verifiable Kordi task events and local child task agents. Durable tasks are scoped to the current session and use generated opaque IDs returned by this tool. Actions: create a task with {action:'create', taskTitle:'...'}; create a subtask with parentTaskId; list/search current session tasks with {action:'search', status:'open'} or add query; close with {action:'close', taskId:'task_...'}. Use manifest/estimate/spawn/message/wait/list for local child-agent work. Side effects: create/close affect task state; spawn/message/close with a child-agent target affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
+        "Operator tool for verifiable Kordi task events and bounded child-agent work. Durable tasks are scoped to the current session and use generated opaque IDs returned by this tool. Actions: create a task with {action:'create', taskTitle:'...'}; create a subtask with parentTaskId; list/search current session tasks with {action:'search', status:'open'} or add query; close with {action:'close', taskId:'task_...'}. Use spawn only for a concrete, independent task that can continue in a separate agent session; provide a concise user-facing taskTitle, a self-contained message, forkTurns:'none', and disjoint writeScope paths. After a successful background spawn, continue the parent turn with a short normal response instead of waiting. For a later status or result request, use inspect with the exact sessionId returned by spawn. list/wait cover only the current live child registry and must not be used to infer durable linked-session status; search returns user-visible task records, not agent execution state. Side effects: create/close affect task state; spawn/message/close with a child-agent target affect child-agent state. Write scopes must be disjoint; retry spawn can fail on duplicate task paths."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -36,12 +36,12 @@ impl Tool for TaskOperatorTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create", "search", "manifest", "estimate", "spawn", "message", "wait", "list", "close"],
+                    "enum": ["create", "search", "manifest", "estimate", "spawn", "message", "wait", "list", "inspect", "close"],
                     "description": "Task operator action."
                 },
                 "taskTitle": {
                     "type": "string",
-                    "description": "Concise 5-10 words user-facing title for action=create or task close events; optional overall task title when manifesting or spawning subtasks."
+                    "description": "Concise 5-10 words for the user-facing overall task title used by action=create, task close events, or the linked agent session created by action=spawn."
                 },
                 "parentTaskId": {
                     "type": "string",
@@ -114,7 +114,7 @@ impl Tool for TaskOperatorTool {
                 },
                 "forkTurns": {
                     "type": "string",
-                    "description": "Optional context fork mode for action=spawn."
+                    "description": "Context fork mode for action=spawn. Use 'none' for background work so the spawn message is the child's self-contained context."
                 },
                 "writeScope": {
                     "type": "array",
@@ -132,6 +132,10 @@ impl Tool for TaskOperatorTool {
                 "pathPrefix": {
                     "type": "string",
                     "description": "Optional task path prefix for action=list."
+                },
+                "sessionId": {
+                    "type": "string",
+                    "description": "Exact linked background session ID returned by action=spawn; required for action=inspect."
                 }
             },
             "required": ["action"],
@@ -180,6 +184,9 @@ impl Tool for TaskOperatorTool {
             }
             TaskOperatorRequest::List(request) => {
                 handle_runtime(TaskOperatorRuntimeRequest::List(request), ctx).await
+            }
+            TaskOperatorRequest::Inspect(request) => {
+                handle_runtime(TaskOperatorRuntimeRequest::Inspect(request), ctx).await
             }
             TaskOperatorRequest::Close(request) => handle_close(request, ctx).await,
         }
@@ -341,6 +348,12 @@ fn runtime_response_text(response: &TaskOperatorRuntimeResponse) -> String {
         })
         .unwrap_or_else(|| format!("Task operator status: {}", response.status));
 
+    if let Some(session) = &response.background_session {
+        let encoded = serde_json::to_string(session).unwrap_or_default();
+        text.push_str("\n\nBackground session: ");
+        text.push_str(&encoded);
+    }
+
     if !response.tasks.is_empty() {
         text.push_str("\n\nTasks:");
         for task in response.tasks.iter().take(50) {
@@ -405,7 +418,9 @@ fn build_estimate(ctx: &ToolContext, input_tokens: u64, output_tokens: u64) -> T
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::task_operator::models::{TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse};
+    use crate::task_operator::models::{
+        TaskOperatorBackgroundSession, TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse,
+    };
     use crate::{TaskOperatorFn, TaskOperatorRuntime, Tool, ToolContext, ToolLayer, ToolRiskLevel};
 
     fn text_content(result: &crate::ToolResult) -> &str {
@@ -441,6 +456,8 @@ mod tests {
         assert!(tool.description().contains("Side effects:"));
         assert!(tool.description().contains("retry spawn"));
         assert!(tool.description().contains("taskTitle"));
+        assert!(tool.description().contains("inspect"));
+        assert!(tool.description().contains("must not be used to infer"));
         let metadata = tool.metadata();
         assert_eq!(metadata.layer, ToolLayer::Operator);
         assert_eq!(metadata.risk, ToolRiskLevel::Medium);
@@ -553,6 +570,7 @@ mod tests {
                     message: Some("Task created: Durable Task".to_string()),
                     target: Some("durable-task".to_string()),
                     tasks: Vec::new(),
+                    background_session: None,
                 })
             })
         });
@@ -594,6 +612,7 @@ mod tests {
                         summary: Some("Review issue 317".to_string()),
                         write_scope: Vec::new(),
                     }],
+                    background_session: None,
                 })
             })
         });
@@ -627,7 +646,18 @@ mod tests {
             let seen_for_runtime = seen_for_runtime.clone();
             Box::pin(async move {
                 seen_for_runtime.lock().unwrap().push(request.clone());
-                Ok(TaskOperatorRuntimeResponse::spawned("/root/research_docs"))
+                Ok(TaskOperatorRuntimeResponse {
+                    status: "running".to_string(),
+                    message: Some("Task agent running: /root/research_docs".to_string()),
+                    target: Some("/root/research_docs".to_string()),
+                    tasks: Vec::new(),
+                    background_session: Some(TaskOperatorBackgroundSession {
+                        session_id: "session-research".to_string(),
+                        turn_id: Some("turn-research".to_string()),
+                        title: "Research documentation".to_string(),
+                        status: "running".to_string(),
+                    }),
+                })
             })
         });
         let tool = super::TaskOperatorTool;
@@ -646,6 +676,9 @@ mod tests {
             .expect("spawn should be delegated");
 
         assert!(!result.is_error);
+        assert!(text_content(&result).contains(
+            "Background session: {\"sessionId\":\"session-research\",\"turnId\":\"turn-research\",\"title\":\"Research documentation\",\"status\":\"running\"}",
+        ));
         assert_eq!(
             result
                 .details

@@ -16,6 +16,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
             updated_at_ms: 1,
             message_count: 1,
             draft: false,
+            background_status: None,
             forked_from_session_id: None,
             forked_from_message_id: None,
         }],

@@ -249,6 +249,28 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.last?.replyToMessageId, "msg_request")
     }
 
+    func testAgentResponseProjectsLinkedBackgroundSession() throws {
+        let payload = try XCTUnwrap(
+            #"{"text":"Background session started","requestId":"msg_request","deliveryState":"complete","backgroundSessions":[{"sessionId":"session-child","turnId":"turn-child","title":"Review runtime","status":"running"}]}"#
+                .data(using: .utf8)
+        )
+        let responseBody = CloudMessageCodec.agentResponsePrefix + payload.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(id: "msg_request", body: "Do the work", createdAt: "2026-08-08T10:00:00Z"),
+                wire(id: "msg_response", body: responseBody, createdAt: "2026-08-08T10:00:01Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.last?.backgroundAgentSessions.first?.sessionId, "session-child")
+        XCTAssertEqual(projected.last?.backgroundAgentSessions.first?.state, .running)
+    }
+
     func testTerminalResponseReplacesEarlierProcessingRow() throws {
         let processing = try agentResponse(
             requestId: "msg_request",

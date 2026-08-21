@@ -197,6 +197,62 @@ test('runtime transcript reconciliation renders one failure when canonical and d
   assert.equal(shouldUseCanonicalMessages([runtimeFailure], [canonicalFailure]), false);
 });
 
+test('interrupted local turn replaces the stale partial Cloud mirror for the same request', () => {
+  const user = (id: string): Message => ({
+    id,
+    role: 'user',
+    text: 'Review the harness',
+    time: '10:12',
+    isOwnMessage: true,
+  });
+  const canonicalPartial: Message = {
+    id: 'canonical-partial',
+    role: 'owned-agent',
+    text: '',
+    time: '10:12',
+    turn: {
+      id: 'canonical-partial-turn',
+      sessionId: 'background-session',
+      prompt: '',
+      status: 'complete',
+      message: 'Complete',
+      assistantText: 'I will start by locating the harness.',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: true,
+      error: null,
+    },
+  };
+  const runtimeFailure: Message = {
+    id: 'runtime-interrupted',
+    role: 'owned-agent',
+    text: '',
+    time: '10:12',
+    turn: {
+      id: 'runtime-interrupted-turn',
+      sessionId: 'background-session',
+      prompt: '',
+      status: 'failed',
+      message: 'Request failed',
+      assistantText: '',
+      thinkingText: 'Locating the harness',
+      tools: [],
+      completed: true,
+      succeeded: false,
+      error: 'Background task interrupted before producing a final result.',
+    },
+  };
+
+  const merged = mergeCanonicalHistoryIntoRuntime(
+    [user('canonical-user'), canonicalPartial],
+    [user('runtime-user'), runtimeFailure],
+  );
+
+  assert.deepEqual(merged.map((message) => message.id), ['runtime-user', 'runtime-interrupted']);
+  assert.deepEqual(merged[1]?.replyAliasIds, ['canonical-partial']);
+});
+
 test('desktop entry aliases reconcile tool-only canonical and runtime turns after returning to a parent fork', () => {
   const identities = new Map([
     ['human:me', {

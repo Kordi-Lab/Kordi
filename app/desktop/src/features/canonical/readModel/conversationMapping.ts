@@ -103,6 +103,12 @@ export function shouldUseCanonicalMessages(existingMessages: Message[], canonica
   ) {
     return false;
   }
+  if (
+    canonicalRichness.thinkingLength > existingRichness.thinkingLength
+    || canonicalRichness.toolCount > existingRichness.toolCount
+  ) {
+    return true;
+  }
 
   const canonicalHasForkSnapshotMarkers = canonicalMessages.some((message) => message.isForkSnapshot === true);
   const existingHasForkSnapshotMarkers = existingMessages.some((message) => message.isForkSnapshot === true);

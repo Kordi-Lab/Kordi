@@ -132,6 +132,8 @@ pub struct DesktopChatSessionSummary {
     pub message_count: usize,
     pub draft: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forked_from_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forked_from_message_id: Option<String>,

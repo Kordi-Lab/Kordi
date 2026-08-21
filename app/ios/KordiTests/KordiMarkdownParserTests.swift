@@ -271,6 +271,15 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testCachedConversationRevealsBeforeNetworkReload() {
+        XCTAssertTrue(
+            ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: 19)
+        )
+        XCTAssertFalse(
+            ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: 0)
+        )
+    }
+
     @MainActor
     func testPreviewCallUpdatesOneActivityFromStartedToEnded() throws {
         let model = AppModel(previewMode: true)

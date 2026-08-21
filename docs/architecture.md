@@ -63,6 +63,14 @@ those Rust request and response types; do not add a hand-maintained TypeScript
 mirror. The desktop Cloud client owns a separate API surface and should derive
 or generate cross-language types if it ever consumes this protocol directly.
 
+## Desktop background agent sessions
+
+Shared group and person chats keep their parent turn short when the model delegates a concrete, bounded, independent task through `task_operator.spawn`. Desktop creates a normal persisted child agent session, starts its turn through the existing chat manager, and returns the child session identifier to the parent immediately. The parent posts a normal response with a compact session link; progress, follow-ups, cancellation, and the final result stay in the child transcript.
+
+Direct agent sessions remain inline unless the user explicitly asks for a separate session. Automatic children receive a self-contained prompt with no copied transcript, inherit the parent model and agent profile, and keep the existing four-live-child and disjoint-write-scope limits. Read-only children receive observation tools, including session search/read, but no shell or file-mutation tools.
+
+The Desktop process owns these managed turns, so they survive navigation and parent-session changes but not a Desktop quit or crash. Linked child transcripts are owner-private; shared-chat participants receive the parent response, not access to the owner's detailed work session.
+
 ## Standalone Bridges boundary
 
 `bridges/cli`, `bridges/registry`, and `bridges/skills/bridges` describe a

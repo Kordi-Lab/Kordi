@@ -147,6 +147,40 @@ export function mergeCanonicalHistoryIntoRuntime(
     if (canonicalIndex > lastCanonicalIndex) lastCanonicalIndex = canonicalIndex;
     return canonicalIndex;
   });
+  for (let runtimeIndex = 0; runtimeIndex < runtimeMessages.length; runtimeIndex += 1) {
+    const runtimeMessage = runtimeMessages[runtimeIndex];
+    if (
+      runtimeAnchorIndexes[runtimeIndex] !== null
+      || runtimeMessage.role !== 'owned-agent'
+      || runtimeMessage.turn?.completed !== true
+      || runtimeMessage.turn.succeeded
+    ) continue;
+    let previousUserIndex = runtimeIndex - 1;
+    while (previousUserIndex >= 0 && runtimeMessages[previousUserIndex]?.role !== 'user') {
+      previousUserIndex -= 1;
+    }
+    const lowerBound = previousUserIndex >= 0 ? runtimeAnchorIndexes[previousUserIndex] : null;
+    if (lowerBound === null) continue;
+    let nextUserIndex = runtimeIndex + 1;
+    while (nextUserIndex < runtimeMessages.length && runtimeMessages[nextUserIndex]?.role !== 'user') {
+      nextUserIndex += 1;
+    }
+    const upperBound = nextUserIndex < runtimeMessages.length
+      ? runtimeAnchorIndexes[nextUserIndex]
+      : canonicalMessages.length;
+    if (upperBound === null) continue;
+    const candidates = canonicalMessages.flatMap((message, canonicalIndex) => (
+      canonicalIndex > lowerBound
+      && canonicalIndex < upperBound
+      && !usedCanonicalIndexes.has(canonicalIndex)
+      && message.role === 'owned-agent'
+        ? [canonicalIndex]
+        : []
+    ));
+    if (candidates.length !== 1) continue;
+    runtimeAnchorIndexes[runtimeIndex] = candidates[0];
+    usedCanonicalIndexes.add(candidates[0]);
+  }
   const enrichedRuntimeMessages = runtimeMessages.map((message, runtimeIndex) => {
     const canonicalIndex = runtimeAnchorIndexes[runtimeIndex];
     if (canonicalIndex === null) return message;

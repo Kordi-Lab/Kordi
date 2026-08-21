@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
 import { restoredSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
 import { mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
+import type { Message } from '../src/kordi-app/types';
 
 test('canonical read model keeps existing local transcript when canonical has equal message count', () => {
   const existingMessages = [
@@ -14,6 +15,42 @@ test('canonical read model keeps existing local transcript when canonical has eq
   ];
 
   assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), false);
+});
+
+test('canonical read model prefers equal-count transcript with background session tools', () => {
+  const response = (tools: NonNullable<Message['turn']>['tools']): Message => ({
+    id: tools.length ? 'canonical-agent' : 'cloud-agent',
+    role: 'owned-agent',
+    text: '',
+    time: '11:42',
+    turn: {
+      id: tools.length ? 'canonical-turn' : 'cloud-turn',
+      sessionId: 'session:group:one',
+      prompt: '',
+      status: 'complete',
+      message: 'Complete',
+      assistantText: 'I opened a review subagent.',
+      thinkingText: '',
+      tools,
+      completed: true,
+      succeeded: true,
+      error: null,
+    },
+  });
+  const taskOperator = {
+    id: 'tool:spawn',
+    name: 'task_operator',
+    status: 'done',
+    arguments: '{"action":"spawn"}',
+    liveOutput: '',
+    resultText: 'Background session: {"sessionId":"child","title":"Review","status":"running"}',
+    detail: null,
+    artifactPath: null,
+    toolLayer: 'operator',
+    isError: false,
+  };
+
+  assert.equal(shouldUseCanonicalMessages([response([])], [response([taskOperator])]), true);
 });
 
 test('canonical read model prefers equal-count canonical transcript when it adds fork snapshot markers', () => {

@@ -128,5 +128,6 @@ test('all locally executed owned-agent turns sync as non-executable history', ()
     role: 'user',
   }, historySessionIds), null);
   assert.equal(cloudSelfAgentShouldPublishProgress('session:self-agent:local', historySessionIds), false);
+  assert.equal(cloudSelfAgentShouldPublishProgress('session:self-agent:local', historySessionIds, true), true);
   assert.equal(cloudSelfAgentShouldPublishProgress('session:remote', historySessionIds), true);
 });

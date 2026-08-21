@@ -100,6 +100,7 @@ final class CachedMessageRecord {
     var messageActionJSON: String?
     var messageKind: String?
     var agentExecutionJSON: String?
+    var backgroundAgentSessionsJSON: String?
 
     init(accountId: String, message: ChatMessage) {
         id = scopedCacheRecordID(accountId: accountId, entityId: message.id)
@@ -120,6 +121,7 @@ final class CachedMessageRecord {
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
         agentExecutionJSON = Self.encode(message.agentExecution)
+        backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
     }
 
     func update(from message: ChatMessage) {
@@ -138,6 +140,7 @@ final class CachedMessageRecord {
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
         agentExecutionJSON = Self.encode(message.agentExecution)
+        backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
     }
 
     var value: ChatMessage? {
@@ -162,7 +165,11 @@ final class CachedMessageRecord {
             agentExecution: Self.decode(
                 AgentExecutionSnapshot.self,
                 from: agentExecutionJSON
-            )
+            ),
+            backgroundAgentSessions: Self.decode(
+                [BackgroundAgentSession].self,
+                from: backgroundAgentSessionsJSON
+            ) ?? []
         )
     }
 

@@ -129,7 +129,8 @@ enum CloudDirectMessageProjector {
             replyToMessageId: messageAction?.replyToMessageId ?? responseRequestId,
             messageAction: messageAction,
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
-            agentExecution: visibleOwnerExecution
+            agentExecution: visibleOwnerExecution,
+            backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body)
         )
     }
 }

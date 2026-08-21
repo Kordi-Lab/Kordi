@@ -44,6 +44,7 @@ import type {
   ChatsPageRuntime,
   ChatsPageSession,
   ChatsPageTranscript,
+  ChatSessionPanePresentation,
 } from '@/pages/chatsPage.types';
 import type { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
 import type { useChatDestinations } from '@/pages/useChatDestinations';
@@ -78,6 +79,7 @@ type ChatMainWorkspaceProps = {
     isCompressionActive: boolean;
     activeLiveTurnIsRunning: boolean;
     prefersReducedMotion: boolean | null;
+    relatedAgentSessionStatusById?: ChatSessionPanePresentation['relatedAgentSessionStatusById'];
     showCompanionPane: boolean;
     activeSide: 'left' | 'right';
   };
@@ -85,6 +87,7 @@ type ChatMainWorkspaceProps = {
     canOpen: boolean;
     suggestedName?: string;
     open: (initialPrompt?: string) => Promise<boolean>;
+    openSession: (sessionId: string) => void;
   };
 };
 
@@ -265,6 +268,7 @@ export function ChatMainWorkspace({
                 activeForkSourceTitle: models.fork.sourceTitle,
                 messageForksByEntryId: models.fork.forksByEntryId,
                 pinnedMessageId: models.pins.pinnedMessageId,
+                relatedAgentSessionStatusById: presentation.relatedAgentSessionStatusById,
               }}
               actions={{
                 onSelectSession: runtime.onSelectSession,
@@ -280,7 +284,7 @@ export function ChatMainWorkspace({
                   runtime.onRequestCollaborationContact,
                 onOpenSenderProfile: models.senderProfiles.openActive,
                 onForkMessage: models.fork.forkMessage,
-                onOpenForkSession: runtime.onSelectSession,
+                onOpenForkSession: companion.openSession,
                 onReplyMessage: composer.onReplyMessage,
                 onForwardMessage: composer.onForwardMessage,
                 onRetryMessage: runtime.onRetryChatMessage,

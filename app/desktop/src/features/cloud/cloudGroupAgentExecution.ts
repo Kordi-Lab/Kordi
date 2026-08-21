@@ -7,7 +7,7 @@ import {
 } from '@/features/performance/chatPerformance';
 import {
   cancelDesktopChatTurn,
-  startDesktopChatMessage,
+  startDesktopSharedChatMessage,
   upsertCanonicalMessageFast,
 } from '@/lib/desktop';
 import type {
@@ -17,6 +17,7 @@ import type {
 import { cloudGroupAgentCancelledNoticeRequest } from './cloudAgentCancellation';
 import {
   cloudAgentNoProviderNoticeText,
+  cloudAgentPublicBackgroundToolsFromTurn,
   isCloudAgentNoProviderConfiguredError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
@@ -195,7 +196,8 @@ export async function respondToCloudGroupAgentMention(
   );
   let startedTurn: DesktopChatTurnSnapshot;
   try {
-    startedTurn = await startDesktopChatMessage(
+    startedTurn = await startDesktopSharedChatMessage(
+      message.id,
       runtimeSessionId,
       promptTextForCloudAgentMention(message.text),
       mappedAttachments
@@ -277,6 +279,7 @@ export async function respondToCloudGroupAgentMention(
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
       requestId: message.id,
       replyToMessageId: message.id,
+      ...(finalTurn.tools.length > 0 ? { tools: finalTurn.tools } : {}),
       ...(failureMessage ? { error: failureMessage } : {}),
     },
     createdAtMs: responseCreatedAtMs,
@@ -356,6 +359,7 @@ export async function respondToCloudGroupAgentMention(
       ? responseText
       : (failureMessage ?? ''),
     responseDeliveryState,
+    responseTools: cloudAgentPublicBackgroundToolsFromTurn(finalTurn),
     agentDisplayName: presentation.displayName,
     agentHandoff,
     signal,

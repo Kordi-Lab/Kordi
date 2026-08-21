@@ -26,6 +26,7 @@ type CompanionSessionState = {
   pageConversationId: string;
   selectedConversationId: string | null;
   openConversationId: string | null;
+  requestedConversationId: string | null;
   referenceContext: string | null;
   actionsOpen: boolean;
   sessionListOpen: boolean;
@@ -36,6 +37,7 @@ type CompanionSessionState = {
 type UseChatCompanionSessionInput = {
   activeConversation: Conversation;
   conversations: Conversation[];
+  directConversations?: Conversation[];
   activePaneKind: 'human' | 'agent' | null;
   attachmentCount: number;
   setComposerTextForSession: ChatsPageComposer['setChatComposerTextForSession'];
@@ -49,6 +51,7 @@ function emptyState(pageConversationId: string): CompanionSessionState {
     pageConversationId,
     selectedConversationId: null,
     openConversationId: null,
+    requestedConversationId: null,
     referenceContext: null,
     actionsOpen: false,
     sessionListOpen: false,
@@ -69,20 +72,30 @@ function normalizeStateForCandidates(
     && candidateIds.has(state.selectedConversationId)
     ? state.selectedConversationId
     : null;
-  const openConversationId = state.openConversationId
+  const requestedConversationId = state.requestedConversationId
+    && !candidateIds.has(state.requestedConversationId)
+    ? state.requestedConversationId
+    : null;
+  const resolvedRequestedConversationId = state.requestedConversationId
+    && candidateIds.has(state.requestedConversationId)
+    ? state.requestedConversationId
+    : null;
+  const openConversationId = resolvedRequestedConversationId ?? (state.openConversationId
     && candidateIds.has(state.openConversationId)
     ? state.openConversationId
-    : null;
+    : null);
   if (
-    selectedConversationId === state.selectedConversationId
+    (resolvedRequestedConversationId ?? selectedConversationId) === state.selectedConversationId
     && openConversationId === state.openConversationId
+    && requestedConversationId === state.requestedConversationId
   ) {
     return state;
   }
   return {
     ...state,
-    selectedConversationId,
+    selectedConversationId: resolvedRequestedConversationId ?? selectedConversationId,
     openConversationId,
+    requestedConversationId,
     referenceContext: openConversationId ? state.referenceContext : null,
     actionsOpen: openConversationId ? state.actionsOpen : false,
     sessionListOpen: openConversationId ? state.sessionListOpen : false,
@@ -95,6 +108,7 @@ function normalizeStateForCandidates(
 export function useChatCompanionSession({
   activeConversation,
   conversations,
+  directConversations = conversations,
   activePaneKind,
   attachmentCount,
   setComposerTextForSession,
@@ -102,9 +116,13 @@ export function useChatCompanionSession({
   onCreateAgentSession,
   onPrefetchChatSession,
 }: UseChatCompanionSessionInput) {
-  const candidates = useMemo(
+  const visibleCandidates = useMemo(
     () => chatCompanionCandidates(activeConversation, conversations),
     [activeConversation, conversations],
+  );
+  const candidates = useMemo(
+    () => chatCompanionCandidates(activeConversation, directConversations),
+    [activeConversation, directConversations],
   );
   const sessionOptions = useMemo(
     () => chatCompanionSessionOptions(activeConversation, conversations),
@@ -151,8 +169,8 @@ export function useChatCompanionSession({
   ) ?? null;
   const suggestedConversation = pairedCompanionConversation(
     activeConversation,
-    candidates,
-  ) ?? candidates[0] ?? null;
+    visibleCandidates,
+  ) ?? visibleCandidates[0] ?? null;
   const suggested = selectedConversation ?? suggestedConversation;
   const conversation = chatSideAgentConversationForOpenRequest(
     state.openConversationId,
@@ -208,6 +226,7 @@ export function useChatCompanionSession({
       ...current,
       selectedConversationId: conversationId,
       openConversationId: conversationId,
+      requestedConversationId: null,
       referenceContext: buildAskAgentSessionReferenceContext(activeConversation),
       actionsOpen: false,
       sessionListOpen: false,
@@ -335,13 +354,32 @@ export function useChatCompanionSession({
       create,
       open,
       switchConversation: (conversationId: string) => {
-        if (!selectableSessionIds.has(conversationId)) return;
+        if (
+          !selectableSessionIds.has(conversationId)
+          && !candidateIds.has(conversationId)
+        ) {
+          if (!onPrefetchChatSession) return;
+          updateState((current) => ({
+            ...current,
+            requestedConversationId: conversationId,
+            referenceContext: buildAskAgentSessionReferenceContext(activeConversation),
+          }));
+          void onPrefetchChatSession(conversationId).then((loaded) => {
+            if (!loaded) {
+              updateState((current) => current.requestedConversationId === conversationId
+                ? { ...current, requestedConversationId: null }
+                : current);
+            }
+          });
+          return;
+        }
         activate(conversationId);
       },
       close: () => updateState((current) => ({
         ...current,
         selectedConversationId: null,
         openConversationId: null,
+        requestedConversationId: null,
         referenceContext: null,
         actionsOpen: false,
         sessionListOpen: false,

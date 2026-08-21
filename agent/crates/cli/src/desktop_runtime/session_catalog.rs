@@ -222,6 +222,11 @@ fn session_summary_from_row(
             .unwrap_or_else(|| format!("{} entries", row.entry_count)),
         Err(_) => format!("{} entries", row.entry_count),
     };
+    let background_status = row.parent_session_id.as_ref().and_then(|_| {
+        crate::task_operator::inspect_persisted_background_session(conn, &row.session_id)
+            .ok()
+            .map(|inspection| inspection.status)
+    });
 
     Ok(DesktopChatSessionSummary {
         id: row.session_id,
@@ -231,6 +236,7 @@ fn session_summary_from_row(
         updated_at_ms,
         message_count: row.entry_count.max(0) as usize,
         draft: false,
+        background_status,
         forked_from_session_id: row.parent_session_id,
         forked_from_message_id: row.parent_session_message_id,
     })

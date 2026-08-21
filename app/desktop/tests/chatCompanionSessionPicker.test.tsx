@@ -114,5 +114,48 @@ test('side chat picker exposes hierarchy, panel states, and flat inactive rows',
   assert.match(headerSource, /!isCurrent && 'app-transient-flat-action'/);
   assert.match(headerSource, />\s*Main\s*</);
   assert.match(headerSource, />\s*Current\s*</);
+  assert.match(sessionSource, /candidateIds\.has\(conversationId\)/);
   assert.match(sessionSource, /selectableSessionIds\.has\(conversationId\)/);
+});
+
+test('related agent sessions open in the companion panel instead of replacing main chat', () => {
+  const pageSource = readFileSync(
+    new URL('../src/pages/ChatsPage.tsx', import.meta.url),
+    'utf8',
+  );
+  const mainSource = readFileSync(
+    new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
+  const companionSource = readFileSync(
+    new URL('../src/pages/chatsPage.companionWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
+  const sessionSource = readFileSync(
+    new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
+    'utf8',
+  );
+  const workspaceSource = readFileSync(
+    new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url),
+    'utf8',
+  );
+  const controllerSource = readFileSync(
+    new URL('../src/features/chat/useDesktopSessionController.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(pageSource, /companionSession\.actions\.switchConversation\(sessionId\)/);
+  assert.match(pageSource, /directConversations: companionConversations/);
+  assert.match(pageSource, /companionLayout\.placeCompanion\('right'\)/);
+  assert.match(pageSource, /companionLayout\.setFolded\(false\)/);
+  assert.match(sessionSource, /chatCompanionCandidates\(activeConversation, directConversations\)/);
+  assert.match(sessionSource, /chatCompanionSessionOptions\(activeConversation, conversations\)/);
+  assert.match(sessionSource, /requestedConversationId: conversationId/);
+  assert.match(sessionSource, /onPrefetchChatSession\(conversationId\)/);
+  assert.match(sessionSource, /candidateIds\.has\(state\.requestedConversationId\)/);
+  assert.match(controllerSource, /loaded && !isKnownSession[\s\S]*refreshDesktopChat\(\)/);
+  assert.match(workspaceSource, /isGroupForkSession\(conversation\)/);
+  assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
+  assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
+  assert.doesNotMatch(mainSource, /onOpenForkSession: runtime\.onSelectSession/);
 });

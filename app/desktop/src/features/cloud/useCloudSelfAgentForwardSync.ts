@@ -181,7 +181,11 @@ export function useCloudSelfAgentForwardSync({
         const heartbeatAtMs = Date.now();
         const historySessionIds = cloudSyncedLocalAgentSessionIds(state);
         for (const sessionId of activeSessionIds) {
-          if (!cloudSelfAgentShouldPublishProgress(sessionId, historySessionIds)) continue;
+          if (!cloudSelfAgentShouldPublishProgress(
+            sessionId,
+            historySessionIds,
+            true,
+          )) continue;
           const localRequest = state.messages
             .filter((message) => (
               message.sessionId === sessionId
@@ -417,6 +421,11 @@ export function useCloudSelfAgentForwardSync({
           },
         );
         if (operations.length > 0) {
+          const activeLocalSessionIds = new Set(
+            activeLocalTurnSessionKey
+              ? activeLocalTurnSessionKey.split('\u0000')
+              : [],
+          );
           const executionLedger = { ...ledger };
           for (const operation of operations) {
             if (!recoverySessionIds.has(operation.sessionId)) continue;
@@ -452,13 +461,25 @@ export function useCloudSelfAgentForwardSync({
             },
             shouldContinue: () => !cancelledRef.current,
             shouldMergeMessage: (operation) => (
-              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
+              cloudSelfAgentShouldPublishProgress(
+                operation.sessionId,
+                historySessionIds,
+                activeLocalSessionIds.has(operation.sessionId),
+              )
             ),
             shouldPublishProcessing: (operation) => (
-              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
+              cloudSelfAgentShouldPublishProgress(
+                operation.sessionId,
+                historySessionIds,
+                activeLocalSessionIds.has(operation.sessionId),
+              )
             ),
             executionSnapshotForOperation: (operation) => (
-              cloudSelfAgentShouldPublishProgress(operation.sessionId, historySessionIds)
+              cloudSelfAgentShouldPublishProgress(
+                operation.sessionId,
+                historySessionIds,
+                activeLocalSessionIds.has(operation.sessionId),
+              )
                 ? executionBySessionIdRef.current[operation.sessionId]
                 : undefined
             ),
@@ -488,6 +509,7 @@ export function useCloudSelfAgentForwardSync({
     client,
     executionBySessionIdRef,
     initialMessagesSettled,
+    activeLocalTurnSessionKey,
     mergeMessage,
     processedRequestIdsRef,
     reportWarning,
