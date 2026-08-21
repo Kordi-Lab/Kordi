@@ -254,6 +254,33 @@ test('cloud local agent runner ignores same-account self-agent sync messages', (
   }), true);
 });
 
+test('cloud local agent runner accepts iOS first-person envelopes', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_ios_first_person_request',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@My Kordi check the worktrees',
+      targetCloudAgentId: 'cloud-local-agent',
+      targetCloudAgentName: 'My Kordi',
+      targetCloudAgentOwnerAccountId: account.accountId,
+      targetCloudAgentOwnerName: account.displayName,
+    }),
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request],
+  }), true);
+});
+
 test('cloud outgoing self-agent mentions expose localhost-style local processing UI', () => {
   const request: CloudMessage = {
     ...message,
