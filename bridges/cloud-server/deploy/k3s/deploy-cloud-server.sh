@@ -2,9 +2,9 @@
 #
 # deploy-cloud-server.sh — RUN LOCALLY, build runs on the VM.
 #
-# After the binary is built on the operator-provided Cloud host (via cargo
-# build --release on the synced source), this script:
-#   1. Assembles the OCI runtime image with `buildah bud` on the VM.
+# After source is synced to the operator-provided Cloud host, this script:
+#   1. Builds the binary and OCI runtime image against Bookworm with `buildah
+#      bud` on the VM.
 #   2. Tags it as docker.io/library/kordi-cloud-server:<tag> so kubelet's
 #      bare-name resolution finds it without trying Docker Hub.
 #   3. Exports it to an OCI archive and imports into k3s's containerd.
@@ -48,6 +48,23 @@ echo "[deploy] building OCI image on VM with buildah"
 "${GCLOUD_SSH[@]}" --command "set -e
 cd ${REMOTE_DEPLOY}
 sudo buildah bud --layers -t ${IMAGE} -f bridges/cloud-server/Dockerfile.runtime ."
+
+echo "[deploy] smoke-testing the image entrypoint"
+"${GCLOUD_SSH[@]}" --command "set -e
+container=\$(sudo buildah from ${IMAGE})
+cleanup() { sudo buildah rm \"\$container\" >/dev/null; }
+trap cleanup EXIT
+set +e
+output=\$(sudo buildah run \"\$container\" -- timeout 5 /usr/local/bin/kordi-cloud-server --help 2>&1)
+status=\$?
+set -e
+printf '%s\\n' \"\$output\"
+if printf '%s' \"\$output\" | grep -Eq 'GLIBC_[0-9.]+.*not found|No such file or directory'; then
+  echo '[deploy] entrypoint failed its runtime ABI check' >&2
+  exit 1
+fi
+test \"\$status\" -ne 126
+test \"\$status\" -ne 127"
 
 echo "[deploy] importing into k3s containerd"
 "${GCLOUD_SSH[@]}" --command "set -e
