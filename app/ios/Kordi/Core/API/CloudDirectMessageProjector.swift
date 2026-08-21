@@ -28,7 +28,9 @@ enum CloudDirectMessageProjector {
         var result: [ChatMessage] = []
 
         for wire in sorted {
-            if CloudMessageCodec.isAgentControl(wire.body) || CloudGroupMessageCodec.parse(wire.body) != nil {
+            if wire.messageKind == CloudMessageCodec.agentSessionIdentityMessageKind
+                || CloudMessageCodec.isAgentControl(wire.body)
+                || CloudGroupMessageCodec.parse(wire.body) != nil {
                 continue
             }
 

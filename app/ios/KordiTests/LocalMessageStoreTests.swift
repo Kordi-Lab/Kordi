@@ -79,6 +79,31 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
+    func testCacheOmitsAgentSessionIdentityMarkers() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let conversationID = "agent:my-kordi"
+        let identity = ChatMessage(
+            id: "agent-identity",
+            conversationId: conversationID,
+            author: .me,
+            authorName: "You",
+            text: "",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .read,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: CloudMessageCodec.agentSessionIdentityMessageKind
+        )
+        let visible = message(id: "visible", conversationID: conversationID, text: "Hello")
+
+        store.saveMessages([identity, visible], conversationId: conversationID, accountId: "account-a")
+
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-a", conversationId: conversationID),
+            [visible]
+        )
+    }
+
     private func conversation(id: String, displayName: String) -> ConversationSummary {
         ConversationSummary(
             id: id,

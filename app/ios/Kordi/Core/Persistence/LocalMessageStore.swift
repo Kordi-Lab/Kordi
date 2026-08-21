@@ -144,7 +144,8 @@ final class CachedMessageRecord {
     }
 
     var value: ChatMessage? {
-        guard let author = MessageAuthor(rawValue: author),
+        guard messageKind != CloudMessageCodec.agentSessionIdentityMessageKind,
+              let author = MessageAuthor(rawValue: author),
               let state = MessageDeliveryState(rawValue: deliveryState) else { return nil }
         return ChatMessage(
             id: messageId,

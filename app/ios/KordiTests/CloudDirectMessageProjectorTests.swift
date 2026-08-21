@@ -271,6 +271,31 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.last?.backgroundAgentSessions.first?.state, .running)
     }
 
+    func testProjectorOmitsAgentSessionIdentityMarkers() throws {
+        let identity = try CloudMessageCodec.encodeDirect(
+            text: "",
+            agentId: "cloud-self:acct_me",
+            agentName: "My Kordi",
+            ownerAccountId: "acct_me",
+            ownerName: "Alex"
+        )
+        let projected = CloudDirectMessageProjector.project(
+            [
+                wire(
+                    id: "msg_identity",
+                    body: identity,
+                    createdAt: "2026-08-08T10:00:00Z",
+                    messageKind: CloudMessageCodec.agentSessionIdentityMessageKind
+                ),
+                wire(id: "msg_request", body: "Hello", createdAt: "2026-08-08T10:00:01Z")
+            ],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.map(\.text), ["Hello"])
+    }
+
     func testTerminalResponseReplacesEarlierProcessingRow() throws {
         let processing = try agentResponse(
             requestId: "msg_request",
@@ -605,7 +630,12 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
     }
 
-    private func wire(id: String, body: String, createdAt: String) -> CloudMessageDTO {
+    private func wire(
+        id: String,
+        body: String,
+        createdAt: String,
+        messageKind: String? = nil
+    ) -> CloudMessageDTO {
         CloudMessageDTO(
             messageId: id,
             fromAccountId: "acct_me",
@@ -615,7 +645,8 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             deliveredAt: createdAt,
             readAt: createdAt,
             direction: "outgoing",
-            sessionId: "session:plain-id"
+            sessionId: "session:plain-id",
+            messageKind: messageKind
         )
     }
 
