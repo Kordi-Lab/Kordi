@@ -122,27 +122,25 @@ function RelatedAgentSessionLinks({
   if (sessions.length === 0) return null;
 
   return (
-    <div className="mt-2 grid w-[34rem] max-w-full gap-1.5" data-related-agent-sessions="true">
+    <div className="mt-1.5 grid w-[30rem] max-w-full gap-0.5" data-related-agent-sessions="true">
       {sessions.map((session) => (
         <button
           key={session.sessionId}
           type="button"
-          className="app-button-quiet group flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2 text-left transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-default disabled:opacity-60"
+          className="app-button-quiet group flex min-h-9 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left disabled:cursor-default disabled:opacity-60"
           onClick={() => onOpen?.(session.sessionId)}
           disabled={!onOpen}
           aria-label={`Open background agent session: ${session.title}`}
           data-related-agent-session-id={session.sessionId}
         >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[color:var(--app-control-hover)] text-[color:var(--app-sidebar-accent)]" aria-hidden="true">
+          <span className="grid h-5 w-5 shrink-0 place-items-center text-[color:var(--app-sidebar-accent)]" aria-hidden="true">
             <Bot className="h-3.5 w-3.5" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12px] font-semibold leading-4 text-[color:var(--utility-foreground)]" title={session.title}>
-              {session.title}
-            </span>
-            <span className="block truncate text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
-              Background agent session
-            </span>
+          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-[color:var(--utility-foreground)]" title={session.title}>
+            {session.title}
+          </span>
+          <span className="shrink-0 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
+            Background session
           </span>
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--utility-muted-text)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
         </button>

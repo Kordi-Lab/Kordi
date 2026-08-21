@@ -141,7 +141,9 @@ test('renders a compact linked agent session beneath the normal parent response'
   assert.match(markup, /data-related-agent-sessions="true"/);
   assert.match(markup, /data-related-agent-session-id="child-session"/);
   assert.match(markup, /Open background agent session: Review subagent orchestration/);
-  assert.match(markup, />Background agent session</);
+  assert.match(markup, /min-h-9/);
+  assert.match(markup, />Background session</);
+  assert.doesNotMatch(markup, /min-h-11/);
   assert.doesNotMatch(markup, /Open work thread/);
 });
 
