@@ -22,6 +22,54 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.last?.requestMessageId, requestId)
     }
 
+    func testStopBeforeLateReplyKeepsCancellationTerminal() throws {
+        let requestId = "msg_request"
+        let cancel = try CloudMessageCodec.encodeCancel(requestId: requestId)
+        let lateReply = try agentResponse(
+            requestId: requestId,
+            text: "Late result",
+            deliveryState: "complete"
+        )
+        let messages = [
+            wire(id: requestId, body: "Inspect the files", createdAt: "2026-08-08T10:00:00Z"),
+            wire(id: "cancel", body: cancel, createdAt: "2026-08-08T10:00:01Z"),
+            wire(id: "late", body: lateReply, createdAt: "2026-08-08T10:00:02Z")
+        ]
+
+        let projected = CloudDirectMessageProjector.project(
+            messages,
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.map(\.text), ["Inspect the files", "Request canceled by sender."])
+        XCTAssertEqual(CloudAgentLifecycleProjector.state(forRequestId: requestId, in: messages), .cancelled)
+    }
+
+    func testReplyBeforeStopKeepsCompletedReply() throws {
+        let requestId = "msg_request"
+        let reply = try agentResponse(
+            requestId: requestId,
+            text: "Finished first",
+            deliveryState: "complete"
+        )
+        let cancel = try CloudMessageCodec.encodeCancel(requestId: requestId)
+        let messages = [
+            wire(id: requestId, body: "Inspect the files", createdAt: "2026-08-08T10:00:00Z"),
+            wire(id: "reply", body: reply, createdAt: "2026-08-08T10:00:01Z"),
+            wire(id: "cancel", body: cancel, createdAt: "2026-08-08T10:00:02Z")
+        ]
+
+        let projected = CloudDirectMessageProjector.project(
+            messages,
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.map(\.text), ["Inspect the files", "Finished first"])
+        XCTAssertEqual(CloudAgentLifecycleProjector.state(forRequestId: requestId, in: messages), .complete)
+    }
+
     func testProjectorPreservesAttachmentAndReplyMetadata() throws {
         let source = MessageActionSource(
             sourceSessionId: conversation.sessionId,

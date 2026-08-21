@@ -204,12 +204,19 @@ struct ConversationView: View {
                                                 }
                                         }
 
+                                        let activeRequestID = model.activeOwnedAgentRequestID(in: conversation)
+                                        let isStoppingAgentRequest = model.isStoppingAgentRequest(in: conversation)
+
                                         ForEach(visibleTimelineRows) { row in
                                             let message = row.message
                                             let index = visibleStartIndex + row.offset
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
                                             let readers = readReceiptParticipants(for: message)
+                                            let showsStopControl = MessageBubble.showsAgentStopControl(
+                                                message,
+                                                activeRequestID: activeRequestID
+                                            )
 
                                             VStack(spacing: 0) {
                                                 if presentation.showsTimestamp {
@@ -236,6 +243,10 @@ struct ConversationView: View {
                                                         authorAvatarSource: avatar.source,
                                                         authorAvatarSeed: avatar.seed,
                                                         readByNames: readers.map(\.displayName),
+                                                        canStopAgentRequest: showsStopControl
+                                                            && !isStoppingAgentRequest,
+                                                        isStoppingAgentRequest: showsStopControl
+                                                            && isStoppingAgentRequest,
                                                         onOpenAuthorProfile: {
                                                             authorProfileConversation = ConversationAuthorProfileResolver.destination(
                                                                 currentConversation: conversation,
@@ -281,6 +292,7 @@ struct ConversationView: View {
                                                     onShareAttachment: { attachment in
                                                         prepare(attachment, forSharing: true)
                                                     },
+                                                    onStopAgentRequest: stopCurrentAgentRequest,
                                                     onAgentExecutionExpansionChange: { expanded in
                                                         guard expanded else { return }
                                                         revealExpandedAgentExecution(
@@ -1139,6 +1151,14 @@ struct ConversationView: View {
             mention: outgoingMention
         )
         isSending = false
+    }
+
+    private func stopCurrentAgentRequest() {
+        Task {
+            if await model.stopAgentRequest(in: conversation) {
+                isSending = false
+            }
+        }
     }
 
     private func sendExpressiveMedia(_ attachment: PendingAttachment) async {

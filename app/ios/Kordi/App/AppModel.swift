@@ -150,6 +150,7 @@ final class AppModel: ObservableObject {
     private var pendingAgentRequestIds: [String: String] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
+    @Published private var stoppingAgentRequestConversationIds = Set<String>()
     private var agentRequestPresentationIds: [String: String] = [:]
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
@@ -388,6 +389,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds = [:]
         pendingAgentRequestStartedAt = [:]
         pendingAgentDisplayNames = [:]
+        stoppingAgentRequestConversationIds = []
         agentRequestPresentationIds = [:]
         pendingProviderAuthBindingsBySessionID = [:]
         providerAuthenticationSyncTask?.cancel()
@@ -1407,6 +1409,71 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func activeOwnedAgentRequestID(in conversation: ConversationSummary) -> String? {
+        guard let requestId = pendingAgentRequestIds[conversation.id],
+              let request = messagesByConversation[conversation.id]?.first(where: { $0.id == requestId }),
+              request.author == .me,
+              request.deliveryState != .sending,
+              request.deliveryState != .failed,
+              request.deliveryState != .cancelled else { return nil }
+        return requestId
+    }
+
+    func isStoppingAgentRequest(in conversation: ConversationSummary) -> Bool {
+        stoppingAgentRequestConversationIds.contains(conversation.id)
+    }
+
+    @discardableResult
+    func stopAgentRequest(in conversation: ConversationSummary) async -> Bool {
+        guard let requestId = activeOwnedAgentRequestID(in: conversation),
+              !stoppingAgentRequestConversationIds.contains(conversation.id),
+              let token,
+              let account else { return false }
+        stoppingAgentRequestConversationIds.insert(conversation.id)
+        defer { stoppingAgentRequestConversationIds.remove(conversation.id) }
+
+        do {
+            let participants = conversation.kind == .group
+                ? hydratedGroupParticipants(conversation, account: account)
+                : []
+            let peerAccountId = conversation.kind == .group
+                ? participants.first(where: { $0.accountId != account.accountId })?.accountId
+                : conversation.peerAccountId
+            guard let peerAccountId = peerAccountId?.nonEmpty else {
+                throw CloudAPIError(
+                    code: "agent_cancel_unavailable",
+                    message: "Could not resolve the agent request.",
+                    statusCode: 0
+                )
+            }
+            let sent = try await api.sendMessage(
+                token: token,
+                peerAccountId: peerAccountId,
+                body: try CloudMessageCodec.encodeCancel(requestId: requestId),
+                sessionId: conversation.sessionId,
+                clientMessageId: "ios-agent-cancel:\(requestId)",
+                messageKind: "agent_control",
+                conversationKind: conversation.kind == .group ? "group" : nil,
+                memberAccountIds: conversation.kind == .group ? participants.map(\.accountId) : nil
+            )
+            mergeCloudMessage(
+                sent,
+                peerHint: sent.fromAccountId == account.accountId
+                    ? sent.toAccountId
+                    : sent.fromAccountId
+            )
+            completeAgentRequest(conversationId: conversation.id)
+            await refreshLoadedConversationProjections()
+            await persistCloudSnapshot(accountId: account.accountId)
+            cloudConnectionState = .connected
+            return true
+        } catch {
+            recordCloudConnectionFailure(error)
+            errorMessage = userFacing(error, fallback: "Could not stop the agent. Try again.")
+            return false
+        }
+    }
+
     func forward(
         _ sourceMessages: [ChatMessage],
         caption: String,
@@ -1518,19 +1585,20 @@ final class AppModel: ObservableObject {
             ?? startedAt
         let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
         let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
+        let isStopping = stoppingAgentRequestConversationIds.contains(conversation.id)
         let placeholder = ChatMessage(
             id: "local-agent-progress:\(conversation.id)",
             conversationId: conversation.id,
             author: .agent,
             authorName: pendingAgentDisplayNames[conversation.id] ?? "My Kordi",
-            text: "processing...",
+            text: isStopping ? "Stopping…" : "processing...",
             createdAt: placeholderCreatedAt,
             deliveryState: .delivered,
             errorMessage: nil,
             requestMessageId: requestMessageId,
             agentExecution: AgentExecutionSnapshot(
                 phase: .preparing,
-                summary: "Preparing the response",
+                summary: isStopping ? "Stopping the request" : "Preparing the response",
                 steps: [],
                 thinkingText: nil,
                 tools: nil,

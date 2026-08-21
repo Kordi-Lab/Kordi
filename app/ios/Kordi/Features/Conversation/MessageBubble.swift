@@ -18,6 +18,8 @@ struct MessageBubble: View, Equatable {
     let authorAvatarSource: String?
     let authorAvatarSeed: String?
     let readByNames: [String]
+    let canStopAgentRequest: Bool
+    let isStoppingAgentRequest: Bool
     let onOpenAuthorProfile: () -> Void
     let onRetry: () async -> Void
     let onReply: () -> Void
@@ -28,6 +30,7 @@ struct MessageBubble: View, Equatable {
     let onNavigateToReply: (String) -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
+    let onStopAgentRequest: () -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
     @State private var isRetrying = false
 
@@ -47,6 +50,8 @@ struct MessageBubble: View, Equatable {
             && lhs.authorAvatarSource == rhs.authorAvatarSource
             && lhs.authorAvatarSeed == rhs.authorAvatarSeed
             && lhs.readByNames == rhs.readByNames
+            && lhs.canStopAgentRequest == rhs.canStopAgentRequest
+            && lhs.isStoppingAgentRequest == rhs.isStoppingAgentRequest
     }
 
     var body: some View {
@@ -170,6 +175,14 @@ struct MessageBubble: View, Equatable {
                     messageRetryControl
                 }
 
+            }
+
+            if (canStopAgentRequest || isStoppingAgentRequest), !selectionMode {
+                AgentRequestStopButton(
+                    isStopping: isStoppingAgentRequest,
+                    action: onStopAgentRequest
+                )
+                .padding(.bottom, 2)
             }
 
             if showsAvatarSlot && message.author == .me {
@@ -401,6 +414,15 @@ struct MessageBubble: View, Equatable {
         return !text.isEmpty && text != "processing..."
     }
 
+    static func showsAgentStopControl(
+        _ message: ChatMessage,
+        activeRequestID: String?
+    ) -> Bool {
+        guard let activeRequestID else { return false }
+        return message.author == .agent
+            && message.requestMessageId == activeRequestID
+    }
+
     static func showsAgentWaitingIndicator(
         execution: AgentExecutionSnapshot,
         responseText: String
@@ -502,6 +524,38 @@ struct MessageBubble: View, Equatable {
             return "Read by \(readByNames.joined(separator: ", "))"
         }
         return "Read by \(readByNames[0]) and \(readByNames.count - 1) others"
+    }
+}
+
+private struct AgentRequestStopButton: View {
+    let isStopping: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if isStopping {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.red)
+                } else {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.red)
+                }
+            }
+            .frame(width: 30, height: 30)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
+            .overlay {
+                Circle().strokeBorder(Color.red.opacity(0.24), lineWidth: 0.75)
+            }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isStopping)
+        .accessibilityLabel(isStopping ? "Stopping agent request" : "Stop agent request")
+        .accessibilityHint(isStopping ? "The stop request is being sent" : "Stops this agent request")
     }
 }
 

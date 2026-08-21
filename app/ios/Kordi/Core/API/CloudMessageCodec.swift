@@ -76,6 +76,13 @@ enum CloudMessageCodec {
         return directPrefix + base64URL(try JSONEncoder().encode(envelope))
     }
 
+    static func encodeCancel(requestId: String) throws -> String {
+        agentCancelPrefix + base64URL(try JSONEncoder().encode(AgentCancelEnvelope(
+            kind: "agent-cancel",
+            requestId: requestId
+        )))
+    }
+
     static func displayText(_ body: String) -> String {
         let parsed = parsedEnvelopes(body)
         if let envelope = parsed.direct {
@@ -288,9 +295,13 @@ enum CloudAgentLifecycleProjector {
 
     static func visibleRows(_ messages: [CloudMessageDTO]) -> [CloudMessageDTO] {
         let sorted = messages.sorted(by: messagePrecedes)
+        let cancelledRequestIds = Set(messages.compactMap {
+            CloudMessageCodec.agentCancelEnvelope($0.body)?.requestId.nonEmpty
+        }.filter { state(forRequestId: $0, in: messages) == .cancelled })
         var preferredByKey: [ResponseKey: CloudMessageDTO] = [:]
         for message in sorted {
             guard let key = responseKey(for: message) else { continue }
+            guard !cancelledRequestIds.contains(key.requestId) else { continue }
             guard let existing = preferredByKey[key] else {
                 preferredByKey[key] = message
                 continue
@@ -301,6 +312,7 @@ enum CloudAgentLifecycleProjector {
         var emittedResponseKeys = Set<ResponseKey>()
         return sorted.filter { message in
             guard let key = responseKey(for: message) else { return true }
+            guard !cancelledRequestIds.contains(key.requestId) else { return false }
             guard preferredByKey[key]?.messageId == message.messageId else { return false }
             return emittedResponseKeys.insert(key).inserted
         }
@@ -326,8 +338,23 @@ enum CloudAgentLifecycleProjector {
         forRequestId requestId: String,
         in messages: [CloudMessageDTO]
     ) -> CloudAgentLifecycleState? {
-        visibleRows(messages)
-            .filter { CloudMessageCodec.agentResponseRequestId($0.body) == requestId }
+        let responses = messages.filter {
+            CloudMessageCodec.agentResponseRequestId($0.body) == requestId
+        }
+        let terminalResponse = responses
+            .filter { CloudMessageCodec.agentResponseDeliveryState($0.body)?.isTerminal == true }
+            .min(by: messagePrecedes)
+        let cancellation = messages
+            .filter { CloudMessageCodec.agentCancelEnvelope($0.body)?.requestId == requestId }
+            .min(by: messagePrecedes)
+        if let cancellation {
+            guard let terminalResponse else { return .cancelled }
+            if messagePrecedes(cancellation, terminalResponse) { return .cancelled }
+        }
+        if let terminalResponse {
+            return CloudMessageCodec.agentResponseDeliveryState(terminalResponse.body)
+        }
+        return responses
             .max(by: messagePrecedes)
             .flatMap { CloudMessageCodec.agentResponseDeliveryState($0.body) }
     }
