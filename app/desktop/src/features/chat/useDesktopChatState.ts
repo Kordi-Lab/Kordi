@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { DesktopChatState, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import {
-  fetchDesktopChatActiveTurns,
   fetchDesktopChatState,
   fetchDesktopChatTurnState,
 } from '@/lib/desktop';
@@ -23,23 +22,8 @@ import { createDesktopTurnRenderAliasRegistry } from './desktopTurnRenderAliasRe
 import type { UseDesktopChatStateArgs } from './desktopChatState.types';
 import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession } from './queuedDesktopMessages';
 import { useDesktopSessionTranscriptCache } from './useDesktopSessionTranscriptCache';
-
-function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {
-  if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
-  if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
-  if (Notification.permission !== 'granted') return;
-
-  const title = turn.succeeded
-    ? 'Kordi: Background session finished'
-    : turn.status === 'cancelled'
-      ? 'Kordi: Background session stopped'
-      : 'Kordi: Background session needs attention';
-
-  new Notification(title, {
-    body: 'Open Kordi to review the update.',
-    tag: `kordi-session-${turn.sessionId}`,
-  });
-}
+import { notifyBackgroundSessionCompletion } from './backgroundSessionNotifications';
+import { useBackgroundTurnDiscovery } from './useBackgroundTurnDiscovery';
 
 export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refreshCanonicalSession }: UseDesktopChatStateArgs) {
   const latestDesktopSessionIdRef = useRef<string | undefined>(undefined);
@@ -49,7 +33,6 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
   const pendingLiveTurnSnapshotsRef = useRef<Record<string, DesktopChatTurnSnapshot>>({});
   const liveTurnCommitTimersRef = useRef<Record<string, number>>({});
   const watchedDesktopTurnIdsRef = useRef<Set<string>>(new Set());
-  const discoveredDesktopTurnIdsRef = useRef<Set<string>>(new Set());
   const hasLoadedInitialDesktopChatRef = useRef(false);
   const [desktopChatState, setDesktopChatState] = useState<DesktopChatState | null>(null);
   const [isDesktopChatLoading, setIsDesktopChatLoading] = useState(isNativeShell);
@@ -498,31 +481,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
     }
   }, [desktopLiveTurnsBySession, isNativeShell, watchDesktopLiveTurn]);
 
-  useEffect(() => {
-    if (!isNativeShell) return;
-    let cancelled = false;
-
-    const discoverBackendTurns = async () => {
-      const turns = await fetchDesktopChatActiveTurns().catch(() => []);
-      if (cancelled) return;
-      const currentIds = new Set(turns.map((turn) => turn.id));
-      for (const turn of turns) {
-        if (discoveredDesktopTurnIdsRef.current.has(turn.id)) continue;
-        discoveredDesktopTurnIdsRef.current.add(turn.id);
-        void watchDesktopLiveTurn(turn);
-      }
-      for (const turnId of discoveredDesktopTurnIdsRef.current) {
-        if (!currentIds.has(turnId)) discoveredDesktopTurnIdsRef.current.delete(turnId);
-      }
-    };
-
-    void discoverBackendTurns();
-    const interval = window.setInterval(discoverBackendTurns, 1_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [isNativeShell, watchDesktopLiveTurn]);
+  useBackgroundTurnDiscovery({ enabled: isNativeShell, watchTurn: watchDesktopLiveTurn });
 
   return {
     desktopChatState,

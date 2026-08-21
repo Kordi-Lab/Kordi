@@ -6,9 +6,9 @@ import {
 } from 'react';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
-  startDesktopSharedChatMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
+import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
 import type {
   Contact,
   DesktopChatTurnSnapshot,
@@ -25,12 +25,12 @@ import {
 } from './cloudAttachments';
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
-  cloudAgentBackgroundSessionsFromTurn,
   cloudAgentNoProviderNoticeText,
   encodeCloudAgentResponse,
   isCloudAgentNoProviderConfiguredError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
+import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,

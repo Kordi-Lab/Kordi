@@ -28,7 +28,6 @@ import {
   isLocalDraftChatConversationId,
   isProjectDraftSessionId,
 } from '@/features/chat/draftSessions';
-import { isGroupForkSession } from '@/features/chat/forkLineage';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
 import {
   buildParticipantSpaces,
@@ -56,11 +55,16 @@ import type {
   Message,
   NavId,
   Project,
-  SessionStatusIndicator,
   SessionTaskActivity,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
 import { applyCloudPresenceToConversations } from './viewModels/cloudConversationPresence';
+import {
+  backgroundSessionStatusIndicator,
+  canonicalAvatarSeed,
+  canonicalTaskActivitiesForSession,
+  companionConversationList,
+} from './viewModels/backgroundSessions';
 import {
   collaborationProfileImageUrl,
   sanitizeRemotePeerName,
@@ -84,25 +88,6 @@ import {
 } from './viewModels/helpers';
 
 const EMPTY_DESKTOP_SESSION_IDS: ReadonlySet<string> = new Set();
-
-function backgroundSessionStatusIndicator(status?: string | null): SessionStatusIndicator | undefined {
-  switch (status?.trim().toLowerCase()) {
-    case 'completed':
-      return { label: 'Done', tone: 'ready' };
-    case 'failed':
-      return { label: 'Failed', tone: 'error' };
-    case 'stopped':
-      return { label: 'Stopped', tone: 'stopped' };
-    default:
-      return undefined;
-  }
-}
-
-function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
-  const id = identityId?.trim();
-  if (!state || !id) return null;
-  return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
-}
 
 export { findCollaborationProjectForWorkspace } from './viewModels/helpers';
 export {
@@ -129,13 +114,6 @@ export function collaborationChatConversationIsVisible(
   conversation: Pick<DesktopCollaborationConversation, 'outreach'>,
 ) {
   return !conversation.outreach?.parentSessionId;
-}
-
-function canonicalTaskActivitiesForSession(
-  readModel: ReturnType<typeof createCanonicalSessionReadModel>,
-  sessionId: string,
-) {
-  return readModel?.taskActivities(sessionId) ?? [];
 }
 
 type UseWorkspaceViewModelsArgs = {
@@ -473,15 +451,10 @@ export function useWorkspaceViewModels({
     hiddenSessionIds,
     localAgentCollaborationReachoutSessionIds,
   ]);
-  const companionConversations = useMemo(() => {
-    const visibleIds = new Set(chatConversations.map((conversation) => conversation.id));
-    return [
-      ...chatConversations,
-      ...blankShellCollapsedChatConversations.filter((conversation) => (
-        isGroupForkSession(conversation) && !visibleIds.has(conversation.id)
-      )),
-    ];
-  }, [blankShellCollapsedChatConversations, chatConversations]);
+  const companionConversations = useMemo(
+    () => companionConversationList(chatConversations, blankShellCollapsedChatConversations),
+    [blankShellCollapsedChatConversations, chatConversations],
+  );
 
   const visibleMaterializedChatConversations = useMemo(() => materializedChatConversations(chatConversations), [chatConversations]);
   const nativeChatPlaceholder = useMemo(

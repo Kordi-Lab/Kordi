@@ -16,7 +16,7 @@ pub(crate) mod agent_builder;
 pub(crate) mod agent_prompt_runner;
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
-mod background_tasks;
+pub(crate) mod background_tasks;
 pub(crate) mod canonical_sync;
 mod message_execution;
 pub(crate) mod message_route;
@@ -101,13 +101,15 @@ use transient_drafts::{
 };
 
 use turns::{
-    active_turn_snapshots, apply_desktop_turn_event, cancel_turn_by_id,
-    desktop_task_tools_from_messages, reserve_turn_if_session_idle, session_has_running_turn,
-    snapshot_turn, turn_snapshot_by_id, turn_snapshot_has_model_task_tools, update_turn,
+    apply_desktop_turn_event, cancel_turn_by_id, desktop_task_tools_from_messages,
+    reserve_turn_if_session_idle, session_has_running_turn, snapshot_turn, turn_snapshot_by_id,
+    turn_snapshot_has_model_task_tools, update_turn,
 };
 
 #[cfg(test)]
-use turns::{is_auto_compaction_failure_status, is_auto_compaction_success_status};
+use turns::{
+    active_turn_snapshots, is_auto_compaction_failure_status, is_auto_compaction_success_status,
+};
 
 type DesktopSessionHandle = Arc<tokio::sync::Mutex<DesktopRuntimeSession>>;
 
@@ -636,36 +638,6 @@ pub async fn desktop_chat_start_message(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments, reason = "stable top-level Tauri IPC keys")]
-pub async fn desktop_chat_start_shared_message(
-    manager: State<'_, DesktopChatManager>,
-    request_id: String,
-    session_id: String,
-    text: String,
-    attachment_paths: Option<Vec<String>>,
-    route: Option<DesktopChatMessageRoute>,
-    context_messages: Option<Vec<DesktopChatContextMessage>>,
-    visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
-    scheduled_task_session_id: Option<String>,
-) -> Result<DesktopChatTurnSnapshot, String> {
-    message_execution::start_shared_message(
-        manager.inner(),
-        request_id,
-        message_execution::StartMessageInput {
-            session_id,
-            text,
-            attachment_paths,
-            route,
-            context_messages,
-            visible_task_records,
-            scheduled_task_session_id,
-            sync_session_at_start: false,
-        },
-    )
-    .await
-}
-
-#[tauri::command]
 pub async fn desktop_chat_run_skill_command(
     manager: State<'_, DesktopChatManager>,
     session_id: String,
@@ -705,13 +677,6 @@ pub async fn desktop_chat_turn_state(
     turn_id: String,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     turn_snapshot_by_id(manager.inner(), &turn_id).await
-}
-
-#[tauri::command]
-pub async fn desktop_chat_active_turns(
-    manager: State<'_, DesktopChatManager>,
-) -> Result<Vec<DesktopChatTurnSnapshot>, String> {
-    active_turn_snapshots(manager.inner()).await
 }
 
 #[cfg(test)]

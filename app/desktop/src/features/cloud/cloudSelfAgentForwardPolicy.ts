@@ -17,3 +17,15 @@ export function cloudSelfAgentShouldPublishProgress(
 ) {
   return hasActiveLocalTurn || !historySessionIds.has(sessionId);
 }
+
+export function cloudSelfAgentProgressPolicy(
+  historySessionIds: ReadonlySet<string>,
+  activeSessionKey: string,
+) {
+  const activeSessionIds = new Set(activeSessionKey ? activeSessionKey.split('\u0000') : []);
+  return (sessionId: string) => cloudSelfAgentShouldPublishProgress(
+    sessionId,
+    historySessionIds,
+    activeSessionIds.has(sessionId),
+  );
+}

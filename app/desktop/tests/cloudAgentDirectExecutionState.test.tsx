@@ -221,7 +221,7 @@ test('cloud direct local-agent execution does not wait for remote response guard
 test('shared direct and group requests route before reserving the parent runtime', () => {
   const directSource = readFileSync(new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url), 'utf8');
   const groupSource = readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
-  const desktopSource = readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
+  const desktopSource = readFileSync(new URL('../src/lib/desktopBackgroundSessions.ts', import.meta.url), 'utf8');
 
   assert.match(directSource, /startDesktopSharedChatMessage\(\s*message\.messageId,/);
   assert.match(groupSource, /startDesktopSharedChatMessage\(\s*message\.id,/);
@@ -230,9 +230,10 @@ test('shared direct and group requests route before reserving the parent runtime
 
 test('background children publish their prompt and refresh catalog before streaming', () => {
   const executionSource = readFileSync(new URL('../src-tauri/src/chat/message_execution.rs', import.meta.url), 'utf8');
-  const backgroundSource = readFileSync(new URL('../src-tauri/src/chat/background_tasks.rs', import.meta.url), 'utf8');
+  const backgroundSource = readFileSync(new URL('../src-tauri/src/chat/background_tasks/managed_child.rs', import.meta.url), 'utf8');
   const desktopStateSource = readFileSync(new URL('../src/features/chat/useDesktopChatState.ts', import.meta.url), 'utf8');
   const foundationSource = readFileSync(new URL('../src/app/useKordiAppFoundation.ts', import.meta.url), 'utf8');
+  const refreshSource = readFileSync(new URL('../src/app/useRefreshCompletedCanonicalSession.ts', import.meta.url), 'utf8');
 
   const startSync = executionSource.indexOf('if sync_session_at_start');
   const modelRun = executionSource.indexOf('let result = match turn', startSync);
@@ -243,11 +244,9 @@ test('background children publish their prompt and refresh catalog before stream
   const polling = desktopStateSource.indexOf('while (!nextTurn.completed)', backgroundRefresh);
   assert.ok(backgroundRefresh >= 0 && polling > backgroundRefresh, 'child catalog must refresh before polling');
 
-  const callback = foundationSource.slice(
-    foundationSource.indexOf('const refreshCompletedCanonicalSession'),
-    foundationSource.indexOf('\n\n  const {', foundationSource.indexOf('const refreshCompletedCanonicalSession')),
-  );
-  assert.ok(callback.indexOf('await refreshCanonicalState()') < callback.indexOf('hydrateCanonicalSessionPage('));
+  assert.match(foundationSource, /useRefreshCompletedCanonicalSession\(/);
+  const callback = refreshSource.slice(refreshSource.indexOf('return useCallback'));
+  assert.ok(callback.indexOf('await refreshState()') < callback.indexOf('hydrateSessionPage('));
 });
 
 test('cloud agent turns wait for their real terminal state without a synthetic timeout failure', () => {

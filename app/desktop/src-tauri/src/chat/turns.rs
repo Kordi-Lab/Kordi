@@ -95,6 +95,13 @@ pub(super) async fn active_turn_snapshots(
     Ok(snapshots)
 }
 
+#[tauri::command]
+pub async fn desktop_chat_active_turns(
+    manager: tauri::State<'_, DesktopChatManager>,
+) -> Result<Vec<DesktopChatTurnSnapshot>, String> {
+    active_turn_snapshots(manager.inner()).await
+}
+
 pub(super) async fn cancel_turn_by_id(
     manager: &DesktopChatManager,
     turn_id: &str,

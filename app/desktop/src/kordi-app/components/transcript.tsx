@@ -27,17 +27,17 @@ import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/feature
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import {
-  normalizedRelatedAgentSessionStatus,
   relatedAgentSessionsFromTools,
-  type RelatedAgentSession,
   type RelatedAgentSessionRunStatus,
 } from '@/features/chat/relatedAgentSessions';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
+import { ForwardedFromHeader } from './forwardedFromHeader';
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
+import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
 import { messageSnapshotKey } from './transcriptMessageSnapshot';
@@ -83,108 +83,6 @@ function cleanCompactionSummary(text: string) {
 function compactionTokenLabel(detail?: string) {
   const match = detail?.match(/Conversation compressed\s*•\s*([^•]+?)\s+tokens before/i);
   return match?.[1]?.trim() ? `${match[1].trim()} tokens before` : null;
-}
-
-function ActiveSheenTitle({ text }: { text: string }) {
-  return (
-    <span className="app-transcript-sheen-title" aria-label={text}>
-      {Array.from(text).map((character, index) => (
-        <span
-          key={`${character}-${index}`}
-          aria-hidden="true"
-          className="app-transcript-sheen-title-char"
-          style={{ '--char-index': index } as CSSProperties}
-        >
-          {character === ' ' ? '\u00A0' : character}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function ForwardedFromHeader({ senderLabel }: { senderLabel?: string | null }) {
-  const sender = senderLabel?.trim() || 'Unknown sender';
-
-  return (
-    <div
-      data-message-forwarded-header="true"
-      className="app-message-forwarded-header mb-1.5 flex min-w-0 items-center gap-1.5 text-[11px] font-medium leading-4"
-    >
-      <Forward className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span className="shrink-0">Forwarded from</span>
-      <span className="app-message-forwarded-header-name min-w-0 truncate font-semibold">{sender}</span>
-    </div>
-  );
-}
-
-const RELATED_AGENT_SESSION_STATUS: Record<RelatedAgentSessionRunStatus, { label: string; dot: string }> = {
-  running: { label: 'Running', dot: 'animate-pulse bg-sky-500 motion-reduce:animate-none' },
-  done: { label: 'Done', dot: 'bg-emerald-500' },
-  failed: { label: 'Failed', dot: 'bg-rose-500' },
-  stopped: { label: 'Stopped', dot: 'bg-slate-400' },
-};
-
-function RelatedAgentSessionLinks({
-  sessions,
-  agentName,
-  statusBySessionId,
-  onOpen,
-}: {
-  sessions: RelatedAgentSession[];
-  agentName?: string | null;
-  statusBySessionId?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
-  onOpen?: (sessionId: string) => void;
-}) {
-  if (sessions.length === 0) return null;
-
-  return (
-    <div
-      className="relative ml-4 mt-1 grid w-[30rem] max-w-[calc(100%-1rem)] gap-0.5"
-      data-related-agent-sessions="true"
-      data-related-agent-session-style="thread-preview"
-    >
-      <span className="pointer-events-none absolute -left-3 -top-3 h-7 w-3 rounded-bl-[9px] border-b border-l border-[color:var(--app-divider)]" aria-hidden="true" />
-      {sessions.map((session) => {
-        const status = statusBySessionId?.get(session.sessionId)
-          ?? normalizedRelatedAgentSessionStatus(session.status);
-        const statusPresentation = RELATED_AGENT_SESSION_STATUS[status];
-        return <button
-          key={session.sessionId}
-          type="button"
-          className="app-button-quiet group grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-1.5 py-1 text-left disabled:cursor-default disabled:opacity-60"
-          onClick={() => onOpen?.(session.sessionId)}
-          disabled={!onOpen}
-          aria-label={`Open background agent session: ${session.title}`}
-          data-related-agent-session-id={session.sessionId}
-        >
-          <span className="row-span-2 grid h-5 w-5 place-items-center self-center text-[color:var(--app-sidebar-accent)]" aria-hidden="true">
-            <Bot className="h-3.5 w-3.5" />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-[color:var(--utility-foreground)]" title={session.title}>
-            {session.title}
-          </span>
-          <span className="flex shrink-0 items-center gap-0.5 text-[10.5px] font-semibold leading-4 text-[color:var(--app-sidebar-accent)]">
-            Open
-            <ChevronRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-          </span>
-          <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-1.5 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
-            <span className="font-medium text-[color:var(--utility-foreground)]">{agentName?.trim() || 'Agent'}</span>
-            <span aria-hidden="true"> · </span>
-            <span className="truncate">Background session</span>
-            <span
-              className="ml-auto inline-flex shrink-0 items-center gap-1"
-              data-related-agent-session-status={status}
-              aria-label={`Status: ${statusPresentation.label}`}
-              aria-live="polite"
-            >
-              <span className={cn('h-1.5 w-1.5 rounded-full', statusPresentation.dot)} aria-hidden="true" />
-              {statusPresentation.label}
-            </span>
-          </span>
-        </button>;
-      })}
-    </div>
-  );
 }
 
 export function TypeBadge({ type, compact = false }: { type: ConversationType; compact?: boolean }) {

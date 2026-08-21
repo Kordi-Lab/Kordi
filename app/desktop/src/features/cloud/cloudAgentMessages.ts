@@ -1,5 +1,12 @@
-import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import type { CloudAccount, CloudMessage } from './authClient';
+import {
+  parseCloudAgentBackgroundSessions,
+  type CloudAgentBackgroundSession,
+} from './cloudAgentBackgroundSessions';
+import {
+  parseCloudAgentExecutionSnapshot,
+  type CloudAgentExecutionSnapshot,
+} from './cloudAgentExecutionSnapshot';
 import { cloudMessageActionAllowsAgentContext } from './cloudAgentTriggerPolicy';
 import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
@@ -28,91 +35,12 @@ export type CloudAgentResponseEnvelope = {
   executionClaimId?: string;
 };
 
-export type CloudAgentBackgroundSession = {
-  sessionId: string;
-  turnId?: string;
-  title: string;
-  status: string;
-};
-
-export type CloudAgentExecutionStep = {
-  id: string;
-  label: string;
-  state: 'pending' | 'running' | 'complete' | 'failed';
-};
-
-export type CloudAgentExecutionTool = {
-  id: string;
-  name: string;
-  status: string;
-  arguments: string;
-  liveOutput: string;
-  resultText?: string | null;
-  detail?: string | null;
-  toolLayer?: string | null;
-  isError: boolean;
-};
-
-export function cloudAgentBackgroundSessionsFromTurn(
-  turn: Pick<DesktopChatTurnSnapshot, 'tools'>,
-): CloudAgentBackgroundSession[] {
-  const sessions: CloudAgentBackgroundSession[] = [];
-  for (const tool of turn.tools) {
-    if (tool.isError || tool.name.trim().toLowerCase() !== 'task_operator') continue;
-    const line = tool.resultText
-      ?.split(/\r?\n/)
-      .find((candidate) => candidate.startsWith('Background session: '));
-    if (!line) continue;
-    try {
-      const parsed = JSON.parse(line.slice('Background session: '.length)) as Record<string, unknown>;
-      const sessionId = typeof parsed.sessionId === 'string' ? parsed.sessionId.trim().slice(0, 256) : '';
-      const title = typeof parsed.title === 'string' ? parsed.title.trim().slice(0, 80) : '';
-      if (!sessionId || !title || sessions.some((session) => session.sessionId === sessionId)) continue;
-      const turnId = typeof parsed.turnId === 'string' ? parsed.turnId.trim().slice(0, 256) : '';
-      sessions.push({
-        sessionId,
-        ...(turnId ? { turnId } : {}),
-        title,
-        status: typeof parsed.status === 'string' ? parsed.status.trim().slice(0, 32) || 'running' : 'running',
-      });
-      if (sessions.length >= 4) break;
-    } catch {
-      // Ignore malformed local tool output at the Cloud trust boundary.
-    }
-  }
-  return sessions;
-}
-
-export function cloudAgentPublicBackgroundToolsFromTurn(
-  turn: Pick<DesktopChatTurnSnapshot, 'tools'>,
-): CloudAgentExecutionTool[] {
-  return cloudAgentBackgroundSessionsFromTurn(turn).map((session) => ({
-    id: `background-session:${session.sessionId}`,
-    name: 'task_operator',
-    status: 'completed',
-    arguments: '{}',
-    liveOutput: '',
-    resultText: `Background session: ${JSON.stringify(session)}`,
-    detail: 'Started linked background session',
-    toolLayer: 'operator',
-    isError: false,
-  }));
-}
-
-/**
- * Owner-visible execution state shared only between devices signed in to the
- * same account. Credential-shaped values are redacted before publication.
- */
-export type CloudAgentExecutionSnapshot = {
-  phase: 'preparing' | 'analyzing' | 'using-tool' | 'writing' | 'complete' | 'failed' | 'cancelled';
-  summary: string;
-  steps: CloudAgentExecutionStep[];
-  thinkingText?: string;
-  tools?: CloudAgentExecutionTool[];
-  startedAtMs?: number;
-  updatedAtMs: number;
-  completed: boolean;
-};
+export type { CloudAgentBackgroundSession } from './cloudAgentBackgroundSessions';
+export type {
+  CloudAgentExecutionSnapshot,
+  CloudAgentExecutionStep,
+  CloudAgentExecutionTool,
+} from './cloudAgentExecutionSnapshot';
 
 export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
 
@@ -260,118 +188,6 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
   } catch {
     return null;
   }
-}
-
-function parseCloudAgentBackgroundSessions(value: unknown): CloudAgentBackgroundSession[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((candidate) => {
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
-    const record = candidate as Record<string, unknown>;
-    const sessionId = typeof record.sessionId === 'string' ? record.sessionId.trim().slice(0, 256) : '';
-    const title = typeof record.title === 'string' ? record.title.trim().slice(0, 80) : '';
-    if (!sessionId || !title) return [];
-    const turnId = typeof record.turnId === 'string' ? record.turnId.trim().slice(0, 256) : '';
-    return [{
-      sessionId,
-      ...(turnId ? { turnId } : {}),
-      title,
-      status: typeof record.status === 'string' ? record.status.trim().slice(0, 32) || 'running' : 'running',
-    }];
-  }).slice(0, 4);
-}
-
-function parseCloudAgentExecutionSnapshot(
-  value: unknown,
-): CloudAgentExecutionSnapshot | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  const phases: CloudAgentExecutionSnapshot['phase'][] = [
-    'preparing',
-    'analyzing',
-    'using-tool',
-    'writing',
-    'complete',
-    'failed',
-    'cancelled',
-  ];
-  const phase = typeof record.phase === 'string'
-    && phases.includes(record.phase as CloudAgentExecutionSnapshot['phase'])
-    ? record.phase as CloudAgentExecutionSnapshot['phase']
-    : null;
-  const summary = typeof record.summary === 'string'
-    ? record.summary.trim().slice(0, 160)
-    : '';
-  const updatedAtMs = typeof record.updatedAtMs === 'number'
-    && Number.isFinite(record.updatedAtMs)
-    ? record.updatedAtMs
-    : null;
-  if (!phase || !summary || updatedAtMs === null) return null;
-  const states: CloudAgentExecutionStep['state'][] = [
-    'pending',
-    'running',
-    'complete',
-    'failed',
-  ];
-  const steps = Array.isArray(record.steps)
-    ? record.steps.flatMap((step): CloudAgentExecutionStep[] => {
-      if (!step || typeof step !== 'object' || Array.isArray(step)) return [];
-      const item = step as Record<string, unknown>;
-      const id = typeof item.id === 'string' ? item.id.trim().slice(0, 160) : '';
-      const label = typeof item.label === 'string' ? item.label.trim().slice(0, 160) : '';
-      const state = typeof item.state === 'string'
-        && states.includes(item.state as CloudAgentExecutionStep['state'])
-        ? item.state as CloudAgentExecutionStep['state']
-        : null;
-      return id && label && state ? [{ id, label, state }] : [];
-    }).slice(0, 12)
-    : [];
-  const startedAtMs = typeof record.startedAtMs === 'number'
-    && Number.isFinite(record.startedAtMs)
-    ? record.startedAtMs
-    : undefined;
-  const thinkingText = typeof record.thinkingText === 'string'
-    ? record.thinkingText.slice(0, 64 * 1_024)
-    : undefined;
-  const tools = Array.isArray(record.tools)
-    ? record.tools.flatMap((tool): CloudAgentExecutionTool[] => {
-      if (!tool || typeof tool !== 'object' || Array.isArray(tool)) return [];
-      const item = tool as Record<string, unknown>;
-      const id = typeof item.id === 'string' ? item.id.trim().slice(0, 160) : '';
-      const name = typeof item.name === 'string' ? item.name.trim().slice(0, 160) : '';
-      const status = typeof item.status === 'string' ? item.status.trim().slice(0, 80) : '';
-      if (!id || !name || !status) return [];
-      const optionalText = (key: string, limit: number) => {
-        const value = item[key];
-        return typeof value === 'string'
-          ? value.slice(0, limit)
-          : undefined;
-      };
-      const resultText = optionalText('resultText', 64 * 1_024);
-      const detail = optionalText('detail', 8 * 1_024);
-      const toolLayer = optionalText('toolLayer', 160);
-      return [{
-        id,
-        name,
-        status,
-        arguments: optionalText('arguments', 64 * 1_024) ?? '',
-        liveOutput: optionalText('liveOutput', 64 * 1_024) ?? '',
-        ...(resultText !== undefined ? { resultText } : {}),
-        ...(detail !== undefined ? { detail } : {}),
-        ...(toolLayer !== undefined ? { toolLayer } : {}),
-        isError: item.isError === true,
-      }];
-    }).slice(-10)
-    : undefined;
-  return {
-    phase,
-    summary,
-    steps,
-    ...(thinkingText ? { thinkingText } : {}),
-    ...(tools?.length ? { tools } : {}),
-    ...(startedAtMs !== undefined ? { startedAtMs } : {}),
-    updatedAtMs,
-    completed: record.completed === true,
-  };
 }
 
 export function isTerminalCloudAgentResponse(body: string) {

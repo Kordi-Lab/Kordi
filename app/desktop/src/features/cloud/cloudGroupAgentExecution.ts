@@ -7,9 +7,9 @@ import {
 } from '@/features/performance/chatPerformance';
 import {
   cancelDesktopChatTurn,
-  startDesktopSharedChatMessage,
   upsertCanonicalMessageFast,
 } from '@/lib/desktop';
+import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
 import type {
   AppendCanonicalMessageRequest,
   DesktopChatTurnSnapshot,
@@ -17,10 +17,10 @@ import type {
 import { cloudGroupAgentCancelledNoticeRequest } from './cloudAgentCancellation';
 import {
   cloudAgentNoProviderNoticeText,
-  cloudAgentPublicBackgroundToolsFromTurn,
   isCloudAgentNoProviderConfiguredError,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
+import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
 } from './cloudAgentRuntime';
