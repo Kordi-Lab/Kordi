@@ -383,17 +383,20 @@ struct ConversationView: View {
                                 }
                             )
 
-                            if ConversationTimelineScrollBehavior.shouldShowLatestButton(
-                                isAtBottom: isAtBottom,
-                                messageCount: timeline.count
-                            ) {
-                                LatestMessageButton {
-                                    scrollToBottom(animated: true)
+                            Group {
+                                if ConversationTimelineScrollBehavior.shouldShowLatestButton(
+                                    isAtBottom: isAtBottom,
+                                    messageCount: timeline.count
+                                ) {
+                                    LatestMessageButton {
+                                        scrollToBottom(animated: true)
+                                    }
+                                    .padding(.trailing, 18)
+                                    .padding(.bottom, 16)
+                                    .transition(.scale(scale: 0.82).combined(with: .opacity))
                                 }
-                                .padding(.trailing, 18)
-                                .padding(.bottom, 16)
-                                .transition(.scale(scale: 0.82).combined(with: .opacity))
                             }
+                            .animation(.snappy(duration: 0.2), value: isAtBottom)
                         }
                         .onChange(of: viewport.size) { previousViewportSize, currentViewportSize in
                             let wasAtLatest = isAtBottom || trackedMessageID == bottomAnchorID
@@ -410,7 +413,6 @@ struct ConversationView: View {
                                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
                         }
-                        .animation(.snappy(duration: 0.2), value: isAtBottom)
                         .opacity(hasRevealedInitialViewport ? 1 : 0)
                         .allowsHitTesting(hasRevealedInitialViewport)
                         .accessibilityHidden(!hasRevealedInitialViewport)

@@ -613,6 +613,19 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
+    func testLatestButtonAnimationDoesNotWrapTranscript() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let animation = ".animation(.snappy(duration: 0.2), value: isAtBottom)"
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+
+        XCTAssertTrue(lines.contains("                            \(animation)"))
+        XCTAssertFalse(lines.contains("                        \(animation)"))
+    }
+
     func testConversationShowsLatestButtonWhenInitialScrollHasNotCompleted() {
         XCTAssertTrue(ConversationTimelineScrollBehavior.shouldShowLatestButton(
             isAtBottom: false,
