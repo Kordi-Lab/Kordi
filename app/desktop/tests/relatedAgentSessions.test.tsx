@@ -90,6 +90,10 @@ test('derives live and terminal background session states from child conversatio
     conversation('done', turn('complete', true, true)),
     conversation('failed', turn('failed', true, false)),
     conversation('stopped', turn('cancelled', true, false)),
+    {
+      ...conversation('interrupted', turn('complete', true, true)),
+      statusIndicator: { label: 'Failed', tone: 'error' },
+    },
   ]);
 
   assert.deepEqual(Object.fromEntries(statuses), {
@@ -97,5 +101,6 @@ test('derives live and terminal background session states from child conversatio
     done: 'done',
     failed: 'failed',
     stopped: 'stopped',
+    interrupted: 'failed',
   });
 });

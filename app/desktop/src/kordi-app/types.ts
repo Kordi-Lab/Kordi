@@ -797,6 +797,7 @@ export type DesktopChatSessionSummary = {
   updatedAtMs: number;
   messageCount: number;
   draft: boolean;
+  backgroundStatus?: string | null;
   forkedFromSessionId?: string | null;
   forkedFromMessageId?: string | null;
 };

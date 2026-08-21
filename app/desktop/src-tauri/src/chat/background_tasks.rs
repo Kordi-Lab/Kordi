@@ -10,12 +10,15 @@ use kordi_cli::desktop_runtime::{
     create_background_session, delete_session_forever, DesktopRuntimeProfile, DesktopRuntimeSession,
 };
 use kordi_cli::task_operator::{
-    managed_child_prompt_context, managed_child_tool_names, ChildAgentRunner, SpawnRequest,
-    SpawnedTask, WaitOutcome,
+    managed_child_prompt_context, managed_child_tool_names, BackgroundSessionInspection,
+    ChildAgentRunner, SpawnRequest, SpawnedTask, WaitOutcome,
 };
 use tokio::sync::Mutex;
 
-use super::{cancel_turn_by_id, message_execution, turn_snapshot_by_id, DesktopChatManager};
+use super::{
+    cancel_turn_by_id, message_execution, session_has_running_turn, turn_snapshot_by_id,
+    DesktopChatManager,
+};
 
 #[derive(Clone, Debug)]
 struct ManagedTask {
@@ -203,6 +206,15 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
             .await
             .map_err(anyhow::Error::msg)?;
         Ok(())
+    }
+
+    async fn inspect(&self, session_id: &str) -> Result<Option<BackgroundSessionInspection>> {
+        Ok(session_has_running_turn(&self.manager, session_id)
+            .await
+            .then(|| BackgroundSessionInspection {
+                status: "running".to_string(),
+                summary: None,
+            }))
     }
 }
 

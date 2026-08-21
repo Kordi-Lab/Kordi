@@ -9,6 +9,7 @@ fn test_summary(title: &str, message_count: usize, draft: bool) -> DesktopChatSe
         updated_at_ms: 0,
         message_count,
         draft,
+        background_status: None,
         forked_from_session_id: None,
         forked_from_message_id: None,
     }

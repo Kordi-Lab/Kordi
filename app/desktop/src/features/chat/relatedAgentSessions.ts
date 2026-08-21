@@ -37,10 +37,10 @@ function latestConversationTurn(conversation: Conversation) {
 function conversationRunStatus(conversation: Conversation): RelatedAgentSessionRunStatus | null {
   if (conversation.previewLiveTurn) return runStatusFromTurn(conversation.previewLiveTurn);
   if (conversation.statusIndicator?.live || conversation.statusIndicator?.tone === 'running') return 'running';
-  const latestTurn = latestConversationTurn(conversation);
-  if (latestTurn) return runStatusFromTurn(latestTurn);
   if (conversation.statusIndicator?.tone === 'error') return 'failed';
   if (conversation.statusIndicator?.tone === 'stopped') return 'stopped';
+  const latestTurn = latestConversationTurn(conversation);
+  if (latestTurn) return runStatusFromTurn(latestTurn);
   return null;
 }
 

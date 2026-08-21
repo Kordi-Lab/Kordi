@@ -11,6 +11,7 @@ pub enum TaskOperatorRequest {
     Message(TaskMessageRequest),
     Wait(TaskWaitRequest),
     List(TaskListRequest),
+    Inspect(TaskInspectRequest),
     Close(TaskCloseRequest),
 }
 
@@ -23,6 +24,7 @@ pub enum TaskOperatorRuntimeRequest {
     Message(TaskMessageRequest),
     Wait(TaskWaitRequest),
     List(TaskListRequest),
+    Inspect(TaskInspectRequest),
     Close(TaskCloseRequest),
 }
 
@@ -35,6 +37,7 @@ impl TaskOperatorRequest {
             Self::Message(request) => Some(TaskOperatorRuntimeRequest::Message(request)),
             Self::Wait(request) => Some(TaskOperatorRuntimeRequest::Wait(request)),
             Self::List(request) => Some(TaskOperatorRuntimeRequest::List(request)),
+            Self::Inspect(request) => Some(TaskOperatorRuntimeRequest::Inspect(request)),
             Self::Close(request) => Some(TaskOperatorRuntimeRequest::Close(request)),
             Self::Manifest(_) | Self::Estimate(_) => None,
         }
@@ -110,6 +113,12 @@ pub struct TaskWaitRequest {
 #[serde(rename_all = "camelCase")]
 pub struct TaskListRequest {
     pub path_prefix: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskInspectRequest {
+    pub session_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -309,6 +318,15 @@ mod tests {
         .expect("list request should deserialize");
         assert!(
             matches!(list, TaskOperatorRequest::List(request) if request.path_prefix.as_deref() == Some("/root"))
+        );
+
+        let inspect: TaskOperatorRequest = serde_json::from_value(serde_json::json!({
+            "action": "inspect",
+            "sessionId": "session-background"
+        }))
+        .expect("inspect request should deserialize");
+        assert!(
+            matches!(inspect, TaskOperatorRequest::Inspect(request) if request.session_id == "session-background")
         );
 
         let close: TaskOperatorRequest = serde_json::from_value(serde_json::json!({

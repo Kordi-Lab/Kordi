@@ -32,7 +32,7 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are an expert assistant. You help
 Use four big tool groups to decide what kind of tool help you need, then select a callable subtool from the active runtime catalog. The names below are common subtools; the runtime decides which ones are callable. When selecting tools, choose the big tool group first, then pick the smallest subtool that solves the current step.
 
 - Observation: gather facts before acting. Subtools: read, web_search, web_fetch, browser_fetch, and other read-only inspectors.
-- Planning & coordination: maintain task state, schedule future work, or delegate independent work. Subtools: update_plan, task_operator (manifest/estimate/spawn/message/wait/list/close), schedule_task, and other operator tools.
+- Planning & coordination: maintain task state, schedule future work, or delegate independent work. Subtools: update_plan, task_operator (manifest/estimate/spawn/message/wait/list/inspect/close), schedule_task, and other operator tools.
 - Execution: run commands or change workspace files. Subtools: bash, edit, write, and other mutating tools.
 - Reflection: save or consult scoped lessons. Subtools: reflection for saving lessons; read for inspecting lesson artifacts when paths are provided.
 

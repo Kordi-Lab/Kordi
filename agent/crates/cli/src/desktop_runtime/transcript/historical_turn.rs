@@ -12,6 +12,7 @@ pub(super) struct HistoricalTurnBuilder {
     pub(super) error_message: Option<String>,
     pub(super) failed: bool,
     pub(super) cancelled: bool,
+    pub(super) awaiting_final_response: bool,
     pub(super) timestamp_ms: i64,
     /// Last entry id observed while building this turn. Used as the
     /// fork target when the user clicks the aggregated assistant
@@ -46,7 +47,11 @@ pub(super) fn flush_historical_turn(
 
     let assistant_text = turn.assistant_text_parts.join("\n\n");
     let thinking_text = turn.thinking_parts.join("\n\n");
-    let visible_text = if assistant_text.trim().is_empty() && turn.failed {
+    let interrupted = !turn.cancelled && turn.awaiting_final_response;
+    let failed = turn.failed || interrupted;
+    let visible_text = if interrupted {
+        "Background task interrupted before producing a final result.".to_string()
+    } else if assistant_text.trim().is_empty() && failed {
         turn.error_message.clone().unwrap_or_default()
     } else {
         assistant_text
@@ -58,7 +63,7 @@ pub(super) fn flush_historical_turn(
         detail: turn.detail,
         time_label: format_message_timestamp(turn.timestamp_ms),
         timestamp_ms: turn.timestamp_ms,
-        failed: turn.failed,
+        failed,
         cancelled: turn.cancelled,
         attachments: Vec::new(),
         thinking_text: (!thinking_text.trim().is_empty()).then_some(thinking_text),

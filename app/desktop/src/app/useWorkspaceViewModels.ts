@@ -85,6 +85,19 @@ import {
 
 const EMPTY_DESKTOP_SESSION_IDS: ReadonlySet<string> = new Set();
 
+function backgroundSessionStatusIndicator(status?: string | null): SessionStatusIndicator | undefined {
+  switch (status?.trim().toLowerCase()) {
+    case 'completed':
+      return { label: 'Done', tone: 'ready' };
+    case 'failed':
+      return { label: 'Failed', tone: 'error' };
+    case 'stopped':
+      return { label: 'Stopped', tone: 'stopped' };
+    default:
+      return undefined;
+  }
+}
+
 function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
   const id = identityId?.trim();
   if (!state || !id) return null;
@@ -318,6 +331,9 @@ export function useWorkspaceViewModels({
         unreadCount,
         showBackgroundActivity: !isVisibleSession,
         liveTurn: desktopLiveTurnsForViewModel[session.id],
+        existingIndicator: backgroundSessionStatusIndicator(
+          'backgroundStatus' in session ? session.backgroundStatus : null,
+        ),
       });
 
       const outreachRecords = outreachThreadsByParentSession.get(session.id) ?? [];
