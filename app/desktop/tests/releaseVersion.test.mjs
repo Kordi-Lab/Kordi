@@ -39,6 +39,7 @@ test('desktop release metadata is set for V0.0.1.beta14', () => {
   assert.equal(packageLock.packages[''].version, appVersion);
   assert.equal(tauri.version, appVersion);
   assert.equal(tauri.productName, 'Kordi');
+  assert.equal(tauri.bundle.macOS.minimumSystemVersion, '15.0');
   assert.equal(cloudTauri.productName, 'Kordi');
   assert.match(cargoToml, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.14"/);
   assert.match(cargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.14"/);

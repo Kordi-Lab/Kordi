@@ -16,6 +16,7 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ### Changed
 
+- Raised the Kordi Desktop minimum system requirement to macOS 15. ([#1102])
 - Promoted Agents and Account to root iPhone destinations, moved secondary
   destinations into full-page navigation, and refined compact floating menus
   and agent model selection. ([#1080], [#1081])
@@ -365,3 +366,4 @@ This release is the comparison baseline for beta.8. See the
 [#1081]: https://github.com/Kordi-Lab/Kordi/pull/1081
 [#1082]: https://github.com/Kordi-Lab/Kordi/pull/1082
 [#1084]: https://github.com/Kordi-Lab/Kordi/pull/1084
+[#1102]: https://github.com/Kordi-Lab/Kordi/issues/1102

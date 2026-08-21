@@ -147,9 +147,9 @@ Do not commit local cache paths to the repository.
 ## macOS linker compatibility
 
 The beta.9 toolchain produced malformed build-time Rust proc-macro dylibs when
-they were linked with a macOS 12 minimum on the current linker. The shipped app
-still targets macOS 12; lowering the application deployment target is not an
-acceptable workaround.
+they were linked with the former macOS 12 minimum on the current linker.
+Beta.14 and later target macOS 15; lowering the application deployment target
+is not an acceptable workaround.
 
 If that failure recurs:
 
@@ -160,7 +160,7 @@ If that failure recurs:
    dylibs, with macOS 11 as their linker minimum.
 4. Keep the application deployment target unchanged.
 5. Verify the final app executable and sidecars still report the intended
-   macOS 12 minimum.
+   macOS 15 minimum.
 
 Do not apply this workaround proactively or globally. Record the exact linker
 command and toolchain with the release artifacts if it is needed.
