@@ -218,6 +218,13 @@ test('cloud direct local-agent execution does not wait for remote response guard
   assert.match(effect, /response publish failed/);
 });
 
+test('cloud agent turns wait for their real terminal state without a synthetic timeout failure', () => {
+  const source = readFileSync(new URL('../src/features/cloud/cloudAgentLocalExecution.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /while \(!latest\.completed\)/);
+  assert.doesNotMatch(source, /CLOUD_AGENT_TURN_TIMEOUT|cancelDesktopChatTurn|took too long to finish/);
+});
+
 test('cloud direct local-agent completed fallback timestamp is stable across renders', () => {
   const request: CloudMessage = {
     ...message,

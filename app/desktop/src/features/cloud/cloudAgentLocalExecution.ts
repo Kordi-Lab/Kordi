@@ -1,5 +1,4 @@
 import {
-  cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
 } from '@/lib/desktop';
 import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
@@ -24,10 +23,6 @@ import {
 } from './cloudSessionActivity';
 
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
-export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
-export const CLOUD_AGENT_TURN_CANCEL_GRACE_MS = 5_000;
-export const CLOUD_AGENT_TURN_TIMEOUT_NOTICE =
-  'Kordi took too long to finish this reply. Try again.';
 
 export function cloudAgentLocalFailureMessage(error: unknown): string {
   if (isCloudAgentNoProviderConfiguredError(error)) {
@@ -155,34 +150,11 @@ export async function waitForCloudAgentTurn(
   turnId: string,
   onSnapshot?: (snapshot: DesktopChatTurnSnapshot) => void,
 ) {
-  const deadline = Date.now() + CLOUD_AGENT_TURN_TIMEOUT_MS;
   let latest = await fetchDesktopChatTurnState(turnId);
   onSnapshot?.(latest);
-  while (!latest.completed && Date.now() < deadline) {
+  while (!latest.completed) {
     await wait(CLOUD_AGENT_TURN_POLL_MS);
     latest = await fetchDesktopChatTurnState(turnId);
-    onSnapshot?.(latest);
-  }
-  const timedOut = !latest.completed;
-  if (timedOut) {
-    await cancelDesktopChatTurn(turnId).catch(() => undefined);
-    const cancelDeadline = Date.now() + CLOUD_AGENT_TURN_CANCEL_GRACE_MS;
-    while (!latest.completed && Date.now() < cancelDeadline) {
-      await wait(CLOUD_AGENT_TURN_POLL_MS);
-      latest = await fetchDesktopChatTurnState(turnId);
-      onSnapshot?.(latest);
-    }
-  }
-  if (timedOut) {
-    latest = {
-      ...latest,
-      status: 'failed',
-      message: CLOUD_AGENT_TURN_TIMEOUT_NOTICE,
-      completed: true,
-      succeeded: false,
-      completedAtMs: Date.now(),
-      error: CLOUD_AGENT_TURN_TIMEOUT_NOTICE,
-    };
     onSnapshot?.(latest);
   }
   return latest;
