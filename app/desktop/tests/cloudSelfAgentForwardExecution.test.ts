@@ -68,6 +68,14 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
       deliveryState: 'complete',
     },
   ];
+  const execution: CloudAgentExecutionSnapshot = {
+    phase: 'preparing',
+    summary: 'Preparing the response',
+    steps: [],
+    startedAtMs: 1_000,
+    updatedAtMs: 1_001,
+    completed: false,
+  };
   const publish = async (ledger: CloudSelfAgentSyncLedger) => {
     await publishCloudSelfAgentOperations({
       accountId: 'acct_me',
@@ -76,6 +84,9 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
       mergeMessage: () => undefined,
       operations,
       saveLedger: () => undefined,
+      executionSnapshotForOperation: (operation) => (
+        operation.role === 'user' ? execution : undefined
+      ),
       token: 'token',
     });
   };
@@ -94,6 +105,7 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
     .map((message) => parseCloudAgentResponse(message.body))
     .find((response) => response?.deliveryState === 'complete');
   assert.equal(processing?.requestId, 'cloud-1');
+  assert.deepEqual(processing?.execution, execution);
   assert.equal(completed?.requestId, processing?.requestId);
   assert.equal(completed?.text, 'one answer');
   assert.equal(
