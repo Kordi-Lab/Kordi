@@ -202,7 +202,7 @@ test('cloud direct local-agent execution does not wait for remote response guard
   const effectEnd = source.indexOf('\n  }, [', effectStart);
   assert.ok(effectStart >= 0 && effectEnd > effectStart, 'expected direct Cloud agent effect');
   const effect = source.slice(effectStart, effectEnd);
-  const startTurnIndex = effect.indexOf('const startedTurn = await startDesktopChatMessage');
+  const startTurnIndex = effect.indexOf('const startedTurn = await startDesktopSharedChatMessage');
   const awaitGuardIndex = effect.indexOf('await Promise.all([', startTurnIndex);
   const finalGuardIndex = effect.indexOf('cloudAgentResponsePublicationIsBlocked({', awaitGuardIndex);
   const activityPublishIndex = effect.indexOf('await publishDerivedCloudSessionActivity', startTurnIndex);
@@ -216,6 +216,16 @@ test('cloud direct local-agent execution does not wait for remote response guard
   assert.doesNotMatch(effect.slice(0, startTurnIndex), /await client\.listMessages|await cloudFallbackRunAlreadyOwnsRequest/);
   assert.doesNotMatch(effect, /processedCloudAgentMentionIdsRef\.current\.delete\(message\.messageId\)/);
   assert.match(effect, /response publish failed/);
+});
+
+test('shared direct and group requests route before reserving the parent runtime', () => {
+  const directSource = readFileSync(new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url), 'utf8');
+  const groupSource = readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
+  const desktopSource = readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
+
+  assert.match(directSource, /startDesktopSharedChatMessage\(\s*message\.messageId,/);
+  assert.match(groupSource, /startDesktopSharedChatMessage\(\s*message\.id,/);
+  assert.match(desktopSource, /desktop_chat_start_shared_message/);
 });
 
 test('cloud agent turns wait for their real terminal state without a synthetic timeout failure', () => {

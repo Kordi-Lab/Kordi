@@ -289,6 +289,7 @@ export async function applyCloudGroupMessageControl({
         || (senderIsAgent ? 'agent-turn' : 'text'),
       contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : message.text,
       content: senderIsAgent ? {
+        ...structuredContent,
         sender: message.senderDisplayName?.trim() || 'Kordi',
         timestampMs: message.createdAtMs,
         deliveryState: agentDeliveryState,

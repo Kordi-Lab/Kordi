@@ -58,6 +58,7 @@ import {
   parseCloudAgentCancel,
   parseCloudAgentResponse,
   promptTextForCloudAgentMention,
+  type CloudAgentResponseEnvelope,
 } from './cloudAgentMessages';
 import { cloudAgentExecutionTurnForMessage } from './cloudAgentExecutionTrace';
 import {
@@ -194,6 +195,10 @@ export function cloudMessageToCollaborationMessage(
     message,
     agentResponse,
   );
+  const syncedBackgroundTurn = cloudAgentBackgroundTurnForMessage(
+    message,
+    agentResponse,
+  );
   const displayBody = cloudDirectMessageDisplayText(message.body);
   const agentRequestId = !agentResponse && cloudMessageActionAllowsAgentTrigger(directMessageAction) && (
     Boolean(cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body))
@@ -231,7 +236,45 @@ export function cloudMessageToCollaborationMessage(
     localTurn: agentResponse?.requestId
       ? options.localAgentTurnsByRequestId?.[agentResponse.requestId]
         ?? syncedExecutionTurn
+        ?? syncedBackgroundTurn
       : null,
+  };
+}
+
+function cloudAgentBackgroundTurnForMessage(
+  message: CloudMessage,
+  response: CloudAgentResponseEnvelope | null,
+): DesktopChatTurnSnapshot | null {
+  if (!response?.backgroundSessions?.length) return null;
+  const completed = response.deliveryState !== 'processing';
+  const failed = response.deliveryState === 'failed';
+  const cancelled = response.deliveryState === 'cancelled';
+  const timestampMs = Date.parse(message.createdAt) || Date.now();
+  return {
+    id: `cloud-agent-background:${message.messageId}`,
+    sessionId: message.sessionId ?? `cloud-agent:${response.requestId}`,
+    prompt: '',
+    status: cancelled ? 'cancelled' : failed ? 'failed' : completed ? 'succeeded' : 'processing',
+    message: response.text,
+    assistantText: response.text,
+    thinkingText: '',
+    tools: response.backgroundSessions.map((session) => ({
+      id: `background-session:${session.sessionId}`,
+      name: 'task_operator',
+      status: 'completed',
+      arguments: '{}',
+      liveOutput: '',
+      resultText: `Background session: ${JSON.stringify(session)}`,
+      detail: 'Started linked background session',
+      isError: false,
+      toolLayer: 'operator',
+    })),
+    completed,
+    succeeded: completed && !failed && !cancelled,
+    startedAtMs: timestampMs,
+    completedAtMs: completed ? timestampMs : null,
+    error: failed ? response.text : null,
+    transcriptRefreshRequired: false,
   };
 }
 

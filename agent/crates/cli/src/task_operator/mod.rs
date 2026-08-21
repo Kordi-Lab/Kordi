@@ -49,6 +49,8 @@ pub struct SpawnRequest {
     pub fork_turns: Option<String>,
     pub write_scope: Vec<String>,
     pub cwd: PathBuf,
+    pub parent_message_id: Option<String>,
+    pub attachment_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +89,11 @@ impl SpawnedTask {
                 status: "running".to_string(),
             }),
         }
+    }
+
+    #[cfg_attr(feature = "cli", allow(dead_code))]
+    pub fn background_session(&self) -> Option<&TaskOperatorBackgroundSession> {
+        self.background_session.as_ref()
     }
 }
 
@@ -325,6 +332,8 @@ impl TaskOperatorState {
             fork_turns: request.fork_turns,
             write_scope: request.write_scope,
             cwd: self.cwd.clone(),
+            parent_message_id: None,
+            attachment_paths: Vec::new(),
         };
 
         let spawned = match self.runner.spawn(spawn_request).await {

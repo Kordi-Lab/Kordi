@@ -635,6 +635,35 @@ pub async fn desktop_chat_start_message(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments, reason = "stable top-level Tauri IPC keys")]
+pub async fn desktop_chat_start_shared_message(
+    manager: State<'_, DesktopChatManager>,
+    request_id: String,
+    session_id: String,
+    text: String,
+    attachment_paths: Option<Vec<String>>,
+    route: Option<DesktopChatMessageRoute>,
+    context_messages: Option<Vec<DesktopChatContextMessage>>,
+    visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
+    scheduled_task_session_id: Option<String>,
+) -> Result<DesktopChatTurnSnapshot, String> {
+    message_execution::start_shared_message(
+        manager.inner(),
+        request_id,
+        message_execution::StartMessageInput {
+            session_id,
+            text,
+            attachment_paths,
+            route,
+            context_messages,
+            visible_task_records,
+            scheduled_task_session_id,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_chat_run_skill_command(
     manager: State<'_, DesktopChatManager>,
     session_id: String,
