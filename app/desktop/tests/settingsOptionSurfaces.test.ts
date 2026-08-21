@@ -64,6 +64,17 @@ test('setting controls keep containment while theme choices only fill on hover',
   assert.match(controls, /type="button" className="app-input-shell app-settings-control/);
 });
 
+test('notification settings keep switches contained in a grouped responsive column', () => {
+  const notifications = readSource('features/notifications/NotificationSettingsPanel.tsx');
+
+  assert.match(notifications, /max-w-\[620px\]/);
+  assert.match(notifications, /border-y border-\[color:var\(--app-divider\)\]/);
+  assert.match(notifications, /divide-y divide-\[color:var\(--app-divider\)\]/);
+  assert.match(notifications, /absolute left-0\.5 top-0\.5/);
+  assert.match(notifications, /enabled \? 'translate-x-\[18px\]' : 'translate-x-0'/);
+  assert.match(notifications, /focus-visible:ring-\[var\(--app-quiet-control-focus-ring\)\]/);
+});
+
 test('dense provider feedback follows the pointer without a transition trail', () => {
   const shellCss = readDesktopShellCss();
 

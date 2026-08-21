@@ -67,16 +67,16 @@ function PreferenceToggle({
       aria-label={label}
       onClick={() => onChange(!enabled)}
       className={cn(
-        'relative h-6 w-10 shrink-0 rounded-full border transition-colors',
+        'relative h-6 w-10 shrink-0 rounded-full border outline-none transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)] focus-visible:ring-offset-2',
         enabled
-          ? 'border-blue-400/40 bg-blue-500/80'
-          : 'border-white/10 bg-white/10',
+          ? 'border-[color:var(--app-sidebar-accent)] bg-[color:var(--app-sidebar-accent)]'
+          : 'border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] hover:bg-[color:var(--app-control-hover)]',
       )}
     >
       <span
         className={cn(
-          'absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform',
-          enabled ? 'translate-x-[18px]' : 'translate-x-0.5',
+          'absolute left-0.5 top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none',
+          enabled ? 'translate-x-[18px]' : 'translate-x-0',
         )}
       />
     </button>
@@ -137,8 +137,8 @@ export function NotificationSettingsPanel({ isNativeShell }: { isNativeShell: bo
         : 'Permission not requested';
 
   return (
-    <div className="app-settings-option-list max-w-[680px]">
-      <div className="app-settings-option-row flex items-center justify-between gap-5 px-1 py-3.5">
+    <div className="max-w-[620px]">
+      <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-y border-[color:var(--app-divider)] px-2 py-3.5">
         <div className="min-w-0">
           <div className="text-[13px] font-medium text-white">System permission</div>
           <div className="mt-1 text-[12px] leading-5 text-slate-400">{permissionLabel}</div>
@@ -154,24 +154,31 @@ export function NotificationSettingsPanel({ isNativeShell }: { isNativeShell: bo
           </Button>
         ) : null}
       </div>
-      {preferenceRows
-        .filter((row) => !row.nativeOnly || isNativeShell)
-        .map((row) => (
-          <div
-            key={row.key}
-            className="app-settings-option-row flex items-center justify-between gap-5 px-1 py-3.5"
-          >
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium text-white">{row.label}</div>
-              <div className="mt-1 text-[12px] leading-5 text-slate-400">{row.description}</div>
-            </div>
-            <PreferenceToggle
-              enabled={preferences[row.key]}
-              label={row.label}
-              onChange={(enabled) => setNotificationPreference(row.key, enabled)}
-            />
-          </div>
-        ))}
+      <section className="mt-6" aria-labelledby="notification-preferences-heading">
+        <h2 id="notification-preferences-heading" className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+          Preferences
+        </h2>
+        <div className="mt-2 divide-y divide-[color:var(--app-divider)] border-y border-[color:var(--app-divider)]">
+          {preferenceRows
+            .filter((row) => !row.nativeOnly || isNativeShell)
+            .map((row) => (
+              <div
+                key={row.key}
+                className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-2 py-3.5"
+              >
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium text-white">{row.label}</div>
+                  <div className="mt-1 text-[12px] leading-5 text-slate-400">{row.description}</div>
+                </div>
+                <PreferenceToggle
+                  enabled={preferences[row.key]}
+                  label={row.label}
+                  onChange={(enabled) => setNotificationPreference(row.key, enabled)}
+                />
+              </div>
+            ))}
+        </div>
+      </section>
     </div>
   );
 }
