@@ -615,7 +615,7 @@ pub(crate) fn local_agent_session_prompt_context(
     };
     let conn = open_db()?;
     let Some(session) = select_session(&conn, session_id)? else {
-        return Ok(None);
+        return Ok(Some(SHARED_SESSION_BACKGROUND_WORK_POLICY.to_string()));
     };
     let participants = session_participant_rows(&conn, session_id)?;
 
@@ -704,7 +704,7 @@ mod task_record_tests {
 
 #[cfg(test)]
 mod background_routing_tests {
-    use super::SHARED_SESSION_BACKGROUND_WORK_POLICY;
+    use super::{local_agent_session_prompt_context, SHARED_SESSION_BACKGROUND_WORK_POLICY};
 
     #[test]
     fn shared_session_policy_routes_by_duration_and_coordination_need() {
@@ -726,5 +726,18 @@ mod background_routing_tests {
             SHARED_SESSION_BACKGROUND_WORK_POLICY.contains("Do not infer linked-session status")
         );
         assert!(SHARED_SESSION_BACKGROUND_WORK_POLICY.contains("Keep brief answers"));
+    }
+
+    #[test]
+    fn shared_session_policy_survives_an_unmaterialized_cloud_session() {
+        let _storage = crate::test_support::ScopedKordiStorageRoot::new(
+            "canonical-background-routing-missing-session",
+        );
+        let context =
+            local_agent_session_prompt_context(Some("session:direct-person:missing-a:missing-b"))
+                .expect("prompt context")
+                .expect("shared session policy");
+
+        assert_eq!(context, SHARED_SESSION_BACKGROUND_WORK_POLICY);
     }
 }
