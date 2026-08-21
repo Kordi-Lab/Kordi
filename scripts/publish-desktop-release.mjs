@@ -4,7 +4,6 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import {
-  PUBLIC_RELEASE_ORIGINS,
   PRODUCT_ORIGIN,
   publishDesktopRelease,
   redactPublisherText,
@@ -135,8 +134,8 @@ export function createPublicHttpAdapter({ fetchImpl = globalThis.fetch } = {}) {
   if (typeof fetchImpl !== 'function') throw new Error('A Fetch implementation is required');
   async function request(url, method) {
     const parsed = new URL(url);
-    if (!PUBLIC_RELEASE_ORIGINS.includes(parsed.origin)) {
-      throw new Error(`Public verification URL must use ${PRODUCT_ORIGIN} or its legacy release origin`);
+    if (parsed.origin !== PRODUCT_ORIGIN) {
+      throw new Error(`Public verification URL must use ${PRODUCT_ORIGIN}`);
     }
     const response = await fetchImpl(parsed, {
       method,

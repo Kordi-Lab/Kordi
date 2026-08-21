@@ -21,7 +21,7 @@ test('development cloud API requires an explicit non-production origin', () => {
   );
   for (const productionOrigin of [
     'https://kordi.ai:443/',
-    'http://coordinar.io',
+    'http://kordi.ai',
     'https://kordi.ai./',
   ]) {
     assert.throws(
@@ -68,15 +68,6 @@ test('operator development requires both the operator profile and production ack
       VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
     }),
     'https://kordi.ai',
-  );
-  assert.equal(
-    cloudApiBaseUrl({
-      ...baseEnv,
-      VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
-      VITE_KORDI_DEV_PROFILE: 'operator',
-      VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
-    }),
-    'https://coordinar.io',
   );
   assert.throws(
     () => cloudApiBaseUrl({
@@ -136,7 +127,7 @@ test('cloud WebSocket URL derives from the cloud API origin', () => {
 
 test('reliable chat WebSocket uses a single-use chat ticket instead of an access token', () => {
   assert.equal(
-    chatSyncWebSocketUrl('kordi_rt_ticket', 'https://coordinar.io'),
-    'wss://coordinar.io/v2/chat/realtime?ticket=kordi_rt_ticket',
+    chatSyncWebSocketUrl('kordi_rt_ticket', 'https://kordi.ai'),
+    'wss://kordi.ai/v2/chat/realtime?ticket=kordi_rt_ticket',
   );
 });

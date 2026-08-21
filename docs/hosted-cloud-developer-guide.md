@@ -131,7 +131,7 @@ KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
   pnpm dev:cloud:operator -- "https://kordi.ai"
 ```
 
-`coordinar.io` is retained only as a compatibility route for already-released clients. New operator validation and desktop previews use the canonical `https://kordi.ai` origin.
+`https://kordi.ai` is the sole product origin for operator validation and desktop previews.
 
 The launcher fails closed unless all of these are true:
 

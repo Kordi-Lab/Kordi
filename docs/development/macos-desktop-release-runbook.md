@@ -199,9 +199,9 @@ their prerequisites are known:
 8. Publish immutable objects and the `acceptance` pointer.
 9. Verify the public manifest, updater archive, direct DMG, and current-version
    HTTP `204` behavior against the locally recorded metadata.
-10. Only now update any legacy/manual-release metadata to the new immutable
-    artifact. Verify every advertised URL returns the recorded bytes through
-    both product origins.
+10. Only now update manual-release metadata to the new immutable artifact.
+    Verify every advertised URL returns the recorded bytes through the product
+    origin.
 11. Rehearse rollback, restore the exact pointer bytes and `pubDate`, and repeat
     public verification.
 12. Create the annotated Git tag and GitHub prerelease from the same commit and

@@ -6,7 +6,7 @@
 
 Deliver Kordi Desktop `0.0.1-beta.6` to invited external macOS arm64 testers through the existing in-app updater without requiring an Apple Developer ID certificate or notarization during this preview stage.
 
-Each tester installs an acceptance-only `0.0.1-beta.5.1` bootstrap DMG once, approves its first launch through macOS **System Settings > Privacy & Security > Open Anyway**, and then confirms the beta.6 update inside Kordi. Kordi must download the update through `coordinar.io`, verify the Tauri updater signature, install it, and attempt to relaunch automatically.
+Each tester installs an acceptance-only `0.0.1-beta.5.1` bootstrap DMG once, approves its first launch through macOS **System Settings > Privacy & Security > Open Anyway**, and then confirms the beta.6 update inside Kordi. Kordi must download the update through `kordi.ai`, verify the Tauri updater signature, install it, and attempt to relaunch automatically.
 
 This is an explicit non-production preview. The normal `beta` channel, stable manual-download pointer, existing beta users, and production Developer ID verification remain unchanged.
 
@@ -49,7 +49,7 @@ The normal Tauri configurations remain production-safe and continue to use the p
 
 Two small acceptance overlays make the non-production differences explicit:
 
-- A beta.6 acceptance overlay sets `bundle.macOS.signingIdentity` to `-` and changes the sole updater endpoint to `https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}`.
+- A beta.6 acceptance overlay sets `bundle.macOS.signingIdentity` to `-` and changes the sole updater endpoint to `https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}`.
 - A beta.5.1 bootstrap overlay makes the same changes and overrides the app version to `0.0.1-beta.5.1`.
 
 Dedicated package scripts build the acceptance target and bootstrap. They still require `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, because updater archives remain cryptographically signed. They do not require an Apple certificate, Apple credentials, notarization credentials, or a local Developer ID identity.
@@ -92,7 +92,7 @@ Enrollment is deliberately manual and opt-in:
 2. The tester drags Kordi to Applications and uses **Open Anyway** for the first launch.
 3. Kordi quietly checks the acceptance endpoint and shows beta.6 as available.
 4. The tester confirms once.
-5. Tauri downloads the beta.6 archive from `coordinar.io`, verifies its minisign signature, installs it, and attempts to relaunch.
+5. Tauri downloads the beta.6 archive from `kordi.ai`, verifies its minisign signature, installs it, and attempts to relaunch.
 6. On relaunch, Kordi reports `0.0.1-beta.6` and continues following only acceptance.
 
 Possession of the bootstrap is the enrollment mechanism; the acceptance endpoint is not an authorization boundary. Preview artifacts contain no credentials or private user data. Adding tester accounts, per-user updater tokens, or a general release-channel selector is outside this stage.
@@ -132,7 +132,7 @@ All behavior changes follow red-green test-driven development.
 ### Desktop tests
 
 - Update status text says `verified update` and does not imply Apple notarization.
-- A valid beta version produces only a `coordinar.io` immutable manual fallback URL.
+- A valid beta version produces only a `kordi.ai` immutable manual fallback URL.
 - Invalid or attacker-controlled version text produces no manual fallback link.
 - Existing available, progress, install, retry, and relaunch contracts remain passing.
 

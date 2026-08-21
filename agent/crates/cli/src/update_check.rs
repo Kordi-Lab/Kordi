@@ -439,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn load_config_uses_hosted_coordinar_release_endpoint_by_default() {
+    fn load_config_uses_hosted_release_endpoint_by_default() {
         let _guard = env_lock().lock().unwrap();
         let home = tempfile::tempdir().unwrap();
         let cwd = tempfile::tempdir().unwrap();

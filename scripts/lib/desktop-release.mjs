@@ -27,7 +27,6 @@ import {
   verifyMacAppSignature,
 } from './macos-release-signing.mjs';
 import {
-  LEGACY_RELEASE_ORIGIN,
   PRODUCT_ORIGIN,
   releaseUrlsForOrigin,
   verifyPromotedRelease,
@@ -37,9 +36,7 @@ import {
 import { releaseNotesForPublication } from './desktop-release-notes.mjs';
 
 export {
-  LEGACY_RELEASE_ORIGIN,
   PRODUCT_ORIGIN,
-  PUBLIC_RELEASE_ORIGINS,
 } from './desktop-release-public.mjs';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
 
@@ -335,13 +332,6 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
     updaterName,
     updaterEndpointPath,
   });
-  const legacyUrls = releaseUrlsForOrigin({
-    origin: LEGACY_RELEASE_ORIGIN,
-    version: normalized.version,
-    manualName,
-    updaterName,
-    updaterEndpointPath,
-  });
   const artifacts = {
     manual: { path: manualPath, bytes: manualBytes, sha256: manualDigest },
     updater: { path: updaterPath, bytes: updaterBytes, sha256: updaterDigest },
@@ -372,7 +362,6 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
     immutableObjects,
     artifacts,
     urls,
-    legacyUrls,
   };
 }
 
@@ -621,13 +610,6 @@ async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDA
     },
     urls: releaseUrlsForOrigin({
       origin: PRODUCT_ORIGIN,
-      version: release.version,
-      manualName: release.manual.fileName,
-      updaterName: updaterAsset.fileName,
-      updaterEndpointPath,
-    }),
-    legacyUrls: releaseUrlsForOrigin({
-      origin: LEGACY_RELEASE_ORIGIN,
       version: release.version,
       manualName: release.manual.fileName,
       updaterName: updaterAsset.fileName,

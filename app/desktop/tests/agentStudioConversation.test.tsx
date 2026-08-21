@@ -91,7 +91,7 @@ test('Kordi Factory conversation uses the normal transcript identity and attachm
       creating={false}
       localProfileAvatarSeed="alex-morgan"
       localProfileDisplayName="Alex Morgan"
-      localProfileImageUrl="https://coordinar.io/profile/avatar.png"
+      localProfileImageUrl="https://kordi.ai/profile/avatar.png"
       sessionId="session:agent-builder:test"
       detail={builderSession()}
       activeTurn={null}
@@ -119,7 +119,7 @@ test('Kordi Factory conversation uses the normal transcript identity and attachm
     />,
   );
 
-  assert.match(html, /https:\/\/coordinar\.io\/profile\/avatar\.png/);
+  assert.match(html, /https:\/\/kordi\.ai\/profile\/avatar\.png/);
   assert.match(html, /Make the instructions more concise/);
   assert.match(html, /aria-label="Add attachment"/);
   assert.match(html, /data-composer-attachment-add-trigger="true"/);

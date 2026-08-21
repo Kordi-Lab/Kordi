@@ -217,21 +217,6 @@ test('capabilities keeps hosted OAuth available for product deployments', async 
   });
 });
 
-test('capabilities keeps hosted OAuth available on the legacy product origin', async () => {
-  const { fetchImpl } = recordingFetch(() => jsonResponse(404, {
-    message: 'Not Found',
-  }));
-  const client = new CloudAuthClient({
-    baseUrl: 'https://coordinar.io',
-    fetchImpl,
-  });
-
-  assert.deepEqual(await client.capabilities(), {
-    password: true,
-    oauthProviders: ['google', 'github'],
-  });
-});
-
 test('capabilities does not infer providers for non-product servers', async () => {
   const { fetchImpl } = recordingFetch(() => jsonResponse(404, {
     message: 'Not Found',

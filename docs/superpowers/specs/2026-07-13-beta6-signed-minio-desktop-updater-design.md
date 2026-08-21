@@ -4,7 +4,7 @@
 
 ## Goal
 
-Publish the current `origin/main` as Kordi Desktop `0.0.1-beta.6` and make beta.6 the bootstrap release for secure in-app updates. A user on beta.6 or later confirms once, then Kordi downloads a signed update through `coordinar.io`, installs it, and relaunches automatically.
+Publish the current `origin/main` as Kordi Desktop `0.0.1-beta.6` and make beta.6 the bootstrap release for secure in-app updates. A user on beta.6 or later confirms once, then Kordi downloads a signed update through `kordi.ai`, installs it, and relaunches automatically.
 
 The already-published beta.5 desktop does not contain the updater integration. Beta.5 users therefore install beta.6 manually once. This limitation is explicit and is not treated as a failed automatic-update path.
 
@@ -12,7 +12,7 @@ The already-published beta.5 desktop does not contain the updater integration. B
 
 - Use Tauri v2 updater and process plugins instead of the custom DMG shell installer.
 - Store release artifacts in a private MinIO bucket named `kordi-releases`.
-- Expose manifests and downloads only through HTTPS URLs on `coordinar.io`.
+- Expose manifests and downloads only through HTTPS URLs on `kordi.ai`.
 - Generate a new Tauri updater key pair for beta.6. Beta.5 has no embedded updater key, so no key compatibility is required.
 - Keep the existing sidebar update indicator and confirmation popover.
 - Treat confirmation as final authorization: download, verify, install, and relaunch without a second restart prompt.
@@ -113,7 +113,7 @@ The handler:
   "version": "0.0.1-beta.6",
   "notes": "Kordi 0.0.1-beta.6",
   "pub_date": "2026-07-13T00:00:00Z",
-  "url": "https://coordinar.io/updates/releases/0.0.1-beta.6/Kordi.app.tar.gz",
+  "url": "https://kordi.ai/updates/releases/0.0.1-beta.6/Kordi.app.tar.gz",
   "signature": "Tauri minisign signature text"
 }
 ```
@@ -168,7 +168,7 @@ The desktop initializes `tauri-plugin-updater` and `tauri-plugin-process`. Both 
 
 - enable updater artifact creation;
 - embed the beta.6 updater public key;
-- use `https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}`;
+- use `https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}`;
 - contain no GitHub, MinIO, raw GCP, tunnel, or local endpoint.
 
 A TypeScript updater service owns the checked Tauri `Update` object and exposes a small adapter-driven controller for tests. Startup performs one quiet update check. When no update exists or checking fails, no update control appears.
@@ -194,7 +194,7 @@ A tested publisher script accepts an already-built release directory plus a chan
 5. Generate and validate `release.json`, `checksums.sha256`, and the beta channel pointer.
 6. Refuse to overwrite an existing immutable object with different bytes.
 7. Upload immutable objects and `release.json`.
-8. Verify each artifact through its unauthenticated `coordinar.io` GET and HEAD routes.
+8. Verify each artifact through its unauthenticated `kordi.ai` GET and HEAD routes.
 9. Validate the prior pointer, manifest, and artifacts, then upload the channel pointer last with an ETag compare-and-swap condition.
 10. Re-read the exact pointer bytes plus public Tauri and stable DMG endpoints. Every rollback or cleanup is an ETag-conditional PUT of the prior bytes or strict unpublished tombstone, reconciles ambiguous storage responses, and re-verifies the restored public state.
 
@@ -236,7 +236,7 @@ All behavior changes use red-green test-driven development.
 - Confirmation calls download/install exactly once and relaunches only after success.
 - Progress events update the confirmation state.
 - Signature/install failure does not relaunch and exposes retry plus the product fallback.
-- Tauri configs declare updater/process plugins, updater artifact creation, the `coordinar.io` endpoint, and the embedded public key.
+- Tauri configs declare updater/process plugins, updater artifact creation, the `kordi.ai` endpoint, and the embedded public key.
 - Source contracts prove the arbitrary-URL Rust downloader and destructive installer script are absent.
 
 ### Cloud server tests
@@ -272,7 +272,7 @@ All behavior changes use red-green test-driven development.
 
 Promotion requires recorded evidence that:
 
-- the beta.6 manual DMG downloads anonymously from `coordinar.io`;
+- the beta.6 manual DMG downloads anonymously from `kordi.ai`;
 - beta.5 installs beta.6 manually without losing login, keychain, canonical sessions, cache, or preferences;
 - the internal beta.5.1 acceptance package discovers beta.6 through the product endpoint;
 - one confirmation downloads, verifies, installs, and relaunches;

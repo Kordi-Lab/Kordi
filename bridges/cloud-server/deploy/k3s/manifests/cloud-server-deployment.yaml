@@ -156,7 +156,7 @@ spec:
             - name: KORDI_CLOUD_PUBLIC_BASE_URL
               value: "https://kordi.ai"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
-              value: "http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io,kordi://oauth/callback"
+              value: "http://127.0.0.1:,http://localhost:,https://kordi.ai,kordi://oauth/callback"
             - name: KORDI_CHAT_SYNC_CURSOR_SECRET
               valueFrom:
                 secretKeyRef:

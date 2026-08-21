@@ -74,7 +74,7 @@ test('public docs use neutral product wording and safe host guidance', () => {
     'docs/hosted-cloud-developer-guide.md',
   ].map((path) => `${path}\n${readText(path)}`).join('\n\n');
 
-  assert.match(publicDocs, /https:\/\/coordinar\.io/);
+  assert.match(publicDocs, /https:\/\/kordi\.ai/);
   assert.match(publicDocs, /<PUBLIC_TEST_CLOUD_API_BASE>/);
   assert.match(publicDocs, /Hosted\/dev runs must set `VITE_KORDI_CLOUD_API_BASE`/);
   assert.match(publicDocs, /Development launches fail closed/);

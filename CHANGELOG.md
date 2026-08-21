@@ -129,11 +129,8 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ### Changed
 
-- Moved the canonical desktop, Cloud API, OAuth, and updater origin to
-  `https://kordi.ai`. Existing installations that still poll
-  `https://coordinar.io` retain a verified compatibility path to the same
-  immutable release artifacts, so they can install beta.10 and migrate to the
-  new origin safely. ([#753], [#840])
+- Consolidated the desktop, Cloud API, OAuth, updater, and immutable release
+  artifacts on `https://kordi.ai`. ([#753], [#840])
 - Decoupled the Cloud desktop from the legacy Bridges runtime and consolidated
   collaboration state around the canonical Cloud/session model. This removes
   duplicate transport work while preserving direct chats, groups, agents,

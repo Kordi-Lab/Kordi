@@ -1,12 +1,8 @@
 import type { CloudOAuthProvider } from './authClient';
 
 export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
-const LEGACY_PRODUCTION_CLOUD_API_BASE_URL = 'https://coordinar.io';
-const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
-const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([
-  DEFAULT_CLOUD_API_BASE_URL,
-  LEGACY_PRODUCTION_CLOUD_API_BASE_URL,
-]);
+const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai']);
+const APPROVED_OPERATOR_CLOUD_API_ORIGINS = new Set([DEFAULT_CLOUD_API_BASE_URL]);
 
 export type CloudApiEnvironment = {
   DEV?: boolean;
@@ -70,10 +66,7 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
         );
       }
       if (!APPROVED_OPERATOR_CLOUD_API_ORIGINS.has(cleaned)) {
-        throw new Error(
-          'Operator development may use only the approved https://kordi.ai or '
-          + 'https://coordinar.io product origin.',
-        );
+        throw new Error('Operator development may use only the approved https://kordi.ai product origin.');
       }
       return cleaned;
     }

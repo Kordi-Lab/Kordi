@@ -140,7 +140,7 @@ test('cloud server manifest targets the hosted product public base', async () =>
   assert.match(manifest, /KORDI_CLOUD_PUBLIC_BASE_URL[\s\S]*value: "https:\/\/kordi\.ai"/);
   assert.match(
     manifest,
-    /KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST[\s\S]*https:\/\/kordi\.ai,https:\/\/coordinar\.io/,
+    /KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST[\s\S]*https:\/\/kordi\.ai,kordi:\/\/oauth\/callback/,
   );
   for (const port of [1420, 1422, 1482, 1484, 1486]) {
     assert.match(manifest, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
@@ -177,7 +177,7 @@ test('product media uses pinned host networking and secret-backed credentials', 
   assert.doesNotMatch(manifest, /api-secret:|api-key:/);
 });
 
-test('product origin serves desktop compatibility routes without redirects', async () => {
+test('product origin serves desktop routes without redirects', async () => {
   const caddyfile = await readFile(caddyfilePath, 'utf8');
   const deploy = await readFile(deployScriptPath, 'utf8');
   const manifest = await readFile(cloudServerManifestPath, 'utf8');
@@ -196,20 +196,11 @@ test('product origin serves desktop compatibility routes without redirects', asy
   assert.match(caddyfile, /root \* \/srv\/kordi-homepage\/current/);
   assert.match(caddyfile, /handle \/beta-api\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:17181/);
   assert.match(caddyfile, /kordi\.ai, www\.kordi\.ai/);
-  assert.match(
-    caddyfile,
-    /coordinar\.io, www\.coordinar\.io[\s\S]*@legacy_product_routes path \/v1\/cloud\/\* \/v2\/chat\/\* \/health \/updates\/\*/,
-  );
-  assert.ok(
-    caddyfile.indexOf('handle @legacy_product_routes')
-      < caddyfile.indexOf('redir https://kordi.ai{uri} 308'),
-    'legacy product routes must be handled before the marketing redirect',
-  );
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:30081/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 127\.0\.0\.1:17081/);
-  assert.equal(caddyfile.match(/keepalive off/g)?.length, 3);
-  assert.equal(caddyfile.match(/lb_try_duration 5s/g)?.length, 3);
-  assert.equal(caddyfile.match(/lb_try_interval 100ms/g)?.length, 3);
+  assert.equal(caddyfile.match(/keepalive off/g)?.length, 2);
+  assert.equal(caddyfile.match(/lb_try_duration 5s/g)?.length, 2);
+  assert.equal(caddyfile.match(/lb_try_interval 100ms/g)?.length, 2);
   assert.match(caddyfile, /@call_media path \/rtc \/rtc\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:7880/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 10\.\d+\.\d+\.\d+:17081/);
   assert.match(manifest, /nodePort: 30081/);
@@ -218,9 +209,7 @@ test('product origin serves desktop compatibility routes without redirects', asy
   assert.match(manifest, /livenessProbe:[\s\S]*periodSeconds: 5[\s\S]*failureThreshold: 2/);
 
   assert.match(deploy, /PUBLIC_ORIGIN=.*https:\/\/kordi\.ai/);
-  assert.match(deploy, /LEGACY_ORIGIN=.*https:\/\/coordinar\.io/);
   assert.match(deploy, /verify_product_origin "\$\{PUBLIC_ORIGIN\}"/);
-  assert.match(deploy, /verify_product_origin "\$\{LEGACY_ORIGIN\}"/);
   assert.match(deploy, /KORDI_VERIFY_RESOLVE_IP/);
   assert.match(deploy, /--resolve "\$\{origin_host\}:443:\$\{VERIFY_RESOLVE_IP\}"/);
   assert.match(deploy, /expected direct health status 200/);

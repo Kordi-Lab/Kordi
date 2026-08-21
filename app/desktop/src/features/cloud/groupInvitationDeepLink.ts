@@ -20,7 +20,7 @@ export function groupInvitationTokenFromUrl(value: string | null | undefined): s
   try {
     const url = new URL(raw);
     const pathParts = url.pathname.split('/').filter(Boolean);
-    const trustedWebHost = ['kordi.ai', 'www.kordi.ai', 'coordinar.io']
+    const trustedWebHost = ['kordi.ai', 'www.kordi.ai']
       .includes(url.hostname.toLowerCase());
     const candidate = url.protocol === 'kordi:' && url.hostname === 'group-invite'
       ? pathParts[0]
