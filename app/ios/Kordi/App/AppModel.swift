@@ -182,6 +182,7 @@ final class AppModel: ObservableObject {
             || ProcessInfo.processInfo.arguments.contains("--preview-devices")
             || ProcessInfo.processInfo.arguments.contains("--preview-authentication")
             || ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail")
+            || ProcessInfo.processInfo.arguments.contains("--preview-contacts")
             || ProcessInfo.processInfo.arguments.contains("--preview-new-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-add-contact")
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
@@ -525,7 +526,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshContactRequests() async {
-        guard let token else { return }
+        guard let token, !previewMode else { return }
         do {
             let requests = try await api.listContactRequests(token: token)
             guard token == self.token else { return }
@@ -2212,6 +2213,10 @@ final class AppModel: ObservableObject {
 
     func acceptContactRequest(_ request: CloudContactRequest) async {
         guard request.isIncoming, let token else { return }
+        if previewMode {
+            contactRequests.removeAll { $0.requestId == request.requestId }
+            return
+        }
         do {
             _ = try await api.acceptContactRequest(token: token, requestId: request.requestId)
             contactRequests.removeAll { $0.requestId == request.requestId }
@@ -2223,6 +2228,10 @@ final class AppModel: ObservableObject {
 
     func rejectContactRequest(_ request: CloudContactRequest) async {
         guard request.isIncoming, let token else { return }
+        if previewMode {
+            contactRequests.removeAll { $0.requestId == request.requestId }
+            return
+        }
         do {
             try await api.rejectContactRequest(token: token, requestId: request.requestId)
             contactRequests.removeAll { $0.requestId == request.requestId }
@@ -4482,6 +4491,7 @@ final class AppModel: ObservableObject {
         }
         account = fixture.account
         contacts = fixture.contacts
+        contactRequests = fixture.contactRequests
         let now = Date()
         let timestamp = ISO8601DateFormatter()
         contactPresenceByAccountID = Dictionary(uniqueKeysWithValues: fixture.contacts.map { contact in

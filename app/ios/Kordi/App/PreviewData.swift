@@ -4,6 +4,7 @@ import UIKit
 struct PreviewFixture {
     let account: CloudAccount
     let contacts: [CloudContact]
+    let contactRequests: [CloudContactRequest]
     let conversations: [ConversationSummary]
     let messagesByConversation: [String: [ChatMessage]]
 }
@@ -48,6 +49,44 @@ enum PreviewData {
             CloudContact(accountId: "acct_nora", kordiId: "935208164", displayName: "Nora Hassan", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -3_600)),
             CloudContact(accountId: "acct_sofia", kordiId: "246809531", displayName: "Sofia Rossi", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -4_000)),
             CloudContact(accountId: "acct_yuki", kordiId: "174630925", displayName: "Yuki Tanaka", avatarUrl: nil, nodeId: nil, createdAt: timestamp(now, -4_400))
+        ]
+        let contactRequests = [
+            CloudContactRequest(
+                requestId: "request_preview_incoming",
+                fromAccountId: "acct_jamie",
+                toAccountId: account.accountId,
+                status: "pending",
+                direction: "incoming",
+                message: "Wants to connect",
+                createdAt: timestamp(now, -120),
+                decidedAt: nil,
+                counterpart: CloudContact(
+                    accountId: "acct_jamie",
+                    kordiId: "381642705",
+                    displayName: "Jamie Rivera",
+                    avatarUrl: nil,
+                    nodeId: nil,
+                    createdAt: timestamp(now, -120)
+                )
+            ),
+            CloudContactRequest(
+                requestId: "request_preview_outgoing",
+                fromAccountId: account.accountId,
+                toAccountId: "acct_noor",
+                status: "pending",
+                direction: "outgoing",
+                message: nil,
+                createdAt: timestamp(now, -900),
+                decidedAt: nil,
+                counterpart: CloudContact(
+                    accountId: "acct_noor",
+                    kordiId: "704319826",
+                    displayName: "Noor Patel",
+                    avatarUrl: nil,
+                    nodeId: nil,
+                    createdAt: timestamp(now, -900)
+                )
+            )
         ]
 
         let conversations = [
@@ -147,7 +186,13 @@ enum PreviewData {
                 ChatMessage(id: "gm2", conversationId: "group:mobile-release", author: .person, authorName: "Ethan Park", text: "I added the device testing notes.", createdAt: now.addingTimeInterval(-240), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ]
         ]
-        return PreviewFixture(account: account, contacts: contacts, conversations: conversations, messagesByConversation: messages)
+        return PreviewFixture(
+            account: account,
+            contacts: contacts,
+            contactRequests: contactRequests,
+            conversations: conversations,
+            messagesByConversation: messages
+        )
     }
 
     private static func timestamp(_ date: Date, _ offset: TimeInterval) -> String {
