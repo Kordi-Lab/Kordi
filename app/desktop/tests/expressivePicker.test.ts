@@ -52,27 +52,13 @@ test('emoji insertion does not split an existing grapheme cluster', () => {
   );
 });
 
-test('composer uses a maintained emoji library and keyless public media sources', () => {
+test('composer uses emoji and private sticker and GIF libraries', () => {
   const picker = readFileSync(
     new URL('../src/features/emoji/ComposerExpressivePicker.tsx', import.meta.url),
     'utf8',
   );
-  const publicMemeSource = readFileSync(
-    new URL('../src/features/emoji/publicMemeTemplates.ts', import.meta.url),
-    'utf8',
-  );
-  const publicMemeGrid = readFileSync(
-    new URL('../src/features/emoji/PublicMemeGrid.tsx', import.meta.url),
-    'utf8',
-  );
-  const publicGifGrid = readFileSync(
-    new URL('../src/features/emoji/PublicGifGrid.tsx', import.meta.url),
-    'utf8',
-  );
 
   assert.match(picker, /lazy\(\(\) => import\('emoji-picker-react'\)\)/);
-  assert.match(picker, /lazy\(\(\) => import\('\.\/PublicMemeGrid'\)\)/);
-  assert.match(picker, /lazy\(\(\) => import\('\.\/PublicGifGrid'\)\)/);
   assert.match(picker, /\['emoji', 'Emoji'\]/);
   assert.match(picker, /\['stickers', 'Stickers'\]/);
   assert.match(picker, /\['gifs', 'GIFs'\]/);
@@ -82,10 +68,7 @@ test('composer uses a maintained emoji library and keyless public media sources'
   assert.match(picker, /GIF_FILE_ACCEPT/);
   assert.match(picker, /sendMedia\(expressiveMediaAttachment\(item\)\)/);
   assert.match(picker, /emojiStyle=\{'native' as EmojiStyle\}/);
-  assert.doesNotMatch(picker, /GIPHY|VITE_GIPHY_API_KEY/);
-  assert.match(publicMemeSource, /https:\/\/commons\.wikimedia\.org\/w\/api\.php/);
-  assert.match(publicMemeGrid, /Public-domain and CC0 results from Wikimedia Commons/);
-  assert.match(publicGifGrid, /results from Wikimedia Commons/);
+  assert.doesNotMatch(picker, /PublicMemeGrid|PublicGifGrid|Public Stickers|Public GIFs/);
 });
 
 test('public GIF fallback searches Commons without a key and keeps reusable licenses only', () => {

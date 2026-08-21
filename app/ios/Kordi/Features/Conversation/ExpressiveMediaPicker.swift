@@ -511,12 +511,7 @@ struct ExpressiveMediaPicker: View {
 
 private struct ExpressiveMediaLibraryPanel: View {
     @EnvironmentObject private var model: AppModel
-    @State private var query = ""
     @State private var libraryEntries: [ExpressiveMediaLibraryEntry] = []
-    @State private var stickerTemplates: [PublicStickerTemplate] = []
-    @State private var gifResults: [PublicGIFResult] = []
-    @State private var isLoadingPublicMedia = false
-    @State private var publicError: String?
     @State private var isShowingImporter = false
     @State private var activeMediaID: String?
     let kind: ExpressiveMediaLibraryKind
@@ -525,20 +520,8 @@ private struct ExpressiveMediaLibraryPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            KordiPullDownSearchField(
-                text: $query,
-                prompt: kind == .sticker ? "Search stickers" : "Search GIFs",
-                accessibilityLabel: kind == .sticker ? "Search stickers" : "Search GIFs"
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    librarySection
-                    Divider()
-                    publicSection
-                }
+                librarySection
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
             }
@@ -552,15 +535,6 @@ private struct ExpressiveMediaLibraryPanel: View {
         )
         .task {
             await refreshLibrary()
-        }
-        .task(id: publicSearchID) {
-            do {
-                try await Task.sleep(for: .milliseconds(350))
-                guard !Task.isCancelled else { return }
-                await reloadPublicMedia()
-            } catch {
-                return
-            }
         }
     }
 
@@ -619,133 +593,6 @@ private struct ExpressiveMediaLibraryPanel: View {
         }
     }
 
-    @ViewBuilder
-    private var publicSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(kind == .sticker ? "Discover Stickers" : "Discover GIFs")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("Wikimedia Commons")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            if isLoadingPublicMedia {
-                ProgressView(kind == .sticker ? "Searching stickers…" : "Searching GIFs…")
-                    .font(.footnote)
-                    .frame(maxWidth: .infinity, minHeight: 92)
-            } else if let publicError {
-                VStack(spacing: 4) {
-                    Text(publicError)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Try Again") {
-                        Task { await reloadPublicMedia() }
-                    }
-                    .font(.footnote.weight(.semibold))
-                }
-                .frame(maxWidth: .infinity, minHeight: 92)
-            } else if kind == .sticker {
-                stickerGrid
-            } else {
-                gifGrid
-            }
-        }
-    }
-
-    private var stickerGrid: some View {
-        return Group {
-            if stickerTemplates.isEmpty {
-                Text("No public-domain stickers match this search.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 92)
-            } else {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 68, maximum: 84), spacing: 8)],
-                    spacing: 10
-                ) {
-                    ForEach(stickerTemplates) { template in
-                        publicMediaButton(
-                            id: "sticker:\(template.id)",
-                            title: template.name,
-                            previewURL: template.previewURL,
-                            send: { try await ExpressiveMediaCatalog.downloadSticker(template) },
-                            save: { try await ExpressiveMediaCatalog.downloadSticker(template) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private var gifGrid: some View {
-        Group {
-            if gifResults.isEmpty {
-                Text("No public-domain GIFs match this search.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 92)
-            } else {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 68, maximum: 84), spacing: 8)],
-                    spacing: 10
-                ) {
-                    ForEach(gifResults) { result in
-                        publicMediaButton(
-                            id: "gif:\(result.id)",
-                            title: result.title,
-                            previewURL: result.previewURL,
-                            send: { try await ExpressiveMediaCatalog.downloadGIF(result) },
-                            save: { try await ExpressiveMediaCatalog.downloadGIF(result) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func publicMediaButton(
-        id: String,
-        title: String,
-        previewURL: URL,
-        send: @escaping () async throws -> PendingAttachment,
-        save: @escaping () async throws -> PendingAttachment
-    ) -> some View {
-        Button {
-            performPublicMediaAction(id: id, loader: send, shouldSend: true)
-        } label: {
-            VStack(spacing: 3) {
-                RemoteExpressiveMediaThumbnail(url: previewURL)
-                    .frame(height: 64)
-                    .overlay {
-                        if activeMediaID == id {
-                            ProgressView()
-                                .tint(.white)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(.black.opacity(0.28))
-                        }
-                    }
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(activeMediaID != nil || isSending)
-        .accessibilityLabel("Send \(title)")
-        .contextMenu {
-            Button {
-                performPublicMediaAction(id: id, loader: save, shouldSend: false)
-            } label: {
-                Label("Add to \(kind.libraryName)", systemImage: "plus.square.on.square")
-            }
-        }
-    }
-
     private var allowedContentTypes: [UTType] {
         switch kind {
         case .sticker:
@@ -761,10 +608,6 @@ private struct ExpressiveMediaLibraryPanel: View {
         kind == .sticker
             ? "Adds PNG, JPEG, or WebP files directly to My Stickers"
             : "Adds GIF files directly to My GIFs"
-    }
-
-    private var publicSearchID: String {
-        "\(kind.rawValue):\(query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
     }
 
     private func importMedia(_ result: Result<[URL], Error>) {
@@ -795,65 +638,12 @@ private struct ExpressiveMediaLibraryPanel: View {
         }
     }
 
-    private func performPublicMediaAction(
-        id: String,
-        loader: @escaping () async throws -> PendingAttachment,
-        shouldSend: Bool
-    ) {
-        guard activeMediaID == nil, !isSending else { return }
-        activeMediaID = id
-        Task {
-            do {
-                let attachment = try await loader()
-                if shouldSend {
-                    await onSendMedia(attachment)
-                } else if await model.addExpressiveMediaAttachment(attachment, kind: kind) {
-                    await refreshLibrary()
-                }
-            } catch {
-                publicError = error.localizedDescription
-            }
-            activeMediaID = nil
-        }
-    }
-
     private func refreshLibrary() async {
         libraryEntries = await model.expressiveMediaLibraryEntries(kind: kind)
         await model.synchronizeExpressiveMediaLibrary()
         libraryEntries = await model.expressiveMediaLibraryEntries(kind: kind)
     }
 
-    private func reloadPublicMedia() async {
-        if kind == .sticker {
-            await loadPublicStickers()
-        } else {
-            await loadPublicGIFs()
-        }
-    }
-
-    private func loadPublicStickers() async {
-        isLoadingPublicMedia = true
-        publicError = nil
-        do {
-            stickerTemplates = try await ExpressiveMediaCatalog.loadPublicStickers(query: query)
-        } catch {
-            guard !Task.isCancelled else { return }
-            publicError = error.localizedDescription
-        }
-        isLoadingPublicMedia = false
-    }
-
-    private func loadPublicGIFs() async {
-        isLoadingPublicMedia = true
-        publicError = nil
-        do {
-            gifResults = try await ExpressiveMediaCatalog.searchPublicGIFs(query: query)
-        } catch {
-            guard !Task.isCancelled else { return }
-            publicError = error.localizedDescription
-        }
-        isLoadingPublicMedia = false
-    }
 }
 
 private struct LocalExpressiveMediaThumbnail: View {
@@ -879,27 +669,5 @@ private struct LocalExpressiveMediaThumbnail: View {
                 AttachmentImageDecoder.downsampledImage(at: url, maximumPixelSize: 240)
             }.value
         }
-    }
-}
-
-private struct RemoteExpressiveMediaThumbnail: View {
-    let url: URL
-
-    var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.16))) { phase in
-            switch phase {
-            case let .success(image):
-                image.resizable().scaledToFill()
-            case .failure:
-                Image(systemName: "photo")
-                    .foregroundStyle(.secondary)
-            default:
-                ProgressView().controlSize(.small)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .tertiarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .clipped()
     }
 }

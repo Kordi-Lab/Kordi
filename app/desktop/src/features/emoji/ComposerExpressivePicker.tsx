@@ -23,17 +23,13 @@ import {
   expressiveMediaAttachment,
   expressiveMediaPreviewUrl,
   GIF_FILE_ACCEPT,
-  providerMediaAttachment,
   readExpressiveMediaLibrary,
   STICKER_FILE_ACCEPT,
   synchronizeExpressiveMediaLibrary,
   type ExpressiveMediaKind,
-  type ProviderMediaSelection,
 } from './expressiveMediaLibrary';
 
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
-const PublicGifGrid = lazy(() => import('./PublicGifGrid'));
-const PublicMemeGrid = lazy(() => import('./PublicMemeGrid'));
 
 type PickerTab = 'emoji' | 'stickers' | 'gifs';
 
@@ -150,19 +146,6 @@ export function ComposerExpressivePicker({
     setMediaError(null);
     try {
       await onSendMedia(attachment);
-      setIsOpen(false);
-    } catch (error) {
-      setMediaError(error instanceof Error ? error.message : 'Unable to send that media.');
-    } finally {
-      setIsMediaBusy(false);
-    }
-  }
-
-  async function sendProviderMedia(selection: ProviderMediaSelection) {
-    setIsMediaBusy(true);
-    setMediaError(null);
-    try {
-      await onSendMedia(await providerMediaAttachment(selection));
       setIsOpen(false);
     } catch (error) {
       setMediaError(error instanceof Error ? error.message : 'Unable to send that media.');
@@ -330,29 +313,8 @@ export function ComposerExpressivePicker({
                 </div>
               )}
 
-              <div className="app-expressive-picker-provider-grid">
-                <div className="app-expressive-picker-heading">
-                  <span>{tab === 'stickers' ? 'Public Stickers' : 'Public GIFs'}</span>
-                </div>
-                <Suspense fallback={<PickerLoading label={`Loading ${tab}…`} />}>
-                  {tab === 'stickers' ? (
-                    <PublicMemeGrid
-                      query={query}
-                      isDisabled={isMediaBusy}
-                      onSelect={(selection) => void sendProviderMedia(selection)}
-                    />
-                  ) : (
-                    <PublicGifGrid
-                      query={query}
-                      isDisabled={isMediaBusy}
-                      onSelect={(selection) => void sendProviderMedia(selection)}
-                    />
-                  )}
-                </Suspense>
-              </div>
-
               <p className="app-expressive-picker-guidance">
-                Added media stays in your library. Click any saved or public result to send it.
+                Added media stays in your library. Click any saved item to send it.
               </p>
             </div>
           )}
